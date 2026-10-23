@@ -1,0 +1,13 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="PrivateGateway.Client.UI.Views.MainWindow"
+        Title="Private Gateway"
+        Width="440" Height="760"
+        CanResize="False"
+        Background="#EEF2F8">
+  <!-- Каркас этапа 0. Экраны макета (docs/design) появляются на этапе 1. -->
+  <TextBlock Text="Private Gateway"
+             FontSize="19" FontWeight="SemiBold"
+             HorizontalAlignment="Center" VerticalAlignment="Center"
+             Foreground="#0B0F19" />
+</Window>

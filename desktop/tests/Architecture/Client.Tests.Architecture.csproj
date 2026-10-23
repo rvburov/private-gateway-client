@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Границы модулей: кто на кого может ссылаться и где запрещена сеть. Читает .csproj и
+    сборки всех проектов desktop/src.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Client.Core/Client.Core.csproj" />
+    <ProjectReference Include="../../src/Client.Contracts/Client.Contracts.csproj" />
+    <ProjectReference Include="../../src/Client.Network/Client.Network.csproj" />
+    <ProjectReference Include="../../src/Client.Application/Client.Application.csproj" />
+    <ProjectReference Include="../../src/Client.Infrastructure/Client.Infrastructure.csproj" />
+    <ProjectReference Include="../../src/Client.Platform.Windows/Client.Platform.Windows.csproj" />
+    <ProjectReference Include="../../src/Client.Platform.Linux/Client.Platform.Linux.csproj" />
+    <ProjectReference Include="../../src/Client.Platform.MacOS/Client.Platform.MacOS.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Быстрый гейт: чистая логика без сети, диска и экрана. -->
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Client.Core/Client.Core.csproj" />
+    <ProjectReference Include="../../src/Client.Contracts/Client.Contracts.csproj" />
+    <ProjectReference Include="../../src/Client.Network/Client.Network.csproj" />
+  </ItemGroup>
+
+</Project>

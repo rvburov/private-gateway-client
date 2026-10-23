@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Привилегированная служба: запускает ядро, поднимает TUN, держит блок при обрыве и DNS.
+    Windows — служба Windows, Linux — systemd. Интерфейс общается с ней только по IPC
+    (shared/specifications/ipc), ссылаться на этот проект ему запрещено.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>PrivateGateway.Service</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Client.Core/Client.Core.csproj" />
+    <ProjectReference Include="../Client.Contracts/Client.Contracts.csproj" />
+    <ProjectReference Include="../Client.Network/Client.Network.csproj" />
+    <ProjectReference Include="../Client.Platform.Windows/Client.Platform.Windows.csproj" />
+    <ProjectReference Include="../Client.Platform.Linux/Client.Platform.Linux.csproj" />
+    <ProjectReference Include="../Client.Platform.MacOS/Client.Platform.MacOS.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" />
+  </ItemGroup>
+
+</Project>

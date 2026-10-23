@@ -1,0 +1,24 @@
+# Запрещенные вызовы для слоев без сети: Core, Network, Application, UI (PgNoNetwork в .csproj).
+# Правило ROADMAP: интерфейс не управляет сетью напрямую. Сеть, сокеты, DNS и запуск программ —
+# только в Client.Service, Client.Platform.* и Client.Infrastructure (загрузка списков серверов).
+# Формат: «ID_символа;сообщение». Пустых строк и строк из одного «#» быть не может — анализатор
+# считает их записями без символа (RS0031).
+# ── HTTP ─────────────────────────────────────────────────────────────────────
+T:System.Net.Http.HttpClient;сеть — только в Infrastructure, службе и платформенных проектах
+T:System.Net.Http.HttpClientHandler;сеть — только в Infrastructure, службе и платформенных проектах
+T:System.Net.Http.SocketsHttpHandler;сеть — только в Infrastructure, службе и платформенных проектах
+T:System.Net.Http.HttpMessageInvoker;сеть — только в Infrastructure, службе и платформенных проектах
+T:System.Net.WebClient;устаревший клиент
+T:System.Net.WebRequest;устаревший клиент
+T:System.Net.HttpWebRequest;устаревший клиент
+T:System.Net.WebSockets.ClientWebSocket;сеть — только в Infrastructure, службе и платформенных проектах
+# ── Сокеты и разрешение имен ──────────────────────────────────────────────────
+T:System.Net.Sockets.Socket;сокеты — только в службе и платформенных проектах
+T:System.Net.Sockets.TcpClient;сокеты — только в службе и платформенных проектах
+T:System.Net.Sockets.UdpClient;сокеты — только в службе и платформенных проектах
+T:System.Net.Sockets.TcpListener;слушать порты — только служба
+T:System.Net.HttpListener;слушать порты — только служба
+T:System.Net.Dns;разрешение имени — обращение в сеть, утечка DNS мимо туннеля
+T:System.Net.NetworkInformation.Ping;пинг серверов меряет служба
+# ── Запуск программ ──────────────────────────────────────────────────────────
+T:System.Diagnostics.Process;запуск программ (ядра, netsh, nft) — только служба; ссылки открывать через Launcher Avalonia

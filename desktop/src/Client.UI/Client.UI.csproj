@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Интерфейс на Avalonia: окна, модели представлений, тема из design-tokens.json.
+    Сети, сокетов и запуска программ здесь нет (PgNoNetwork) — все через службу по IPC.
+  -->
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <AssemblyName>PrivateGateway</AssemblyName>
+    <PgNoNetwork>true</PgNoNetwork>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Client.Core/Client.Core.csproj" />
+    <ProjectReference Include="../Client.Contracts/Client.Contracts.csproj" />
+    <ProjectReference Include="../Client.Application/Client.Application.csproj" />
+    <ProjectReference Include="../Client.Infrastructure/Client.Infrastructure.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
+  </ItemGroup>
+
+</Project>

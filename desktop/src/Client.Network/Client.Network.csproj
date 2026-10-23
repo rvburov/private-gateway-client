@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <PgNoNetwork>true</PgNoNetwork>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../Client.Core/Client.Core.csproj" />
+  </ItemGroup>
+
+</Project>

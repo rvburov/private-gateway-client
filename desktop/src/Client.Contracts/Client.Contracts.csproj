@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Контракт связи интерфейса со службой. Источник — shared/specifications/ipc/*.proto,
+    код клиента и сервера генерирует Grpc.Tools при сборке.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../Client.Core/Client.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Google.Protobuf" />
+    <PackageReference Include="Grpc.Core.Api" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Protobuf Include="../../../shared/specifications/ipc/*.proto"
+              ProtoRoot="../../../shared/specifications/ipc"
+              GrpcServices="Both"
+              Access="Public" />
+  </ItemGroup>
+
+</Project>

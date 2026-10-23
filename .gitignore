@@ -1,0 +1,61 @@
+# ===== C# / .NET =====
+bin/
+obj/
+# Все артефакты сборки (bin/obj/publish) собраны сюда — см. Directory.Build.props
+artifacts/
+# Готовые сборки для раздачи
+dist/
+# Локальный кеш NuGet-пакетов внутри проекта (см. nuget.config)
+packages/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+.vs/
+*.nupkg
+*.snupkg
+[Pp]ublish/
+*.[Pp]ublish.xml
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+*.coverage
+*.VisualState.xml
+project.lock.json
+project.assets.json
+
+# ===== AVALONIA =====
+*.axaml.g.cs
+*.g.i.cs
+
+# ===== IDE =====
+.idea/
+.vscode/
+*.rsuser
+*.MigrateUser
+
+# ===== БАЗЫ ДАННЫХ =====
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# ===== ЛОКАЛЬНЫЕ ДАННЫЕ (DEV) =====
+/.localdata/
+
+# ===== РАБОЧИЕ ПАПКИ АГЕНТОВ (AGENTS.md) =====
+/.claude/worktrees/
+/.agents/
+
+# ===== КОНФИГУРАЦИЯ И СЕКРЕТЫ =====
+appsettings.Local.json
+*.pfx
+*.p12
+*.key
+.env
+.env.*
+
+# ===== ЯДРА (скачиваются скриптом, в git не хранятся) =====
+/runtimes/
