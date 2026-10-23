@@ -38,7 +38,7 @@
 | Задача | Выбор |
 |---|---|
 | Платформа | .NET 10 (LTS), C# 14 |
-| Интерфейс | Avalonia 11 (последняя стабильная), шрифты Inter и JetBrains Mono встроены |
+| Интерфейс | Avalonia 12 (12.1.4 — последняя стабильная на 23.10.2026), шрифты Inter и JetBrains Mono встроены |
 | MVVM | CommunityToolkit.Mvvm |
 | DI, настройки, фоновые задачи | Microsoft.Extensions.Hosting / DependencyInjection / Options |
 | Журнал | Serilog, маскирование ключей, UUID и адресов подписок |
