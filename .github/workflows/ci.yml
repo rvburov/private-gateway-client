@@ -32,6 +32,14 @@ jobs:
       - name: Тесты
         run: dotnet test --solution PrivateGateway.slnx -c Release --no-build
 
+      # На Linux хранилища секретов без рабочего стола нет — поднимаем GNOME Keyring в своей сессии.
+      - name: Хранилище секретов Linux (Secret Service)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gnome-keyring libsecret-1-0 dbus
+          dbus-run-session -- scripts/tests/secret-service.sh -c Release --no-build
+
   worktree:
     name: Рабочие папки агентов (${{ matrix.os }})
     strategy:

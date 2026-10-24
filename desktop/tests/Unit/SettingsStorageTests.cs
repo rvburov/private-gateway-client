@@ -1,3 +1,4 @@
+using System.Globalization;
 using Microsoft.Extensions.Logging.Abstractions;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -48,9 +49,15 @@ public sealed class SettingsStorageTests : IDisposable
     [Fact]
     public void Migrations_run_once_and_set_version()
     {
+        // Версия — номер последней миграции; миграции встроены в сборку как migrations.NNNN_*.sql.
+        var latest = typeof(SqliteDatabase).Assembly.GetManifestResourceNames()
+            .Where(n => n.StartsWith("migrations.", StringComparison.Ordinal))
+            .Max(n => int.Parse(n["migrations.".Length..("migrations.".Length + 4)], CultureInfo.InvariantCulture));
+        latest.ShouldBeGreaterThanOrEqualTo(2);
+
         var database = new SqliteDatabase(_paths);
-        database.Version().ShouldBe(1);
-        new SqliteDatabase(_paths).Version().ShouldBe(1);
+        database.Version().ShouldBe(latest);
+        new SqliteDatabase(_paths).Version().ShouldBe(latest);
     }
 
     [Fact]
