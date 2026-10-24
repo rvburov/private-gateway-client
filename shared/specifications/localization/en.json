@@ -397,5 +397,22 @@
   "ago.hours": "{0} h ago",
   "ago.days": "{0} d ago",
   "import.download.no_servers": "the answer has no servers",
-  "import.download.no_address": "the subscription address is missing from the OS store"
+  "import.download.no_address": "the subscription address is missing from the OS store",
+  "status.paused.title": "Protection paused",
+  "status.paused.sub": "Signing in to hotel or cafe Wi-Fi",
+  "power.label.paused": "Paused",
+  "power.action.resume": "Resume protection",
+  "checked.paused": "Checks resume after the pause",
+  "check.all.paused": "direct",
+  "check.dns.paused": "at your provider",
+  "check.ipv6.paused": "open",
+  "check.ks.paused": "paused",
+  "ip.meta.paused": "Wi-Fi sign-in pause · your provider",
+  "pause.banner": "Internet without VPN for Wi-Fi sign-in",
+  "pause.dialog.title": "Open the internet without VPN for 5 minutes?",
+  "pause.dialog.text": "This lets you sign in to hotel or cafe Wi-Fi. During the pause, websites and the network see your real IP. Protection comes back by itself in 5 minutes, or earlier with “Resume protection”.",
+  "pause.dialog.keep": "Keep protection",
+  "pause.dialog.open": "Open for 5 minutes",
+  "pause.off": "Protection is off — the network sign-in page opens without a pause",
+  "pause.started": "Paused for 5 minutes: sign in to the network on the page that opened"
 }

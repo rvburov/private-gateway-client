@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: d1cc87499a37ce581f5dffbce7efbfdb74f2315b10e0830150b8f045e9851a07
+  tokens-sha256: d0fa294fa04b42d5253065af78e92279a84e81e0cc7735233672f7dad517ff70
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -87,6 +87,10 @@
   <SolidColorBrush x:Key="PgBrush.Status.Caution.Text" Color="{StaticResource PgColor.Status.Caution.Text}" />
   <Color x:Key="PgColor.Status.Caution.Tint">#24F59E0B</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Caution.Tint" Color="{StaticResource PgColor.Status.Caution.Tint}" />
+  <Color x:Key="PgColor.Status.Caution.Badge">#FF92400E</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Caution.Badge" Color="{StaticResource PgColor.Status.Caution.Badge}" />
+  <Color x:Key="PgColor.Status.Caution.Line">#52F59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Caution.Line" Color="{StaticResource PgColor.Status.Caution.Line}" />
   <Color x:Key="PgColor.Status.Danger.Base">#FFDC2626</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Base" Color="{StaticResource PgColor.Status.Danger.Base}" />
   <Color x:Key="PgColor.Status.Danger.Text">#FFB91C1C</Color>

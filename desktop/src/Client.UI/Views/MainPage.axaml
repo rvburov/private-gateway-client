@@ -36,6 +36,25 @@
       <!-- Состояние защиты -->
       <Border Classes="card" Margin="20,0" Padding="16,14,14,12">
         <StackPanel Spacing="12">
+          <!-- Пауза для входа в Wi-Fi: отсчет и «Вернуть защиту» -->
+          <Border x:Name="PauseBanner" IsVisible="{Binding IsPaused}" CornerRadius="12" Padding="10,8,8,8"
+                  BorderThickness="1" Background="{StaticResource PgBrush.Status.Caution.Tint}"
+                  BorderBrush="{StaticResource PgBrush.Status.Caution.Line}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <c:Icon Data="{StaticResource Icon.Clock}" Width="16" Height="16" StrokeThickness="2"
+                      Foreground="{StaticResource PgBrush.Status.Caution.Badge}" VerticalAlignment="Center" />
+              <TextBlock x:Name="PauseText" Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                         FontSize="{StaticResource PgFontSize.Caption}" Foreground="{StaticResource PgBrush.Status.Caution.Badge}">
+                <Run Text="{l:L pause.banner}" />
+                <Run Text=" · " />
+                <Run Text="{Binding PauseLeft}" FontFamily="{StaticResource PgFont.Mono}" FontWeight="Bold" />
+              </TextBlock>
+              <Button x:Name="ResumeButton" Grid.Column="2" Height="30" Padding="10,0" CornerRadius="8" BorderThickness="0"
+                      VerticalContentAlignment="Center" Background="{StaticResource PgBrush.Surface.Solid}"
+                      Foreground="{StaticResource PgBrush.Status.Caution.Badge}" FontSize="{StaticResource PgFontSize.Caption}"
+                      FontWeight="Bold" Command="{Binding ResumeCommand}" Content="{l:L power.action.resume}" />
+            </Grid>
+          </Border>
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Border Width="46" Height="46" CornerRadius="{StaticResource PgRadius.Button}" VerticalAlignment="Top"
                     Background="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Tint}">

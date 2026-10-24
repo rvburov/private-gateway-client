@@ -23,6 +23,16 @@ public interface IGatewayClient
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Пауза для входа в Wi-Fi отеля или кафе: на <paramref name="duration"/> трафик идет мимо
+    /// туннеля, чтобы открылась страница авторизации сети; потом защита возвращается сама. Только по
+    /// явному действию пользователя. Защита выключена — паузе нечего снимать, ничего не происходит.
+    /// </summary>
+    Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default);
+
+    /// <summary>Вернуть защиту раньше конца паузы.</summary>
+    Task ResumeProtectionAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Проверки защиты (служба, ядро, весь трафик, блок при обрыве, DNS, IPv6, внешний IP, другие
     /// VPN). Только читают состояние; заодно обновляют время проверки на главном экране.
     /// </summary>

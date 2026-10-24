@@ -397,5 +397,22 @@
   "ago.hours": "{0} ч назад",
   "ago.days": "{0} дн назад",
   "import.download.no_servers": "в ответе нет серверов",
-  "import.download.no_address": "адреса подписки нет в хранилище ОС"
+  "import.download.no_address": "адреса подписки нет в хранилище ОС",
+  "status.paused.title": "Защита на паузе",
+  "status.paused.sub": "Вход в Wi-Fi отеля или кафе",
+  "power.label.paused": "Пауза",
+  "power.action.resume": "Вернуть защиту",
+  "checked.paused": "Проверки возобновятся после паузы",
+  "check.all.paused": "напрямую",
+  "check.dns.paused": "у провайдера",
+  "check.ipv6.paused": "открыт",
+  "check.ks.paused": "на паузе",
+  "ip.meta.paused": "Пауза для входа в Wi-Fi · ваш провайдер",
+  "pause.banner": "Интернет без VPN для входа в Wi-Fi",
+  "pause.dialog.title": "Открыть интернет без VPN на 5 минут?",
+  "pause.dialog.text": "Это нужно, чтобы войти в Wi-Fi отеля или кафе. Пока идет пауза, сайты и сеть видят ваш реальный IP. Через 5 минут защита вернется сама, раньше — кнопкой «Вернуть защиту».",
+  "pause.dialog.keep": "Оставить защиту",
+  "pause.dialog.open": "Открыть на 5 минут",
+  "pause.off": "Защита выключена — страница входа в сеть откроется и без паузы",
+  "pause.started": "Пауза на 5 минут: войдите в сеть на открывшейся странице"
 }

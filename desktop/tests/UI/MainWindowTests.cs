@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Localization;
@@ -168,5 +169,71 @@ public sealed class MainWindowTests : WindowHarness
         texts.ShouldContain("demo");
         texts.ShouldNotContain("Настройки");
         Snapshot(window, "main-off-en");
+    }
+
+    [AvaloniaFact]
+    public async Task Captive_pause_shows_the_countdown_and_resumes_by_the_banner_button()
+    {
+        var (window, shell) = Open();
+        await Connect(shell);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        (await Service<ConnectionController>().PauseForCaptivePortalAsync()).ShouldBeTrue();
+        WaitFor(() => shell.Protection.Status.IsPaused);
+
+        Find<Border>(window, "PauseBanner").IsVisible.ShouldBeTrue();
+        main.PauseLeft.ShouldBe("5:00");
+        Text(window, "StatusTitle").ShouldBe("Защита на паузе");
+        main.StatusSubtitle.ShouldBe("Вход в Wi-Fi отеля или кафе");
+        main.HasTimer.ShouldBeFalse();
+        main.CheckedText.ShouldBe("Проверки возобновятся после паузы");
+        main.HasCheckAction.ShouldBeFalse();
+        main.Chips.Select(c => c.Value).ShouldBe(["напрямую", "у провайдера", "открыт", "на паузе"]);
+        main.WebIp.ShouldBe("198.51.100.7", "в паузе сайты видят реальный IP");
+        main.WebIpMeta.ShouldBe("Пауза для входа в Wi-Fi · ваш провайдер");
+        main.RealIpState.ShouldBe("виден сайтам");
+        shell.Protection.Tone.ShouldBe(Tone.Partial);
+        shell.Protection.Label.ShouldBe("Пауза");
+        shell.Protection.ActionText.ShouldBe("Вернуть защиту");
+
+        Time.Advance(TimeSpan.FromSeconds(61));
+        main.PauseLeft.ShouldBe("3:59");
+        Snapshot(window, "main-paused");
+
+        Press(window, "ResumeButton");
+        WaitFor(() => !shell.Protection.Status.IsPaused);
+
+        Find<Border>(window, "PauseBanner").IsVisible.ShouldBeFalse();
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
+        main.Chips.Select(c => c.Value).ShouldBe(["через туннель", "запросы в туннеле", "нет обхода", "Kill Switch вкл"]);
+    }
+
+    [AvaloniaFact]
+    public async Task Shield_during_the_pause_brings_protection_back_instead_of_turning_it_off()
+    {
+        var (_, shell) = Open();
+        await Connect(shell);
+        await Service<ConnectionController>().PauseForCaptivePortalAsync();
+        WaitFor(() => shell.Protection.Status.IsPaused);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => !shell.Protection.Status.IsPaused);
+
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
+        shell.Protection.Tone.ShouldBe(Tone.Connected);
+    }
+
+    [AvaloniaFact]
+    public async Task Pause_ends_by_itself_after_five_minutes()
+    {
+        var (window, shell) = Open();
+        await Connect(shell);
+        await Service<ConnectionController>().PauseForCaptivePortalAsync();
+        WaitFor(() => shell.Protection.Status.IsPaused);
+
+        Time.Advance(ConnectionController.CaptivePause);
+        WaitFor(() => !shell.Protection.Status.IsPaused);
+
+        Find<Border>(window, "PauseBanner").IsVisible.ShouldBeFalse();
     }
 }

@@ -165,12 +165,37 @@ public class ConnectionControllerTests
         gateway.Calls.ShouldBe(disconnects ? ["disconnect"] : []);
     }
 
-    private sealed class FakeGateway(ConnectionState state, string? serverId = null) : IGatewayClient
+    [Fact]
+    public async Task Shield_during_captive_pause_returns_protection_instead_of_disconnecting()
+    {
+        var gateway = new FakeGateway(ConnectionState.Connected, "nl", pausedUntil: DateTimeOffset.UnixEpoch.AddMinutes(5));
+        var controller = new ConnectionController(gateway, new FakeCatalog(Nl) { SelectedId = "nl" });
+
+        (await controller.ToggleAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+
+        gateway.Calls.ShouldBe(["resume"]);
+    }
+
+    [Theory]
+    [InlineData(ConnectionState.Connected, true)]
+    [InlineData(ConnectionState.Blocked, true)]
+    [InlineData(ConnectionState.Off, false)]
+    public async Task Captive_pause_is_asked_only_while_protection_is_on(ConnectionState state, bool paused)
+    {
+        var gateway = new FakeGateway(state, "nl");
+
+        (await new ConnectionController(gateway, new FakeCatalog()).PauseForCaptivePortalAsync(TestContext.Current.CancellationToken))
+            .ShouldBe(paused);
+
+        gateway.Calls.ShouldBe(paused ? ["pause:5"] : []);
+    }
+
+    private sealed class FakeGateway(ConnectionState state, string? serverId = null, DateTimeOffset? pausedUntil = null) : IGatewayClient
     {
         public List<string> Calls { get; } = [];
 
         public ConnectionStatus Status { get; } =
-            ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId };
+            ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId, CaptivePauseUntil = pausedUntil };
 
         public bool IsSimulated => true;
 
@@ -188,6 +213,19 @@ public class ConnectionControllerTests
             Calls.Add("disconnect");
             return Task.CompletedTask;
         }
+
+        public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
+        {
+            Calls.Add("pause:" + duration.TotalMinutes);
+            return Task.CompletedTask;
+        }
+
+        public Task ResumeProtectionAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("resume");
+            return Task.CompletedTask;
+        }
+
 
         public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new DiagnosticReport([], DateTimeOffset.UnixEpoch));

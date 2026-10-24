@@ -71,7 +71,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
         _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background,
-            (_, _) => OnPropertyChanged(nameof(TimerText)));
+            (_, _) =>
+            {
+                OnPropertyChanged(nameof(TimerText));
+                OnPropertyChanged(nameof(PauseLeft));
+            });
         _clock.Start();
         Refresh();
     }
@@ -92,7 +96,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string StatusTitle => Loc.Instance[$"status.{StateKey}.title"];
 
-    public string StatusSubtitle => Status.State switch
+    public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"] : Status.State switch
     {
         ConnectionState.Connected => _catalog.Selected is { } server && !ServerFacts.IsEncrypted(server)
             ? Loc.Instance["status.connected.subPlain"]
@@ -123,7 +127,25 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _ => "None",
     };
 
-    public bool HasTimer => Status.State == ConnectionState.Connected;
+    public bool HasTimer => Status.State == ConnectionState.Connected && !Status.IsPaused;
+
+    /// <summary>Пауза для входа в Wi-Fi: полоса с обратным отсчетом и «Вернуть защиту» в карточке состояния.</summary>
+    public bool IsPaused => Status.IsPaused;
+
+    /// <summary>Сколько осталось паузы: «4:59».</summary>
+    public string PauseLeft
+    {
+        get
+        {
+            var left = (Status.CaptivePauseUntil ?? _time.GetUtcNow()) - _time.GetUtcNow();
+            if (left < TimeSpan.Zero)
+            {
+                left = TimeSpan.Zero;
+            }
+
+            return string.Create(CultureInfo.InvariantCulture, $"{(int)left.TotalMinutes}:{left.Seconds:00}");
+        }
+    }
 
     /// <summary>Сколько в сети: «02:14:09».</summary>
     public string TimerText
@@ -155,7 +177,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     {
         get
         {
-            if (Status.State != ConnectionState.Connected)
+            if (Status.State != ConnectionState.Connected || Status.IsPaused)
             {
                 return Loc.Instance["checked." + StateKey];
             }
@@ -185,7 +207,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _ => Loc.Instance["action.check"],
     };
 
-    public bool HasCheckAction => Status.State switch
+    public bool HasCheckAction => !Status.IsPaused && Status.State switch
     {
         ConnectionState.Connected => !IsChecking,
         ConnectionState.Blocked or ConnectionState.Error => true,
@@ -208,6 +230,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     /// <summary>IP, который видят сайты: в туннеле — выходной сервера, без защиты — реальный.</summary>
     public string WebIp => Mask(Status.State switch
     {
+        _ when Status.IsPaused => Status.Exit.DirectIp ?? IpPlaceholder,
         ConnectionState.Connected => Status.Exit.Ip ?? IpPlaceholder,
         ConnectionState.Off => Status.Exit.DirectIp ?? IpPlaceholder,
         _ => IpPlaceholder,
@@ -215,7 +238,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public bool CanCopyIp => WebIp != IpPlaceholder && !IsIpMasked;
 
-    public string WebIpMeta => Status.State switch
+    public string WebIpMeta => Status.IsPaused ? Loc.Instance["ip.meta.paused"] : Status.State switch
     {
         ConnectionState.Connected => string.Join(" · ",
             new[] { Status.Exit.City, Status.Exit.NetworkType, Status.Exit.Asn }.Where(s => !string.IsNullOrEmpty(s))),
@@ -228,7 +251,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string RealIp => Mask(Status.Exit.DirectIp ?? IpPlaceholder);
 
-    public string RealIpState => Status.State == ConnectionState.Off
+    public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused
         ? Loc.Instance["ip.real.visible"]
         : Loc.Instance["ip.real.hidden"];
 
@@ -290,6 +313,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     private void ToggleIpMask() => IsIpMasked = !IsIpMasked;
 
     [RelayCommand]
+    private Task ResumeAsync() => _controller.ResumeAsync();
+
+    [RelayCommand]
     private async Task CopyIpAsync()
     {
         if (!CanCopyIp)
@@ -343,15 +369,16 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public void Dispose() => _clock.Stop();
 
-    private string StateKey => Status.State.ToString().ToLowerInvariant();
+    private string StateKey => Status.IsPaused ? "paused" : Status.State.ToString().ToLowerInvariant();
 
     private void Refresh()
     {
         var protection = Status.Protection;
-        Chips[0].Update(protection.AllTraffic);
-        Chips[1].Update(protection.Dns);
-        Chips[2].Update(protection.Ipv6);
-        Chips[3].Update(protection.KillSwitch);
+        var paused = Status.IsPaused;
+        Chips[0].Update(protection.AllTraffic, paused);
+        Chips[1].Update(protection.Dns, paused);
+        Chips[2].Update(protection.Ipv6, paused);
+        Chips[3].Update(protection.KillSwitch, paused);
         OnPropertyChanged(string.Empty);
     }
 
@@ -400,15 +427,19 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
 
     public string Title => Loc.Instance[$"check.{Id}.title"];
 
-    public string Value => Loc.Instance[$"check.{Id}.{State.ToString().ToLowerInvariant()}"];
+    /// <summary>Пауза для входа в Wi-Fi: «напрямую», «у провайдера», «открыт», «на паузе».</summary>
+    public bool IsPaused { get; private set; }
+
+    public string Value => Loc.Instance[$"check.{Id}.{(IsPaused ? "paused" : State.ToString().ToLowerInvariant())}"];
 
     public string Text => Loc.Instance[$"check.{Id}.text"];
 
     /// <summary>Ключ иконки в кружке: Icon.Chip.*.</summary>
     public string Icon => CheckIcon.For(State);
 
-    internal void Update(CheckState state)
+    internal void Update(CheckState state, bool paused = false)
     {
+        IsPaused = paused;
         State = state;
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Value));

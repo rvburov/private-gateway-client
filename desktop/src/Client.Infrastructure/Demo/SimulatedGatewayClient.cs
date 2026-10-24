@@ -30,6 +30,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
     ];
 
     private CancellationTokenSource? _pending;
+    private ITimer? _pauseEnd;
     private ConnectionStatus _status = ConnectionStatus.Initial(time.GetUtcNow()) with
     {
         Network = DemoNetwork,
@@ -150,11 +151,44 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
                 ServerId = null,
                 Traffic = TrafficStats.Empty,
                 Exit = new ExitInfo(null, null, null, null, _status.Exit.DirectIp),
+                CaptivePauseUntil = null,
             };
+            _pauseEnd?.Dispose();
+            _pauseEnd = null;
         }
 
         Log(JournalLevel.Info, "service", "tunnel down  route restored  killswitch off");
         Raise();
+        return Task.CompletedTask;
+    }
+
+    public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
+    {
+        lock (_gate)
+        {
+            if (_status.State == ConnectionState.Off)
+            {
+                return Task.CompletedTask;
+            }
+
+            // Мимо туннеля: DNS у провайдера, IPv6 открыт, блок при обрыве на паузе.
+            _status = _status with
+            {
+                CaptivePauseUntil = time.GetUtcNow() + duration,
+                Protection = new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null),
+            };
+            _pauseEnd?.Dispose();
+            _pauseEnd = time.CreateTimer(_ => EndPause("timeout"), null, duration, Timeout.InfiniteTimeSpan);
+        }
+
+        Log(JournalLevel.Warning, "firewall", $"captive pause  {duration.TotalMinutes:0} min  direct traffic allowed");
+        Raise();
+        return Task.CompletedTask;
+    }
+
+    public Task ResumeProtectionAsync(CancellationToken cancellationToken = default)
+    {
+        EndPause("user");
         return Task.CompletedTask;
     }
 
@@ -190,9 +224,34 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
     {
         _pending?.Cancel();
         _pending?.Dispose();
+        _pauseEnd?.Dispose();
     }
 
     private void Raise() => StatusChanged?.Invoke(this, Status);
+
+    /// <summary>Конец паузы — по времени или кнопкой «Вернуть защиту»: туннель и блок снова на месте.</summary>
+    private void EndPause(string reason)
+    {
+        lock (_gate)
+        {
+            if (_status.CaptivePauseUntil is null)
+            {
+                return;
+            }
+
+            _pauseEnd?.Dispose();
+            _pauseEnd = null;
+            var connected = _status.State == ConnectionState.Connected;
+            _status = _status with
+            {
+                CaptivePauseUntil = null,
+                Protection = ProtectionChecks.For(_status.State) with { CheckedAt = connected ? time.GetUtcNow() : null },
+            };
+        }
+
+        Log(JournalLevel.Info, "firewall", $"captive pause end ({reason})  killswitch on");
+        Raise();
+    }
 
     /// <summary>Проверки по состоянию имитации. Служба честно отвечает, что она — имитация.</summary>
     private static List<DiagnosticResult> Checks(ConnectionStatus status)

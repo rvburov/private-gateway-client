@@ -21,7 +21,12 @@ public static class ToneOf
     public static Tone State(ConnectionStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
-        var partial = status.Mode == ConnectionMode.Proxy || status.CaptivePauseUntil is not null;
+        if (status.IsPaused)
+        {
+            return Tone.Partial;
+        }
+
+        var partial = status.Mode == ConnectionMode.Proxy;
         return status.State switch
         {
             ConnectionState.Connected => partial ? Tone.Partial : Tone.Connected,

@@ -9,10 +9,19 @@ namespace PrivateGateway.Client.Application.Connection;
 /// </summary>
 public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog catalog)
 {
-    /// <summary>Нажатие кнопки-щита.</summary>
+    /// <summary>Сколько длится пауза для входа в Wi-Fi (доска 5: «на 5 минут»).</summary>
+    public static readonly TimeSpan CaptivePause = TimeSpan.FromMinutes(5);
+
+    /// <summary>Нажатие кнопки-щита. Во время паузы для входа в Wi-Fi — вернуть защиту, а не отключить.</summary>
     /// <returns>false — подключаться не к чему (нет выбранного сервера).</returns>
     public async Task<bool> ToggleAsync(CancellationToken cancellationToken = default)
     {
+        if (gateway.Status.IsPaused)
+        {
+            await gateway.ResumeProtectionAsync(cancellationToken).ConfigureAwait(false);
+            return true;
+        }
+
         if (WantsConnect(gateway.Status.State))
         {
             var server = catalog.Selected;
@@ -89,6 +98,24 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
             await gateway.DisconnectAsync(cancellationToken).ConfigureAwait(false);
         }
     }
+
+    /// <summary>
+    /// «Вход в Wi-Fi отеля или кафе»: открыть трафик мимо туннеля на <see cref="CaptivePause"/>.
+    /// </summary>
+    /// <returns>false — защита выключена: страница входа в сеть откроется и без паузы.</returns>
+    public async Task<bool> PauseForCaptivePortalAsync(CancellationToken cancellationToken = default)
+    {
+        if (gateway.Status.State == ConnectionState.Off)
+        {
+            return false;
+        }
+
+        await gateway.PauseForCaptivePortalAsync(CaptivePause, cancellationToken).ConfigureAwait(false);
+        return true;
+    }
+
+    /// <summary>«Вернуть защиту» раньше конца паузы.</summary>
+    public Task ResumeAsync(CancellationToken cancellationToken = default) => gateway.ResumeProtectionAsync(cancellationToken);
 
     /// <summary>Нажатие в этом состоянии означает «включить»: защита выключена или сломана.</summary>
     public static bool WantsConnect(ConnectionState state) =>

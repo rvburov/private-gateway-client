@@ -183,4 +183,71 @@ public class SimulatedGatewayClientTests
         time.Advance(SimulatedGatewayClient.ChecksDelay);
         return await run;
     }
+
+    [Fact]
+    public async Task Captive_pause_opens_direct_traffic_for_a_while_and_ends_by_itself()
+    {
+        var time = new FakeTimeProvider();
+        using var gateway = await Connected(time);
+        var seen = new List<ConnectionStatus>();
+        gateway.StatusChanged += (_, s) => seen.Add(s);
+
+        await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+
+        var paused = gateway.Status;
+        paused.IsPaused.ShouldBeTrue();
+        paused.CaptivePauseUntil.ShouldBe(time.GetUtcNow() + TimeSpan.FromMinutes(5));
+        paused.Protection.ShouldBe(new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null));
+        gateway.Journal.ShouldContain(e => e.Message.StartsWith("captive pause  5 min", StringComparison.Ordinal));
+
+        time.Advance(TimeSpan.FromMinutes(5) - TimeSpan.FromSeconds(1));
+        gateway.Status.IsPaused.ShouldBeTrue();
+        time.Advance(TimeSpan.FromSeconds(1));
+
+        gateway.Status.IsPaused.ShouldBeFalse("защита возвращается сама");
+        gateway.Status.State.ShouldBe(ConnectionState.Connected);
+        gateway.Status.Protection.KillSwitch.ShouldBe(CheckState.Ok);
+        seen.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Resume_returns_protection_before_the_pause_ends()
+    {
+        var time = new FakeTimeProvider();
+        using var gateway = await Connected(time);
+        await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+
+        await gateway.ResumeProtectionAsync(TestContext.Current.CancellationToken);
+
+        gateway.Status.IsPaused.ShouldBeFalse();
+        gateway.Journal[^1].Message.ShouldBe("captive pause end (user)  killswitch on");
+        time.Advance(TimeSpan.FromMinutes(5));
+        gateway.Journal.Count(e => e.Message.StartsWith("captive pause end", StringComparison.Ordinal)).ShouldBe(1, "таймер больше не срабатывает");
+    }
+
+    [Fact]
+    public async Task Pause_without_protection_does_nothing_and_disconnect_ends_a_pause()
+    {
+        var time = new FakeTimeProvider();
+        using var off = new SimulatedGatewayClient(time);
+        await off.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+        off.Status.CaptivePauseUntil.ShouldBeNull();
+
+        using var gateway = await Connected(time);
+        await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+
+        gateway.Status.CaptivePauseUntil.ShouldBeNull();
+        gateway.Status.IsPaused.ShouldBeFalse();
+    }
+
+    private static async Task<SimulatedGatewayClient> Connected(FakeTimeProvider time)
+    {
+        var gateway = new SimulatedGatewayClient(time);
+        var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+        gateway.Status.State.ShouldBe(ConnectionState.Connected);
+        return gateway;
+    }
 }

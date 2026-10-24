@@ -46,12 +46,12 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public bool HasServer => _catalog.Selected is not null;
 
     /// <summary>Подпись под кнопкой.</summary>
-    public string Label => !HasServer && Status.State == ConnectionState.Off
-        ? Loc.Instance["power.label.noServer"]
+    public string Label => Status.IsPaused ? Loc.Instance["power.label.paused"]
+        : !HasServer && Status.State == ConnectionState.Off ? Loc.Instance["power.label.noServer"]
         : Loc.Instance["power.label." + Status.State.ToString().ToLowerInvariant()];
 
     /// <summary>Знак внутри щита: ключ иконки Icon.Mark.*.</summary>
-    public string Mark => Status.State switch
+    public string Mark => Status.IsPaused ? "Icon.Mark.Alert" : Status.State switch
     {
         ConnectionState.Connected => "Icon.Mark.Ok",
         ConnectionState.Connecting or ConnectionState.Reconnecting => "Icon.Mark.Wait",
@@ -63,8 +63,8 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public bool IsBusy => Status.State is ConnectionState.Connecting or ConnectionState.Reconnecting;
 
     /// <summary>Что сделает нажатие — подсказка и имя для чтения с экрана.</summary>
-    public string ActionText => ConnectionController.WantsConnect(Status.State)
-        ? Loc.Instance["power.action.connect"]
+    public string ActionText => Status.IsPaused ? Loc.Instance["power.action.resume"]
+        : ConnectionController.WantsConnect(Status.State) ? Loc.Instance["power.action.connect"]
         : Loc.Instance["power.action.disconnect"];
 
     // Нажатие доступно и во время подключения — им подключение и прерывают.
@@ -72,7 +72,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task<bool> ToggleAsync()
     {
-        if (Status.State == ConnectionState.Blocked)
+        if (Status.State == ConnectionState.Blocked && !Status.IsPaused)
         {
             var dialog = new DialogViewModel(
                 DialogKind.Warning,

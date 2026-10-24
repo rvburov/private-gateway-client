@@ -91,6 +91,9 @@ public sealed record ConnectionStatus(
     string? ErrorCode,
     DateTimeOffset? CaptivePauseUntil)
 {
+    /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
+    public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;
+
     /// <summary>Начальное состояние: защита выключена.</summary>
     public static ConnectionStatus Initial(DateTimeOffset now) => new(
         ConnectionState.Off, ConnectionMode.Vpn, null, now, 0, ProtectionChecks.For(ConnectionState.Off),

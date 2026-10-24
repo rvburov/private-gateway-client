@@ -439,6 +439,11 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
         public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+        public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+
         public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new DiagnosticReport([], DateTimeOffset.UnixEpoch));
 

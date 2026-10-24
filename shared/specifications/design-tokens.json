@@ -1,6 +1,6 @@
 {
   "name": "Private Gateway design tokens",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "source": "docs/design (макет v1.0, согласован 2026-10-23)",
   "theme": "light",
   "targets": {
@@ -60,7 +60,7 @@
     "status": {
       "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)", "badge": "#166534", "line": "rgba(22, 163, 74, 0.35)" },
       "warning": { "base": "#EA580C", "text": "#C2410C", "tint": "rgba(234, 88, 12, 0.12)", "badge": "#9A3412", "line": "rgba(234, 88, 12, 0.18)" },
-      "caution": { "base": "#F59E0B", "text": "#B45309", "tint": "rgba(245, 158, 11, 0.14)" },
+      "caution": { "base": "#F59E0B", "text": "#B45309", "tint": "rgba(245, 158, 11, 0.14)", "badge": "#92400E", "line": "rgba(245, 158, 11, 0.32)" },
       "danger":  { "base": "#DC2626", "text": "#B91C1C", "tint": "rgba(185, 28, 28, 0.08)", "line": "rgba(220, 38, 38, 0.35)" }
     }
   },
