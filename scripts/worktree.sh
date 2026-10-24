@@ -39,7 +39,7 @@
 # чтобы о будущем конфликте узнать в начале задачи, а не при отправке.
 #
 # Ни одна команда не удаляет незакоммиченное и не влитое в main: такие случаи скрипт
-# называет и останавливается. push сюда не входит — только по просьбе пользователя.
+# называет и останавливается. push сюда не входит — его агент делает сам после проверок (AGENTS.md).
 # На Windows запускать из Git Bash.
 set -euo pipefail
 
@@ -225,7 +225,7 @@ cmd_check_cloud() {
   if git rev-parse -q --verify "$remote" > /dev/null; then
     a=$(git rev-list --count "$remote..HEAD")
     if [[ "$a" != 0 ]]; then
-      note "не в $BASE на GitHub коммитов: $a (в $BASE — только по просьбе пользователя)"
+      note "не в $BASE на GitHub коммитов: $a (готовое и проверенное агент вливает в $BASE сам — AGENTS.md, «Облачная копия»)"
       git log -n 10 --format='%h %s' "$remote..HEAD" | first 10
     fi
     a=$(git rev-list --count "HEAD..$remote")
@@ -279,7 +279,7 @@ cmd_check() {
       note "ВНИМАНИЕ: локальный $BASE и $REMOTE/$BASE разошлись ($a и $b коммитов) — решает пользователь"
       problems=$((problems + 1))
     elif [[ "$a" != 0 ]]; then
-      note "на GitHub не отправлено коммитов $BASE: $a (push — только по просьбе)"
+      note "на GitHub не отправлено коммитов $BASE: $a (отправить: git push origin $BASE)"
     elif [[ "$b" != 0 ]]; then
       note "$BASE на GitHub впереди локального на $b — догнать: git pull --ff-only в основной папке"
       note "(sync рабочих папок и так ставит ветки на $REMOTE/$BASE)"
@@ -411,7 +411,7 @@ cmd_sync() {
 
 cmd_merge() {
   local name="${1:-}" hit path branch a
-  ! cloud || die "в облачной копии в $BASE отправляют через GitHub, по просьбе пользователя (AGENTS.md, «Облачная копия»)"
+  ! cloud || die "в облачной копии в $BASE отправляют через GitHub: git push origin HEAD:$BASE (AGENTS.md, «Облачная копия»)"
   if [[ -z "$name" ]]; then
     [[ "$HERE" != "$MAIN" ]] || die "в основной папке укажите имя: scripts/worktree.sh merge <имя>"
     path="$HERE"
@@ -449,7 +449,7 @@ cmd_merge() {
     || die "в основной папке незакоммиченные правки — разобрать их с пользователем"
 
   git -C "$MAIN" merge -q --ff-only "$branch"
-  echo "В $BASE влито коммитов: $a (ветка $branch). На сервер не отправлено — push только по просьбе."
+  echo "В $BASE влито коммитов: $a (ветка $branch). На сервер еще не отправлено: git push origin $BASE."
   echo "Папка и ветка остаются; убрать — scripts/worktree.sh remove, когда пользователь согласен."
 }
 
