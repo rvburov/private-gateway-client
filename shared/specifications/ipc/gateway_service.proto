@@ -91,6 +91,27 @@ message Status {
   ErrorInfo error = 9;
   // Пауза для входа в Wi-Fi; не задана — паузы нет.
   google.protobuf.Timestamp captive_pause_until = 10;
+  // Сеть машины — строка под заголовком на главном экране.
+  NetworkInfo network = 11;
+}
+
+enum NetworkKind {
+  NETWORK_KIND_UNSPECIFIED = 0;
+  NETWORK_KIND_NONE = 1;
+  NETWORK_KIND_WIFI = 2;
+  NETWORK_KIND_ETHERNET = 3;
+  NETWORK_KIND_USB_MODEM = 4;
+  NETWORK_KIND_MOBILE = 5;
+}
+
+message NetworkInfo {
+  NetworkKind kind = 1;
+  // Имя Wi-Fi, если ОС его отдает (на Windows 11 — с разрешением на геолокацию); иначе пусто.
+  string name = 2;
+  // Открытая сеть без пароля.
+  bool is_open = 3;
+  // Лимитная сеть (точка доступа с телефона).
+  bool is_metered = 4;
 }
 
 message ProtectionStatus {

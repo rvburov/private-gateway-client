@@ -1,6 +1,6 @@
 {
   "name": "Private Gateway design tokens",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "source": "docs/design (макет v1.0, согласован 2026-10-23)",
   "theme": "light",
   "targets": {
@@ -36,6 +36,11 @@
     "focus": {
       "ring": "#93C5FD"
     },
+    "decor": {
+      "blob1": "rgba(147, 197, 253, 0.55)",
+      "blob2": "rgba(134, 239, 172, 0.45)",
+      "blob3": "rgba(196, 181, 253, 0.45)"
+    },
     "status": {
       "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)" },
       "warning": { "base": "#EA580C", "text": "#C2410C", "tint": "rgba(234, 88, 12, 0.12)" },
@@ -62,11 +67,13 @@
 
   "type": {
     "display":    { "size": 28,   "weight": 700, "tracking": -0.02 },
+    "brand":      { "size": 19,   "weight": 600, "tracking": -0.015 },
     "h1":         { "size": 22,   "weight": 700, "tracking": -0.015 },
     "status":     { "size": 20,   "weight": 700, "tracking": -0.015 },
     "title":      { "size": 15,   "weight": 600 },
     "body":       { "size": 14,   "weight": 400, "lineHeight": 1.45 },
     "bodyStrong": { "size": 14,   "weight": 600 },
+    "small":      { "size": 13,   "weight": 400 },
     "caption":    { "size": 12,   "weight": 400 },
     "overline":   { "size": 11,   "weight": 600, "tracking": 0.06, "uppercase": true },
     "nav":        { "size": 11.5, "sizeMobile": 10.5, "weight": 500, "weightActive": 600 },

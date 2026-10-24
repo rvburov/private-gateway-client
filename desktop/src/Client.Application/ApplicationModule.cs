@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Connection;
 
 namespace PrivateGateway.Client.Application;
 
@@ -11,6 +12,7 @@ public static class ApplicationModule
     public static IServiceCollection AddClientApplication(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.AddSingleton<ConnectionController>();
         return services;
     }
 }

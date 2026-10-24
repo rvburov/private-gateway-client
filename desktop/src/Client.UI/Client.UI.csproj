@@ -23,6 +23,14 @@
     <PackageReference Include="Avalonia.Themes.Fluent" />
     <PackageReference Include="Avalonia.Fonts.Inter" />
     <PackageReference Include="CommunityToolkit.Mvvm" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <AvaloniaResource Include="Assets/**" />
+    <!-- Тексты RU/EN — общие для всех приложений (shared/specifications/localization). -->
+    <EmbeddedResource Include="../../../shared/specifications/localization/*.json"
+                      LogicalName="loc.%(Filename).json" />
   </ItemGroup>
 
 </Project>

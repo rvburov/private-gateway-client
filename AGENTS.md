@@ -123,10 +123,11 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 
 - `PrivateGateway.slnx` — решение, все команды ниже запускаются из корня;
 - `desktop/src/` — проекты десктопа, слои — в разделе «Правила кода»;
-- `desktop/tests/` — тесты: `Unit` (быстрый гейт), `Architecture` (границы модулей), дальше
-  `Integration`, `Network`, `UI`, `Security` — по мере появления кода;
-- `shared/specifications/` — общее для всех платформ: `design-tokens.json`, контракт IPC
-  (`ipc/*.proto`);
+- `desktop/tests/` — тесты: `Unit` (быстрый гейт), `Architecture` (границы модулей), `UI`
+  (интерфейс без экрана, снимки в `artifacts/ui-snapshots`), дальше `Integration`, `Network`,
+  `Security` — по мере появления кода;
+- `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
+  (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
 - `docs/` — `design/` (макет v1.0), `architecture/`, `security/`, `roadmap/`, `sources/`;
 - `scripts/` — `worktree.sh`, `cloud-session.sh` и скрипты сборки;
@@ -139,6 +140,7 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 dotnet build PrivateGateway.slnx                       # все проекты
 dotnet run --project desktop/src/Client.UI             # интерфейс
 dotnet run --project desktop/src/Client.Service -- --version
+dotnet run scripts/gen-tokens.cs                       # тема Avalonia из design-tokens.json
 ```
 
 - Вывод сборки — в `artifacts/bin/<проект>/debug/`. Версии пакетов — только в
@@ -194,8 +196,10 @@ dotnet test --project desktop/tests/Unit               # быстрый гейт
   пакета (`v2`), старую служба поддерживает. Новое значение перечисления — строка в
   `ContractMapping` (иначе падают тесты).
 - **Интерфейс — из токенов макета.** Цвета, шрифты, отступы, скругления — только из
-  `shared/specifications/design-tokens.json` через ресурсы темы; значения вручную в разметке не
-  задавать. Новый блок — по правилам [docs/design/README.md](docs/design/README.md).
+  `shared/specifications/design-tokens.json` через ресурсы темы (`Tokens.axaml` генерирует
+  `scripts/gen-tokens.cs`); значения вручную в разметке не задавать, шестнадцатеричные цвета в
+  разметке ловит тест. Тексты — только из `shared/specifications/localization`. Новый блок — по
+  правилам [docs/design/README.md](docs/design/README.md), устройство — [docs/architecture/ui.md](docs/architecture/ui.md).
 - **Состояния защиты** меняются только через `ConnectionStateMachine`.
 
 ## Источники и лицензии

@@ -1,13 +1,56 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+        xmlns:c="using:PrivateGateway.Client.UI.Controls"
         x:Class="PrivateGateway.Client.UI.Views.MainWindow"
+        x:DataType="vm:ShellViewModel"
         Title="Private Gateway"
-        Width="440" Height="760"
+        Width="{StaticResource PgLayout.DesktopWindow.Width}"
+        Height="{StaticResource PgLayout.DesktopWindow.Height}"
         CanResize="False"
-        Background="#EEF2F8">
-  <!-- Каркас этапа 0. Экраны макета (docs/design) появляются на этапе 1. -->
-  <TextBlock Text="Private Gateway"
-             FontSize="19" FontWeight="SemiBold"
-             HorizontalAlignment="Center" VerticalAlignment="Center"
-             Foreground="#0B0F19" />
+        Background="{StaticResource PgBrush.Bg.Window}">
+  <Panel>
+    <!-- Цветные пятна под стеклом (макет): мягкие радиальные градиенты вместо размытия -->
+    <Canvas IsHitTestVisible="False" ClipToBounds="True">
+      <Ellipse Canvas.Left="-110" Canvas.Top="-90" Width="360" Height="360">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0.35" Color="{StaticResource PgColor.Decor.Blob1}" />
+            <GradientStop Offset="1" Color="Transparent" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Ellipse Canvas.Left="220" Canvas.Top="220" Width="340" Height="340">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0.35" Color="{StaticResource PgColor.Decor.Blob2}" />
+            <GradientStop Offset="1" Color="Transparent" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Ellipse Canvas.Left="10" Canvas.Top="590" Width="380" Height="320">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0.35" Color="{StaticResource PgColor.Decor.Blob3}" />
+            <GradientStop Offset="1" Color="Transparent" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+    </Canvas>
+
+    <Panel Background="{StaticResource PgBrush.Glass.Fill}">
+      <ContentControl Content="{Binding CurrentPage}" />
+
+      <Border VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,56,0,0"
+              IsVisible="{Binding Toast.IsVisible}" ZIndex="40"
+              Background="{StaticResource PgBrush.Text.Primary}"
+              CornerRadius="{StaticResource PgRadius.Input}" Padding="14,8"
+              BoxShadow="{StaticResource PgShadow.Popup}">
+        <TextBlock Text="{Binding Toast.Text}" FontSize="{StaticResource PgFontSize.Small}"
+                   FontWeight="Medium" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+      </Border>
+
+      <c:IslandNav VerticalAlignment="Bottom" />
+    </Panel>
+  </Panel>
 </Window>

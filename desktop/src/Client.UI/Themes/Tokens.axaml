@@ -1,0 +1,214 @@
+<!--
+  Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
+  Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
+  tokens-sha256: d37c4c9efddfab8c2726ec7980061514928f993a2337a045476496a1476b0a7a
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- Цвета -->
+  <Color x:Key="PgColor.Bg.Window">#FFEEF2F8</Color>
+  <SolidColorBrush x:Key="PgBrush.Bg.Window" Color="{StaticResource PgColor.Bg.Window}" />
+  <Color x:Key="PgColor.Bg.Glass">#B3F6F8FC</Color>
+  <SolidColorBrush x:Key="PgBrush.Bg.Glass" Color="{StaticResource PgColor.Bg.Glass}" />
+  <Color x:Key="PgColor.Surface.Card">#D9FFFFFF</Color>
+  <SolidColorBrush x:Key="PgBrush.Surface.Card" Color="{StaticResource PgColor.Surface.Card}" />
+  <Color x:Key="PgColor.Surface.Solid">#FFFFFFFF</Color>
+  <SolidColorBrush x:Key="PgBrush.Surface.Solid" Color="{StaticResource PgColor.Surface.Solid}" />
+  <Color x:Key="PgColor.Text.Primary">#FF0B0F19</Color>
+  <SolidColorBrush x:Key="PgBrush.Text.Primary" Color="{StaticResource PgColor.Text.Primary}" />
+  <Color x:Key="PgColor.Text.Secondary">#FF374151</Color>
+  <SolidColorBrush x:Key="PgBrush.Text.Secondary" Color="{StaticResource PgColor.Text.Secondary}" />
+  <Color x:Key="PgColor.Text.Muted">#FF4B5565</Color>
+  <SolidColorBrush x:Key="PgBrush.Text.Muted" Color="{StaticResource PgColor.Text.Muted}" />
+  <Color x:Key="PgColor.Line.Border">#140F172A</Color>
+  <SolidColorBrush x:Key="PgBrush.Line.Border" Color="{StaticResource PgColor.Line.Border}" />
+  <Color x:Key="PgColor.Line.Divider">#120F172A</Color>
+  <SolidColorBrush x:Key="PgBrush.Line.Divider" Color="{StaticResource PgColor.Line.Divider}" />
+  <Color x:Key="PgColor.Accent.Base">#FF2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.Accent.Base" Color="{StaticResource PgColor.Accent.Base}" />
+  <Color x:Key="PgColor.Accent.Text">#FF1D4ED8</Color>
+  <SolidColorBrush x:Key="PgBrush.Accent.Text" Color="{StaticResource PgColor.Accent.Text}" />
+  <Color x:Key="PgColor.Accent.Tint">#1A2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.Accent.Tint" Color="{StaticResource PgColor.Accent.Tint}" />
+  <Color x:Key="PgColor.Accent.NavActiveFill">#292563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.Accent.NavActiveFill" Color="{StaticResource PgColor.Accent.NavActiveFill}" />
+  <Color x:Key="PgColor.Focus.Ring">#FF93C5FD</Color>
+  <SolidColorBrush x:Key="PgBrush.Focus.Ring" Color="{StaticResource PgColor.Focus.Ring}" />
+  <Color x:Key="PgColor.Decor.Blob1">#8C93C5FD</Color>
+  <SolidColorBrush x:Key="PgBrush.Decor.Blob1" Color="{StaticResource PgColor.Decor.Blob1}" />
+  <Color x:Key="PgColor.Decor.Blob2">#7386EFAC</Color>
+  <SolidColorBrush x:Key="PgBrush.Decor.Blob2" Color="{StaticResource PgColor.Decor.Blob2}" />
+  <Color x:Key="PgColor.Decor.Blob3">#73C4B5FD</Color>
+  <SolidColorBrush x:Key="PgBrush.Decor.Blob3" Color="{StaticResource PgColor.Decor.Blob3}" />
+  <Color x:Key="PgColor.Status.Success.Base">#FF16A34A</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Success.Base" Color="{StaticResource PgColor.Status.Success.Base}" />
+  <Color x:Key="PgColor.Status.Success.Text">#FF15803D</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Success.Text" Color="{StaticResource PgColor.Status.Success.Text}" />
+  <Color x:Key="PgColor.Status.Success.Tint">#1F16A34A</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Success.Tint" Color="{StaticResource PgColor.Status.Success.Tint}" />
+  <Color x:Key="PgColor.Status.Warning.Base">#FFEA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Warning.Base" Color="{StaticResource PgColor.Status.Warning.Base}" />
+  <Color x:Key="PgColor.Status.Warning.Text">#FFC2410C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Warning.Text" Color="{StaticResource PgColor.Status.Warning.Text}" />
+  <Color x:Key="PgColor.Status.Warning.Tint">#1FEA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Warning.Tint" Color="{StaticResource PgColor.Status.Warning.Tint}" />
+  <Color x:Key="PgColor.Status.Caution.Base">#FFF59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Caution.Base" Color="{StaticResource PgColor.Status.Caution.Base}" />
+  <Color x:Key="PgColor.Status.Caution.Text">#FFB45309</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Caution.Text" Color="{StaticResource PgColor.Status.Caution.Text}" />
+  <Color x:Key="PgColor.Status.Caution.Tint">#24F59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Caution.Tint" Color="{StaticResource PgColor.Status.Caution.Tint}" />
+  <Color x:Key="PgColor.Status.Danger.Base">#FFDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Danger.Base" Color="{StaticResource PgColor.Status.Danger.Base}" />
+  <Color x:Key="PgColor.Status.Danger.Text">#FFB91C1C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Danger.Text" Color="{StaticResource PgColor.Status.Danger.Text}" />
+  <Color x:Key="PgColor.Status.Danger.Tint">#14B91C1C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Danger.Tint" Color="{StaticResource PgColor.Status.Danger.Tint}" />
+
+  <!-- Состояния защиты -->
+  <Color x:Key="PgColor.State.Connected.Ring">#FF16A34A</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connected.Ring" Color="{StaticResource PgColor.State.Connected.Ring}" />
+  <Color x:Key="PgColor.State.Connected.Icon">#FF15803D</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connected.Icon" Color="{StaticResource PgColor.State.Connected.Icon}" />
+  <Color x:Key="PgColor.State.Connected.Glow">#4016A34A</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connected.Glow" Color="{StaticResource PgColor.State.Connected.Glow}" />
+  <Color x:Key="PgColor.State.Connecting.Ring">#FFBFDBFE</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connecting.Ring" Color="{StaticResource PgColor.State.Connecting.Ring}" />
+  <Color x:Key="PgColor.State.Connecting.Icon">#FF2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connecting.Icon" Color="{StaticResource PgColor.State.Connecting.Icon}" />
+  <Color x:Key="PgColor.State.Connecting.Glow">#382563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connecting.Glow" Color="{StaticResource PgColor.State.Connecting.Glow}" />
+  <Color x:Key="PgColor.State.Connecting.Spinner">#FF2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connecting.Spinner" Color="{StaticResource PgColor.State.Connecting.Spinner}" />
+  <Color x:Key="PgColor.State.Reconnecting.Ring">#FFBFDBFE</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Ring" Color="{StaticResource PgColor.State.Reconnecting.Ring}" />
+  <Color x:Key="PgColor.State.Reconnecting.Icon">#FF2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Icon" Color="{StaticResource PgColor.State.Reconnecting.Icon}" />
+  <Color x:Key="PgColor.State.Reconnecting.Glow">#382563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Glow" Color="{StaticResource PgColor.State.Reconnecting.Glow}" />
+  <Color x:Key="PgColor.State.Reconnecting.Spinner">#FF2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Spinner" Color="{StaticResource PgColor.State.Reconnecting.Spinner}" />
+  <Color x:Key="PgColor.State.Blocked.Ring">#FFEA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Blocked.Ring" Color="{StaticResource PgColor.State.Blocked.Ring}" />
+  <Color x:Key="PgColor.State.Blocked.Icon">#FFC2410C</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Blocked.Icon" Color="{StaticResource PgColor.State.Blocked.Icon}" />
+  <Color x:Key="PgColor.State.Blocked.Glow">#38EA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Blocked.Glow" Color="{StaticResource PgColor.State.Blocked.Glow}" />
+  <Color x:Key="PgColor.State.Partial.Ring">#FFF59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Partial.Ring" Color="{StaticResource PgColor.State.Partial.Ring}" />
+  <Color x:Key="PgColor.State.Partial.Icon">#FFB45309</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Partial.Icon" Color="{StaticResource PgColor.State.Partial.Icon}" />
+  <Color x:Key="PgColor.State.Partial.Glow">#47F59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Partial.Glow" Color="{StaticResource PgColor.State.Partial.Glow}" />
+  <Color x:Key="PgColor.State.Error.Ring">#FFDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Error.Ring" Color="{StaticResource PgColor.State.Error.Ring}" />
+  <Color x:Key="PgColor.State.Error.Icon">#FFDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Error.Icon" Color="{StaticResource PgColor.State.Error.Icon}" />
+  <Color x:Key="PgColor.State.Error.Glow">#33DC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Error.Glow" Color="{StaticResource PgColor.State.Error.Glow}" />
+  <Color x:Key="PgColor.State.Off.Ring">#FFDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Off.Ring" Color="{StaticResource PgColor.State.Off.Ring}" />
+  <Color x:Key="PgColor.State.Off.Icon">#FFDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Off.Icon" Color="{StaticResource PgColor.State.Off.Icon}" />
+  <Color x:Key="PgColor.State.Off.Glow">#33DC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Off.Glow" Color="{StaticResource PgColor.State.Off.Glow}" />
+
+  <!-- Стекло -->
+  <Color x:Key="PgColor.Glass.Fill">#B3F6F8FC</Color>
+  <SolidColorBrush x:Key="PgBrush.Glass.Fill" Color="{StaticResource PgColor.Glass.Fill}" />
+  <Color x:Key="PgColor.Glass.Fallback">#FFEEF2F8</Color>
+  <SolidColorBrush x:Key="PgBrush.Glass.Fallback" Color="{StaticResource PgColor.Glass.Fallback}" />
+  <x:Double x:Key="PgGlass.Blur">48</x:Double>
+
+  <!-- Шрифты (десктоп) -->
+  <FontFamily x:Key="PgFont.Ui">fonts:Inter#Inter</FontFamily>
+  <FontFamily x:Key="PgFont.Mono">avares://PrivateGateway/Assets/Fonts#JetBrains Mono</FontFamily>
+
+  <!-- Типографика -->
+  <x:Double x:Key="PgFontSize.Display">28</x:Double>
+  <FontWeight x:Key="PgFontWeight.Display">Bold</FontWeight>
+  <x:Double x:Key="PgLetterSpacing.Display">-0.56</x:Double>
+  <x:Double x:Key="PgFontSize.Brand">19</x:Double>
+  <FontWeight x:Key="PgFontWeight.Brand">SemiBold</FontWeight>
+  <x:Double x:Key="PgLetterSpacing.Brand">-0.28</x:Double>
+  <x:Double x:Key="PgFontSize.H1">22</x:Double>
+  <FontWeight x:Key="PgFontWeight.H1">Bold</FontWeight>
+  <x:Double x:Key="PgLetterSpacing.H1">-0.33</x:Double>
+  <x:Double x:Key="PgFontSize.Status">20</x:Double>
+  <FontWeight x:Key="PgFontWeight.Status">Bold</FontWeight>
+  <x:Double x:Key="PgLetterSpacing.Status">-0.3</x:Double>
+  <x:Double x:Key="PgFontSize.Title">15</x:Double>
+  <FontWeight x:Key="PgFontWeight.Title">SemiBold</FontWeight>
+  <x:Double x:Key="PgFontSize.Body">14</x:Double>
+  <FontWeight x:Key="PgFontWeight.Body">Normal</FontWeight>
+  <x:Double x:Key="PgLineHeight.Body">20.3</x:Double>
+  <x:Double x:Key="PgFontSize.BodyStrong">14</x:Double>
+  <FontWeight x:Key="PgFontWeight.BodyStrong">SemiBold</FontWeight>
+  <x:Double x:Key="PgFontSize.Small">13</x:Double>
+  <FontWeight x:Key="PgFontWeight.Small">Normal</FontWeight>
+  <x:Double x:Key="PgFontSize.Caption">12</x:Double>
+  <FontWeight x:Key="PgFontWeight.Caption">Normal</FontWeight>
+  <x:Double x:Key="PgFontSize.Overline">11</x:Double>
+  <FontWeight x:Key="PgFontWeight.Overline">SemiBold</FontWeight>
+  <x:Double x:Key="PgLetterSpacing.Overline">0.66</x:Double>
+  <x:Double x:Key="PgFontSize.Nav">11.5</x:Double>
+  <FontWeight x:Key="PgFontWeight.Nav">Medium</FontWeight>
+  <FontWeight x:Key="PgFontWeight.Nav.Active">SemiBold</FontWeight>
+  <x:Double x:Key="PgFontSize.MonoLarge">21</x:Double>
+  <FontWeight x:Key="PgFontWeight.MonoLarge">SemiBold</FontWeight>
+  <x:Double x:Key="PgLetterSpacing.MonoLarge">-0.21</x:Double>
+  <x:Double x:Key="PgFontSize.Mono">13</x:Double>
+  <FontWeight x:Key="PgFontWeight.Mono">Medium</FontWeight>
+
+  <!-- Отступы -->
+  <x:Double x:Key="PgSpace.Xxs">4</x:Double>
+  <Thickness x:Key="PgPad.Xxs">4</Thickness>
+  <x:Double x:Key="PgSpace.Xs">6</x:Double>
+  <Thickness x:Key="PgPad.Xs">6</Thickness>
+  <x:Double x:Key="PgSpace.S">8</x:Double>
+  <Thickness x:Key="PgPad.S">8</Thickness>
+  <x:Double x:Key="PgSpace.M">10</x:Double>
+  <Thickness x:Key="PgPad.M">10</Thickness>
+  <x:Double x:Key="PgSpace.L">12</x:Double>
+  <Thickness x:Key="PgPad.L">12</Thickness>
+  <x:Double x:Key="PgSpace.Card">16</x:Double>
+  <Thickness x:Key="PgPad.Card">16</Thickness>
+  <x:Double x:Key="PgSpace.WindowSide">20</x:Double>
+  <Thickness x:Key="PgPad.WindowSide">20</Thickness>
+  <x:Double x:Key="PgSpace.WindowSideMobile">16</x:Double>
+  <Thickness x:Key="PgPad.WindowSideMobile">16</Thickness>
+  <x:Double x:Key="PgSpace.Island">24</x:Double>
+  <Thickness x:Key="PgPad.Island">24</Thickness>
+
+  <!-- Скругления -->
+  <CornerRadius x:Key="PgRadius.Chip">7</CornerRadius>
+  <CornerRadius x:Key="PgRadius.Input">10</CornerRadius>
+  <CornerRadius x:Key="PgRadius.Button">13</CornerRadius>
+  <CornerRadius x:Key="PgRadius.Card">19</CornerRadius>
+  <CornerRadius x:Key="PgRadius.Panel">25</CornerRadius>
+
+  <!-- Тени -->
+  <BoxShadows x:Key="PgShadow.Card">0 1 2 0 #0A0F172A, 0 8 24 0 #0F0F172A</BoxShadows>
+  <BoxShadows x:Key="PgShadow.Popup">0 16 40 0 #330F172A</BoxShadows>
+  <BoxShadows x:Key="PgShadow.Island">0 6 18 0 #240F172A</BoxShadows>
+
+  <!-- Размеры -->
+  <x:Double x:Key="PgLayout.DesktopWindow.Width">440</x:Double>
+  <x:Double x:Key="PgLayout.DesktopWindow.Height">760</x:Double>
+  <x:Double x:Key="PgLayout.MobileWidth.Min">360</x:Double>
+  <x:Double x:Key="PgLayout.MobileWidth.Max">440</x:Double>
+  <x:Double x:Key="PgLayout.ScrollBottomPadding">160</x:Double>
+  <x:Double x:Key="PgLayout.Island.SideMargin">24</x:Double>
+  <x:Double x:Key="PgLayout.Island.SideMarginMobile">14</x:Double>
+  <x:Double x:Key="PgLayout.Island.BottomMargin">12</x:Double>
+  <x:Double x:Key="PgLayout.Island.Height">68</x:Double>
+  <x:Double x:Key="PgLayout.Island.CornerRadius">26</x:Double>
+  <x:Double x:Key="PgLayout.Island.BumpRadius">48</x:Double>
+  <x:Double x:Key="PgLayout.Island.BumpFilletRadius">18</x:Double>
+  <x:Double x:Key="PgLayout.PowerButton.Size">80</x:Double>
+  <x:Double x:Key="PgLayout.PowerButton.RingWidth">4</x:Double>
+  <x:Double x:Key="PgLayout.PowerButton.IconSize">36</x:Double>
+  <x:Double x:Key="PgLayout.TouchTarget">44</x:Double>
+  <Thickness x:Key="PgThickness.PowerButton.Ring">4</Thickness>
+</ResourceDictionary>
