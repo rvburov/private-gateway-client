@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Окно на Windows, macOS и Linux — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+</style>
+</helmet>
+<div style="width: 1504px; height: 1080px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 22px">
+  <div>
+    <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Одно окно — три системы</h1>
+    <p style="margin: 6px 0 0; color: #374151; line-height: 1.5; max-width: 980px">Интерфейс общий (C# · Avalonia): одинаковые экраны, цвета, шрифты и компоненты. Отличается только рамка окна, место значка (трей или строка меню), сочетания клавиш и способ установки службы.</p>
+  </div>
+  <div style="display: flex; gap: 60px; align-items: flex-start">
+
+    <div style="display: flex; flex-direction: column; gap: 12px; width: 440px">
+      <span style="font-weight: 700; font-size: 16px">Windows 10 / 11</span>
+      <div style="border-radius: 10px; overflow: hidden; background: #F4F6FA; border: 1px solid rgba(15, 23, 42, 0.14); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18)">
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding-left: 12px; background: rgba(246, 248, 252, 0.95); border-bottom: 1px solid rgba(15, 23, 42, 0.06); font-size: 12px; color: #374151">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg>
+          <span style="flex: 1">Private Gateway</span>
+          <span aria-hidden="true" style="width: 46px; height: 32px; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 5h10" stroke="#374151" stroke-width="1"></path></svg></span>
+          <span aria-hidden="true" style="width: 46px; height: 32px; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 10 10"><rect x="0.5" y="0.5" width="9" height="9" fill="none" stroke="#374151" stroke-width="1"></rect></svg></span>
+          <span aria-hidden="true" style="width: 46px; height: 32px; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M0 0l10 10M10 0L0 10" stroke="#374151" stroke-width="1"></path></svg></span>
+        </div>
+        <dc-import name="Main" hint-size="440px,760px"></dc-import>
+      </div>
+      <ul style="margin: 4px 0 0; padding-left: 18px; color: #374151; line-height: 1.6">
+        <li>Фон окна — эффект Mica (Windows 11), на Windows 10 — сплошной светлый</li>
+        <li>Значок в трее у часов, сочетания с Ctrl</li>
+        <li>Кнопки окна справа</li>
+      </ul>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px; width: 440px">
+      <span style="font-weight: 700; font-size: 16px">macOS</span>
+      <div style="border-radius: 12px; overflow: hidden; background: #F4F6FA; border: 1px solid rgba(15, 23, 42, 0.14); box-shadow: 0 22px 50px rgba(15, 23, 42, 0.22)">
+        <div style="height: 30px; display: flex; align-items: center; gap: 8px; padding: 0 12px; background: rgba(246, 248, 252, 0.95); border-bottom: 1px solid rgba(15, 23, 42, 0.06); position: relative">
+          <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #FF5F57"></span>
+          <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #FEBC2E"></span>
+          <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #28C840"></span>
+          <span style="position: absolute; left: 0; right: 0; text-align: center; font-size: 12.5px; font-weight: 600; color: #374151; pointer-events: none">Private Gateway</span>
+        </div>
+        <dc-import name="Main" hint-size="440px,760px"></dc-import>
+      </div>
+      <ul style="margin: 4px 0 0; padding-left: 18px; color: #374151; line-height: 1.6">
+        <li>Фон — системный эффект прозрачности (vibrancy)</li>
+        <li>Значок в строке меню сверху, сочетания с ⌘</li>
+        <li>Кнопки окна слева, заголовок по центру</li>
+      </ul>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px; width: 440px">
+      <span style="font-weight: 700; font-size: 16px">Linux (GNOME, KDE и др.)</span>
+      <div style="border-radius: 12px; overflow: hidden; background: #F4F6FA; border: 1px solid rgba(15, 23, 42, 0.14); box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18)">
+        <div style="height: 40px; display: flex; align-items: center; padding: 0 8px; background: rgba(246, 248, 252, 0.95); border-bottom: 1px solid rgba(15, 23, 42, 0.06); position: relative">
+          <span style="position: absolute; left: 0; right: 0; text-align: center; font-size: 13px; font-weight: 700; color: #1F2937; pointer-events: none">Private Gateway</span>
+          <span style="flex: 1"></span>
+          <span aria-hidden="true" style="width: 24px; height: 24px; border-radius: 50%; background: rgba(15, 23, 42, 0.08); display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9" stroke="#374151" stroke-width="1.4" stroke-linecap="round"></path></svg></span>
+        </div>
+        <dc-import name="Main" hint-size="440px,760px"></dc-import>
+      </div>
+      <ul style="margin: 4px 0 0; padding-left: 18px; color: #374151; line-height: 1.6">
+        <li>Размытие не везде есть — тогда сплошной светлый фон</li>
+        <li>Значок в панели (AppIndicator), сочетания с Ctrl</li>
+        <li>Рамка окна — от оболочки (GNOME, KDE)</li>
+      </ul>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1504,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

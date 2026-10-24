@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Меню в трее — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#DCE3EE;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+a{color:#2563EB}a:hover{color:#1D4ED8}
+button:focus{outline:none}
+button:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+.pg-mi:hover{background:rgba(15,23,42,.05)}
+</style>
+</helmet>
+<div style="position: relative; width: 600px; height: 600px; overflow: hidden; background: #DCE3EE; font-family: Inter, system-ui, sans-serif; font-size: 14px; color: #0B0F19">
+  <div aria-hidden="true" style="position: absolute; left: 40px; top: 40px; width: 260px; height: 260px; border-radius: 50%; background: #93C5FD; opacity: 0.6"></div>
+  <div aria-hidden="true" style="position: absolute; right: -70px; bottom: 40px; width: 260px; height: 260px; border-radius: 50%; background: #86EFAC; opacity: 0.5"></div>
+
+  <span style="position: absolute; left: 20px; top: 18px; max-width: 560px; padding: 5px 10px; border-radius: 8px; background: rgba(255, 255, 255, 0.85); font-size: 12px; font-weight: 600; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{caption}}</span>
+
+  <sc-if value="{{showSub}}" hint-placeholder-val="{{ true }}">
+  <div role="menu" aria-label="Сменить сервер" style="position: absolute; left: {{subLeft}}; top: 222px; width: 244px; padding: 6px; border-radius: 16px; background: rgba(250, 251, 253, 0.86); backdrop-filter: blur(40px) saturate(170%); -webkit-backdrop-filter: blur(40px) saturate(170%); border: 1px solid rgba(15, 23, 42, 0.10); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22); display: flex; flex-direction: column; gap: 2px">
+    <span style="padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Быстрая смена</span>
+    <sc-for list="{{servers}}" as="v" hint-placeholder-count="3">
+      <button type="button" role="menuitemradio" aria-checked="{{v.sel}}" class="pg-mi" style="{{v.rowStyle}}">
+        <span style="{{v.codeStyle}}">{{v.code}}</span>
+        <span style="flex: 1">{{v.name}}</span>
+        <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #15803D; white-space: nowrap">{{v.ping}}</span>
+      </button>
+    </sc-for>
+    <div style="height: 1px; background: rgba(15, 23, 42, 0.08); margin: 4px 6px"></div>
+    <button type="button" role="menuitem" class="pg-mi" style="min-height: 38px; padding: 0 10px; border: none; border-radius: 10px; background: transparent; color: #1D4ED8; font: inherit; font-weight: 600; text-align: left; cursor: pointer">Все серверы…</button>
+  </div>
+  </sc-if>
+
+  <div role="menu" aria-label="Private Gateway" style="position: absolute; left: {{mainLeft}}; top: {{mainTop}}; width: 308px; box-sizing: border-box; padding: 8px; border-radius: 18px; background: rgba(250, 251, 253, 0.82); backdrop-filter: blur(40px) saturate(170%); -webkit-backdrop-filter: blur(40px) saturate(170%); border: 1px solid rgba(15, 23, 42, 0.10); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.22); display: flex; flex-direction: column; gap: 2px">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 10px 10px 12px">
+      <span style="width: 40px; height: 40px; border-radius: 12px; background: rgba(22, 163, 74, 0.12); color: #15803D; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg>
+      </span>
+      <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-weight: 700; color: #15803D">IP скрыт</span>
+        <span style="font-size: 12px; color: #4B5565; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">NL · Нидерланды 01 · 42 мс</span>
+      </span>
+    </div>
+    <div style="height: 1px; background: rgba(15, 23, 42, 0.08); margin: 0 6px 4px"></div>
+    <button type="button" role="menuitem" class="pg-mi" style="min-height: 42px; padding: 0 12px; border: none; border-radius: 10px; background: transparent; color: #B91C1C; font: inherit; font-weight: 600; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 3.5v8"></path><path d="M6.6 6.8a7.6 7.6 0 1 0 10.8 0"></path></svg>Отключить</button>
+    <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="true" class="pg-mi" style="min-height: 42px; padding: 0 12px; border: none; border-radius: 10px; background: rgba(15, 23, 42, 0.06); color: #0B0F19; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 15a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M7.2 7.5h1M7.2 16.5h1"></path></svg>
+      <span style="flex: 1">Сменить сервер</span>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4B5565" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate({{chevron}})"><path d="M9 6l6 6-6 6"></path></svg></button>
+    <sc-if value="{{showInline}}" hint-placeholder-val="{{ false }}">
+      <div role="group" aria-label="Быстрая смена" style="display: flex; flex-direction: column; gap: 2px; padding: 2px 0 4px">
+        <sc-for list="{{servers}}" as="v" hint-placeholder-count="3">
+          <button type="button" role="menuitemradio" aria-checked="{{v.sel}}" class="pg-mi" style="{{v.inlineStyle}}">
+            <span style="{{v.codeStyle}}">{{v.code}}</span>
+            <span style="flex: 1">{{v.name}}</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #15803D; white-space: nowrap">{{v.ping}}</span>
+          </button>
+        </sc-for>
+        <button type="button" role="menuitem" class="pg-mi" style="min-height: 34px; padding: 0 12px 0 40px; border: none; border-radius: 10px; background: transparent; color: #1D4ED8; font: inherit; font-size: 13px; font-weight: 600; text-align: left; cursor: pointer">Все серверы…</button>
+      </div>
+    </sc-if>
+    <button type="button" role="menuitem" class="pg-mi" style="min-height: 42px; padding: 0 12px; border: none; border-radius: 10px; background: transparent; color: #0B0F19; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"></path><path d="M20 4v5h-5"></path></svg>Обновить серверы</button>
+    <div style="height: 1px; background: rgba(15, 23, 42, 0.08); margin: 4px 6px"></div>
+    <button type="button" role="menuitem" class="pg-mi" style="min-height: 42px; padding: 0 12px; border: none; border-radius: 10px; background: transparent; color: #0B0F19; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h3A1.5 1.5 0 0 1 10 5.5v3A1.5 1.5 0 0 1 8.5 10h-3A1.5 1.5 0 0 1 4 8.5zM14 5.5A1.5 1.5 0 0 1 15.5 4h3A1.5 1.5 0 0 1 20 5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 14 8.5zM4 15.5A1.5 1.5 0 0 1 5.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3A1.5 1.5 0 0 1 8.5 20h-3A1.5 1.5 0 0 1 4 18.5zM14 15.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5z"></path></svg>Открыть окно</button>
+    <button type="button" role="menuitem" class="pg-mi" style="min-height: 42px; padding: 0 12px; border: none; border-radius: 10px; background: transparent; color: #0B0F19; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z"></path><path d="M6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5"></path></svg>Проверка</button>
+    <div style="height: 1px; background: rgba(15, 23, 42, 0.08); margin: 4px 6px"></div>
+    <button type="button" role="menuitem" class="pg-mi" style="min-height: 48px; padding: 4px 12px; border: none; border-radius: 10px; background: transparent; color: #0B0F19; font: inherit; text-align: left; cursor: pointer; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px">
+      <span>Закрыть интерфейс</span>
+      <span style="font-size: 12px; color: #4B5565">VPN и блок при обрыве продолжат работать</span>
+    </button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"submenu":{"editor":"enum","options":["right","left","inline"],"default":"right"},"$preview":{"width":600,"height":600}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const mode = this.props.submenu || 'right';
+    const base = 'border: none; font: inherit; text-align: left; cursor: pointer; display: flex; align-items: center; gap: 10px; border-radius: 10px; ';
+    const list = [
+      { code: 'NL', name: 'Нидерланды 01', ping: '42 мс', on: true },
+      { code: 'FI', name: 'Финляндия 01', ping: '38 мс', on: false },
+      { code: 'DE', name: 'Германия 02', ping: '51 мс', on: false }
+    ];
+    const servers = list.map((v) => {
+      const look = v.on
+        ? 'background: rgba(37, 99, 235, 0.10); color: #1D4ED8; font-weight: 600; '
+        : 'background: transparent; color: #0B0F19; ';
+      return {
+        code: v.code, name: v.name, ping: v.ping, sel: v.on ? 'true' : 'false',
+        rowStyle: base + look + 'min-height: 40px; padding: 0 10px',
+        inlineStyle: base + look + 'min-height: 36px; padding: 0 12px 0 40px; font-size: 13px',
+        codeStyle: 'width: 30px; height: 22px; border-radius: 6px; font-size: 10.5px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto; ' +
+          (v.on ? 'background: #FFFFFF; color: #1D4ED8' : 'background: rgba(37, 99, 235, 0.10); color: #1D4ED8')
+      };
+    });
+    const layout = {
+      right: { mainLeft: '20px', mainTop: '110px', subLeft: '336px', chevron: '0deg', caption: 'Справа есть место — подменю открывается вправо' },
+      left: { mainLeft: '272px', mainTop: '110px', subLeft: '20px', chevron: '180deg', caption: 'Значок у часов, справа край экрана — подменю открывается влево' },
+      inline: { mainLeft: '146px', mainTop: '56px', subLeft: '0px', chevron: '90deg', caption: 'Без подменю — серверы раскрываются внутри меню' }
+    }[mode];
+    return Object.assign({ servers, showSub: mode !== 'inline', showInline: mode === 'inline' }, layout);
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Диалоги подтверждения — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+button:focus{outline:none}
+button:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 1344px; height: 560px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; gap: 40px">
+  <sc-for list="{{dialogs}}" as="d" hint-placeholder-count="3">
+    <div style="position: relative; width: 400px; height: 496px; border-radius: 16px; overflow: hidden; background: #DCE3EE; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.10)">
+      <div aria-hidden="true" style="position: absolute; left: -60px; top: -40px; width: 220px; height: 220px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div>
+      <div aria-hidden="true" style="position: absolute; right: -60px; bottom: 40px; width: 200px; height: 200px; border-radius: 50%; background: #86EFAC; opacity: 0.45"></div>
+      <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(15, 23, 42, 0.30)"></div>
+      <span style="position: absolute; left: 16px; top: 14px; font-size: 12px; font-weight: 600; color: #FFFFFF; opacity: 0.9">{{d.where}}</span>
+      <section role="alertdialog" aria-label="{{d.title}}" style="position: absolute; left: 24px; right: 24px; top: 50%; transform: translateY(-50%); padding: 22px 20px 18px; border-radius: 24px; background: rgba(255, 255, 255, 0.98); box-shadow: 0 20px 50px rgba(15, 23, 42, 0.30); display: flex; flex-direction: column; gap: 12px">
+        <span style="width: 48px; height: 48px; border-radius: 16px; background: {{d.tint}}; color: {{d.color}}; display: flex; align-items: center; justify-content: center">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{d.icon}}"></path></svg>
+        </span>
+        <h2 style="margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em">{{d.title}}</h2>
+        <p style="margin: 0; color: #374151; line-height: 1.5; font-size: 13.5px">{{d.text}}</p>
+        <sc-if value="{{d.hasCheck}}" hint-placeholder-val="{{ false }}">
+          <label style="display: flex; align-items: center; gap: 10px; font-size: 13px; color: #374151; cursor: pointer">
+            <span style="width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #9AA3B2; box-sizing: border-box; background: #FFFFFF"></span>Больше не спрашивать</label>
+        </sc-if>
+        <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 4px">
+          <button type="button" style="height: 48px; border-radius: 14px; border: none; background: {{d.pBg}}; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer">{{d.primary}}</button>
+          <button type="button" style="height: 46px; border-radius: 14px; border: 1px solid {{d.sBorder}}; background: #FFFFFF; color: {{d.sColor}}; font: inherit; font-weight: 600; cursor: pointer">{{d.secondary}}</button>
+        </div>
+      </section>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1344,"height":560}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const dialogs = [
+      {
+        where: 'Главная · сервер недоступен', title: 'Снять защиту?',
+        text: 'Сейчас интернет заблокирован, потому что сервер не отвечает. Если снять защиту, трафик пойдёт напрямую через провайдера — сайты увидят ваш реальный IP.',
+        icon: 'M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8zM12 8v4.5M12 15.6h.01', tint: 'rgba(234, 88, 12, 0.12)', color: '#C2410C',
+        primary: 'Оставить защиту', pBg: '#2563EB', secondary: 'Снять защиту', sBorder: 'rgba(220, 38, 38, 0.35)', sColor: '#B91C1C', hasCheck: false
+      },
+      {
+        where: 'Закрытие окна · VPN включён', title: 'Закрыть окно?',
+        text: 'VPN сейчас включён. Можно свернуть программу в трей — защита продолжит работать в фоне.',
+        icon: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5zM8 15h8', tint: 'rgba(37, 99, 235, 0.10)', color: '#1D4ED8',
+        primary: 'Свернуть в трей', pBg: '#2563EB', secondary: 'Выйти и отключить VPN', sBorder: 'rgba(15, 23, 42, 0.14)', sColor: '#0B0F19', hasCheck: true
+      },
+      {
+        where: 'Профили и подписки', title: 'Удалить подписку «Резервная»?',
+        text: 'Будут удалены 8 серверов из этой подписки. Если один из них выбран, VPN отключится, и вы выберете другой сервер сами.',
+        icon: 'M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6', tint: 'rgba(185, 28, 28, 0.10)', color: '#B91C1C',
+        primary: 'Удалить', pBg: '#DC2626', secondary: 'Отмена', sBorder: 'rgba(15, 23, 42, 0.14)', sColor: '#0B0F19', hasCheck: false
+      }
+    ];
+    return { dialogs };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Мобильные версии — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+</style>
+</helmet>
+<div style="width: 1504px; height: 1080px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 22px">
+  <div>
+    <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Мобильные версии: Android и iOS</h1>
+    <p style="margin: 6px 0 0; color: #374151; line-height: 1.5; max-width: 1100px">Отдельные нативные приложения: Android — Kotlin и Jetpack Compose, iOS — Swift и SwiftUI. Экран тот же, что на компьютере: цвета, размеры, карточки и островок берутся из общих токенов. Шрифт — системный: Roboto на Android, SF Pro на iPhone. Кнопка включения внизу — под большой палец.</p>
+  </div>
+  <div style="display: flex; gap: 48px; align-items: flex-start">
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+        <span style="font-weight: 700; font-size: 16px">Android · Kotlin + Compose</span>
+        <span style="font-size: 12px; color: #4B5565">384 × 832 dp · Roboto</span>
+      </div>
+      <div style="position: relative; width: 404px; height: 852px; padding: 10px; box-sizing: border-box; border-radius: 46px; background: #1F2125; box-shadow: 0 24px 50px rgba(15, 23, 42, 0.28)">
+        <div style="width: 384px; height: 832px; border-radius: 36px; overflow: hidden"><dc-import name="Main" device="android" hint-size="384px,832px"></dc-import></div>
+        <span aria-hidden="true" style="position: absolute; top: 24px; left: 50%; width: 12px; height: 12px; margin-left: -6px; border-radius: 50%; background: #0B0B0C"></span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 12px">
+      <div style="display: flex; align-items: baseline; justify-content: space-between; gap: 12px">
+        <span style="font-weight: 700; font-size: 16px">iOS · Swift + SwiftUI</span>
+        <span style="font-size: 12px; color: #4B5565">393 × 852 pt · SF Pro</span>
+      </div>
+      <div style="position: relative; width: 417px; height: 876px; padding: 12px; box-sizing: border-box; border-radius: 66px; background: #1C1C1E; box-shadow: 0 24px 50px rgba(15, 23, 42, 0.28)">
+        <div style="width: 393px; height: 852px; border-radius: 54px; overflow: hidden"><dc-import name="Main" device="ios" hint-size="393px,852px"></dc-import></div>
+        <span aria-hidden="true" style="position: absolute; top: 23px; left: 50%; width: 124px; height: 36px; margin-left: -62px; border-radius: 20px; background: #000000"></span>
+      </div>
+    </div>
+
+    <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; padding-top: 34px">
+      <section style="padding: 18px 20px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 10px">
+        <span style="font-weight: 700; font-size: 16px">Что меняется на телефоне</span>
+        <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 13.5px; line-height: 1.6; display: flex; flex-direction: column; gap: 4px">
+          <li>Нет рамки окна и трея: сверху строка состояния, снизу полоска жестов — островок поднят над ней</li>
+          <li>Ширина от 360 до 440: карточки тянутся, поля 16 вместо 20, чипы остаются 2 × 2</li>
+          <li>Android при включённом VPN сам показывает значок ключа в строке состояния. На iPhone с Dynamic Island значка нет — состояние видно в Пункте управления</li>
+          <li>Шрифт системный: Roboto и Roboto Mono на Android, SF Pro и SF Mono на iOS. Размеры и начертания — как у Inter на компьютере. SF Pro есть только на устройствах Apple, поэтому в макете на Windows вместо него виден Inter</li>
+          <li>«Назад» — системный жест: свайп от края экрана</li>
+          <li>Включить и выключить можно, не открывая приложение: плитка в шторке Android, Пункт управления и виджет на iOS (экран 26)</li>
+        </ul>
+      </section>
+      <section style="padding: 18px 20px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 10px">
+        <span style="font-weight: 700; font-size: 16px">Общее у всех версий</span>
+        <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 13.5px; line-height: 1.6; display: flex; flex-direction: column; gap: 4px">
+          <li>Один файл токенов <span style="font-family: 'JetBrains Mono', monospace; font-size: 12.5px">tokens.json</span> → Avalonia (Tokens.axaml), Compose (Theme.kt), SwiftUI (Tokens.swift)</li>
+          <li>Ядро Xray (и sing-box для Hysteria2 и TUIC) — один и тот же код на Go, собирается под каждую ОС</li>
+          <li>Разбор ссылок и подписок лучше вынести в Go-модуль рядом с ядром — иначе его придётся писать трижды: на C#, Kotlin и Swift</li>
+          <li>Тексты RU и EN — общие ключи перевода для всех трёх приложений</li>
+        </ul>
+      </section>
+      <section style="padding: 14px 16px; border-radius: 16px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.18); color: #1E3A8A; font-size: 13px; line-height: 1.5">Остальные экраны (Серверы, Настройки, Проверка) на телефоне устроены так же: та же вёрстка в одну колонку, та же ширина 360–440 и островок внизу.</section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1504,"height":1080}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

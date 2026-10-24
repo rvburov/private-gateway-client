@@ -1,0 +1,129 @@
+{
+  "name": "Private Gateway design tokens",
+  "version": "1.0.0",
+  "source": "docs/design (макет v1.0, согласован 2026-10-23)",
+  "theme": "light",
+  "targets": {
+    "desktop": "desktop/src/Client.UI/Themes/Tokens.axaml",
+    "android": "android/…/ui/theme/Theme.kt",
+    "ios": "ios/…/DesignSystem/Tokens.swift"
+  },
+
+  "color": {
+    "bg": {
+      "window": "#EEF2F8",
+      "glass": "rgba(246, 248, 252, 0.70)"
+    },
+    "surface": {
+      "card": "rgba(255, 255, 255, 0.85)",
+      "solid": "#FFFFFF"
+    },
+    "text": {
+      "primary": "#0B0F19",
+      "secondary": "#374151",
+      "muted": "#4B5565"
+    },
+    "line": {
+      "border": "rgba(15, 23, 42, 0.08)",
+      "divider": "rgba(15, 23, 42, 0.07)"
+    },
+    "accent": {
+      "base": "#2563EB",
+      "text": "#1D4ED8",
+      "tint": "rgba(37, 99, 235, 0.10)",
+      "navActiveFill": "rgba(37, 99, 235, 0.16)"
+    },
+    "focus": {
+      "ring": "#93C5FD"
+    },
+    "status": {
+      "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)" },
+      "warning": { "base": "#EA580C", "text": "#C2410C", "tint": "rgba(234, 88, 12, 0.12)" },
+      "caution": { "base": "#F59E0B", "text": "#B45309", "tint": "rgba(245, 158, 11, 0.14)" },
+      "danger":  { "base": "#DC2626", "text": "#B91C1C", "tint": "rgba(185, 28, 28, 0.08)" }
+    }
+  },
+
+  "state": {
+    "connected":    { "label": "Защищено",    "ring": "#16A34A", "icon": "#15803D", "glow": "rgba(22, 163, 74, 0.25)" },
+    "connecting":   { "label": "Подключение", "ring": "#BFDBFE", "icon": "#2563EB", "glow": "rgba(37, 99, 235, 0.22)", "spinner": "#2563EB" },
+    "reconnecting": { "label": "Подключение", "ring": "#BFDBFE", "icon": "#2563EB", "glow": "rgba(37, 99, 235, 0.22)", "spinner": "#2563EB" },
+    "blocked":      { "label": "Блокировка",  "ring": "#EA580C", "icon": "#C2410C", "glow": "rgba(234, 88, 12, 0.22)" },
+    "partial":      { "label": "Прокси / Пауза", "ring": "#F59E0B", "icon": "#B45309", "glow": "rgba(245, 158, 11, 0.28)" },
+    "error":        { "label": "Ошибка",      "ring": "#DC2626", "icon": "#DC2626", "glow": "rgba(220, 38, 38, 0.20)" },
+    "off":          { "label": "Выключено",   "ring": "#DC2626", "icon": "#DC2626", "glow": "rgba(220, 38, 38, 0.20)" }
+  },
+
+  "font": {
+    "desktop": { "ui": "Inter", "mono": "JetBrains Mono", "embedded": true, "license": "OFL-1.1" },
+    "android": { "ui": "Roboto", "mono": "Roboto Mono", "embedded": false },
+    "ios":     { "ui": "SF Pro", "mono": "SF Mono", "embedded": false }
+  },
+
+  "type": {
+    "display":    { "size": 28,   "weight": 700, "tracking": -0.02 },
+    "h1":         { "size": 22,   "weight": 700, "tracking": -0.015 },
+    "status":     { "size": 20,   "weight": 700, "tracking": -0.015 },
+    "title":      { "size": 15,   "weight": 600 },
+    "body":       { "size": 14,   "weight": 400, "lineHeight": 1.45 },
+    "bodyStrong": { "size": 14,   "weight": 600 },
+    "caption":    { "size": 12,   "weight": 400 },
+    "overline":   { "size": 11,   "weight": 600, "tracking": 0.06, "uppercase": true },
+    "nav":        { "size": 11.5, "sizeMobile": 10.5, "weight": 500, "weightActive": 600 },
+    "monoLarge":  { "size": 21,   "weight": 600, "tracking": -0.01, "family": "mono" },
+    "mono":       { "size": 13,   "weight": 500, "family": "mono" }
+  },
+
+  "space": {
+    "xxs": 4,
+    "xs": 6,
+    "s": 8,
+    "m": 10,
+    "l": 12,
+    "card": 16,
+    "windowSide": 20,
+    "windowSideMobile": 16,
+    "island": 24
+  },
+
+  "radius": {
+    "chip": 7,
+    "input": 10,
+    "button": 13,
+    "card": 19,
+    "panel": 25,
+    "round": "50%"
+  },
+
+  "shadow": {
+    "card": ["0 1 2 rgba(15, 23, 42, 0.04)", "0 8 24 rgba(15, 23, 42, 0.06)"],
+    "popup": ["0 16 40 rgba(15, 23, 42, 0.20)"],
+    "island": ["0 6 18 rgba(15, 23, 42, 0.14)"]
+  },
+
+  "glass": {
+    "fill": "rgba(246, 248, 252, 0.70)",
+    "blur": 48,
+    "saturate": 1.7,
+    "fallback": "#EEF2F8"
+  },
+
+  "layout": {
+    "desktopWindow": { "width": 440, "height": 760 },
+    "mobileWidth": { "min": 360, "max": 440 },
+    "scrollBottomPadding": 160,
+    "island": {
+      "sideMargin": 24,
+      "sideMarginMobile": 14,
+      "bottomMargin": 12,
+      "height": 68,
+      "cornerRadius": 26,
+      "bumpRadius": 48,
+      "bumpFilletRadius": 18,
+      "navColumns": "1fr 1fr 92px 1fr 1fr",
+      "navColumnsMobile": "1fr 1fr 76px 1fr 1fr"
+    },
+    "powerButton": { "size": 80, "ringWidth": 4, "iconSize": 36 },
+    "touchTarget": 44
+  }
+}

@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Главная: прокси и вход в Wi-Fi — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+</style>
+</helmet>
+<div style="width: 984px; height: 900px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 20px">
+  <div>
+    <h1 style="margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.015em">Главная в особых режимах</h1>
+    <p style="margin: 6px 0 0; color: #374151; line-height: 1.5">Оба режима выделены янтарным цветом: защита работает не полностью, и это должно быть видно сразу.</p>
+  </div>
+  <div style="display: flex; gap: 40px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Только прокси · без службы и блока при обрыве</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12)"><dc-import name="Main" state="connected" mode="proxy" hint-size="440px,760px"></dc-import></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Вход в Wi-Fi отеля · защита на паузе 5 минут</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(15, 23, 42, 0.12)"><dc-import name="Main" state="connected" captive="true" hint-size="440px,760px"></dc-import></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":984,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

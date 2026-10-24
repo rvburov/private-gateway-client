@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Уведомления на трёх ОС — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+</style>
+</helmet>
+<div style="width: 1504px; height: 1060px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 24px">
+  <div>
+    <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Уведомления на трёх ОС</h1>
+    <p style="margin: 6px 0 0; color: #374151; line-height: 1.5; max-width: 1100px">Уведомления системные: их рисует сама ОС, поэтому вид у каждой свой. Мы задаём только значок, заголовок, текст и до двух кнопок. Они попадают в центр уведомлений и подчиняются режиму «Не беспокоить», как у любой программы. Пример — одно и то же событие.</p>
+  </div>
+  <div style="display: flex; gap: 60px; align-items: flex-start">
+    <div style="width: 440px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-weight: 700; font-size: 16px">Windows 10 / 11</span>
+      <div style="position: relative; height: 320px; border-radius: 16px; overflow: hidden; background: #DCE3EE; border: 1px solid rgba(15, 23, 42, 0.10); font-family: 'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, sans-serif">
+        <div aria-hidden="true" style="position: absolute; left: -40px; top: 70px; width: 240px; height: 240px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div><div aria-hidden="true" style="position: absolute; right: -50px; top: 120px; width: 220px; height: 220px; border-radius: 50%; background: #C4B5FD; opacity: 0.45"></div>
+        <section role="status" aria-label="Соединение потеряно" style="position: absolute; right: 12px; bottom: 60px; width: 364px; border-radius: 8px; background: rgba(249, 249, 249, 0.97); border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16); color: #1A1A1A">
+          <div style="height: 34px; display: flex; align-items: center; gap: 8px; padding: 0 6px 0 14px; font-size: 12px">
+            <span style="width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(160deg, #3B82F6, #1D4ED8); color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+            <span style="flex: 1">Private Gateway</span>
+            <span aria-hidden="true" style="width: 28px; text-align: center; color: #5C5C5C; letter-spacing: 1px">···</span>
+            <span aria-hidden="true" style="width: 28px; display: flex; justify-content: center"><svg width="10" height="10" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9" stroke="#5C5C5C" stroke-width="1.2"></path></svg></span>
+          </div>
+          <div style="display: flex; gap: 12px; padding: 2px 16px 14px">
+            <span style="width: 48px; height: 48px; border-radius: 10px; background: linear-gradient(160deg, #3B82F6, #1D4ED8); color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+            <div style="display: flex; flex-direction: column; gap: 2px; min-width: 0">
+              <span style="font-size: 14px; font-weight: 600">Соединение потеряно</span>
+              <span style="font-size: 13.5px; color: #5C5C5C; line-height: 1.4">Интернет заблокирован, пока VPN не вернётся. Переподключаюсь к «Нидерланды 01»…</span>
+            </div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 16px 16px">
+            <span style="height: 32px; border-radius: 4px; background: #FBFBFB; border: 1px solid rgba(0, 0, 0, 0.08); border-bottom-color: rgba(0, 0, 0, 0.16); display: flex; align-items: center; justify-content: center; font-size: 13.5px">Сменить сервер</span>
+            <span style="height: 32px; border-radius: 4px; background: #FBFBFB; border: 1px solid rgba(0, 0, 0, 0.08); border-bottom-color: rgba(0, 0, 0, 0.16); display: flex; align-items: center; justify-content: center; font-size: 13.5px">Открыть</span>
+          </div>
+        </section>
+        <div style="position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: rgba(243, 243, 243, 0.94); border-top: 1px solid rgba(0, 0, 0, 0.06); display: flex; align-items: center; padding: 0 10px; gap: 10px; color: #1A1A1A">
+          <span style="flex: 1"></span>
+          <span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 4px; background: linear-gradient(135deg, #0EA5E9, #2563EB)"></span>
+          <span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 4px; background: #CBD5E1"></span>
+          <span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 4px; background: #CBD5E1"></span>
+          <span style="flex: 1"></span>
+          <span style="font-size: 12px; color: #5C5C5C">⌃</span>
+          <span style="width: 22px; height: 22px; border-radius: 6px; background: rgba(234, 88, 12, 0.16); box-shadow: 0 0 0 1.5px #EA580C; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1A1A1A" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01"></path></svg>
+          <span style="display: flex; flex-direction: column; align-items: flex-end; font-size: 11.5px; line-height: 1.3"><span>18:51</span><span>23.10.2026</span></span>
+        </div>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 13px; line-height: 1.6"><li>Справа внизу над часами, потом остаётся в Центре уведомлений</li><li>Название и значок — из ярлыка программы, до 3 кнопок</li><li>Режим «Не беспокоить» Windows соблюдаем</li></ul>
+    </div>
+    <div style="width: 440px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-weight: 700; font-size: 16px">macOS</span>
+      <div style="position: relative; height: 320px; border-radius: 16px; overflow: hidden; background: #DCE3EE; border: 1px solid rgba(15, 23, 42, 0.10); font-family: -apple-system, 'SF Pro Text', Inter, system-ui, sans-serif">
+        <div aria-hidden="true" style="position: absolute; left: -40px; top: 70px; width: 240px; height: 240px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div><div aria-hidden="true" style="position: absolute; right: -50px; top: 120px; width: 220px; height: 220px; border-radius: 50%; background: #C4B5FD; opacity: 0.45"></div>
+        <div style="position: absolute; left: 0; right: 0; top: 0; height: 26px; background: rgba(250, 251, 253, 0.82); display: flex; align-items: center; gap: 14px; padding: 0 12px; font-size: 12.5px; color: #1D1D1F">
+          <span aria-hidden="true" style="width: 12px; height: 12px; border-radius: 50%; background: #1D1D1F"></span>
+          <span style="font-weight: 700">Finder</span><span>Файл</span><span>Правка</span><span>Вид</span>
+          <span style="flex: 1"></span>
+          <span style="width: 18px; height: 18px; border-radius: 6px; background: rgba(234, 88, 12, 0.16); box-shadow: 0 0 0 1.5px #EA580C; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg></span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D1D1F" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01"></path></svg>
+          <span>Чт 23 окт. 18:51</span>
+        </div>
+        <section role="status" aria-label="Соединение потеряно" style="position: absolute; right: 10px; top: 36px; width: 344px; box-sizing: border-box; padding: 12px 14px; border-radius: 18px; background: rgba(246, 246, 248, 0.84); backdrop-filter: blur(30px) saturate(180%); -webkit-backdrop-filter: blur(30px) saturate(180%); border: 0.5px solid rgba(0, 0, 0, 0.12); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.18); display: flex; gap: 10px; color: #1D1D1F">
+          <span aria-hidden="true" style="position: absolute; left: -7px; top: -7px; width: 20px; height: 20px; border-radius: 50%; background: #F2F2F4; border: 0.5px solid rgba(0, 0, 0, 0.16); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); display: flex; align-items: center; justify-content: center"><svg width="8" height="8" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9" stroke="#6E6E73" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+          <span style="width: 36px; height: 36px; border-radius: 9px; background: linear-gradient(160deg, #3B82F6, #1D4ED8); color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+          <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <div style="display: flex; justify-content: space-between; gap: 8px; font-size: 13px">
+              <span style="font-weight: 700">Соединение потеряно</span><span style="color: #8A8A8E; font-size: 12px">сейчас</span>
+            </div>
+            <span style="font-size: 13px; line-height: 1.38">Интернет заблокирован, пока VPN не вернётся. Переподключаюсь к «Нидерланды 01»…</span>
+            <span style="align-self: flex-end; margin-top: 6px; height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(0, 0, 0, 0.06); display: flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500">Параметры <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
+          </div>
+        </section>
+        <span style="position: absolute; left: 14px; bottom: 14px; font-size: 11.5px; font-weight: 600; color: #374151; background: rgba(255, 255, 255, 0.85); padding: 3px 8px; border-radius: 6px; font-family: Inter, system-ui, sans-serif">Показано при наведении курсора</span>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 13px; line-height: 1.6"><li>Справа сверху. При первом запуске macOS спросит разрешение</li><li>Кнопки — при наведении, в меню «Параметры»</li><li>Фокусирование (режим «Не беспокоить») соблюдаем</li></ul>
+    </div>
+    <div style="width: 440px; display: flex; flex-direction: column; gap: 12px">
+      <span style="font-weight: 700; font-size: 16px">Linux</span>
+      <div style="position: relative; height: 320px; border-radius: 16px; overflow: hidden; background: #DCE3EE; border: 1px solid rgba(15, 23, 42, 0.10); font-family: Cantarell, 'Adwaita Sans', Inter, system-ui, sans-serif">
+        <div aria-hidden="true" style="position: absolute; left: -40px; top: 70px; width: 240px; height: 240px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div><div aria-hidden="true" style="position: absolute; right: -50px; top: 120px; width: 220px; height: 220px; border-radius: 50%; background: #C4B5FD; opacity: 0.45"></div>
+        <div style="position: absolute; left: 0; right: 0; top: 0; height: 28px; background: #000000; display: flex; align-items: center; padding: 0 12px; font-size: 12.5px; color: #FFFFFF">
+          <span style="padding: 2px 10px; border-radius: 99px; background: rgba(255, 255, 255, 0.16); font-weight: 700">• • •</span>
+          <span style="flex: 1; text-align: center; font-weight: 700">23 окт. 18:51</span>
+          <span style="display: flex; align-items: center; gap: 8px"><span style="width: 18px; height: 18px; border-radius: 6px; background: rgba(234, 88, 12, 0.16); box-shadow: 0 0 0 1.5px #EA580C; display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01"></path></svg></span>
+        </div>
+        <section role="status" aria-label="Соединение потеряно" style="position: absolute; left: 50%; top: 38px; width: 380px; margin-left: -190px; box-sizing: border-box; padding: 10px 12px 12px; border-radius: 14px; background: #FFFFFF; border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 8px 26px rgba(0, 0, 0, 0.2); color: #1E1E1E; display: flex; flex-direction: column; gap: 8px">
+          <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #5E5C64">
+            <span style="width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(160deg, #3B82F6, #1D4ED8); color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+            <span>Private Gateway</span><span>·</span><span style="flex: 1">сейчас</span>
+            <span aria-hidden="true" style="width: 22px; height: 22px; border-radius: 50%; background: rgba(0, 0, 0, 0.06); display: flex; align-items: center; justify-content: center"><svg width="8" height="8" viewBox="0 0 10 10"><path d="M1 1l8 8M9 1L1 9" stroke="#3D3846" stroke-width="1.6" stroke-linecap="round"></path></svg></span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 14px; font-weight: 700">Соединение потеряно</span>
+            <span style="font-size: 13.5px; color: #3D3846; line-height: 1.4">Интернет заблокирован, пока VPN не вернётся. Переподключаюсь к «Нидерланды 01»…</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px">
+            <span style="height: 34px; border-radius: 8px; background: rgba(0, 0, 0, 0.07); display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 700">Сменить сервер</span>
+            <span style="height: 34px; border-radius: 8px; background: rgba(0, 0, 0, 0.07); display: flex; align-items: center; justify-content: center; font-size: 13.5px; font-weight: 700">Открыть</span>
+          </div>
+        </section>
+        <section aria-label="Так же в KDE Plasma" style="position: absolute; right: 12px; bottom: 12px; width: 220px; padding: 8px 10px; border-radius: 8px; background: rgba(252, 252, 252, 0.96); border: 1px solid rgba(0, 0, 0, 0.10); box-shadow: 0 6px 18px rgba(0, 0, 0, 0.16); display: flex; gap: 8px; font-family: 'Noto Sans', Inter, system-ui, sans-serif; color: #232629">
+          <span style="width: 28px; height: 28px; border-radius: 6px; background: linear-gradient(160deg, #3B82F6, #1D4ED8); color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+          <span style="display: flex; flex-direction: column; gap: 1px; min-width: 0"><span style="font-size: 12px; font-weight: 700">Соединение потеряно</span><span style="font-size: 11.5px; color: #4D5257; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Интернет заблокирован…</span></span>
+        </section>
+        <span style="position: absolute; right: 12px; bottom: 70px; font-size: 11.5px; font-weight: 600; color: #374151; background: rgba(255, 255, 255, 0.85); padding: 3px 8px; border-radius: 6px; font-family: Inter, system-ui, sans-serif">Так же в KDE Plasma</span>
+      </div>
+      <ul style="margin: 0; padding-left: 18px; color: #374151; font-size: 13px; line-height: 1.6"><li>Через стандарт freedesktop — вид рисует оболочка</li><li>GNOME: сверху по центру; KDE Plasma: снизу справа</li><li>Если кнопки не поддерживаются — клик открывает окно</li></ul>
+    </div>
+  </div>
+  <div style="display: grid; grid-template-columns: minmax(0, 1fr) 440px; gap: 24px; align-items: start">
+    <section style="padding: 18px 20px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column">
+      <span style="font-weight: 700; font-size: 16px; margin-bottom: 10px">Когда приходят уведомления</span>
+      <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding-bottom: 8px; font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">
+        <span>Событие</span><span>Текст</span><span>Кнопки</span><span>Тип</span>
+      </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Соединение потеряно</span>
+            <span style="font-size: 13px; color: #374151">Интернет заблокирован, пока VPN не вернётся</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Сменить сервер · Открыть</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(234, 88, 12, 0.12); color: #C2410C; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Важное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Сервер не отвечает</span>
+            <span style="font-size: 13px; color: #374151">«Нидерланды 01» недоступен. Интернет заблокирован</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Повторить · Выбрать сервер</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(234, 88, 12, 0.12); color: #C2410C; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Важное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Нужен вход в Wi-Fi</span>
+            <span style="font-size: 13px; color: #374151">Сеть просит вход через браузер — защита на паузе</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Войти · Позже</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(234, 88, 12, 0.12); color: #C2410C; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Важное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Служба остановлена</span>
+            <span style="font-size: 13px; color: #374151">Защита не работает, нужен перезапуск службы</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Перезапустить</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(234, 88, 12, 0.12); color: #C2410C; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Важное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Подключено / отключено</span>
+            <span style="font-size: 13px; color: #374151">Только если окно закрыто: горячая клавиша, автозапуск</span>
+            <span style="font-size: 13px; color: #4B5565; font-weight: 500">—</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(15, 23, 42, 0.06); color: #374151; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Обычное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Сервер исчез из списка</span>
+            <span style="font-size: 13px; color: #374151">«Германия 02» больше нет в «Основной»</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Выбрать другой · Позже</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(15, 23, 42, 0.06); color: #374151; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Обычное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Серверы не обновились</span>
+            <span style="font-size: 13px; color: #374151">«Резервная»: ошибка 403, оставлен прошлый список</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Открыть</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(15, 23, 42, 0.06); color: #374151; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Обычное</span></span>
+          </div>
+          <div style="display: grid; grid-template-columns: 210px minmax(0, 1fr) 210px 96px; gap: 16px; align-items: center; padding: 10px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+            <span style="font-weight: 600">Доступно обновление</span>
+            <span style="font-size: 13px; color: #374151">0.2.0 установится при следующем запуске</span>
+            <span style="font-size: 13px; color: #1D4ED8; font-weight: 500">Обновить · Позже</span>
+            <span><span style="height: 24px; padding: 0 10px; border-radius: 7px; background: rgba(15, 23, 42, 0.06); color: #374151; font-size: 12px; font-weight: 600; display: inline-flex; align-items: center">Обычное</span></span>
+          </div>
+    </section>
+    <section style="padding: 18px 20px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+      <span style="font-weight: 700; font-size: 16px">Настройка</span>
+      <span style="font-size: 13px; color: #4B5565">Настройки → Основные → Уведомления</span>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: rgba(15, 23, 42, 0.05)">
+        <span style="height: 34px; border-radius: 9px; color: #374151; display: flex; align-items: center; justify-content: center; font-size: 13px">Все</span><span style="height: 34px; border-radius: 9px; background: #FFFFFF; color: #0B0F19; font-weight: 600; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); display: flex; align-items: center; justify-content: center; font-size: 13px">Только важные</span><span style="height: 34px; border-radius: 9px; color: #374151; display: flex; align-items: center; justify-content: center; font-size: 13px">Выключены</span>
+      </div>
+      <span style="font-size: 13px; color: #374151; line-height: 1.5">По умолчанию — <b>только важные</b>: обрыв, блокировка интернета, вход в Wi-Fi, сбой службы.</span>
+      <div style="height: 1px; background: rgba(15, 23, 42, 0.08)"></div>
+      <span style="font-weight: 700; font-size: 15px">Правила</span>
+      <ul style="margin: 0; padding-left: 18px; font-size: 13px; color: #374151; line-height: 1.55"><li>Окно открыто и активно — вместо системного уведомления всплывашка внутри окна</li><li>Одно уведомление на событие, повтор не чаще раза в 10 минут</li><li>В тексте нет IP-адресов и названий сетей Wi-Fi</li><li>Звук — только у важных</li><li>Режим «Не беспокоить» не пробиваем: значок в трее всё равно станет оранжевым</li></ul>
+    </section>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1504,"height":1060}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

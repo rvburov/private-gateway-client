@@ -1,0 +1,425 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Главная — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Roboto:wght@400;500;600;700&amp;family=Roboto+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF2F8;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+a{color:#2563EB}a:hover{color:#1D4ED8}
+button:focus,a:focus{outline:none}
+button:focus-visible,a:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+.pg-ib:hover{background:rgba(15,23,42,.06)}
+.pg-opt:hover{background:rgba(37,99,235,.07)}
+.pg-nav:hover{color:#0B0F19}
+.pg-spin{animation:pg-spin .9s linear infinite}
+@keyframes pg-spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div style="position: relative; width: {{dev.wpx}}; height: {{dev.h}}; overflow: hidden; background: #EEF2F8; font-family: {{dev.font}}; font-size: 14px; color: #0B0F19">
+  <div aria-hidden="true" style="position: absolute; left: -80px; top: -60px; width: 300px; height: 300px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div>
+  <div aria-hidden="true" style="position: absolute; right: -90px; top: 250px; width: 280px; height: 280px; border-radius: 50%; background: #86EFAC; opacity: 0.45"></div>
+  <div aria-hidden="true" style="position: absolute; left: 40px; bottom: -120px; width: 320px; height: 260px; border-radius: 50%; background: #C4B5FD; opacity: 0.45"></div>
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column; background: rgba(246, 248, 252, 0.7); backdrop-filter: blur(48px) saturate(170%); -webkit-backdrop-filter: blur(48px) saturate(170%)">
+    <sc-if value="{{dev.ios}}" hint-placeholder-val="{{ false }}">
+      <div aria-hidden="true" style="height: 54px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 4px 30px 0 52px; color: #0B0F19">
+        <span style="font-size: 16.5px; font-weight: 600; letter-spacing: -0.01em">18:42</span>
+        <span style="display: flex; align-items: center; gap: 6px"><svg width="17" height="12" viewBox="0 0 17 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1" fill="currentColor"></rect><rect x="4.5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor"></rect><rect x="9" y="3" width="3" height="9" rx="1" fill="currentColor"></rect><rect x="13.5" y="0" width="3" height="12" rx="1" fill="currentColor"></rect></svg><svg width="16" height="12" viewBox="0 0 24 18" fill="currentColor" aria-hidden="true"><path d="M12 18l3.6-4.5a5.8 5.8 0 0 0-7.2 0z"></path><path d="M5.6 10.3a10 10 0 0 1 12.8 0l-1.6 2a7.4 7.4 0 0 0-9.6 0z"></path><path d="M2.4 6.3a15 15 0 0 1 19.2 0l-1.6 2a12.4 12.4 0 0 0-16 0z"></path></svg><span aria-hidden="true" style="width: 25px; height: 12px; border-radius: 3.5px; border: 1.2px solid currentColor; box-sizing: border-box; padding: 1.5px; display: flex; opacity: 0.9"><span style="width: 72%; background: currentColor; border-radius: 1.5px"></span></span></span>
+      </div>
+    </sc-if>
+    <sc-if value="{{dev.android}}" hint-placeholder-val="{{ false }}">
+      <div aria-hidden="true" style="height: 40px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 0 22px 0 24px; color: #0B0F19; font-size: 14px; font-weight: 500">
+        <span>18:42</span>
+        <span style="display: flex; align-items: center; gap: 7px"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-label="VPN"><circle cx="7.5" cy="15.5" r="4"></circle><path d="M10.4 12.6L20 3M16 7l3 3M14 9l2 2"></path></svg><svg width="16" height="12" viewBox="0 0 24 18" fill="currentColor" aria-hidden="true"><path d="M12 18l3.6-4.5a5.8 5.8 0 0 0-7.2 0z"></path><path d="M5.6 10.3a10 10 0 0 1 12.8 0l-1.6 2a7.4 7.4 0 0 0-9.6 0z"></path><path d="M2.4 6.3a15 15 0 0 1 19.2 0l-1.6 2a12.4 12.4 0 0 0-16 0z"></path></svg><svg width="17" height="12" viewBox="0 0 17 12" aria-hidden="true"><rect x="0" y="8" width="3" height="4" rx="1" fill="currentColor"></rect><rect x="4.5" y="5.5" width="3" height="6.5" rx="1" fill="currentColor"></rect><rect x="9" y="3" width="3" height="9" rx="1" fill="currentColor"></rect><rect x="13.5" y="0" width="3" height="12" rx="1" fill="currentColor"></rect></svg><span aria-hidden="true" style="width: 25px; height: 12px; border-radius: 3.5px; border: 1.2px solid currentColor; box-sizing: border-box; padding: 1.5px; display: flex; opacity: 0.9"><span style="width: 72%; background: currentColor; border-radius: 1.5px"></span></span></span>
+      </div>
+    </sc-if>
+    <header style="display: flex; align-items: center; justify-content: space-between; height: 60px; padding: 0 12px 0 20px; flex: 0 0 auto">
+      <div style="display: flex; align-items: center; gap: 10px">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg>
+        <span style="font-size: 19px; font-weight: 600; letter-spacing: -0.015em">Private Gateway</span>
+        <span style="font-size: 11px; font-weight: 600; padding: 2px 6px; border-radius: 6px; background: rgba(37, 99, 235, 0.10); color: #1D4ED8; border: 1px solid rgba(37, 99, 235, 0.18)">0.1</span>
+      </div>
+      <a href="Import.dc.html" class="pg-ib" aria-label="Добавить ссылку или подписку" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #0B0F19">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+      </a>
+    </header>
+
+    <sc-if value="{{toast}}" hint-placeholder-val="{{ false }}">
+      <div role="status" style="position: absolute; top: {{dev.toastTop}}; left: 50%; transform: translateX(-50%); z-index: 40; padding: 8px 14px; border-radius: 10px; background: #0B0F19; color: #FFFFFF; font-size: 13px; font-weight: 500; white-space: nowrap; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.25)">Серверы обновлены · пинг проверен</div>
+    </sc-if>
+
+    <section aria-label="Состояние защиты" style="margin: 0 {{dev.mx}}; padding: {{dev.cardPad}}; border-radius: 20px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 23, 42, 0.08); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.07); display: flex; flex-direction: column; gap: 10px">
+      <sc-if value="{{cap.show}}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.32); color: #92400E; font-size: 12.5px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+          <span style="flex: 1">Интернет без VPN для входа в Wi-Fi · <span style="font-family: {{dev.mono}}; font-weight: 700">{{cap.left}}</span></span>
+          <button type="button" style="height: 30px; padding: 0 10px; border-radius: 8px; border: none; background: #FFFFFF; color: #92400E; font: inherit; font-size: 12.5px; font-weight: 700; cursor: pointer">Вернуть защиту</button>
+        </div>
+      </sc-if>
+      <div style="display: flex; align-items: center; gap: 12px">
+        <span style="width: 46px; height: 46px; border-radius: 14px; background: {{st.tint}}; color: {{st.color}}; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="{{st.mark}}"></path></svg>
+        </span>
+        <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+          <span style="font-size: 20px; font-weight: 700; letter-spacing: -0.015em; color: {{st.color}}">{{st.title}}</span>
+          <span style="font-size: 13px; color: #374151; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{st.sub}}</span>
+          <span title="{{net.full}}" style="display: flex; align-items: center; gap: 5px; min-width: 0; font-size: 12.5px; font-weight: {{net.weight}}; color: {{net.color}}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex: 0 0 auto"><path d="{{net.icon}}"></path></svg>
+            <span style="min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{net.label}}</span>
+          </span>
+        </span>
+        <sc-if value="{{st.hasTimer}}" hint-placeholder-val="{{ true }}">
+          <span style="display: flex; flex-direction: column; align-items: flex-end; gap: 1px">
+            <span style="font-size: 11px; color: #4B5565">в сети</span>
+            <span style="font-family: {{dev.mono}}; font-size: 13px; font-weight: 600; color: #1F2937">{{st.timer}}</span>
+          </span>
+        </sc-if>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+        <sc-for list="{{checks}}" as="c" hint-placeholder-count="4">
+          <button type="button" onClick="{{c.pick}}" aria-pressed="{{c.aria}}" style="{{c.style}}">
+            <span style="width: 20px; height: 20px; border-radius: 50%; background: {{c.dot}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.icon}}"></path></svg>
+            </span>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; text-align: left">
+              <span style="font-size: 13px; font-weight: 600; color: #0B0F19; white-space: nowrap">{{c.k}}</span>
+              <span style="font-size: 11px; color: {{c.fg}}">{{c.v}}</span>
+            </span>
+          </button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{info.show}}" hint-placeholder-val="{{ false }}">
+        <div style="padding: 10px 12px; border-radius: 12px; background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.12); font-size: 12.5px; line-height: 1.45; color: #1F2937"><span style="font-weight: 600">{{info.title}}.</span> {{info.text}}</div>
+      </sc-if>
+
+      <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 12px; color: #4B5565; padding: 0 2px">
+        <span>{{st.checked}}</span>
+        <sc-if value="{{act.show}}" hint-placeholder-val="{{ true }}">
+          <button type="button" onClick="{{act.run}}" style="border: none; background: transparent; padding: 4px 0; font: inherit; font-size: 12px; font-weight: 600; color: {{act.color}}; cursor: pointer; white-space: nowrap">{{act.label}}</button>
+        </sc-if>
+      </div>
+    </section>
+
+    <section aria-label="IP и сервер" style="position: relative; z-index: 30; margin: {{dev.gap}} {{dev.mx}} 0; border-radius: 20px; background: rgba(255, 255, 255, 0.88); border: 1px solid {{menuBorder}}; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06)">
+      <div style="padding: 12px 10px 10px 16px; display: flex; flex-direction: column; gap: 2px">
+        <span style="font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Сайты видят ваш IP</span>
+        <div style="display: flex; align-items: center; gap: 4px">
+          <span style="flex: 1; font-family: {{dev.mono}}; font-size: 21px; font-weight: 600; letter-spacing: -0.01em">{{webIp}}</span>
+          <button type="button" class="pg-ib" onClick="{{copy}}" aria-label="Копировать IP" style="width: 38px; height: 38px; border: none; border-radius: 10px; background: transparent; color: #374151; cursor: pointer; display: flex; align-items: center; justify-content: center">
+            <sc-if value="{{copied}}" hint-placeholder-val="{{ false }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if>
+            <sc-if value="{{notCopied}}" hint-placeholder-val="{{ true }}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15V6a2 2 0 0 1 2-2h9"></path></svg></sc-if>
+          </button>
+          <button type="button" class="pg-ib" onClick="{{eye}}" aria-label="{{eyeLabel}}" style="width: 38px; height: 38px; border: none; border-radius: 10px; background: transparent; color: #374151; cursor: pointer; display: flex; align-items: center; justify-content: center">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"></path><circle cx="12" cy="12" r="3"></circle><path d="{{eyeSlash}}"></path></svg>
+          </button>
+        </div>
+        <span style="font-size: 12px; color: #4B5565">{{webMeta}}</span>
+        <span style="font-size: 12px; color: #4B5565">Ваш реальный IP: <span style="font-family: {{dev.mono}}; color: #1F2937">{{realIp}}</span> · {{realNote}}</span>
+      </div>
+
+      <div style="height: 1px; background: rgba(15, 23, 42, 0.07); margin: 0 16px"></div>
+
+      <div style="display: flex; align-items: center; gap: 8px; padding: 10px 8px 10px 10px">
+        <button type="button" class="pg-ib" onClick="{{refresh}}" aria-label="Обновить серверы" title="Обновить серверы" style="width: 44px; height: 44px; flex: 0 0 auto; border-radius: 12px; border: 1px solid rgba(37, 99, 235, 0.18); background: rgba(37, 99, 235, 0.08); color: #1D4ED8; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg class="{{spin}}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"></path><path d="M20 4v5h-5"></path></svg>
+        </button>
+        <button type="button" onClick="{{toggleMenu}}" aria-haspopup="listbox" aria-expanded="{{openAria}}" style="flex: 1; min-width: 0; min-height: 44px; padding: 0 6px; border: none; border-radius: 12px; background: transparent; font: inherit; color: #0B0F19; cursor: pointer; display: flex; align-items: center; gap: 10px; text-align: left">
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-weight: 600; font-size: 15px">{{cur.name}}</span>
+            <span style="font-size: 12px; color: #4B5565">{{cur.meta}}</span>
+          </span>
+          <span style="font-size: 12px; font-weight: 600; color: #1D4ED8">Сменить</span>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate({{chev}}deg); transition: transform 0.2s ease"><path d="M6 9l6 6 6-6"></path></svg>
+        </button>
+      </div>
+
+      <sc-if value="{{open}}" hint-placeholder-val="{{ false }}">
+        <div role="listbox" aria-label="Быстрая смена сервера" style="position: absolute; left: 0; right: 0; top: calc(100% + 6px); padding: 6px; border-radius: 18px; background: rgba(255, 255, 255, 0.98); border: 1px solid rgba(15, 23, 42, 0.10); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.20); display: flex; flex-direction: column; gap: 2px">
+          <span style="padding: 6px 10px 4px; font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Быстрая смена · вручную</span>
+          <sc-for list="{{servers}}" as="r" hint-placeholder-count="4">
+            <button type="button" role="option" class="pg-opt" aria-selected="{{r.aria}}" onClick="{{r.pick}}" style="min-height: 46px; padding: 6px 10px; border: none; border-radius: 12px; background: transparent; font: inherit; color: #0B0F19; cursor: pointer; display: flex; align-items: center; gap: 10px; text-align: left">
+              <span style="width: 36px; height: 26px; border-radius: 6px; background: rgba(37, 99, 235, 0.10); color: #1D4ED8; font-size: 11px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{r.cc}}</span>
+              <span style="flex: 1; display: flex; flex-direction: column; gap: 1px">
+                <span style="font-weight: 600">{{r.name}}</span>
+                <span style="font-family: {{dev.mono}}; font-size: 11px; color: #4B5565">{{r.addr}}</span>
+              </span>
+              <span style="font-family: {{dev.mono}}; font-size: 12px; font-weight: 600; color: #15803D">{{r.lat}}</span>
+              <span style="width: 18px; display: flex; justify-content: center"><sc-if value="{{r.sel}}" hint-placeholder-val="{{ false }}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></sc-if></span>
+            </button>
+          </sc-for>
+          <a href="Servers.dc.html" class="pg-opt" style="min-height: 42px; padding: 0 10px; border-radius: 12px; display: flex; align-items: center; text-decoration: none; font-weight: 600">Все серверы ›</a>
+        </div>
+      </sc-if>
+    </section>
+
+    <section aria-label="Скорость" style="margin: {{dev.gap}} {{dev.mx}} 0; padding: 10px 6px; border-radius: 18px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 23, 42, 0.08); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr))">
+      <sc-for list="{{stats}}" as="m" hint-placeholder-count="3">
+        <div style="padding: 2px 10px; display: flex; flex-direction: column; align-items: center; gap: 2px; border-left: {{m.sep}}">
+          <span style="font-size: 11px; font-weight: 600; color: #4B5565">{{m.k}}</span>
+          <span style="font-family: {{dev.mono}}; font-size: 17px; font-weight: 600; color: {{m.c}}">{{m.v}}</span>
+          <span style="font-size: 11px; color: #4B5565">{{m.u}}</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <div style="flex: 1"></div>
+
+    <footer style="position: absolute; left: 0; right: 0; bottom: {{dev.foot}}; height: 150px; pointer-events: none">
+      <svg width="{{dev.w}}" height="150" viewBox="0 0 {{dev.w}} 150" aria-hidden="true" style="position: absolute; left: 0; top: 0; display: block; overflow: visible; filter: drop-shadow(0 6px 18px rgba(15, 23, 42, 0.14))"><path d="{{dev.island}}" fill="#FFFFFF" stroke="rgba(15, 23, 42, 0.06)" stroke-width="1" style="pointer-events: auto"></path></svg>
+
+      <nav aria-label="Главное меню" style="position: absolute; left: {{dev.isl}}; right: {{dev.isl}}; top: 70px; bottom: 12px; display: grid; grid-template-columns: {{dev.navCols}}; padding: {{dev.navPad}}; pointer-events: auto">
+        <sc-for list="{{navL}}" as="n" hint-placeholder-count="2">
+          <a href="{{n.href}}" class="pg-nav" aria-current="{{n.cur}}" style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; text-decoration: none; color: {{n.color}}; font-size: {{dev.navFs}}; font-weight: {{n.weight}}; line-height: 14px; white-space: nowrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.shape}}" fill="{{n.fill}}"></path><path d="{{n.detail}}"></path></svg>
+            {{n.label}}
+          </a>
+        </sc-for>
+        <span style="display: flex; align-items: flex-end; justify-content: center; font-size: 12px; line-height: 14px; font-weight: 700; color: {{st.color}}; white-space: nowrap">{{st.label}}</span>
+        <sc-for list="{{navR}}" as="n" hint-placeholder-count="2">
+          <a href="{{n.href}}" class="pg-nav" aria-current="{{n.cur}}" style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; text-decoration: none; color: {{n.color}}; font-size: {{dev.navFs}}; font-weight: {{n.weight}}; line-height: 14px; white-space: nowrap">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.shape}}" fill="{{n.fill}}"></path><path d="{{n.detail}}"></path></svg>
+            {{n.label}}
+          </a>
+        </sc-for>
+      </nav>
+
+      <div style="position: absolute; top: 30px; left: {{dev.btnL}}; width: 80px; height: 80px">
+        <sc-if value="{{st.spin}}" hint-placeholder-val="{{ false }}">
+          <div class="pg-spin" aria-hidden="true" style="position: absolute; inset: 0; border-radius: 50%; border: 4px solid transparent; border-top-color: #2563EB; border-right-color: #2563EB; box-sizing: border-box; z-index: 2; pointer-events: none"></div>
+        </sc-if>
+        <button type="button" onClick="{{toggle}}" aria-label="{{st.aria}}" style="position: absolute; inset: 0; border-radius: 50%; border: 4px solid {{st.ring}}; background: #FFFFFF; color: {{st.ringIcon}}; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px {{st.glow}}; transition: border-color 0.25s ease, box-shadow 0.25s ease; pointer-events: auto">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="{{st.btnMark}}"></path></svg>
+        </button>
+      </div>
+    </footer>
+    <sc-if value="{{dev.mobile}}" hint-placeholder-val="{{ false }}">
+      <span aria-hidden="true" style="position: absolute; left: 50%; bottom: 8px; width: {{dev.barW}}; height: {{dev.barH}}; margin-left: {{dev.barML}}; border-radius: 99px; background: #0B0F19; opacity: {{dev.barO}}"></span>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["off","connecting","connected","reconnecting","blocked","error"],"default":"connected"},"network":{"editor":"enum","options":["home","long","noname","open","hotspot","ethernet","usb","mobile","none"],"default":"home"},"mode":{"editor":"enum","options":["vpn","proxy"],"default":"vpn"},"captive":{"editor":"boolean","default":false},"device":{"editor":"enum","options":["desktop","android","ios"],"default":"desktop"},"$preview":{"width":440,"height":760}}'>
+class Component extends DCLogic {
+  componentDidMount() {
+    this.iv = setInterval(() => this.setState({ tick: ((this.state && this.state.tick) || 0) + 1 }), 1000);
+  }
+  componentDidUpdate(prev) {
+    if (prev.state !== this.props.state && this.state && this.state.s) this.setState({ s: null });
+  }
+  componentWillUnmount() { clearInterval(this.iv); clearTimeout(this.t); clearTimeout(this.rt); clearTimeout(this.ct); clearTimeout(this.kt); }
+  go(s, extra) {
+    clearTimeout(this.t);
+    this.setState(Object.assign({ s: s }, extra || {}));
+    if (s === 'connecting') this.t = setTimeout(() => this.setState({ s: 'connected', since: (this.state && this.state.tick) || 0, chk: 'fresh' }), 1600);
+  }
+  renderVals() {
+    const ui = this.state || {};
+    const s = ui.s || this.props.state || 'connected';
+    const tick = ui.tick || 0;
+    const on = s === 'connected';
+    const wait = s === 'connecting' || s === 'reconnecting';
+    const stop = s === 'blocked' || s === 'error';
+    const SV = [
+      { id: 'nl1', cc: 'NL', name: 'Нидерланды 01', city: 'Амстердам', proto: 'VLESS · REALITY', ip: '203.0.113.24', port: 443, ms: 42 },
+      { id: 'fi1', cc: 'FI', name: 'Финляндия 01', city: 'Хельсинки', proto: 'Hysteria2', ip: '203.0.113.57', port: 8443, ms: 38 },
+      { id: 'de2', cc: 'DE', name: 'Германия 02', city: 'Франкфурт', proto: 'VLESS · XHTTP', ip: '198.51.100.140', port: 443, ms: 51 },
+      { id: 'se1', cc: 'SE', name: 'Швеция 01', city: 'Стокгольм', proto: 'WireGuard', ip: '192.0.2.33', port: 51820, ms: 57 }
+    ];
+    const sel = ui.sel || 'nl1';
+    const c = SV.find((x) => x.id === sel) || SV[0];
+    const hide = !!ui.hide;
+    const mask = (ip) => (hide ? '•••.•••.•••.•••' : ip);
+    const fmt = (n) => [Math.floor(n / 3600), Math.floor(n / 60) % 60, n % 60].map((x) => String(x).padStart(2, '0')).join(':');
+    const since = ui.since == null ? -8047 : ui.since;
+    const D = [24.6, 31.2, 18.9, 27.4, 22.1, 29.8], U = [3.1, 2.4, 4.0, 2.8, 3.5, 2.2], J = [0, 1, -1, 2, 0, -2];
+    const i = tick % 6;
+    const CHECK = 'M5 12.5l4.5 4.5L19 7.5', DASH = 'M6 12h12', DOTS = 'M7 12h.01M12 12h.01M17 12h.01';
+    const OKM = 'M8.8 12.2l2.2 2.2 4.4-4.6', XM = 'M9.5 9.5l5 5M14.5 9.5l-5 5', EXM = 'M12 8v4.5M12 15.6h.01', DM = 'M8.5 12h.01M12 12h.01M15.5 12h.01';
+    const chk = ui.chk || 'idle';
+    const S = {
+      connected: { title: 'IP скрыт', sub: 'Трафик зашифрован', color: '#15803D', tint: 'rgba(22, 163, 74, 0.12)', mark: OKM, ring: '#16A34A', ringIcon: '#15803D', glow: 'rgba(22, 163, 74, 0.25)', btnMark: OKM, aria: 'Отключить VPN', label: 'Защищено',
+        checked: chk === 'running' ? 'Проверяем…' : chk === 'fresh' ? 'Проверено только что' : 'Проверено в 18:42' },
+      connecting: { title: 'Подключение…', sub: 'Интернет на паузе, утечки нет', color: '#1D4ED8', tint: 'rgba(37, 99, 235, 0.12)', mark: 'M9 12h6', ring: '#BFDBFE', ringIcon: '#2563EB', glow: 'rgba(37, 99, 235, 0.22)', btnMark: DM, aria: 'Отменить подключение', label: 'Подключение', spin: true,
+        checked: 'Проверка начнётся после подключения' },
+      reconnecting: { title: 'Переподключение…', sub: 'К тому же серверу · попытка 3', color: '#1D4ED8', tint: 'rgba(37, 99, 235, 0.12)', mark: 'M9 12h6', ring: '#BFDBFE', ringIcon: '#2563EB', glow: 'rgba(37, 99, 235, 0.22)', btnMark: DM, aria: 'Отключить VPN', label: 'Подключение', spin: true,
+        checked: 'Трафик на паузе до восстановления' },
+      blocked: { title: 'Интернет заблокирован', sub: 'Сервер не отвечает', color: '#C2410C', tint: 'rgba(234, 88, 12, 0.10)', mark: EXM, ring: '#EA580C', ringIcon: '#C2410C', glow: 'rgba(234, 88, 12, 0.22)', btnMark: EXM, aria: 'Отключить защиту', label: 'Блокировка',
+        checked: 'Другой сервер сам не выберется' },
+      error: { title: 'Ошибка службы', sub: 'PGC-SVC-002 · трафик заблокирован', color: '#B91C1C', tint: 'rgba(185, 28, 28, 0.08)', mark: EXM, ring: '#DC2626', ringIcon: '#DC2626', glow: 'rgba(220, 38, 38, 0.20)', btnMark: EXM, aria: 'Повторить запуск', label: 'Ошибка',
+        checked: 'Подробности — в «Проверке»' },
+      off: { title: 'IP открыт', sub: 'Без шифрования', color: '#B91C1C', tint: 'rgba(185, 28, 28, 0.08)', mark: XM, ring: '#DC2626', ringIcon: '#DC2626', glow: 'rgba(220, 38, 38, 0.20)', btnMark: XM, aria: 'Подключить VPN', label: 'Выключено',
+        checked: 'Включите VPN, чтобы проверить защиту' }
+    };
+    const st = Object.assign({ spin: false }, S[s] || S.connected);
+    st.hasTimer = on;
+    st.timer = on ? fmt(tick - since) : '';
+    const mode = this.props.mode || 'vpn';
+    const proxy = mode === 'proxy' && on;
+    const captive = !proxy && on && (this.props.captive === true || this.props.captive === 'true');
+    const AMB = { color: '#B45309', tint: 'rgba(245, 158, 11, 0.14)', mark: EXM, ring: '#F59E0B', ringIcon: '#B45309', glow: 'rgba(245, 158, 11, 0.28)', btnMark: EXM };
+    if (proxy) Object.assign(st, AMB, { title: 'Прокси включён', sub: 'Защищён не весь трафик', label: 'Прокси', aria: 'Отключить прокси', checked: 'Блок при обрыве в режиме прокси недоступен' });
+    if (captive) Object.assign(st, AMB, { title: 'Защита на паузе', sub: 'Вход в Wi-Fi отеля или кафе', label: 'Пауза', aria: 'Вернуть защиту', checked: 'Проверки возобновятся после паузы', hasTimer: false, timer: '' });
+    const PX = { all: 'только прокси', dns: 'частично', v6: 'не контролируется', ks: 'недоступен' };
+    const CP = { all: 'напрямую', dns: 'у провайдера', v6: 'открыт', ks: 'на паузе' };
+    const capLeft = 299 - (tick % 300);
+    const cap = { show: captive, left: Math.floor(capLeft / 60) + ':' + String(capLeft % 60).padStart(2, '0') };
+    const recheck = () => {
+      clearTimeout(this.kt);
+      this.setState({ chk: 'running' });
+      this.kt = setTimeout(() => this.setState({ chk: 'fresh' }), 1100);
+    };
+    const act = captive ? { show: false, label: '', color: '#1D4ED8', run: () => {} } : on ? { show: chk !== 'running', label: 'Проверить', color: '#1D4ED8', run: recheck }
+      : s === 'blocked' ? { show: true, label: 'Повторить', color: '#C2410C', run: () => this.go('connecting') }
+      : s === 'error' ? { show: true, label: 'Перезапустить службу', color: '#B91C1C', run: () => this.go('connecting') }
+      : { show: false, label: '', color: '#1D4ED8', run: () => {} };
+    const DEF = [
+      { id: 'all', k: 'Весь трафик', on: 'через туннель', wait: 'поднимается', stop: 'остановлен', off: 'идёт напрямую', text: 'Браузеры, терминал, Git, VS Code и фоновые службы Windows идут через VPN, а не только браузер.' },
+      { id: 'dns', k: 'DNS скрыт', on: 'запросы в туннеле', wait: 'заблокирован', stop: 'утечки нет', off: 'видит провайдер', text: 'Провайдер не видит, какие сайты вы открываете: запросы адресов сайтов идут через туннель.' },
+      { id: 'v6', k: 'IPv6 закрыт', on: 'нет обхода', wait: 'заблокирован', stop: 'нет обхода', off: 'не контролируется', text: 'Сервер без IPv6, поэтому IPv6 вне туннеля заблокирован. Иначе Windows отправила бы его напрямую с вашим адресом.' },
+      { id: 'ks', k: 'Блок при обрыве', on: 'Kill Switch вкл', wait: 'уже действует', stop: 'сработал', off: 'выключен', text: 'Если связь с сервером пропадёт, интернет блокируется, а не уходит напрямую с реальным IP.' }
+    ];
+    const pickId = ui.pick || null;
+    const LOOK = {
+      ok: { tint: 'rgba(22, 163, 74, 0.08)', fg: '#166534', dot: '#16A34A', icon: CHECK },
+      wait: { tint: 'rgba(37, 99, 235, 0.08)', fg: '#1E40AF', dot: '#3B82F6', icon: DOTS },
+      stop: { tint: 'rgba(234, 88, 12, 0.09)', fg: '#9A3412', dot: '#EA580C', icon: DASH },
+      off: { tint: 'rgba(185, 28, 28, 0.06)', fg: '#991B1B', dot: '#DC2626', icon: DASH },
+      warn: { tint: 'rgba(245, 158, 11, 0.12)', fg: '#92400E', dot: '#F59E0B', icon: 'M12 7v6M12 17h.01' }
+    };
+    const chipPad = this.props.device === 'android' || this.props.device === 'ios' ? '8px' : '10px';
+    const checks = DEF.map((d) => {
+      const k = (proxy || captive) ? 'warn' : on ? 'ok' : wait ? (d.id === 'all' ? 'wait' : 'ok') : stop ? (d.id === 'all' ? 'stop' : 'ok') : 'off';
+      const L = LOOK[k];
+      const isSel = pickId === d.id;
+      return {
+        k: d.k, v: proxy ? PX[d.id] : captive ? CP[d.id] : on ? d.on : wait ? (d.id === 'all' ? d.wait : d.wait) : stop ? d.stop : d.off,
+        fg: L.fg, dot: L.dot, icon: L.icon, aria: isSel ? 'true' : 'false',
+        style: 'height: 46px; padding: 0 ' + chipPad + '; border-radius: 12px; font: inherit; cursor: pointer; display: flex; align-items: center; gap: 8px; background: ' + L.tint + '; border: 1.5px solid ' + (isSel ? '#2563EB' : 'transparent') + ';',
+        pick: () => this.setState({ pick: isSel ? null : d.id })
+      };
+    });
+    const pd = DEF.find((d) => d.id === pickId);
+    const info = pd ? { show: true, title: pd.k, text: pd.text } : { show: false, title: '', text: '' };
+    const stats = [
+      { k: 'Пинг', v: on ? String(c.ms + J[i]) : '—', u: 'мс', c: on ? '#15803D' : '#4B5565', sep: 'none' },
+      { k: '↓ Загрузка', v: on ? D[i].toFixed(1) : '—', u: 'Мбит/с', c: '#0B0F19', sep: '1px solid rgba(15, 23, 42, 0.08)' },
+      { k: '↑ Отдача', v: on ? U[i].toFixed(1) : '—', u: 'Мбит/с', c: '#0B0F19', sep: '1px solid rgba(15, 23, 42, 0.08)' }
+    ];
+    const open = !!ui.open;
+    const servers = [c].concat(SV.filter((x) => x.id !== c.id)).slice(0, 3).map((x) => ({
+      cc: x.cc, name: x.name, addr: mask(x.ip) + ' · ' + x.proto, lat: x.ms + ' мс', sel: x.id === sel, aria: x.id === sel ? 'true' : 'false',
+      pick: () => {
+        if (x.id === sel) { this.setState({ open: false }); return; }
+        if (s === 'off') this.setState({ sel: x.id, open: false });
+        else this.go('connecting', { sel: x.id, open: false });
+      }
+    }));
+    const WIFI = 'M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01';
+    const NI = {
+      wifi: WIFI,
+      eth: 'M4 7h16v10H4zM8 17v3M12 17v3M16 17v3M8 11h8',
+      usb: 'M12 3v13M9 6l3-3 3 3M7 10v2.5l5 3.5 5-3.5V10M12 21.5a1.5 1.5 0 1 0 0-3a1.5 1.5 0 0 0 0 3z',
+      cell: 'M5 19v-3M10 19v-6M15 19v-9M20 19V5',
+      none: WIFI + 'M3 3l18 18'
+    };
+    const cut = (t, n) => (t.length > n ? t.slice(0, n) + '…' : t);
+    const NETS = {
+      home: { kind: 'wifi', ssid: 'Home', pre: 'Wi-Fi' },
+      long: { kind: 'wifi', ssid: 'Office_5G_Floor3_Guest_Network', pre: 'Wi-Fi' },
+      noname: { kind: 'wifi', ssid: null, pre: 'Wi-Fi' },
+      open: { kind: 'wifi', ssid: 'Cafe_Free', pre: 'Открытый Wi-Fi', warn: true },
+      hotspot: { kind: 'wifi', ssid: 'Мой iPhone', pre: 'Wi-Fi', post: ' · лимитная' },
+      ethernet: { kind: 'eth', ssid: null, pre: 'Ethernet' },
+      usb: { kind: 'usb', ssid: null, pre: 'USB-модем' },
+      mobile: { kind: 'cell', ssid: null, pre: 'Мобильная сеть' },
+      none: { kind: 'none', ssid: null, pre: 'Нет сети', bad: true }
+    };
+    const nd = NETS[this.props.network] || NETS.home;
+    const net = {
+      icon: NI[nd.kind],
+      full: nd.pre + (nd.ssid ? ' «' + nd.ssid + '»' : '') + (nd.post || ''),
+      label: nd.pre + (nd.ssid ? ' «' + cut(nd.ssid, 20) + '»' : '') + (nd.post || ''),
+      color: nd.bad ? '#B91C1C' : nd.warn ? '#B45309' : '#4B5565',
+      weight: nd.bad || nd.warn ? 600 : 400
+    };
+    const ICONS = {
+      home: { shape: 'M4 5.5A1.5 1.5 0 0 1 5.5 4h3A1.5 1.5 0 0 1 10 5.5v3A1.5 1.5 0 0 1 8.5 10h-3A1.5 1.5 0 0 1 4 8.5zM14 5.5A1.5 1.5 0 0 1 15.5 4h3A1.5 1.5 0 0 1 20 5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 14 8.5zM4 15.5A1.5 1.5 0 0 1 5.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3A1.5 1.5 0 0 1 8.5 20h-3A1.5 1.5 0 0 1 4 18.5zM14 15.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5z', detail: 'M-9 -9' },
+      servers: { shape: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 15a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z', detail: 'M7.2 7.5h1M7.2 16.5h1M11.5 7.5h5M11.5 16.5h5' },
+      diag: { shape: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z', detail: 'M6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5' },
+      settings: { shape: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z', detail: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z' }
+    };
+    const item = (id, label, href) => {
+      const active = id === 'home';
+      return {
+        label, href, shape: ICONS[id].shape, detail: ICONS[id].detail, cur: active ? 'page' : 'false',
+        fill: active ? 'rgba(37, 99, 235, 0.16)' : 'none',
+        color: active ? '#2563EB' : '#4B5565', weight: active ? 600 : 500
+      };
+    };
+    const DEV = {
+      desktop: { w: 440, h: '760px', gap: '10px', foot: '0px', toastTop: '56px' },
+      android: { w: 384, h: '832px', gap: '12px', foot: '14px', toastTop: '96px', barW: '108px', barH: '4px', barML: '-54px', barO: '0.55' },
+      ios: { w: 393, h: '852px', gap: '12px', foot: '20px', toastTop: '110px', barW: '140px', barH: '5px', barML: '-70px', barO: '0.9' }
+    };
+    const dk = DEV[this.props.device] ? this.props.device : 'desktop';
+    const dev = Object.assign({ ios: dk === 'ios', android: dk === 'android', mobile: dk !== 'desktop' }, DEV[dk]);
+    const m = dev.mobile ? 14 : 24;
+    const cx = dev.w / 2, R = dev.w - m, f = (n) => String(Math.round(n * 100) / 100);
+    dev.mx = dev.mobile ? '16px' : '20px';
+    const FONTS = {
+      desktop: ['Inter, system-ui, sans-serif', "'JetBrains Mono', monospace"],
+      android: ['Roboto, system-ui, sans-serif', "'Roboto Mono', monospace"],
+      ios: ["-apple-system, 'SF Pro Text', Inter, system-ui, sans-serif", "ui-monospace, 'SF Mono', Menlo, 'JetBrains Mono', monospace"]
+    };
+    dev.font = FONTS[dk][0];
+    dev.mono = FONTS[dk][1];
+    dev.cardPad = dev.mobile ? '14px 12px 12px 12px' : '14px 14px 12px 16px';
+    dev.isl = m + 'px';
+    dev.navCols = dev.mobile ? '1fr 1fr 76px 1fr 1fr' : '1fr 1fr 92px 1fr 1fr';
+    dev.navPad = dev.mobile ? '0 12px 9px' : '0 12px 9px';
+    dev.navFs = dev.mobile ? '10.5px' : '11.5px';
+    dev.wpx = dev.w + 'px';
+    dev.btnL = (cx - 40) + 'px';
+    dev.island = 'M' + (m + 26) + ' 70 H' + f(cx - 63.5) + ' A18 18 0 0 0 ' + f(cx - 46.18) + ' 56.91 A48 48 0 0 1 ' + f(cx + 46.18) + ' 56.91 A18 18 0 0 0 ' + f(cx + 63.5) +
+      ' 70 H' + f(R - 26) + ' A26 26 0 0 1 ' + f(R) + ' 96 V112 A26 26 0 0 1 ' + f(R - 26) + ' 138 H' + (m + 26) + ' A26 26 0 0 1 ' + m + ' 112 V96 A26 26 0 0 1 ' + (m + 26) + ' 70 Z';
+    return {
+      dev, st, act, checks, info, stats, servers, open, net, cap,
+      navL: [item('home', 'Главная', 'Main.dc.html'), item('servers', 'Серверы', 'Servers.dc.html')],
+      navR: [item('diag', 'Проверка', 'Diagnostics.dc.html'), item('settings', 'Настройки', 'Settings.dc.html')],
+      cur: { name: c.cc + ' · ' + c.name, meta: c.proto + ' · порт ' + c.port },
+      webIp: captive ? mask('198.51.100.7') : on ? mask(c.ip) : s === 'off' ? mask('198.51.100.7') : '—',
+      webMeta: captive ? 'Пауза для входа в Wi-Fi · ваш провайдер' : proxy ? c.city + ' · только для программ через прокси' : on ? c.city + ' · дата-центр · AS64500' : s === 'off' ? 'Ваш провайдер · AS64496' : stop ? 'Трафик остановлен — утечки нет' : 'Нет доступа, пока туннель не готов',
+      realIp: mask('198.51.100.7'), realNote: captive ? 'виден сайтам' : on ? 'скрыт' : s === 'off' ? 'виден сайтам' : 'заблокирован',
+      openAria: open ? 'true' : 'false', chev: open ? 180 : 0, menuBorder: open ? '#2563EB' : 'rgba(15, 23, 42, 0.08)',
+      toggleMenu: () => this.setState({ open: !open }),
+      toggle: () => this.go(s === 'off' || s === 'error' ? 'connecting' : 'off'),
+      spin: ui.ref ? 'pg-spin' : '',
+      toast: !!ui.toast,
+      refresh: () => {
+        clearTimeout(this.rt);
+        this.setState({ ref: true, toast: false });
+        this.rt = setTimeout(() => {
+          this.setState({ ref: false, toast: true });
+          this.rt = setTimeout(() => this.setState({ toast: false }), 1800);
+        }, 900);
+      },
+      copied: !!ui.copied, notCopied: !ui.copied,
+      copy: () => { clearTimeout(this.ct); this.setState({ copied: true }); this.ct = setTimeout(() => this.setState({ copied: false }), 1200); },
+      eye: () => this.setState({ hide: !hide }),
+      eyeLabel: hide ? 'Показать IP' : 'Скрыть IP',
+      eyeSlash: hide ? 'M3 3l18 18' : 'M12 12h0'
+    };
+  }
+}
+</script>
+</body>
+</html>

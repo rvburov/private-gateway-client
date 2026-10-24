@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Состояния главного экрана — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+a{color:#2563EB}a:hover{color:#1D4ED8}
+</style>
+</helmet>
+<div style="width: 2424px; height: 940px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #14171F; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 20px">
+  <div>
+    <h1 style="margin: 0; font-size: 24px; font-weight: 600">Состояния главного экрана</h1>
+    <p style="margin: 6px 0 0; color: #3F4757">«Подключено» — на артборде 1. Во всех состояниях, кроме «Отключено», интернет без туннеля заблокирован. Ни одно состояние не выбирает другой сервер.</p>
+  </div>
+  <div style="display: flex; gap: 40px">
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Off · Отключено</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(20, 23, 31, 0.12)"><dc-import name="Main" state="off" hint-size="440px,760px"></dc-import></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Connecting · Подключение</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(20, 23, 31, 0.12)"><dc-import name="Main" state="connecting" hint-size="440px,760px"></dc-import></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Reconnecting · Переподключение</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(20, 23, 31, 0.12)"><dc-import name="Main" state="reconnecting" hint-size="440px,760px"></dc-import></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Blocked · Сервер недоступен</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(20, 23, 31, 0.12)"><dc-import name="Main" state="blocked" hint-size="440px,760px"></dc-import></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 10px">
+      <span style="font-weight: 600">Error · Ошибка службы</span>
+      <div style="border-radius: 12px; overflow: hidden; box-shadow: 0 6px 20px rgba(20, 23, 31, 0.12)"><dc-import name="Main" state="error" hint-size="440px,760px"></dc-import></div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":2424,"height":940}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
