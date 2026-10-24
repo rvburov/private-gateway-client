@@ -14,12 +14,22 @@
       <conv:ToneBrushConverter x:Key="ToneBrush" />
       <conv:CheckBrushConverter x:Key="CheckBrush" />
       <conv:IconKeyConverter x:Key="IconKey" />
+      <conv:UpperConverter x:Key="Upper" />
     </ResourceDictionary>
   </Application.Resources>
 
   <Application.DataTemplates>
     <DataTemplate DataType="vm:MainPageViewModel">
       <views:MainPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ServersPageViewModel">
+      <views:ServersPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DialogViewModel">
+      <views:DialogView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ServerCardViewModel">
+      <views:ServerCardView />
     </DataTemplate>
     <DataTemplate DataType="vm:SettingsPageViewModel">
       <views:SettingsPage />

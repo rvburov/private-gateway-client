@@ -98,3 +98,13 @@ public sealed class IconKeyConverter : IValueConverter
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
         throw new NotSupportedException();
 }
+
+/// <summary>Рубрика заглавными буквами (overline макета) для текста из привязки, по правилам языка.</summary>
+public sealed class UpperConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        value is string text ? text.ToUpper(Localization.Loc.Instance.Culture) : value;
+
+    public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture) =>
+        throw new NotSupportedException();
+}

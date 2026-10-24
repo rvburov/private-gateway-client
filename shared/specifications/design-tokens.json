@@ -1,6 +1,6 @@
 {
   "name": "Private Gateway design tokens",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "source": "docs/design (макет v1.0, согласован 2026-10-23)",
   "theme": "light",
   "targets": {
@@ -16,7 +16,11 @@
     },
     "surface": {
       "card": "rgba(255, 255, 255, 0.85)",
-      "solid": "#FFFFFF"
+      "solid": "#FFFFFF",
+      "inset": "rgba(15, 23, 42, 0.03)"
+    },
+    "overlay": {
+      "scrim": "rgba(15, 23, 42, 0.30)"
     },
     "text": {
       "primary": "#0B0F19",
@@ -25,20 +29,28 @@
     },
     "line": {
       "border": "rgba(15, 23, 42, 0.08)",
-      "divider": "rgba(15, 23, 42, 0.07)"
+      "divider": "rgba(15, 23, 42, 0.07)",
+      "strong": "rgba(15, 23, 42, 0.14)"
     },
     "accent": {
       "base": "#2563EB",
       "text": "#1D4ED8",
       "tint": "rgba(37, 99, 235, 0.10)",
-      "navActiveFill": "rgba(37, 99, 235, 0.16)"
+      "navActiveFill": "rgba(37, 99, 235, 0.16)",
+      "line": "rgba(37, 99, 235, 0.16)"
     },
     "focus": {
       "ring": "#93C5FD"
     },
     "control": {
       "trackOff": "#CBD5E1",
-      "segmentTrack": "rgba(15, 23, 42, 0.05)"
+      "segmentTrack": "rgba(15, 23, 42, 0.05)",
+      "checkboxBorder": "#9AA3B2",
+      "grabber": "#C3CAD6"
+    },
+    "favorite": {
+      "stroke": "#D97706",
+      "fill": "#FBBF24"
     },
     "decor": {
       "blob1": "rgba(147, 197, 253, 0.55)",
@@ -46,10 +58,10 @@
       "blob3": "rgba(196, 181, 253, 0.45)"
     },
     "status": {
-      "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)" },
+      "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)", "badge": "#166534", "line": "rgba(22, 163, 74, 0.35)" },
       "warning": { "base": "#EA580C", "text": "#C2410C", "tint": "rgba(234, 88, 12, 0.12)" },
       "caution": { "base": "#F59E0B", "text": "#B45309", "tint": "rgba(245, 158, 11, 0.14)" },
-      "danger":  { "base": "#DC2626", "text": "#B91C1C", "tint": "rgba(185, 28, 28, 0.08)" }
+      "danger":  { "base": "#DC2626", "text": "#B91C1C", "tint": "rgba(185, 28, 28, 0.08)", "line": "rgba(220, 38, 38, 0.35)" }
     }
   },
 
@@ -109,7 +121,10 @@
   "shadow": {
     "card": ["0 1 2 rgba(15, 23, 42, 0.04)", "0 8 24 rgba(15, 23, 42, 0.06)"],
     "popup": ["0 16 40 rgba(15, 23, 42, 0.20)"],
-    "island": ["0 6 18 rgba(15, 23, 42, 0.14)"]
+    "island": ["0 6 18 rgba(15, 23, 42, 0.14)"],
+    "selected": ["0 4 14 rgba(22, 163, 74, 0.12)"],
+    "sheet": ["0 -12 40 rgba(15, 23, 42, 0.20)"],
+    "dialog": ["0 20 50 rgba(15, 23, 42, 0.30)"]
   },
 
   "glass": {

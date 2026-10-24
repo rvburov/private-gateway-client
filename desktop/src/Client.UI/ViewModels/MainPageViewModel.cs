@@ -379,18 +379,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     private static string Describe(ServerProfile server, bool withPort)
     {
-        var parts = new List<string> { ServerFacts.ProtocolName(server.Protocol) };
-        if (ServerFacts.SecurityName(server.Security) is { } security)
-        {
-            parts.Add(security);
-        }
-
-        if (withPort)
-        {
-            parts.Add(Loc.Instance.Format("server.port", server.Port));
-        }
-
-        return string.Join(" · ", parts);
+        var summary = ServerFacts.Summary(server);
+        return withPort ? summary + " · " + Loc.Instance.Format("server.port", server.Port) : summary;
     }
 
     private static string Cut(string text, int max) => text.Length > max ? text[..max] + "…" : text;

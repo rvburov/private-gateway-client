@@ -35,6 +35,23 @@ public class SimulatedGatewayClientTests
     }
 
     [Fact]
+    public async Task Server_that_does_not_answer_ends_in_block_without_exit()
+    {
+        var time = new FakeTimeProvider();
+        using var gateway = new SimulatedGatewayClient(time);
+
+        var connect = gateway.ConnectAsync(Server with { Id = "tr", LatencyMs = null }, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+
+        var status = gateway.Status;
+        status.State.ShouldBe(ConnectionState.Blocked);
+        status.ServerId.ShouldBe("tr", "другой сервер сам не выбирается");
+        status.Exit.Ip.ShouldBeNull();
+        status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Blocked));
+    }
+
+    [Fact]
     public async Task Disconnect_while_connecting_cancels_and_stays_off()
     {
         var time = new FakeTimeProvider();

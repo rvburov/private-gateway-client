@@ -34,4 +34,46 @@ public static class ServerFacts
         TransportSecurity.Tls => "TLS",
         _ => null,
     };
+
+    /// <summary>Имя транспорта для подписи; обычный TCP, UDP и QUIC — null (не пишутся).</summary>
+    public static string? TransportName(string transport) => transport.ToUpperInvariant() switch
+    {
+        "" or "TCP" or "RAW" or "UDP" or "QUIC" => null,
+        "WS" or "WEBSOCKET" => "WS",
+        "GRPC" => "gRPC",
+        "XHTTP" or "SPLITHTTP" => "XHTTP",
+        "HTTPUPGRADE" => "HTTPUpgrade",
+        "H2" or "HTTP" => "HTTP/2",
+        "KCP" or "MKCP" => "mKCP",
+        var other => other,
+    };
+
+    /// <summary>
+    /// Каким ядром служба подключается к серверу (docs/roadmap/DECISIONS.md): Xray-core — основное,
+    /// Hysteria2, TUIC и WireGuard — через sing-box.
+    /// </summary>
+    public static string CoreName(ProxyProtocol protocol) => protocol switch
+    {
+        ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic or ProxyProtocol.WireGuard => "sing-box",
+        _ => "Xray-core",
+    };
+
+    /// <summary>
+    /// Короткая подпись протокола, как в списке серверов: «VLESS · REALITY», «VLESS · XHTTP»,
+    /// «Trojan · WS», «Hysteria2». Второе слово — то, что отличает сервер: REALITY, иначе
+    /// транспорт, иначе TLS у протоколов, которые бывают и без него.
+    /// </summary>
+    public static string Summary(ServerProfile server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        // TUIC поддерживается только пятой версии (ядро sing-box) — версию пишем, как в макете.
+        var name = server.Protocol == ProxyProtocol.Tuic ? "TUIC v5" : ProtocolName(server.Protocol);
+        var detail = server.Security == TransportSecurity.Reality
+            ? SecurityName(server.Security)
+            : TransportName(server.Transport)
+              ?? (server.Security == TransportSecurity.Tls && server.Protocol is ProxyProtocol.Vless or ProxyProtocol.Vmess
+                  ? SecurityName(server.Security)
+                  : null);
+        return detail is null ? name : name + " · " + detail;
+    }
 }

@@ -15,17 +15,21 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     public ShellViewModel(
         ProtectionViewModel protection,
         ToastViewModel toast,
+        OverlayViewModel overlay,
         Func<INavigator, MainPageViewModel> mainPage,
+        Func<INavigator, ServersPageViewModel> serversPage,
         Func<INavigator, SettingsPageViewModel> settingsPage)
     {
         ArgumentNullException.ThrowIfNull(mainPage);
+        ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
         Protection = protection;
         Toast = toast;
+        Overlay = overlay;
         _pages = new()
         {
             [Pages.Home] = () => mainPage(this),
-            [Pages.Servers] = () => new StubPageViewModel("page.servers.title"),
+            [Pages.Servers] = () => serversPage(this),
             [Pages.Check] = () => new StubPageViewModel("page.check.title"),
             [Pages.Settings] = () => settingsPage(this),
             [Pages.Add] = () => new StubPageViewModel("page.add.title"),
@@ -42,6 +46,9 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     public ProtectionViewModel Protection { get; }
 
     public ToastViewModel Toast { get; }
+
+    /// <summary>Нижний лист и диалоги поверх окна вместе с островком.</summary>
+    public OverlayViewModel Overlay { get; }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsServers), nameof(IsCheck), nameof(IsSettings))]
@@ -73,6 +80,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             _created[page] = viewModel;
         }
 
+        Overlay.CloseSheet();
         CurrentKey = page;
         CurrentPage = viewModel;
     }

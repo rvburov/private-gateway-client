@@ -69,12 +69,27 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
             }
 
             var now = time.GetUtcNow();
-            _status = _status.MoveTo(ConnectionState.Connected, now) with
+            if (server.LatencyMs is null)
             {
-                Protection = ProtectionChecks.For(ConnectionState.Connected) with { CheckedAt = now },
-                Traffic = new TrafficStats(server.LatencyMs ?? 40, 18.9, 4.0),
-                Exit = new ExitInfo("203.0.113.24", "Амстердам", "дата-центр", "AS64500", _status.Exit.DirectIp),
-            };
+                // Сервер не отвечает (в списке пинг «нет»): как настоящая служба с блоком при обрыве —
+                // интернет перекрыт, другой сервер сам не выбирается, решение за пользователем.
+                _status = _status.MoveTo(ConnectionState.Blocked, now) with
+                {
+                    Protection = ProtectionChecks.For(ConnectionState.Blocked),
+                    Traffic = TrafficStats.Empty,
+                    Exit = new ExitInfo(null, null, null, null, _status.Exit.DirectIp),
+                };
+            }
+            else
+            {
+                _status = _status.MoveTo(ConnectionState.Connected, now) with
+                {
+                    Protection = ProtectionChecks.For(ConnectionState.Connected) with { CheckedAt = now },
+                    Traffic = new TrafficStats(server.LatencyMs.Value, 18.9, 4.0),
+                    // Выход — сам сервер: в демо-данных адреса серверов — IP из диапазонов документации.
+                    Exit = new ExitInfo(server.Host, server.City, "дата-центр", "AS64500", _status.Exit.DirectIp),
+                };
+            }
         }
 
         Raise();

@@ -17,12 +17,18 @@ public sealed partial class ProtectionViewModel : ObservableObject
     private readonly IGatewayClient _gateway;
     private readonly IServerCatalog _catalog;
     private readonly ConnectionController _controller;
+    private readonly OverlayViewModel _overlay;
 
-    public ProtectionViewModel(IGatewayClient gateway, IServerCatalog catalog, ConnectionController controller)
+    public ProtectionViewModel(
+        IGatewayClient gateway,
+        IServerCatalog catalog,
+        ConnectionController controller,
+        OverlayViewModel overlay)
     {
         _gateway = gateway;
         _catalog = catalog;
         _controller = controller;
+        _overlay = overlay;
         Status = gateway.Status;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => Status = status);
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
@@ -62,8 +68,28 @@ public sealed partial class ProtectionViewModel : ObservableObject
         : Loc.Instance["power.action.disconnect"];
 
     // Нажатие доступно и во время подключения — им подключение и прерывают.
+    // При блокировке снять защиту — значит открыть сайтам реальный IP: сначала спросить (доска 18).
     [RelayCommand(AllowConcurrentExecutions = true)]
-    private Task<bool> ToggleAsync() => _controller.ToggleAsync();
+    private async Task<bool> ToggleAsync()
+    {
+        if (Status.State == ConnectionState.Blocked)
+        {
+            var dialog = new DialogViewModel(
+                DialogKind.Warning,
+                "Icon.Shield",
+                "Icon.Mark.Alert",
+                Loc.Instance["dialog.unprotect.title"],
+                Loc.Instance["dialog.unprotect.text"],
+                Loc.Instance["dialog.unprotect.keep"],
+                Loc.Instance["dialog.unprotect.drop"]) { IsSecondaryDanger = true };
+            if (await _overlay.AskAsync(dialog).ConfigureAwait(true) != DialogChoice.Secondary)
+            {
+                return true;
+            }
+        }
+
+        return await _controller.ToggleAsync().ConfigureAwait(true);
+    }
 
     private void Refresh() => OnPropertyChanged(string.Empty);
 }

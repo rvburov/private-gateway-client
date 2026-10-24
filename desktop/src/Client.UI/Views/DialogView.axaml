@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             x:Class="PrivateGateway.Client.UI.Views.DialogView"
+             x:DataType="vm:DialogViewModel">
+  <!-- Диалог подтверждения — docs/design, доска 18. Затемнение и место в окне дает MainWindow. -->
+  <UserControl.Styles>
+    <!-- Значок диалога (доска 18): вопрос — синий, предупреждение — оранжевый, удаление — красный -->
+    <Style Selector="Border.dialogIcon">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.dialogIcon c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <Style Selector="Border.dialogIcon.warning">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+    </Style>
+    <Style Selector="Border.dialogIcon.warning c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+    <Style Selector="Border.dialogIcon.danger">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Tint}" />
+    </Style>
+    <Style Selector="Border.dialogIcon.danger c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Border Padding="20,22,20,18"
+          CornerRadius="24" Background="{StaticResource PgBrush.Surface.Solid}"
+          BoxShadow="{StaticResource PgShadow.Dialog}" AutomationProperties.Name="{Binding Title}">
+    <StackPanel Spacing="12">
+      <Border Classes="dialogIcon" Classes.warning="{Binding IsWarning}" Classes.danger="{Binding IsDanger}"
+              Width="48" Height="48" CornerRadius="16" HorizontalAlignment="Left">
+        <c:Icon Data="{Binding IconKey, Converter={StaticResource IconKey}}"
+                Detail="{Binding DetailKey, Converter={StaticResource IconKey}}"
+                Width="26" Height="26" StrokeThickness="1.9" />
+      </Border>
+      <TextBlock x:Name="DialogTitle" Classes="status" Text="{Binding Title}" TextWrapping="Wrap" />
+      <TextBlock Classes="small" Text="{Binding Text}" TextWrapping="Wrap"
+                 LineHeight="{StaticResource PgLineHeight.Body}" Foreground="{StaticResource PgBrush.Text.Secondary}" />
+      <StackPanel Spacing="8" Margin="0,4,0,0">
+        <Button x:Name="DialogPrimary" Classes="primary" Classes.danger="{Binding IsDanger}" Height="48"
+                HorizontalAlignment="Stretch" FontSize="{StaticResource PgFontSize.Title}"
+                Command="{Binding PrimaryCommand}" Content="{Binding PrimaryText}" />
+        <Button x:Name="DialogSecondary" Classes="secondary" Classes.danger="{Binding IsSecondaryDanger}" Height="46"
+                HorizontalAlignment="Stretch" FontWeight="SemiBold"
+                Command="{Binding SecondaryCommand}" Content="{Binding SecondaryText}" />
+      </StackPanel>
+    </StackPanel>
+  </Border>
+</UserControl>

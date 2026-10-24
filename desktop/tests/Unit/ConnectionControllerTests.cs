@@ -87,12 +87,73 @@ public class ConnectionControllerTests
         gateway.Calls.ShouldBeEmpty();
     }
 
-    private sealed class FakeGateway(ConnectionState state) : IGatewayClient
+    [Fact]
+    public async Task Connect_from_card_selects_the_server_and_turns_protection_on()
+    {
+        var gateway = new FakeGateway(ConnectionState.Off);
+        var catalog = new FakeCatalog(Nl, Fi) { SelectedId = "nl" };
+
+        await new ConnectionController(gateway, catalog).ConnectToAsync("fi", TestContext.Current.CancellationToken);
+
+        catalog.SelectedId.ShouldBe("fi");
+        gateway.Calls.ShouldBe(["connect:fi"]);
+    }
+
+    [Theory]
+    [InlineData(ConnectionState.Connected)]
+    [InlineData(ConnectionState.Connecting)]
+    public async Task Connect_from_card_to_the_server_in_use_does_nothing(ConnectionState state)
+    {
+        var gateway = new FakeGateway(state, "nl");
+        var catalog = new FakeCatalog(Nl, Fi) { SelectedId = "nl" };
+
+        await new ConnectionController(gateway, catalog).ConnectToAsync("nl", TestContext.Current.CancellationToken);
+
+        gateway.Calls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Connect_from_card_after_an_error_retries_the_same_server()
+    {
+        var gateway = new FakeGateway(ConnectionState.Error, "nl");
+        var catalog = new FakeCatalog(Nl, Fi) { SelectedId = "nl" };
+
+        await new ConnectionController(gateway, catalog).ConnectToAsync("nl", TestContext.Current.CancellationToken);
+
+        gateway.Calls.ShouldBe(["connect:nl"]);
+    }
+
+    [Fact]
+    public async Task Removing_the_server_in_use_disconnects_and_leaves_nothing_selected()
+    {
+        var gateway = new FakeGateway(ConnectionState.Connected, "nl");
+        var catalog = new FakeCatalog(Nl, Fi) { SelectedId = "nl" };
+
+        await new ConnectionController(gateway, catalog).RemoveServerAsync("nl", TestContext.Current.CancellationToken);
+
+        gateway.Calls.ShouldBe(["disconnect"], "на другой сервер сами не переходим");
+        catalog.Removed.ShouldBe(["nl"]);
+        catalog.SelectedId.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Removing_another_server_keeps_protection()
+    {
+        var gateway = new FakeGateway(ConnectionState.Connected, "nl");
+        var catalog = new FakeCatalog(Nl, Fi) { SelectedId = "nl" };
+
+        await new ConnectionController(gateway, catalog).RemoveServerAsync("fi", TestContext.Current.CancellationToken);
+
+        gateway.Calls.ShouldBeEmpty();
+        catalog.SelectedId.ShouldBe("nl");
+    }
+
+    private sealed class FakeGateway(ConnectionState state, string? serverId = null) : IGatewayClient
     {
         public List<string> Calls { get; } = [];
 
         public ConnectionStatus Status { get; } =
-            ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state };
+            ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId };
 
         public bool IsSimulated => true;
 
@@ -120,6 +181,8 @@ public class ConnectionControllerTests
 
         public IReadOnlyList<ServerProfile> Servers => servers;
 
+        public IReadOnlyList<ServerSubscription> Subscriptions => [];
+
         public ServerProfile? Selected => servers.FirstOrDefault(s => s.Id == SelectedId);
 
         public event EventHandler? Changed;
@@ -128,6 +191,25 @@ public class ConnectionControllerTests
         {
             SelectedId = serverId;
             Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        public List<string> Removed { get; } = [];
+
+        public void SetFavorite(string serverId, bool isFavorite)
+        {
+        }
+
+        public void Rename(string serverId, string name)
+        {
+        }
+
+        public void Remove(string serverId)
+        {
+            Removed.Add(serverId);
+            if (SelectedId == serverId)
+            {
+                SelectedId = null;
+            }
         }
 
         public Task RefreshAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

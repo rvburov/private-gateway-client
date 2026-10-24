@@ -13,6 +13,10 @@ namespace PrivateGateway.Client.Core.Servers;
 /// <param name="Port">Порт сервера.</param>
 /// <param name="Transport">Транспорт для подписи: tcp, ws, grpc, xhttp…</param>
 /// <param name="LatencyMs">Последний измеренный пинг; null — не мерили или сервер недоступен.</param>
+/// <param name="City">Город для подписи и поиска; null — неизвестен.</param>
+/// <param name="SubscriptionId">Подписка, из которой пришел сервер; null — добавлен ссылкой.</param>
+/// <param name="IsFavorite">Пользователь отметил сервер звездой.</param>
+/// <param name="LastUsedAt">Когда сервер последний раз выбирали; null — не выбирали.</param>
 public sealed record ServerProfile(
     string Id,
     string Name,
@@ -22,4 +26,9 @@ public sealed record ServerProfile(
     string Host,
     int Port,
     string Transport,
-    int? LatencyMs);
+    int? LatencyMs,
+    string? City = null,
+    string? SubscriptionId = null,
+    bool IsFavorite = false,
+    DateTimeOffset? LastUsedAt = null);
+

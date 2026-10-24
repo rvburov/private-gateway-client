@@ -255,4 +255,188 @@
     <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
     <Setter Property="BoxShadow" Value="{StaticResource PgShadow.Card}" />
   </Style>
+  <Style Selector="RadioButton.segment:focus-visible /template/ Border#Plate">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Focus.Ring}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+
+  <!-- Поле без своей рамки: рамку и фон дает обертка (поиск на экране «Серверы») -->
+  <Style Selector="TextBox.bare">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="MinHeight" Value="0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+    <Setter Property="PlaceholderForeground" Value="{StaticResource PgBrush.Text.Muted}" />
+  </Style>
+  <Style Selector="TextBox.bare:pointerover /template/ Border#PART_BorderElement, TextBox.bare:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="TextBox.bare:pointerover, TextBox.bare:focus">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+  </Style>
+
+  <!-- Флажок (доска 24): квадрат 20 со скруглением, отмечен — акцентом с белой галочкой -->
+  <Style Selector="CheckBox.check">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="8,0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border x:Name="Plate" Background="Transparent" CornerRadius="{StaticResource PgRadius.Input}"
+                Padding="{TemplateBinding Padding}">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border x:Name="Box" Width="20" Height="20" CornerRadius="6" BorderThickness="1.5"
+                    BorderBrush="{StaticResource PgBrush.Control.CheckboxBorder}"
+                    Background="{StaticResource PgBrush.Surface.Solid}">
+              <c:Icon x:Name="Mark" Data="{StaticResource Icon.Chip.Ok}" Width="12" Height="12" StrokeThickness="3.4"
+                      Foreground="{StaticResource PgBrush.Surface.Solid}" IsVisible="False" />
+            </Border>
+            <ContentPresenter Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Center"
+                              Content="{TemplateBinding Content}" />
+          </Grid>
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="CheckBox.check:pointerover /template/ Border#Plate">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+  </Style>
+  <Style Selector="CheckBox.check:focus-visible /template/ Border#Plate">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Focus.Ring}" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+  <Style Selector="CheckBox.check:checked /template/ Border#Box">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Base}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+  </Style>
+  <Style Selector="CheckBox.check:checked /template/ c|Icon#Mark">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+
+  <!-- Кнопки действия (доска 24): основная — акцент, второстепенная — белая с рамкой -->
+  <Style Selector="Button.primary, Button.secondary">
+    <Setter Property="MinHeight" Value="40" />
+    <Setter Property="Padding" Value="18,0" />
+    <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button.primary">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Base}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="FontWeight" Value="{StaticResource PgFontWeight.BodyStrong}" />
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Text}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Surface.Solid}" />
+  </Style>
+  <Style Selector="Button.secondary">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Padding" Value="14,0" />
+  </Style>
+  <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Control.TrackOff}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+  </Style>
+  <Style Selector="Button.primary:pressed, Button.secondary:pressed">
+    <Setter Property="RenderTransform" Value="scale(0.98)" />
+  </Style>
+  <Style Selector="Button.primary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Base}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Surface.Solid}" />
+  </Style>
+  <Style Selector="Button.primary:disabled, Button.secondary:disabled">
+    <Setter Property="Opacity" Value="0.45" />
+  </Style>
+  <Style Selector="Button.secondary:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+  </Style>
+
+  <!-- Опасное действие (доска 18): «Удалить» — красная кнопка, «Снять защиту» — красная рамка -->
+  <Style Selector="Button.primary.danger">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Base}" />
+  </Style>
+  <Style Selector="Button.primary.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Text}" />
+  </Style>
+  <Style Selector="Button.secondary.danger">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Danger.Line}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
+  </Style>
+  <Style Selector="Button.secondary.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Danger.Base}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
+  </Style>
+
+  <!-- Плитка действия: иконка над подписью (карточка сервера) -->
+  <Style Selector="Button.tile">
+    <Setter Property="Height" Value="58" />
+    <Setter Property="Padding" Value="4,0" />
+    <Setter Property="CornerRadius" Value="14" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="FontWeight" Value="Normal" />
+  </Style>
+
+  <!-- Поле ввода (доска 24): рамка, при фокусе — акцентом -->
+  <Style Selector="TextBox.input">
+    <Setter Property="MinHeight" Value="44" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+  </Style>
+  <Style Selector="TextBox.input:pointerover /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Control.TrackOff}" />
+  </Style>
+  <Style Selector="TextBox.input:focus /template/ Border#PART_BorderElement">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+    <Setter Property="BorderThickness" Value="1.5" />
+  </Style>
+  <Style Selector="TextBox.input:pointerover, TextBox.input:focus">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+  </Style>
+
+  <!-- Затемнение под листом и диалогом: нажатие по нему закрывает их. Для диктора его нет —
+       то же делают Escape и кнопки «Закрыть», «Отмена». -->
+  <Style Selector="Button.scrim">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Overlay.Scrim}" />
+    <Setter Property="IsTabStop" Value="False" />
+    <Setter Property="AutomationProperties.AccessibilityView" Value="Raw" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}" />
+      </ControlTemplate>
+    </Setter>
+  </Style>
+
+  <!-- Иконка, которая крутится, пока идет действие (обновление серверов) -->
+  <Style Selector="c|Icon.spin">
+    <Style.Animations>
+      <Animation Duration="0:0:0.9" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="RotateTransform.Angle" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="RotateTransform.Angle" Value="360" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
 </Styles>
