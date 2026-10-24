@@ -32,6 +32,23 @@ jobs:
       - name: Тесты
         run: dotnet test --solution PrivateGateway.slnx -c Release --no-build
 
+  worktree:
+    name: Рабочие папки агентов (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        # На Windows — Git Bash: скрипты проекта запускаются в нем (AGENTS.md).
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: scripts/worktree.sh на временном репозитории
+        run: scripts/tests/worktree-smoke.sh
+
   secrets:
     name: Секреты в репозитории
     runs-on: ubuntu-latest
