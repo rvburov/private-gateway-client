@@ -22,10 +22,11 @@ public interface IServerStore
 
     /// <summary>
     /// Сохранить серверы, дубли пропустить. С названием — отдельной группой (профилем), без —
-    /// в «Мои серверы». Если выбранного сервера нет, выбирается первый добавленный.
+    /// в «Мои серверы». Адрес подписки (в нем токен доступа) — секрет группы в хранилище ОС.
+    /// Если выбранного сервера нет, выбирается первый добавленный.
     /// </summary>
     /// <exception cref="InvalidOperationException">Хранилище секретов недоступно — ничего не сохранено.</exception>
-    ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName);
+    ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName, Uri? subscriptionUrl = null);
 
     /// <summary>Полное описание сервера с секретами — для подключения; null — сервера нет.</summary>
     ServerDefinition? Definition(string serverId);

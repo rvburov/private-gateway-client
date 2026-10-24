@@ -1,4 +1,5 @@
 using System.Text.RegularExpressions;
+using Avalonia.Headless.XUnit;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.UI.Localization;
 
@@ -61,6 +62,49 @@ public partial class LocalizationTests
                 Ru.ShouldContainKey($"check.{check}.{value}");
             }
         }
+    }
+
+    [Theory]
+    [InlineData(1, "Добавить 1 сервер")]
+    [InlineData(2, "Добавить 2 сервера")]
+    [InlineData(4, "Добавить 4 сервера")]
+    [InlineData(5, "Добавить 5 серверов")]
+    [InlineData(11, "Добавить 11 серверов")]
+    [InlineData(12, "Добавить 12 серверов")]
+    [InlineData(14, "Добавить 14 серверов")]
+    [InlineData(21, "Добавить 21 сервер")]
+    [InlineData(22, "Добавить 22 сервера")]
+    [InlineData(111, "Добавить 111 серверов")]
+    [InlineData(0, "Добавить 0 серверов")]
+    public void Russian_plural_follows_the_last_digits(int count, string expected)
+    {
+        Loc.Instance.Plural("import.add", count).ShouldBe(expected);
+    }
+
+    // Смена языка доходит до окон из других тестов — только в потоке Avalonia.
+    [AvaloniaFact]
+    public void English_plural_has_one_and_other()
+    {
+        try
+        {
+            Loc.Instance.SetLanguage("en");
+            Loc.Instance.Plural("import.add", 1).ShouldBe("Add 1 server");
+            Loc.Instance.Plural("import.add", 2).ShouldBe("Add 2 servers");
+            Loc.Instance.Plural("import.add", 21).ShouldBe("Add 21 servers");
+        }
+        finally
+        {
+            Loc.Instance.SetLanguage("ru");
+        }
+    }
+
+    [Fact]
+    public void Every_plural_key_has_all_three_forms()
+    {
+        var bases = Ru.Keys.Where(k => k.EndsWith(".one", StringComparison.Ordinal)).Select(k => k[..^4]).ToList();
+
+        bases.ShouldNotBeEmpty();
+        bases.ShouldAllBe(b => Ru.ContainsKey(b + ".few") && Ru.ContainsKey(b + ".many"));
     }
 
     // Ключ целиком; склейки вида "power.label." + состояние проверяет тест по состояниям.

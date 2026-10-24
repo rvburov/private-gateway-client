@@ -179,7 +179,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
     }
 
-    public ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName)
+    public ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName, Uri? subscriptionUrl = null)
     {
         ArgumentNullException.ThrowIfNull(servers);
         if (!_secrets.IsAvailable)
@@ -210,42 +210,60 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 var now = _time.GetUtcNow();
                 using var connection = _database.Open();
                 using var transaction = connection.BeginTransaction();
+                // Записанное в хранилище ОС в этой попытке: при сбое база откатится, а их — удалить.
+                var saved = new List<string>();
                 string? groupId = null;
-                if (!string.IsNullOrWhiteSpace(groupName))
-                {
-                    groupId = "sub-" + Guid.NewGuid().ToString("N");
-                    Run(connection, transaction,
-                        "INSERT INTO subscriptions (id, name, position, updated_at, created_at) "
-                        + "VALUES ($id, $name, (SELECT COALESCE(MAX(position), 0) + 1 FROM subscriptions), $at, $at)",
-                        ("$id", groupId), ("$name", groupName.Trim()), ("$at", Text(now)));
-                }
-
-                var position = Rows.Count == 0 ? 0 : Rows.Max(r => r.Position);
                 var newRows = new List<Row>();
-                foreach (var server in fresh)
+                string? select = null;
+                try
                 {
-                    var id = "srv-" + Guid.NewGuid().ToString("N");
-                    position++;
-                    // Секрет — первым: если хранилище откажет, строки в базе не останется.
-                    _secrets.Save(SecretKey(id), JsonSerializer.Serialize(server.Credentials, Json));
-                    Run(connection, transaction,
-                        "INSERT INTO servers (id, subscription_id, position, definition, created_at) "
-                        + "VALUES ($id, $group, $position, $definition, $at)",
-                        ("$id", id), ("$group", groupId), ("$position", position),
-                        ("$definition", JsonSerializer.Serialize(Stored.From(server), Json)), ("$at", Text(now)));
-                    newRows.Add(new Row(ToProfile(id, Stored.From(server), groupId, null, null, false, null), position, Endpoint(server)));
-                    added++;
+                    if (!string.IsNullOrWhiteSpace(groupName))
+                    {
+                        groupId = "sub-" + Guid.NewGuid().ToString("N");
+                        if (subscriptionUrl is not null)
+                        {
+                            Save(saved, SubscriptionKey(groupId), subscriptionUrl.ToString());
+                        }
+
+                        Run(connection, transaction,
+                            "INSERT INTO subscriptions (id, name, position, updated_at, created_at) "
+                            + "VALUES ($id, $name, (SELECT COALESCE(MAX(position), 0) + 1 FROM subscriptions), $at, $at)",
+                            ("$id", groupId), ("$name", groupName.Trim()), ("$at", Text(now)));
+                    }
+
+                    var position = Rows.Count == 0 ? 0 : Rows.Max(r => r.Position);
+                    foreach (var server in fresh)
+                    {
+                        var id = "srv-" + Guid.NewGuid().ToString("N");
+                        position++;
+                        // Секрет — первым: если хранилище откажет, строки в базе не останется.
+                        Save(saved, SecretKey(id), JsonSerializer.Serialize(server.Credentials, Json));
+                        Run(connection, transaction,
+                            "INSERT INTO servers (id, subscription_id, position, definition, created_at) "
+                            + "VALUES ($id, $group, $position, $definition, $at)",
+                            ("$id", id), ("$group", groupId), ("$position", position),
+                            ("$definition", JsonSerializer.Serialize(Stored.From(server), Json)), ("$at", Text(now)));
+                        newRows.Add(new Row(ToProfile(id, Stored.From(server), groupId, null, null, false, null), position, Endpoint(server)));
+                        added++;
+                    }
+
+                    if (_selectedId is null)
+                    {
+                        select = newRows[0].Profile.Id;
+                        Run(connection, transaction,
+                            "INSERT INTO settings (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                            ("$key", SelectedKey), ("$value", select));
+                    }
+
+                    transaction.Commit();
+                }
+                catch
+                {
+                    saved.ForEach(_secrets.Delete);
+                    throw;
                 }
 
-                if (_selectedId is null)
-                {
-                    _selectedId = newRows[0].Profile.Id;
-                    Run(connection, transaction,
-                        "INSERT INTO settings (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-                        ("$key", SelectedKey), ("$value", _selectedId));
-                }
-
-                transaction.Commit();
+                _selectedId ??= select;
                 Rows.AddRange(newRows);
                 if (groupId is not null)
                 {
@@ -404,6 +422,14 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             LastUsedAt: lastUsedAt);
 
     private static string SecretKey(string serverId) => "server:" + serverId;
+
+    private static string SubscriptionKey(string groupId) => "subscription:" + groupId;
+
+    private void Save(List<string> saved, string key, string secret)
+    {
+        _secrets.Save(key, secret);
+        saved.Add(key);
+    }
 
     private void Replace(Row row) => Rows[Rows.FindIndex(r => r.Profile.Id == row.Profile.Id)] = row;
 

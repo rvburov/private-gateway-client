@@ -5,6 +5,8 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -31,6 +33,12 @@ public abstract class WindowHarness : IDisposable
 
     protected FakeFileSaver Files { get; } = new();
 
+    protected FakeFileOpener OpenFiles { get; } = new();
+
+    protected FakeSecrets Secrets { get; } = new();
+
+    protected FakeDownloader Downloads { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -51,6 +59,9 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<TimeProvider>(Time);
             s.AddSingleton<IClipboardService>(Clipboard);
             s.AddSingleton<IFileSaveService>(Files);
+            s.AddSingleton<IFileOpenService>(OpenFiles);
+            s.AddSingleton<ISecretStore>(Secrets);
+            s.AddSingleton<ISubscriptionDownloader>(Downloads);
         });
         var shell = _services.GetRequiredService<ShellViewModel>();
         var window = new MainWindow { DataContext = shell };
@@ -123,12 +134,65 @@ public abstract class WindowHarness : IDisposable
 
     protected sealed class FakeClipboard : IClipboardService
     {
-        public string? Text { get; private set; }
+        public string? Text { get; set; }
 
         public Task SetTextAsync(string text)
         {
             Text = text;
             return Task.CompletedTask;
+        }
+
+        public Task<string?> GetTextAsync() => Task.FromResult(Text);
+    }
+
+    protected sealed class FakeFileOpener : IFileOpenService
+    {
+        /// <summary>null — как будто пользователь закрыл окно «Открыть».</summary>
+        public (string Name, string Text)? File { get; set; }
+
+        public Task<(string Name, string Text)?> OpenTextAsync() => Task.FromResult(File);
+    }
+
+    /// <summary>Хранилище секретов в памяти: в облаке и на CI без GNOME Keyring настоящего нет.</summary>
+    protected sealed class FakeSecrets : ISecretStore
+    {
+        public Dictionary<string, string> Values { get; } = [];
+
+        public bool Available { get; set; } = true;
+
+        public string Name => "Хранилище для тестов";
+
+        public bool IsAvailable => Available;
+
+        public void Save(string key, string secret) =>
+            Values[key] = Available ? secret : throw new InvalidOperationException("недоступно");
+
+        public string? Read(string key) => Values.GetValueOrDefault(key);
+
+        public void Delete(string key) => Values.Remove(key);
+    }
+
+    /// <summary>Загрузка подписки без сети: адрес → текст или ошибка.</summary>
+    protected sealed class FakeDownloader : ISubscriptionDownloader
+    {
+        public Dictionary<Uri, string> Responses { get; } = [];
+
+        public List<Uri> Requested { get; } = [];
+
+        /// <summary>Ответ, который еще не пришел: тест завершает его сам.</summary>
+        public TaskCompletionSource<string>? Pending { get; set; }
+
+        public Task<string> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
+        {
+            Requested.Add(url);
+            if (Pending is { } pending)
+            {
+                return pending.Task;
+            }
+
+            return Responses.TryGetValue(url, out var text)
+                ? Task.FromResult(text)
+                : Task.FromException<string>(new SubscriptionDownloadException(DownloadFailure.Status, 404));
         }
     }
 }

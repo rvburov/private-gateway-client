@@ -1,10 +1,12 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Infrastructure.Demo;
+using PrivateGateway.Client.Infrastructure.Import;
 using PrivateGateway.Client.Infrastructure.Logging;
 using PrivateGateway.Client.Infrastructure.Secrets;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -37,6 +39,8 @@ public static class InfrastructureModule
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());
         services.AddSingleton<DemoServerCatalog>();
         services.AddSingleton<IServerCatalog, UserOrDemoCatalog>();
+        services.AddSingleton<ISubscriptionDownloader>(sp =>
+            new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>()));
         return services;
     }
 }

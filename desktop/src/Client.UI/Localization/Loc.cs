@@ -51,6 +51,20 @@ public sealed class Loc : INotifyPropertyChanged
     /// <summary>Есть ли ключ в словаре — для текстов с запасными вариантами (уточнение → состояние → общий).</summary>
     public bool Has(string key) => _current.ContainsKey(key);
 
+    /// <summary>
+    /// Число со словом в нужной форме: ключи «база.one», «база.few», «база.many» («1 сервер»,
+    /// «2 сервера», «5 серверов»); в английском few совпадает с many.
+    /// </summary>
+    public string Plural(string key, int count)
+    {
+        var tens = count % 100;
+        var form = Language != "ru" ? (count == 1 ? "one" : "many")
+            : count % 10 == 1 && tens != 11 ? "one"
+            : count % 10 is >= 2 and <= 4 && tens is < 12 or > 14 ? "few"
+            : "many";
+        return Format(key + "." + form, count);
+    }
+
     public string Format(string key, params object?[] args) =>
         string.Format(Culture, this[key], args);
 

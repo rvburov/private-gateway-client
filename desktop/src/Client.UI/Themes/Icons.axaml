@@ -47,5 +47,8 @@
   <StreamGeometry x:Key="Icon.Close">M6 6l12 12M18 6L6 18</StreamGeometry>
   <StreamGeometry x:Key="Icon.Edit">M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4</StreamGeometry>
   <StreamGeometry x:Key="Icon.Qr">M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Clipboard">M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1zM8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Link">M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1</StreamGeometry>
+  <StreamGeometry x:Key="Icon.File">M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8zM14 3v5h5</StreamGeometry>
   <StreamGeometry x:Key="Icon.Trash">M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6</StreamGeometry>
 </ResourceDictionary>

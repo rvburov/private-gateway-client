@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: 9d2a04c894663792a16219a92cf010043f161a7422e3c09db54d36fbb833c95e
+  tokens-sha256: d1cc87499a37ce581f5dffbce7efbfdb74f2315b10e0830150b8f045e9851a07
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -77,6 +77,10 @@
   <SolidColorBrush x:Key="PgBrush.Status.Warning.Text" Color="{StaticResource PgColor.Status.Warning.Text}" />
   <Color x:Key="PgColor.Status.Warning.Tint">#1FEA580C</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Warning.Tint" Color="{StaticResource PgColor.Status.Warning.Tint}" />
+  <Color x:Key="PgColor.Status.Warning.Badge">#FF9A3412</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Warning.Badge" Color="{StaticResource PgColor.Status.Warning.Badge}" />
+  <Color x:Key="PgColor.Status.Warning.Line">#2EEA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Warning.Line" Color="{StaticResource PgColor.Status.Warning.Line}" />
   <Color x:Key="PgColor.Status.Caution.Base">#FFF59E0B</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Caution.Base" Color="{StaticResource PgColor.Status.Caution.Base}" />
   <Color x:Key="PgColor.Status.Caution.Text">#FFB45309</Color>
@@ -222,6 +226,7 @@
   <BoxShadows x:Key="PgShadow.Sheet">0 -12 40 0 #330F172A</BoxShadows>
   <BoxShadows x:Key="PgShadow.Dialog">0 20 50 0 #4D0F172A</BoxShadows>
   <BoxShadows x:Key="PgShadow.Accent">0 6 16 0 #422563EB</BoxShadows>
+  <BoxShadows x:Key="PgShadow.Chosen">0 4 14 0 #1F2563EB</BoxShadows>
 
   <!-- Размеры -->
   <x:Double x:Key="PgLayout.DesktopWindow.Width">440</x:Double>

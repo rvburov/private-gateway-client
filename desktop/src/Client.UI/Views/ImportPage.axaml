@@ -1,0 +1,231 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ImportPage"
+             x:DataType="vm:ImportPageViewModel">
+  <!-- Добавить профиль — docs/design, доска 3. Островка нет: шаг с кнопкой «назад». -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding BackCommand}" />
+  </UserControl.KeyBindings>
+
+  <UserControl.Styles>
+    <!-- Карточка источника: выбранная — белая, с рамкой акцентом -->
+    <Style Selector="Button.source">
+      <Setter Property="MinHeight" Value="66" />
+      <Setter Property="Padding" Value="14,10" />
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Card}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+    <Style Selector="Button.source:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+    </Style>
+    <Style Selector="Button.source.chosen /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+    </Style>
+    <Style Selector="Button.source:pressed">
+      <Setter Property="RenderTransform" Value="scale(0.99)" />
+    </Style>
+    <Style Selector="Border.sourceShadow">
+      <Setter Property="CornerRadius" Value="16" />
+    </Style>
+    <Style Selector="Border.sourceShadow.chosen">
+      <Setter Property="BoxShadow" Value="{StaticResource PgShadow.Chosen}" />
+    </Style>
+    <Style Selector="Border.sourceIcon">
+      <Setter Property="Width" Value="44" />
+      <Setter Property="Height" Value="44" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+
+    <!-- Плитка предпросмотра: число и подпись; новые — зеленым, ошибки — оранжевым -->
+    <Style Selector="Border.tile">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="4,10" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Control.SegmentTrack}" />
+    </Style>
+    <Style Selector="Border.tile.good">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.tile.bad">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+    </Style>
+    <Style Selector="Border.tile TextBlock.number">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Status}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tile.good TextBlock.number">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Text}" />
+    </Style>
+    <Style Selector="Border.tile.bad TextBlock.number">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+    <Style Selector="Border.tile TextBlock.caption">
+      <Setter Property="HorizontalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.tile.good TextBlock.caption">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+    </Style>
+    <Style Selector="Border.tile.bad TextBlock.caption">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+    </Style>
+    <Style Selector="Border.notice">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <Style Selector="Border.notice TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*,Auto">
+    <Grid Height="60" Margin="8,0,20,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.add.title}" VerticalAlignment="Center" Margin="4,0,0,0" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0,20,16" Spacing="8">
+        <!-- Источники -->
+        <Border Classes="sourceShadow" Classes.chosen="{Binding IsClipboard}">
+          <Button x:Name="FromClipboard" Classes="source" Classes.chosen="{Binding IsClipboard}"
+                  Command="{Binding FromClipboardCommand}" AutomationProperties.Name="{l:L import.clipboard.title}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Classes="sourceIcon">
+                <c:Icon Data="{StaticResource Icon.Clipboard}" Width="22" Height="22" StrokeThickness="1.9"
+                        Foreground="{StaticResource PgBrush.Accent.Text}" />
+              </Border>
+              <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L import.clipboard.title}" />
+                <TextBlock Classes="caption" Text="{l:L import.clipboard.text}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+          </Button>
+        </Border>
+        <Border Classes="sourceShadow" Classes.chosen="{Binding IsLink}">
+          <Button x:Name="EnterLink" Classes="source" Classes.chosen="{Binding IsLink}"
+                  Command="{Binding OpenLinkCommand}" AutomationProperties.Name="{l:L import.link.title}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Classes="sourceIcon">
+                <c:Icon Data="{StaticResource Icon.Link}" Width="22" Height="22" StrokeThickness="1.9"
+                        Foreground="{StaticResource PgBrush.Accent.Text}" />
+              </Border>
+              <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L import.link.title}" />
+                <TextBlock Classes="caption" Text="{l:L import.link.text}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+          </Button>
+        </Border>
+        <StackPanel IsVisible="{Binding IsLink}" Spacing="8">
+          <TextBox x:Name="LinkText" Classes="input" Text="{Binding LinkText}" AcceptsReturn="True" TextWrapping="Wrap"
+                   MinHeight="88" MaxHeight="160" Padding="12,10" VerticalContentAlignment="Top"
+                   FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                   PlaceholderText="{l:L import.link.placeholder}" AutomationProperties.Name="{l:L import.link.title}" />
+          <Button x:Name="CheckLink" Classes="secondary" HorizontalAlignment="Right" Command="{Binding CheckLinkCommand}"
+                  Content="{l:L import.link.check}" />
+        </StackPanel>
+        <Border Classes="sourceShadow" Classes.chosen="{Binding IsFile}">
+          <Button x:Name="FromFile" Classes="source" Classes.chosen="{Binding IsFile}"
+                  Command="{Binding FromFileCommand}" AutomationProperties.Name="{l:L import.file.title}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Classes="sourceIcon">
+                <c:Icon Data="{StaticResource Icon.File}" Width="22" Height="22" StrokeThickness="1.9"
+                        Foreground="{StaticResource PgBrush.Accent.Text}" />
+              </Border>
+              <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L import.file.title}" />
+                <TextBlock Classes="caption" Text="{l:L import.file.text}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+          </Button>
+        </Border>
+
+        <Border Classes="notice" IsVisible="{Binding HasStoreWarning}">
+          <TextBlock x:Name="StoreWarning" Text="{Binding StoreWarning}" />
+        </Border>
+        <TextBlock x:Name="Message" IsVisible="{Binding HasMessage}" Text="{Binding Message}" Margin="6,0"
+                   TextWrapping="Wrap" FontSize="{StaticResource PgFontSize.Small}"
+                   Foreground="{StaticResource PgBrush.Status.Warning.Text}" />
+
+        <!-- Предпросмотр -->
+        <Border Classes="card" Padding="16,14" IsVisible="{Binding HasPreview}">
+          <StackPanel Spacing="12">
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock Classes="overline" Text="{l:L import.preview, Upper=True}" VerticalAlignment="Center" />
+              <TextBlock x:Name="FormatText" Grid.Column="1" Classes="caption" Text="{Binding FormatText}"
+                         VerticalAlignment="Center" />
+            </Grid>
+            <UniformGrid Columns="4" ColumnSpacing="8">
+              <Border Classes="tile">
+                <StackPanel Spacing="2">
+                  <TextBlock x:Name="FoundCount" Classes="number" Text="{Binding FoundText}" />
+                  <TextBlock Classes="caption" Text="{l:L import.found}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="tile good">
+                <StackPanel Spacing="2">
+                  <TextBlock x:Name="NewCount" Classes="number" Text="{Binding NewText}" />
+                  <TextBlock Classes="caption" Text="{l:L import.new}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="tile">
+                <StackPanel Spacing="2">
+                  <TextBlock x:Name="DuplicatesCount" Classes="number" Text="{Binding DuplicatesText}" />
+                  <TextBlock Classes="caption" Text="{l:L import.duplicates}" />
+                </StackPanel>
+              </Border>
+              <Border Classes="tile bad">
+                <StackPanel Spacing="2">
+                  <TextBlock x:Name="FailedCount" Classes="number" Text="{Binding FailedText}" />
+                  <TextBlock Classes="caption" Text="{Binding FailedLabel}" />
+                </StackPanel>
+              </Border>
+            </UniformGrid>
+            <Border Classes="notice" IsVisible="{Binding HasErrors}">
+              <ItemsControl ItemsSource="{Binding ErrorLines}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="x:String">
+                    <TextBlock Text="{Binding}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+            <Border Classes="notice" IsVisible="{Binding IsInsecure}">
+              <TextBlock x:Name="InsecureWarning" Text="{l:L import.insecure}" />
+            </Border>
+            <StackPanel Spacing="6">
+              <TextBlock Classes="small" Text="{l:L import.name}" FontWeight="SemiBold"
+                         Foreground="{StaticResource PgBrush.Text.Secondary}" />
+              <TextBox x:Name="ProfileName" Classes="input" Text="{Binding ProfileName}" MaxLength="64"
+                       PlaceholderText="{l:L import.name.placeholder}" AutomationProperties.Name="{l:L import.name}" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </StackPanel>
+    </ScrollViewer>
+
+    <Button x:Name="AddButton" Grid.Row="2" Classes="primary" Margin="20,8,20,20" Height="54" HorizontalAlignment="Stretch"
+            CornerRadius="16" FontSize="{StaticResource PgFontSize.Title}" IsVisible="{Binding HasPreview}"
+            Command="{Binding AddCommand}" Content="{Binding AddText}" />
+  </Grid>
+</UserControl>

@@ -54,7 +54,7 @@
                    FontWeight="Medium" Foreground="{StaticResource PgBrush.Surface.Solid}" />
       </Border>
 
-      <c:IslandNav VerticalAlignment="Bottom" />
+      <c:IslandNav VerticalAlignment="Bottom" IsVisible="{Binding IsIslandVisible}" />
 
       <!-- Слой поверх окна вместе с островком: затемнение, нижний лист, диалог -->
       <Button x:Name="Scrim" Classes="scrim" ZIndex="50" IsVisible="{Binding Overlay.HasSheet}"

@@ -128,6 +128,28 @@ public sealed class ServerCatalogStorageTests : IDisposable
     }
 
     [Fact]
+    public void Store_failing_midway_leaves_no_secrets_and_no_rows()
+    {
+        _secrets.SavesLeft = 2;
+        var catalog = Catalog();
+        var links = Parse("trojan://pw-a@198.51.100.1:443#A", "trojan://pw-b@198.51.100.2:443#B");
+
+        Should.Throw<InvalidOperationException>(() =>
+            catalog.Add(links, "Группа", new Uri("https://sub.example.com/sub/fake-token-3")));
+
+        _secrets.Values.ShouldBeEmpty("адрес подписки и первый сервер записаны до сбоя — их убрали");
+        catalog.Servers.ShouldBeEmpty();
+        catalog.Selected.ShouldBeNull();
+        catalog.Subscriptions.ShouldBeEmpty();
+        var reopened = Catalog();
+        reopened.Servers.ShouldBeEmpty();
+        reopened.Subscriptions.ShouldBeEmpty();
+
+        _secrets.SavesLeft = null;
+        catalog.Add(links, "Группа").ShouldBe(new ImportOutcome(2, 0), "после сбоя импорт проходит заново");
+    }
+
+    [Fact]
     public void Demo_servers_show_until_the_first_import()
     {
         var user = Catalog();
@@ -162,7 +184,18 @@ public sealed class ServerCatalogStorageTests : IDisposable
 
         public bool IsAvailable => Available;
 
-        public void Save(string key, string secret) => Values[key] = Available ? secret : throw new InvalidOperationException();
+        /// <summary>Сколько записей пройдет до отказа хранилища; null — без отказа.</summary>
+        public int? SavesLeft { get; set; }
+
+        public void Save(string key, string secret)
+        {
+            if (!Available || SavesLeft-- <= 0)
+            {
+                throw new InvalidOperationException();
+            }
+
+            Values[key] = secret;
+        }
 
         public string? Read(string key) => Values.GetValueOrDefault(key);
 

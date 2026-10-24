@@ -19,6 +19,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, MainPageViewModel> mainPage,
         Func<INavigator, ServersPageViewModel> serversPage,
         Func<CheckPageViewModel> checkPage,
+        Func<INavigator, ImportPageViewModel> importPage,
         Func<INavigator, SettingsPageViewModel> settingsPage)
     {
         ArgumentNullException.ThrowIfNull(mainPage);
@@ -33,7 +34,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Servers] = () => serversPage(this),
             [Pages.Check] = checkPage,
             [Pages.Settings] = () => settingsPage(this),
-            [Pages.Add] = () => new StubPageViewModel("page.add.title"),
+            [Pages.Add] = () => importPage(this),
             ["protection"] = () => new StubPageViewModel("settings.adv.protection.title"),
             ["core"] = () => new StubPageViewModel("settings.adv.core.title"),
             ["routing"] = () => new StubPageViewModel("settings.adv.routing.title"),
@@ -52,8 +53,13 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     public OverlayViewModel Overlay { get; }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsServers), nameof(IsCheck), nameof(IsSettings))]
+    [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsServers), nameof(IsCheck), nameof(IsSettings), nameof(IsIslandVisible))]
     public partial string CurrentKey { get; private set; } = Pages.Home;
+
+    /// <summary>Островок скрыт на экранах-шагах с кнопкой «назад» («Добавить профиль», доска 3).</summary>
+    public bool IsIslandVisible => CurrentKey != Pages.Add;
+
+    private string _previousKey = Pages.Home;
 
     [ObservableProperty]
     public partial object? CurrentPage { get; private set; }
@@ -82,7 +88,14 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         }
 
         Overlay.CloseSheet();
+        if (page != CurrentKey)
+        {
+            _previousKey = CurrentKey;
+        }
+
         CurrentKey = page;
         CurrentPage = viewModel;
     }
+
+    public void Back() => Navigate(_previousKey == CurrentKey ? Pages.Home : _previousKey);
 }
