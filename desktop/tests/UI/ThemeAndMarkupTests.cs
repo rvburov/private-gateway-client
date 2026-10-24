@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text;
 using System.Text.RegularExpressions;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
@@ -12,8 +13,10 @@ public partial class ThemeAndMarkupTests
     [Fact]
     public void Tokens_axaml_is_generated_from_current_design_tokens()
     {
-        var tokens = File.ReadAllBytes(Path.Combine(Repo.Root, "shared", "specifications", "design-tokens.json"));
-        var hash = Convert.ToHexStringLower(SHA256.HashData(tokens));
+        // Как в генераторе: переводы строк — LF, иначе на Windows (CRLF при checkout) хеш другой.
+        var tokens = File.ReadAllText(Path.Combine(Repo.Root, "shared", "specifications", "design-tokens.json"))
+            .ReplaceLineEndings("\n");
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(tokens)));
         var theme = File.ReadAllText(Path.Combine(Repo.UiSource, "Themes", "Tokens.axaml"));
 
         theme.ShouldContain("tokens-sha256: " + hash,

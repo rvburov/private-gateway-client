@@ -25,7 +25,8 @@ var root = FindRoot();
 var tokensPath = Path.Combine(root, "shared", "specifications", "design-tokens.json");
 var outputPath = Path.Combine(root, "desktop", "src", "Client.UI", "Themes", "Tokens.axaml");
 
-var bytes = File.ReadAllBytes(tokensPath);
+// Хеш — от текста с переводами строк LF: на Windows git отдает файл с CRLF, а токены те же.
+var bytes = Encoding.UTF8.GetBytes(File.ReadAllText(tokensPath).ReplaceLineEndings("\n"));
 var hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
 using var doc = JsonDocument.Parse(bytes);
 var tokens = doc.RootElement;
