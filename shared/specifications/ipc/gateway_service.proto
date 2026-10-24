@@ -205,6 +205,8 @@ enum TransportType {
   TRANSPORT_TYPE_HTTP_UPGRADE = 4;
   TRANSPORT_TYPE_XHTTP = 5;
   TRANSPORT_TYPE_QUIC = 6;
+  // Чистый UDP — у WireGuard.
+  TRANSPORT_TYPE_UDP = 7;
 }
 
 message Transport {

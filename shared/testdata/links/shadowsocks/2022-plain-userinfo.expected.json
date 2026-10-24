@@ -1,0 +1,18 @@
+{
+  "name": "SS2022",
+  "protocol": "shadowsocks",
+  "host": "192.0.2.81",
+  "port": 8388,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "cipher": "2022-blake3-aes-128-gcm"
+  },
+  "credentials": {
+    "password": "aaaaaaaaaaaaaaaaaaaaaa=="
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "grpc",
+  "protocol": "vmess",
+  "host": "example.com",
+  "port": 8443,
+  "transport": {
+    "kind": "grpc",
+    "serviceName": "svc"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "cipher": "chacha20-poly1305"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

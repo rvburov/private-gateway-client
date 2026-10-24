@@ -1,0 +1,15 @@
+{
+  "name": "2001:db8::1",
+  "protocol": "vless",
+  "host": "2001:db8::1",
+  "port": 8443,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

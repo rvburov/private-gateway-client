@@ -1,0 +1,1 @@
+ss://2022-blake3-aes-128-gcm:aaaaaaaaaaaaaaaaaaaaaa%3D%3D@192.0.2.81:8388#SS2022

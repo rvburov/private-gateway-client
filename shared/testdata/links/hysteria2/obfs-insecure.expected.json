@@ -1,0 +1,22 @@
+{
+  "name": "Хельсинки",
+  "country": "FI",
+  "protocol": "hysteria2",
+  "host": "203.0.113.57",
+  "port": 8443,
+  "transport": {
+    "kind": "quic"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "example.com",
+    "allowInsecure": true
+  },
+  "options": {
+    "obfs": "salamander"
+  },
+  "credentials": {
+    "password": "pw-hy2-1",
+    "obfsPassword": "pw-obfs-1"
+  }
+}
