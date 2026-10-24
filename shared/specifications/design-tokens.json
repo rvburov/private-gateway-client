@@ -36,6 +36,10 @@
     "focus": {
       "ring": "#93C5FD"
     },
+    "control": {
+      "trackOff": "#CBD5E1",
+      "segmentTrack": "rgba(15, 23, 42, 0.05)"
+    },
     "decor": {
       "blob1": "rgba(147, 197, 253, 0.55)",
       "blob2": "rgba(134, 239, 172, 0.45)",

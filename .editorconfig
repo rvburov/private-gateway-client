@@ -46,3 +46,8 @@ dotnet_naming_style.pascal.capitalization = pascal_case
 # Порядок правил важен: константы проверяются раньше приватных полей.
 dotnet_naming_rule.constants.priority = 1
 dotnet_naming_rule.private_fields.priority = 2
+
+[desktop/src/Client.UI/ViewModels/*.cs]
+# Свойства моделей представлений — цели привязок разметки; статические Avalonia не привязывает,
+# поэтому совет CA1822 «сделать статическим» здесь вреден.
+dotnet_diagnostic.CA1822.severity = none

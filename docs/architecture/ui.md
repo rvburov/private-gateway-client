@@ -47,6 +47,19 @@ shared/specifications/design-tokens.json ──dotnet run scripts/gen-tokens.cs�
 - Кнопка-щит: `ConnectionController.ToggleAsync` — «Выключено» и «Ошибка» включают, остальные
   состояния выключают; нажатие доступно и во время подключения (прерывает его).
 
+## Настройки и данные
+
+- `AppSettings` (Core) — раздел «Основные»: режим, блок при обрыве, автозапуск, подключение при
+  запуске, сворачивание в трей, уведомления, язык. По умолчанию — решения из DECISIONS.md.
+- `SettingsService` (Application) читает настройки один раз и сохраняет каждое изменение сразу.
+- `SqliteSettingsStore` (Infrastructure) — таблица `settings (key, value)`; нечитаемое значение —
+  значение по умолчанию и предупреждение в журнале.
+- `SqliteDatabase` — миграции `Storage/Migrations/NNNN_*.sql` по порядку, версия в `PRAGMA user_version`.
+- Папка данных — `AppPaths`: при запуске из репозитория `.localdata/`, иначе папка пользователя ОС;
+  `PG_DATA_DIR` перекрывает обе.
+- Журнал — Serilog в `<данные>/logs/client-*.log`, по дню, 7 дней, до 10 МБ; каждая строка целиком
+  (с исключением) проходит через `SecretMasker` (`MaskingTextFormatter`).
+
 ## Тесты без экрана
 
 `desktop/tests/UI` — Avalonia.Headless с отрисовкой Skia: окно строится как в программе, тесты жмут

@@ -32,4 +32,12 @@
   <StreamGeometry x:Key="Icon.Net.Usb">M12 3v13M9 6l3-3 3 3M7 10v2.5l5 3.5 5-3.5V10M12 21.5a1.5 1.5 0 1 0 0-3a1.5 1.5 0 0 0 0 3z</StreamGeometry>
   <StreamGeometry x:Key="Icon.Net.Mobile">M5 19v-3M10 19v-6M15 19v-9M20 19V5</StreamGeometry>
   <StreamGeometry x:Key="Icon.Net.None">M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01M3 3l18 18</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Protection">M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8zM12 8v5M12 16h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Core">M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Routing">M6 3v6a6 6 0 0 0 6 6h6M15 12l3 3-3 3M6 21v-4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Profiles">M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Check">M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5zM6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Backup">M12 3v12M7 10l5 5 5-5M4 19h16</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.About">M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.ChevronRight">M9 6l6 6-6 6</StreamGeometry>
 </ResourceDictionary>

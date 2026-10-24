@@ -8,6 +8,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
+using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -27,12 +28,18 @@ public sealed class MainWindowTests : IDisposable
 {
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 24, 15, 42, 0, TimeSpan.Zero));
     private readonly FakeClipboard _clipboard = new();
+    private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "pg-ui-" + Guid.NewGuid().ToString("N")));
     private ServiceProvider? _services;
 
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
         _services?.Dispose();
+        Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+        if (Directory.Exists(_paths.DataDirectory))
+        {
+            Directory.Delete(_paths.DataDirectory, recursive: true);
+        }
     }
 
     [AvaloniaFact]
@@ -187,7 +194,7 @@ public sealed class MainWindowTests : IDisposable
 
     private (MainWindow Window, ShellViewModel Shell) Open()
     {
-        _services = App.BuildServices(s =>
+        _services = App.BuildServices(_paths, s =>
         {
             s.AddSingleton<TimeProvider>(_time);
             s.AddSingleton<IClipboardService>(_clipboard);

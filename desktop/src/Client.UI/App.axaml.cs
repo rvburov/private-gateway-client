@@ -3,7 +3,10 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Infrastructure;
+using PrivateGateway.Client.Infrastructure.Storage;
+using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -19,7 +22,8 @@ public partial class App : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        Services = BuildServices();
+        Services = BuildServices(AppPaths.ForCurrentUser());
+        Loc.Instance.SetLanguage(Services.GetRequiredService<SettingsService>().Current.Language);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.MainWindow = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
@@ -29,15 +33,16 @@ public partial class App : Avalonia.Application
     }
 
     /// <summary>Тот же состав, что у программы; тесты без экрана строят окно отсюда.</summary>
-    public static ServiceProvider BuildServices(Action<IServiceCollection>? overrides = null)
+    public static ServiceProvider BuildServices(AppPaths paths, Action<IServiceCollection>? overrides = null)
     {
         var services = new ServiceCollection()
             .AddClientApplication()
-            .AddClientInfrastructure();
+            .AddClientInfrastructure(paths);
         services.AddSingleton<ToastViewModel>();
         services.AddSingleton<ProtectionViewModel>();
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
         services.AddSingleton<Func<INavigator, MainPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<MainPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
         overrides?.Invoke(services);
         return services.BuildServiceProvider();

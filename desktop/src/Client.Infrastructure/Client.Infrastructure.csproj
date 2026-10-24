@@ -8,6 +8,16 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+    <PackageReference Include="Microsoft.Extensions.Logging" />
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Extensions.Logging" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Миграции базы — SQL-файлы по номерам, встроены в сборку. -->
+    <EmbeddedResource Include="Storage/Migrations/*.sql" LogicalName="migrations.%(Filename).sql" />
   </ItemGroup>
 
 </Project>

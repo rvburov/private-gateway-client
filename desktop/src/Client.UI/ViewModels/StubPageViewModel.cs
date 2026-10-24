@@ -16,5 +16,5 @@ public sealed partial class StubPageViewModel : ObservableObject
 
     public string Title => Loc.Instance[_titleKey];
 
-    public static string Text => Loc.Instance["page.stub.text"];
+    public string Text => Loc.Instance["page.stub.text"];
 }

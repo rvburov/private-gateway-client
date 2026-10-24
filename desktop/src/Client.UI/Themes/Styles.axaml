@@ -201,4 +201,58 @@
     <Setter Property="HorizontalScrollBarVisibility" Value="Disabled" />
     <Setter Property="VerticalScrollBarVisibility" Value="Hidden" />
   </Style>
+
+  <!-- Переключатель (доска 24): дорожка 48×28, белая ручка; включен — акцентом -->
+  <Style Selector="ToggleButton.switch">
+    <Setter Property="Width" Value="48" />
+    <Setter Property="Height" Value="28" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="{StaticResource PgBrush.Control.TrackOff}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border Background="{TemplateBinding Background}" CornerRadius="14" Padding="3">
+          <Border x:Name="Knob" Width="22" Height="22" CornerRadius="11" HorizontalAlignment="Left"
+                  Background="{StaticResource PgBrush.Surface.Solid}" BoxShadow="{StaticResource PgShadow.Card}" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="ToggleButton.switch:checked">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Base}" />
+  </Style>
+  <Style Selector="ToggleButton.switch:checked /template/ Border#Knob">
+    <Setter Property="HorizontalAlignment" Value="Right" />
+  </Style>
+  <Style Selector="ToggleButton.switch:focus-visible /template/ Border">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Focus.Ring}" />
+  </Style>
+
+  <!-- Сегменты (доска 24): выбранный — белая плашка с тенью -->
+  <Style Selector="Border.segments">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Control.SegmentTrack}" />
+    <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Button}" />
+    <Setter Property="Padding" Value="4" />
+  </Style>
+  <Style Selector="RadioButton.segment">
+    <Setter Property="Height" Value="38" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Border x:Name="Plate" CornerRadius="{StaticResource PgRadius.Input}" Background="Transparent">
+          <ContentPresenter Content="{TemplateBinding Content}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Border>
+      </ControlTemplate>
+    </Setter>
+  </Style>
+  <Style Selector="RadioButton.segment:checked">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="RadioButton.segment:checked /template/ Border#Plate">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BoxShadow" Value="{StaticResource PgShadow.Card}" />
+  </Style>
 </Styles>

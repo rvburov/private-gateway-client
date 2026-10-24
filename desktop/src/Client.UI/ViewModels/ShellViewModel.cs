@@ -12,9 +12,14 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     private readonly Dictionary<string, Func<object>> _pages;
     private readonly Dictionary<string, object> _created = [];
 
-    public ShellViewModel(ProtectionViewModel protection, ToastViewModel toast, Func<INavigator, MainPageViewModel> mainPage)
+    public ShellViewModel(
+        ProtectionViewModel protection,
+        ToastViewModel toast,
+        Func<INavigator, MainPageViewModel> mainPage,
+        Func<INavigator, SettingsPageViewModel> settingsPage)
     {
         ArgumentNullException.ThrowIfNull(mainPage);
+        ArgumentNullException.ThrowIfNull(settingsPage);
         Protection = protection;
         Toast = toast;
         _pages = new()
@@ -22,8 +27,14 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Home] = () => mainPage(this),
             [Pages.Servers] = () => new StubPageViewModel("page.servers.title"),
             [Pages.Check] = () => new StubPageViewModel("page.check.title"),
-            [Pages.Settings] = () => new StubPageViewModel("page.settings.title"),
+            [Pages.Settings] = () => settingsPage(this),
             [Pages.Add] = () => new StubPageViewModel("page.add.title"),
+            ["protection"] = () => new StubPageViewModel("settings.adv.protection.title"),
+            ["core"] = () => new StubPageViewModel("settings.adv.core.title"),
+            ["routing"] = () => new StubPageViewModel("settings.adv.routing.title"),
+            ["profiles"] = () => new StubPageViewModel("settings.adv.profiles.title"),
+            ["backup"] = () => new StubPageViewModel("settings.adv.backup.title"),
+            ["about"] = () => new StubPageViewModel("settings.adv.about.title"),
         };
         Navigate(Pages.Home);
     }
@@ -45,7 +56,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
 
     public bool IsCheck => CurrentKey == Pages.Check;
 
-    public bool IsSettings => CurrentKey == Pages.Settings;
+    /// <summary>Подстраницы настроек подсвечивают в островке «Настройки».</summary>
+    public bool IsSettings => CurrentKey is Pages.Settings or "protection" or "core" or "routing" or "profiles" or "backup" or "about";
 
     [RelayCommand]
     public void Navigate(string page)

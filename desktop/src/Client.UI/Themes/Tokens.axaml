@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: d37c4c9efddfab8c2726ec7980061514928f993a2337a045476496a1476b0a7a
+  tokens-sha256: 2930824c7a88781224ca6cb9c2d4c969effa69373c81dccb9fc77647ca36848d
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -35,6 +35,10 @@
   <SolidColorBrush x:Key="PgBrush.Accent.NavActiveFill" Color="{StaticResource PgColor.Accent.NavActiveFill}" />
   <Color x:Key="PgColor.Focus.Ring">#FF93C5FD</Color>
   <SolidColorBrush x:Key="PgBrush.Focus.Ring" Color="{StaticResource PgColor.Focus.Ring}" />
+  <Color x:Key="PgColor.Control.TrackOff">#FFCBD5E1</Color>
+  <SolidColorBrush x:Key="PgBrush.Control.TrackOff" Color="{StaticResource PgColor.Control.TrackOff}" />
+  <Color x:Key="PgColor.Control.SegmentTrack">#0D0F172A</Color>
+  <SolidColorBrush x:Key="PgBrush.Control.SegmentTrack" Color="{StaticResource PgColor.Control.SegmentTrack}" />
   <Color x:Key="PgColor.Decor.Blob1">#8C93C5FD</Color>
   <SolidColorBrush x:Key="PgBrush.Decor.Blob1" Color="{StaticResource PgColor.Decor.Blob1}" />
   <Color x:Key="PgColor.Decor.Blob2">#7386EFAC</Color>

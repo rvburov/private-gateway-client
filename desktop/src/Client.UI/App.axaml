@@ -21,6 +21,9 @@
     <DataTemplate DataType="vm:MainPageViewModel">
       <views:MainPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:SettingsPageViewModel">
+      <views:SettingsPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:StubPageViewModel">
       <views:StubPage />
     </DataTemplate>
