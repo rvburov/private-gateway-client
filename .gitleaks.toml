@@ -15,4 +15,6 @@ regexes = [
   '''x:Key="[A-Za-z][A-Za-z0-9]*(\.[A-Za-z0-9]+)+"''',
   # Шапка Tokens.axaml: SHA-256 файла design-tokens.json, по нему тест ловит несобранную тему.
   '''tokens-sha256: [0-9a-f]{64}''',
+  # Имя системной библиотеки Secret Service в LibsecretSecretStore: «Secret» в имени константы.
+  '''const string LibSecret = "libsecret-1\.so\.0";''',
 ]
