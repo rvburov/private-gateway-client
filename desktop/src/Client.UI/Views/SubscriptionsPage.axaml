@@ -1,0 +1,240 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.SubscriptionsPage"
+             x:DataType="vm:SubscriptionsPageViewModel">
+  <!-- Профили и подписки — docs/design, доска 12. Подстраница настроек: островок виден, «назад» — к настройкам. -->
+  <UserControl.Styles>
+    <!-- Кнопка выбора промежутка: белая, с рамкой и синей галочкой вниз -->
+    <Style Selector="Button.select">
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Padding" Value="12,0,10,0" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+      <Setter Property="FontWeight" Value="Medium" />
+      <Setter Property="Cursor" Value="Hand" />
+    </Style>
+
+    <!-- Карточка подписки -->
+    <Style Selector="Border.subscription">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Card}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Padding" Value="16,14,12,12" />
+    </Style>
+    <Style Selector="Border.health">
+      <Setter Property="Padding" Value="9,3" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="VerticalAlignment" Value="Top" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Control.SegmentTrack}" />
+    </Style>
+    <Style Selector="Border.health TextBlock">
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Border.health.ok">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.health.ok TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+    </Style>
+    <Style Selector="Border.health.error">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+    </Style>
+    <Style Selector="Border.health.error TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+    </Style>
+    <Style Selector="Border.notice">
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <Style Selector="Border.notice TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+
+    <!-- Кнопки карточки: «Обновить» — синим, «Изменить» — белая, удаление — красный значок.
+         Не «accent»: так называется свой стиль кнопки во Fluent. -->
+    <Style Selector="Button.small">
+      <Setter Property="Height" Value="36" />
+      <Setter Property="Padding" Value="12,0" />
+      <Setter Property="VerticalContentAlignment" Value="Center" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+    </Style>
+    <Style Selector="Button.small.update">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Button.small:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
+    </Style>
+    <Style Selector="Button.small.update:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*,Auto">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L settings.adv.profiles.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+      <Button x:Name="AddIconButton" Grid.Column="2" Classes="icon" Command="{Binding AddCommand}"
+              ToolTip.Tip="{l:L subs.add}" AutomationProperties.Name="{l:L subs.add}">
+        <c:Icon Data="{StaticResource Icon.Plus}" Width="22" Height="22" StrokeThickness="2" />
+      </Button>
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="14">
+        <!-- Как обновлять -->
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L subs.refresh.title}" />
+                <TextBlock Classes="caption" Text="{l:L subs.refresh.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="RefreshChoice" Grid.Column="1" Classes="select" Command="{Binding ToggleRefreshCommand}"
+                      AutomationProperties.Name="{l:L subs.refresh.title}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock x:Name="RefreshText" Text="{Binding RefreshText}" VerticalAlignment="Center" />
+                  <c:Icon Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #RefreshChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsRefreshOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding RefreshOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:RefreshOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="12,9"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+            <Border Classes="divider" />
+
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L subs.vpn.title}" />
+                <TextBlock Classes="caption" Text="{l:L subs.vpn.text}" TextWrapping="Wrap" />
+                <TextBlock x:Name="BlockNote" Classes="caption" Text="{Binding BlockNote}" TextWrapping="Wrap"
+                           IsVisible="{Binding BlockNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+              </StackPanel>
+              <ToggleButton x:Name="ViaVpnToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding UpdateOnlyViaVpn}" AutomationProperties.Name="{l:L subs.vpn.title}" />
+            </Grid>
+            <Border Classes="divider" />
+
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L subs.notify.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L subs.notify.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding NotifySelectedServerChange}" AutomationProperties.Name="{l:L subs.notify.title}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Группы -->
+        <TextBlock x:Name="SectionTitle" Classes="overline" Text="{Binding SectionTitle}" Margin="6,4,6,-4" />
+        <TextBlock x:Name="Empty" Classes="small" Text="{l:L subs.empty}" TextWrapping="Wrap" Margin="6,0"
+                   IsVisible="{Binding IsEmpty}" />
+        <ItemsControl ItemsSource="{Binding Cards}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="14" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:SubscriptionCardViewModel">
+              <Border Classes="subscription" AutomationProperties.Name="{Binding Name}">
+                <StackPanel Spacing="8">
+                  <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Spacing="3" Margin="0,0,10,0">
+                      <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="{StaticResource PgFontSize.Title}"
+                                 TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding Address}" FontFamily="{StaticResource PgFont.Mono}"
+                                 FontSize="{StaticResource PgFontSize.Caption}" Foreground="{StaticResource PgBrush.Text.Muted}"
+                                 TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Border Grid.Column="1" Classes="health" Classes.ok="{Binding IsOk}" Classes.error="{Binding IsError}">
+                      <TextBlock Text="{Binding HealthText}" />
+                    </Border>
+                  </Grid>
+                  <TextBlock Classes="small" Text="{Binding Meta}" Foreground="{StaticResource PgBrush.Text.Secondary}" />
+                  <Border Classes="notice" IsVisible="{Binding HasError}">
+                    <TextBlock Text="{Binding Error}" />
+                  </Border>
+                  <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,2,0,0">
+                    <Button Classes="small update" IsVisible="{Binding CanUpdate}" Margin="0,0,6,0"
+                            Command="{Binding UpdateCommand}" AutomationProperties.Name="{l:L subs.update}">
+                      <StackPanel Orientation="Horizontal" Spacing="6">
+                        <c:Icon Data="{StaticResource Icon.Refresh}" Width="15" Height="15" StrokeThickness="2.2"
+                                Classes.spin="{Binding IsUpdating}" VerticalAlignment="Center" />
+                        <TextBlock Text="{l:L subs.update}" VerticalAlignment="Center" />
+                      </StackPanel>
+                    </Button>
+                    <Button Grid.Column="1" Classes="small" IsVisible="{Binding CanEdit}" Command="{Binding EditCommand}"
+                            Content="{l:L subs.edit}" />
+                    <Button Grid.Column="3" Classes="icon" Width="36" Height="36" Command="{Binding RemoveCommand}"
+                            Foreground="{StaticResource PgBrush.Status.Danger.Text}"
+                            ToolTip.Tip="{Binding RemoveLabel}" AutomationProperties.Name="{Binding RemoveLabel}">
+                      <c:Icon Data="{StaticResource Icon.Trash}" Width="18" Height="18" StrokeThickness="1.9" />
+                    </Button>
+                  </Grid>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Добавить: пунктирная рамка, как в макете -->
+        <Grid Height="46">
+          <Rectangle RadiusX="14" RadiusY="14" StrokeThickness="1.5" StrokeDashArray="4,3"
+                     Stroke="{StaticResource PgBrush.Accent.Line}" Fill="{StaticResource PgBrush.Accent.Tint}" />
+          <Button x:Name="AddButton" Classes="plain" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                  HorizontalContentAlignment="Center" CornerRadius="14" Command="{Binding AddCommand}"
+                  Foreground="{StaticResource PgBrush.Accent.Text}" AutomationProperties.Name="{l:L subs.add}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <c:Icon Data="{StaticResource Icon.Plus}" Width="18" Height="18" StrokeThickness="2.2" VerticalAlignment="Center" />
+              <TextBlock Text="{l:L subs.add}" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </StackPanel>
+          </Button>
+        </Grid>
+
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

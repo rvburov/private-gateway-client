@@ -58,9 +58,10 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     {
         get
         {
-            var source = _catalog.Subscriptions.FirstOrDefault(s => s.Id == _server.SubscriptionId) is { } subscription
-                ? Loc.Instance.Format("card.from.subscription", subscription.Name)
-                : Loc.Instance["card.from.link"];
+            var source = _server.MissingSince is not null ? Loc.Instance["card.missing"]
+                : _catalog.Subscriptions.FirstOrDefault(s => s.Id == _server.SubscriptionId) is { } subscription
+                    ? Loc.Instance.Format("card.from.subscription", subscription.Name)
+                    : Loc.Instance["card.from.link"];
             return string.IsNullOrEmpty(_server.City) ? source : _server.City + " · " + source;
         }
     }

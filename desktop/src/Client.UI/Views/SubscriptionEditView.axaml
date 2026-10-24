@@ -1,0 +1,53 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.SubscriptionEditView"
+             x:DataType="vm:SubscriptionEditViewModel">
+  <!-- Лист «Изменить» подписки (доска 12): название и новый адрес. Рамку и тень дает окно. -->
+  <DockPanel AutomationProperties.Name="{Binding Title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock x:Name="EditTitle" Classes="status" Text="{Binding Title}" TextTrimming="CharacterEllipsis"
+                 VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding CancelCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,8,*">
+      <Button Classes="secondary" Height="50" HorizontalAlignment="Stretch" Command="{Binding CancelCommand}"
+              Content="{l:L dialog.cancel}" />
+      <Button x:Name="SaveButton" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding SaveCommand}" Content="{l:L subs.edit.save}" />
+    </Grid>
+
+    <StackPanel Margin="0,16,0,16" Spacing="14">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="small" Text="{l:L subs.edit.name}" FontWeight="SemiBold"
+                   Foreground="{StaticResource PgBrush.Text.Secondary}" />
+        <TextBox x:Name="EditName" Classes="input" Text="{Binding Name}" MaxLength="64"
+                 AutomationProperties.Name="{l:L subs.edit.name}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SaveCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+      </StackPanel>
+      <StackPanel Spacing="6">
+        <TextBlock Classes="small" Text="{l:L subs.edit.url}" FontWeight="SemiBold"
+                   Foreground="{StaticResource PgBrush.Text.Secondary}" />
+        <TextBox x:Name="EditUrl" Classes="input" Text="{Binding Url}" PlaceholderText="{Binding UrlPlaceholder}"
+                 FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                 AutomationProperties.Name="{l:L subs.edit.url}" />
+        <TextBlock Classes="caption" Text="{Binding UrlNote}" TextWrapping="Wrap" />
+        <TextBlock x:Name="EditError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                   TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+      </StackPanel>
+    </StackPanel>
+  </DockPanel>
+</UserControl>

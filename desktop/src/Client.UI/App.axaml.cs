@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application;
+using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Infrastructure;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -29,6 +30,9 @@ public partial class App : Avalonia.Application
             desktop.MainWindow = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
         }
 
+        // Обновление подписок по расписанию — в потоке окна: список серверов меняется там, где его показывают.
+        Services.GetRequiredService<SubscriptionUpdater>().Start();
+
         base.OnFrameworkInitializationCompleted();
     }
 
@@ -49,6 +53,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, ImportPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ImportPageViewModel>(sp, navigator));
         services.AddSingleton<Func<CheckPageViewModel>>(sp => () => ActivatorUtilities.CreateInstance<CheckPageViewModel>(sp));
         services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, SubscriptionsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SubscriptionsPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
         overrides?.Invoke(services);
         return services.BuildServiceProvider();

@@ -71,6 +71,10 @@ public abstract class WindowHarness : IDisposable
         return (window, shell);
     }
 
+    /// <summary>Служба из контейнера окна — после <see cref="Open"/>.</summary>
+    protected T Service<T>()
+        where T : notnull => _services!.GetRequiredService<T>();
+
     protected async Task Connect(ShellViewModel shell)
     {
         var toggle = shell.Protection.ToggleCommand.ExecuteAsync(null);

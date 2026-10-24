@@ -8,6 +8,9 @@ public static class Pages
     public const string Check = "check";
     public const string Settings = "settings";
     public const string Add = "add";
+
+    /// <summary>«Профили и подписки» — подстраница настроек (доска 12).</summary>
+    public const string Profiles = "profiles";
 }
 
 /// <summary>Переход между страницами окна.</summary>

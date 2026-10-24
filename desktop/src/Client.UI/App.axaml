@@ -40,6 +40,12 @@
     <DataTemplate DataType="vm:SettingsPageViewModel">
       <views:SettingsPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:SubscriptionsPageViewModel">
+      <views:SubscriptionsPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:SubscriptionEditViewModel">
+      <views:SubscriptionEditView />
+    </DataTemplate>
     <DataTemplate DataType="vm:StubPageViewModel">
       <views:StubPage />
     </DataTemplate>

@@ -26,11 +26,15 @@ public sealed partial class ToastViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsVisible { get; set; }
 
-    public void Show(string text)
+    /// <summary>Длинное сообщение (о выбранном сервере) держится дольше — его надо успеть прочесть.</summary>
+    public static readonly TimeSpan LongDuration = TimeSpan.FromSeconds(6);
+
+    public void Show(string text, TimeSpan? duration = null)
     {
         Text = text;
         IsVisible = true;
         _timer.Stop();
+        _timer.Interval = duration ?? Duration;
         _timer.Start();
     }
 }

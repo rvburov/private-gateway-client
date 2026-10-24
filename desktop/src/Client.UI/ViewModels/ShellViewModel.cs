@@ -1,5 +1,8 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
 namespace PrivateGateway.Client.UI.ViewModels;
@@ -20,11 +23,14 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, ServersPageViewModel> serversPage,
         Func<CheckPageViewModel> checkPage,
         Func<INavigator, ImportPageViewModel> importPage,
-        Func<INavigator, SettingsPageViewModel> settingsPage)
+        Func<INavigator, SettingsPageViewModel> settingsPage,
+        Func<INavigator, SubscriptionsPageViewModel> subscriptionsPage,
+        SubscriptionUpdater updater)
     {
         ArgumentNullException.ThrowIfNull(mainPage);
         ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
+        ArgumentNullException.ThrowIfNull(updater);
         Protection = protection;
         Toast = toast;
         Overlay = overlay;
@@ -38,11 +44,17 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             ["protection"] = () => new StubPageViewModel("settings.adv.protection.title"),
             ["core"] = () => new StubPageViewModel("settings.adv.core.title"),
             ["routing"] = () => new StubPageViewModel("settings.adv.routing.title"),
-            ["profiles"] = () => new StubPageViewModel("settings.adv.profiles.title"),
+            [Pages.Profiles] = () => subscriptionsPage(this),
             ["backup"] = () => new StubPageViewModel("settings.adv.backup.title"),
             ["about"] = () => new StubPageViewModel("settings.adv.about.title"),
         };
         Navigate(Pages.Home);
+
+        // Выбранный сервер пропал из подписки или изменился — сказать сразу, на каком бы экране ни был.
+        updater.SelectedServerChanged += (_, notice) => Dispatcher.UIThread.Post(() => Toast.Show(
+            Loc.Instance.Format(notice.Change == SelectedServerChange.Changed ? "subs.notice.changed" : "subs.notice.missing",
+                notice.ServerName, notice.SubscriptionName),
+            ToastViewModel.LongDuration));
     }
 
     public ProtectionViewModel Protection { get; }
@@ -71,7 +83,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     public bool IsCheck => CurrentKey == Pages.Check;
 
     /// <summary>Подстраницы настроек подсвечивают в островке «Настройки».</summary>
-    public bool IsSettings => CurrentKey is Pages.Settings or "protection" or "core" or "routing" or "profiles" or "backup" or "about";
+    public bool IsSettings => CurrentKey is Pages.Settings or "protection" or "core" or "routing" or Pages.Profiles or "backup" or "about";
 
     [RelayCommand]
     public void Navigate(string page)

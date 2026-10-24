@@ -264,7 +264,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
             {
                 if (attempt == _attempt)
                 {
-                    Show(Loc.Instance.Format("import.download.failed", DownloadReason(e)));
+                    Show(Loc.Instance.Format("import.download.failed", FailureText.Of(e.Failure, e.StatusCode)));
                 }
 
                 return;
@@ -317,19 +317,6 @@ public sealed partial class ImportPageViewModel : ObservableObject
         Message = null;
         _subscriptionUrl = null;
     }
-
-    private static string DownloadReason(SubscriptionDownloadException e) => e switch
-    {
-        { Failure: DownloadFailure.Status, StatusCode: 404 } => Loc.Instance["import.download.not_found"],
-        { Failure: DownloadFailure.Status, StatusCode: 401 or 403 } => Loc.Instance.Format("import.download.forbidden", e.StatusCode),
-        { Failure: DownloadFailure.Status } => Loc.Instance.Format("import.download.status", e.StatusCode),
-        { Failure: DownloadFailure.TooLarge } => Loc.Instance["import.download.too_large"],
-        { Failure: DownloadFailure.Timeout } => Loc.Instance["import.download.timeout"],
-        { Failure: DownloadFailure.NameResolution } => Loc.Instance["import.download.dns"],
-        { Failure: DownloadFailure.Connection } => Loc.Instance["import.download.connection"],
-        { Failure: DownloadFailure.Tls } => Loc.Instance["import.download.tls"],
-        _ => Loc.Instance["import.download.network"],
-    };
 
     private static string Number(int? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "0";
 

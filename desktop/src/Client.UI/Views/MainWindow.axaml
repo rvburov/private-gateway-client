@@ -45,13 +45,14 @@
     <Panel Background="{StaticResource PgBrush.Glass.Fill}">
       <ContentControl Content="{Binding CurrentPage}" />
 
-      <Border VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,56,0,0"
+      <Border VerticalAlignment="Top" HorizontalAlignment="Center" Margin="20,56,20,0"
               IsVisible="{Binding Toast.IsVisible}" ZIndex="80"
               Background="{StaticResource PgBrush.Text.Primary}"
               CornerRadius="{StaticResource PgRadius.Input}" Padding="14,8"
               BoxShadow="{StaticResource PgShadow.Popup}">
-        <TextBlock Text="{Binding Toast.Text}" FontSize="{StaticResource PgFontSize.Small}"
-                   FontWeight="Medium" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+        <TextBlock x:Name="ToastText" Text="{Binding Toast.Text}" FontSize="{StaticResource PgFontSize.Small}"
+                   FontWeight="Medium" Foreground="{StaticResource PgBrush.Surface.Solid}"
+                   TextWrapping="Wrap" TextAlignment="Center" />
       </Border>
 
       <c:IslandNav VerticalAlignment="Bottom" IsVisible="{Binding IsIslandVisible}" />
