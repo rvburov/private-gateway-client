@@ -1,0 +1,18 @@
+{
+  "name": "SS",
+  "protocol": "shadowsocks",
+  "host": "192.0.2.80",
+  "port": 8388,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "cipher": "chacha20-ietf-poly1305"
+  },
+  "credentials": {
+    "password": "pw-ss-1???"
+  }
+}

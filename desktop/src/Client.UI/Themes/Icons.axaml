@@ -1,0 +1,54 @@
+<!--
+  Иконки интерфейса: контуры 24×24 из макета (docs/design/mockup), рисуются линией 1.7–2.
+  Цвет задает элемент Icon, не иконка.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StreamGeometry x:Key="Icon.Shield">M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Mark.Ok">M8.8 12.2l2.2 2.2 4.4-4.6</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Mark.Off">M9.5 9.5l5 5M14.5 9.5l-5 5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Mark.Alert">M12 8v4.5M12 15.6h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Mark.Wait">M9 12h6</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Chip.Ok">M5 12.5l4.5 4.5L19 7.5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Chip.Dash">M6 12h12</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Chip.Dots">M7 12h.01M12 12h.01M17 12h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Chip.Warn">M12 7v6M12 17h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Home">M4 5.5A1.5 1.5 0 0 1 5.5 4h3A1.5 1.5 0 0 1 10 5.5v3A1.5 1.5 0 0 1 8.5 10h-3A1.5 1.5 0 0 1 4 8.5zM14 5.5A1.5 1.5 0 0 1 15.5 4h3A1.5 1.5 0 0 1 20 5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 14 8.5zM4 15.5A1.5 1.5 0 0 1 5.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3A1.5 1.5 0 0 1 8.5 20h-3A1.5 1.5 0 0 1 4 18.5zM14 15.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Servers">M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 15a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Servers.Detail">M7.2 7.5h1M7.2 16.5h1M11.5 7.5h5M11.5 16.5h5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Check">M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Check.Detail">M6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Settings">M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Nav.Settings.Detail">M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Plus">M12 5v14M5 12h14</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Refresh">M20 12a8 8 0 1 1-2.34-5.66M20 4v5h-5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Copy">M9 9h11v11H9zM5 15V6a2 2 0 0 1 2-2h9</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Eye">M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.EyeOff">M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6zM3 3l18 18</StreamGeometry>
+  <StreamGeometry x:Key="Icon.ChevronDown">M6 9l6 6 6-6</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Back">M15 5l-7 7 7 7</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Net.WiFi">M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Net.Ethernet">M4 7h16v10H4zM8 17v3M12 17v3M16 17v3M8 11h8</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Net.Usb">M12 3v13M9 6l3-3 3 3M7 10v2.5l5 3.5 5-3.5V10M12 21.5a1.5 1.5 0 1 0 0-3a1.5 1.5 0 0 0 0 3z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Net.Mobile">M5 19v-3M10 19v-6M15 19v-9M20 19V5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Net.None">M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01M3 3l18 18</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Protection">M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8zM12 8v5M12 16h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Core">M7 7h10v10H7zM10 3v4M14 3v4M10 17v4M14 17v4M3 10h4M3 14h4M17 10h4M17 14h4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Routing">M6 3v6a6 6 0 0 0 6 6h6M15 12l3 3-3 3M6 21v-4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Profiles">M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Check">M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5zM6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.Backup">M12 3v12M7 10l5 5 5-5M4 19h16</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Adv.About">M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 11v6M12 7.5h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.ChevronRight">M9 6l6 6-6 6</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Search">M11 4a7 7 0 1 0 0 14a7 7 0 1 0 0-14zM20 20l-3.5-3.5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Filter">M4 7h10M18 7h2M4 17h4M12 17h8M16 5a2 2 0 1 0 0 4a2 2 0 1 0 0-4zM10 15a2 2 0 1 0 0 4a2 2 0 1 0 0-4z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.More">M6 12h.01M12 12h.01M18 12h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Star">M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.8l-5.2 2.8 1-5.8-4.3-4.1 5.9-.9z</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Close">M6 6l12 12M18 6L6 18</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Edit">M4 20h4L19 9l-4-4L4 16zM13.5 6.5l4 4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Qr">M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2M14 18v2M18 18h2v2</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Clipboard">M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1zM8 5H6.5A1.5 1.5 0 0 0 5 6.5v13A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5v-13A1.5 1.5 0 0 0 17.5 5H16</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Link">M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1</StreamGeometry>
+  <StreamGeometry x:Key="Icon.File">M14 3H6.5A1.5 1.5 0 0 0 5 4.5v15A1.5 1.5 0 0 0 6.5 21h11a1.5 1.5 0 0 0 1.5-1.5V8zM14 3v5h5</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Trash">M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6</StreamGeometry>
+</ResourceDictionary>

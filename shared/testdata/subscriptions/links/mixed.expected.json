@@ -1,0 +1,24 @@
+{
+  "format": "links",
+  "lines": [
+    {
+      "line": 1,
+      "protocol": "vless",
+      "name": "Нидерланды 01"
+    },
+    {
+      "line": 3,
+      "protocol": "trojan",
+      "name": "Trojan"
+    },
+    {
+      "line": 4,
+      "error": "bad_port"
+    },
+    {
+      "line": 6,
+      "protocol": "hysteria2",
+      "name": "Hy2"
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "name": "Trojan WS",
+  "protocol": "trojan",
+  "host": "198.51.100.201",
+  "port": 443,
+  "transport": {
+    "kind": "ws",
+    "path": "/tr"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "example.com"
+  },
+  "credentials": {
+    "password": "pw-trojan-1"
+  }
+}

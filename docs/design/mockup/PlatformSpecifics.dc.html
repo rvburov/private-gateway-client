@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Отличия по ОС — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+</style>
+</helmet>
+<div style="width: 1504px; height: 860px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; gap: 60px">
+  <sc-for list="{{os}}" as="o" hint-placeholder-count="3">
+    <div style="width: 440px; display: flex; flex-direction: column; gap: 14px">
+      <span style="font-weight: 700; font-size: 18px">{{o.name}}</span>
+
+      <div style="position: relative; height: 270px; border-radius: 16px; overflow: hidden; background: #DCE3EE; border: 1px solid rgba(15, 23, 42, 0.10)">
+        <div aria-hidden="true" style="position: absolute; left: 20px; top: 40px; width: 200px; height: 200px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div>
+        <div aria-hidden="true" style="position: absolute; right: -30px; top: 60px; width: 180px; height: 180px; border-radius: 50%; background: #86EFAC; opacity: 0.45"></div>
+        <div style="position: absolute; left: 0; right: 0; top: {{o.barTop}}; bottom: {{o.barBottom}}; height: {{o.barH}}; background: {{o.barBg}}; display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 0 12px; font-size: 12px; color: {{o.barFg}}">
+          <span style="flex: 1; text-align: {{o.clockAlign}}; font-weight: 600">{{o.clockLeft}}</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01"></path></svg>
+          <span style="width: 24px; height: 24px; border-radius: 7px; background: rgba(22, 163, 74, 0.18); box-shadow: 0 0 0 2px #16A34A; display: flex; align-items: center; justify-content: center">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg>
+          </span>
+          <span style="font-weight: 600">{{o.clockRight}}</span>
+        </div>
+        <div style="position: absolute; right: 16px; top: {{o.menuTop}}; bottom: {{o.menuBottom}}; width: 232px; padding: 6px; border-radius: 14px; background: rgba(250, 251, 253, 0.92); border: 1px solid rgba(15, 23, 42, 0.10); box-shadow: 0 12px 30px rgba(15, 23, 42, 0.22); display: flex; flex-direction: column; gap: 1px; font-size: 12.5px">
+          <div style="display: flex; align-items: center; gap: 8px; padding: 6px 8px 8px; border-bottom: 1px solid rgba(15, 23, 42, 0.08); margin-bottom: 2px">
+            <span style="width: 8px; height: 8px; border-radius: 50%; background: #16A34A"></span>
+            <span style="font-weight: 700; color: #15803D">IP скрыт</span>
+            <span style="color: #4B5565">· NL · 42 мс</span>
+          </div>
+          <sc-for list="{{o.items}}" as="i" hint-placeholder-count="4">
+            <div style="display: flex; justify-content: space-between; padding: 6px 8px; border-radius: 8px; color: {{i.c}}; font-weight: {{i.w}}"><span>{{i.t}}</span><span style="color: #4B5565; font-weight: 500">{{i.k}}</span></div>
+          </sc-for>
+        </div>
+        <span style="position: absolute; left: 14px; top: {{o.labelTop}}; font-size: 11.5px; font-weight: 600; color: #374151; background: rgba(255, 255, 255, 0.8); padding: 3px 8px; border-radius: 6px">{{o.where}}</span>
+      </div>
+
+      <section style="padding: 16px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 10px">
+        <span style="font-weight: 700; font-size: 15px">Установка службы</span>
+        <sc-for list="{{o.steps}}" as="s" hint-placeholder-count="3">
+          <div style="display: flex; gap: 10px; align-items: flex-start">
+            <span style="width: 22px; height: 22px; border-radius: 50%; background: rgba(37, 99, 235, 0.10); color: #1D4ED8; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">{{s.n}}</span>
+            <span style="font-size: 13px; color: #1F2937; line-height: 1.45">{{s.t}}</span>
+          </div>
+        </sc-for>
+      </section>
+
+      <section style="padding: 14px 16px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 8px">
+        <sc-for list="{{o.facts}}" as="f" hint-placeholder-count="4">
+          <div style="display: flex; justify-content: space-between; gap: 12px; font-size: 13px">
+            <span style="color: #4B5565">{{f.k}}</span>
+            <span style="font-weight: 600; text-align: right">{{f.v}}</span>
+          </div>
+        </sc-for>
+      </section>
+    </div>
+  </sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1504,"height":860}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const items = [
+      { t: 'Отключить', k: '', c: '#B91C1C', w: 600 },
+      { t: 'Сменить сервер ›', k: '', c: '#0B0F19', w: 500 },
+      { t: 'Открыть окно', k: 'O', c: '#0B0F19', w: 500 },
+      { t: 'Выход', k: 'Q', c: '#0B0F19', w: 500 }
+    ];
+    const os = [
+      {
+        name: 'Windows 10 / 11', where: 'Значок в трее у часов', mod: 'Ctrl+',
+        barTop: 'auto', barBottom: '0', barH: '40px', barBg: 'rgba(243, 244, 246, 0.96)', barFg: '#1F2937', clockLeft: '', clockAlign: 'left', clockRight: '18:42',
+        menuTop: 'auto', menuBottom: '48px', labelTop: '12px',
+        steps: [
+          { n: '1', t: 'Нажмите «Установить» в окне первого запуска' },
+          { n: '2', t: 'Подтвердите запрос Windows на права администратора' },
+          { n: '3', t: 'Готово: служба Windows, TUN-адаптер, правила брандмауэра для блока при обрыве' }
+        ],
+        facts: [
+          { k: 'Установщик', v: '.msi / .exe, подписан' },
+          { k: 'Служба', v: 'служба Windows' },
+          { k: 'Блок при обрыве', v: 'брандмауэр Windows (WFP)' },
+          { k: 'Вкл/выкл VPN', v: 'Ctrl+Shift+V' }
+        ]
+      },
+      {
+        name: 'macOS', where: 'Значок в строке меню сверху', mod: '⌘',
+        barTop: '0', barBottom: 'auto', barH: '28px', barBg: 'rgba(250, 251, 253, 0.85)', barFg: '#1F2937', clockLeft: '', clockAlign: 'left', clockRight: 'Чт 18:42',
+        menuTop: '34px', menuBottom: 'auto', labelTop: '232px',
+        steps: [
+          { n: '1', t: 'Нажмите «Установить» — macOS сообщит, что системное расширение заблокировано' },
+          { n: '2', t: 'Откройте Системные настройки → Конфиденциальность и безопасность → «Разрешить»' },
+          { n: '3', t: 'Разрешите добавить конфигурацию VPN — готово' }
+        ],
+        facts: [
+          { k: 'Установщик', v: '.dmg, подписан и заверен Apple' },
+          { k: 'Служба', v: 'системное расширение (Network Extension)' },
+          { k: 'Блок при обрыве', v: 'средствами Network Extension' },
+          { k: 'Вкл/выкл VPN', v: '⌘⇧V' }
+        ]
+      },
+      {
+        name: 'Linux', where: 'Значок в панели (AppIndicator)', mod: 'Ctrl+',
+        barTop: '0', barBottom: 'auto', barH: '28px', barBg: '#1F2937', barFg: '#F3F4F6', clockLeft: '18:42', clockAlign: 'center', clockRight: '',
+        menuTop: '34px', menuBottom: 'auto', labelTop: '232px',
+        steps: [
+          { n: '1', t: 'Нажмите «Установить» в окне первого запуска' },
+          { n: '2', t: 'Введите пароль пользователя в системном запросе (polkit)' },
+          { n: '3', t: 'Готово: служба systemd, TUN-адаптер, правила nftables, DNS через systemd-resolved' }
+        ],
+        facts: [
+          { k: 'Пакеты', v: '.deb · .rpm' },
+          { k: 'Служба', v: 'systemd' },
+          { k: 'Блок при обрыве', v: 'nftables' },
+          { k: 'Вкл/выкл VPN', v: 'Ctrl+Shift+V' }
+        ]
+      }
+    ];
+    os.forEach((o) => {
+      o.items = items.map((i) => Object.assign({}, i, { k: i.k ? o.mod + i.k : '' }));
+    });
+    return { os };
+  }
+}
+</script>
+</body>
+</html>

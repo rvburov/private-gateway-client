@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Controls.IslandNav"
+             x:DataType="vm:ShellViewModel"
+             Height="150">
+  <!--
+    Островок навигации (макет, экран 1): белая плашка с выступом вокруг кнопки-щита. Форма
+    считается в коде по ширине окна (IslandGeometry), содержимое под ней прокручивается.
+  -->
+  <Panel>
+    <Path x:Name="Island" Fill="{StaticResource PgBrush.Surface.Solid}"
+          Stroke="{StaticResource PgBrush.Line.Divider}" StrokeThickness="1" />
+
+    <Grid x:Name="NavGrid" ColumnDefinitions="*,*,92,*,*" Margin="24,70,24,12">
+      <Button Grid.Column="0" Classes="nav" Classes.active="{Binding IsHome}"
+              Command="{Binding NavigateCommand}" CommandParameter="home"
+              AutomationProperties.Name="{l:L nav.home}">
+        <StackPanel Spacing="4" HorizontalAlignment="Center" Margin="0,0,0,9">
+          <c:Icon Data="{StaticResource Icon.Nav.Home}" Width="24" Height="24" StrokeThickness="1.7" />
+          <TextBlock Text="{l:L nav.home}" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="1" Classes="nav" Classes.active="{Binding IsServers}"
+              Command="{Binding NavigateCommand}" CommandParameter="servers"
+              AutomationProperties.Name="{l:L nav.servers}">
+        <StackPanel Spacing="4" HorizontalAlignment="Center" Margin="0,0,0,9">
+          <c:Icon Data="{StaticResource Icon.Nav.Servers}" Detail="{StaticResource Icon.Nav.Servers.Detail}"
+                  Width="24" Height="24" StrokeThickness="1.7" />
+          <TextBlock Text="{l:L nav.servers}" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Button>
+      <TextBlock Grid.Column="2" x:Name="StateLabel" Text="{Binding Protection.Label}"
+                 HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="0,0,0,9"
+                 FontSize="{StaticResource PgFontSize.Caption}" FontWeight="Bold"
+                 Foreground="{Binding Protection.Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}" />
+      <Button Grid.Column="3" Classes="nav" Classes.active="{Binding IsCheck}"
+              Command="{Binding NavigateCommand}" CommandParameter="check"
+              AutomationProperties.Name="{l:L nav.check}">
+        <StackPanel Spacing="4" HorizontalAlignment="Center" Margin="0,0,0,9">
+          <c:Icon Data="{StaticResource Icon.Nav.Check}" Detail="{StaticResource Icon.Nav.Check.Detail}"
+                  Width="24" Height="24" StrokeThickness="1.7" />
+          <TextBlock Text="{l:L nav.check}" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Button>
+      <Button Grid.Column="4" Classes="nav" Classes.active="{Binding IsSettings}"
+              Command="{Binding NavigateCommand}" CommandParameter="settings"
+              AutomationProperties.Name="{l:L nav.settings}">
+        <StackPanel Spacing="4" HorizontalAlignment="Center" Margin="0,0,0,9">
+          <c:Icon Data="{StaticResource Icon.Nav.Settings}" Detail="{StaticResource Icon.Nav.Settings.Detail}"
+                  Width="24" Height="24" StrokeThickness="1.7" />
+          <TextBlock Text="{l:L nav.settings}" HorizontalAlignment="Center" />
+        </StackPanel>
+      </Button>
+    </Grid>
+
+    <Panel Width="{StaticResource PgLayout.PowerButton.Size}" Height="{StaticResource PgLayout.PowerButton.Size}"
+           HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,30,0,0">
+      <!-- Свечение цвета состояния: у кнопки нет своей тени, она у подложки -->
+      <Border CornerRadius="40" IsHitTestVisible="False"
+              Background="{StaticResource PgBrush.Surface.Solid}"
+              BoxShadow="{Binding Protection.Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Glow}" />
+      <Button x:Name="Power" Classes="power"
+              BorderThickness="{StaticResource PgThickness.PowerButton.Ring}"
+              BorderBrush="{Binding Protection.Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Ring}"
+              Foreground="{Binding Protection.Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}"
+              Command="{Binding Protection.ToggleCommand}"
+              ToolTip.Tip="{Binding Protection.ActionText}"
+              AutomationProperties.Name="{Binding Protection.ActionText}">
+        <c:Icon Data="{StaticResource Icon.Shield}"
+                Detail="{Binding Protection.Mark, Converter={StaticResource IconKey}}"
+                Width="{StaticResource PgLayout.PowerButton.IconSize}"
+                Height="{StaticResource PgLayout.PowerButton.IconSize}" StrokeThickness="1.9" />
+      </Button>
+      <Arc Classes="spin" IsVisible="{Binding Protection.IsBusy}" IsHitTestVisible="False"
+           StartAngle="-90" SweepAngle="100"
+           Stroke="{StaticResource PgBrush.Accent.Base}" StrokeThickness="{StaticResource PgLayout.PowerButton.RingWidth}"
+           StrokeLineCap="Round" RenderTransformOrigin="50%,50%">
+        <Arc.RenderTransform>
+          <RotateTransform />
+        </Arc.RenderTransform>
+      </Arc>
+    </Panel>
+  </Panel>
+</UserControl>

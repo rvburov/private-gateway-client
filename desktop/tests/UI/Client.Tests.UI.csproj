@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Интерфейс без экрана (Avalonia.Headless + Skia): окно строится как в программе, тесты
+    жмут кнопки и проверяют подписи; снимки окна пишутся в artifacts/ui-snapshots для сверки
+    с макетом. Плюс проверки темы, словарей и разметки.
+  -->
+
+  <ItemGroup>
+    <ProjectReference Include="../../src/Client.UI/Client.UI.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia.Headless.XUnit" />
+    <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" />
+  </ItemGroup>
+
+</Project>

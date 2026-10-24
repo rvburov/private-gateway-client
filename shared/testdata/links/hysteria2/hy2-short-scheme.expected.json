@@ -1,0 +1,15 @@
+{
+  "name": "example.com",
+  "protocol": "hysteria2",
+  "host": "example.com",
+  "port": 443,
+  "transport": {
+    "kind": "quic"
+  },
+  "security": {
+    "kind": "tls"
+  },
+  "credentials": {
+    "password": "pw-hy2-2"
+  }
+}

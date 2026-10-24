@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Дизайн-система: компоненты — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F6FA;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}
+button:focus{outline:none}
+button:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+</style>
+</helmet>
+<div style="width: 1504px; height: 1500px; box-sizing: border-box; padding: 40px; background: #F4F6FA; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 24px">
+  <div style="display: flex; align-items: flex-end; justify-content: space-between; gap: 24px">
+    <div>
+      <div style="font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.08em">Private Gateway · дизайн-система v1</div>
+      <h1 style="margin: 6px 0 0; font-size: 32px; font-weight: 700; letter-spacing: -0.02em">Компоненты</h1>
+      <p style="margin: 6px 0 0; color: #374151; max-width: 900px; line-height: 1.5">Каждый блок собирается только из токенов «Основ» — никаких цветов и размеров «на глаз». Под образцом: ключ стиля в Avalonia и размеры.</p>
+    </div>
+    <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #4B5565; padding: 6px 10px; border-radius: 8px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08)">Themes/Controls/*.axaml</span>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start">
+
+    <div style="display: flex; flex-direction: column; gap: 24px">
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Кнопки</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">Button.*</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: flex; flex-direction: column; gap: 8px">
+          <button type="button" style="height: 48px; border-radius: 14px; border: none; background: #2563EB; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28); cursor: pointer">Primary · Подключить</button>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px">
+            <button type="button" style="height: 44px; border-radius: 14px; border: 1px solid rgba(15, 23, 42, 0.12); background: #FFFFFF; color: #0B0F19; font: inherit; font-weight: 500; cursor: pointer">Secondary</button>
+            <button type="button" style="height: 44px; border-radius: 14px; border: 1px solid rgba(220, 38, 38, 0.30); background: #FFFFFF; color: #B91C1C; font: inherit; font-weight: 600; cursor: pointer">Danger</button>
+            <button type="button" style="height: 44px; border-radius: 14px; border: 1px solid rgba(37, 99, 235, 0.25); background: rgba(37, 99, 235, 0.06); color: #1D4ED8; font: inherit; font-weight: 600; cursor: pointer">Tinted</button>
+            <button type="button" disabled style="height: 44px; border-radius: 14px; border: none; background: #2563EB; color: #FFFFFF; font: inherit; font-weight: 600; opacity: 0.4">Disabled</button>
+          </div>
+          <div style="display: flex; align-items: center; justify-content: space-between">
+            <span style="color: #1D4ED8; font-weight: 600">Link · Все серверы ›</span>
+            <span style="width: 44px; height: 44px; border-radius: 12px; background: rgba(15, 23, 42, 0.06); display: flex; align-items: center; justify-content: center"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#0B0F19" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg></span>
+          </div>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Высота 44–54, скругление 14–16, текст 15/600</li>
+          <li>Наведение: фон темнее на 8 %; нажатие: масштаб 0.98</li>
+          <li>Иконка-кнопка 44 × 44, скругление 12, при наведении фон 6 %</li>
+          <li>Одна основная кнопка на экран</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Переключатели и флажки</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">ToggleSwitch · CheckBox</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: flex; align-items: center; justify-content: space-around; gap: 12px">
+          <span style="width: 48px; height: 28px; border-radius: 999px; background: #2563EB; padding: 3px; box-sizing: border-box; display: flex; justify-content: flex-end"><span style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25)"></span></span>
+          <span style="width: 48px; height: 28px; border-radius: 999px; background: #C3CAD6; padding: 3px; box-sizing: border-box; display: flex"><span style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25)"></span></span>
+          <span style="width: 20px; height: 20px; border-radius: 6px; background: #2563EB; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg></span>
+          <span style="width: 20px; height: 20px; border-radius: 6px; border: 1.5px solid #9AA3B2; box-sizing: border-box; background: #FFFFFF"></span>
+          <span style="width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid #2563EB; box-sizing: border-box; display: flex; align-items: center; justify-content: center"><span style="width: 8px; height: 8px; border-radius: 50%; background: #2563EB"></span></span>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Переключатель 48 × 28, кружок 22: вкл — Accent, выкл — #C3CAD6</li>
+          <li>Флажок 20, скругление 6; радио 18 с точкой 8</li>
+          <li>Вся строка с подписью — зона нажатия не ниже 44</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Сегменты</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">pg:Segmented</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8">
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: rgba(15, 23, 42, 0.05)">
+            <span style="height: 36px; border-radius: 9px; background: #FFFFFF; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14); font-weight: 600; display: flex; align-items: center; justify-content: center; font-size: 13.5px">Все</span>
+            <span style="height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 13.5px; color: #374151">Избранные</span>
+            <span style="height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 13.5px; color: #374151">Недавние</span>
+          </div>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Дорожка 5 %, скругление 12, отступ 4</li>
+          <li>Пункт 36–38, скругление 9; активный — белый, тень 0 1 3 · 14 %</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Плашки статуса</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">pg:StatusChip</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px">
+          <sc-for list="{{chips}}" as="c" hint-placeholder-count="5">
+            <span style="height: 44px; padding: 0 10px; border-radius: 12px; background: {{c.tint}}; display: flex; align-items: center; gap: 8px">
+              <span style="width: 20px; height: 20px; border-radius: 50%; background: {{c.dot}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{c.icon}}"></path></svg></span>
+              <span style="display: flex; flex-direction: column"><span style="font-size: 12.5px; font-weight: 600">{{c.k}}</span><span style="font-size: 11px; color: {{c.fg}}">{{c.v}}</span></span>
+            </span>
+          </sc-for>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Фон — оттенок статуса 6–12 %, кружок — основной цвет статуса</li>
+          <li>Статус не только цветом: всегда иконка и текст</li>
+        </ul>
+      </section>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 24px">
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Выпадающий список</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">ComboBox</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: flex; align-items: flex-start; gap: 14px">
+          <span style="height: 36px; padding: 0 10px 0 12px; border-radius: 10px; border: 1px solid rgba(15, 23, 42, 0.12); background: #FFFFFF; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px">Авто<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></span>
+          <span style="display: flex; flex-direction: column; gap: 6px">
+            <span style="height: 36px; padding: 0 10px 0 12px; border-radius: 10px; border: 1px solid #2563EB; box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12); background: #FFFFFF; font-size: 13px; font-weight: 500; display: flex; align-items: center; gap: 6px; align-self: flex-start">gVisor<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1D4ED8" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="transform: rotate(180deg)"><path d="M6 9l6 6 6-6"></path></svg></span>
+            <span style="padding: 6px; border-radius: 16px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.10); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.20); display: flex; flex-direction: column; gap: 2px; font-size: 13.5px">
+              <span style="height: 38px; padding: 0 14px; border-radius: 10px; display: flex; align-items: center">Системный</span>
+              <span style="height: 38px; padding: 0 14px; border-radius: 10px; display: flex; align-items: center; background: rgba(37, 99, 235, 0.10); color: #1D4ED8; font-weight: 600">gVisor</span>
+              <span style="height: 38px; padding: 0 14px; border-radius: 10px; display: flex; align-items: center">Смешанный</span>
+            </span>
+          </span>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Кнопка 36, скругление 10, рамка 12 %; открыт — рамка Accent и свечение 3 px</li>
+          <li>Панель: скругление 16, тень «всплывающее», ширина по содержимому</li>
+          <li>Выбранный пункт — подсветка Accent.Tint, текст Accent.Text 600</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Поля и поиск</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">TextBox</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: flex; flex-direction: column; gap: 8px">
+          <span style="height: 46px; padding: 0 4px 0 14px; border-radius: 14px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; align-items: center; gap: 8px; color: #4B5565">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <span style="flex: 1">Страна, город, IP</span>
+            <span style="width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#374151" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg></span>
+          </span>
+          <span style="height: 44px; padding: 0 12px; border-radius: 12px; background: #FFFFFF; border: 1.5px solid #2563EB; display: flex; align-items: center; font-family: 'JetBrains Mono', monospace; font-size: 13px">https://example.com/sub/••••</span>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Высота 44–46, скругление 12–14, рамка 8–14 %, в фокусе — Accent</li>
+          <li>Подпись поля над ним: 12/600 Text.Muted</li>
+          <li>Ссылки и ключи — моноширинным, секреты — точками</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Карточка и строка сервера</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">pg:Card · pg:ServerRow</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: flex; flex-direction: column; gap: 8px">
+          <span style="padding: 12px 14px; border-radius: 20px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 23, 42, 0.08); box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 24px rgba(15, 23, 42, 0.06); display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Сайты видят ваш IP</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 21px; font-weight: 600">203.0.113.24</span>
+          </span>
+          <span style="min-height: 56px; padding: 8px 12px; border-radius: 14px; background: #FFFFFF; border: 1.5px solid #16A34A; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.12); display: flex; align-items: center; gap: 12px">
+            <span style="width: 40px; height: 28px; border-radius: 7px; background: rgba(37, 99, 235, 0.10); border: 1px solid rgba(37, 99, 235, 0.16); color: #1D4ED8; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center">NL</span>
+            <span style="flex: 1; display: flex; flex-direction: column"><span style="font-weight: 600">Нидерланды 01</span><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">203.0.113.24 · VLESS</span></span>
+            <span style="font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: rgba(22, 163, 74, 0.12); color: #166534">активен</span>
+          </span>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Карточка: Surface.Card, рамка 8 %, скругление 18–20, тень «карточка»</li>
+          <li>Заголовок секции — Overline над содержимым</li>
+          <li>Выбранная строка — рамка 1.5 Success и лёгкая тень</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Баннеры и уведомления</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">pg:Banner · pg:Toast</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: #EEF2F8; display: flex; flex-direction: column; gap: 8px; font-size: 12.5px">
+          <span style="padding: 10px 12px; border-radius: 12px; background: rgba(234, 88, 12, 0.08); border: 1px solid rgba(234, 88, 12, 0.20); color: #9A3412">Внимание · программы из списка идут мимо VPN</span>
+          <span style="padding: 10px 12px; border-radius: 12px; background: rgba(245, 158, 11, 0.12); border: 1px solid rgba(245, 158, 11, 0.32); color: #92400E">Пауза · интернет без VPN · 4:59</span>
+          <span style="padding: 10px 12px; border-radius: 12px; background: rgba(37, 99, 235, 0.06); border: 1px solid rgba(37, 99, 235, 0.12); color: #1F2937">Пояснение · провайдер не видит, какие сайты вы открываете</span>
+          <span style="padding: 8px 14px; border-radius: 10px; background: #0B0F19; color: #FFFFFF; font-weight: 500; align-self: center">Серверы обновлены · пинг проверен</span>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Баннер: фон 6–12 % и рамка 12–32 % цвета статуса, текст — тёмный оттенок</li>
+          <li>Короткое сообщение — тёмная плашка сверху на 2 секунды</li>
+        </ul>
+      </section>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 24px">
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Меню-островок и щит</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">pg:IslandNav · pg:PowerButton</span></div>
+        <div style="position: relative; height: 148px; border-radius: 14px; background: #EEF2F8; overflow: hidden">
+          <div style="position: absolute; left: 0; top: -12px; width: 440px; height: 150px; transform: scale(0.955); transform-origin: 0 0">
+            <svg width="440" height="150" viewBox="0 0 440 150" aria-hidden="true" style="position: absolute; left: 0; top: 0; display: block; overflow: visible; filter: drop-shadow(0 6px 18px rgba(15, 23, 42, 0.14))"><path d="M50 70 H156.5 A18 18 0 0 0 173.82 56.91 A48 48 0 0 1 266.18 56.91 A18 18 0 0 0 283.5 70 H390 A26 26 0 0 1 416 96 V112 A26 26 0 0 1 390 138 H50 A26 26 0 0 1 24 112 V96 A26 26 0 0 1 50 70 Z" fill="#FFFFFF" stroke="rgba(15, 23, 42, 0.06)" stroke-width="1"></path></svg>
+            <div style="position: absolute; left: 24px; right: 24px; top: 70px; bottom: 12px; display: grid; grid-template-columns: 1fr 1fr 92px 1fr 1fr; padding: 0 12px 9px">
+              <sc-for list="{{navL}}" as="n" hint-placeholder-count="2">
+              <span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; color: {{n.color}}; font-size: 11.5px; font-weight: {{n.weight}}; line-height: 14px">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.shape}}" fill="{{n.fill}}"></path><path d="{{n.detail}}"></path></svg>
+                {{n.label}}
+              </span>
+              </sc-for>
+              <span style="display: flex; align-items: flex-end; justify-content: center; font-size: 12px; line-height: 14px; font-weight: 700; color: #15803D; white-space: nowrap">Защищено</span>
+              <sc-for list="{{navR}}" as="n" hint-placeholder-count="2">
+              <span style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; color: {{n.color}}; font-size: 11.5px; font-weight: {{n.weight}}; line-height: 14px">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.shape}}" fill="{{n.fill}}"></path><path d="{{n.detail}}"></path></svg>
+                {{n.label}}
+              </span>
+              </sc-for>
+            </div>
+            <span style="position: absolute; top: 30px; left: 180px; width: 80px; height: 80px; border-radius: 50%; border: 4px solid #16A34A; box-sizing: border-box; background: #FFFFFF; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25); display: flex; align-items: center; justify-content: center; color: #15803D">
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg>
+            </span>
+          </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 4px 6px">
+          <sc-for list="{{rings}}" as="r" hint-placeholder-count="5">
+            <span style="display: flex; flex-direction: column; align-items: center; gap: 6px">
+              <span style="width: 44px; height: 44px; border-radius: 50%; border: 3px solid {{r.ring}}; box-sizing: border-box; background: #FFFFFF; color: {{r.icon}}; display: flex; align-items: center; justify-content: center">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="{{r.mark}}"></path></svg>
+              </span>
+              <span style="font-size: 11px; color: #374151">{{r.k}}</span>
+            </span>
+          </sc-for>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Островок: отступ 24 от краёв окна и 12 снизу, скругление 26, тень «островок»</li>
+          <li>Выступ — дуга R 48 вокруг кнопки и плавные скругления R 18</li>
+          <li>Кнопка-щит 80, кольцо 4 цвета состояния, свечение 25 %</li>
+          <li>Активный пункт — Accent и заливка иконки 16 %; под кнопкой — подпись состояния</li>
+          <li>Содержимое прокручивается под островком, внизу запас 160</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column; gap: 12px">
+        <div style="display: flex; justify-content: space-between; align-items: baseline"><h2 style="margin: 0; font-size: 16px; font-weight: 700">Диалог</h2><span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565">pg:ConfirmDialog</span></div>
+        <div style="padding: 14px; border-radius: 14px; background: rgba(15, 23, 42, 0.30)">
+          <span style="padding: 16px; border-radius: 22px; background: #FFFFFF; display: flex; flex-direction: column; gap: 8px">
+            <span style="font-weight: 700; font-size: 16px">Снять защиту?</span>
+            <span style="font-size: 12.5px; color: #374151; line-height: 1.45">Трафик пойдёт напрямую, сайты увидят ваш IP.</span>
+            <span style="height: 40px; border-radius: 12px; background: #2563EB; color: #FFFFFF; font-weight: 600; display: flex; align-items: center; justify-content: center">Оставить защиту</span>
+            <span style="height: 38px; border-radius: 12px; border: 1px solid rgba(220, 38, 38, 0.35); color: #B91C1C; font-weight: 600; display: flex; align-items: center; justify-content: center">Снять защиту</span>
+          </span>
+        </div>
+        <ul style="margin: 0; padding-left: 16px; font-size: 12.5px; color: #374151; line-height: 1.6">
+          <li>Затемнение 30 %, карточка скругление 24, тень 0 20 50 · 30 %</li>
+          <li>Безопасное действие — основная кнопка, опасное — вторая</li>
+        </ul>
+      </section>
+
+      <section style="padding: 18px; border-radius: 20px; background: #0B0F19; color: #FFFFFF; display: flex; flex-direction: column; gap: 10px">
+        <h2 style="margin: 0; font-size: 16px; font-weight: 700">Правила для новых блоков</h2>
+        <ol style="margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.65; color: #E5E7EB">
+          <li>Только токены из «Основ», без цветов и размеров вручную</li>
+          <li>Зона нажатия не меньше 44 × 44</li>
+          <li>Контраст текста не ниже 4.5 : 1</li>
+          <li>Состояния: обычное, наведение, нажатие, фокус (Tab), выключено</li>
+          <li>Статус всегда иконкой и текстом, не только цветом</li>
+          <li>Тексты на RU и EN: закладывать +30 % длины</li>
+          <li>Одинаково на Windows, macOS и Linux, кроме рамки окна и трея</li>
+        </ol>
+      </section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1504,"height":1500}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const CHECK = 'M5 12.5l4.5 4.5L19 7.5', DASH = 'M6 12h12', DOTS = 'M7 12h.01M12 12h.01M17 12h.01', EX = 'M12 7v6M12 17h.01';
+    const chips = [
+      { k: 'Готово', v: 'ok · Success', tint: 'rgba(22, 163, 74, 0.08)', dot: '#16A34A', fg: '#166534', icon: CHECK },
+      { k: 'Ожидание', v: 'wait · Accent', tint: 'rgba(37, 99, 235, 0.08)', dot: '#3B82F6', fg: '#1E40AF', icon: DOTS },
+      { k: 'Остановлено', v: 'stop · Warning', tint: 'rgba(234, 88, 12, 0.09)', dot: '#EA580C', fg: '#9A3412', icon: DASH },
+      { k: 'Частично', v: 'warn · Caution', tint: 'rgba(245, 158, 11, 0.12)', dot: '#F59E0B', fg: '#92400E', icon: EX },
+      { k: 'Выключено', v: 'off · Danger', tint: 'rgba(185, 28, 28, 0.06)', dot: '#DC2626', fg: '#991B1B', icon: DASH }
+    ];
+    const OKM = 'M8.8 12.2l2.2 2.2 4.4-4.6', XM = 'M9.5 9.5l5 5M14.5 9.5l-5 5', EXM = 'M12 8v4.5M12 15.6h.01', DM = 'M8.5 12h.01M12 12h.01M15.5 12h.01';
+    const rings = [
+      { k: 'вкл', ring: '#16A34A', icon: '#15803D', mark: OKM },
+      { k: 'подключение', ring: '#BFDBFE', icon: '#2563EB', mark: DM },
+      { k: 'блок', ring: '#EA580C', icon: '#C2410C', mark: EXM },
+      { k: 'частично', ring: '#F59E0B', icon: '#B45309', mark: EXM },
+      { k: 'выкл', ring: '#DC2626', icon: '#DC2626', mark: XM }
+    ];
+    const ICONS = {
+      home: { shape: 'M4 5.5A1.5 1.5 0 0 1 5.5 4h3A1.5 1.5 0 0 1 10 5.5v3A1.5 1.5 0 0 1 8.5 10h-3A1.5 1.5 0 0 1 4 8.5zM14 5.5A1.5 1.5 0 0 1 15.5 4h3A1.5 1.5 0 0 1 20 5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 14 8.5zM4 15.5A1.5 1.5 0 0 1 5.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3A1.5 1.5 0 0 1 8.5 20h-3A1.5 1.5 0 0 1 4 18.5zM14 15.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5z', detail: 'M-9 -9' },
+      servers: { shape: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 15a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z', detail: 'M7.2 7.5h1M7.2 16.5h1M11.5 7.5h5M11.5 16.5h5' },
+      diag: { shape: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z', detail: 'M6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5' },
+      settings: { shape: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z', detail: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z' }
+    };
+    const navItem = (id, label) => {
+      const active = id === 'home';
+      return {
+        label, shape: ICONS[id].shape, detail: ICONS[id].detail,
+        fill: active ? 'rgba(37, 99, 235, 0.16)' : 'none',
+        color: active ? '#2563EB' : '#4B5565', weight: active ? 600 : 500
+      };
+    };
+    const navL = [navItem('home', 'Главная'), navItem('servers', 'Серверы')];
+    const navR = [navItem('diag', 'Проверка'), navItem('settings', 'Настройки')];
+    return { chips, rings, navL, navR };
+  }
+}
+</script>
+</body>
+</html>

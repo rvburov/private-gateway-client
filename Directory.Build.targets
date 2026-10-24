@@ -1,0 +1,13 @@
+<Project>
+
+  <!--
+    Слои без доступа к сети и процессам (PgNoNetwork=true в .csproj): Core, Network, Application,
+    UI. Сеть и запуск программ — только в службе, платформенных проектах и Infrastructure.
+    Запрет держат анализатор и desktop/BannedSymbols.NoNetwork.txt, проверку — тесты Architecture.
+  -->
+  <ItemGroup Condition="'$(PgNoNetwork)' == 'true'">
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" PrivateAssets="all" />
+    <AdditionalFiles Include="$(MSBuildThisFileDirectory)desktop/BannedSymbols.NoNetwork.txt" />
+  </ItemGroup>
+
+</Project>

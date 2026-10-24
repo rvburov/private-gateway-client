@@ -1,0 +1,52 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:views="using:PrivateGateway.Client.UI.Views"
+             xmlns:conv="using:PrivateGateway.Client.UI.Converters"
+             x:Class="PrivateGateway.Client.UI.App"
+             RequestedThemeVariant="Light">
+  <Application.Resources>
+    <ResourceDictionary>
+      <ResourceDictionary.MergedDictionaries>
+        <ResourceInclude Source="avares://PrivateGateway/Themes/Tokens.axaml" />
+        <ResourceInclude Source="avares://PrivateGateway/Themes/Icons.axaml" />
+      </ResourceDictionary.MergedDictionaries>
+      <conv:ToneBrushConverter x:Key="ToneBrush" />
+      <conv:CheckBrushConverter x:Key="CheckBrush" />
+      <conv:IconKeyConverter x:Key="IconKey" />
+      <conv:UpperConverter x:Key="Upper" />
+    </ResourceDictionary>
+  </Application.Resources>
+
+  <Application.DataTemplates>
+    <DataTemplate DataType="vm:MainPageViewModel">
+      <views:MainPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ServersPageViewModel">
+      <views:ServersPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DialogViewModel">
+      <views:DialogView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ServerCardViewModel">
+      <views:ServerCardView />
+    </DataTemplate>
+    <DataTemplate DataType="vm:ImportPageViewModel">
+      <views:ImportPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:CheckPageViewModel">
+      <views:CheckPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:SettingsPageViewModel">
+      <views:SettingsPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:StubPageViewModel">
+      <views:StubPage />
+    </DataTemplate>
+  </Application.DataTemplates>
+
+  <Application.Styles>
+    <FluentTheme />
+    <StyleInclude Source="avares://PrivateGateway/Themes/Styles.axaml" />
+  </Application.Styles>
+</Application>

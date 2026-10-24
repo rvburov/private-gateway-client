@@ -1,0 +1,422 @@
+// Связь интерфейса (процесс пользователя) с привилегированной службой Private Gateway.
+//
+// Транспорт — gRPC по локальному каналу, в сеть служба не слушает:
+//   Windows — named pipe «PrivateGateway.Ipc.v1»;
+//   Linux   — Unix-сокет /run/private-gateway/ipc.sock;
+//   macOS   — Unix-сокет службы (вариант решается на спайке macOS).
+// Доступ к каналу — только у пользователя, установившего службу, и у администраторов.
+//
+// Правило безопасности: служба не принимает готовый конфиг ядра, пути к файлам и команды.
+// Только описание сервера и настройки — конфиг Xray/sing-box служба собирает и проверяет сама.
+// Иначе любой процесс пользователя смог бы через службу писать файлы с правами администратора.
+//
+// Версия контракта — в имени пакета (v1). Несовместимое изменение — новый пакет v2,
+// v1 служба поддерживает, пока интерфейс старой версии может с ней встретиться.
+
+syntax = "proto3";
+
+package privategateway.ipc.v1;
+
+option csharp_namespace = "PrivateGateway.Client.Contracts.V1";
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+service GatewayService {
+  // Версии службы, контракта и ядер. Интерфейс вызывает первым и сверяет api_version.
+  rpc GetServiceInfo(GetServiceInfoRequest) returns (ServiceInfo);
+
+  // Текущее состояние и поток его изменений (главный экран, трей, уведомления).
+  rpc GetStatus(GetStatusRequest) returns (Status);
+  rpc WatchStatus(WatchStatusRequest) returns (stream Status);
+
+  rpc Connect(ConnectRequest) returns (ConnectReply);
+  rpc Disconnect(DisconnectRequest) returns (DisconnectReply);
+
+  // Настройки защиты без переподключения (блок при обрыве, IPv6, локальная сеть, DNS).
+  rpc ApplyProtection(ProtectionSettings) returns (ApplyProtectionReply);
+
+  // Пауза защиты для входа в Wi-Fi отеля или кафе — только на время, с обратным отсчетом.
+  rpc PauseForCaptivePortal(CaptivePauseRequest) returns (CaptivePauseReply);
+
+  // Экран «Проверка»: проверки утечек и журнал службы (уже без секретов).
+  rpc RunChecks(RunChecksRequest) returns (CheckReport);
+  rpc WatchLog(WatchLogRequest) returns (stream LogEntry);
+
+  // Пинг серверов меряет служба: в интерфейсе сеть запрещена.
+  rpc MeasureLatency(MeasureLatencyRequest) returns (MeasureLatencyReply);
+}
+
+// ── Состояние ───────────────────────────────────────────────────────────────
+
+enum ConnectionState {
+  CONNECTION_STATE_UNSPECIFIED = 0;
+  CONNECTION_STATE_OFF = 1;
+  CONNECTION_STATE_CONNECTING = 2;
+  CONNECTION_STATE_CONNECTED = 3;
+  CONNECTION_STATE_RECONNECTING = 4;
+  CONNECTION_STATE_BLOCKED = 5;
+  CONNECTION_STATE_ERROR = 6;
+}
+
+enum Mode {
+  MODE_UNSPECIFIED = 0;
+  // Весь трафик системы через TUN.
+  MODE_VPN = 1;
+  // Только системный прокси: часть программ идет мимо, блок при обрыве недоступен.
+  MODE_PROXY = 2;
+}
+
+// Состояние одной проверки (чипы главного экрана и строки экрана «Проверка»).
+enum CheckState {
+  CHECK_STATE_UNSPECIFIED = 0;
+  CHECK_STATE_OK = 1;
+  CHECK_STATE_WAITING = 2;
+  CHECK_STATE_STOPPED = 3;
+  CHECK_STATE_OFF = 4;
+  CHECK_STATE_WARNING = 5;
+}
+
+message Status {
+  ConnectionState state = 1;
+  Mode mode = 2;
+  string server_id = 3;
+  // Когда наступило текущее состояние (таймер «в сети»).
+  google.protobuf.Timestamp since = 4;
+  // Номер попытки при переподключении.
+  int32 attempt = 5;
+  ProtectionStatus protection = 6;
+  TrafficStats traffic = 7;
+  ExitInfo exit = 8;
+  ErrorInfo error = 9;
+  // Пауза для входа в Wi-Fi; не задана — паузы нет.
+  google.protobuf.Timestamp captive_pause_until = 10;
+  // Сеть машины — строка под заголовком на главном экране.
+  NetworkInfo network = 11;
+}
+
+enum NetworkKind {
+  NETWORK_KIND_UNSPECIFIED = 0;
+  NETWORK_KIND_NONE = 1;
+  NETWORK_KIND_WIFI = 2;
+  NETWORK_KIND_ETHERNET = 3;
+  NETWORK_KIND_USB_MODEM = 4;
+  NETWORK_KIND_MOBILE = 5;
+}
+
+message NetworkInfo {
+  NetworkKind kind = 1;
+  // Имя Wi-Fi, если ОС его отдает (на Windows 11 — с разрешением на геолокацию); иначе пусто.
+  string name = 2;
+  // Открытая сеть без пароля.
+  bool is_open = 3;
+  // Лимитная сеть (точка доступа с телефона).
+  bool is_metered = 4;
+}
+
+message ProtectionStatus {
+  CheckState all_traffic = 1;
+  CheckState dns = 2;
+  CheckState ipv6 = 3;
+  CheckState kill_switch = 4;
+  google.protobuf.Timestamp checked_at = 5;
+}
+
+message TrafficStats {
+  int32 latency_ms = 1;
+  double download_mbps = 2;
+  double upload_mbps = 3;
+  uint64 bytes_down = 4;
+  uint64 bytes_up = 5;
+}
+
+// IP, который видят сайты, — измеренный службой, а не предполагаемый.
+message ExitInfo {
+  string ip = 1;
+  string city = 2;
+  // «дата-центр», «провайдер» и т. п.
+  string network_type = 3;
+  string asn = 4;
+  // Адрес без VPN, измеренный до подключения.
+  string direct_ip = 5;
+  google.protobuf.Timestamp measured_at = 6;
+}
+
+message ErrorInfo {
+  // Код из каталога ошибок, например PGC-SVC-002.
+  string code = 1;
+  // Текст без секретов, для журнала; интерфейс показывает свой перевод по коду.
+  string message = 2;
+}
+
+// ── Подключение ─────────────────────────────────────────────────────────────
+
+message ConnectRequest {
+  ServerEndpoint server = 1;
+  Mode mode = 2;
+  ProtectionSettings protection = 3;
+  RoutingSettings routing = 4;
+}
+
+message ConnectReply {
+  bool accepted = 1;
+  ErrorInfo error = 2;
+}
+
+message DisconnectRequest {}
+message DisconnectReply {}
+
+enum Protocol {
+  PROTOCOL_UNSPECIFIED = 0;
+  PROTOCOL_VLESS = 1;
+  PROTOCOL_VMESS = 2;
+  PROTOCOL_TROJAN = 3;
+  PROTOCOL_SHADOWSOCKS = 4;
+  PROTOCOL_HYSTERIA2 = 5;
+  PROTOCOL_TUIC = 6;
+  PROTOCOL_WIREGUARD = 7;
+}
+
+message ServerEndpoint {
+  string id = 1;
+  string name = 2;
+  Protocol protocol = 3;
+  string host = 4;
+  uint32 port = 5;
+  Transport transport = 6;
+  Security security = 7;
+
+  oneof settings {
+    VlessSettings vless = 10;
+    VmessSettings vmess = 11;
+    TrojanSettings trojan = 12;
+    ShadowsocksSettings shadowsocks = 13;
+    Hysteria2Settings hysteria2 = 14;
+    TuicSettings tuic = 15;
+    WireGuardSettings wireguard = 16;
+  }
+}
+
+enum TransportType {
+  TRANSPORT_TYPE_UNSPECIFIED = 0;
+  TRANSPORT_TYPE_TCP = 1;
+  TRANSPORT_TYPE_WEBSOCKET = 2;
+  TRANSPORT_TYPE_GRPC = 3;
+  TRANSPORT_TYPE_HTTP_UPGRADE = 4;
+  TRANSPORT_TYPE_XHTTP = 5;
+  TRANSPORT_TYPE_QUIC = 6;
+  // Чистый UDP — у WireGuard.
+  TRANSPORT_TYPE_UDP = 7;
+}
+
+message Transport {
+  TransportType type = 1;
+  string path = 2;
+  string host = 3;
+  string service_name = 4;
+}
+
+enum SecurityType {
+  SECURITY_TYPE_UNSPECIFIED = 0;
+  SECURITY_TYPE_NONE = 1;
+  SECURITY_TYPE_TLS = 2;
+  SECURITY_TYPE_REALITY = 3;
+}
+
+message Security {
+  SecurityType type = 1;
+  string sni = 2;
+  // Отпечаток uTLS: chrome, firefox, safari…
+  string fingerprint = 3;
+  repeated string alpn = 4;
+  bool allow_insecure = 5;
+  string reality_public_key = 6;
+  string reality_short_id = 7;
+  string reality_spider_x = 8;
+}
+
+message VlessSettings {
+  string uuid = 1;
+  // Например xtls-rprx-vision.
+  string flow = 2;
+}
+
+message VmessSettings {
+  string uuid = 1;
+  string cipher = 2;
+}
+
+message TrojanSettings {
+  string password = 1;
+}
+
+message ShadowsocksSettings {
+  string method = 1;
+  string password = 2;
+}
+
+message Hysteria2Settings {
+  string password = 1;
+  string obfs_password = 2;
+  uint32 up_mbps = 3;
+  uint32 down_mbps = 4;
+}
+
+message TuicSettings {
+  string uuid = 1;
+  string password = 2;
+  string congestion_control = 3;
+}
+
+message WireGuardSettings {
+  string private_key = 1;
+  string peer_public_key = 2;
+  string preshared_key = 3;
+  repeated string addresses = 4;
+  uint32 mtu = 5;
+}
+
+// ── Защита и маршрутизация ──────────────────────────────────────────────────
+
+message ProtectionSettings {
+  // Блок при обрыве: нет туннеля — нет интернета.
+  bool kill_switch = 1;
+  bool block_ipv6 = 2;
+  // Доступ к локальной сети мимо VPN (по умолчанию запрещен).
+  bool allow_lan = 3;
+  DnsSettings dns = 4;
+}
+
+message DnsSettings {
+  repeated string servers = 1;
+  // Запретить DNS мимо туннеля.
+  bool block_outside_dns = 2;
+}
+
+message ApplyProtectionReply {
+  ErrorInfo error = 1;
+}
+
+enum RoutingMode {
+  ROUTING_MODE_UNSPECIFIED = 0;
+  ROUTING_MODE_ALL_TRAFFIC = 1;
+  ROUTING_MODE_SPLIT = 2;
+}
+
+enum RuleAction {
+  RULE_ACTION_UNSPECIFIED = 0;
+  RULE_ACTION_PROXY = 1;
+  RULE_ACTION_DIRECT = 2;
+  RULE_ACTION_BLOCK = 3;
+}
+
+message DomainRule {
+  // Домен, *.домен или geosite:категория.
+  string pattern = 1;
+  RuleAction action = 2;
+}
+
+message RoutingSettings {
+  RoutingMode mode = 1;
+  // Программы в обход VPN (раздельный режим): путь к исполняемому файлу или идентификатор.
+  repeated string bypass_apps = 2;
+  repeated DomainRule rules = 3;
+}
+
+// ── Вход в Wi-Fi ────────────────────────────────────────────────────────────
+
+message CaptivePauseRequest {
+  google.protobuf.Duration duration = 1;
+  // true — вернуть защиту раньше срока.
+  bool cancel = 2;
+}
+
+message CaptivePauseReply {
+  google.protobuf.Timestamp until = 1;
+  ErrorInfo error = 2;
+}
+
+// ── Проверка и журнал ───────────────────────────────────────────────────────
+
+message RunChecksRequest {}
+
+message CheckResult {
+  // Идентификатор проверки: service, core, all_traffic, kill_switch, dns, ipv6, exit_ip, other_vpn.
+  string id = 1;
+  CheckState state = 2;
+  // Подробности без секретов — для журнала и отчета, интерфейс их не переводит.
+  string details = 3;
+  // Код уточнения для текста интерфейса: simulated, no_reply, system_proxy, vpn_adapter…
+  // Пусто — текст по состоянию.
+  string reason = 4;
+}
+
+message CheckReport {
+  repeated CheckResult results = 1;
+  google.protobuf.Timestamp finished_at = 2;
+}
+
+enum LogLevel {
+  LOG_LEVEL_UNSPECIFIED = 0;
+  LOG_LEVEL_DEBUG = 1;
+  LOG_LEVEL_INFO = 2;
+  LOG_LEVEL_WARNING = 3;
+  LOG_LEVEL_ERROR = 4;
+}
+
+message WatchLogRequest {
+  // Сколько последних записей прислать сразу.
+  int32 tail = 1;
+}
+
+message LogEntry {
+  google.protobuf.Timestamp time = 1;
+  LogLevel level = 2;
+  // service, xray, sing-box, firewall, dns…
+  string source = 3;
+  // Уже пропущено через маскирование секретов.
+  string message = 4;
+}
+
+// ── Пинг ────────────────────────────────────────────────────────────────────
+
+message LatencyTarget {
+  string id = 1;
+  string host = 2;
+  uint32 port = 3;
+}
+
+message MeasureLatencyRequest {
+  repeated LatencyTarget targets = 1;
+}
+
+message LatencyResult {
+  string id = 1;
+  bool reachable = 2;
+  int32 latency_ms = 3;
+}
+
+message MeasureLatencyReply {
+  repeated LatencyResult results = 1;
+}
+
+// ── Служба ──────────────────────────────────────────────────────────────────
+
+message GetServiceInfoRequest {}
+message GetStatusRequest {}
+message WatchStatusRequest {}
+
+message CoreInfo {
+  // xray или sing-box.
+  string name = 1;
+  string version = 2;
+  bool available = 3;
+}
+
+message ServiceInfo {
+  string service_version = 1;
+  // Версия контракта: «1».
+  string api_version = 2;
+  string os = 3;
+  repeated CoreInfo cores = 4;
+}

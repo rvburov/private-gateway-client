@@ -1,0 +1,18 @@
+{
+  "name": "Турция 01",
+  "country": "TR",
+  "protocol": "vless",
+  "host": "192.0.2.150",
+  "port": 443,
+  "transport": {
+    "kind": "grpc",
+    "serviceName": "grpc-svc"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "example.com"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

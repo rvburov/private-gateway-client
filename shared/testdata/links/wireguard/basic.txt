@@ -1,0 +1,1 @@
+wireguard://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa%3D@192.0.2.33:51820?publickey=ccccccccccccccccccccccccccccccccccccccccccc%3D&address=10.0.0.2%2F32%2Cfd00%3A%3A2%2F128&mtu=1420#WG

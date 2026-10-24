@@ -1,0 +1,218 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Android и iOS: системные окна — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;family=Roboto:wght@400;500;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#E9EDF4}
+</style>
+</helmet>
+<div style="width: 1504px; height: 1690px; box-sizing: border-box; padding: 32px; background: #E9EDF4; color: #0B0F19; font-family: Inter, system-ui, sans-serif; font-size: 14px; display: flex; flex-direction: column; gap: 28px">
+  <div>
+    <h1 style="margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -0.02em">Android и iOS: системные окна и отличия</h1>
+    <p style="margin: 6px 0 0; color: #374151; line-height: 1.5; max-width: 1100px">Окна разрешений, шторку, Пункт управления и системные настройки рисует сама ОС — их вид мы не выбираем. Наше — только приложение и виджет.</p>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-size: 20px; font-weight: 700">Android</span><span style="font-size: 13px; color: #4B5565">Kotlin · Jetpack Compose · VpnService</span></div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <span style="font-weight: 700; font-size: 14.5px">Разрешение на VPN — один раз</span>
+        <div style="position: relative; height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(15, 23, 42, 0.10); font-family: Roboto, 'Google Sans', system-ui, sans-serif">
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: #EEF2F8"></div><div aria-hidden="true" style="position: absolute; left: -60px; top: -40px; width: 260px; height: 260px; border-radius: 50%; background: #93C5FD; opacity: 0.5"></div><div aria-hidden="true" style="position: absolute; right: -60px; top: 160px; width: 240px; height: 240px; border-radius: 50%; background: #86EFAC; opacity: 0.4"></div>
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0, 0, 0, 0.34)"></div>
+          <section role="dialog" aria-label="Запрос на подключение" style="position: absolute; left: 50%; top: 50%; width: 316px; margin-left: -158px; transform: translateY(-50%); box-sizing: border-box; padding: 24px; border-radius: 28px; background: #F1F0F7; color: #1B1B1F; display: flex; flex-direction: column; gap: 14px">
+            <span style="align-self: center; color: #3A5BA0"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#3A5BA0" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4"></circle><path d="M10.4 12.6L20 3M16 7l3 3M14 9l2 2"></path></svg></span>
+            <span style="align-self: center; font-size: 22px; line-height: 28px">Запрос на подключение</span>
+            <span style="font-size: 14px; line-height: 20px; color: #45464F">Приложение «Private Gateway» пытается настроить VPN-подключение, которое позволит отслеживать сетевой трафик. Подтверждайте, только если доверяете источнику.</span>
+            <div style="display: flex; justify-content: flex-end; gap: 8px; margin-top: 6px; font-size: 14px; font-weight: 500; color: #3A5BA0">
+              <span style="padding: 10px 12px">Отмена</span><span style="padding: 10px 12px">OK</span>
+            </div>
+          </section>
+        </div>
+        <span style="font-size: 13px; color: #374151; line-height: 1.5">Системное окно Android при первом подключении. Без согласия туннель не поднять.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <span style="font-weight: 700; font-size: 14.5px">Шторка: плитка и уведомление</span>
+        <div style="position: relative; height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(15, 23, 42, 0.10); background: #E8E9F0; font-family: Roboto, 'Google Sans', system-ui, sans-serif; color: #1B1B1F">
+          <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 18px 6px; font-size: 13px; font-weight: 500">
+            <span>18:42 · чт, 23 окт.</span><span style="display: flex; gap: 6px; align-items: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1B1B1F" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4"></circle><path d="M10.4 12.6L20 3M16 7l3 3M14 9l2 2"></path></svg></span>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 6px 14px 12px">
+            <div style="height: 60px; border-radius: 20px; background: #3A5BA0; color: #FFFFFF; display: flex; align-items: center; gap: 10px; padding: 0 14px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg>
+              <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 13.5px; font-weight: 500">Private Gateway</span><span style="font-size: 12px; opacity: 0.85">IP скрыт</span></span>
+            </div>
+            <div style="height: 60px; border-radius: 20px; background: #3A5BA0; color: #FFFFFF; display: flex; align-items: center; gap: 10px; padding: 0 14px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01"></path></svg>
+              <span style="display: flex; flex-direction: column"><span style="font-size: 13.5px; font-weight: 500">Интернет</span><span style="font-size: 12px; opacity: 0.85">Home</span></span>
+            </div>
+            <div style="height: 60px; border-radius: 20px; background: #D9DAE3; display: flex; align-items: center; gap: 10px; padding: 0 14px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#45464F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 4V3l5 4L7 17"></path></svg>
+              <span style="font-size: 13.5px; font-weight: 500">Bluetooth</span>
+            </div>
+            <div style="height: 60px; border-radius: 20px; background: #D9DAE3; display: flex; align-items: center; gap: 10px; padding: 0 14px">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#45464F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2h6l-1 7h-4zM10 9h4v13h-4z"></path></svg>
+              <span style="font-size: 13.5px; font-weight: 500">Фонарик</span>
+            </div>
+          </div>
+          <section aria-label="Уведомление Private Gateway" style="margin: 2px 14px 0; padding: 14px 16px; border-radius: 24px; background: #FFFFFF; display: flex; flex-direction: column; gap: 6px">
+            <div style="display: flex; align-items: center; gap: 8px; font-size: 12px; color: #45464F">
+              <span style="width: 22px; height: 22px; border-radius: 50%; background: #3A5BA0; display: flex; align-items: center; justify-content: center"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg></span>
+              <span>Private Gateway · в сети 02:14:09</span>
+            </div>
+            <span style="font-size: 15px; font-weight: 500">IP скрыт · Нидерланды 01</span>
+            <span style="font-size: 13.5px; color: #45464F">↓ 18,9 Мбит/с · ↑ 4,0 Мбит/с</span>
+            <div style="display: flex; gap: 8px; margin-top: 4px">
+              <span style="height: 34px; padding: 0 14px; border-radius: 99px; background: #E8E9F0; display: flex; align-items: center; font-size: 13.5px; font-weight: 500">Отключить</span>
+              <span style="height: 34px; padding: 0 14px; border-radius: 99px; background: #E8E9F0; display: flex; align-items: center; font-size: 13.5px; font-weight: 500">Сменить сервер</span>
+            </div>
+          </section>
+        </div>
+        <span style="font-size: 13px; color: #374151; line-height: 1.5">Пока VPN работает, Android требует постоянное уведомление — в нём состояние и кнопки. Плитка включает VPN, не открывая приложение.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <span style="font-weight: 700; font-size: 14.5px">Блок при обрыве — через настройки Android</span>
+        <div style="position: relative; height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(15, 23, 42, 0.10); background: #F8F8FC; font-family: Roboto, 'Google Sans', system-ui, sans-serif; color: #1B1B1F">
+          <div style="display: flex; align-items: center; gap: 14px; padding: 18px 16px 10px">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#1B1B1F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 12H5M11 6l-6 6 6 6"></path></svg>
+            <span style="font-size: 22px">Private Gateway</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 14px 20px">
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px">Постоянная VPN</span><span style="font-size: 13.5px; color: #45464F">Оставаться подключённым к VPN</span></span>
+            <span style="width: 52px; height: 32px; border-radius: 99px; background: #3A5BA0; display: flex; align-items: center; justify-content: flex-end; padding: 0 4px; box-sizing: border-box; flex: 0 0 auto"><span style="width: 24px; height: 24px; border-radius: 50%; background: #FFFFFF"></span></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 14px 20px">
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><span style="font-size: 16px">Блокировать подключения без VPN</span><span style="font-size: 13.5px; color: #45464F">Без VPN интернета не будет</span></span>
+            <span style="width: 52px; height: 32px; border-radius: 99px; background: #3A5BA0; display: flex; align-items: center; justify-content: flex-end; padding: 0 4px; box-sizing: border-box; flex: 0 0 auto"><span style="width: 24px; height: 24px; border-radius: 50%; background: #FFFFFF"></span></span>
+          </div>
+          <div style="padding: 14px 20px; font-size: 16px; color: #45464F">Удалить VPN</div>
+          <div style="position: absolute; left: 14px; right: 14px; bottom: 14px; padding: 10px 12px; border-radius: 14px; background: rgba(37, 99, 235, 0.08); border: 1px solid rgba(37, 99, 235, 0.18); font-family: Inter, system-ui, sans-serif; font-size: 12.5px; color: #1E3A8A; line-height: 1.45">Системные настройки Android · открываются кнопкой «Открыть настройки VPN» в разделе «Защита»</div>
+        </div>
+        <span style="font-size: 13px; color: #374151; line-height: 1.5">Приложение не может включить это само. Зато видит, включено ли, и показывает это в чипе «Блок при обрыве».</span>
+      </div>
+    </div>
+  </div>
+  <div style="display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: baseline; gap: 12px"><span style="font-size: 20px; font-weight: 700">iOS</span><span style="font-size: 13px; color: #4B5565">Swift · SwiftUI · Network Extension</span></div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px">
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <span style="font-weight: 700; font-size: 14.5px">Разрешение на VPN — один раз</span>
+        <div style="position: relative; height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(15, 23, 42, 0.10); font-family: -apple-system, 'SF Pro Text', Inter, system-ui, sans-serif">
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: #EEF2F8"></div><div aria-hidden="true" style="position: absolute; left: -60px; top: -40px; width: 260px; height: 260px; border-radius: 50%; background: #93C5FD; opacity: 0.5"></div><div aria-hidden="true" style="position: absolute; right: -60px; top: 160px; width: 240px; height: 240px; border-radius: 50%; background: #86EFAC; opacity: 0.4"></div>
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: rgba(0, 0, 0, 0.30)"></div>
+          <section role="alertdialog" aria-label="Разрешение VPN" style="position: absolute; left: 50%; top: 50%; width: 270px; margin-left: -135px; transform: translateY(-50%); border-radius: 14px; background: rgba(242, 242, 247, 0.94); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px); color: #000000; text-align: center; overflow: hidden">
+            <div style="padding: 19px 16px 18px; display: flex; flex-direction: column; gap: 4px">
+              <span style="font-size: 16px; font-weight: 600; line-height: 21px">«Private Gateway» запрашивает разрешение на добавление конфигураций VPN</span>
+              <span style="font-size: 13px; line-height: 17px">Вся сетевая активность на этом iPhone может фильтроваться или отслеживаться при использовании VPN.</span>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; border-top: 0.5px solid rgba(60, 60, 67, 0.36); font-size: 16.5px; color: #007AFF">
+              <span style="padding: 11px 0; border-right: 0.5px solid rgba(60, 60, 67, 0.36)">Разрешить</span>
+              <span style="padding: 11px 0">Запретить</span>
+            </div>
+          </section>
+        </div>
+        <span style="font-size: 13px; color: #374151; line-height: 1.5">Затем iOS попросит код-пароль или Face ID. Профиль появится в Настройки → VPN.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <span style="font-weight: 700; font-size: 14.5px">Пункт управления и виджет</span>
+        <div style="position: relative; height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(15, 23, 42, 0.10); display: grid; grid-template-columns: 1fr 1fr; font-family: -apple-system, 'SF Pro Text', Inter, system-ui, sans-serif">
+          <div style="position: relative; background: linear-gradient(160deg, #4B5563, #1F2937); padding: 18px 14px; display: flex; flex-direction: column; gap: 10px">
+            <span style="font-size: 11px; font-weight: 600; color: rgba(255, 255, 255, 0.7); font-family: Inter, system-ui, sans-serif">ПУНКТ УПРАВЛЕНИЯ</span>
+            <div style="display: flex; gap: 8px">
+              <span style="width: 42px; height: 42px; border-radius: 50%; background: #FF9500; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16v-2l-8-5V3.5a1.5 1.5 0 0 0-3 0V9l-8 5v2l8-2.5V19l-2 1.5V22l3.5-1 3.5 1v-1.5L13 19v-5.5z" fill="#FFFFFF" stroke="none"></path></svg></span>
+              <span style="width: 42px; height: 42px; border-radius: 50%; background: #34C759; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 19v-3M10 19v-6M15 19v-9M20 19V5"></path></svg></span>
+              <span style="width: 42px; height: 42px; border-radius: 50%; background: #0A84FF; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 9a14 14 0 0 1 19 0M5.5 12.5a9.5 9.5 0 0 1 13 0M8.7 16a5 5 0 0 1 6.6 0M12 19.5h.01"></path></svg></span>
+              <span style="width: 42px; height: 42px; border-radius: 50%; background: #0A84FF; display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 7l10 10-5 4V3l5 4L7 17"></path></svg></span>
+            </div>
+            <div style="height: 64px; border-radius: 20px; background: rgba(255, 255, 255, 0.92); display: flex; align-items: center; gap: 10px; padding: 0 12px">
+              <span style="width: 38px; height: 38px; border-radius: 50%; background: #16A34A; display: flex; align-items: center; justify-content: center; flex: 0 0 auto"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+              <span style="display: flex; flex-direction: column; min-width: 0"><span style="font-size: 13px; font-weight: 600; color: #000000">Private Gateway</span><span style="font-size: 12px; color: #3C3C43">Вкл · NL</span></span>
+            </div>
+            <span style="font-size: 11.5px; color: rgba(255, 255, 255, 0.75); line-height: 1.4; font-family: Inter, system-ui, sans-serif">Кнопка в Пункте управления — iOS 18 и новее</span>
+          </div>
+          <div style="position: relative; background: linear-gradient(200deg, #BFDBFE, #DDD6FE); padding: 18px 14px; display: flex; flex-direction: column; gap: 10px; align-items: center">
+            <span style="align-self: flex-start; font-size: 11px; font-weight: 600; color: #374151; font-family: Inter, system-ui, sans-serif">ВИДЖЕТ</span>
+            <section aria-label="Виджет Private Gateway" style="width: 158px; height: 158px; box-sizing: border-box; padding: 14px; border-radius: 22px; background: #FFFFFF; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14); display: flex; flex-direction: column; gap: 4px; font-family: -apple-system, 'SF Pro Text', Inter, system-ui, sans-serif">
+              <span style="width: 34px; height: 34px; border-radius: 10px; background: rgba(22, 163, 74, 0.12); display: flex; align-items: center; justify-content: center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#15803D" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg></span>
+              <span style="font-size: 15px; font-weight: 700; color: #15803D; margin-top: 4px">IP скрыт</span>
+              <span style="font-size: 12px; color: #4B5565">NL · 02:14:09</span>
+              <span style="margin-top: auto; height: 30px; border-radius: 10px; background: rgba(185, 28, 28, 0.08); color: #B91C1C; font-size: 12.5px; font-weight: 600; display: flex; align-items: center; justify-content: center">Отключить</span>
+            </section>
+            <span style="font-size: 11.5px; color: #374151; line-height: 1.4; text-align: center; font-family: Inter, system-ui, sans-serif">Наш стиль — виджет рисуем сами</span>
+          </div>
+        </div>
+        <span style="font-size: 13px; color: #374151; line-height: 1.5">Включить и выключить без приложения. Виджет показывает состояние и время в сети.</span>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 10px; min-width: 0">
+        <span style="font-weight: 700; font-size: 14.5px">Блок при обрыве — из приложения</span>
+        <div style="position: relative; height: 360px; border-radius: 22px; overflow: hidden; border: 1px solid rgba(15, 23, 42, 0.10); font-family: -apple-system, 'SF Pro Text', Inter, system-ui, sans-serif">
+          <div aria-hidden="true" style="position: absolute; inset: 0; background: #EEF2F8"></div><div aria-hidden="true" style="position: absolute; left: -60px; top: -40px; width: 260px; height: 260px; border-radius: 50%; background: #93C5FD; opacity: 0.5"></div><div aria-hidden="true" style="position: absolute; right: -60px; top: 160px; width: 240px; height: 240px; border-radius: 50%; background: #86EFAC; opacity: 0.4"></div>
+          <div style="position: absolute; inset: 0; background: rgba(246, 248, 252, 0.7); padding: 18px 16px; display: flex; flex-direction: column; gap: 8px">
+            <span style="margin: 0 6px; font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Защита и утечки</span>
+            <div style="background: rgba(255, 255, 255, 0.9); border: 1px solid rgba(15, 23, 42, 0.08); border-radius: 20px; padding: 4px 16px">
+              <div style="display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid rgba(15, 23, 42, 0.07)">
+                <span style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 600">Блок при обрыве</span><span style="font-size: 12px; color: #4B5565; line-height: 1.45">Весь трафик только через туннель. Нет туннеля — нет интернета</span></span>
+                <span style="width: 48px; height: 28px; border-radius: 99px; background: #2563EB; display: flex; justify-content: flex-end; padding: 3px; box-sizing: border-box; flex: 0 0 auto"><span style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25)"></span></span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px; padding: 13px 0; border-bottom: 1px solid rgba(15, 23, 42, 0.07)">
+                <span style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 600">Локальная сеть мимо VPN</span><span style="font-size: 12px; color: #4B5565; line-height: 1.45">Принтеры, AirDrop, роутер</span></span>
+                <span style="width: 48px; height: 28px; border-radius: 99px; background: #CBD5E1; display: flex; padding: 3px; box-sizing: border-box; flex: 0 0 auto"><span style="width: 22px; height: 22px; border-radius: 50%; background: #FFFFFF; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25)"></span></span>
+              </div>
+              <div style="display: flex; align-items: center; gap: 14px; padding: 13px 0">
+                <span style="flex: 1; display: flex; flex-direction: column; gap: 3px"><span style="font-weight: 600">Службы Apple мимо VPN</span><span style="font-size: 12px; color: #4B5565; line-height: 1.45">Push-уведомления и звонки по сотовой сети — так устроен iOS</span></span>
+                <span style="font-size: 12.5px; font-weight: 600; color: #4B5565">всегда</span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <span style="font-size: 13px; color: #374151; line-height: 1.5">На iOS блок включается в самом приложении (режим includeAllNetworks). Часть служб Apple по умолчанию идёт мимо туннеля.</span>
+      </div>
+    </div>
+  </div>
+  <section style="padding: 20px 24px; border-radius: 20px; background: #FFFFFF; border: 1px solid rgba(15, 23, 42, 0.08); display: flex; flex-direction: column">
+    <span style="font-weight: 700; font-size: 18px; margin-bottom: 12px">Технологии</span>
+    <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding-bottom: 8px; font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em"><span></span><span>Android</span><span>iOS</span></div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Язык и интерфейс</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Kotlin · Jetpack Compose</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Swift · SwiftUI</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Туннель</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">VpnService (TUN-интерфейс)</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Network Extension · Packet Tunnel</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Ядро</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Xray-core на Go → библиотека .aar (gomobile); Hysteria2, TUIC, WireGuard — sing-box</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Xray-core на Go → .xcframework; работает внутри расширения, лимит памяти около 50 МБ</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Блок при обрыве</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Системный: «Постоянная VPN» + «Блокировать без VPN»</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Флаг includeAllNetworks в настройках туннеля</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Работа в фоне</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Служба с постоянным уведомлением</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Туннель держит сама iOS, приложение можно закрыть</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Быстрое вкл/выкл</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Плитка в шторке, виджет</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Пункт управления (iOS 18+), виджет, Команды</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Ключи и подписки</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Шифрование ключом из Android Keystore</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Связка ключей (Keychain), общая с расширением</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Версии ОС</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Android 9 и новее</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">iOS 16 и новее</span>
+      </div>
+      <div style="display: grid; grid-template-columns: 220px minmax(0, 1fr) minmax(0, 1fr); gap: 24px; align-items: baseline; padding: 11px 0; border-top: 1px solid rgba(15, 23, 42, 0.07)">
+        <span style="font-weight: 600">Установка для себя</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">APK напрямую или Google Play</span><span style="font-size: 13.5px; color: #1F2937; line-height: 1.45">Через Xcode или TestFlight, нужен платный аккаунт Apple Developer. В App Store VPN принимают только от организаций</span>
+      </div>
+  </section>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1504,"height":1690}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

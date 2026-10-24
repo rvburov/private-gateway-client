@@ -1,0 +1,1 @@
+hysteria2://pw-hy2-1@203.0.113.57:8443?sni=example.com&obfs=salamander&obfs-password=pw-obfs-1&insecure=1#%F0%9F%87%AB%F0%9F%87%AE%20%D0%A5%D0%B5%D0%BB%D1%8C%D1%81%D0%B8%D0%BD%D0%BA%D0%B8

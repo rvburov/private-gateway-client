@@ -1,0 +1,197 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ServerCardView"
+             x:DataType="vm:ServerCardViewModel">
+  <!-- Карточка сервера — docs/design, доска 11. Лист снизу; рамку и тень дает окно. -->
+  <UserControl.Styles>
+    <Style Selector="Border.chip">
+      <Setter Property="Height" Value="28" />
+      <Setter Property="Padding" Value="10,0" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Control.SegmentTrack}" />
+    </Style>
+    <Style Selector="Border.chip.active">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.chip.selected">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.chip.active TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+    </Style>
+    <Style Selector="Border.chip.selected TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <Style Selector="Border.chip.active Ellipse">
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Status.Success.Base}" />
+    </Style>
+    <Style Selector="Border.chip.selected Ellipse">
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Accent.Base}" />
+    </Style>
+    <Style Selector="TextBlock.latency">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Text}" />
+    </Style>
+    <Style Selector="TextBlock.latency.slow">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+    <Style Selector="TextBlock.latency.down">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+    <Style Selector="Border.inset">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Divider}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="16" />
+    </Style>
+    <!-- Строки сведений разделены линией, у последней ее нет -->
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.detailRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector="Button.favorite">
+      <Setter Property="Width" Value="40" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+    <Style Selector="Button.favorite.on">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Favorite.Stroke}" />
+    </Style>
+    <Style Selector="Button.favorite.on c|Icon">
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Favorite.Fill}" />
+    </Style>
+  </UserControl.Styles>
+
+  <DockPanel AutomationProperties.Name="{Binding Name}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <!-- Заголовок: страна, название, откуда сервер, звезда, закрыть -->
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
+      <Border Width="52" Height="38" CornerRadius="{StaticResource PgRadius.Input}"
+              Background="{StaticResource PgBrush.Accent.Tint}" BorderBrush="{StaticResource PgBrush.Accent.Line}"
+              BorderThickness="1">
+        <TextBlock Text="{Binding CountryCode}" FontSize="{StaticResource PgFontSize.Title}" FontWeight="Bold"
+                   Foreground="{StaticResource PgBrush.Accent.Text}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+      </Border>
+      <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
+        <TextBlock x:Name="CardName" Classes="status" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+        <TextBlock Classes="caption" Text="{Binding Subtitle}" TextWrapping="Wrap" />
+      </StackPanel>
+      <Button x:Name="FavoriteButton" Grid.Column="2" Classes="icon favorite" Classes.on="{Binding IsFavorite}"
+              Command="{Binding ToggleFavoriteCommand}"
+              ToolTip.Tip="{Binding FavoriteHint}" AutomationProperties.Name="{Binding FavoriteHint}">
+        <c:Icon Data="{StaticResource Icon.Star}" Width="22" Height="22" StrokeThickness="1.8" />
+      </Button>
+      <Button Grid.Column="3" Classes="icon" Width="40" Height="40" Command="{Binding CloseCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <!-- Действия внизу: главная кнопка и три плитки -->
+    <StackPanel DockPanel.Dock="Bottom" Spacing="8">
+      <Border x:Name="InUse" IsVisible="{Binding IsInUse}" Height="50" CornerRadius="14"
+              Background="{StaticResource PgBrush.Status.Success.Tint}"
+              BorderBrush="{StaticResource PgBrush.Status.Success.Line}" BorderThickness="1.5">
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center">
+          <c:Icon Data="{StaticResource Icon.Chip.Ok}" Width="18" Height="18" StrokeThickness="2.4"
+                  Foreground="{StaticResource PgBrush.Status.Success.Badge}" />
+          <TextBlock Text="{l:L card.inUse}" FontSize="{StaticResource PgFontSize.Title}" FontWeight="SemiBold"
+                     Foreground="{StaticResource PgBrush.Status.Success.Badge}" />
+        </StackPanel>
+      </Border>
+      <Button x:Name="ConnectButton" Classes="primary" IsVisible="{Binding !IsInUse}" Height="50"
+              HorizontalAlignment="Stretch" FontSize="{StaticResource PgFontSize.Title}"
+              Command="{Binding ConnectCommand}" Content="{l:L card.connect}" />
+      <UniformGrid Columns="3" ColumnSpacing="8">
+        <Button x:Name="RenameButton" Classes="secondary tile" Command="{Binding StartRenameCommand}"
+                AutomationProperties.Name="{l:L card.rename}">
+          <StackPanel Spacing="4">
+            <c:Icon Data="{StaticResource Icon.Edit}" Width="18" Height="18" StrokeThickness="1.9" HorizontalAlignment="Center" />
+            <TextBlock Text="{l:L card.rename}" FontSize="{StaticResource PgFontSize.Caption}" HorizontalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Button>
+        <!-- В подсказке — почему недоступно: у выключенной кнопки подсказка тоже видна -->
+        <Button Classes="secondary tile" IsEnabled="{Binding CanShare}"
+                ToolTip.Tip="{Binding ShareHint}" ToolTip.ShowOnDisabled="True"
+                AutomationProperties.Name="{l:L card.share}" AutomationProperties.HelpText="{Binding ShareHint}">
+          <StackPanel Spacing="4">
+            <c:Icon Data="{StaticResource Icon.Qr}" Width="18" Height="18" StrokeThickness="1.9" HorizontalAlignment="Center" />
+            <TextBlock Text="{l:L card.share}" FontSize="{StaticResource PgFontSize.Caption}" HorizontalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Button>
+        <Button x:Name="DeleteButton" Classes="secondary tile danger" Command="{Binding DeleteCommand}"
+                AutomationProperties.Name="{l:L card.delete}">
+          <StackPanel Spacing="4">
+            <c:Icon Data="{StaticResource Icon.Trash}" Width="18" Height="18" StrokeThickness="1.9" HorizontalAlignment="Center" />
+            <TextBlock Text="{l:L card.delete}" FontSize="{StaticResource PgFontSize.Caption}" HorizontalAlignment="Center"
+                       TextTrimming="CharacterEllipsis" />
+          </StackPanel>
+        </Button>
+      </UniformGrid>
+    </StackPanel>
+
+    <!-- Середина: состояние, пинг, сведения или новое название -->
+    <StackPanel Margin="0,12,0,12" Spacing="12">
+      <StackPanel Orientation="Horizontal" Spacing="8">
+        <Border Classes="chip" Classes.active="{Binding IsInUse}" Classes.selected="{Binding !IsInUse}"
+                IsVisible="{Binding HasStatus}">
+          <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+            <Ellipse Width="7" Height="7" VerticalAlignment="Center" />
+            <TextBlock x:Name="CardStatus" Text="{Binding StatusText}" FontSize="{StaticResource PgFontSize.Caption}"
+                       FontWeight="SemiBold" VerticalAlignment="Center" />
+          </StackPanel>
+        </Border>
+        <Border Classes="chip">
+          <TextBlock Classes="latency" Classes.slow="{Binding IsSlow}" Classes.down="{Binding IsDown}"
+                     Text="{Binding LatencyText}" VerticalAlignment="Center" />
+        </Border>
+      </StackPanel>
+
+      <Border Classes="inset" Padding="14,2" IsVisible="{Binding !IsRenaming}">
+        <ItemsControl ItemsSource="{Binding Details}">
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:CardDetail">
+              <Border Classes="detailRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,8">
+                <Grid ColumnDefinitions="Auto,*">
+                  <TextBlock Classes="small" Text="{Binding Label}" Foreground="{StaticResource PgBrush.Text.Muted}"
+                             VerticalAlignment="Center" />
+                  <TextBlock Grid.Column="1" Text="{Binding Value}" Margin="12,0,0,0" TextAlignment="Right"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                             FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Small}"
+                             FontWeight="Medium" />
+                </Grid>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+      </Border>
+
+      <Border Classes="inset" Padding="14" IsVisible="{Binding IsRenaming}">
+        <StackPanel Spacing="10">
+          <TextBlock Classes="overline" Text="{l:L card.rename.label, Upper=True}" />
+          <TextBox x:Name="NewName" Classes="input" Text="{Binding NewName}" MaxLength="64"
+                   AutomationProperties.Name="{l:L card.rename.label}">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SaveNameCommand}" />
+              <KeyBinding Gesture="Escape" Command="{Binding CancelRenameCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Button Classes="secondary" Command="{Binding CancelRenameCommand}" Content="{l:L dialog.cancel}" />
+            <Button x:Name="SaveName" Grid.Column="2" Classes="primary" Command="{Binding SaveNameCommand}"
+                    Content="{l:L card.rename.save}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+    </StackPanel>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,48 @@
+<Project>
+
+  <!--
+    Общие настройки всех проектов .NET. Вывод сборки — в artifacts/ в корне (UseArtifactsOutput),
+    корень и папки проектов остаются без bin/ и obj/.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <!-- CS1591: не у каждого публичного члена нужен XML-комментарий. -->
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
+    <Deterministic>true</Deterministic>
+    <UseArtifactsOutput>true</UseArtifactsOutput>
+    <!-- Явно: иначе вложенный Directory.Build.props (desktop/tests) уводит вывод к себе. -->
+    <ArtifactsPath>$(MSBuildThisFileDirectory)artifacts</ArtifactsPath>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <Company>Private Gateway</Company>
+    <Product>Private Gateway Client</Product>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <!-- Имена сборок и пространств имен: Client.Core → PrivateGateway.Client.Core. -->
+  <PropertyGroup>
+    <RootNamespace>PrivateGateway.$(MSBuildProjectName)</RootNamespace>
+    <AssemblyName>PrivateGateway.$(MSBuildProjectName)</AssemblyName>
+  </PropertyGroup>
+
+  <!--
+    Рабочая папка агента (git worktree, см. scripts/worktree.sh и AGENTS.md) берет пакеты из
+    кеша основной папки, а не качает свои. В рабочей папке .git — файл со строкой
+    «gitdir: <основная>/.git/worktrees/<имя>», в основной — каталог; File.Exists отличает одну
+    от другой. Основная папка — три уровня выше gitdir рабочей.
+    Ссылку на кеш внутри рабочей папки не ставить: git worktree remove на Windows проходит по
+    ссылке и стирает содержимое кеша.
+  -->
+  <PropertyGroup Condition="$([System.IO.File]::Exists('$(MSBuildThisFileDirectory).git'))">
+    <PgWorktreeGitDir>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory).git').Trim().Substring(7).Trim())</PgWorktreeGitDir>
+    <PgWorktreeGitDir>$([System.IO.Path]::Combine('$(MSBuildThisFileDirectory)', '$(PgWorktreeGitDir)'))</PgWorktreeGitDir>
+    <RestorePackagesPath>$([System.IO.Path]::GetFullPath('$(PgWorktreeGitDir)/../../../packages/packages'))</RestorePackagesPath>
+  </PropertyGroup>
+
+</Project>

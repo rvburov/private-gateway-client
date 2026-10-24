@@ -1,0 +1,23 @@
+{
+  "name": "WG",
+  "protocol": "wireguard",
+  "host": "192.0.2.33",
+  "port": 51820,
+  "transport": {
+    "kind": "udp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "peerPublicKey": "ccccccccccccccccccccccccccccccccccccccccccc=",
+    "addresses": [
+      "10.0.0.2/32",
+      "fd00::2/128"
+    ],
+    "mtu": 1420
+  },
+  "credentials": {
+    "privateKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+  }
+}

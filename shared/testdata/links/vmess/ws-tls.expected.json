@@ -1,0 +1,22 @@
+{
+  "name": "США 01",
+  "protocol": "vmess",
+  "host": "198.51.100.201",
+  "port": 443,
+  "transport": {
+    "kind": "ws",
+    "path": "/ws",
+    "host": "cdn.example.com"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "cdn.example.com",
+    "fingerprint": "firefox"
+  },
+  "options": {
+    "cipher": "auto"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

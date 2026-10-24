@@ -1,0 +1,1 @@
+trojan://pw-trojan-1@198.51.100.201:443?security=tls&sni=example.com&type=ws&path=%2Ftr#Trojan%20WS

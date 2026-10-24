@@ -1,0 +1,120 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.CheckPage"
+             x:DataType="vm:CheckPageViewModel">
+  <!-- Проверка и журнал — docs/design, доска 7. -->
+  <UserControl.Styles>
+    <!-- Строки проверок разделены линией, у последней ее нет -->
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.checkRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <!-- Уровень записи журнала: INF — акцентом, WRN — оранжевым, ERR — красным, DBG — серым -->
+    <Style Selector="Run.level">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Run.level.warning">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+    <Style Selector="Run.level.error">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
+    </Style>
+    <Style Selector="Run.level.debug">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="20,0">
+      <TextBlock Classes="h1" Text="{l:L page.check.title}" VerticalAlignment="Center" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <UniformGrid Columns="2" ColumnSpacing="8">
+          <Border CornerRadius="{StaticResource PgRadius.Button}" BoxShadow="{StaticResource PgShadow.Accent}">
+            <Button x:Name="RunButton" Classes="primary" Height="46" HorizontalAlignment="Stretch"
+                    CornerRadius="{StaticResource PgRadius.Button}" Command="{Binding RunCommand}"
+                    AutomationProperties.Name="{Binding RunText}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Classes.spin="{Binding IsRunning}" Data="{StaticResource Icon.Refresh}"
+                        Width="18" Height="18" StrokeThickness="2.2" />
+                <TextBlock x:Name="RunText" Text="{Binding RunText}" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Border>
+          <Button x:Name="ExportButton" Classes="secondary" Height="46" HorizontalAlignment="Stretch"
+                  CornerRadius="{StaticResource PgRadius.Button}" FontWeight="Medium"
+                  Command="{Binding ExportCommand}" Content="{l:L diag.export}" />
+        </UniformGrid>
+
+        <TextBlock Classes="caption" Text="{l:L diag.note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Результаты: кружок и чип по состоянию — те же цвета, что у чипов главного экрана -->
+        <Border Classes="card" Padding="16,4" AutomationProperties.Name="{l:L diag.results}">
+          <ItemsControl ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:CheckRowViewModel">
+                <Border Classes="checkRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1"
+                        Padding="0,11">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Center"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="12" Height="12"
+                              StrokeThickness="3.2" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding Detail}" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Padding="9,3" CornerRadius="10" VerticalAlignment="Center"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}">
+                      <TextBlock Text="{Binding ChipText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold"
+                                 Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+                    </Border>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <!-- Журнал службы: новые записи сверху, секреты скрыты -->
+        <StackPanel Spacing="8">
+          <Grid ColumnDefinitions="*,Auto" Margin="6,0">
+            <TextBlock Classes="overline" Text="{l:L diag.journal, Upper=True}" VerticalAlignment="Bottom" />
+            <TextBlock Grid.Column="1" Classes="caption" Text="{l:L diag.journal.masked}" VerticalAlignment="Bottom" />
+          </Grid>
+          <Border Classes="card" Padding="14,12">
+            <StackPanel>
+              <TextBlock Classes="caption" IsVisible="{Binding !HasJournal}" Text="{l:L diag.journal.empty}" />
+              <ItemsControl ItemsSource="{Binding Journal}">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:JournalLineViewModel">
+                    <TextBlock FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Overline}"
+                               LineHeight="{StaticResource PgLineHeight.Body}" TextTrimming="CharacterEllipsis"
+                               Foreground="{StaticResource PgBrush.Text.Primary}">
+                      <Run Text="{Binding Time}" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                      <Run Text="  " />
+                      <Run Classes="level" Classes.warning="{Binding IsWarning}" Classes.error="{Binding IsError}"
+                           Classes.debug="{Binding IsDebug}" Text="{Binding Level}" />
+                      <Run Text="  " />
+                      <Run Text="{Binding Message}" />
+                    </TextBlock>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

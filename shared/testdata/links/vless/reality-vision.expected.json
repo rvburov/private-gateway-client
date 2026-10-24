@@ -1,0 +1,23 @@
+{
+  "name": "Нидерланды 01",
+  "country": "NL",
+  "protocol": "vless",
+  "host": "203.0.113.24",
+  "port": 443,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "reality",
+    "sni": "www.example.com",
+    "fingerprint": "chrome",
+    "realityPublicKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "realityShortId": "0123abcd"
+  },
+  "options": {
+    "flow": "xtls-rprx-vision"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

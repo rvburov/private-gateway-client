@@ -1,0 +1,25 @@
+<Solution>
+  <Folder Name="/desktop/" />
+  <Folder Name="/desktop/src/">
+    <Project Path="desktop/src/Client.Application/Client.Application.csproj" />
+    <Project Path="desktop/src/Client.Contracts/Client.Contracts.csproj" />
+    <Project Path="desktop/src/Client.Core/Client.Core.csproj" />
+    <Project Path="desktop/src/Client.Infrastructure/Client.Infrastructure.csproj" />
+    <Project Path="desktop/src/Client.Network/Client.Network.csproj" />
+    <Project Path="desktop/src/Client.Platform.Linux/Client.Platform.Linux.csproj" />
+    <Project Path="desktop/src/Client.Platform.MacOS/Client.Platform.MacOS.csproj" />
+    <Project Path="desktop/src/Client.Platform.Windows/Client.Platform.Windows.csproj" />
+    <Project Path="desktop/src/Client.Service/Client.Service.csproj" />
+    <Project Path="desktop/src/Client.UI/Client.UI.csproj" />
+  </Folder>
+  <Folder Name="/desktop/tests/" />
+  <Folder Name="/desktop/tests/Architecture/">
+    <Project Path="desktop/tests/Architecture/Client.Tests.Architecture.csproj" />
+  </Folder>
+  <Folder Name="/desktop/tests/UI/">
+    <Project Path="desktop/tests/UI/Client.Tests.UI.csproj" />
+  </Folder>
+  <Folder Name="/desktop/tests/Unit/">
+    <Project Path="desktop/tests/Unit/Client.Tests.Unit.csproj" />
+  </Folder>
+</Solution>

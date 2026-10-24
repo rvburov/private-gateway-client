@@ -1,0 +1,23 @@
+{
+  "name": "TUIC",
+  "protocol": "tuic",
+  "host": "192.0.2.88",
+  "port": 443,
+  "transport": {
+    "kind": "quic"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "example.com",
+    "alpn": [
+      "h3"
+    ]
+  },
+  "options": {
+    "congestionControl": "bbr"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555",
+    "password": "pw-tuic-1"
+  }
+}

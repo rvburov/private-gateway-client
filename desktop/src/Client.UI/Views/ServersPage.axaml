@@ -1,0 +1,239 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ServersPage"
+             x:DataType="vm:ServersPageViewModel">
+  <!-- Серверы — docs/design, доска 2. -->
+  <UserControl.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding CloseFilterCommand}" />
+  </UserControl.KeyBindings>
+
+  <UserControl.Styles>
+    <!-- Поле поиска: рамка акцентом, пока открыт фильтр -->
+    <Style Selector="Border.search">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Card}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Button}" />
+    </Style>
+    <Style Selector="Border.search.open">
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+    </Style>
+    <Style Selector="Button.filter">
+      <Setter Property="Width" Value="38" />
+      <Setter Property="Height" Value="38" />
+      <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Button.filter.on">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+
+    <!-- Строка сервера: выбранная — белая, с рамкой и тенью цвета защиты -->
+    <Style Selector="Border.serverRow">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Card}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+      <Setter Property="BorderThickness" Value="1.5" />
+      <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Button}" />
+    </Style>
+    <Style Selector="Border.serverRow.active">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Success.Base}" />
+      <Setter Property="BoxShadow" Value="{StaticResource PgShadow.Selected}" />
+    </Style>
+
+    <!-- Пинг: быстрый — зеленым, медленный — серым, нет ответа — оранжевым словом «нет» -->
+    <Style Selector="TextBlock.latency">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="MinWidth" Value="52" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Text}" />
+    </Style>
+    <Style Selector="TextBlock.latency.slow">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+    <Style Selector="TextBlock.latency.down">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,Auto,*">
+
+    <!-- Шапка: заголовок, «Обновить серверы», «+» -->
+    <Grid Height="60" Margin="20,0,12,0" ColumnDefinitions="*,Auto,Auto">
+      <TextBlock Classes="h1" Text="{l:L page.servers.title}" VerticalAlignment="Center" />
+      <Button x:Name="RefreshButton" Grid.Column="1" Classes="icon" Command="{Binding RefreshCommand}"
+              ToolTip.Tip="{l:L server.refresh}" AutomationProperties.Name="{l:L server.refresh}">
+        <c:Icon Classes.spin="{Binding IsRefreshing}" Data="{StaticResource Icon.Refresh}"
+                Width="20" Height="20" StrokeThickness="1.9" />
+      </Button>
+      <Button Grid.Column="2" Classes="icon" Margin="2,0,0,0" Command="{Binding AddCommand}"
+              ToolTip.Tip="{l:L header.add}" AutomationProperties.Name="{l:L header.add}">
+        <c:Icon Data="{StaticResource Icon.Plus}" Width="22" Height="22" StrokeThickness="2" />
+      </Button>
+    </Grid>
+
+    <!-- Поиск с кнопкой фильтра и вкладки -->
+    <StackPanel Grid.Row="1" Margin="20,0" Spacing="10">
+      <Border Classes="search" Classes.open="{Binding IsFilterOpen}" Height="46" Padding="14,0,4,0">
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <c:Icon Data="{StaticResource Icon.Search}" Width="17" Height="17" StrokeThickness="2"
+                  Foreground="{StaticResource PgBrush.Text.Muted}" />
+          <TextBox x:Name="Search" Grid.Column="1" Classes="bare" Margin="8,0"
+                   Text="{Binding SearchText}" PlaceholderText="{l:L servers.search.placeholder}"
+                   AutomationProperties.Name="{l:L servers.search.label}" />
+          <Panel Grid.Column="2">
+            <Button x:Name="FilterButton" Classes="icon filter" Classes.on="{Binding IsFilterActive}"
+                    Command="{Binding ToggleFilterCommand}"
+                    ToolTip.Tip="{l:L servers.filter}" AutomationProperties.Name="{l:L servers.filter}">
+              <c:Icon Data="{StaticResource Icon.Filter}" Width="19" Height="19" StrokeThickness="1.9" />
+            </Button>
+            <Border IsVisible="{Binding HasFilterCount}" IsHitTestVisible="False"
+                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,3,3,0"
+                    MinWidth="16" Height="16" Padding="4,0" CornerRadius="8"
+                    Background="{StaticResource PgBrush.Accent.Base}">
+              <TextBlock x:Name="FilterCount" Text="{Binding FilterCountText}" FontSize="{StaticResource PgFontSize.Overline}"
+                         FontWeight="Bold" Foreground="{StaticResource PgBrush.Surface.Solid}"
+                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+            </Border>
+          </Panel>
+        </Grid>
+      </Border>
+
+      <Border Classes="segments" AutomationProperties.Name="{l:L servers.tabs}">
+        <UniformGrid Columns="3">
+          <RadioButton x:Name="TabAll" Classes="segment" GroupName="serversTab" IsChecked="{Binding IsAllTab}"
+                       Content="{Binding AllTabText}" />
+          <RadioButton x:Name="TabFavorites" Classes="segment" GroupName="serversTab" IsChecked="{Binding IsFavoritesTab}"
+                       Content="{l:L servers.tab.favorites}" />
+          <RadioButton x:Name="TabRecent" Classes="segment" GroupName="serversTab" IsChecked="{Binding IsRecentTab}"
+                       Content="{l:L servers.tab.recent}" />
+        </UniformGrid>
+      </Border>
+    </StackPanel>
+
+    <!-- Список: группы по подпискам, под островком запас для прокрутки -->
+    <ScrollViewer Grid.Row="2" Classes="page">
+      <StackPanel Margin="20,12,20,0" Spacing="6">
+        <ItemsControl ItemsSource="{Binding Groups}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="12" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ServerGroupViewModel">
+              <StackPanel Spacing="6">
+                <Grid ColumnDefinitions="*,Auto" Margin="4,0,4,2">
+                  <TextBlock Classes="overline" Text="{Binding Title, Converter={StaticResource Upper}}"
+                             TextTrimming="CharacterEllipsis" VerticalAlignment="Bottom" />
+                  <TextBlock Grid.Column="1" Classes="caption" Text="{Binding UpdatedText}" IsVisible="{Binding HasUpdated}"
+                             Margin="8,0,0,0" VerticalAlignment="Bottom" />
+                </Grid>
+                <ItemsControl ItemsSource="{Binding Rows}">
+                  <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel Spacing="6" />
+                    </ItemsPanelTemplate>
+                  </ItemsControl.ItemsPanel>
+                  <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="vm:ServerRowViewModel">
+                      <Border Classes="serverRow" Classes.active="{Binding IsSelected}">
+                        <Panel>
+                          <Button Classes="plain" MinHeight="55" Padding="12,8,44,8" HorizontalAlignment="Stretch"
+                                  Command="{Binding ChooseCommand}" CommandParameter="{Binding Id}"
+                                  AutomationProperties.Name="{Binding Name}">
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                              <Border Width="40" Height="28" CornerRadius="{StaticResource PgRadius.Chip}"
+                                      Background="{StaticResource PgBrush.Accent.Tint}"
+                                      BorderBrush="{StaticResource PgBrush.Accent.Line}" BorderThickness="1">
+                                <TextBlock Text="{Binding CountryCode}" FontSize="{StaticResource PgFontSize.Caption}"
+                                           FontWeight="Bold" Foreground="{StaticResource PgBrush.Accent.Text}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
+                              </Border>
+                              <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
+                                <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding Address}" TextTrimming="CharacterEllipsis"
+                                           FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Overline}"
+                                           Foreground="{StaticResource PgBrush.Text.Muted}" />
+                              </StackPanel>
+                              <Border Grid.Column="2" IsVisible="{Binding IsSelected}" Padding="7,3" Margin="0,0,10,0"
+                                      VerticalAlignment="Center" CornerRadius="{StaticResource PgRadius.Chip}"
+                                      Background="{StaticResource PgBrush.Status.Success.Tint}">
+                                <TextBlock Text="{Binding Tag}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="Bold"
+                                           Foreground="{StaticResource PgBrush.Status.Success.Badge}" />
+                              </Border>
+                              <TextBlock Grid.Column="3" Classes="latency" Classes.slow="{Binding IsSlow}"
+                                         Classes.down="{Binding IsDown}" Text="{Binding LatencyText}"
+                                         ToolTip.Tip="{Binding LatencyHint}" />
+                            </Grid>
+                          </Button>
+                          <Button Classes="icon" Width="34" Height="34" CornerRadius="{StaticResource PgRadius.Input}"
+                                  HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,6,0"
+                                  Foreground="{StaticResource PgBrush.Text.Muted}"
+                                  Command="{Binding OpenCommand}" CommandParameter="{Binding Id}"
+                                  ToolTip.Tip="{l:L servers.more}" AutomationProperties.Name="{Binding MoreName}">
+                            <c:Icon Data="{StaticResource Icon.More}" Width="18" Height="18" StrokeThickness="3" />
+                          </Button>
+                        </Panel>
+                      </Border>
+                    </DataTemplate>
+                  </ItemsControl.ItemTemplate>
+                </ItemsControl>
+              </StackPanel>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <TextBlock x:Name="EmptyText" IsVisible="{Binding IsEmpty}" Text="{Binding EmptyText}" Margin="4,20"
+                   TextAlignment="Center" TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Text.Muted}" />
+        <TextBlock Classes="caption" Text="{l:L servers.note}" TextWrapping="Wrap" Margin="4,6,4,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <!-- Фильтр и сортировка: панель поверх вкладок и списка, под полем поиска -->
+    <Border x:Name="FilterPanel" Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding IsFilterOpen}"
+            VerticalAlignment="Top" Margin="20,52,20,0" Padding="14"
+            Background="{StaticResource PgBrush.Surface.Solid}" BorderBrush="{StaticResource PgBrush.Line.Border}"
+            BorderThickness="1" CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+      <StackPanel Spacing="12">
+        <TextBlock Classes="overline" Text="{l:L servers.filter.protocols, Upper=True}" />
+        <ItemsControl ItemsSource="{Binding Protocols}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <UniformGrid Columns="2" ColumnSpacing="8" RowSpacing="2" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:ProtocolFilterViewModel">
+              <CheckBox Classes="check" IsChecked="{Binding IsOn}" Content="{Binding Name}" />
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+        <TextBlock Classes="overline" Text="{l:L servers.filter.sort, Upper=True}" />
+        <Border Classes="segments">
+          <UniformGrid Columns="2">
+            <RadioButton x:Name="SortLatency" Classes="segment" GroupName="serversSort" IsChecked="{Binding IsSortByLatency}"
+                         Content="{l:L servers.sort.latency}" />
+            <RadioButton x:Name="SortName" Classes="segment" GroupName="serversSort" IsChecked="{Binding IsSortByName}"
+                         Content="{l:L servers.sort.name}" />
+          </UniformGrid>
+        </Border>
+        <Grid ColumnDefinitions="Auto,*,Auto">
+          <Button Classes="secondary" Command="{Binding ResetFilterCommand}" Content="{l:L servers.filter.reset}" />
+          <Button Grid.Column="2" Classes="primary" Command="{Binding CloseFilterCommand}" Content="{l:L servers.filter.done}" />
+        </Grid>
+      </StackPanel>
+    </Border>
+  </Grid>
+</UserControl>

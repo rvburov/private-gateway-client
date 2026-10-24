@@ -1,0 +1,18 @@
+{
+  "name": "Legacy",
+  "protocol": "shadowsocks",
+  "host": "192.0.2.82",
+  "port": 8389,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "cipher": "aes-256-gcm"
+  },
+  "credentials": {
+    "password": "pw-ss-3"
+  }
+}

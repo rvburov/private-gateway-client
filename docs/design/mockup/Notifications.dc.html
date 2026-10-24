@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Уведомления — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#DCE3EE}
+button:focus{outline:none}
+button:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 420px; height: 700px; overflow: hidden; background: #DCE3EE; font-family: Inter, system-ui, sans-serif; font-size: 14px; color: #0B0F19">
+  <div aria-hidden="true" style="position: absolute; left: -60px; top: 60px; width: 260px; height: 260px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div>
+  <div aria-hidden="true" style="position: absolute; right: -80px; bottom: 80px; width: 260px; height: 260px; border-radius: 50%; background: #C4B5FD; opacity: 0.5"></div>
+
+  <div style="position: absolute; left: 20px; right: 20px; bottom: 20px; display: flex; flex-direction: column; gap: 10px">
+    <sc-for list="{{toasts}}" as="t" hint-placeholder-count="4">
+      <section role="status" aria-label="{{t.title}}" style="border-radius: 8px; background: rgba(249, 249, 249, 0.97); border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16); color: #1A1A1A; font-family: 'Segoe UI Variable Text', 'Segoe UI', Inter, system-ui, sans-serif">
+        <div style="height: 32px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 14px; font-size: 12px">
+          <span style="width: 16px; height: 16px; border-radius: 4px; background: linear-gradient(160deg, #3B82F6, #1D4ED8); display: flex; align-items: center; justify-content: center"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg></span>
+          <span style="flex: 1">Private Gateway</span><span style="color: #5C5C5C">{{t.time}}</span>
+        </div>
+        <div style="display: flex; gap: 12px; padding: 0 16px 12px">
+          <span style="width: 40px; height: 40px; border-radius: 10px; background: {{t.tint}}; color: {{t.color}}; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{t.icon}}"></path></svg>
+          </span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px">
+            <span style="font-size: 14px; font-weight: 600">{{t.title}}</span>
+            <span style="font-size: 13.5px; color: #5C5C5C; line-height: 1.4">{{t.text}}</span>
+          </span>
+        </div>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 0 16px 14px">
+          <button type="button" style="height: 32px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.08); border-bottom-color: rgba(0, 0, 0, 0.16); background: #FBFBFB; color: #1A1A1A; font: inherit; font-size: 13.5px; cursor: pointer">{{t.a1}}</button>
+          <button type="button" style="height: 32px; border-radius: 4px; border: 1px solid rgba(0, 0, 0, 0.08); border-bottom-color: rgba(0, 0, 0, 0.16); background: #FBFBFB; color: #1A1A1A; font: inherit; font-size: 13.5px; cursor: pointer">{{t.a2}}</button>
+        </div>
+      </section>
+    </sc-for>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":420,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const toasts = [
+      { time: '18:55', title: 'VPN отключён', text: 'Защита выключена вручную. Трафик идёт напрямую через провайдера.', icon: 'M12 3.5v8M6.6 6.8a7.6 7.6 0 1 0 10.8 0', tint: 'rgba(185, 28, 28, 0.10)', color: '#B91C1C', a1: 'Подключить', a2: 'Закрыть', pBg: '#2563EB', pFg: '#FFFFFF' },
+      { time: '18:51', title: 'Сервер недоступен', text: '«Нидерланды 01» не отвечает. Интернет заблокирован — другой сервер не выбран.', icon: 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01', tint: 'rgba(234, 88, 12, 0.12)', color: '#C2410C', a1: 'Повторить', a2: 'Выбрать сервер', pBg: '#2563EB', pFg: '#FFFFFF' },
+      { time: '18:10', title: 'Сервер исчез из подписки', text: '«Германия 02» больше нет в «Основной». Подключение работает до отключения.', icon: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM7.2 7.5h1M8 15h8', tint: 'rgba(234, 88, 12, 0.12)', color: '#C2410C', a1: 'Выбрать другой', a2: 'Позже', pBg: '#2563EB', pFg: '#FFFFFF' },
+      { time: '09:12', title: 'Доступно обновление 0.2.0', text: 'Установится при следующем запуске, защита не прервётся.', icon: 'M12 3v12M7 10l5 5 5-5M4 19h16', tint: 'rgba(37, 99, 235, 0.10)', color: '#1D4ED8', a1: 'Обновить', a2: 'Позже', pBg: '#2563EB', pFg: '#FFFFFF' }
+    ];
+    return { toasts };
+  }
+}
+</script>
+</body>
+</html>

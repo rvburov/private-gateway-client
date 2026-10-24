@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Ошибки — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF2F8;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+a{color:#2563EB}a:hover{color:#1D4ED8}
+button:focus,a:focus{outline:none}
+button:focus-visible,a:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+</style>
+</helmet>
+<div style="position: relative; width: 440px; height: 760px; overflow: hidden; background: #EEF2F8; font-family: Inter, system-ui, sans-serif; font-size: 14px; color: #0B0F19">
+  <div aria-hidden="true" style="position: absolute; left: -80px; top: -60px; width: 300px; height: 300px; border-radius: 50%; background: #FDBA74; opacity: 0.35"></div>
+  <div aria-hidden="true" style="position: absolute; right: -90px; top: 250px; width: 280px; height: 280px; border-radius: 50%; background: #93C5FD; opacity: 0.45"></div>
+  <div aria-hidden="true" style="position: absolute; left: 40px; bottom: -120px; width: 320px; height: 260px; border-radius: 50%; background: #C4B5FD; opacity: 0.45"></div>
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column; background: rgba(246, 248, 252, 0.7); backdrop-filter: blur(48px) saturate(170%); -webkit-backdrop-filter: blur(48px) saturate(170%); padding: 0 24px 24px; box-sizing: border-box">
+    <header style="display: flex; align-items: center; gap: 10px; height: 60px; flex: 0 0 auto">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path></svg>
+      <span style="font-size: 17px; font-weight: 600">Private Gateway</span>
+    </header>
+
+    <div style="display: flex; flex-direction: column; align-items: center; text-align: center; gap: 12px; margin-top: 28px">
+      <span style="width: 76px; height: 76px; border-radius: 24px; background: {{e.tint}}; color: {{e.color}}; display: flex; align-items: center; justify-content: center">
+        <svg width="38" height="38" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{e.icon}}"></path></svg>
+      </span>
+      <h1 style="margin: 0; font-size: 23px; font-weight: 700; letter-spacing: -0.015em">{{e.title}}</h1>
+      <p style="margin: 0; color: #374151; line-height: 1.5; max-width: 340px">{{e.text}}</p>
+    </div>
+
+    <section style="margin-top: 22px; padding: 4px 16px; border-radius: 20px; background: rgba(255, 255, 255, 0.85); border: 1px solid rgba(15, 23, 42, 0.08)">
+      <sc-for list="{{e.facts}}" as="f" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 10px; padding: 11px 0; border-bottom: {{f.sep}}">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: {{f.dot}}; flex: 0 0 auto"></span>
+          <span style="flex: 1; font-size: 13.5px">{{f.k}}</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 12px; color: #4B5565">{{f.v}}</span>
+        </div>
+      </sc-for>
+    </section>
+
+    <div style="flex: 1"></div>
+
+    <div style="display: flex; flex-direction: column; gap: 8px">
+      <button type="button" style="height: 52px; border-radius: 16px; border: none; background: #2563EB; color: #FFFFFF; font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.28)">{{e.primary}}</button>
+      <button type="button" style="height: 48px; border-radius: 16px; border: 1px solid rgba(15, 23, 42, 0.12); background: #FFFFFF; color: #0B0F19; font: inherit; font-weight: 500; cursor: pointer">{{e.secondary}}</button>
+      <a href="Diagnostics.dc.html" style="text-align: center; font-size: 13px; font-weight: 500; text-decoration: none; padding: 6px">Подробнее в журнале · код {{e.code}}</a>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"error":{"editor":"enum","options":["service","admin","conflict"],"default":"service"},"$preview":{"width":440,"height":760}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const R = { tint: 'rgba(185, 28, 28, 0.10)', color: '#B91C1C' };
+    const O = { tint: 'rgba(234, 88, 12, 0.12)', color: '#C2410C' };
+    const sep = (rows) => rows.map((r, i) => Object.assign(r, { sep: i === rows.length - 1 ? 'none' : '1px solid rgba(15, 23, 42, 0.07)' }));
+    const E = {
+      service: Object.assign({
+        icon: 'M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8zM9.5 9.5l5 5M14.5 9.5l-5 5',
+        title: 'Служба не запущена', text: 'Без службы VPN не может управлять сетью и блоком при обрыве. Окно работает, но подключиться нельзя.',
+        facts: sep([{ k: 'Служба Private Gateway', v: 'не найдена', dot: '#DC2626' }, { k: 'Сетевой адаптер (TUN)', v: 'нет', dot: '#DC2626' }, { k: 'Правила брандмауэра', v: 'нет', dot: '#9AA3B2' }]),
+        primary: 'Установить службу', secondary: 'Работать в режиме прокси', code: 'PGC-SVC-001'
+      }, R),
+      admin: Object.assign({
+        icon: 'M5 11h14v10H5zM8 11V8a4 4 0 0 1 8 0v3M12 15v2',
+        title: 'Нужны права администратора', text: 'Чтобы установить службу и правила брандмауэра, Windows должна получить ваше подтверждение. Запрос был отклонён или закрыт.',
+        facts: sep([{ k: 'Запрос прав Windows', v: 'отклонён', dot: '#EA580C' }, { k: 'Учётная запись', v: 'обычная', dot: '#9AA3B2' }]),
+        primary: 'Запросить ещё раз', secondary: 'Отмена', code: 'PGC-SVC-004'
+      }, O),
+      conflict: Object.assign({
+        icon: 'M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01',
+        title: 'Работает другой VPN', text: 'Другая программа уже управляет сетью. Если включить оба VPN сразу, трафик может пойти мимо туннеля.',
+        facts: sep([{ k: 'Чужой сетевой адаптер', v: 'активен', dot: '#EA580C' }, { k: 'Системный прокси', v: '127.0.0.1:[ПОРТ]', dot: '#EA580C' }, { k: 'Маршрут по умолчанию', v: 'занят', dot: '#EA580C' }]),
+        primary: 'Я отключил его — проверить снова', secondary: 'Продолжить (не рекомендуется)', code: 'PGC-NET-010'
+      }, O)
+    };
+    return { e: E[this.props.error] || E.service };
+  }
+}
+</script>
+</body>
+</html>

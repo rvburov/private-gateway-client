@@ -1,0 +1,228 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.MainPage"
+             x:DataType="vm:MainPageViewModel">
+  <!-- Главный экран — docs/design, доска 1. -->
+  <ScrollViewer Classes="page">
+    <StackPanel>
+
+      <!-- Шапка: знак, название, версия, «демо» на имитации, «+» -->
+      <Grid Height="60" Margin="20,0,12,0" ColumnDefinitions="Auto,Auto,Auto,Auto,*,Auto">
+        <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}"
+                Width="28" Height="28" Foreground="{StaticResource PgBrush.Accent.Base}" />
+        <TextBlock Grid.Column="1" Classes="brand" Text="{l:L app.title}" Margin="10,0,8,0" VerticalAlignment="Center" />
+        <Border Grid.Column="2" VerticalAlignment="Center" Padding="6,2"
+                CornerRadius="{StaticResource PgRadius.Chip}"
+                Background="{StaticResource PgBrush.Accent.Tint}">
+          <TextBlock Text="{Binding Version}" FontSize="{StaticResource PgFontSize.Overline}"
+                     FontWeight="SemiBold" Foreground="{StaticResource PgBrush.Accent.Text}" />
+        </Border>
+        <Border Grid.Column="3" VerticalAlignment="Center" Padding="6,2" Margin="6,0,0,0"
+                IsVisible="{Binding IsDemo}" ToolTip.Tip="{l:L app.badge.demo.hint}"
+                CornerRadius="{StaticResource PgRadius.Chip}"
+                Background="{StaticResource PgBrush.Status.Caution.Tint}">
+          <TextBlock Text="{l:L app.badge.demo}" FontSize="{StaticResource PgFontSize.Overline}"
+                     FontWeight="SemiBold" Foreground="{StaticResource PgBrush.Status.Caution.Text}" />
+        </Border>
+        <Button Grid.Column="5" Classes="icon" Command="{Binding NavigateCommand}" CommandParameter="add"
+                ToolTip.Tip="{l:L header.add}" AutomationProperties.Name="{l:L header.add}">
+          <c:Icon Data="{StaticResource Icon.Plus}" Width="22" Height="22" StrokeThickness="2" />
+        </Button>
+      </Grid>
+
+      <!-- Состояние защиты -->
+      <Border Classes="card" Margin="20,0" Padding="16,14,14,12">
+        <StackPanel Spacing="12">
+          <Grid ColumnDefinitions="Auto,*,Auto">
+            <Border Width="46" Height="46" CornerRadius="{StaticResource PgRadius.Button}" VerticalAlignment="Top"
+                    Background="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Tint}">
+              <c:Icon Data="{StaticResource Icon.Shield}"
+                      Detail="{Binding Protection.Mark, Converter={StaticResource IconKey}}"
+                      Width="26" Height="26" StrokeThickness="1.9"
+                      Foreground="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2">
+              <TextBlock x:Name="StatusTitle" Classes="status" Text="{Binding StatusTitle}"
+                         Foreground="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}" />
+              <TextBlock Classes="small" Text="{Binding StatusSubtitle}" TextTrimming="CharacterEllipsis" />
+              <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,1,0,0">
+                <c:Icon Data="{Binding NetworkIcon, Converter={StaticResource IconKey}}" Width="13" Height="13"
+                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                <TextBlock Classes="caption" Text="{Binding NetworkText}" TextTrimming="CharacterEllipsis" />
+              </StackPanel>
+            </StackPanel>
+            <StackPanel Grid.Column="2" IsVisible="{Binding HasTimer}" HorizontalAlignment="Right" Spacing="1">
+              <TextBlock Classes="caption" Text="{l:L status.online}" HorizontalAlignment="Right" />
+              <TextBlock Classes="mono" Text="{Binding TimerText}" FontWeight="SemiBold" HorizontalAlignment="Right" />
+            </StackPanel>
+          </Grid>
+
+          <ItemsControl ItemsSource="{Binding Chips}" Margin="-3">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <UniformGrid Columns="2" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:CheckChipViewModel">
+                <Button Classes="chip" Classes.selected="{Binding IsSelected}" Margin="3" Height="46"
+                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        Command="{Binding ToggleCommand}"
+                        Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}"
+                        AutomationProperties.Name="{Binding Title}">
+                  <Grid ColumnDefinitions="Auto,*" Margin="10,0">
+                    <Border Width="22" Height="22" CornerRadius="11"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="14" Height="14"
+                              StrokeThickness="2.6" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+                      <TextBlock Text="{Binding Title}" FontSize="{StaticResource PgFontSize.Small}"
+                                 FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Text="{Binding Value}" FontSize="{StaticResource PgFontSize.Overline}"
+                                 TextTrimming="CharacterEllipsis"
+                                 Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+                    </StackPanel>
+                  </Grid>
+                </Button>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+
+          <Border IsVisible="{Binding HasChipInfo}" Padding="12,10"
+                  CornerRadius="{StaticResource PgRadius.Button}"
+                  Background="{StaticResource PgBrush.Accent.Tint}">
+            <StackPanel Spacing="2">
+              <TextBlock Text="{Binding SelectedChip.Title}" FontWeight="SemiBold" FontSize="{StaticResource PgFontSize.Small}" />
+              <TextBlock Text="{Binding SelectedChip.Text}" TextWrapping="Wrap" FontSize="{StaticResource PgFontSize.Caption}"
+                         Foreground="{StaticResource PgBrush.Text.Secondary}" />
+            </StackPanel>
+          </Border>
+
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Classes="caption" Text="{Binding CheckedText}" VerticalAlignment="Center" />
+            <Button Grid.Column="1" Classes="link" IsVisible="{Binding HasCheckAction}"
+                    Command="{Binding CheckActionCommand}" Content="{Binding CheckActionText}"
+                    Foreground="{Binding CheckActionTone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}" />
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <Border Classes="card" Margin="20,10,20,0">
+        <StackPanel>
+          <StackPanel Margin="16,14,8,12" Spacing="3">
+            <TextBlock Classes="overline" Text="{l:L ip.title, Upper=True}" />
+            <Grid ColumnDefinitions="*,Auto,Auto">
+              <TextBlock Classes="monoLarge" Text="{Binding WebIp}" VerticalAlignment="Center" />
+              <Button Grid.Column="1" Classes="icon" Command="{Binding CopyIpCommand}" IsEnabled="{Binding CanCopyIp}"
+                      ToolTip.Tip="{l:L ip.copy}" AutomationProperties.Name="{l:L ip.copy}">
+                <c:Icon Data="{StaticResource Icon.Copy}" Width="18" Height="18" StrokeThickness="2" />
+              </Button>
+              <Button Grid.Column="2" Classes="icon" Command="{Binding ToggleIpMaskCommand}"
+                      ToolTip.Tip="{Binding MaskHint}" AutomationProperties.Name="{Binding MaskHint}">
+                <c:Icon Data="{Binding MaskIcon, Converter={StaticResource IconKey}}" Width="18" Height="18" StrokeThickness="2" />
+              </Button>
+            </Grid>
+            <TextBlock Classes="small" Text="{Binding WebIpMeta}" TextTrimming="CharacterEllipsis" />
+            <TextBlock Classes="small" IsVisible="{Binding HasRealIp}">
+              <Run Text="{l:L ip.real}" />
+              <Run Text="{Binding RealIp}" FontFamily="{StaticResource PgFont.Mono}" />
+              <Run Text="·" />
+              <Run Text="{Binding RealIpState}" />
+            </TextBlock>
+          </StackPanel>
+          <Border Classes="divider" Margin="16,0" />
+          <Grid x:Name="ServerRow" ColumnDefinitions="Auto,*" Margin="10,8,10,10">
+            <Button Classes="icon" Command="{Binding RefreshServersCommand}"
+                    Background="{StaticResource PgBrush.Accent.Tint}"
+                    Foreground="{StaticResource PgBrush.Accent.Text}"
+                    ToolTip.Tip="{l:L server.refresh}" AutomationProperties.Name="{l:L server.refresh}">
+              <c:Icon Data="{StaticResource Icon.Refresh}" Width="20" Height="20" StrokeThickness="2" />
+            </Button>
+            <Button x:Name="SwitchButton" Grid.Column="1" Classes="plain" Margin="6,0,0,0" Padding="6,0"
+                    Command="{Binding ToggleSwitchCommand}" AutomationProperties.Name="{l:L server.switch}">
+              <Grid ColumnDefinitions="*,Auto,Auto">
+                <StackPanel Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Classes="title" Text="{Binding ServerTitle}" TextTrimming="CharacterEllipsis" />
+                  <TextBlock Classes="small" Text="{Binding ServerMeta}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{l:L server.switch}" VerticalAlignment="Center" Margin="8,0,4,0"
+                           FontSize="{StaticResource PgFontSize.Small}" FontWeight="SemiBold"
+                           Foreground="{StaticResource PgBrush.Accent.Text}" />
+                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronDown}" Width="16" Height="16"
+                        StrokeThickness="2.2" Foreground="{StaticResource PgBrush.Accent.Text}" />
+              </Grid>
+            </Button>
+            <Popup Grid.Column="1" PlacementTarget="{Binding #ServerRow}" Placement="BottomEdgeAlignedRight"
+                   IsOpen="{Binding IsSwitchOpen, Mode=TwoWay}" IsLightDismissEnabled="True" Width="380">
+              <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6"
+                      BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                      CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}" Margin="8">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="overline" Text="{l:L server.quick, Upper=True}" Margin="10,6,10,4" />
+                  <ItemsControl ItemsSource="{Binding QuickServers}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:QuickServerViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="10,0"
+                                Command="{Binding ChooseCommand}" CommandParameter="{Binding Id}">
+                          <Grid ColumnDefinitions="Auto,*,Auto">
+                            <Border Width="30" Height="22" CornerRadius="{StaticResource PgRadius.Chip}"
+                                    Background="{StaticResource PgBrush.Accent.Tint}">
+                              <TextBlock Text="{Binding CountryCode}" FontSize="{StaticResource PgFontSize.Overline}"
+                                         FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                         Foreground="{StaticResource PgBrush.Accent.Text}" />
+                            </Border>
+                            <StackPanel Grid.Column="1" Margin="10,6" Spacing="1">
+                              <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                              <TextBlock Classes="caption" Text="{Binding Meta}" />
+                            </StackPanel>
+                            <TextBlock Grid.Column="2" Classes="mono" Text="{Binding LatencyText}" VerticalAlignment="Center"
+                                       Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+                          </Grid>
+                        </Button>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <Border Classes="divider" Margin="6,2" />
+                  <Button Classes="link" HorizontalContentAlignment="Left" Padding="10,8"
+                          Command="{Binding AllServersCommand}" Content="{l:L server.all}" />
+                </StackPanel>
+              </Border>
+            </Popup>
+          </Grid>
+        </StackPanel>
+      </Border>
+
+      <!-- Скорость -->
+      <Border Classes="card" Margin="20,10,20,0" Padding="6,10">
+        <Grid ColumnDefinitions="*,Auto,*,Auto,*">
+          <StackPanel HorizontalAlignment="Center" Spacing="2">
+            <TextBlock Classes="caption" Text="{l:L speed.ping}" HorizontalAlignment="Center" />
+            <TextBlock x:Name="PingValue" Classes="title" FontFamily="{StaticResource PgFont.Mono}" Text="{Binding PingText}"
+                       HorizontalAlignment="Center" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+            <TextBlock Classes="caption" Text="{l:L unit.ms}" HorizontalAlignment="Center" />
+          </StackPanel>
+          <Border Grid.Column="1" Width="1" Background="{StaticResource PgBrush.Line.Divider}" />
+          <StackPanel Grid.Column="2" HorizontalAlignment="Center" Spacing="2">
+            <TextBlock Classes="caption" Text="{l:L speed.down}" HorizontalAlignment="Center" />
+            <TextBlock Classes="title" FontFamily="{StaticResource PgFont.Mono}" Text="{Binding DownText}" HorizontalAlignment="Center" />
+            <TextBlock Classes="caption" Text="{l:L unit.mbps}" HorizontalAlignment="Center" />
+          </StackPanel>
+          <Border Grid.Column="3" Width="1" Background="{StaticResource PgBrush.Line.Divider}" />
+          <StackPanel Grid.Column="4" HorizontalAlignment="Center" Spacing="2">
+            <TextBlock Classes="caption" Text="{l:L speed.up}" HorizontalAlignment="Center" />
+            <TextBlock Classes="title" FontFamily="{StaticResource PgFont.Mono}" Text="{Binding UpText}" HorizontalAlignment="Center" />
+            <TextBlock Classes="caption" Text="{l:L unit.mbps}" HorizontalAlignment="Center" />
+          </StackPanel>
+        </Grid>
+      </Border>
+
+      <!-- Запас под островок: содержимое прокручивается под ним -->
+      <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

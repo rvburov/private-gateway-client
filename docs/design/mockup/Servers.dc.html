@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Серверы — Private Gateway Client</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#EEF2F8;-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}
+a{color:#2563EB}a:hover{color:#1D4ED8}
+button:focus,a:focus,input:focus{outline:none}
+button:focus-visible,a:focus-visible{outline:2px solid #93C5FD;outline-offset:2px}
+.pg-ib:hover{background:rgba(15,23,42,.06)}
+.pg-opt:hover{background:rgba(37,99,235,.07)}
+.pg-nav:hover{color:#0B0F19}
+.pg-noscroll{scrollbar-width:none;-ms-overflow-style:none}
+.pg-noscroll::-webkit-scrollbar{display:none}
+.pg-noscroll>*{flex-shrink:0}
+.pg-spin{animation:pg-spin .9s linear infinite}
+@keyframes pg-spin{to{transform:rotate(360deg)}}
+</style>
+</helmet>
+<div style="position: relative; width: 440px; height: 760px; overflow: hidden; background: #EEF2F8; font-family: Inter, system-ui, sans-serif; font-size: 14px; color: #0B0F19">
+  <div aria-hidden="true" style="position: absolute; left: -80px; top: -60px; width: 300px; height: 300px; border-radius: 50%; background: #93C5FD; opacity: 0.55"></div>
+  <div aria-hidden="true" style="position: absolute; right: -90px; top: 250px; width: 280px; height: 280px; border-radius: 50%; background: #86EFAC; opacity: 0.45"></div>
+  <div aria-hidden="true" style="position: absolute; left: 40px; bottom: -120px; width: 320px; height: 260px; border-radius: 50%; background: #C4B5FD; opacity: 0.45"></div>
+
+  <div style="position: absolute; inset: 0; display: flex; flex-direction: column; background: rgba(246, 248, 252, 0.7); backdrop-filter: blur(48px) saturate(170%); -webkit-backdrop-filter: blur(48px) saturate(170%)">
+    <header style="display: flex; align-items: center; justify-content: space-between; height: 60px; padding: 0 12px 0 20px; flex: 0 0 auto">
+      <h1 style="margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.015em">Серверы</h1>
+      <div style="display: flex; gap: 2px">
+        <button type="button" class="pg-ib" onClick="{{ping}}" aria-label="Обновить серверы" title="Обновить серверы" style="width: 44px; height: 44px; border: none; background: transparent; border-radius: 12px; color: #0B0F19; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg class="{{spin}}" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66"></path><path d="M20 4v5h-5"></path></svg>
+        </button>
+        <a href="Import.dc.html" class="pg-ib" aria-label="Добавить ссылку или подписку" style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 12px; color: #0B0F19">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </a>
+      </div>
+    </header>
+
+    <div style="position: relative; z-index: 20; padding: 0 20px; display: flex; flex-direction: column; gap: 10px; flex: 0 0 auto">
+      <div style="display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 4px 0 14px; border-radius: 14px; background: rgba(255, 255, 255, 0.9); border: 1px solid {{filterBorder}}; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04)">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#4B5565" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <label for="srv-search" style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0)">Поиск сервера</label>
+        <input id="srv-search" type="search" placeholder="Страна, город, IP" style="flex: 1; min-width: 0; border: none; background: transparent; font: inherit; color: #0B0F19">
+        <button type="button" class="pg-ib" onClick="{{toggleFilter}}" aria-label="Фильтр и сортировка" aria-expanded="{{filterAria}}" style="position: relative; width: 38px; height: 38px; border: none; border-radius: 10px; background: {{filterBg}}; color: {{filterFg}}; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"></path><circle cx="16" cy="7" r="2"></circle><circle cx="10" cy="17" r="2"></circle></svg>
+          <sc-if value="{{badge.show}}" hint-placeholder-val="{{ false }}">
+            <span style="position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; box-sizing: border-box; border-radius: 8px; background: #2563EB; color: #FFFFFF; font-size: 10px; font-weight: 700; display: flex; align-items: center; justify-content: center">{{badge.n}}</span>
+          </sc-if>
+        </button>
+      </div>
+
+      <div role="tablist" aria-label="Списки серверов" style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: rgba(15, 23, 42, 0.05)">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="3">
+          <button type="button" role="tab" aria-selected="{{t.on}}" onClick="{{t.pick}}" style="{{t.style}}">{{t.label}}</button>
+        </sc-for>
+      </div>
+
+      <sc-if value="{{filterOpen}}" hint-placeholder-val="{{ false }}">
+        <div role="dialog" aria-label="Фильтр и сортировка" style="position: absolute; left: 20px; right: 20px; top: 52px; padding: 14px; border-radius: 18px; background: rgba(255, 255, 255, 0.98); border: 1px solid rgba(15, 23, 42, 0.10); box-shadow: 0 16px 40px rgba(15, 23, 42, 0.20); display: flex; flex-direction: column; gap: 12px">
+          <span style="font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Протоколы</span>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 2px 8px">
+            <sc-for list="{{protoList}}" as="p" hint-placeholder-count="5">
+              <button type="button" role="checkbox" aria-checked="{{p.aria}}" onClick="{{p.flip}}" class="pg-opt" style="height: 40px; padding: 0 8px; border: none; border-radius: 10px; background: transparent; font: inherit; color: #0B0F19; cursor: pointer; display: flex; align-items: center; gap: 10px; text-align: left">
+                <span style="width: 20px; height: 20px; border-radius: 6px; box-sizing: border-box; border: {{p.boxBorder}}; background: {{p.boxBg}}; color: #FFFFFF; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{p.mark}}"></path></svg>
+                </span>{{p.label}}</button>
+            </sc-for>
+          </div>
+          <span style="font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">Сортировка</span>
+          <div role="radiogroup" aria-label="Сортировка" style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 12px; background: rgba(15, 23, 42, 0.05)">
+            <sc-for list="{{sorts}}" as="o" hint-placeholder-count="2">
+              <button type="button" role="radio" aria-checked="{{o.on}}" onClick="{{o.pick}}" style="{{o.style}}">{{o.label}}</button>
+            </sc-for>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 8px">
+            <button type="button" onClick="{{resetFilter}}" style="height: 40px; padding: 0 14px; border-radius: 10px; border: 1px solid rgba(15, 23, 42, 0.12); background: #FFFFFF; font: inherit; color: #0B0F19; cursor: pointer">Сбросить</button>
+            <button type="button" onClick="{{toggleFilter}}" style="height: 40px; padding: 0 18px; border-radius: 10px; border: none; background: #2563EB; font: inherit; font-weight: 600; color: #FFFFFF; cursor: pointer">Готово</button>
+          </div>
+        </div>
+      </sc-if>
+    </div>
+
+    <div class="pg-noscroll" style="flex: 1; min-height: 0; overflow-y: auto; padding: 12px 20px 160px; display: flex; flex-direction: column; gap: 6px">
+      <div style="display: flex; justify-content: space-between; align-items: baseline; padding: 0 4px 2px">
+        <span style="font-size: 11px; font-weight: 600; color: #4B5565; text-transform: uppercase; letter-spacing: 0.06em">{{groupTitle}}</span>
+        <span style="font-size: 12px; color: #4B5565">обновлено 18:10</span>
+      </div>
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="7">
+        <div style="position: relative; flex: 0 0 auto">
+        <button type="button" onClick="{{r.pick}}" aria-pressed="{{r.aria}}" style="{{r.style}}">
+          <span style="width: 40px; height: 28px; border-radius: 7px; background: rgba(37, 99, 235, 0.10); border: 1px solid rgba(37, 99, 235, 0.16); color: #1D4ED8; font-size: 12px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex: 0 0 auto">{{r.cc}}</span>
+          <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; text-align: left">
+            <span style="font-weight: 600">{{r.name}}</span>
+            <span style="font-family: 'JetBrains Mono', monospace; font-size: 11px; color: #4B5565; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{r.addr}}</span>
+          </span>
+          <sc-if value="{{r.tag}}" hint-placeholder-val="{{ false }}">
+            <span style="font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: rgba(22, 163, 74, 0.12); color: #166534">{{r.tag}}</span>
+          </sc-if>
+          <span style="width: 52px; text-align: right; font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 600; color: {{r.latC}}">{{r.lat}}</span>
+        </button>
+        <a href="ServerCard.dc.html" class="pg-ib" aria-label="Подробнее о сервере {{r.name}}" title="Подробнее" style="position: absolute; right: 6px; top: 50%; transform: translateY(-50%); width: 34px; height: 34px; border-radius: 10px; display: flex; align-items: center; justify-content: center; color: #4B5565">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" aria-hidden="true"><path d="M6 12h.01M12 12h.01M18 12h.01"></path></svg>
+        </a>
+        </div>
+      </sc-for>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{ false }}">
+        <p style="margin: 20px 4px; text-align: center; color: #4B5565">Нет серверов по выбранным фильтрам</p>
+      </sc-if>
+      <p style="margin: 6px 4px 0; font-size: 12px; color: #4B5565; line-height: 1.45">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждёт вашего решения.</p>
+    </div>
+
+    <footer style="position: absolute; left: 0; right: 0; bottom: 0; height: 150px; pointer-events: none">
+      <svg width="440" height="150" viewBox="0 0 440 150" aria-hidden="true" style="position: absolute; left: 0; top: 0; display: block; overflow: visible; filter: drop-shadow(0 6px 18px rgba(15, 23, 42, 0.16))"><path d="M50 70 H156.5 A18 18 0 0 0 173.82 56.91 A48 48 0 0 1 266.18 56.91 A18 18 0 0 0 283.5 70 H390 A26 26 0 0 1 416 96 V112 A26 26 0 0 1 390 138 H50 A26 26 0 0 1 24 112 V96 A26 26 0 0 1 50 70 Z" fill="#FFFFFF" stroke="rgba(15, 23, 42, 0.06)" stroke-width="1" style="pointer-events: auto"></path></svg>
+      <nav aria-label="Главное меню" style="position: absolute; left: 24px; right: 24px; top: 70px; bottom: 12px; display: grid; grid-template-columns: 1fr 1fr 92px 1fr 1fr; padding: 0 12px 9px; pointer-events: auto">
+        <sc-for list="{{navL}}" as="n" hint-placeholder-count="2">
+          <a href="{{n.href}}" class="pg-nav" aria-current="{{n.cur}}" style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; text-decoration: none; color: {{n.color}}; font-size: 11.5px; font-weight: {{n.weight}}; line-height: 14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.shape}}" fill="{{n.fill}}"></path><path d="{{n.detail}}"></path></svg>
+            {{n.label}}
+          </a>
+        </sc-for>
+        <span style="display: flex; align-items: flex-end; justify-content: center; font-size: 12px; line-height: 14px; font-weight: 700; color: #15803D">Защищено</span>
+        <sc-for list="{{navR}}" as="n" hint-placeholder-count="2">
+          <a href="{{n.href}}" class="pg-nav" aria-current="{{n.cur}}" style="display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; text-decoration: none; color: {{n.color}}; font-size: 11.5px; font-weight: {{n.weight}}; line-height: 14px">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{n.shape}}" fill="{{n.fill}}"></path><path d="{{n.detail}}"></path></svg>
+            {{n.label}}
+          </a>
+        </sc-for>
+      </nav>
+      <button type="button" aria-label="Отключить VPN" style="position: absolute; top: 30px; left: 180px; width: 80px; height: 80px; border-radius: 50%; border: 4px solid #16A34A; background: #FFFFFF; color: #15803D; cursor: pointer; padding: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(22, 163, 74, 0.25); pointer-events: auto">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z"></path><path d="M8.8 12.2l2.2 2.2 4.4-4.6"></path></svg>
+      </button>
+    </footer>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":440,"height":760}}'>
+class Component extends DCLogic {
+  componentWillUnmount() { clearTimeout(this.pt); }
+  renderVals() {
+    const ui = this.state || {};
+    const sel = ui.sel || 'nl1';
+    const tab = ui.tab || 'all';
+    const sort = ui.sort || 'ping';
+    const P = ['VLESS', 'Hysteria2', 'TUIC', 'WireGuard', 'Trojan'];
+    const off = ui.off || {};
+    const all = [
+      { id: 'nl1', cc: 'NL', name: 'Нидерланды 01', ip: '203.0.113.24', proto: 'VLESS · REALITY', p: 'VLESS', ms: 42, fav: true, rec: true },
+      { id: 'fi1', cc: 'FI', name: 'Финляндия 01', ip: '203.0.113.57', proto: 'Hysteria2', p: 'Hysteria2', ms: 38, fav: true, rec: false },
+      { id: 'de2', cc: 'DE', name: 'Германия 02', ip: '198.51.100.140', proto: 'VLESS · XHTTP', p: 'VLESS', ms: 51, fav: true, rec: true },
+      { id: 'se1', cc: 'SE', name: 'Швеция 01', ip: '192.0.2.33', proto: 'WireGuard', p: 'WireGuard', ms: 57, fav: false, rec: true },
+      { id: 'pl3', cc: 'PL', name: 'Польша 03', ip: '192.0.2.88', proto: 'TUIC v5', p: 'TUIC', ms: 64, fav: false, rec: false },
+      { id: 'us1', cc: 'US', name: 'США 01', ip: '198.51.100.201', proto: 'Trojan · WS', p: 'Trojan', ms: 148, fav: false, rec: false },
+      { id: 'tr1', cc: 'TR', name: 'Турция 01', ip: '192.0.2.150', proto: 'VLESS · gRPC', p: 'VLESS', ms: null, fav: false, rec: false }
+    ];
+    let list = all.filter((r) => !off[r.p] && (tab === 'all' || (tab === 'fav' ? r.fav : r.rec)));
+    list = list.slice().sort((a, b) => sort === 'name' ? a.name.localeCompare(b.name, 'ru') : (a.ms == null ? 9999 : a.ms) - (b.ms == null ? 9999 : b.ms));
+    const rows = list.map((r) => {
+      const on = r.id === sel;
+      return {
+        cc: r.cc, name: r.name, addr: r.ip + ' · ' + r.proto, aria: on ? 'true' : 'false', tag: on ? 'активен' : '',
+        lat: r.ms == null ? 'нет' : r.ms + ' мс',
+        latC: r.ms == null ? '#C2410C' : r.ms > 120 ? '#4B5565' : '#15803D',
+        style: 'flex: 0 0 auto; display: flex; align-items: center; gap: 12px; width: 100%; min-height: 58px; padding: 8px 44px 8px 12px; border-radius: 14px; font: inherit; color: #0B0F19; cursor: pointer; ' + (on ? 'background: #FFFFFF; border: 1.5px solid #16A34A; box-shadow: 0 4px 14px rgba(22, 163, 74, 0.12);' : 'background: rgba(255, 255, 255, 0.82); border: 1.5px solid rgba(15, 23, 42, 0.06);'),
+        pick: () => this.setState({ sel: r.id })
+      };
+    });
+    const seg = (cur, key, extra) => ([id, label]) => ({
+      label, on: id === cur ? 'true' : 'false',
+      style: 'height: 36px; border: none; border-radius: 9px; font: inherit; font-size: 13.5px; cursor: pointer; ' + (id === cur ? 'background: #FFFFFF; color: #0B0F19; font-weight: 600; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);' : 'background: transparent; color: #374151;'),
+      pick: () => this.setState(Object.assign({ [key]: id }, extra || {}))
+    });
+    const tabs = [['all', 'Все · ' + all.length], ['fav', 'Избранные'], ['rec', 'Недавние']].map(seg(tab, 'tab'));
+    const sorts = [['ping', 'По пингу'], ['name', 'По названию']].map(seg(sort, 'sort'));
+    const CHECK = 'M5 12.5l4.5 4.5L19 7.5';
+    const protoList = P.map((p) => {
+      const on = !off[p];
+      return {
+        label: p, aria: on ? 'true' : 'false', mark: on ? CHECK : 'M-9 -9',
+        boxBg: on ? '#2563EB' : '#FFFFFF', boxBorder: on ? 'none' : '1.5px solid #9AA3B2',
+        flip: () => this.setState({ off: Object.assign({}, off, { [p]: on }) })
+      };
+    });
+    const nOff = P.filter((p) => off[p]).length + (sort !== 'ping' ? 1 : 0);
+    const filterOpen = !!ui.filter;
+    const ICONS = {
+      home: { shape: 'M4 5.5A1.5 1.5 0 0 1 5.5 4h3A1.5 1.5 0 0 1 10 5.5v3A1.5 1.5 0 0 1 8.5 10h-3A1.5 1.5 0 0 1 4 8.5zM14 5.5A1.5 1.5 0 0 1 15.5 4h3A1.5 1.5 0 0 1 20 5.5v3a1.5 1.5 0 0 1-1.5 1.5h-3A1.5 1.5 0 0 1 14 8.5zM4 15.5A1.5 1.5 0 0 1 5.5 14h3a1.5 1.5 0 0 1 1.5 1.5v3A1.5 1.5 0 0 1 8.5 20h-3A1.5 1.5 0 0 1 4 18.5zM14 15.5a1.5 1.5 0 0 1 1.5-1.5h3a1.5 1.5 0 0 1 1.5 1.5v3a1.5 1.5 0 0 1-1.5 1.5h-3a1.5 1.5 0 0 1-1.5-1.5z', detail: 'M-9 -9' },
+      servers: { shape: 'M4 6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2zM4 15a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z', detail: 'M7.2 7.5h1M7.2 16.5h1M11.5 7.5h5M11.5 16.5h5' },
+      diag: { shape: 'M4 6.5A2.5 2.5 0 0 1 6.5 4h11A2.5 2.5 0 0 1 20 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 17.5z', detail: 'M6.5 12.5h2.4l1.7-4 2.6 7.5 1.8-3.5h2.5' },
+      settings: { shape: 'M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z', detail: 'M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6z' }
+    };
+    const item = (id, label, href) => {
+      const active = id === 'servers';
+      return {
+        label, href, shape: ICONS[id].shape, detail: ICONS[id].detail, cur: active ? 'page' : 'false',
+        fill: active ? 'rgba(37, 99, 235, 0.16)' : 'none',
+        color: active ? '#2563EB' : '#4B5565', weight: active ? 600 : 500
+      };
+    };
+    return {
+      rows, tabs, sorts, protoList, filterOpen,
+      empty: rows.length === 0,
+      groupTitle: tab === 'fav' ? 'Избранные · ' + rows.length : tab === 'rec' ? 'Недавние · ' + rows.length : 'Основная подписка · ' + rows.length,
+      badge: { show: nOff > 0, n: String(nOff) },
+      filterAria: filterOpen ? 'true' : 'false',
+      filterBg: filterOpen || nOff > 0 ? 'rgba(37, 99, 235, 0.10)' : 'transparent',
+      filterFg: filterOpen || nOff > 0 ? '#1D4ED8' : '#374151',
+      filterBorder: filterOpen ? '#2563EB' : 'rgba(15, 23, 42, 0.08)',
+      toggleFilter: () => this.setState({ filter: !filterOpen }),
+      resetFilter: () => this.setState({ off: {}, sort: 'ping' }),
+      spin: ui.pinging ? 'pg-spin' : '',
+      ping: () => { clearTimeout(this.pt); this.setState({ pinging: true }); this.pt = setTimeout(() => this.setState({ pinging: false }), 1200); },
+      navL: [item('home', 'Главная', 'Main.dc.html'), item('servers', 'Серверы', 'Servers.dc.html')],
+      navR: [item('diag', 'Проверка', 'Diagnostics.dc.html'), item('settings', 'Настройки', 'Settings.dc.html')]
+    };
+  }
+}
+</script>
+</body>
+</html>

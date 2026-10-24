@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+        xmlns:c="using:PrivateGateway.Client.UI.Controls"
+        x:Class="PrivateGateway.Client.UI.Views.MainWindow"
+        x:DataType="vm:ShellViewModel"
+        Title="Private Gateway"
+        Width="{StaticResource PgLayout.DesktopWindow.Width}"
+        Height="{StaticResource PgLayout.DesktopWindow.Height}"
+        CanResize="False"
+        Background="{StaticResource PgBrush.Bg.Window}">
+  <Window.KeyBindings>
+    <KeyBinding Gesture="Escape" Command="{Binding Overlay.DismissCommand}" />
+  </Window.KeyBindings>
+
+  <Panel>
+    <!-- Цветные пятна под стеклом (макет): мягкие радиальные градиенты вместо размытия -->
+    <Canvas IsHitTestVisible="False" ClipToBounds="True">
+      <Ellipse Canvas.Left="-110" Canvas.Top="-90" Width="360" Height="360">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0.35" Color="{StaticResource PgColor.Decor.Blob1}" />
+            <GradientStop Offset="1" Color="Transparent" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Ellipse Canvas.Left="220" Canvas.Top="220" Width="340" Height="340">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0.35" Color="{StaticResource PgColor.Decor.Blob2}" />
+            <GradientStop Offset="1" Color="Transparent" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+      <Ellipse Canvas.Left="10" Canvas.Top="590" Width="380" Height="320">
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Offset="0.35" Color="{StaticResource PgColor.Decor.Blob3}" />
+            <GradientStop Offset="1" Color="Transparent" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+      </Ellipse>
+    </Canvas>
+
+    <Panel Background="{StaticResource PgBrush.Glass.Fill}">
+      <ContentControl Content="{Binding CurrentPage}" />
+
+      <Border VerticalAlignment="Top" HorizontalAlignment="Center" Margin="0,56,0,0"
+              IsVisible="{Binding Toast.IsVisible}" ZIndex="80"
+              Background="{StaticResource PgBrush.Text.Primary}"
+              CornerRadius="{StaticResource PgRadius.Input}" Padding="14,8"
+              BoxShadow="{StaticResource PgShadow.Popup}">
+        <TextBlock Text="{Binding Toast.Text}" FontSize="{StaticResource PgFontSize.Small}"
+                   FontWeight="Medium" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+      </Border>
+
+      <c:IslandNav VerticalAlignment="Bottom" IsVisible="{Binding IsIslandVisible}" />
+
+      <!-- Слой поверх окна вместе с островком: затемнение, нижний лист, диалог -->
+      <Button x:Name="Scrim" Classes="scrim" ZIndex="50" IsVisible="{Binding Overlay.HasSheet}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              Command="{Binding Overlay.DismissCommand}" />
+
+      <Border x:Name="Sheet" ZIndex="60" IsVisible="{Binding Overlay.HasSheet}" Margin="0,92,0,0" Padding="20,10,20,20"
+              CornerRadius="25,25,0,0" Background="{StaticResource PgBrush.Surface.Solid}"
+              BoxShadow="{StaticResource PgShadow.Sheet}">
+        <ContentControl Content="{Binding Overlay.Sheet}" />
+      </Border>
+
+      <!-- Диалог поверх листа затемняет и лист -->
+      <Button Classes="scrim" ZIndex="65" IsVisible="{Binding Overlay.HasDialog}"
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+              Command="{Binding Overlay.DismissCommand}" />
+
+      <ContentControl x:Name="Dialog" ZIndex="70" IsVisible="{Binding Overlay.HasDialog}"
+                      Content="{Binding Overlay.Dialog}" VerticalAlignment="Center" Margin="24,0" />
+    </Panel>
+  </Panel>
+</Window>
