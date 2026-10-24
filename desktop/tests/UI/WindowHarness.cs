@@ -29,6 +29,8 @@ public abstract class WindowHarness : IDisposable
 
     protected FakeClipboard Clipboard { get; } = new();
 
+    protected FakeFileSaver Files { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -48,6 +50,7 @@ public abstract class WindowHarness : IDisposable
         {
             s.AddSingleton<TimeProvider>(Time);
             s.AddSingleton<IClipboardService>(Clipboard);
+            s.AddSingleton<IFileSaveService>(Files);
         });
         var shell = _services.GetRequiredService<ShellViewModel>();
         var window = new MainWindow { DataContext = shell };
@@ -95,6 +98,27 @@ public abstract class WindowHarness : IDisposable
     {
         Dispatcher.UIThread.RunJobs();
         window.CaptureRenderedFrame()?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+    }
+
+    protected sealed class FakeFileSaver : IFileSaveService
+    {
+        public string? Name { get; private set; }
+
+        public string? Text { get; private set; }
+
+        /// <summary>false — как будто пользователь закрыл окно «Сохранить как».</summary>
+        public bool Accept { get; set; } = true;
+
+        public Task<bool> SaveTextAsync(string suggestedName, string text)
+        {
+            if (Accept)
+            {
+                Name = suggestedName;
+                Text = text;
+            }
+
+            return Task.FromResult(Accept);
+        }
     }
 
     protected sealed class FakeClipboard : IClipboardService

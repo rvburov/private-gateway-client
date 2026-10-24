@@ -31,6 +31,9 @@
     <DataTemplate DataType="vm:ServerCardViewModel">
       <views:ServerCardView />
     </DataTemplate>
+    <DataTemplate DataType="vm:CheckPageViewModel">
+      <views:CheckPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:SettingsPageViewModel">
       <views:SettingsPage />
     </DataTemplate>

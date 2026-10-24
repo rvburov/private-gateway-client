@@ -1,4 +1,7 @@
 using PrivateGateway.Client.Contracts;
+using CoreCheck = PrivateGateway.Client.Core.DiagnosticCheck;
+using CoreCheckState = PrivateGateway.Client.Core.CheckState;
+using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
 using CoreProtocol = PrivateGateway.Client.Core.ProxyProtocol;
 using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
 using CoreState = PrivateGateway.Client.Core.ConnectionState;
@@ -34,6 +37,43 @@ public class ContractMappingTests
         {
             security.ToContract().ToCore().ShouldBe(security);
         }
+    }
+
+    [Fact]
+    public void Every_check_state_level_and_check_id_round_trips()
+    {
+        foreach (var state in Enum.GetValues<CoreCheckState>())
+        {
+            state.ToContract().ToCore().ShouldBe(state);
+        }
+
+        foreach (var state in Enum.GetValues<V1.CheckState>().Where(s => s != V1.CheckState.Unspecified))
+        {
+            state.ToCore().ToContract().ShouldBe(state);
+        }
+
+        foreach (var level in Enum.GetValues<CoreLevel>())
+        {
+            level.ToContract().ToCore().ShouldBe(level);
+        }
+
+        foreach (var level in Enum.GetValues<V1.LogLevel>().Where(l => l != V1.LogLevel.Unspecified))
+        {
+            level.ToCore().ToContract().ShouldBe(level);
+        }
+
+        foreach (var check in Enum.GetValues<CoreCheck>())
+        {
+            ContractMapping.ToCoreCheck(check.ToContractId()).ShouldBe(check);
+        }
+    }
+
+    [Fact]
+    public void Unknown_check_from_a_newer_service_is_skipped_not_fatal()
+    {
+        ContractMapping.ToCoreCheck("quantum_tunnel").ShouldBeNull();
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.CheckState.Unspecified.ToCore());
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.LogLevel.Unspecified.ToCore());
     }
 
     [Fact]

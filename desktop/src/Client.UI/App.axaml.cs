@@ -42,8 +42,10 @@ public partial class App : Avalonia.Application
         services.AddSingleton<OverlayViewModel>();
         services.AddSingleton<ProtectionViewModel>();
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
+        services.AddSingleton<IFileSaveService, AvaloniaFileSaveService>();
         services.AddSingleton<Func<INavigator, MainPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<MainPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ServersPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ServersPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<CheckPageViewModel>>(sp => () => ActivatorUtilities.CreateInstance<CheckPageViewModel>(sp));
         services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
         overrides?.Invoke(services);

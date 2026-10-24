@@ -84,7 +84,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public bool IsDemo => _gateway.IsSimulated;
 
-    public string Version { get; } = "0.1";
+    public string Version => AppInfo.Version;
 
     // ── Карточка состояния ───────────────────────────────────────────────────
 
@@ -405,13 +405,7 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     public string Text => Loc.Instance[$"check.{Id}.text"];
 
     /// <summary>Ключ иконки в кружке: Icon.Chip.*.</summary>
-    public string Icon => State switch
-    {
-        CheckState.Ok => "Icon.Chip.Ok",
-        CheckState.Waiting => "Icon.Chip.Dots",
-        CheckState.Warning => "Icon.Chip.Warn",
-        _ => "Icon.Chip.Dash",
-    };
+    public string Icon => CheckIcon.For(State);
 
     internal void Update(CheckState state)
     {

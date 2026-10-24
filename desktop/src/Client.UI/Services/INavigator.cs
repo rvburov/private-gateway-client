@@ -21,3 +21,11 @@ public interface IClipboardService
 {
     Task SetTextAsync(string text);
 }
+
+/// <summary>Сохранение файла через окно выбора ОС; в тестах подменяется.</summary>
+public interface IFileSaveService
+{
+    /// <summary>Спросить, куда сохранить, и записать текст в UTF-8.</summary>
+    /// <returns>false — пользователь отменил сохранение.</returns>
+    Task<bool> SaveTextAsync(string suggestedName, string text);
+}

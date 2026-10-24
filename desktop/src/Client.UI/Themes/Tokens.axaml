@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: 50bbcf9382fd733fa0fae772e5849c9f2f3d92cbc09698c76fb8ade02c35a33e
+  tokens-sha256: 9d2a04c894663792a16219a92cf010043f161a7422e3c09db54d36fbb833c95e
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -221,6 +221,7 @@
   <BoxShadows x:Key="PgShadow.Selected">0 4 14 0 #1F16A34A</BoxShadows>
   <BoxShadows x:Key="PgShadow.Sheet">0 -12 40 0 #330F172A</BoxShadows>
   <BoxShadows x:Key="PgShadow.Dialog">0 20 50 0 #4D0F172A</BoxShadows>
+  <BoxShadows x:Key="PgShadow.Accent">0 6 16 0 #422563EB</BoxShadows>
 
   <!-- Размеры -->
   <x:Double x:Key="PgLayout.DesktopWindow.Width">440</x:Double>

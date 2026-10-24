@@ -339,11 +339,14 @@ message CaptivePauseReply {
 message RunChecksRequest {}
 
 message CheckResult {
-  // Идентификатор проверки: service, core, all_traffic, kill_switch, dns, ipv6, exit_ip, …
+  // Идентификатор проверки: service, core, all_traffic, kill_switch, dns, ipv6, exit_ip, other_vpn.
   string id = 1;
   CheckState state = 2;
-  // Подробности без секретов.
+  // Подробности без секретов — для журнала и отчета, интерфейс их не переводит.
   string details = 3;
+  // Код уточнения для текста интерфейса: simulated, no_reply, system_proxy, vpn_adapter…
+  // Пусто — текст по состоянию.
+  string reason = 4;
 }
 
 message CheckReport {

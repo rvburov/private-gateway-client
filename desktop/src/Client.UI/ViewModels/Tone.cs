@@ -33,3 +33,15 @@ public static class ToneOf
         };
     }
 }
+
+/// <summary>Значок в кружке проверки (главный экран и «Проверка»): ключ ресурса Icon.Chip.*.</summary>
+public static class CheckIcon
+{
+    public static string For(CheckState state) => state switch
+    {
+        CheckState.Ok => "Icon.Chip.Ok",
+        CheckState.Waiting => "Icon.Chip.Dots",
+        CheckState.Warning => "Icon.Chip.Warn",
+        _ => "Icon.Chip.Dash",
+    };
+}

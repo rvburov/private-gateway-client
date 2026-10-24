@@ -48,6 +48,9 @@ public sealed class Loc : INotifyPropertyChanged
     /// <summary>Текст по ключу; неизвестный ключ виден сразу — «[ключ]».</summary>
     public string this[string key] => _current.TryGetValue(key, out var text) ? text : "[" + key + "]";
 
+    /// <summary>Есть ли ключ в словаре — для текстов с запасными вариантами (уточнение → состояние → общий).</summary>
+    public bool Has(string key) => _current.ContainsKey(key);
+
     public string Format(string key, params object?[] args) =>
         string.Format(Culture, this[key], args);
 

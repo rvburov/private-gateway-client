@@ -18,6 +18,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         OverlayViewModel overlay,
         Func<INavigator, MainPageViewModel> mainPage,
         Func<INavigator, ServersPageViewModel> serversPage,
+        Func<CheckPageViewModel> checkPage,
         Func<INavigator, SettingsPageViewModel> settingsPage)
     {
         ArgumentNullException.ThrowIfNull(mainPage);
@@ -30,7 +31,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         {
             [Pages.Home] = () => mainPage(this),
             [Pages.Servers] = () => serversPage(this),
-            [Pages.Check] = () => new StubPageViewModel("page.check.title"),
+            [Pages.Check] = checkPage,
             [Pages.Settings] = () => settingsPage(this),
             [Pages.Add] = () => new StubPageViewModel("page.add.title"),
             ["protection"] = () => new StubPageViewModel("settings.adv.protection.title"),

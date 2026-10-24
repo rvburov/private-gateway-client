@@ -1,6 +1,6 @@
 {
   "name": "Private Gateway design tokens",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "source": "docs/design (макет v1.0, согласован 2026-10-23)",
   "theme": "light",
   "targets": {
@@ -124,7 +124,8 @@
     "island": ["0 6 18 rgba(15, 23, 42, 0.14)"],
     "selected": ["0 4 14 rgba(22, 163, 74, 0.12)"],
     "sheet": ["0 -12 40 rgba(15, 23, 42, 0.20)"],
-    "dialog": ["0 20 50 rgba(15, 23, 42, 0.30)"]
+    "dialog": ["0 20 50 rgba(15, 23, 42, 0.30)"],
+    "accent": ["0 6 16 rgba(37, 99, 235, 0.26)"]
   },
 
   "glass": {

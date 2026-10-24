@@ -22,6 +22,15 @@ public interface IGatewayClient
 
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
-    /// <summary>Повторить проверки защиты (DNS, IPv6, внешний IP, блок при обрыве).</summary>
-    Task RunChecksAsync(CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Проверки защиты (служба, ядро, весь трафик, блок при обрыве, DNS, IPv6, внешний IP, другие
+    /// VPN). Только читают состояние; заодно обновляют время проверки на главном экране.
+    /// </summary>
+    Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>Последние записи журнала службы, от старых к новым; секреты уже скрыты.</summary>
+    IReadOnlyList<JournalEntry> Journal { get; }
+
+    /// <summary>Новая запись журнала службы. Может прийти из любого потока.</summary>
+    event EventHandler<JournalEntry>? JournalAdded;
 }

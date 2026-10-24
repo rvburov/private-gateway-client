@@ -1,3 +1,6 @@
+using CoreCheck = PrivateGateway.Client.Core.DiagnosticCheck;
+using CoreCheckState = PrivateGateway.Client.Core.CheckState;
+using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
 using CoreState = PrivateGateway.Client.Core.ConnectionState;
 using CoreProtocol = PrivateGateway.Client.Core.ProxyProtocol;
 using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
@@ -74,5 +77,71 @@ public static class ContractMapping
         V1.SecurityType.Tls => CoreSecurity.Tls,
         V1.SecurityType.Reality => CoreSecurity.Reality,
         _ => throw new ArgumentOutOfRangeException(nameof(security), security, "Защита транспорта не задана"),
+    };
+
+    public static V1.CheckState ToContract(this CoreCheckState state) => state switch
+    {
+        CoreCheckState.Ok => V1.CheckState.Ok,
+        CoreCheckState.Waiting => V1.CheckState.Waiting,
+        CoreCheckState.Stopped => V1.CheckState.Stopped,
+        CoreCheckState.Off => V1.CheckState.Off,
+        CoreCheckState.Warning => V1.CheckState.Warning,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+    };
+
+    public static CoreCheckState ToCore(this V1.CheckState state) => state switch
+    {
+        V1.CheckState.Ok => CoreCheckState.Ok,
+        V1.CheckState.Waiting => CoreCheckState.Waiting,
+        V1.CheckState.Stopped => CoreCheckState.Stopped,
+        V1.CheckState.Off => CoreCheckState.Off,
+        V1.CheckState.Warning => CoreCheckState.Warning,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Состояние проверки не задано"),
+    };
+
+    public static V1.LogLevel ToContract(this CoreLevel level) => level switch
+    {
+        CoreLevel.Debug => V1.LogLevel.Debug,
+        CoreLevel.Info => V1.LogLevel.Info,
+        CoreLevel.Warning => V1.LogLevel.Warning,
+        CoreLevel.Error => V1.LogLevel.Error,
+        _ => throw new ArgumentOutOfRangeException(nameof(level), level, null),
+    };
+
+    public static CoreLevel ToCore(this V1.LogLevel level) => level switch
+    {
+        V1.LogLevel.Debug => CoreLevel.Debug,
+        V1.LogLevel.Info => CoreLevel.Info,
+        V1.LogLevel.Warning => CoreLevel.Warning,
+        V1.LogLevel.Error => CoreLevel.Error,
+        _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Уровень записи не задан"),
+    };
+
+    /// <summary>Идентификатор проверки в CheckResult.id.</summary>
+    public static string ToContractId(this CoreCheck check) => check switch
+    {
+        CoreCheck.Service => "service",
+        CoreCheck.Core => "core",
+        CoreCheck.AllTraffic => "all_traffic",
+        CoreCheck.KillSwitch => "kill_switch",
+        CoreCheck.Dns => "dns",
+        CoreCheck.Ipv6 => "ipv6",
+        CoreCheck.ExitIp => "exit_ip",
+        CoreCheck.OtherVpn => "other_vpn",
+        _ => throw new ArgumentOutOfRangeException(nameof(check), check, null),
+    };
+
+    /// <summary>Проверка по CheckResult.id; неизвестная (служба новее интерфейса) — null, а не ошибка.</summary>
+    public static CoreCheck? ToCoreCheck(string id) => id switch
+    {
+        "service" => CoreCheck.Service,
+        "core" => CoreCheck.Core,
+        "all_traffic" => CoreCheck.AllTraffic,
+        "kill_switch" => CoreCheck.KillSwitch,
+        "dns" => CoreCheck.Dns,
+        "ipv6" => CoreCheck.Ipv6,
+        "exit_ip" => CoreCheck.ExitIp,
+        "other_vpn" => CoreCheck.OtherVpn,
+        _ => null,
     };
 }

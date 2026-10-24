@@ -135,15 +135,14 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     public IReadOnlyList<AdvancedLinkViewModel> Advanced { get; }
 
-    public string Footer => Loc.Instance.Format("settings.footer", "0.1",
+    public string Footer => Loc.Instance.Format("settings.footer", AppInfo.Version,
         _gateway.IsSimulated ? Loc.Instance["settings.service.simulated"] : "—",
         _gateway.IsSimulated ? Loc.Instance["settings.core.none"] : "Xray-core");
 
     [RelayCommand]
     private void Open(string page) => _navigator.Navigate(page == "check" ? Pages.Check : page);
 
-    private static string OsName =>
-        OperatingSystem.IsWindows() ? "Windows" : OperatingSystem.IsMacOS() ? "macOS" : "Linux";
+    private static string OsName => AppInfo.OsName;
 
     private void Set(Func<AppSettings, AppSettings> change)
     {

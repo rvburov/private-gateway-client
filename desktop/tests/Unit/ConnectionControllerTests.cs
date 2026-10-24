@@ -172,7 +172,17 @@ public class ConnectionControllerTests
             return Task.CompletedTask;
         }
 
-        public Task RunChecksAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DiagnosticReport([], DateTimeOffset.UnixEpoch));
+
+        public IReadOnlyList<JournalEntry> Journal => [];
+
+        // Тесты контроллера журнал не читают.
+        public event EventHandler<JournalEntry>? JournalAdded
+        {
+            add { }
+            remove { }
+        }
     }
 
     private sealed class FakeCatalog(params ServerProfile[] servers) : IServerCatalog
