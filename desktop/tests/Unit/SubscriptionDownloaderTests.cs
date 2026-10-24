@@ -2,6 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Infrastructure.Import;
 
 namespace PrivateGateway.Client.Tests.Unit;

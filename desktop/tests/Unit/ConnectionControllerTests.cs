@@ -148,6 +148,23 @@ public class ConnectionControllerTests
         catalog.SelectedId.ShouldBe("nl");
     }
 
+    [Theory]
+    [InlineData(ConnectionState.Connected, true)]
+    [InlineData(ConnectionState.Reconnecting, true)]
+    [InlineData(ConnectionState.Blocked, true)]
+    [InlineData(ConnectionState.Off, false)]
+    public async Task Removing_a_group_disconnects_only_if_protection_goes_through_it(ConnectionState state, bool disconnects)
+    {
+        var gateway = new FakeGateway(state, "fi");
+        var controller = new ConnectionController(gateway, new FakeCatalog());
+
+        await controller.ReleaseAsync(["nl", "de"], TestContext.Current.CancellationToken);
+        gateway.Calls.ShouldBeEmpty("защита идет через сервер не из этой группы");
+
+        await controller.ReleaseAsync(["nl", "fi"], TestContext.Current.CancellationToken);
+        gateway.Calls.ShouldBe(disconnects ? ["disconnect"] : []);
+    }
+
     private sealed class FakeGateway(ConnectionState state, string? serverId = null) : IGatewayClient
     {
         public List<string> Calls { get; } = [];

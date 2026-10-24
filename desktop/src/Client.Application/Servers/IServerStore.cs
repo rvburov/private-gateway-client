@@ -5,11 +5,29 @@ namespace PrivateGateway.Client.Application.Servers;
 /// <summary>Итог сохранения: сколько серверов добавлено и сколько пропущено как дубли.</summary>
 public sealed record ImportOutcome(int Added, int Duplicates);
 
+/// <summary>Что стало с выбранным сервером после обновления его подписки.</summary>
+public enum SelectedServerChange
+{
+    /// <summary>Выбранный сервер на месте или он не из этой подписки.</summary>
+    None,
+
+    /// <summary>Пропал из подписки; оставлен в списке, пока выбран.</summary>
+    Missing,
+
+    /// <summary>Пропал, но в подписке есть сервер с тем же названием — у него другой адрес или ключи.</summary>
+    Changed,
+}
+
 /// <summary>
-/// Свои серверы пользователя: сохранить разобранные из ссылок или подписки и достать полное
-/// описание с секретами для подключения. Секреты — только в хранилище ОС.
+/// Итог обновления подписки: сколько серверов добавлено, удалено, осталось и что с выбранным.
 /// </summary>
-public interface IServerStore
+public sealed record SubscriptionUpdate(int Added, int Removed, int Kept, SelectedServerChange Selected);
+
+/// <summary>
+/// Свои серверы пользователя: сохранить разобранные из ссылок или подписки, обновить подписку,
+/// достать полное описание с секретами для подключения. Секреты — только в хранилище ОС.
+/// </summary>
+public interface IServerStore : IServerCatalog
 {
     /// <summary>Хранилище секретов ОС доступно — без него серверы сохранить нельзя.</summary>
     bool CanStoreSecrets { get; }
@@ -30,4 +48,32 @@ public interface IServerStore
 
     /// <summary>Полное описание сервера с секретами — для подключения; null — сервера нет.</summary>
     ServerDefinition? Definition(string serverId);
+
+    /// <summary>Адрес подписки целиком, из хранилища ОС; null — у группы адреса нет.</summary>
+    Uri? SubscriptionUrl(string subscriptionId);
+
+    /// <summary>
+    /// Заменить серверы подписки новым списком. Совпавшие (тот же адрес и данные доступа) остаются
+    /// со своим избранным, названием пользователя и временем выбора; новых — добавить, пропавших —
+    /// удалить. Выбранный сервер не удаляется и не подменяется: пропал — помечается и остается.
+    /// Серверы, которые уже есть в других группах, не дублируются.
+    /// </summary>
+    /// <exception cref="ArgumentException">Пустой список: так подписку не обновляют — оставить прошлый.</exception>
+    /// <exception cref="InvalidOperationException">Хранилище секретов недоступно — ничего не изменено.</exception>
+    SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers);
+
+    /// <summary>Обновить не удалось: запомнить причину и время, прошлый список не трогать.</summary>
+    void MarkUpdateFailed(string subscriptionId, DownloadFailure failure, int? statusCode = null);
+
+    /// <summary>
+    /// Новое название группы и, если задан, новый адрес подписки (у группы без адреса он появится).
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Новый адрес некуда сохранить: хранилища секретов нет.</exception>
+    void EditSubscription(string subscriptionId, string name, Uri? newUrl = null);
+
+    /// <summary>
+    /// Удалить группу со всеми ее серверами и секретами; null — «Мои серверы» (серверы без группы).
+    /// Выбранный сервер из этой группы перестает быть выбранным.
+    /// </summary>
+    void RemoveSubscription(string? subscriptionId);
 }

@@ -13,9 +13,20 @@ public enum NotificationLevel
     Off,
 }
 
+/// <summary>Как часто обновлять подписки сами (макет, доска 12).</summary>
+public enum SubscriptionRefresh
+{
+    /// <summary>Только кнопкой «Обновить».</summary>
+    Off,
+    Every6Hours,
+    Every12Hours,
+    Every24Hours,
+}
+
 /// <summary>
-/// Настройки раздела «Основные» (макет, доска 4). Значения по умолчанию — решения из
-/// docs/roadmap/DECISIONS.md: блок при обрыве включен, уведомления — только важные.
+/// Настройки разделов «Основные» (доска 4) и «Профили и подписки» (доска 12). Значения по умолчанию —
+/// решения из docs/roadmap/DECISIONS.md и макета: блок при обрыве включен, уведомления — только
+/// важные, подписки — каждые 12 часов и только через VPN.
 /// </summary>
 public sealed record AppSettings(
     ConnectionMode Mode,
@@ -24,7 +35,10 @@ public sealed record AppSettings(
     bool ConnectOnLaunch,
     bool MinimizeToTray,
     NotificationLevel Notifications,
-    string Language)
+    string Language,
+    SubscriptionRefresh SubscriptionRefresh = SubscriptionRefresh.Every12Hours,
+    bool UpdateOnlyViaVpn = true,
+    bool NotifySelectedServerChange = true)
 {
     public static AppSettings Default { get; } = new(
         ConnectionMode.Vpn,
@@ -34,4 +48,13 @@ public sealed record AppSettings(
         MinimizeToTray: true,
         NotificationLevel.ImportantOnly,
         Language: "ru");
+
+    /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
+    public TimeSpan? RefreshInterval => SubscriptionRefresh switch
+    {
+        SubscriptionRefresh.Every6Hours => TimeSpan.FromHours(6),
+        SubscriptionRefresh.Every12Hours => TimeSpan.FromHours(12),
+        SubscriptionRefresh.Every24Hours => TimeSpan.FromHours(24),
+        _ => null,
+    };
 }

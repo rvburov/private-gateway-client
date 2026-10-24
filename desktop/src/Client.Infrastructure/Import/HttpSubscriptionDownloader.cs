@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Core.Servers;
 
 namespace PrivateGateway.Client.Infrastructure.Import;
 

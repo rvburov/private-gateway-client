@@ -40,6 +40,9 @@ public sealed class SettingsStorageTests : IDisposable
             ConnectOnLaunch = true,
             Notifications = NotificationLevel.Off,
             Language = "en",
+            SubscriptionRefresh = SubscriptionRefresh.Every24Hours,
+            UpdateOnlyViaVpn = false,
+            NotifySelectedServerChange = false,
         };
         Store().Save(changed);
 

@@ -17,6 +17,10 @@ namespace PrivateGateway.Client.Core.Servers;
 /// <param name="SubscriptionId">Подписка, из которой пришел сервер; null — добавлен ссылкой.</param>
 /// <param name="IsFavorite">Пользователь отметил сервер звездой.</param>
 /// <param name="LastUsedAt">Когда сервер последний раз выбирали; null — не выбирали.</param>
+/// <param name="MissingSince">
+/// Когда сервер пропал из подписки при обновлении; null — на месте. Пропавший сервер остается в
+/// списке, только пока он выбран: сам выбор программа не меняет.
+/// </param>
 public sealed record ServerProfile(
     string Id,
     string Name,
@@ -30,5 +34,6 @@ public sealed record ServerProfile(
     string? City = null,
     string? SubscriptionId = null,
     bool IsFavorite = false,
-    DateTimeOffset? LastUsedAt = null);
+    DateTimeOffset? LastUsedAt = null,
+    DateTimeOffset? MissingSince = null);
 

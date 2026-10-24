@@ -45,20 +45,6 @@ public interface ISubscriptionDownloader
     Task<string> DownloadAsync(Uri url, CancellationToken cancellationToken = default);
 }
 
-/// <summary>Почему подписка не загрузилась; текст для пользователя — в интерфейсе, на его языке.</summary>
-public enum DownloadFailure
-{
-    Network,
-    NameResolution,
-    Connection,
-    Tls,
-    Timeout,
-
-    /// <summary>Сервер ответил не 2xx — код в <see cref="SubscriptionDownloadException.StatusCode"/>.</summary>
-    Status,
-    TooLarge,
-}
-
 /// <summary>Подписка не загрузилась. Ни причина, ни текст исключения не содержат адреса подписки.</summary>
 public sealed class SubscriptionDownloadException : Exception
 {

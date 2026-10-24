@@ -72,13 +72,22 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// </summary>
     public async Task RemoveServerAsync(string serverId, CancellationToken cancellationToken = default)
     {
+        await ReleaseAsync([serverId], cancellationToken).ConfigureAwait(false);
+        catalog.Remove(serverId);
+    }
+
+    /// <summary>
+    /// Перед удалением серверов (одного или всей подписки): если защита идет через один из них —
+    /// отключиться. Другой сервер выбирает пользователь.
+    /// </summary>
+    public async Task ReleaseAsync(IReadOnlyCollection<string> serverIds, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(serverIds);
         var status = gateway.Status;
-        if (status.ServerId == serverId && status.State != ConnectionState.Off)
+        if (status.ServerId is { } id && serverIds.Contains(id) && status.State != ConnectionState.Off)
         {
             await gateway.DisconnectAsync(cancellationToken).ConfigureAwait(false);
         }
-
-        catalog.Remove(serverId);
     }
 
     /// <summary>Нажатие в этом состоянии означает «включить»: защита выключена или сломана.</summary>

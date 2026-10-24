@@ -34,7 +34,10 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Bool("connect_on_launch", d.ConnectOnLaunch),
             Bool("minimize_to_tray", d.MinimizeToTray),
             Enum("notifications", d.Notifications),
-            values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language);
+            values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language,
+            Enum("subscription_refresh", d.SubscriptionRefresh),
+            Bool("update_only_via_vpn", d.UpdateOnlyViaVpn),
+            Bool("notify_selected_server_change", d.NotifySelectedServerChange));
 
         bool Bool(string key, bool fallback) =>
             !values.TryGetValue(key, out var text) ? fallback
@@ -60,6 +63,9 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["minimize_to_tray"] = settings.MinimizeToTray.ToString(CultureInfo.InvariantCulture),
             ["notifications"] = settings.Notifications.ToString(),
             ["language"] = settings.Language,
+            ["subscription_refresh"] = settings.SubscriptionRefresh.ToString(),
+            ["update_only_via_vpn"] = settings.UpdateOnlyViaVpn.ToString(CultureInfo.InvariantCulture),
+            ["notify_selected_server_change"] = settings.NotifySelectedServerChange.ToString(CultureInfo.InvariantCulture),
         };
 
         using var connection = database.Open();

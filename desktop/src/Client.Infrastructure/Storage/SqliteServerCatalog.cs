@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Data.Sqlite;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
@@ -131,7 +132,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             }
 
             Execute("UPDATE servers SET custom_name = $name WHERE id = $id", ("$name", trimmed), ("$id", serverId));
-            Replace(row with { Profile = row.Profile with { Name = trimmed } });
+            Replace(row with { Profile = row.Profile with { Name = trimmed }, CustomName = trimmed });
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
@@ -226,9 +227,10 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                         }
 
                         Run(connection, transaction,
-                            "INSERT INTO subscriptions (id, name, position, updated_at, created_at) "
-                            + "VALUES ($id, $name, (SELECT COALESCE(MAX(position), 0) + 1 FROM subscriptions), $at, $at)",
-                            ("$id", groupId), ("$name", groupName.Trim()), ("$at", Text(now)));
+                            "INSERT INTO subscriptions (id, name, position, updated_at, created_at, address) "
+                            + "VALUES ($id, $name, (SELECT COALESCE(MAX(position), 0) + 1 FROM subscriptions), $at, $at, $address)",
+                            ("$id", groupId), ("$name", groupName.Trim()), ("$at", Text(now)),
+                            ("$address", subscriptionUrl is null ? null : SubscriptionAddress.Mask(subscriptionUrl)));
                     }
 
                     var position = Rows.Count == 0 ? 0 : Rows.Max(r => r.Position);
@@ -243,7 +245,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                             + "VALUES ($id, $group, $position, $definition, $at)",
                             ("$id", id), ("$group", groupId), ("$position", position),
                             ("$definition", JsonSerializer.Serialize(Stored.From(server), Json)), ("$at", Text(now)));
-                        newRows.Add(new Row(ToProfile(id, Stored.From(server), groupId, null, null, false, null), position, Endpoint(server)));
+                        newRows.Add(new Row(ToProfile(id, Stored.From(server), groupId, null, null, false, null), position, Endpoint(server), server.Name));
                         added++;
                     }
 
@@ -267,7 +269,8 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 Rows.AddRange(newRows);
                 if (groupId is not null)
                 {
-                    _subscriptions!.Add(new ServerSubscription(groupId, groupName!.Trim(), now));
+                    _subscriptions!.Add(new ServerSubscription(groupId, groupName!.Trim(), now,
+                        subscriptionUrl is null ? null : SubscriptionAddress.Mask(subscriptionUrl)));
                 }
             }
         }
@@ -301,10 +304,272 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         return stored.ToDefinition(credentials);
     }
 
+    // ── Подписки ─────────────────────────────────────────────────────────────
+
+    public Uri? SubscriptionUrl(string subscriptionId) =>
+        _secrets.IsAvailable
+        && _secrets.Read(SubscriptionKey(subscriptionId)) is { } text
+        && Uri.TryCreate(text, UriKind.Absolute, out var url)
+            ? url
+            : null;
+
+    public SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers)
+    {
+        ArgumentNullException.ThrowIfNull(servers);
+        if (servers.Count == 0)
+        {
+            throw new ArgumentException("Пустой список не заменяет подписку — прошлый остается", nameof(servers));
+        }
+
+        if (!_secrets.IsAvailable)
+        {
+            throw new InvalidOperationException($"{_secrets.Name} недоступно: серверы с секретами сохранить нельзя");
+        }
+
+        SubscriptionUpdate result;
+        List<Row> removed;
+        lock (_gate)
+        {
+            var index = Groups.FindIndex(s => s.Id == subscriptionId);
+            if (index < 0)
+            {
+                throw new ArgumentException("Нет такой подписки", nameof(subscriptionId));
+            }
+
+            // Свой сервер узнается сначала точно (как дубль при импорте), потом по выходу: тот же
+            // протокол, адрес, порт и данные доступа — поставщик мог поправить SNI или путь.
+            var own = Rows.Where(r => r.Profile.SubscriptionId == subscriptionId).ToList();
+            var ownByKey = new Dictionary<string, Row>(StringComparer.Ordinal);
+            var ownByExit = new Dictionary<string, Row>(StringComparer.Ordinal);
+            foreach (var row in own)
+            {
+                var secret = _secrets.Read(SecretKey(row.Profile.Id));
+                ownByKey.TryAdd(row.Endpoint + "|" + secret, row);
+                ownByExit.TryAdd(Exit(row.Profile.Protocol, row.Profile.Host, row.Profile.Port, secret), row);
+            }
+
+            // Сервер, который уже есть в другой группе, второй раз не добавляется — как при импорте.
+            var elsewhere = Known(servers, r => r.Profile.SubscriptionId != subscriptionId);
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            var kept = new List<(Row Row, ServerDefinition Server)>();
+            var keptIds = new HashSet<string>(StringComparer.Ordinal);
+            var unmatched = new List<ServerDefinition>();
+            foreach (var server in servers.Where(server => seen.Add(Key(server))))
+            {
+                if (ownByKey.TryGetValue(Key(server), out var row) && keptIds.Add(row.Profile.Id))
+                {
+                    kept.Add((row, server));
+                }
+                else
+                {
+                    unmatched.Add(server);
+                }
+            }
+
+            var fresh = new List<ServerDefinition>();
+            foreach (var server in unmatched)
+            {
+                var exit = Exit(server.Protocol, server.Host, server.Port, JsonSerializer.Serialize(server.Credentials, Json));
+                if (ownByExit.TryGetValue(exit, out var row) && keptIds.Add(row.Profile.Id))
+                {
+                    kept.Add((row, server));
+                }
+                else if (!elsewhere.Contains(Key(server)))
+                {
+                    fresh.Add(server);
+                }
+            }
+            var gone = own.Where(r => !keptIds.Contains(r.Profile.Id)).ToList();
+            var selectedGone = gone.Find(r => r.Profile.Id == _selectedId);
+            removed = [.. gone.Where(r => r != selectedGone)];
+
+            var now = _time.GetUtcNow();
+            var newRows = new List<Row>();
+            using var connection = _database.Open();
+            using var transaction = connection.BeginTransaction();
+            var saved = new List<string>();
+            try
+            {
+                foreach (var (row, server) in kept)
+                {
+                    Run(connection, transaction, "UPDATE servers SET definition = $definition, missing_since = NULL WHERE id = $id",
+                        ("$definition", JsonSerializer.Serialize(Stored.From(server), Json)), ("$id", row.Profile.Id));
+                }
+
+                var position = Rows.Count == 0 ? 0 : Rows.Max(r => r.Position);
+                foreach (var server in fresh)
+                {
+                    var id = "srv-" + Guid.NewGuid().ToString("N");
+                    position++;
+                    Save(saved, SecretKey(id), JsonSerializer.Serialize(server.Credentials, Json));
+                    Run(connection, transaction,
+                        "INSERT INTO servers (id, subscription_id, position, definition, created_at) "
+                        + "VALUES ($id, $group, $position, $definition, $at)",
+                        ("$id", id), ("$group", subscriptionId), ("$position", position),
+                        ("$definition", JsonSerializer.Serialize(Stored.From(server), Json)), ("$at", Text(now)));
+                    newRows.Add(new Row(ToProfile(id, Stored.From(server), subscriptionId, null, null, false, null), position, Endpoint(server), server.Name));
+                }
+
+                foreach (var row in removed)
+                {
+                    Run(connection, transaction, "DELETE FROM servers WHERE id = $id", ("$id", row.Profile.Id));
+                }
+
+                if (selectedGone is { Profile.MissingSince: null })
+                {
+                    Run(connection, transaction, "UPDATE servers SET missing_since = $at WHERE id = $id", ("$at", Text(now)), ("$id", selectedGone.Profile.Id));
+                }
+
+                Run(connection, transaction,
+                    "UPDATE subscriptions SET updated_at = $at, last_attempt_at = $at, last_failure = NULL, last_status = NULL WHERE id = $id",
+                    ("$at", Text(now)), ("$id", subscriptionId));
+                transaction.Commit();
+            }
+            catch
+            {
+                saved.ForEach(_secrets.Delete);
+                throw;
+            }
+
+            foreach (var (row, server) in kept)
+            {
+                var profile = ToProfile(row.Profile.Id, Stored.From(server), subscriptionId, row.CustomName, row.Profile.LatencyMs,
+                    row.Profile.IsFavorite, row.Profile.LastUsedAt);
+                Replace(row with { Profile = profile, Endpoint = Endpoint(server), LinkName = server.Name });
+            }
+
+            Rows.RemoveAll(removed.Contains);
+            Rows.AddRange(newRows);
+            if (selectedGone is not null)
+            {
+                Replace(selectedGone with { Profile = selectedGone.Profile with { MissingSince = selectedGone.Profile.MissingSince ?? now } });
+            }
+
+            Groups[index] = Groups[index] with { UpdatedAt = now, LastAttemptAt = now, LastFailure = null, LastStatusCode = null };
+            var change = selectedGone is null ? SelectedServerChange.None
+                : servers.Any(s => s.Name == selectedGone.LinkName) ? SelectedServerChange.Changed
+                : SelectedServerChange.Missing;
+            result = new SubscriptionUpdate(fresh.Count, removed.Count, kept.Count, change);
+        }
+
+        // Секреты удаленных — после записи в базу: сбой базы не оставит серверов без ключей.
+        removed.ForEach(r => _secrets.Delete(SecretKey(r.Profile.Id)));
+        Changed?.Invoke(this, EventArgs.Empty);
+        return result;
+    }
+
+    public void MarkUpdateFailed(string subscriptionId, DownloadFailure failure, int? statusCode = null)
+    {
+        lock (_gate)
+        {
+            var index = Groups.FindIndex(s => s.Id == subscriptionId);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var now = _time.GetUtcNow();
+            Execute("UPDATE subscriptions SET last_attempt_at = $at, last_failure = $failure, last_status = $status WHERE id = $id",
+                ("$at", Text(now)), ("$failure", failure.ToString()), ("$status", statusCode), ("$id", subscriptionId));
+            Groups[index] = Groups[index] with { LastAttemptAt = now, LastFailure = failure, LastStatusCode = statusCode };
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void EditSubscription(string subscriptionId, string name, Uri? newUrl = null)
+    {
+        lock (_gate)
+        {
+            var index = Groups.FindIndex(s => s.Id == subscriptionId);
+            if (index < 0)
+            {
+                return;
+            }
+
+            var subscription = Groups[index];
+            var trimmed = name?.Trim() is { Length: > 0 } n ? n : subscription.Name;
+            if (newUrl is not null)
+            {
+                if (!_secrets.IsAvailable)
+                {
+                    throw new InvalidOperationException($"{_secrets.Name} недоступно: адрес подписки сохранить нельзя");
+                }
+
+                _secrets.Save(SubscriptionKey(subscriptionId), newUrl.ToString());
+                subscription = subscription with
+                {
+                    Address = SubscriptionAddress.Mask(newUrl), LastAttemptAt = null, LastFailure = null, LastStatusCode = null,
+                };
+            }
+
+            subscription = subscription with { Name = trimmed };
+            Execute("UPDATE subscriptions SET name = $name, address = $address, last_attempt_at = $attempt, last_failure = $failure, "
+                + "last_status = $status WHERE id = $id",
+                ("$name", subscription.Name), ("$address", subscription.Address),
+                ("$attempt", subscription.LastAttemptAt is { } at ? Text(at) : null),
+                ("$failure", subscription.LastFailure?.ToString()), ("$status", subscription.LastStatusCode), ("$id", subscriptionId));
+            Groups[index] = subscription;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    public void RemoveSubscription(string? subscriptionId)
+    {
+        List<Row> rows;
+        lock (_gate)
+        {
+            rows = [.. Rows.Where(r => r.Profile.SubscriptionId == subscriptionId)];
+            var hasGroup = subscriptionId is not null && Groups.Exists(s => s.Id == subscriptionId);
+            if (rows.Count == 0 && !hasGroup)
+            {
+                return;
+            }
+
+            var selectedInside = rows.Exists(r => r.Profile.Id == _selectedId);
+            using var connection = _database.Open();
+            using var transaction = connection.BeginTransaction();
+            foreach (var row in rows)
+            {
+                Run(connection, transaction, "DELETE FROM servers WHERE id = $id", ("$id", row.Profile.Id));
+            }
+
+            if (hasGroup)
+            {
+                Run(connection, transaction, "DELETE FROM subscriptions WHERE id = $id", ("$id", subscriptionId));
+            }
+
+            if (selectedInside)
+            {
+                Run(connection, transaction, "DELETE FROM settings WHERE key = $key", ("$key", SelectedKey));
+            }
+
+            transaction.Commit();
+            Rows.RemoveAll(rows.Contains);
+            Groups.RemoveAll(s => s.Id == subscriptionId);
+            if (selectedInside)
+            {
+                _selectedId = null;
+            }
+        }
+
+        rows.ForEach(r => _secrets.Delete(SecretKey(r.Profile.Id)));
+        if (subscriptionId is not null)
+        {
+            _secrets.Delete(SubscriptionKey(subscriptionId));
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     // ── Хранение ─────────────────────────────────────────────────────────────
 
-    /// <summary>Сервер в памяти: то, что видит интерфейс, порядок и адрес для поиска дублей.</summary>
-    private sealed record Row(ServerProfile Profile, long Position, string Endpoint);
+    /// <summary>
+    /// Сервер в памяти: то, что видит интерфейс, порядок, адрес для поиска дублей, название из
+    /// ссылки и свое название пользователя (оно переживает обновление подписки).
+    /// </summary>
+    private sealed record Row(ServerProfile Profile, long Position, string Endpoint, string LinkName, string? CustomName = null);
 
     /// <summary>Описание сервера в базе — все, кроме секретной части.</summary>
     private sealed record Stored(
@@ -327,6 +592,15 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
     }
 
+    private List<ServerSubscription> Groups
+    {
+        get
+        {
+            EnsureLoaded();
+            return _subscriptions!;
+        }
+    }
+
     private void EnsureLoaded()
     {
         if (_rows is not null)
@@ -338,19 +612,27 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         _subscriptions = [];
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT id, name, updated_at FROM subscriptions ORDER BY position";
+            command.CommandText = "SELECT id, name, updated_at, address, last_attempt_at, last_failure, last_status "
+                + "FROM subscriptions ORDER BY position";
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
-                _subscriptions.Add(new ServerSubscription(reader.GetString(0), reader.GetString(1), Time(reader, 2)));
+                _subscriptions.Add(new ServerSubscription(
+                    reader.GetString(0),
+                    reader.GetString(1),
+                    Time(reader, 2),
+                    reader.IsDBNull(3) ? null : reader.GetString(3),
+                    Time(reader, 4),
+                    reader.IsDBNull(5) ? null : Enum.TryParse<DownloadFailure>(reader.GetString(5), out var failure) ? failure : DownloadFailure.Network,
+                    reader.IsDBNull(6) ? null : reader.GetInt32(6)));
             }
         }
 
         _rows = [];
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "SELECT id, subscription_id, position, definition, custom_name, latency_ms, is_favorite, last_used_at "
-                + "FROM servers ORDER BY position";
+            command.CommandText = "SELECT id, subscription_id, position, definition, custom_name, latency_ms, is_favorite, last_used_at, "
+                + "missing_since FROM servers ORDER BY position";
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
@@ -362,8 +644,10 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                     reader.IsDBNull(4) ? null : reader.GetString(4),
                     reader.IsDBNull(5) ? null : reader.GetInt32(5),
                     reader.GetInt64(6) != 0,
-                    Time(reader, 7));
-                _rows.Add(new Row(profile, reader.GetInt64(2), Endpoint(stored.ToDefinition(new ServerCredentials()))));
+                    Time(reader, 7),
+                    Time(reader, 8));
+                _rows.Add(new Row(profile, reader.GetInt64(2), Endpoint(stored.ToDefinition(new ServerCredentials())), stored.Name,
+                    reader.IsDBNull(4) ? null : reader.GetString(4)));
             }
         }
 
@@ -374,17 +658,46 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             var selected = command.ExecuteScalar() as string;
             _selectedId = _rows.Exists(r => r.Profile.Id == selected) ? selected : null;
         }
+
+        BackfillAddresses(connection);
+    }
+
+    /// <summary>
+    /// Подписки, сохраненные до миграции 0004, знают адрес только в хранилище ОС: подпись адреса
+    /// берется оттуда один раз, иначе такие подписки выглядели бы как группы без адреса.
+    /// </summary>
+    private void BackfillAddresses(SqliteConnection connection)
+    {
+        if (!_secrets.IsAvailable)
+        {
+            return;
+        }
+
+        for (var i = 0; i < _subscriptions!.Count; i++)
+        {
+            var subscription = _subscriptions[i];
+            if (subscription.Address is not null
+                || _secrets.Read(SubscriptionKey(subscription.Id)) is not { } text
+                || !Uri.TryCreate(text, UriKind.Absolute, out var url))
+            {
+                continue;
+            }
+
+            var address = SubscriptionAddress.Mask(url);
+            Run(connection, null, "UPDATE subscriptions SET address = $address WHERE id = $id", ("$address", address), ("$id", subscription.Id));
+            _subscriptions[i] = subscription with { Address = address };
+        }
     }
 
     /// <summary>
     /// Ключи уже сохраненных серверов для поиска дублей: «адрес + данные доступа». Секреты из
     /// хранилища ОС читаются только у серверов с тем же адресом, что у новых.
     /// </summary>
-    private HashSet<string> Known(IReadOnlyList<ServerDefinition> candidates)
+    private HashSet<string> Known(IReadOnlyList<ServerDefinition> candidates, Func<Row, bool>? among = null)
     {
         var endpoints = candidates.Select(Endpoint).ToHashSet(StringComparer.Ordinal);
         var known = new HashSet<string>(StringComparer.Ordinal);
-        foreach (var row in Rows.Where(r => endpoints.Contains(r.Endpoint)))
+        foreach (var row in Rows.Where(r => endpoints.Contains(r.Endpoint) && (among is null || among(r))))
         {
             var secret = _secrets.IsAvailable ? _secrets.Read(SecretKey(row.Profile.Id)) : null;
             known.Add(row.Endpoint + "|" + secret);
@@ -396,13 +709,18 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
     /// <summary>Ключ сервера для поиска дублей: адрес и данные доступа.</summary>
     private static string Key(ServerDefinition s) => Endpoint(s) + "|" + JsonSerializer.Serialize(s.Credentials, Json);
 
+    /// <summary>Выход сервера: протокол, адрес, порт и данные доступа — без транспорта и защиты.</summary>
+    private static string Exit(ProxyProtocol protocol, string host, int port, string? secret) =>
+        string.Join('|', protocol, host.ToLowerInvariant(), port, secret);
+
     /// <summary>Куда подключаться: протокол, адрес, транспорт и защита — без секретов.</summary>
     private static string Endpoint(ServerDefinition s) =>
         string.Join('|', s.Protocol, s.Host.ToLowerInvariant(), s.Port, s.Transport.Kind, s.Transport.Path,
             s.Transport.Host, s.Transport.ServiceName, s.Security.Kind, s.Security.Sni, s.Security.RealityPublicKey);
 
     private static ServerProfile ToProfile(
-        string id, Stored stored, string? groupId, string? customName, int? latencyMs, bool isFavorite, DateTimeOffset? lastUsedAt) =>
+        string id, Stored stored, string? groupId, string? customName, int? latencyMs, bool isFavorite, DateTimeOffset? lastUsedAt,
+        DateTimeOffset? missingSince = null) =>
         new(id,
             customName ?? stored.Name,
             stored.Country,
@@ -419,7 +737,8 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             City: null,
             SubscriptionId: groupId,
             IsFavorite: isFavorite,
-            LastUsedAt: lastUsedAt);
+            LastUsedAt: lastUsedAt,
+            MissingSince: missingSince);
 
     private static string SecretKey(string serverId) => "server:" + serverId;
 
