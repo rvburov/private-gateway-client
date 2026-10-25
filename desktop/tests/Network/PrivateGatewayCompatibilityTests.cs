@@ -12,7 +12,8 @@ namespace PrivateGateway.Client.Tests.Network;
 /// Совместимость с PRIVATE GATEWAY: профиль устройства из его ссылки (эталон
 /// shared/testdata/links/vless/private-gateway) работает с сервером Xray, настроенным так же, как его
 /// настраивает PRIVATE GATEWAY (internal/xray/config.go, Render): VLESS + REALITY + Vision на raw.
-/// Маска REALITY — свой сайт TLS 1.3 на 127.0.0.1, ключи — заведомо тестовые.
+/// Маска REALITY — свой сервер TLS 1.3 на 127.0.0.1 (второй Xray с самоподписанным сертификатом: TLS
+/// на Go, как у настоящих сайтов), ключи — заведомо тестовые.
 /// </summary>
 public sealed class PrivateGatewayCompatibilityTests
 {
@@ -25,13 +26,13 @@ public sealed class PrivateGatewayCompatibilityTests
     public async Task Device_profile_connects_through_vless_reality_vision()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
-        Assert.SkipWhen(OperatingSystem.IsMacOS(), "SslStream на macOS не поднимает сервер TLS 1.3 — маске REALITY он нужен");
-        using var mask = new LocalTlsSite("www.example.com");
+        var maskPort = XrayKit.FreePort();
+        using var mask = await XrayKit.Start(XrayKit.Pair("trojan-tls", maskPort).Config, maskPort);
         using var site = new LocalSite(Page);
         var link = LinkParser.Parse(File.ReadAllText(Path.Combine(XrayKit.Root, "shared", "testdata", "links", "vless", "private-gateway.txt")))
             .Server.ShouldNotBeNull();
         var serverPort = XrayKit.FreePort();
-        using var server = await XrayKit.Start(ServerConfig(serverPort, link.Credentials.Uuid!, mask.Endpoint, link.Security.RealityShortId!), serverPort);
+        using var server = await XrayKit.Start(ServerConfig(serverPort, link.Credentials.Uuid!, $"127.0.0.1:{maskPort}", link.Security.RealityShortId!), serverPort);
         var device = link with
         {
             Host = "127.0.0.1",

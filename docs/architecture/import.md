@@ -74,8 +74,9 @@ sing-box (JSON) или Clash/Mihomo (YAML) — раздел «Конфиги sin
   обычный текст ASCII — тоже, остальное — домен подписки (`SubscriptionContent.TitleFrom`).
 - Профиль работает с сервером, настроенным как у PRIVATE GATEWAY (`Render`): тест
   `PrivateGatewayCompatibilityTests` поднимает Xray с VLESS + REALITY + Vision, маской REALITY —
-  свой сайт TLS 1.3 на 127.0.0.1 — и проходит через него с конфигом, собранным из эталонной ссылки.
-  На macOS тест пропускается: `SslStream` там не поднимает сервер TLS 1.3.
+  второй Xray с TLS 1.3 на 127.0.0.1 (TLS на Go, как у настоящих сайтов; маску на `SslStream` REALITY
+  на Windows повторить не смог) — и проходит через него с конфигом из эталонной ссылки. Идет на
+  Windows, macOS и Linux.
 
 ## Коды ошибок
 
