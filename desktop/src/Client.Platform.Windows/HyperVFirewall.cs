@@ -8,8 +8,8 @@ namespace PrivateGateway.Client.Platform.Windows;
 /// Брандмауэр Hyper-V (Windows 11 22H2 и новее): два правила «закрыть все» — исходящие и входящие — для
 /// виртуальных машин WSL и других на коммутаторах Hyper-V. Их трафик через NAT может идти мимо слоев IP WFP,
 /// поэтому, пока туннеля нет, его закрывают здесь. Правила — классом WMI <c>MSFT_NetFirewallHyperVRule</c>
-/// (тот же набор, что <c>Get-NetFirewallHyperVRule</c>), со своими постоянными InstanceID: их можно найти и
-/// снять и после падения службы. Правила хранятся постоянно и переживают перезагрузку.
+/// (тот же набор, что <c>Get-NetFirewallHyperVRule</c>) в постоянном хранилище политики, со своими InstanceID и
+/// названиями: их можно найти и снять и после падения службы. Правила переживают перезагрузку.
 /// </summary>
 [SupportedOSPlatform("windows")]
 public static class HyperVFirewall
@@ -17,8 +17,11 @@ public static class HyperVFirewall
     /// <summary>Что сказать, если брандмауэра Hyper-V нет.</summary>
     public const string Missing = "ВМ WSL и Hyper-V без туннеля могут выйти мимо блока: нет брандмауэра Hyper-V (нужна Windows 11 22H2 и новее)";
 
-    private const string Namespace = @"root\StandardCimv2";
-    private const string Class = "MSFT_NetFirewallHyperVRule";
+    /// <summary>Начало названия наших правил — по нему они находятся.</summary>
+    public const string NamePrefix = "Private Gateway: ";
+
+    public const string Namespace = @"root\StandardCimv2";
+    public const string Class = "MSFT_NetFirewallHyperVRule";
     private const int Block = 4;
     private const int Enabled = 1;
 
@@ -34,14 +37,15 @@ public static class HyperVFirewall
     /// <summary>Правила: InstanceID, название, направление (1 — входящие, 2 — исходящие).</summary>
     private static readonly (string Id, string Name, int Direction)[] Rules =
     [
-        ("{6a0f5b8e-3c1d-4e7a-9b2f-0d4c8e1a7f53}", "Private Gateway: ВМ без туннеля закрыты (исходящие)", 2),
-        ("{c4e29d71-58b3-4a06-8f1e-2b7d9c3a6e14}", "Private Gateway: ВМ без туннеля закрыты (входящие)", 1),
+        ("{6a0f5b8e-3c1d-4e7a-9b2f-0d4c8e1a7f53}", NamePrefix + "ВМ без туннеля закрыты (исходящие)", 2),
+        ("{c4e29d71-58b3-4a06-8f1e-2b7d9c3a6e14}", NamePrefix + "ВМ без туннеля закрыты (входящие)", 1),
     ];
 
-    /// <summary>Поставить оба правила (уже стоят — заменить). Не вышло — текст для журнала, вышло — null.</summary>
+    /// <summary>Поставить оба правила (прежние наши — снять). Не вышло — текст для журнала, вышло — null.</summary>
     public static string? Close() => Try(scope =>
     {
-        using var rule = new ManagementClass(scope, new ManagementPath(Class), null);
+        Remove(scope);
+        using var rule = new ManagementClass(scope, new ManagementPath(Class), new ObjectGetOptions(Store()));
         foreach (var (id, name, direction) in Rules)
         {
             using var instance = rule.CreateInstance();
@@ -50,48 +54,18 @@ public static class HyperVFirewall
             instance["Action"] = Block;
             instance["Enabled"] = Enabled;
             instance["Direction"] = direction;
-            instance.Put();
+            instance.Put(new PutOptions(Store(), TimeSpan.FromSeconds(10), false, PutType.CreateOnly));
         }
     });
 
-    /// <summary>Снять оба правила; их нет — не ошибка. Не вышло — текст для журнала, вышло — null.</summary>
-    public static string? Open() => Try(scope =>
-    {
-        foreach (var (id, _, _) in Rules)
-        {
-            using var instance = new ManagementObject(scope, new ManagementPath($"{Class}.InstanceID=\"{id}\""), null);
-            try
-            {
-                instance.Delete();
-            }
-            catch (ManagementException e) when ((int)e.ErrorCode == NotFound)
-            {
-                // Уже снято.
-            }
-        }
-    });
+    /// <summary>Снять наши правила; их нет — не ошибка. Не вышло — текст для журнала, вышло — null.</summary>
+    public static string? Open() => Try(Remove);
 
     /// <summary>Стоят ли наши правила (оба); брандмауэра Hyper-V нет — false.</summary>
     public static bool IsClosed()
     {
         var found = 0;
-        var error = Try(scope =>
-        {
-            foreach (var (id, _, _) in Rules)
-            {
-                using var instance = new ManagementObject(scope, new ManagementPath($"{Class}.InstanceID=\"{id}\""), null);
-                try
-                {
-                    instance.Get();
-                    found++;
-                }
-                catch (ManagementException e) when ((int)e.ErrorCode == NotFound)
-                {
-                    // Правила нет.
-                }
-            }
-        });
-        return error is null && found == Rules.Length;
+        return Try(scope => found = Ours(scope).Count) is null && found == Rules.Length;
     }
 
     /// <summary>Есть ли брандмауэр Hyper-V (класс WMI).</summary>
@@ -100,6 +74,37 @@ public static class HyperVFirewall
         using var rule = new ManagementClass(scope, new ManagementPath(Class), null);
         rule.Get();
     }) is null;
+
+    /// <summary>Постоянное хранилище политики (как у <c>New-NetFirewallHyperVRule</c>) — для всех операций одно.</summary>
+    public static ManagementNamedValueCollection Store() => new() { { "PolicyStore", "PersistentStore" } };
+
+    /// <summary>Наши правила: по InstanceID или по началу названия.</summary>
+    private static List<ManagementObject> Ours(ManagementScope scope)
+    {
+        var ids = string.Join(" OR ", Rules.Select(r => $"InstanceID = '{r.Id}'"));
+        using var searcher = new ManagementObjectSearcher(scope,
+            new ObjectQuery($"SELECT * FROM {Class} WHERE {ids} OR ElementName LIKE '{NamePrefix}%'"),
+            new System.Management.EnumerationOptions { Context = Store(), ReturnImmediately = false, Rewindable = false });
+        return [.. searcher.Get().Cast<ManagementObject>()];
+    }
+
+    private static void Remove(ManagementScope scope)
+    {
+        foreach (var instance in Ours(scope))
+        {
+            using (instance)
+            {
+                try
+                {
+                    instance.Delete(new DeleteOptions(Store(), TimeSpan.FromSeconds(10)));
+                }
+                catch (ManagementException e) when ((int)e.ErrorCode == NotFound)
+                {
+                    // Уже снято.
+                }
+            }
+        }
+    }
 
     private static string? Try(Action<ManagementScope> work)
     {

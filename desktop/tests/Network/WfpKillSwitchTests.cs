@@ -1,7 +1,10 @@
 using System.Diagnostics;
+using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Windows;
 
@@ -184,7 +187,7 @@ public sealed class WfpKillSwitchTests
         try
         {
             HyperVFirewall.Close().ShouldBeNull();
-            HyperVFirewall.IsClosed().ShouldBeTrue("оба правила стоят");
+            HyperVFirewall.IsClosed().ShouldBeTrue("оба правила стоят\n" + HyperVRules());
             HyperVFirewall.Close().ShouldBeNull("повторно — заменяет, не падает");
 
             WfpKillSwitch.ForService().Warning.ShouldBeNull();
@@ -199,6 +202,31 @@ public sealed class WfpKillSwitchTests
         {
             HyperVFirewall.Open();
         }
+    }
+
+    /// <summary>Что видно в классе правил Hyper-V без хранилища и в каждом из них — для сообщения теста.</summary>
+    [SupportedOSPlatform("windows")]
+    private static string HyperVRules()
+    {
+        var lines = new List<string>();
+        foreach (var store in new[] { null, "PersistentStore", "ActiveStore" })
+        {
+            try
+            {
+                var scope = new ManagementScope(HyperVFirewall.Namespace);
+                scope.Connect();
+                var options = new System.Management.EnumerationOptions { Context = store is null ? null : new ManagementNamedValueCollection { { "PolicyStore", store } } };
+                using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM " + HyperVFirewall.Class), options);
+                var all = searcher.Get().Cast<ManagementBaseObject>().Select(o => $"{o["InstanceID"]} «{o["ElementName"]}»").ToList();
+                lines.Add($"{store ?? "без хранилища"}: {all.Count} — {string.Join("; ", all.Take(6))}");
+            }
+            catch (Exception e) when (e is ManagementException or COMException)
+            {
+                lines.Add($"{store ?? "без хранилища"}: ошибка {e.Message}");
+            }
+        }
+
+        return string.Join("\n", lines);
     }
 
     /// <summary>

@@ -113,10 +113,11 @@ public sealed partial class Gateway
         string? ip = null;
         if (_options.Trace is { } trace && (vpn || link is not null))
         {
-            // В режиме прокси прямой путь открыт всегда — реальный IP мерить заново: сеть могла смениться.
+            // В режиме прокси прямой путь открыт всегда — реальный IP мерить заново: сеть могла смениться. Подключение его
+            // не ждет — время, как у пробы.
             if (!vpn)
             {
-                _directIp = await DirectIpAsync().ConfigureAwait(false) ?? _directIp;
+                _directIp = await DirectIpAsync(Timing.ProbeTimeout).ConfigureAwait(false) ?? _directIp;
             }
 
             ip = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(vpn
@@ -185,8 +186,12 @@ public sealed partial class Gateway
         }
     }
 
-    /// <summary>Реальный IP — напрямую, мимо ядра; проверочного адреса нет или он не ответил — null.</summary>
-    private async Task<string?> DirectIpAsync() => _options.Trace is { } trace
-        ? await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace, DirectTimeout), CancellationToken.None).ConfigureAwait(false)
+    /// <summary>
+    /// Реальный IP — напрямую, мимо ядра, не дольше <paramref name="timeout"/> (по умолчанию — сколько подключение готово ждать);
+    /// проверочного адреса нет или он не ответил — null.
+    /// </summary>
+    private async Task<string?> DirectIpAsync(TimeSpan? timeout = null) => _options.Trace is { } trace
+        ? await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace, timeout ?? DirectTimeout), CancellationToken.None)
+            .ConfigureAwait(false)
         : null;
 }
