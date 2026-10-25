@@ -21,12 +21,16 @@ public sealed partial class Gateway
     /// </summary>
     private static readonly TimeSpan DirectTimeout = TimeSpan.FromSeconds(2);
 
+    /// <summary>Пауза перед второй попыткой проверки после подключения.</summary>
+    private static readonly TimeSpan RetryPause = TimeSpan.FromSeconds(3);
+
     /// <summary>
     /// IP для сайтов сейчас: «Защищено» — замер и сравнение с реальным (IP и время проверки — в состоянии, итог —
     /// в журнале); иначе — по состоянию: выключено и пауза — виден реальный, подключение — ждет, блокировка и
     /// ошибка — трафик стоит.
     /// </summary>
-    public async Task<(CheckState State, string? Reason)> CheckExitAsync()
+    /// <param name="reportSilence">Писать в журнал, что проверочный адрес не ответил; false — попытка будет еще.</param>
+    public async Task<(CheckState State, string? Reason)> CheckExitAsync(bool reportSilence = true)
     {
         var status = Status;
         if (status.IsPaused || status.State == ConnectionState.Off)
@@ -67,7 +71,7 @@ public sealed partial class Gateway
             : s);
         if (ip is null)
         {
-            if (_options.Trace is not null)
+            if (_options.Trace is not null && reportSilence)
             {
                 _journal.Add(JournalLevel.Warning, "service", vpn
                     ? "Проверка утечек: проверочный адрес не ответил через туннель — IP для сайтов не измерен"
@@ -103,7 +107,13 @@ public sealed partial class Gateway
     {
         try
         {
-            await CheckExitAsync().ConfigureAwait(false);
+            // Первый запрос через только что поднятый туннель на занятой машине бывает долгим: не ответил — еще раз.
+            var session = Volatile.Read(ref _session);
+            if ((await CheckExitAsync(reportSilence: false).ConfigureAwait(false)).Reason == "no_answer" && session == Volatile.Read(ref _session))
+            {
+                await Task.Delay(RetryPause, _time).ConfigureAwait(false);
+                await CheckExitAsync().ConfigureAwait(false);
+            }
         }
         catch (ObjectDisposedException)
         {

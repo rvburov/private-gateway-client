@@ -11,6 +11,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// сетевом пространстве Linux, таблица маршрутов Windows (CI) и признаки туннеля у адаптеров Windows.
 /// Правила маршрутизации, оставшиеся после аварии sing-box, — по номерам туннеля.
 /// </summary>
+[Collection(NamespaceSerial.Name)]
 public sealed class RouteTableTests
 {
     [Fact]

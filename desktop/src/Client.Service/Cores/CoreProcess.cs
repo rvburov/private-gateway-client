@@ -54,16 +54,19 @@ public sealed class CoreProcess : IDisposable
     /// <summary>
     /// Xray (<c>run -config stdin:</c>); geoip.dat и geosite.dat ядро ищет рядом с собой. Путь — из папки
     /// службы. <paramref name="netns"/> — запустить в сетевом пространстве Linux (тесты); null — в системе.
+    /// <paramref name="output"/> — вывод с первой строки: подписка на <see cref="Output"/> после запуска может
+    /// пропустить строки, которые ядро напечатает, едва прочитав конфиг.
     /// </summary>
-    public static CoreProcess StartXray(string executable, JsonObject config, string? netns = null)
+    public static CoreProcess StartXray(string executable, JsonObject config, string? netns = null, Action<string>? output = null)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(executable))!;
-        return Start(executable, ["run", "-config", "stdin:"], config, folder, new Dictionary<string, string> { ["XRAY_LOCATION_ASSET"] = folder }, netns);
+        return Start(executable, ["run", "-config", "stdin:"], config, folder, new Dictionary<string, string> { ["XRAY_LOCATION_ASSET"] = folder }, netns,
+            output);
     }
 
-    /// <summary>sing-box (<c>run -c stdin</c>) — TUN режима VPN. <paramref name="netns"/> — как у <see cref="StartXray"/>.</summary>
-    public static CoreProcess StartSingBox(string executable, JsonObject config, string? netns = null) =>
-        Start(executable, ["run", "-c", "stdin", "--disable-color"], config, Path.GetDirectoryName(Path.GetFullPath(executable))!, null, netns);
+    /// <summary>sing-box (<c>run -c stdin</c>) — TUN режима VPN. <paramref name="netns"/> и <paramref name="output"/> — как у <see cref="StartXray"/>.</summary>
+    public static CoreProcess StartSingBox(string executable, JsonObject config, string? netns = null, Action<string>? output = null) =>
+        Start(executable, ["run", "-c", "stdin", "--disable-color"], config, Path.GetDirectoryName(Path.GetFullPath(executable))!, null, netns, output);
 
     /// <summary>
     /// Остановить ядро и дождаться выхода. <paramref name="grace"/> — сначала попросить (SIGTERM на
@@ -104,7 +107,7 @@ public sealed class CoreProcess : IDisposable
     }
 
     private static CoreProcess Start(string executable, IReadOnlyList<string> arguments, JsonObject config, string folder,
-        IReadOnlyDictionary<string, string>? environment, string? netns)
+        IReadOnlyDictionary<string, string>? environment, string? netns, Action<string>? output)
     {
         ArgumentNullException.ThrowIfNull(config);
 
@@ -153,6 +156,11 @@ public sealed class CoreProcess : IDisposable
         var ledger = Ledger;
         ledger?.Add(process, executable);
         var core = new CoreProcess(process, ledger);
+        if (output is not null)
+        {
+            core.Output += (_, line) => output(line);
+        }
+
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         process.StandardInput.Write(config.ToJsonString());

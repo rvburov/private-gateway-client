@@ -21,6 +21,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// службы, снятие при отключении и отказе. Логика — с подделкой блока; весь путь — в своем сетевом
 /// пространстве Linux с настоящими nftables, sing-box и Xray.
 /// </summary>
+[Collection(NamespaceSerial.Name)]
 public sealed class VpnModeTests
 {
     // Что называет проверочный адрес: через туннель — IP сервера, напрямую — реальный.
@@ -938,10 +939,13 @@ public sealed class VpnModeTests
             return site;
         }
 
-        /// <summary>Внешний IP — запросом изнутри пространства, как у службы: без прокси (порт 0) или через вход проверки.</summary>
+        /// <summary>
+        /// Внешний IP — запросом изнутри пространства, как у службы: без прокси (порт 0) или через вход проверки. Ждать
+        /// не меньше 5 с: запуск nsenter и curl на нагруженной машине (тесты окна рядом) съедал 2 с замера напрямую.
+        /// </summary>
         public async Task<string?> ExitIpAsync(ServerProbe probe, CancellationToken cancellationToken)
         {
-            var seconds = ((int)Math.Ceiling(probe.Timeout.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+            var seconds = ((int)Math.Ceiling(Math.Max(probe.Timeout.TotalSeconds, 5))).ToString(CultureInfo.InvariantCulture);
             var proxy = probe.Credentials is { } user ? ["-x", $"socks5h://{user.UserName}:{user.Password}@127.0.0.1:{probe.Port}"] : Array.Empty<string>();
             try
             {

@@ -16,6 +16,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// по паре veth. Сеть машины не трогается: TUN и его маршруты — только в пространстве теста. Тестам с
 /// TUN нужны root, unshare, nsenter, curl и python3, Xray и sing-box.
 /// </summary>
+[Collection(NamespaceSerial.Name)]
 public sealed class VpnTunnelTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -128,6 +129,16 @@ public sealed class VpnTunnelTests
             .ShouldBe("мимо туннеля", "программа мимо туннеля пришла на адрес из пула — Xray соединил ее напрямую с настоящим адресом имени");
         lan.Requests.ShouldBe(1);
         (await netns.FetchAsync(new Uri($"http://{fake}:{port}/"))).ShouldBe("через туннель по имени", "другая программа — через туннель");
+    }
+
+    [Theory]
+    [InlineData("2026/10/25 14:40:32.311055 [Warning] core: Xray 25.8.3 started", true)]
+    [InlineData("2026/10/25 14:40:32.278469 [Info] infra/conf/serial: Reading config: &{Name:stdin: Format:json}", false)]
+    [InlineData("Xray 25.8.3 (Xray, Penetrates Everything.) Custom (go1.24.7 linux/amd64)", false)]
+    [InlineData("[Info] app/dispatcher: taking detour [proxy] for [tcp:started]", false)]
+    public void Xray_is_ready_by_its_started_line(string line, bool started)
+    {
+        VpnTunnel.XrayStarted(line).ShouldBe(started);
     }
 
     [Fact]

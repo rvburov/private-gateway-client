@@ -201,3 +201,14 @@ internal sealed class NetworkNamespace : IDisposable
             : throw new InvalidOperationException($"{program} {string.Join(' ', arguments)}: {error.GetAwaiter().GetResult()}");
     }
 }
+
+/// <summary>
+/// Тесты со своими сетевыми пространствами и настоящими ядрами — по одному: параллельные стенды делят ядро ОС
+/// (veth машины, процессы sing-box), и первое соединение через туннель сразу после «Подключено» у соседнего
+/// стенда сбрасывалось. С другими тестами они идут параллельно.
+/// </summary>
+[CollectionDefinition(Name)]
+public sealed class NamespaceSerial
+{
+    public const string Name = "Сетевые пространства";
+}

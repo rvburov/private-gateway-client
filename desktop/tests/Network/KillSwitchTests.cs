@@ -9,6 +9,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// двумя парами veth к сети машины — обычная сеть и «туннель»; пересланный трафик — из «контейнера» в
 /// соседнем пространстве. Правила машины тест не трогает.
 /// </summary>
+[Collection(NamespaceSerial.Name)]
 public sealed class KillSwitchTests
 {
     private static readonly IPAddress Server = IPAddress.Parse("198.51.100.20");

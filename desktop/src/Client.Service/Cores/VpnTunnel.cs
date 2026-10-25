@@ -18,6 +18,7 @@ public sealed class TunnelException(string message) : Exception(message);
 /// </summary>
 public sealed class VpnTunnel : IAsyncDisposable
 {
+
     /// <summary>Сколько sing-box дается на то, чтобы убрать маршруты при остановке.</summary>
     public static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(5);
 
@@ -80,33 +81,42 @@ public sealed class VpnTunnel : IAsyncDisposable
         }
 
         var started = time.GetTimestamp();
-        var xrayCore = CoreProcess.StartXray(xray, xrayConfig, netns);
-        xrayCore.Output += (_, line) => output?.Invoke("xray", line);
+        var xrayStarted = 0;
+        var xrayCore = CoreProcess.StartXray(xray, xrayConfig, netns, line =>
+        {
+            if (XrayStarted(line))
+            {
+                Volatile.Write(ref xrayStarted, 1);
+            }
+
+            output?.Invoke("xray", line);
+        });
         CoreProcess? singBoxCore = null;
         try
         {
-            // Вход Xray в своем сетевом пространстве отсюда не виден — Xray жив секунду.
-            await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : time.GetElapsedTime(started) >= TimeSpan.FromSeconds(1)),
+            // Вход Xray в своем сетевом пространстве отсюда не виден — тогда по строке «Xray … started»: ее ядро
+            // печатает, когда входы уже слушают.
+            await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : Volatile.Read(ref xrayStarted) == 1),
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
+            var ready = 0;
             singBoxCore = CoreProcess.StartSingBox(singBox,
                 SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, DirectPrograms(request, xray),
                     FakeIpPrograms(request))),
-                netns);
+                netns,
+                line =>
+                {
+                    if (line.Contains(SingBoxConfigBuilder.StartedLine, StringComparison.Ordinal))
+                    {
+                        Volatile.Write(ref ready, 1);
+                    }
+
+                    if (SingBoxConfigBuilder.ShownLine(line, request.Connection.CoreLog))
+                    {
+                        output?.Invoke("sing-box", line);
+                    }
+                });
             // Готов, когда запущены все части sing-box: правила маршрутизации TUN появляются раньше, чем выходы и
             // сетевой менеджер, и соединение в эту щель сбрасывается.
-            var ready = 0;
-            singBoxCore.Output += (_, line) =>
-            {
-                if (line.Contains(SingBoxConfigBuilder.StartedLine, StringComparison.Ordinal))
-                {
-                    Volatile.Write(ref ready, 1);
-                }
-
-                if (SingBoxConfigBuilder.ShownLine(line, request.Connection.CoreLog))
-                {
-                    output?.Invoke("sing-box", line);
-                }
-            };
             var core = singBoxCore;
 
             await WaitAsync(() => Volatile.Read(ref ready) == 1, "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken)
@@ -243,6 +253,13 @@ public sealed class VpnTunnel : IAsyncDisposable
             Exited?.Invoke(this, EventArgs.Empty);
         }
     }
+
+    /// <summary>
+    /// Строка Xray, после которой его входы слушают: «[Warning] core: Xray 25.8.3 started» — уровень warning, печатается
+    /// при любом «Журнале ядра».
+    /// </summary>
+    public static bool XrayStarted(string line) =>
+        line.Contains("core: Xray ", StringComparison.Ordinal) && line.EndsWith(" started", StringComparison.Ordinal);
 
     private static async Task WaitAsync(Func<bool> ready, string name, CoreProcess core, TimeSpan left, TimeProvider time,
         CancellationToken cancellationToken)

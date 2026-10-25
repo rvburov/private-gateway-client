@@ -127,6 +127,25 @@ public sealed class LeakCheckTests
         status.Exit.Ip.ShouldBeEmpty("IP не измерен — не выдумывать");
     }
 
+    [Fact]
+    public async Task After_connect_the_check_tries_twice_before_saying_no_answer()
+    {
+        await using var stand = await Stand.CreateAsync(real: RealIp, exitPage: "без адреса");
+        using var watch = stand.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await stand.Service.Client.ConnectAsync(ServiceIpcTests.Request(stand.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        const string Silence = "Проверка утечек: проверочный адрес не ответил через сервер — IP для сайтов не измерен";
+        for (var i = 0; i < 100 && !stand.Service.Journal.Tail(ServiceJournal.Capacity).Any(e => e.Message == Silence); i++)
+        {
+            await Task.Delay(100, Ct);
+        }
+
+        stand.Service.Journal.Tail(ServiceJournal.Capacity).Count(e => e.Message == Silence).ShouldBe(1, "о молчании — один раз, после второй попытки");
+        stand.Exit.Requests.ShouldBe(2, "первый запрос через новый туннель бывает долгим — вторая попытка через 3 с");
+    }
+
     /// <summary>
     /// Сервер Xray с выходом на сайт «IP сервера» и служба, у которой проверочный адрес — сайт «реальный IP»;
     /// через сервер любой адрес приходит на первый.

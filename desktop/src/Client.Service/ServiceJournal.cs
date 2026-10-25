@@ -6,12 +6,17 @@ namespace PrivateGateway.Client.Service;
 /// <summary>
 /// Журнал службы для экрана «Проверка» (WatchLog): последние записи в памяти и новые по мере
 /// появления. Каждая строка проходит через <see cref="SecretMasker"/>, а ключи текущего
-/// подключения вырезаются дословно — даже если ядро напечатает их в непривычном виде.
+/// подключения вырезаются дословно — даже если ядро напечатает их в непривычном виде. В выводе
+/// ядер (<see cref="CoreSources"/>) скрыты и адреса (<see cref="AddressMasker"/>): адреса сайтов в
+/// журнал не попадают и на подробных уровнях «Журнала ядра».
 /// </summary>
 public sealed class ServiceJournal(TimeProvider time)
 {
     /// <summary>Сколько записей хранится.</summary>
     public const int Capacity = 500;
+
+    /// <summary>Источники — ядра: их вывод проходит еще и через <see cref="AddressMasker"/>.</summary>
+    public static readonly IReadOnlySet<string> CoreSources = new HashSet<string>(StringComparer.Ordinal) { "xray", "sing-box" };
 
     private readonly Queue<JournalEntry> _entries = new();
     private readonly Lock _gate = new();
@@ -40,7 +45,8 @@ public sealed class ServiceJournal(TimeProvider time)
                 text = text.Replace(secret, "***", StringComparison.Ordinal);
             }
 
-            entry = new JournalEntry(time.GetUtcNow(), level, source, SecretMasker.Mask(text));
+            text = SecretMasker.Mask(text);
+            entry = new JournalEntry(time.GetUtcNow(), level, source, CoreSources.Contains(source) ? AddressMasker.Mask(text) : text);
             _entries.Enqueue(entry);
             while (_entries.Count > Capacity)
             {
