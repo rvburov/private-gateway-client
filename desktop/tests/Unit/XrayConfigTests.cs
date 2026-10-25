@@ -39,6 +39,23 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Only_the_chosen_server_is_an_exit_without_balancer_or_fallback()
+    {
+        var config = Build(Link("vless/reality-vision"), connection: ConnectionSettings.Default with { TlsFragment = true, Mux = true });
+
+        // Наружу через сервер — только выбранный; остальные выходы — напрямую (freedom) или блок.
+        var outbounds = config["outbounds"]!.AsArray().Select(o => o!.AsObject()).ToList();
+        outbounds.Where(o => o["protocol"]!.GetValue<string>() is not ("freedom" or "blackhole"))
+            .ShouldHaveSingleItem()["tag"]!.GetValue<string>().ShouldBe(XrayConfigBuilder.ProxyTag);
+        outbounds.Single(o => o["tag"]!.GetValue<string>() == XrayConfigBuilder.ProxyTag)["settings"]!["vnext"]!.AsArray()
+            .ShouldHaveSingleItem()!["address"]!.GetValue<string>().ShouldBe("203.0.113.24");
+        config.ContainsKey("observatory").ShouldBeFalse("без проверок, по которым ядро само выбрало бы другой выход");
+        config.ContainsKey("burstObservatory").ShouldBeFalse();
+        config["routing"]!.AsObject().ContainsKey("balancers").ShouldBeFalse();
+        config["routing"]!["rules"]!.AsArray().ShouldAllBe(r => r!.AsObject().ContainsKey("outboundTag") && !r.AsObject().ContainsKey("balancerTag"));
+    }
+
+    [Fact]
     public void Tls_transports_carry_path_host_alpn_and_service_name()
     {
         var xhttp = Outbound(Build(Link("vless/tls-xhttp")), XrayConfigBuilder.ProxyTag)["streamSettings"]!;
