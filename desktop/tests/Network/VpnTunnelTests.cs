@@ -46,13 +46,15 @@ public sealed class VpnTunnelTests
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             // DNS Xray — обычный, по UDP через сервер: на сервере теста его отвечает свой DNS. Строгие маршруты — только если в
             // ядре есть IPv6 (в контейнере облака его нет): служба смотрит сама.
-            ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" }, ConnectionSettings.Default, RoutingSettings.Default);
+            ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" }, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
+            RoutingSettings.Default);
+        var output = new CoreOutput();
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
         try
         {
-            (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
+            (await output.TraceAsync(() => netns.CurlAsync(new Uri("http://1.1.1.1/")))).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
             site.Requests.ShouldBe(1);
             (await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53"))).ShouldBe("1.1.1.1",
                 "DNS к любому адресу отвечает Xray — через сервер, а не DNS провайдера или роутера");
@@ -84,15 +86,16 @@ public sealed class VpnTunnelTests
         using var _ = server;
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
-            ConnectionSettings.Default, RoutingSettings.Default);
+            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
+        var output = new CoreOutput();
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         var fake = IPAddress.Parse(await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53")));
         IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool).Contains(fake).ShouldBeTrue($"{fake} — адрес из пула FakeDNS");
         dns.Queries.ShouldNotContain("example.com", "адрес из пула — сразу, без запроса к DNS");
-        (await netns.RunAsync("curl", "-sS", "-m", "10", "--resolve", $"example.com:80:{fake}", "http://example.com/"))
+        (await output.TraceAsync(() => netns.RunAsync("curl", "-sS", "-m", "10", "--resolve", $"example.com:80:{fake}", "http://example.com/")))
             .ShouldBe("через туннель по имени", "Xray узнал имя по адресу из пула и отдал серверу имя, а не адрес");
         site.Requests.ShouldBe(1);
         dns.Queries.ShouldNotContain("example.com", "имя разрешает сервер: правилам адрес не нужен — локальная сеть закрыта, правил для адресов нет");
@@ -114,20 +117,21 @@ public sealed class VpnTunnelTests
             .Select(dir => Path.Combine(dir, "curl")).First(File.Exists));
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
-            ConnectionSettings.Default,
+            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             new RoutingSettings(RoutingMode.Split, [new BypassApp(curl, "curl")], []));
+        var output = new CoreOutput();
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         // DNS за программу спросила другая (как служба DNS ОС) — через туннель, и ответ — из пула.
         var fake = await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53"));
         IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool).Contains(IPAddress.Parse(fake)).ShouldBeTrue();
         var port = lan.Url.Port;
-        (await netns.RunAsync("curl", "-sS", "-m", "10", "--resolve", $"example.com:{port}:{fake}", $"http://example.com:{port}/"))
+        (await output.TraceAsync(() => netns.RunAsync("curl", "-sS", "-m", "10", "--resolve", $"example.com:{port}:{fake}", $"http://example.com:{port}/")))
             .ShouldBe("мимо туннеля", "программа мимо туннеля пришла на адрес из пула — Xray соединил ее напрямую с настоящим адресом имени");
         lan.Requests.ShouldBe(1);
-        (await netns.FetchAsync(new Uri($"http://{fake}:{port}/"))).ShouldBe("через туннель по имени", "другая программа — через туннель");
+        (await output.TraceAsync(() => netns.FetchAsync(new Uri($"http://{fake}:{port}/")))).ShouldBe("через туннель по имени", "другая программа — через туннель");
     }
 
     [Theory]

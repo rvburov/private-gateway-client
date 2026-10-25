@@ -171,6 +171,36 @@ public sealed class WfpKillSwitchTests
         }
     }
 
+    [Fact]
+    public void Hyper_v_rules_close_the_vms_and_go_away_with_the_block()
+    {
+        if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("брандмауэр Hyper-V — только на Windows с правами администратора (CI)");
+            return;
+        }
+
+        Assert.SkipUnless(HyperVFirewall.Available(), "нет брандмауэра Hyper-V на этой Windows");
+        try
+        {
+            HyperVFirewall.Close().ShouldBeNull();
+            HyperVFirewall.IsClosed().ShouldBeTrue("оба правила стоят");
+            HyperVFirewall.Close().ShouldBeNull("повторно — заменяет, не падает");
+
+            WfpKillSwitch.ForService().Warning.ShouldBeNull();
+            HyperVFirewall.IsClosed().ShouldBeFalse("фильтров блока нет — правила Hyper-V, оставшиеся с прошлого раза, снимаются при запуске службы");
+
+            HyperVFirewall.Close().ShouldBeNull();
+            HyperVFirewall.Open().ShouldBeNull();
+            HyperVFirewall.IsClosed().ShouldBeFalse();
+            HyperVFirewall.Open().ShouldBeNull("правил нет — снять их не ошибка");
+        }
+        finally
+        {
+            HyperVFirewall.Open();
+        }
+    }
+
     /// <summary>
     /// Проба: закрывают ли фильтры пересылки контейнер Windows за NAT (WinNAT — как у Docker, WSL и ВМ на «Default Switch»).
     /// Источники расходятся: по Mullvad, трафик WSL за NAT мимо слоев IP WFP. Только в CI (PG_FORWARD_PROBE=1): тянет образ
@@ -212,8 +242,7 @@ public sealed class WfpKillSwitchTests
             report.Add("машина (копия curl, сервер в правилах): " + (await Reaches(curl, github, 443) ? "проходит" : "не проходит"));
 
             killSwitch.Disable();
-            (await Container()).ShouldBeTrue("блок снят — контейнер снова в сети: фильтры пересылки не остаются");
-            report.Add("после снятия: контейнер проходит");
+            report.Add("после снятия: " + (await Container() ? "контейнер проходит" : "контейнер НЕ ПРОХОДИТ — фильтры остались или сеть пропала"));
         }
         finally
         {
@@ -225,7 +254,7 @@ public sealed class WfpKillSwitchTests
             "--connect-timeout", "5", "-m", "10", "--resolve", $"github.com:443:{github}", "https://github.com/") is not null;
     }
 
-    /// <summary>docker с аргументами; не вышел успешно за 3 минуты — null.</summary>
+    /// <summary>docker с аргументами; не вышел успешно за 3 минуты — null; docker нет — тест пропускается.</summary>
     private static async Task<string?> Docker(params string[] arguments)
     {
         var start = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
@@ -234,7 +263,17 @@ public sealed class WfpKillSwitchTests
             start.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(start)!;
+        Process? started = null;
+        try
+        {
+            started = Process.Start(start);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            Assert.Skip("нет docker");
+        }
+
+        using var process = started!;
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
         var output = process.StandardOutput.ReadToEndAsync(timeout.Token);

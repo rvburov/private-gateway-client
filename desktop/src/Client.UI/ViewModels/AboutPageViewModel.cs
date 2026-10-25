@@ -60,6 +60,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         new("SQLite", "Public domain"),
         new("SQLitePCLRaw", "Apache-2.0"),
         new("System.Security.Cryptography.ProtectedData", "MIT", "System.Security.Cryptography.ProtectedData"),
+        new("System.Management", "MIT", "System.Management"),
         new("Serilog", "Apache-2.0", "Serilog", "Serilog.Sinks.File", "Serilog.Extensions.Logging"),
         new("Protocol Buffers", "BSD-3-Clause", "Google.Protobuf"),
         new("gRPC", "Apache-2.0", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.AspNetCore.Server"),

@@ -157,6 +157,23 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Block_left_from_a_protected_connection_is_set_again_without_the_tunnel_at_start()
+    {
+        // Служба упала в «Защищено»: фильтры стоят с разрешением адаптеру туннеля (на Windows — без фильтров пересылки),
+        // а адаптера уже нет.
+        using var held = new HeldFile(StrictHeld with { Boot = false, Strict = false });
+        var killSwitch = new FakeKillSwitch(enabled: true);
+
+        await using var service = await RunningService.StartAsync(options: o => o with { CanVpn = true, KillSwitch = killSwitch, BootBlock = held.Path });
+
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Blocked);
+        killSwitch.Enables.ShouldBe(1, "блок заново по файлу блока — одной заменой правил");
+        (killSwitch.Policy!.TunnelInterface, killSwitch.Policy.Servers.ShouldHaveSingleItem().Port).ShouldBe(((string?)null, 443),
+            "без разрешения адаптеру туннеля: на Windows так встают и фильтры пересылки (хот-спот, ВМ)");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.Contains("остался с прошлого запуска", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task Service_that_fell_during_a_pause_closes_the_network_at_start()
     {
         // Без «Защиты при загрузке»: служба упала на паузе (правил нет), а не машина перезагрузилась — так говорит отметка паузы.

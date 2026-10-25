@@ -80,7 +80,7 @@ public static partial class ServiceHost
     /// нет, и режим VPN там отвечает «еще не готов».
     /// </summary>
     public static IKillSwitch? KillSwitch() =>
-        OperatingSystem.IsWindows() ? new WfpKillSwitch()
+        OperatingSystem.IsWindows() ? WfpKillSwitch.ForService()
         : OperatingSystem.IsLinux() ? NftablesKillSwitch.ForThisMachine()
         : null;
 

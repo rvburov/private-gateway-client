@@ -47,6 +47,9 @@ public sealed record KillSwitchPolicy(
 /// </summary>
 public interface IKillSwitch
 {
+    /// <summary>Что блок закрыть не смог при последнем включении или снятии (например, ВМ без брандмауэра Hyper-V); все — null.</summary>
+    string? Warning => null;
+
     /// <summary>Чем ставятся правила — для журнала.</summary>
     string Name { get; }
 

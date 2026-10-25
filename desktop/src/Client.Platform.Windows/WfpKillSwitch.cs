@@ -78,6 +78,9 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
 
     public string Name => "WFP";
 
+    /// <summary>Что не вышло с брандмауэром Hyper-V при последнем включении или снятии; все вышло — null.</summary>
+    public string? Warning { get; private set; }
+
     public bool IsEnabled => FirstFilterFlags() is not null;
 
     /// <summary>Фильтры постоянные — переживут перезагрузку («Защита при загрузке»).</summary>
@@ -106,6 +109,25 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
                 }
             }
         }));
+
+        // ВМ (WSL, Hyper-V) — брандмауэром Hyper-V, пока туннеля нет: их трафик через NAT может идти мимо слоев IP. В
+        // тестовом режиме машину не трогаем.
+        if (onlyProgram is null)
+        {
+            Warning = luid is null ? HyperVFirewall.Close() : HyperVFirewall.Open();
+        }
+    }
+
+    /// <summary>Блок службы: правила Hyper-V без фильтров WFP (служба упала, перезагрузка без «Защиты при загрузке») снимаются.</summary>
+    public static WfpKillSwitch ForService()
+    {
+        var killSwitch = new WfpKillSwitch();
+        if (!killSwitch.IsEnabled)
+        {
+            killSwitch.Warning = HyperVFirewall.Open();
+        }
+
+        return killSwitch;
     }
 
     /// <summary>Слои фильтра: установка соединения — исходящие и входящие, пересылка — один слой семейства.</summary>
@@ -117,11 +139,18 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         _ => [ConnectV6, AcceptV6],
     };
 
-    public void Disable() => WithEngine(engine => Transaction(engine, () =>
+    public void Disable()
     {
-        DeleteFilters(engine);
-        DeleteBase(engine);
-    }));
+        WithEngine(engine => Transaction(engine, () =>
+        {
+            DeleteFilters(engine);
+            DeleteBase(engine);
+        }));
+        if (onlyProgram is null)
+        {
+            Warning = HyperVFirewall.Open();
+        }
+    }
 
     /// <summary>Флаги первого нашего фильтра; фильтров нет — null.</summary>
     private static uint? FirstFilterFlags() => WithEngine(engine =>

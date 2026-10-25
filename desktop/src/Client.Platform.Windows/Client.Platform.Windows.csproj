@@ -6,6 +6,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="System.Management" />
   </ItemGroup>
 
 </Project>

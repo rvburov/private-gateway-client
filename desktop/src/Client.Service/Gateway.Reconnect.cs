@@ -189,6 +189,7 @@ public sealed partial class Gateway
                     + (_blocking ? ", блок при обрыве держит трафик" : string.Empty));
                 Move(s => s with { ErrorCode = ErrorCodes.OtherVpn }, ConnectionState.Error);
                 await StopCoreAsync().ConfigureAwait(false);
+                BlockWithoutTunnel();
             }
             finally
             {
@@ -229,12 +230,8 @@ public sealed partial class Gateway
                 }
             }
 
-            if (!BlockWithoutTunnel())
-            {
-                Fail(session, ErrorCodes.KillSwitchFailed, "Блок при обрыве не обновился");
-                return;
-            }
-
+            // Не обновился — прежний блок остается, а каждая попытка переподключения ставит его заново.
+            BlockWithoutTunnel();
             if (_request is not { Connection.Reconnect: not ReconnectPolicy.Never })
             {
                 Fail(session, code, why + " — переподключение выключено");
@@ -455,8 +452,12 @@ public sealed partial class Gateway
             }
 
             await StopCoreAsync().ConfigureAwait(false);
-            BlockWithoutTunnel();
-            if (_request is { Mode: ConnectionMode.Vpn } && _blocking)
+            if (!BlockWithoutTunnel())
+            {
+                // Прежний блок остается — с разрешением адаптеру, которого уже нет: «Блокировка» была бы неправдой.
+                code = ErrorCodes.KillSwitchFailed;
+            }
+            else if (_request is { Mode: ConnectionMode.Vpn } && _blocking)
             {
                 Move(s => s, ConnectionState.Blocked);
                 _journal.Add(JournalLevel.Warning, "service", "Сервер не отвечает, попытки кончились: блок при обрыве держит трафик, другой сервер сам не выбирается");

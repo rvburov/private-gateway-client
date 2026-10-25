@@ -116,6 +116,9 @@ public sealed partial class Gateway : IAsyncDisposable
     // узнать тот же сервер, когда имя под блоком не найти. Поставлен этим запуском или прочитан из файла блока.
     private HeldBlock? _held;
 
+    // Последнее предупреждение блока при обрыве, записанное в журнал.
+    private string? _blockWarning;
+
     // Конец паузы для входа в Wi-Fi; любая смена состояния паузу заканчивает.
     private ITimer? _pauseEnd;
 
@@ -140,6 +143,13 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             // Служба упала или остановилась с включенной защитой: трафик заблокирован — так и показывать. Какой это
             // блок и строгий ли режим — из файла блока (на Windows постоянные фильтры WFP стоят и после перезагрузки).
+            // Фильтры могли остаться от «Защищено» — с разрешением адаптеру туннеля, а на Windows без фильтров
+            // пересылки: блок заново по файлу, уже без туннеля (одной транзакцией, без окна).
+            if (held is not null && Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве с прошлого запуска не обновился"))
+            {
+                Warn(killSwitch);
+            }
+
             HoldAtStart(held);
             journal.Add(JournalLevel.Warning, "service", held is { Strict: true }
                 ? "Строгий режим: блок при обрыве остался с прошлого запуска — сеть закрыта до подключения или выключения строгого режима"
@@ -344,8 +354,9 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 (_addresses, _killSwitchOn) = (addresses, killSwitchOn);
 
-                // Блок — до запуска ядер: в «Подключение» трафик уже не уходит мимо туннеля.
-                if (killSwitchOn && !Block(core, addresses))
+                // Блок — до запуска ядер: в «Подключение» трафик уже не уходит мимо туннеля. Туннеля еще нет — и разрешения
+                // ему нет: адаптер прошлого подключения на Windows может еще не уйти, и с ним не встали бы фильтры пересылки.
+                if (killSwitchOn && !Block(core, addresses, tunnel: false))
                 {
                     BeginConnecting(core.Mode, serverId);
                     Fail(session, ErrorCodes.KillSwitchFailed, "Блок при обрыве не включился");
@@ -627,6 +638,7 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         await StopCoreAsync().ConfigureAwait(false);
+        BlockWithoutTunnel();
         _systemProxy?.Release();
 
         // Остановка на паузе для входа в Wi-Fi: защита не выключалась — блок возвращается, как при любой остановке.
@@ -916,7 +928,8 @@ public sealed partial class Gateway : IAsyncDisposable
                 var next = ++_session;
                 BeginConnecting(request.Mode, Status.ServerId ?? string.Empty);
                 _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): туннель поднимается снова");
-                if (_killSwitchOn && !Block(request, _addresses))
+                // Туннеля еще нет — и разрешения ему нет (как при подключении).
+                if (_killSwitchOn && !Block(request, _addresses, tunnel: false))
                 {
                     Fail(next, ErrorCodes.KillSwitchFailed, "Блок при обрыве не включился");
                     return;
@@ -1144,6 +1157,7 @@ public sealed partial class Gateway : IAsyncDisposable
         _held = new HeldBlock(policy, core.Server.Host, core.Protection.BootProtection, strict);
         RememberBlock(_held);
         _blocking = true;
+        Warn(killSwitch);
         _journal.Add(JournalLevel.Info, "service",
             $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}");
         return true;
@@ -1170,6 +1184,7 @@ public sealed partial class Gateway : IAsyncDisposable
         RememberBlock(held);
         _blocking = true;
         _journal.Add(JournalLevel.Info, "service", $"Блок при обрыве {done} ({killSwitch.Name})");
+        Warn(killSwitch);
         return true;
     }
 
@@ -1231,7 +1246,19 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             _blocking = false;
             _journal.Add(JournalLevel.Info, "service", "Блок при обрыве снят");
+            Warn(killSwitch);
         }
+    }
+
+    /// <summary>Что блок закрыть не смог (ВМ без брандмауэра Hyper-V и т. п.) — в журнал, когда это поменялось.</summary>
+    private void Warn(IKillSwitch killSwitch)
+    {
+        if (killSwitch.Warning is { } warning && warning != _blockWarning)
+        {
+            _journal.Add(JournalLevel.Warning, "service", warning);
+        }
+
+        _blockWarning = killSwitch.Warning;
     }
 
     /// <summary>

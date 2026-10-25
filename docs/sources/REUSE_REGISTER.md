@@ -47,7 +47,9 @@
 | --- | --- | --- | --- | --- |
 | Блок при обрыве на Windows (WFP) | `tunnel/firewall/types_windows.go`, `types_windows_64.go`, `rules.go` | сверены GUID слоев и условий WFP, коды действий и типов значений, смещения FWPM_FILTER0 и FWPM_FILTER_CONDITION0 на 64-битной Windows — это факты API Windows (fwpmu.h, fwpmtypes.h); `WfpRules` и `WfpKillSwitch` написаны заново: своя политика, не динамическая сессия, ключи фильтров по порядку; код не переносится | `WfpKillSwitchTests` (правила на всех ОС, фильтры — в CI на Windows) | изучен как справочник |
 
-| Пересылка на Windows (IPFORWARD) | microsoft/windows-rs `metadata/win32/fwpmu.rdl`@85d27ee4 (MIT/Apache-2.0); simplewall `src/wfp.c`@bfdc14de (GPL-3.0); Mullvad `docs/known-issues.md` (GPL-3.0) — прочитаны при разборе пункта | сверены GUID слоев FWPM_LAYER_IPFORWARD_V4/V6 и условия IP_DESTINATION_ADDRESS, флаги pass-through (fwptypes); у simplewall взята идея пропускать pass-through на слое пересылки, у Mullvad — что WSL за NAT может идти мимо слоев IP. Код не переносится, `WfpRules` и `WfpKillSwitch` дописаны сами | точный список правил на всех ОС; настоящие фильтры на Windows в CI; проба с контейнером за WinNAT | идеи и факты API, код свой |
+| Пересылка на Windows (IPFORWARD) | microsoft/windows-rs `metadata/win32/fwpmu.rdl`@85d27ee4 (MIT/Apache-2.0); simplewall `src/wfp.c`@bfdc14de (GPL-3.0); Mullvad `docs/known-issues.md` (GPL-3.0) — прочитаны при разборе пункта | сверены GUID слоев FWPM_LAYER_IPFORWARD_V4/V6 и условия IP_DESTINATION_ADDRESS, флаги pass-through (fwptypes); у simplewall взята идея пропускать pass-through на слое пересылки, у Mullvad — что WSL за NAT может идти мимо слоев IP. Код не переносится, `WfpRules` и `WfpKillSwitch` дописаны сами | точный список правил на всех ОС; настоящие фильтры на Windows в CI; проба с контейнером за WinNAT (2026-10-25: слои пересылки его не видят) | идеи и факты API, код свой |
+
+| ВМ без туннеля (брандмауэр Hyper-V) | Mullvad `mullvadvpn-app/talpid-core/src/firewall/windows/hyperv.rs`, ветка main на 25.10.2026 (GPL-3.0) | факты API: пространство WMI `root\standardcimv2`, класс `MSFT_NetFirewallHyperVRule`, свойства ElementName, InstanceID, Action = 4 (блок), Enabled = 1, Direction 1/2, удаление по InstanceID, WBEM_E_NOT_FOUND — не ошибка. Код (Rust, крейт wmi) не переносится: `HyperVFirewall` написан заново на System.Management, свои InstanceID и названия | тест в CI на Windows (ставит, снимает, сверка при запуске службы) | факты API, код свой |
 
 ## Ядра и библиотеки
 
@@ -59,6 +61,7 @@
 | Inter, JetBrains Mono | OFL-1.1 | шрифты десктопа, встроены |
 | CommunityToolkit.Mvvm | MIT | MVVM |
 | Google.Protobuf, Grpc.* | BSD-3-Clause, Apache-2.0 | контракт IPC |
+| System.Management | MIT | WMI на Windows: правила брандмауэра Hyper-V для ВМ без туннеля |
 | xUnit v3, Shouldly | Apache-2.0, BSD-3-Clause | тесты |
 | YamlDotNet | MIT | разбор YAML Clash/Mihomo — только события разборщика (`YamlTree`) |
 | ZXing.Net | Apache-2.0 | QR-код: распознавание картинки при импорте и рисование для «Поделиться» |

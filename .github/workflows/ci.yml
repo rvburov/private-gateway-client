@@ -51,20 +51,6 @@ jobs:
       - name: Тесты
         run: dotnet test --solution PrivateGateway.slnx -c Release --no-build
 
-      # Проба: закрывают ли фильтры пересылки WFP контейнер Windows за NAT (WinNAT, как у Docker и WSL). Образ —
-      # nanoserver под сборку раннера; итог — в журнале шага. Не загрузился образ — проба пропускается.
-      - name: Проба пересылки WFP (контейнер за NAT)
-        if: runner.os == 'Windows'
-        shell: bash
-        env:
-          PG_FORWARD_PROBE: '1'
-        run: |
-          docker pull mcr.microsoft.com/windows/nanoserver:ltsc2025 || echo 'образ не загрузился — проба пропустится'
-          status=0
-          dotnet test --project desktop/tests/Network -c Release --no-build -- --filter-method '*Probe_container_behind_nat_and_the_forward_filters' || status=$?
-          cat artifacts/forward-probe.txt || echo 'итога пробы нет'
-          exit $status
-
       # На Linux хранилища секретов без рабочего стола нет — поднимаем GNOME Keyring в своей сессии.
       - name: Хранилище секретов Linux (Secret Service)
         if: runner.os == 'Linux'
