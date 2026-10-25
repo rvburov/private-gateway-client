@@ -1,0 +1,236 @@
+{
+  "format": "clash",
+  "lines": [
+    {
+      "line": 8,
+      "server": {
+        "name": "Нидерланды 01",
+        "country": "NL",
+        "protocol": "vless",
+        "host": "203.0.113.24",
+        "port": 443,
+        "transport": {
+          "kind": "tcp"
+        },
+        "security": {
+          "kind": "reality",
+          "sni": "www.example.com",
+          "fingerprint": "chrome",
+          "realityPublicKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "realityShortId": "0123abcd"
+        },
+        "options": {
+          "flow": "xtls-rprx-vision"
+        },
+        "credentials": {
+          "uuid": "11111111-2222-3333-4444-555555555555"
+        }
+      }
+    },
+    {
+      "line": 22,
+      "server": {
+        "name": "VMess WS",
+        "protocol": "vmess",
+        "host": "cdn.example.com",
+        "port": 443,
+        "transport": {
+          "kind": "ws",
+          "path": "/ws",
+          "host": "cdn.example.com"
+        },
+        "security": {
+          "kind": "tls",
+          "sni": "cdn.example.com",
+          "alpn": [
+            "h2",
+            "http/1.1"
+          ]
+        },
+        "options": {
+          "cipher": "auto"
+        },
+        "credentials": {
+          "uuid": "11111111-2222-3333-4444-555555555555"
+        }
+      }
+    },
+    {
+      "line": 23,
+      "server": {
+        "name": "Trojan gRPC",
+        "protocol": "trojan",
+        "host": "198.51.100.7",
+        "port": 8443,
+        "transport": {
+          "kind": "grpc",
+          "serviceName": "tunnel"
+        },
+        "security": {
+          "kind": "tls",
+          "sni": "example.org",
+          "fingerprint": "firefox",
+          "allowInsecure": true
+        },
+        "credentials": {
+          "password": "not-a-real-password"
+        }
+      }
+    },
+    {
+      "line": 32,
+      "server": {
+        "name": "SS 2022",
+        "protocol": "shadowsocks",
+        "host": "2001:db8::5",
+        "port": 8388,
+        "transport": {
+          "kind": "tcp"
+        },
+        "security": {
+          "kind": "none"
+        },
+        "options": {
+          "cipher": "2022-blake3-aes-128-gcm"
+        },
+        "credentials": {
+          "password": "AAAAAAAAAAAAAAAAAAAAAA=="
+        }
+      }
+    },
+    {
+      "line": 33,
+      "server": {
+        "name": "Hy2",
+        "protocol": "hysteria2",
+        "host": "hy.example.com",
+        "port": 443,
+        "transport": {
+          "kind": "quic"
+        },
+        "security": {
+          "kind": "tls",
+          "sni": "hy.example.com",
+          "alpn": [
+            "h3"
+          ]
+        },
+        "options": {
+          "obfs": "salamander"
+        },
+        "credentials": {
+          "password": "not-a-real-password",
+          "obfsPassword": "not-a-real-obfs"
+        }
+      }
+    },
+    {
+      "line": 42,
+      "server": {
+        "name": "TUIC",
+        "protocol": "tuic",
+        "host": "192.0.2.50",
+        "port": 443,
+        "transport": {
+          "kind": "quic"
+        },
+        "security": {
+          "kind": "tls",
+          "sni": "tuic.example.com"
+        },
+        "options": {
+          "congestionControl": "bbr"
+        },
+        "credentials": {
+          "uuid": "11111111-2222-3333-4444-555555555555",
+          "password": "not-a-real-password"
+        }
+      }
+    },
+    {
+      "line": 43,
+      "server": {
+        "name": "WG",
+        "protocol": "wireguard",
+        "host": "192.0.2.33",
+        "port": 51820,
+        "transport": {
+          "kind": "udp"
+        },
+        "security": {
+          "kind": "none"
+        },
+        "options": {
+          "peerPublicKey": "ccccccccccccccccccccccccccccccccccccccccccc=",
+          "addresses": [
+            "10.0.0.2/32",
+            "fd00::2/128"
+          ],
+          "mtu": 1420
+        },
+        "credentials": {
+          "privateKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa="
+        }
+      }
+    },
+    {
+      "line": 52,
+      "server": {
+        "name": "HTTPUpgrade",
+        "protocol": "vless",
+        "host": "192.0.2.7",
+        "port": 80,
+        "transport": {
+          "kind": "httpupgrade",
+          "path": "/up"
+        },
+        "security": {
+          "kind": "none"
+        },
+        "credentials": {
+          "uuid": "11111111-2222-3333-4444-555555555555"
+        }
+      }
+    },
+    {
+      "line": 53,
+      "error": "unknown_scheme"
+    },
+    {
+      "line": 54,
+      "error": "unsupported_transport"
+    },
+    {
+      "line": 55,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 56,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 57,
+      "error": "unsupported_method"
+    },
+    {
+      "line": 58,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 59,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 60,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 66,
+      "error": "bad_link"
+    },
+    {
+      "line": 68,
+      "error": "bad_port"
+    }
+  ]
+}

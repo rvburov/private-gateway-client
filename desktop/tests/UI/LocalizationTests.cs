@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using Avalonia.Headless.XUnit;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.UI.Localization;
 
@@ -39,6 +40,20 @@ public partial class LocalizationTests
 
         used.Length.ShouldBeGreaterThan(20);
         used.Where(k => !Ru.ContainsKey(k)).ShouldBeEmpty("ключи без текста в словаре");
+    }
+
+    [Fact]
+    public void Every_import_format_and_error_has_a_text()
+    {
+        foreach (var format in ImportParser.Formats)
+        {
+            Ru.ShouldContainKey("import.format." + format);
+        }
+
+        foreach (var error in typeof(ImportErrors).GetFields().Select(f => (string)f.GetValue(null)!))
+        {
+            Ru.ShouldContainKey("import.error." + error);
+        }
     }
 
     [Fact]

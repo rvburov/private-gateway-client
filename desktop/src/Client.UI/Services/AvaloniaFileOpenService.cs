@@ -7,7 +7,7 @@ using PrivateGateway.Client.UI.Localization;
 
 namespace PrivateGateway.Client.UI.Services;
 
-/// <summary>Окно «Открыть» главного окна: текстовый файл со ссылками или подпиской, программа.</summary>
+/// <summary>Окно «Открыть» главного окна: текстовый файл со ссылками, подпиской или конфигом, программа.</summary>
 public sealed class AvaloniaFileOpenService : IFileOpenService
 {
     public async Task<(string Name, string Text)?> OpenTextAsync()
@@ -20,7 +20,11 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
         {
             AllowMultiple = false,
-            FileTypeFilter = [FilePickerFileTypes.TextPlain, FilePickerFileTypes.All],
+            FileTypeFilter =
+            [
+                new FilePickerFileType(Loc.Instance["import.file.types"]) { Patterns = ["*.txt", "*.json", "*.yaml", "*.yml"] },
+                FilePickerFileTypes.All,
+            ],
         }).ConfigureAwait(true);
         return files.Count == 0 ? null : await ReadAsync(files[0]).ConfigureAwait(true);
     }

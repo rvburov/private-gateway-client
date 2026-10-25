@@ -50,13 +50,13 @@ public sealed record LinkResult(ServerDefinition? Server, string? Error)
 /// </summary>
 public static class LinkParser
 {
-    private static readonly HashSet<string> ShadowsocksMethods = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> ShadowsocksMethods = new(StringComparer.Ordinal)
     {
         "aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305",
         "2022-blake3-aes-128-gcm", "2022-blake3-aes-256-gcm", "2022-blake3-chacha20-poly1305",
     };
 
-    private static readonly HashSet<string> VmessCiphers = new(StringComparer.Ordinal)
+    internal static readonly HashSet<string> VmessCiphers = new(StringComparer.Ordinal)
     {
         "auto", "aes-128-gcm", "chacha20-poly1305", "none", "zero",
     };
@@ -71,28 +71,61 @@ public static class LinkParser
         }
 
         var rest = text[(schemeEnd + 3)..];
-        return text[..schemeEnd].ToLowerInvariant() switch
+        ProxyProtocol? protocol = text[..schemeEnd].ToLowerInvariant() switch
         {
-            "vless" => Vless(rest),
-            "vmess" => Vmess(rest),
-            "trojan" => Trojan(rest),
-            "ss" => Shadowsocks(rest),
-            "hysteria2" or "hy2" => Hysteria2(rest),
-            "tuic" => Tuic(rest),
-            "wireguard" or "wg" => WireGuard(rest),
-            _ => Fail(ImportErrors.UnknownScheme),
+            "vless" => ProxyProtocol.Vless,
+            "vmess" => ProxyProtocol.Vmess,
+            "trojan" => ProxyProtocol.Trojan,
+            "ss" => ProxyProtocol.Shadowsocks,
+            "hysteria2" or "hy2" => ProxyProtocol.Hysteria2,
+            "tuic" => ProxyProtocol.Tuic,
+            "wireguard" or "wg" => ProxyProtocol.WireGuard,
+            _ => null,
         };
+        if (protocol is not { } known)
+        {
+            return Fail(ImportErrors.UnknownScheme);
+        }
+
+        if (known == ProxyProtocol.Vmess)
+        {
+            return Vmess(rest);
+        }
+
+        return Split(rest) is { } parts ? FromParts(known, parts) : Fail(ImportErrors.BadLink);
     }
+
+    /// <summary>
+    /// Сервер из частей ссылки — общий путь для ссылок и для форматов sing-box и Clash: те же
+    /// проверки и те же коды ошибок. VMess — через <see cref="VmessFrom"/>.
+    /// </summary>
+    internal static LinkResult FromParts(ProxyProtocol protocol, LinkParts parts) => protocol switch
+    {
+        ProxyProtocol.Vless => Vless(parts),
+        ProxyProtocol.Trojan => Trojan(parts),
+        ProxyProtocol.Shadowsocks => Shadowsocks(parts),
+        ProxyProtocol.Hysteria2 => Hysteria2(parts),
+        ProxyProtocol.Tuic => Tuic(parts),
+        ProxyProtocol.WireGuard => WireGuard(parts),
+        _ => Fail(ImportErrors.UnknownScheme),
+    };
+
+    /// <summary>
+    /// Части ссылки из полей конфига: секреты (через «:», каждый экранируется как в ссылке), адрес и
+    /// порт (IPv6 — и без скобок: порт отделяется по последнему двоеточию), параметры и название —
+    /// как после разбора ссылки.
+    /// </summary>
+    internal static LinkParts Parts(IEnumerable<string?> secrets, string? host, string? port, Dictionary<string, string> query, string? name) =>
+        new(
+            string.Join(':', secrets.Select(s => Uri.EscapeDataString(s ?? string.Empty))),
+            host + ":" + port,
+            query,
+            (name ?? string.Empty).Trim());
 
     // ── Протоколы ────────────────────────────────────────────────────────────
 
-    private static LinkResult Vless(string rest)
+    private static LinkResult Vless(LinkParts parts)
     {
-        if (Split(rest) is not { } parts)
-        {
-            return Fail(ImportErrors.BadLink);
-        }
-
         if (FirstError(
                 Endpoint(parts, out var host, out var port),
                 Transport(parts.Query, out var transport),
@@ -138,29 +171,6 @@ public static class LinkParser
             return Fail(ImportErrors.BadEncoding);
         }
 
-        var host = Field(root, "add") ?? string.Empty;
-        if (!IsHost(host))
-        {
-            return Fail(ImportErrors.BadHost);
-        }
-
-        if (!TryPort(Field(root, "port"), out var port))
-        {
-            return Fail(ImportErrors.BadPort);
-        }
-
-        // alterId больше нуля — старый VMess без AEAD, ядро его не поддерживает.
-        if (Field(root, "aid") is { } aid && aid != "0")
-        {
-            return Fail(ImportErrors.UnsupportedParameter);
-        }
-
-        var cipher = (Field(root, "scy") ?? "auto").ToLowerInvariant();
-        if (!VmessCiphers.Contains(cipher))
-        {
-            return Fail(ImportErrors.UnsupportedMethod);
-        }
-
         var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["type"] = Field(root, "net") ?? "tcp",
@@ -173,7 +183,39 @@ public static class LinkParser
         };
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"];
-        if (Field(root, "type") is { } header && header is not ("none" or ""))
+        return VmessFrom(Field(root, "ps"), Field(root, "add"), Field(root, "port"), Field(root, "aid"), Field(root, "scy"),
+            Field(root, "type"), query, Field(root, "id"));
+    }
+
+    /// <summary>VMess из полей: alterId, шифр и тип заголовка проверяются так же, как в vmess-ссылке.</summary>
+    internal static LinkResult VmessFrom(
+        string? name, string? host, string? portText, string? alterId, string? cipherText, string? header,
+        Dictionary<string, string> query, string? uuid)
+    {
+        host ??= string.Empty;
+        if (!IsHost(host))
+        {
+            return Fail(ImportErrors.BadHost);
+        }
+
+        if (!TryPort(portText, out var port))
+        {
+            return Fail(ImportErrors.BadPort);
+        }
+
+        // alterId больше нуля — старый VMess без AEAD, ядро его не поддерживает.
+        if (alterId is { Length: > 0 } && alterId != "0")
+        {
+            return Fail(ImportErrors.UnsupportedParameter);
+        }
+
+        var cipher = (cipherText ?? "auto").ToLowerInvariant();
+        if (!VmessCiphers.Contains(cipher))
+        {
+            return Fail(ImportErrors.UnsupportedMethod);
+        }
+
+        if (header is not (null or "none" or ""))
         {
             return Fail(ImportErrors.UnsupportedParameter);
         }
@@ -183,21 +225,15 @@ public static class LinkParser
             return Fail(error);
         }
 
-        var uuid = Field(root, "id") ?? string.Empty;
-        return uuid.Length == 0
+        return string.IsNullOrEmpty(uuid)
             ? Fail(ImportErrors.NoCredentials)
-            : Ok(Field(root, "ps") ?? string.Empty, ProxyProtocol.Vmess, host, port, transport, security,
+            : Ok(name ?? string.Empty, ProxyProtocol.Vmess, host, port, transport, security,
                 ProtocolOptions.Empty with { Cipher = cipher },
                 new ServerCredentials(Uuid: uuid));
     }
 
-    private static LinkResult Trojan(string rest)
+    private static LinkResult Trojan(LinkParts parts)
     {
-        if (Split(rest) is not { } parts)
-        {
-            return Fail(ImportErrors.BadLink);
-        }
-
         // Trojan без TLS не работает — защита по умолчанию TLS.
         if (FirstError(
                 Endpoint(parts, out var host, out var port),
@@ -214,13 +250,8 @@ public static class LinkParser
                 new ServerCredentials(Password: password));
     }
 
-    private static LinkResult Shadowsocks(string rest)
+    private static LinkResult Shadowsocks(LinkParts parts)
     {
-        if (Split(rest) is not { } parts)
-        {
-            return Fail(ImportErrors.BadLink);
-        }
-
         // Старый вид: ss://base64(метод:пароль@адрес:порт)#имя.
         if (parts.UserInfo.Length == 0)
         {
@@ -264,13 +295,8 @@ public static class LinkParser
                 new ServerCredentials(Password: userInfo[(colon + 1)..]));
     }
 
-    private static LinkResult Hysteria2(string rest)
+    private static LinkResult Hysteria2(LinkParts parts)
     {
-        if (Split(rest) is not { } parts)
-        {
-            return Fail(ImportErrors.BadLink);
-        }
-
         if (FirstError(Endpoint(parts, out var host, out var port), Security(parts.Query, TransportSecurity.Tls, out var security)) is { } error)
         {
             return Fail(error);
@@ -291,13 +317,8 @@ public static class LinkParser
                 new ServerCredentials(Password: password, ObfsPassword: obfsPassword));
     }
 
-    private static LinkResult Tuic(string rest)
+    private static LinkResult Tuic(LinkParts parts)
     {
-        if (Split(rest) is not { } parts)
-        {
-            return Fail(ImportErrors.BadLink);
-        }
-
         if (FirstError(Endpoint(parts, out var host, out var port), Security(parts.Query, TransportSecurity.Tls, out var security)) is { } error)
         {
             return Fail(error);
@@ -314,13 +335,8 @@ public static class LinkParser
                 new ServerCredentials(Uuid: uuid, Password: password));
     }
 
-    private static LinkResult WireGuard(string rest)
+    private static LinkResult WireGuard(LinkParts parts)
     {
-        if (Split(rest) is not { } parts)
-        {
-            return Fail(ImportErrors.BadLink);
-        }
-
         if (Endpoint(parts, out var host, out var port) is { } error)
         {
             return Fail(error);
@@ -356,7 +372,7 @@ public static class LinkParser
     // ── Общие части ссылки ───────────────────────────────────────────────────
 
     /// <summary>Части ссылки «данные@адрес:порт?параметры#имя»; имя и параметры уже раскодированы.</summary>
-    private sealed record LinkParts(string UserInfo, string Authority, Dictionary<string, string> Query, string Name);
+    internal sealed record LinkParts(string UserInfo, string Authority, Dictionary<string, string> Query, string Name);
 
     private static LinkParts? Split(string rest)
     {

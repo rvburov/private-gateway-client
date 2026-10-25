@@ -36,11 +36,15 @@ public class LinkParserTests
         var (input, expected) = Load(fixture);
 
         var batch = ImportParser.Parse(input);
+        // У конфигов sing-box и Clash сверяется весь сервер: поля в них названы иначе, чем в ссылке.
+        var whole = batch.Format is ImportParser.FormatSingBox or ImportParser.FormatClash;
         var actual = new JsonObject
         {
             ["format"] = batch.Format,
             ["lines"] = new JsonArray([.. batch.Lines.Select(l => (JsonNode)(l.Result.Server is { } s
-                ? new JsonObject { ["line"] = l.Number, ["protocol"] = Name(s.Protocol), ["name"] = s.Name }
+                ? whole
+                    ? new JsonObject { ["line"] = l.Number, ["server"] = ToJson(l.Result) }
+                    : new JsonObject { ["line"] = l.Number, ["protocol"] = Name(s.Protocol), ["name"] = s.Name }
                 : new JsonObject { ["line"] = l.Number, ["error"] = l.Result.Error }))]),
         };
 

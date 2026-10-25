@@ -9,9 +9,14 @@
 shared/testdata/
 ├── links/<протокол>/<случай>.txt             — одна ссылка
 ├── links/<протокол>/<случай>.expected.json   — во что она должна разобраться
-└── subscriptions/<формат>/<случай>.txt       — текст подписки: ссылки по строкам или они же в base64
+└── subscriptions/<формат>/<случай>.txt       — текст подписки: ссылки по строкам, они же в base64,
+                                               конфиг sing-box (JSON) или Clash/Mihomo (YAML)
     subscriptions/<формат>/<случай>.expected.json — формат и строки: номер, протокол и имя или ошибка
 ```
+
+У форматов `singbox` и `clash` в строке вместо протокола и имени — весь сервер (`server`) в том же
+виде, что `.expected.json` ссылки: поля конфига названы иначе, чем в ссылке, и сверяется перевод
+каждого. Номер строки — строка, где начинается элемент `outbounds`/`endpoints` или `proxies`.
 
 `.expected.json` ссылки — описание сервера, как его передают службе (`ServerEndpoint` в
 `shared/specifications/ipc`): `name`, `country` (из флага в начале названия), `protocol`, `host`,

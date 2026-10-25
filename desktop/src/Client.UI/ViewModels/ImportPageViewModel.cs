@@ -106,12 +106,12 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
     public bool HasPreview => Preview is not null;
 
-    /// <summary>«base64 · VLESS / Hy2 / TUIC».</summary>
+    /// <summary>«base64 · VLESS / Hy2 / TUIC», «Clash · VLESS / Trojan».</summary>
     public string FormatText => Preview is not { } p
         ? string.Empty
         : string.Join(" · ", new[]
         {
-            Loc.Instance[p.Batch.Format == ImportParser.FormatBase64 ? "import.format.base64" : "import.format.links"],
+            Loc.Instance["import.format." + p.Batch.Format],
             string.Join(" / ", p.Protocols.Select(ShortName)),
         }.Where(s => s.Length > 0));
 

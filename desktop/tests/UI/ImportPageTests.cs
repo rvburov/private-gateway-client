@@ -52,6 +52,23 @@ public sealed class ImportPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Clash_config_from_clipboard_lists_servers_and_skipped_lines()
+    {
+        var (window, _, page) = OpenImport();
+        Clipboard.Text = File.ReadAllText(Path.Combine(Repo.Root, "shared", "testdata", "subscriptions", "clash", "mixed.txt"));
+
+        await page.FromClipboardCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Text(window, "FormatText").ShouldStartWith("Clash · VLESS / ");
+        Text(window, "FoundCount").ShouldBe("18");
+        Text(window, "NewCount").ShouldBe("8");
+        Text(window, "FailedCount").ShouldBe("10");
+        page.ErrorLines[0].ShouldBe("Строка 53: протокол не поддерживается — пропущено.");
+        Find<Button>(window, "AddButton").Content.ShouldBe("Добавить 8 серверов");
+    }
+
+    [AvaloniaFact]
     public async Task Second_import_of_the_same_text_finds_only_duplicates()
     {
         var (_, _, page) = OpenImport();

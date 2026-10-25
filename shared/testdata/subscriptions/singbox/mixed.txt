@@ -1,0 +1,75 @@
+{
+  // sing-box разрешает комментарии и запятые в конце
+  "log": { "level": "warn" },
+  "outbounds": [
+    { "type": "selector", "tag": "proxy", "outbounds": ["🇳🇱 Нидерланды 01", "VMess WS"] },
+    {
+      "type": "vless",
+      "tag": "🇳🇱 Нидерланды 01",
+      "server": "203.0.113.24",
+      "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "flow": "xtls-rprx-vision",
+      "tls": {
+        "enabled": true,
+        "server_name": "www.example.com",
+        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "reality": { "enabled": true, "public_key": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "short_id": "0123abcd" }
+      }
+    },
+    {
+      "type": "vmess", "tag": "VMess WS", "server": "cdn.example.com", "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555", "security": "auto", "alter_id": 0,
+      "tls": { "enabled": true, "server_name": "cdn.example.com", "alpn": ["h2", "http/1.1"] },
+      "transport": { "type": "ws", "path": "/ws", "headers": { "Host": "cdn.example.com" } }
+    },
+    {
+      "type": "trojan", "tag": "Trojan gRPC", "server": "198.51.100.7", "server_port": 8443,
+      "password": "not-a-real-password",
+      "tls": { "enabled": true, "server_name": "example.org", "insecure": true },
+      "transport": { "type": "grpc", "service_name": "tunnel" }
+    },
+    { "type": "shadowsocks", "tag": "SS 2022", "server": "2001:db8::5", "server_port": 8388, "method": "2022-blake3-aes-128-gcm", "password": "AAAAAAAAAAAAAAAAAAAAAA==" },
+    {
+      "type": "hysteria2", "tag": "Hy2", "server": "hy.example.com", "server_port": 443, "password": "not-a-real-password",
+      "obfs": { "type": "salamander", "password": "not-a-real-obfs" },
+      "tls": { "enabled": true, "server_name": "hy.example.com", "alpn": "h3" }
+    },
+    {
+      "type": "tuic", "tag": "TUIC", "server": "192.0.2.50", "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555", "password": "not-a-real-password", "congestion_control": "bbr",
+      "tls": { "enabled": true, "server_name": "tuic.example.com" }
+    },
+    {
+      "type": "wireguard", "tag": "WG старый", "server": "192.0.2.33", "server_port": 51820,
+      "local_address": ["10.0.0.2/32", "fd00::2/128"], "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+      "peer_public_key": "ccccccccccccccccccccccccccccccccccccccccccc=", "mtu": 1420
+    },
+    {
+      "type": "vless", "tag": "WS без TLS", "server": "192.0.2.12", "server_port": 80,
+      "uuid": "11111111-2222-3333-4444-555555555555", "tls": { "enabled": false, "server_name": "ignored.example.com" },
+      "transport": { "type": "ws", "path": "/plain", "headers": { "host": "plain.example.com" } }
+    },
+    { "type": "socks", "tag": "SOCKS", "server": "192.0.2.1", "server_port": 1080 },
+    { "type": "vless", "tag": "H2", "server": "192.0.2.2", "server_port": 443, "uuid": "11111111-2222-3333-4444-555555555555", "transport": { "type": "http" } },
+    { "type": "shadowsocks", "tag": "obfs", "server": "192.0.2.3", "server_port": 8388, "method": "aes-256-gcm", "password": "x", "plugin": "obfs-local" },
+    { "type": "vmess", "tag": "old", "server": "192.0.2.4", "server_port": 443, "uuid": "11111111-2222-3333-4444-555555555555", "alter_id": 64 },
+    { "tag": "без типа", "server": "192.0.2.5", "server_port": 443 },
+    { "type": "trojan", "tag": "без пароля", "server": "192.0.2.6", "server_port": 443 },
+    { "type": "direct", "tag": "direct" },
+    { "type": "block", "tag": "block" },
+  ],
+  "endpoints": [
+    {
+      "type": "wireguard", "tag": "WG endpoint", "mtu": 1408, "address": ["172.16.0.2/32"],
+      "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+      "peers": [{ "address": "198.51.100.40", "port": 2408, "public_key": "ccccccccccccccccccccccccccccccccccccccccccc=", "allowed_ips": ["0.0.0.0/0"] }]
+    },
+    {
+      "type": "wireguard", "tag": "два peers", "private_key": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+      "peers": [{ "address": "192.0.2.60", "port": 51820, "public_key": "ccccccccccccccccccccccccccccccccccccccccccc=" },
+                { "address": "192.0.2.61", "port": 51820, "public_key": "ccccccccccccccccccccccccccccccccccccccccccc=" }]
+    }
+  ],
+  "route": { "final": "proxy" }
+}

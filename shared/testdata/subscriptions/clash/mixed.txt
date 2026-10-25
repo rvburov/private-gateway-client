@@ -1,0 +1,73 @@
+# Mihomo: серверы — в proxies; группы и правила импорт не трогает
+mixed-port: 7890
+tls-common: &tls
+  skip-cert-verify: true
+  client-fingerprint: firefox
+
+proxies:
+  - name: "🇳🇱 Нидерланды 01"
+    type: vless
+    server: 203.0.113.24
+    port: 443
+    uuid: 11111111-2222-3333-4444-555555555555
+    network: tcp
+    tls: true
+    udp: true
+    flow: xtls-rprx-vision
+    servername: www.example.com
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      short-id: 0123abcd
+  - {name: VMess WS, type: vmess, server: cdn.example.com, port: 443, uuid: 11111111-2222-3333-4444-555555555555, alterId: 0, cipher: auto, tls: true, servername: cdn.example.com, alpn: [h2, http/1.1], network: ws, ws-opts: {path: /ws, headers: {host: cdn.example.com}}}
+  - name: Trojan gRPC
+    <<: *tls
+    type: trojan
+    server: 198.51.100.7
+    port: 8443
+    password: not-a-real-password
+    sni: example.org
+    network: grpc
+    grpc-opts: {grpc-service-name: tunnel}
+  - {name: SS 2022, type: ss, server: "2001:db8::5", port: 8388, cipher: 2022-blake3-aes-128-gcm, password: "AAAAAAAAAAAAAAAAAAAAAA=="}
+  - name: Hy2
+    type: hysteria2
+    server: hy.example.com
+    port: 443
+    password: not-a-real-password
+    obfs: salamander
+    obfs-password: not-a-real-obfs
+    sni: hy.example.com
+    alpn: [h3]
+  - {name: TUIC, type: tuic, server: 192.0.2.50, port: 443, uuid: 11111111-2222-3333-4444-555555555555, password: not-a-real-password, congestion-controller: bbr, sni: tuic.example.com}
+  - name: WG
+    type: wireguard
+    server: 192.0.2.33
+    port: 51820
+    ip: 10.0.0.2/32
+    ipv6: fd00::2/128
+    private-key: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+    public-key: ccccccccccccccccccccccccccccccccccccccccccc=
+    mtu: 1420
+  - {name: HTTPUpgrade, type: vless, server: 192.0.2.7, port: 80, uuid: 11111111-2222-3333-4444-555555555555, tls: false, servername: ignored.example.com, network: ws, ws-opts: {path: /up, v2ray-http-upgrade: true}}
+  - {name: SOCKS, type: socks5, server: 192.0.2.1, port: 1080}
+  - {name: H2, type: vless, server: 192.0.2.2, port: 443, uuid: 11111111-2222-3333-4444-555555555555, network: h2}
+  - {name: obfs, type: ss, server: 192.0.2.3, port: 8388, cipher: aes-256-gcm, password: x, plugin: obfs}
+  - {name: old, type: vmess, server: 192.0.2.4, port: 443, uuid: 11111111-2222-3333-4444-555555555555, alterId: 64, cipher: auto}
+  - {name: rc4, type: ss, server: 192.0.2.8, port: 8388, cipher: rc4-md5, password: x}
+  - {name: trojan-go, type: trojan, server: 192.0.2.9, port: 443, password: x, ss-opts: {enabled: true, method: aes-128-gcm, password: y}}
+  - {name: AmneziaWG, type: wireguard, server: 192.0.2.10, port: 51820, private-key: aaaa=, public-key: cccc=, amnezia-wg-option: {jc: 4}}
+  - name: два peers
+    type: wireguard
+    private-key: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=
+    peers:
+      - {server: 192.0.2.60, port: 51820, public-key: ccccccccccccccccccccccccccccccccccccccccccc=}
+      - {server: 192.0.2.61, port: 51820, public-key: ccccccccccccccccccccccccccccccccccccccccccc=}
+  - {name: без типа, server: 192.0.2.5, port: 443}
+  - {name: прямо, type: direct}
+  - {name: порты, type: hysteria2, server: 192.0.2.11, ports: 443-8443, password: x}
+
+proxy-groups:
+  - {name: PROXY, type: select, proxies: ["🇳🇱 Нидерланды 01", VMess WS]}
+rules:
+  - MATCH,PROXY

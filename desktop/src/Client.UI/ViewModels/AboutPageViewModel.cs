@@ -58,6 +58,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         new("Serilog", "Apache-2.0", "Serilog", "Serilog.Sinks.File", "Serilog.Extensions.Logging"),
         new("Protocol Buffers", "BSD-3-Clause", "Google.Protobuf"),
         new("gRPC", "Apache-2.0", "Grpc.Core.Api"),
+        new("YamlDotNet", "MIT", "YamlDotNet"),
     ];
 
     /// <summary>«Версия 0.1 · Windows 11 · x64».</summary>
