@@ -1,17 +1,18 @@
+using System.Diagnostics;
 using System.Text;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using PrivateGateway.Client.UI.Localization;
 
 namespace PrivateGateway.Client.UI.Services;
 
-/// <summary>Окно «Открыть» главного окна: текстовый файл со ссылками или подпиской.</summary>
+/// <summary>Окно «Открыть» главного окна: текстовый файл со ссылками или подпиской, программа.</summary>
 public sealed class AvaloniaFileOpenService : IFileOpenService
 {
     public async Task<(string Name, string Text)?> OpenTextAsync()
     {
-        var window = (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
-        if (TopLevel.GetTopLevel(window)?.StorageProvider is not { CanOpen: true } storage)
+        if (Storage() is not { } storage)
         {
             return null;
         }
@@ -42,6 +43,51 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         catch (DecoderFallbackException e)
         {
             throw new InvalidDataException("Файл не текстовый (не UTF-8)", e);
+        }
+    }
+
+    public async Task<(string Path, string Name)?> PickProgramAsync()
+    {
+        if (Storage() is not { } storage)
+        {
+            return null;
+        }
+
+        var programs = new FilePickerFileType(Loc.Instance["routing.apps.filter"])
+        {
+            Patterns = OperatingSystem.IsWindows() ? ["*.exe"] : OperatingSystem.IsMacOS() ? ["*.app"] : ["*"],
+            AppleUniformTypeIdentifiers = ["com.apple.application-bundle"],
+        };
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            FileTypeFilter = [programs, FilePickerFileTypes.All],
+        }).ConfigureAwait(true);
+        return files.Count > 0 && files[0].TryGetLocalPath() is { } path ? (path, ProgramName(path)) : null;
+    }
+
+    private static IStorageProvider? Storage()
+    {
+        var window = (Avalonia.Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+        return TopLevel.GetTopLevel(window)?.StorageProvider is { CanOpen: true } storage ? storage : null;
+    }
+
+    /// <summary>Имя для подписи: на Windows — описание из файла («Google Chrome»), иначе — имя файла без расширения.</summary>
+    private static string ProgramName(string path)
+    {
+        var fallback = Path.GetFileNameWithoutExtension(path.TrimEnd('/', '\\'));
+        if (!OperatingSystem.IsWindows())
+        {
+            return fallback;
+        }
+
+        try
+        {
+            return FileVersionInfo.GetVersionInfo(path).FileDescription?.Trim() is { Length: > 0 } description ? description : fallback;
+        }
+        catch (IOException)
+        {
+            return fallback;
         }
     }
 }

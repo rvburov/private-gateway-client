@@ -228,4 +228,55 @@ public class ContractMappingTests
 
         (custom.Mtu, custom.ConnectTimeout.ToTimeSpan(), custom.ProxyPort).ShouldBe((1420u, TimeSpan.FromSeconds(30), 2080u));
     }
+
+    [Fact]
+    public void Routing_choices_round_trip_and_unspecified_is_rejected()
+    {
+        Enum.GetValues<RoutingMode>().ShouldAllBe(v => v.ToContract().ToCore() == v);
+        Enum.GetValues<RuleAction>().ShouldAllBe(v => v.ToContract().ToCore() == v);
+        Enum.GetValues<V1.RoutingMode>().Where(v => v != V1.RoutingMode.Unspecified).ShouldAllBe(v => v.ToCore().ToContract() == v);
+        Enum.GetValues<V1.RuleAction>().Where(v => v != V1.RuleAction.Unspecified).ShouldAllBe(v => v.ToCore().ToContract() == v);
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.RoutingMode.Unspecified.ToCore());
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.RuleAction.Unspecified.ToCore());
+    }
+
+    [Fact]
+    public void Traffic_bypasses_vpn_only_in_split_mode()
+    {
+        var apps = new[] { new BypassApp("/opt/game/game", "game"), new BypassApp("/opt/bank/bank", "bank", IsEnabled: false) };
+        var rules = new[]
+        {
+            new DomainRule("example.com", RuleAction.Direct),
+            new DomainRule("ads.example.net", RuleAction.Block),
+            new DomainRule("example.org", RuleAction.Proxy),
+        };
+
+        var all = (AppSettings.Default with { Routing = new RoutingSettings(RoutingMode.AllTraffic, apps, rules) }).ToRouting();
+        var split = (AppSettings.Default with { Routing = new RoutingSettings(RoutingMode.Split, apps, rules) }).ToRouting();
+
+        all.Mode.ShouldBe(V1.RoutingMode.AllTraffic);
+        all.BypassApps.ShouldBeEmpty("весь трафик — через VPN");
+        all.Rules.Select(r => r.Pattern).ShouldBe(["ads.example.net", "example.org"], "«Напрямую» — только в раздельном режиме");
+        split.Mode.ShouldBe(V1.RoutingMode.Split);
+        split.BypassApps.ShouldBe(["/opt/game/game"], "выключенная программа идет через VPN");
+        split.Rules.Select(r => (r.Pattern, r.Action)).ShouldBe(
+            [("example.com", V1.RuleAction.Direct), ("ads.example.net", V1.RuleAction.Block), ("example.org", V1.RuleAction.Proxy)]);
+    }
+
+    [Theory]
+    [InlineData("Example.COM", "example.com")]
+    [InlineData("*.local", "*.local")]
+    [InlineData("*.example.org", "*.example.org")]
+    [InlineData("https://www.example.com/path?q=1", "www.example.com")]
+    [InlineData("geosite:category-ads-all", "geosite:category-ads-all")]
+    [InlineData("localhost", null)]
+    [InlineData("192.0.2.1", null)]
+    [InlineData("-bad.example.com", null)]
+    [InlineData("exa mple.com", null)]
+    [InlineData("geosite:", null)]
+    [InlineData("", null)]
+    public void Site_pattern_is_a_domain_wildcard_or_geosite(string text, string? expected)
+    {
+        SitePattern.Normalize(text).ShouldBe(expected);
+    }
 }

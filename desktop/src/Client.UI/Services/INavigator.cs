@@ -15,6 +15,9 @@ public static class Pages
     /// <summary>«Подключение и ядро» — подстраница настроек (доска 6).</summary>
     public const string Core = "core";
 
+    /// <summary>«Маршрутизация» — подстраница настроек (доска 13).</summary>
+    public const string Routing = "routing";
+
     /// <summary>«Профили и подписки» — подстраница настроек (доска 12).</summary>
     public const string Profiles = "profiles";
 }
@@ -37,12 +40,16 @@ public interface IClipboardService
     Task<string?> GetTextAsync();
 }
 
-/// <summary>Открытие текстового файла через окно выбора ОС; в тестах подменяется.</summary>
+/// <summary>Выбор файла через окно ОС: текст со ссылками или программа; в тестах подменяется.</summary>
 public interface IFileOpenService
 {
     /// <returns>Имя файла без пути и текст; null — пользователь закрыл окно.</returns>
     /// <exception cref="InvalidDataException">Файл больше <see cref="MaxBytes"/> или не UTF-8.</exception>
     Task<(string Name, string Text)?> OpenTextAsync();
+
+    /// <summary>Программа для «мимо VPN»: исполняемый файл, на macOS — приложение .app.</summary>
+    /// <returns>Полный путь и имя для подписи; null — пользователь закрыл окно.</returns>
+    Task<(string Path, string Name)?> PickProgramAsync();
 
     /// <summary>Больше этого — не список серверов.</summary>
     const int MaxBytes = 1024 * 1024;

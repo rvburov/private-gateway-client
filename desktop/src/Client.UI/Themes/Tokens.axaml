@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: d0fa294fa04b42d5253065af78e92279a84e81e0cc7735233672f7dad517ff70
+  tokens-sha256: 525a89820eb6a06b545f48e8bf296ac8a6b5c97b414a78e195704e21b3849747
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -55,6 +55,12 @@
   <SolidColorBrush x:Key="PgBrush.Favorite.Stroke" Color="{StaticResource PgColor.Favorite.Stroke}" />
   <Color x:Key="PgColor.Favorite.Fill">#FFFBBF24</Color>
   <SolidColorBrush x:Key="PgBrush.Favorite.Fill" Color="{StaticResource PgColor.Favorite.Fill}" />
+  <Color x:Key="PgColor.Tile.Violet">#FF7C3AED</Color>
+  <SolidColorBrush x:Key="PgBrush.Tile.Violet" Color="{StaticResource PgColor.Tile.Violet}" />
+  <Color x:Key="PgColor.Tile.Teal">#FF0E7490</Color>
+  <SolidColorBrush x:Key="PgBrush.Tile.Teal" Color="{StaticResource PgColor.Tile.Teal}" />
+  <Color x:Key="PgColor.Tile.Amber">#FFB45309</Color>
+  <SolidColorBrush x:Key="PgBrush.Tile.Amber" Color="{StaticResource PgColor.Tile.Amber}" />
   <Color x:Key="PgColor.Decor.Blob1">#8C93C5FD</Color>
   <SolidColorBrush x:Key="PgBrush.Decor.Blob1" Color="{StaticResource PgColor.Decor.Blob1}" />
   <Color x:Key="PgColor.Decor.Blob2">#7386EFAC</Color>
@@ -97,6 +103,8 @@
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Text" Color="{StaticResource PgColor.Status.Danger.Text}" />
   <Color x:Key="PgColor.Status.Danger.Tint">#14B91C1C</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Tint" Color="{StaticResource PgColor.Status.Danger.Tint}" />
+  <Color x:Key="PgColor.Status.Danger.Badge">#FF991B1B</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Danger.Badge" Color="{StaticResource PgColor.Status.Danger.Badge}" />
   <Color x:Key="PgColor.Status.Danger.Line">#59DC2626</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Line" Color="{StaticResource PgColor.Status.Danger.Line}" />
 

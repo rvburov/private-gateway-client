@@ -1,0 +1,234 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.RoutingPage"
+             x:DataType="vm:RoutingPageViewModel">
+  <!-- Маршрутизация — docs/design, доска 13. Подстраница настроек: островок виден, «назад» — к настройкам. -->
+  <UserControl.Styles>
+    <!-- Предупреждение раздельного режима -->
+    <Style Selector="Border.notice">
+      <Setter Property="CornerRadius" Value="16" />
+      <Setter Property="Padding" Value="14,12" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <!-- Строки списков разделены линией, у последней ее нет -->
+    <Style Selector="Border.row">
+      <Setter Property="BorderThickness" Value="0,0,0,1" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Divider}" />
+    </Style>
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.row">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <!-- Плитка программы: буква на цветном квадрате, три цвета по кругу -->
+    <Style Selector="Border.tile">
+      <Setter Property="Width" Value="36" />
+      <Setter Property="Height" Value="36" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Tile.Violet}" />
+    </Style>
+    <Style Selector="Border.tile.teal">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Tile.Teal}" />
+    </Style>
+    <Style Selector="Border.tile.amber">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Tile.Amber}" />
+    </Style>
+    <Style Selector="Border.tile TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Surface.Solid}" />
+      <Setter Property="FontWeight" Value="Bold" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <!-- Метка действия правила: напрямую — оранжевая, через VPN — зеленая, блок — красная -->
+    <Style Selector="Border.action">
+      <Setter Property="Padding" Value="10,4" />
+      <Setter Property="CornerRadius" Value="999" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Border.action TextBlock">
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+    <Style Selector="Border.action.direct">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+    </Style>
+    <Style Selector="Border.action.direct TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+    </Style>
+    <Style Selector="Border.action.proxy">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.action.proxy TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+    </Style>
+    <Style Selector="Border.action.block">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Tint}" />
+    </Style>
+    <Style Selector="Border.action.block TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Badge}" />
+    </Style>
+    <!-- «Напрямую» вне раздельного режима не действует -->
+    <Style Selector="Border.action.idle">
+      <Setter Property="Opacity" Value="0.55" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L settings.adv.routing.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="14">
+        <!-- Что идет через VPN -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="strong" Text="{l:L routing.mode.title}" />
+            <Border Classes="segments">
+              <UniformGrid Columns="2">
+                <RadioButton x:Name="AllTraffic" Classes="segment" GroupName="routing" IsChecked="{Binding IsAllTraffic}"
+                             Content="{l:L routing.mode.all}" />
+                <RadioButton x:Name="Split" Classes="segment" GroupName="routing" IsChecked="{Binding IsSplit}"
+                             Content="{l:L routing.mode.split}" />
+              </UniformGrid>
+            </Border>
+            <TextBlock x:Name="ModeNote" Classes="caption" Text="{Binding ModeNote}" TextWrapping="Wrap" />
+          </StackPanel>
+        </Border>
+
+        <!-- Раздельный режим: предупреждение и программы мимо VPN -->
+        <Border x:Name="SplitWarning" Classes="notice" IsVisible="{Binding IsSplit}">
+          <Grid ColumnDefinitions="Auto,*">
+            <c:Icon Data="{StaticResource Icon.Warning}" Width="18" Height="18" StrokeThickness="2" VerticalAlignment="Top"
+                    Margin="0,1,10,0" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+            <TextBlock Grid.Column="1" Text="{l:L routing.warning}" TextWrapping="Wrap" FontSize="{StaticResource PgFontSize.Small}"
+                       Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+          </Grid>
+        </Border>
+
+        <StackPanel x:Name="AppsSection" Spacing="8" IsVisible="{Binding IsSplit}">
+          <TextBlock Classes="overline" Text="{l:L routing.apps.title, Upper=True}" Margin="6,0" />
+          <Border Classes="card" Padding="16,2" IsVisible="{Binding HasApps}">
+            <ItemsControl x:Name="AppList" ItemsSource="{Binding Apps}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:BypassAppViewModel">
+                  <Border Classes="row" Padding="0,11">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                      <Border Classes="tile" Classes.teal="{Binding IsTeal}" Classes.amber="{Binding IsAmber}">
+                        <TextBlock Text="{Binding Letter}" />
+                      </Border>
+                      <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
+                        <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding ShortPath}" ToolTip.Tip="{Binding Path}" FontFamily="{StaticResource PgFont.Mono}"
+                                   FontSize="{StaticResource PgFontSize.Overline}" Foreground="{StaticResource PgBrush.Text.Muted}"
+                                   TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <Button Grid.Column="2" Classes="icon" Width="36" Height="36" Margin="0,0,6,0" Command="{Binding RemoveCommand}"
+                              Foreground="{StaticResource PgBrush.Text.Muted}"
+                              ToolTip.Tip="{Binding RemoveLabel}" AutomationProperties.Name="{Binding RemoveLabel}">
+                        <c:Icon Data="{StaticResource Icon.Trash}" Width="17" Height="17" StrokeThickness="1.9" />
+                      </Button>
+                      <ToggleButton Grid.Column="3" Classes="switch" VerticalAlignment="Center" IsChecked="{Binding IsEnabled}"
+                                    AutomationProperties.Name="{Binding SwitchLabel}" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <TextBlock x:Name="AppsEmpty" Classes="small" Text="{l:L routing.apps.empty}" TextWrapping="Wrap" Margin="6,0"
+                     IsVisible="{Binding !HasApps}" />
+          <Grid Height="46">
+            <Rectangle RadiusX="14" RadiusY="14" StrokeThickness="1.5" StrokeDashArray="4,3"
+                       Stroke="{StaticResource PgBrush.Accent.Line}" Fill="{StaticResource PgBrush.Accent.Tint}" />
+            <Button x:Name="AddAppButton" Classes="plain" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" CornerRadius="14" Command="{Binding AddAppCommand}"
+                    Foreground="{StaticResource PgBrush.Accent.Text}" AutomationProperties.Name="{l:L routing.apps.add}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Data="{StaticResource Icon.Plus}" Width="18" Height="18" StrokeThickness="2.2" VerticalAlignment="Center" />
+                <TextBlock Text="{l:L routing.apps.add}" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </StackPanel>
+
+        <!-- Правила для сайтов -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="overline" Text="{l:L routing.rules.title, Upper=True}" Margin="6,0" />
+          <TextBlock x:Name="IdleNote" Classes="caption" Text="{l:L routing.rules.idle}" TextWrapping="Wrap" Margin="6,0"
+                     IsVisible="{Binding HasIdleRules}" />
+          <Border Classes="card" Padding="16,2" IsVisible="{Binding HasRules}">
+            <ItemsControl x:Name="RuleList" ItemsSource="{Binding Rules}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SiteRuleViewModel">
+                  <Border Classes="row">
+                    <Button Classes="plain" Padding="0,12" HorizontalAlignment="Stretch" Command="{Binding EditCommand}"
+                            AutomationProperties.Name="{Binding EditLabel}">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="{Binding Pattern}" FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Mono}"
+                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,10,0" />
+                        <Border Grid.Column="1" Classes="action" Classes.direct="{Binding IsDirect}" Classes.proxy="{Binding IsProxy}"
+                                Classes.block="{Binding IsBlock}" Classes.idle="{Binding IsIdle}">
+                          <TextBlock Text="{Binding ActionText}" />
+                        </Border>
+                      </Grid>
+                    </Button>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <TextBlock x:Name="RulesEmpty" Classes="small" Text="{l:L routing.rules.empty}" TextWrapping="Wrap" Margin="6,0"
+                     IsVisible="{Binding !HasRules}" />
+          <Grid Height="46">
+            <Rectangle RadiusX="14" RadiusY="14" StrokeThickness="1.5" StrokeDashArray="4,3"
+                       Stroke="{StaticResource PgBrush.Accent.Line}" Fill="{StaticResource PgBrush.Accent.Tint}" />
+            <Button x:Name="AddRuleButton" Classes="plain" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                    HorizontalContentAlignment="Center" CornerRadius="14" Command="{Binding AddRuleCommand}"
+                    Foreground="{StaticResource PgBrush.Accent.Text}" AutomationProperties.Name="{l:L routing.rules.add}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Data="{StaticResource Icon.Plus}" Width="18" Height="18" StrokeThickness="2.2" VerticalAlignment="Center" />
+                <TextBlock Text="{l:L routing.rules.add}" FontWeight="SemiBold" VerticalAlignment="Center" />
+              </StackPanel>
+            </Button>
+          </Grid>
+        </StackPanel>
+
+        <!-- Всегда напрямую -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="overline" Text="{l:L routing.always.title, Upper=True}" Margin="6,0" />
+          <Border Classes="card" Padding="16,2">
+            <StackPanel>
+              <StackPanel Spacing="3" Margin="0,12">
+                <TextBlock Classes="strong" Text="{l:L routing.server.title}" />
+                <TextBlock Classes="caption" Text="{l:L routing.server.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Border Classes="divider" />
+              <Button x:Name="LanLink" Classes="plain" Padding="0,12" HorizontalAlignment="Stretch" Command="{Binding OpenProtectionCommand}"
+                      AutomationProperties.Name="{l:L routing.lan.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <StackPanel Spacing="3" Margin="0,0,10,0">
+                    <TextBlock Classes="strong" Text="{l:L routing.lan.title}" />
+                    <TextBlock x:Name="LanText" Classes="caption" Text="{Binding LanText}" TextWrapping="Wrap" />
+                  </StackPanel>
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" StrokeThickness="2.2"
+                          Foreground="{StaticResource PgBrush.Text.Muted}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

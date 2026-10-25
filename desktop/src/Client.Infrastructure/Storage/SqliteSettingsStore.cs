@@ -1,4 +1,6 @@
 using System.Globalization;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -54,6 +56,11 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Enum("connection.reconnect", c.Reconnect),
             Int("connection.proxy_port", 1024, 65535) ?? c.ProxyPort,
             Bool("connection.proxy_allow_lan", c.ProxyAllowLan));
+        var routing = new RoutingSettings(
+            Enum("routing.mode", d.Routing.Mode),
+            Json<BypassApp>("routing.apps").Where(a => !string.IsNullOrWhiteSpace(a.Path)).ToList(),
+            [.. Json<DomainRule>("routing.rules").Select(r => SitePattern.Normalize(r.Pattern) is { } pattern ? r with { Pattern = pattern } : null)
+                .OfType<DomainRule>()]);
         return new AppSettings(
             Enum("mode", d.Mode),
             Bool("kill_switch", d.KillSwitch),
@@ -64,7 +71,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language,
             Enum("subscription_refresh", d.SubscriptionRefresh),
             Bool("update_only_via_vpn", d.UpdateOnlyViaVpn),
-            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) { Protection = protection, Connection = core };
+            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) { Protection = protection, Connection = core, Routing = routing };
 
         bool Bool(string key, bool fallback) =>
             !values.TryGetValue(key, out var text) ? fallback
@@ -76,6 +83,24 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             values.TryGetValue(key, out var text) && int.TryParse(text, CultureInfo.InvariantCulture, out var value) && value >= min && value <= max
                 ? value
                 : null;
+
+        // Список JSON-ом; не читается — пустой, а запуск не падает.
+        IReadOnlyList<T> Json<T>(string key)
+        {
+            if (!values.TryGetValue(key, out var text) || text.Length == 0)
+            {
+                return [];
+            }
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<T>>(text, JsonOptions) ?? [];
+            }
+            catch (JsonException)
+            {
+                return Invalid<IReadOnlyList<T>>(key, []);
+            }
+        }
 
         T Enum<T>(string key, T fallback)
             where T : struct, Enum =>
@@ -122,6 +147,9 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["connection.reconnect"] = settings.Connection.Reconnect.ToString(),
             ["connection.proxy_port"] = settings.Connection.ProxyPort.ToString(CultureInfo.InvariantCulture),
             ["connection.proxy_allow_lan"] = Text(settings.Connection.ProxyAllowLan),
+            ["routing.mode"] = settings.Routing.Mode.ToString(),
+            ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
+            ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),
         };
 
         using var connection = database.Open();
@@ -139,6 +167,8 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
 
         transaction.Commit();
     }
+
+    private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
 
     private static string Text(bool value) => value.ToString(CultureInfo.InvariantCulture);
 

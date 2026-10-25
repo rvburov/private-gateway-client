@@ -58,6 +58,12 @@
     <DataTemplate DataType="vm:MtuViewModel">
       <views:MtuView />
     </DataTemplate>
+    <DataTemplate DataType="vm:RoutingPageViewModel">
+      <views:RoutingPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:SiteRuleEditViewModel">
+      <views:SiteRuleEditView />
+    </DataTemplate>
     <DataTemplate DataType="vm:StubPageViewModel">
       <views:StubPage />
     </DataTemplate>

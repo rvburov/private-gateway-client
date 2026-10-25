@@ -7,6 +7,8 @@ using CoreFingerprint = PrivateGateway.Client.Core.Settings.TlsFingerprint;
 using CoreLog = PrivateGateway.Client.Core.Settings.CoreLogLevel;
 using CoreProtocol = PrivateGateway.Client.Core.ProxyProtocol;
 using CoreReconnect = PrivateGateway.Client.Core.Settings.ReconnectPolicy;
+using CoreRouting = PrivateGateway.Client.Core.Settings.RoutingMode;
+using CoreRuleAction = PrivateGateway.Client.Core.Settings.RuleAction;
 using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
 using CoreSettings = PrivateGateway.Client.Core.Settings.AppSettings;
 using CoreTun = PrivateGateway.Client.Core.Settings.TunEngine;
@@ -279,5 +281,57 @@ public static class ContractMapping
             ProxyPort = (uint)c.ProxyPort,
             ProxyAllowLan = c.ProxyAllowLan,
         };
+    }
+
+    public static V1.RoutingMode ToContract(this CoreRouting mode) => mode switch
+    {
+        CoreRouting.AllTraffic => V1.RoutingMode.AllTraffic,
+        CoreRouting.Split => V1.RoutingMode.Split,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, null),
+    };
+
+    public static CoreRouting ToCore(this V1.RoutingMode mode) => mode switch
+    {
+        V1.RoutingMode.AllTraffic => CoreRouting.AllTraffic,
+        V1.RoutingMode.Split => CoreRouting.Split,
+        _ => throw new ArgumentOutOfRangeException(nameof(mode), mode, "Режим маршрутизации не задан"),
+    };
+
+    public static V1.RuleAction ToContract(this CoreRuleAction action) => action switch
+    {
+        CoreRuleAction.Direct => V1.RuleAction.Direct,
+        CoreRuleAction.Proxy => V1.RuleAction.Proxy,
+        CoreRuleAction.Block => V1.RuleAction.Block,
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, null),
+    };
+
+    public static CoreRuleAction ToCore(this V1.RuleAction action) => action switch
+    {
+        V1.RuleAction.Direct => CoreRuleAction.Direct,
+        V1.RuleAction.Proxy => CoreRuleAction.Proxy,
+        V1.RuleAction.Block => CoreRuleAction.Block,
+        _ => throw new ArgumentOutOfRangeException(nameof(action), action, "Действие правила не задано"),
+    };
+
+    /// <summary>
+    /// «Маршрутизация» для службы. Мимо VPN — только в раздельном режиме: программы (включенные) и
+    /// правила «Напрямую». В режиме «Весь трафик» остаются правила «Блокировать» и «Через VPN» —
+    /// они защиту не ослабляют.
+    /// </summary>
+    public static V1.RoutingSettings ToRouting(this CoreSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var r = settings.Routing;
+        var split = r.Mode == CoreRouting.Split;
+        var routing = new V1.RoutingSettings { Mode = r.Mode.ToContract() };
+        if (split)
+        {
+            routing.BypassApps.AddRange(r.Apps.Where(a => a.IsEnabled).Select(a => a.Path));
+        }
+
+        routing.Rules.AddRange(r.Rules
+            .Where(rule => split || rule.Action != CoreRuleAction.Direct)
+            .Select(rule => new V1.DomainRule { Pattern = rule.Pattern, Action = rule.Action.ToContract() }));
+        return routing;
     }
 }

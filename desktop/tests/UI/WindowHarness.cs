@@ -159,6 +159,11 @@ public abstract class WindowHarness : IDisposable
         public (string Name, string Text)? File { get; set; }
 
         public Task<(string Name, string Text)?> OpenTextAsync() => Task.FromResult(File);
+
+        /// <summary>Выбранная программа; null — окно закрыто.</summary>
+        public (string Path, string Name)? Program { get; set; }
+
+        public Task<(string Path, string Name)?> PickProgramAsync() => Task.FromResult(Program);
     }
 
     /// <summary>Хранилище секретов в памяти: в облаке и на CI без GNOME Keyring настоящего нет.</summary>

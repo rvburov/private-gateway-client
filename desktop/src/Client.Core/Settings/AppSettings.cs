@@ -55,6 +55,9 @@ public sealed record AppSettings(
     /// <summary>«Подключение и ядро» (доска 6).</summary>
     public ConnectionSettings Connection { get; init; } = ConnectionSettings.Default;
 
+    /// <summary>«Маршрутизация» (доска 13).</summary>
+    public RoutingSettings Routing { get; init; } = RoutingSettings.Default;
+
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch
     {

@@ -50,6 +50,10 @@ public sealed class SettingsStorageTests : IDisposable
             Connection = new ConnectionSettings(
                 CoreLogLevel.Debug, TunEngine.Gvisor, Mtu: 1420, StrictRoutes: false, Sniffing: false, TlsFingerprint.Firefox,
                 Mux: true, TlsFragment: true, ConnectTimeoutSeconds: 20, ReconnectPolicy.Never, ProxyPort: 2080, ProxyAllowLan: true),
+            Routing = new RoutingSettings(
+                RoutingMode.Split,
+                [new BypassApp("/opt/game/game", "game"), new BypassApp("/opt/bank/bank", "bank", IsEnabled: false)],
+                [new DomainRule("example.com", RuleAction.Direct), new DomainRule("*.local", RuleAction.Direct), new DomainRule("ads.example.net", RuleAction.Block)]),
         };
         Store().Save(changed);
 
@@ -86,6 +90,45 @@ public sealed class SettingsStorageTests : IDisposable
         settings.KillSwitch.ShouldBeTrue();
         settings.Mode.ShouldBe(ConnectionMode.Vpn);
         settings.Language.ShouldBe("ru");
+    }
+
+    [Fact]
+    public void Routing_lists_keep_only_valid_entries()
+    {
+        var database = new SqliteDatabase(_paths);
+        using (var connection = database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = """
+                INSERT INTO settings (key, value) VALUES
+                ('routing.mode', 'Split'),
+                ('routing.apps', '[{"Path":"/opt/game/game","Name":"game","IsEnabled":true},{"Path":" ","Name":"пусто","IsEnabled":true}]'),
+                ('routing.rules', '[{"Pattern":"Example.COM","Action":"Block"},{"Pattern":"localhost","Action":"Direct"}]');
+                """;
+            command.ExecuteNonQuery();
+        }
+
+        var routing = new SqliteSettingsStore(database, NullLogger<SqliteSettingsStore>.Instance).Load().Routing;
+
+        routing.Mode.ShouldBe(RoutingMode.Split);
+        routing.Apps.ShouldBe([new BypassApp("/opt/game/game", "game")], "программа без пути — не программа");
+        routing.Rules.ShouldBe([new DomainRule("example.com", RuleAction.Block)], "шаблон приводится к виду для службы, негодный — отбрасывается");
+    }
+
+    [Fact]
+    public void Broken_routing_json_gives_empty_lists()
+    {
+        var database = new SqliteDatabase(_paths);
+        using (var connection = database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "INSERT INTO settings (key, value) VALUES ('routing.apps', '[{oops'), ('routing.rules', 'не JSON');";
+            command.ExecuteNonQuery();
+        }
+
+        var routing = new SqliteSettingsStore(database, NullLogger<SqliteSettingsStore>.Instance).Load().Routing;
+
+        routing.ShouldBe(RoutingSettings.Default);
     }
 
     [Fact]

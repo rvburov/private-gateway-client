@@ -1,0 +1,63 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.SiteRuleEditView"
+             x:DataType="vm:SiteRuleEditViewModel">
+  <!-- Лист правила для сайта (доска 13): шаблон и действие; у сохраненного правила — «Удалить». Рамку и тень дает окно. -->
+  <DockPanel AutomationProperties.Name="{Binding Title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock x:Name="RuleTitle" Classes="status" Text="{Binding Title}" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding CancelCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,8,*">
+      <Button Classes="secondary" Height="50" HorizontalAlignment="Stretch" Command="{Binding CancelCommand}"
+              Content="{l:L dialog.cancel}" IsVisible="{Binding IsNew}" />
+      <Button x:Name="DeleteRule" Classes="secondary danger" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding DeleteCommand}" Content="{l:L routing.rule.delete}" IsVisible="{Binding !IsNew}" />
+      <Button x:Name="SaveRule" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding SaveCommand}" Content="{Binding SaveText}" />
+    </Grid>
+
+    <StackPanel Margin="0,16,0,16" Spacing="14">
+      <StackPanel Spacing="6">
+        <TextBlock Classes="small" Text="{l:L routing.rule.pattern}" FontWeight="SemiBold"
+                   Foreground="{StaticResource PgBrush.Text.Secondary}" />
+        <TextBox x:Name="RulePattern" Classes="input" Text="{Binding Pattern}" PlaceholderText="{l:L routing.rule.placeholder}" MaxLength="253"
+                 FontFamily="{StaticResource PgFont.Mono}" AutomationProperties.Name="{l:L routing.rule.pattern}">
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding SaveCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <TextBlock Classes="caption" Text="{l:L routing.rule.hint}" TextWrapping="Wrap" />
+        <TextBlock x:Name="RuleError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                   TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+      </StackPanel>
+      <StackPanel Spacing="6">
+        <TextBlock Classes="small" Text="{l:L routing.rule.action}" FontWeight="SemiBold"
+                   Foreground="{StaticResource PgBrush.Text.Secondary}" />
+        <Border Classes="segments">
+          <UniformGrid Columns="3">
+            <RadioButton x:Name="RuleDirect" Classes="segment" GroupName="ruleAction" IsChecked="{Binding IsDirect}"
+                         Content="{l:L routing.action.direct}" />
+            <RadioButton x:Name="RuleProxy" Classes="segment" GroupName="ruleAction" IsChecked="{Binding IsProxy}"
+                         Content="{l:L routing.action.proxy}" />
+            <RadioButton x:Name="RuleBlock" Classes="segment" GroupName="ruleAction" IsChecked="{Binding IsBlock}"
+                         Content="{l:L routing.action.block}" />
+          </UniformGrid>
+        </Border>
+        <TextBlock x:Name="RuleIdle" Classes="caption" Text="{l:L routing.rules.idle}" TextWrapping="Wrap"
+                   IsVisible="{Binding IsIdle}" />
+      </StackPanel>
+    </StackPanel>
+  </DockPanel>
+</UserControl>

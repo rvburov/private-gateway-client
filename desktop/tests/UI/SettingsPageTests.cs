@@ -127,9 +127,13 @@ public sealed class SettingsPageTests : IDisposable
 
         page.Advanced.Single(a => a.Id == "routing").OpenCommand.Execute("routing");
 
-        shell.CurrentKey.ShouldBe("routing");
+        shell.CurrentKey.ShouldBe(Pages.Routing);
         shell.IsSettings.ShouldBeTrue();
-        shell.CurrentPage.ShouldBeOfType<StubPageViewModel>().Title.ShouldBe("Маршрутизация");
+        shell.CurrentPage.ShouldBeOfType<RoutingPageViewModel>();
+
+        page.Advanced.Single(a => a.Id == "backup").OpenCommand.Execute("backup");
+        shell.IsSettings.ShouldBeTrue();
+        shell.CurrentPage.ShouldBeOfType<StubPageViewModel>().Title.ShouldBe("Резервная копия");
     }
 
     private (MainWindow Window, SettingsPageViewModel Page) OpenSettings()
