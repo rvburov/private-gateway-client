@@ -1,0 +1,22 @@
+{
+  "name": "WG PSK",
+  "protocol": "wireguard",
+  "host": "192.0.2.34",
+  "port": 51820,
+  "transport": {
+    "kind": "udp"
+  },
+  "security": {
+    "kind": "none"
+  },
+  "options": {
+    "peerPublicKey": "ccccccccccccccccccccccccccccccccccccccccccc=",
+    "addresses": [
+      "10.0.0.3/32"
+    ]
+  },
+  "credentials": {
+    "privateKey": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=",
+    "presharedKey": "ddddddddddddddddddddddddddddddddddddddddddd="
+  }
+}

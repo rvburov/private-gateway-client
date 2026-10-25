@@ -22,7 +22,7 @@ namespace PrivateGateway.Client.Contracts;
 /// Перевод перечислений ядра программы в контракт IPC и обратно. Значение UNSPECIFIED из
 /// контракта — ошибка отправителя: служба такой запрос отклоняет, а не угадывает.
 /// </summary>
-public static class ContractMapping
+public static partial class ContractMapping
 {
     /// <summary>Текущая версия контракта, ее служба отдает в ServiceInfo.api_version.</summary>
     public const string ApiVersion = "1";

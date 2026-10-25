@@ -1,0 +1,1 @@
+wireguard://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa%3D@192.0.2.34:51820?publickey=ccccccccccccccccccccccccccccccccccccccccccc%3D&presharedkey=ddddddddddddddddddddddddddddddddddddddddddd%3D&address=10.0.0.3%2F32#WG%20PSK
