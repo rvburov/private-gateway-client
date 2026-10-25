@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Сборка Xray-core для тестов и разработки: версия — из shared/cores/xray.version, архив сверяется по
-# SHA-256 с закрепленной суммой из shared/cores/xray.sha256 (если для этой сборки она уже есть) и с
-# .dgst того же выпуска. Распаковка — в artifacts/cores/xray/. Запуск: scripts/get-xray.sh
+# SHA-256 с закрепленной суммой из shared/cores/xray.sha256 (без нее — с предупреждением) и с .dgst
+# того же выпуска. Распаковка — в artifacts/cores/xray/. Запуск: scripts/get-xray.sh
+# В облаке без доступа к выпускам GitHub — scripts/get-xray.sh --build (сборка из исходников тега).
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
@@ -16,9 +17,25 @@ case "$(uname -s)-$(uname -m)" in
 esac
 
 dest="$root/artifacts/cores/xray"
-base="https://github.com/XTLS/Xray-core/releases/download/$version"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
+
+if [ "${1:-}" = "--build" ]; then
+  # Облако без доступа к выпускам GitHub: сборка из исходников тега (нужны git и go), геобазы — из ветки
+  # release Loyalsoldier/v2ray-rules-dat, их же кладет в архив выпуск Xray. Только для тестов: суммы
+  # выпуска к такой сборке не относятся.
+  command -v go > /dev/null || { echo "Нет go — собрать Xray из исходников нельзя" >&2; exit 1; }
+  git -c advice.detachedHead=false clone -q --depth 1 --branch "$version" https://github.com/XTLS/Xray-core "$tmp/src"
+  git clone -q --depth 1 --branch release https://github.com/Loyalsoldier/v2ray-rules-dat "$tmp/geo"
+  rm -rf "$dest"
+  mkdir -p "$dest"
+  (cd "$tmp/src" && CGO_ENABLED=0 go build -o "$dest/xray$(go env GOEXE)" -trimpath -buildvcs=false -ldflags="-s -w -buildid=" ./main)
+  cp "$tmp/geo/geoip.dat" "$tmp/geo/geosite.dat" "$dest/"
+  echo "Xray $version собран из исходников → $dest (только для тестов)"
+  exit 0
+fi
+
+base="https://github.com/XTLS/Xray-core/releases/download/$version"
 
 curl -fsSL --retry 3 -o "$tmp/$asset" "$base/$asset"
 curl -fsSL --retry 3 -o "$tmp/$asset.dgst" "$base/$asset.dgst"
@@ -36,7 +53,9 @@ if [ "$actual" != "$published" ]; then
 fi
 
 pinned=$(grep -E "^$version $asset " "$root/shared/cores/xray.sha256" 2> /dev/null | cut -d' ' -f3 || true)
-if [ -n "$pinned" ] && [ "$actual" != "$pinned" ]; then
+if [ -z "$pinned" ]; then
+  echo "Внимание: для $version $asset нет закрепленной суммы в shared/cores/xray.sha256 — сверено только с .dgst выпуска" >&2
+elif [ "$actual" != "$pinned" ]; then
   echo "SHA-256 $asset не совпала с закрепленной в shared/cores/xray.sha256: $actual ≠ $pinned" >&2
   exit 1
 fi

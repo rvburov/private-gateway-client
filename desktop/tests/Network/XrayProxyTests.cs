@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
@@ -17,19 +19,29 @@ namespace PrivateGateway.Client.Tests.Network;
 public sealed class XrayProxyTests
 {
     private const string Uuid = "11111111-2222-3333-4444-555555555555";
+    private const string Password = "not-a-real-password";
     private const string Page = "привет через туннель";
 
     private static readonly string? Xray = FindXray();
 
-    [Fact]
-    public async Task Request_goes_through_a_vless_server_by_socks5_and_http_on_one_port()
+    /// <summary>Каждый протокол Xray из этапа 2 и транспорты, которые служба собирает в конфиг.</summary>
+    [Theory]
+    [InlineData("vless")]
+    [InlineData("vless-ws")]
+    [InlineData("vless-grpc")]
+    [InlineData("vless-httpupgrade")]
+    [InlineData("vmess")]
+    [InlineData("trojan-tls")]
+    [InlineData("shadowsocks")]
+    public async Task Request_goes_through_the_server_by_socks5_and_http_on_one_port(string kind)
     {
         Assert.SkipWhen(Xray is null, "нет сборки Xray — scripts/get-xray.sh");
         using var site = new LocalSite(Page);
         var serverPort = FreePort();
-        using var server = await Start(ServerConfig(serverPort), serverPort);
+        var (definition, serverConfig) = Pair(kind, serverPort);
+        using var server = await Start(serverConfig, serverPort);
         var proxyPort = FreePort();
-        var config = ClientConfig(serverPort, proxyPort);
+        var config = ClientConfig(definition, proxyPort);
         // Сайт теста — на 127.0.0.1, а локальная сеть в конфиге закрыта: для проверки туннеля правило убирается.
         config["routing"]!["rules"]!.AsArray().RemoveAt(0);
         using var client = await Start(config, proxyPort);
@@ -45,9 +57,10 @@ public sealed class XrayProxyTests
         Assert.SkipWhen(Xray is null, "нет сборки Xray — scripts/get-xray.sh");
         using var site = new LocalSite(Page);
         var serverPort = FreePort();
-        using var server = await Start(ServerConfig(serverPort), serverPort);
+        var (definition, serverConfig) = Pair("vless", serverPort);
+        using var server = await Start(serverConfig, serverPort);
         var proxyPort = FreePort();
-        using var client = await Start(ClientConfig(serverPort, proxyPort), proxyPort);
+        using var client = await Start(ClientConfig(definition, proxyPort), proxyPort);
 
         await Should.ThrowAsync<Exception>(() => Get(site.Url, $"socks5://127.0.0.1:{proxyPort}"));
 
@@ -62,27 +75,74 @@ public sealed class XrayProxyTests
         Should.Throw<System.ComponentModel.Win32Exception>(() => XrayProcess.Start(missing, new JsonObject()));
     }
 
-    private static JsonObject ClientConfig(int serverPort, int proxyPort)
+    private static JsonObject ClientConfig(ServerDefinition server, int proxyPort)
     {
-        var server = new ServerDefinition("Тест", string.Empty, ProxyProtocol.Vless, "127.0.0.1", serverPort,
-            TransportOptions.Tcp, SecurityOptions.None, ProtocolOptions.Empty, new ServerCredentials(Uuid: Uuid));
         var request = new CoreRequest(server, ConnectionMode.Proxy, ProtectionSettings.Default,
             ConnectionSettings.Default with { ProxyPort = proxyPort, CoreLog = CoreLogLevel.Info }, RoutingSettings.Default);
         return XrayConfigBuilder.Build(request).Config.ShouldNotBeNull();
     }
 
-    /// <summary>Сервер VLESS без шифрования транспорта — только для теста на localhost.</summary>
-    private static JsonObject ServerConfig(int port) => JsonNode.Parse($$"""
+    /// <summary>
+    /// Описание сервера для клиента и конфиг того же сервера в Xray. Без шифрования транспорта — только
+    /// для теста на localhost; у Trojan — TLS с самоподписанным сертификатом на example.com.
+    /// </summary>
+    private static (ServerDefinition Server, JsonObject Config) Pair(string kind, int port)
+    {
+        var withUuid = new ServerCredentials(Uuid: Uuid);
+        var vlessClients = $$"""{ "clients": [{ "id": "{{Uuid}}" }], "decryption": "none" }""";
+        const string raw = """{ "network": "raw" }""";
+        return kind switch
+        {
+            "vless" => (Definition(ProxyProtocol.Vless, port, withUuid), ServerConfig(port, "vless", vlessClients, raw)),
+            "vless-ws" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.WebSocket, Path: "/pg")),
+                ServerConfig(port, "vless", vlessClients, """{ "network": "ws", "wsSettings": { "path": "/pg" } }""")),
+            "vless-grpc" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.Grpc, ServiceName: "pg")),
+                ServerConfig(port, "vless", vlessClients, """{ "network": "grpc", "grpcSettings": { "serviceName": "pg" } }""")),
+            "vless-httpupgrade" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.HttpUpgrade, Path: "/pg")),
+                ServerConfig(port, "vless", vlessClients, """{ "network": "httpupgrade", "httpupgradeSettings": { "path": "/pg" } }""")),
+            "vmess" => (Definition(ProxyProtocol.Vmess, port, withUuid),
+                ServerConfig(port, "vmess", $$"""{ "clients": [{ "id": "{{Uuid}}" }] }""", raw)),
+            "trojan-tls" => (Definition(ProxyProtocol.Trojan, port, new ServerCredentials(Password: Password),
+                    security: new SecurityOptions(TransportSecurity.Tls, Sni: "example.com", AllowInsecure: true)),
+                ServerConfig(port, "trojan", $$"""{ "clients": [{ "password": "{{Password}}" }] }""",
+                    $$"""{ "network": "raw", "security": "tls", "tlsSettings": { "certificates": [{{SelfSigned("example.com")}}] } }""")),
+            "shadowsocks" => (Definition(ProxyProtocol.Shadowsocks, port, new ServerCredentials(Password: Password),
+                    options: new ProtocolOptions(Cipher: "aes-256-gcm")),
+                ServerConfig(port, "shadowsocks", $$"""{ "method": "aes-256-gcm", "password": "{{Password}}", "network": "tcp" }""", raw)),
+            _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+        };
+    }
+
+    private static ServerDefinition Definition(ProxyProtocol protocol, int port, ServerCredentials credentials,
+        TransportOptions? transport = null, SecurityOptions? security = null, ProtocolOptions? options = null) =>
+        new("Тест", string.Empty, protocol, "127.0.0.1", port, transport ?? TransportOptions.Tcp, security ?? SecurityOptions.None,
+            options ?? ProtocolOptions.Empty, credentials);
+
+    private static JsonObject ServerConfig(int port, string protocol, string settings, string stream) => JsonNode.Parse($$"""
         {
           "log": { "loglevel": "warning", "access": "none" },
-          "inbounds": [{
-            "listen": "127.0.0.1", "port": {{port}}, "protocol": "vless",
-            "settings": { "clients": [{ "id": "{{Uuid}}" }], "decryption": "none" },
-            "streamSettings": { "network": "raw", "security": "none" }
-          }],
+          "inbounds": [{ "listen": "127.0.0.1", "port": {{port}}, "protocol": "{{protocol}}", "settings": {{settings}}, "streamSettings": {{stream}} }],
           "outbounds": [{ "protocol": "freedom" }]
         }
         """)!.AsObject();
+
+    /// <summary>Самоподписанный сертификат на сутки — строками PEM, как их принимает Xray.</summary>
+    private static string SelfSigned(string host)
+    {
+        using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
+        var request = new CertificateRequest("CN=" + host, key, HashAlgorithmName.SHA256);
+        var names = new SubjectAlternativeNameBuilder();
+        names.AddDnsName(host);
+        request.CertificateExtensions.Add(names.Build());
+        using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddDays(1));
+        return new JsonObject
+        {
+            ["certificate"] = Lines(certificate.ExportCertificatePem()),
+            ["key"] = Lines(key.ExportPkcs8PrivateKeyPem()),
+        }.ToJsonString();
+
+        static JsonArray Lines(string pem) => new([.. pem.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => JsonValue.Create(l.TrimEnd('\r')))]);
+    }
 
     private static async Task<XrayProcess> Start(JsonObject config, int port)
     {

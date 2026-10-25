@@ -112,7 +112,9 @@ VPN-клиент меняет состояние всей машины, поэт
     так и писать в отчете;
   - бывает, что нет .NET SDK, а загрузка с сайта Microsoft закрыта сетью среды — ставить пакетом
     ОС: `apt-get install -y dotnet-sdk-10.0`;
-  - доступа к GitHub-репозиториям, кроме подключенных к сессии.
+  - доступа к GitHub-репозиториям, кроме подключенных к сессии;
+  - загрузки выпусков GitHub — ядро Xray для тестов `Network` собирать из исходников:
+    `scripts/get-xray.sh --build` (нужен go, модули идут через proxy.golang.org).
 
 ## Проект
 
@@ -127,7 +129,8 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `desktop/src/` — проекты десктопа, слои — в разделе «Правила кода»;
 - `desktop/tests/` — тесты: `Unit` (быстрый гейт), `Architecture` (границы модулей), `UI`
   (интерфейс без экрана, снимки в `artifacts/ui-snapshots`), `Network` (настоящее ядро Xray на
-  127.0.0.1: сборку кладет `scripts/get-xray.sh`, без нее эти тесты пропускаются), дальше
+  127.0.0.1: сборку кладет `scripts/get-xray.sh`, в облаке — `scripts/get-xray.sh --build`; без
+  нее эти тесты пропускаются), дальше
   `Integration`, `Security` — по мере появления кода;
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
