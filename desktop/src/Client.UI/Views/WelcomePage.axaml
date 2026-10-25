@@ -5,7 +5,7 @@
              xmlns:l="using:PrivateGateway.Client.UI.Localization"
              x:Class="PrivateGateway.Client.UI.Views.WelcomePage"
              x:DataType="vm:WelcomePageViewModel">
-  <!-- Первый запуск — docs/design, доска 10: приветствие, потом «Добавьте первый сервер». Островка нет. -->
+  <!-- Первый запуск — docs/design, доска 10: приветствие, «Установка службы», потом «Добавьте первый сервер». Островка нет. -->
   <UserControl.Styles>
     <Style Selector="Border.feature">
       <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Card}" />
@@ -25,6 +25,31 @@
       <Setter Property="Height" Value="20" />
       <Setter Property="StrokeThickness" Value="1.9" />
       <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <!-- Строка шага «Установка службы»: кружок ждет (серый), ставится (синий), готово (зеленый) -->
+    <Style Selector="Border.setupMark">
+      <Setter Property="Width" Value="28" />
+      <Setter Property="Height" Value="28" />
+      <Setter Property="CornerRadius" Value="14" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Control.SegmentTrack}" />
+    </Style>
+    <Style Selector="Border.setupMark c|Icon">
+      <Setter Property="Width" Value="16" />
+      <Setter Property="Height" Value="16" />
+      <Setter Property="StrokeThickness" Value="2.2" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+    <Style Selector="Border.setupMark.busy">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.setupMark.busy c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <Style Selector="Border.setupMark.done">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.setupMark.done c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Text}" />
     </Style>
   </UserControl.Styles>
 
@@ -89,6 +114,53 @@
               Command="{Binding StartCommand}" Content="{l:L welcome.start}" />
     </Grid>
 
+    <!-- Установка службы — шаг 1 из 2 -->
+    <Grid x:Name="ServiceStep" RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsService}">
+      <Grid Height="60" Margin="20,0,12,0" ColumnDefinitions="Auto,*,Auto">
+        <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}"
+                Width="28" Height="28" Foreground="{StaticResource PgBrush.Accent.Base}" />
+        <TextBlock Grid.Column="1" Classes="brand" Text="{l:L app.title}" Margin="10,0,8,0" VerticalAlignment="Center" />
+        <TextBlock Grid.Column="2" Classes="caption" FontWeight="SemiBold" Text="{l:L welcome.step1}" VerticalAlignment="Center" />
+      </Grid>
+
+      <ScrollViewer Grid.Row="1" Classes="page">
+        <StackPanel Margin="24,12,24,16" Spacing="12">
+          <TextBlock x:Name="ServiceTitle" Text="{l:L welcome.service.title}" FontSize="{StaticResource PgFontSize.Status}" FontWeight="Bold"
+                     TextWrapping="Wrap" />
+          <TextBlock Text="{Binding ServiceText}" TextWrapping="Wrap" LineHeight="20" Foreground="{StaticResource PgBrush.Text.Secondary}" />
+          <Border Classes="card" Padding="16,4" Margin="0,4,0,0">
+            <ItemsControl x:Name="SetupRows" ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:SetupRow">
+                  <Grid ColumnDefinitions="Auto,*" Margin="0,11">
+                    <Border Classes="setupMark" Classes.busy="{Binding IsBusy}" Classes.done="{Binding IsDone}" VerticalAlignment="Center">
+                      <Panel>
+                        <c:Icon Data="{StaticResource Icon.Chip.Ok}" IsVisible="{Binding IsDone}" />
+                        <c:Icon Data="{StaticResource Icon.Chip.Dots}" IsVisible="{Binding !IsDone}" />
+                      </Panel>
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Title}" TextWrapping="Wrap" />
+                      <TextBlock Classes="caption" Text="{Binding Detail}" TextWrapping="Wrap" />
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+          <TextBlock x:Name="InstallError" Text="{Binding InstallError}" IsVisible="{Binding HasInstallError}" TextWrapping="Wrap"
+                     Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
+        </StackPanel>
+      </ScrollViewer>
+
+      <StackPanel Grid.Row="2" Margin="24,8,24,24" Spacing="10">
+        <Button x:Name="InstallService" Classes="primary" Height="54" HorizontalAlignment="Stretch"
+                Command="{Binding InstallCommand}" Content="{Binding InstallText}" />
+        <Button x:Name="WithoutService" Classes="link" HorizontalAlignment="Center" IsVisible="{Binding CanSkipService}"
+                Command="{Binding WithoutServiceCommand}" Content="{l:L welcome.service.skip}" />
+      </StackPanel>
+    </Grid>
+
     <!-- Добавьте первый сервер -->
     <Grid x:Name="AddServerStep" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding IsAddServer}">
       <Grid Height="60" Margin="20,0,12,0" ColumnDefinitions="Auto,*">
@@ -112,6 +184,8 @@
                   Command="{Binding TryDemoCommand}" Content="{l:L welcome.demo}" />
         </StackPanel>
       </Border>
+      <TextBlock x:Name="ServiceReady" Grid.Row="2" Classes="caption" Text="{l:L welcome.service.ready}" IsVisible="{Binding IsInstalled}"
+                 TextAlignment="Center" TextWrapping="Wrap" Margin="28,14,28,0" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
       <TextBlock Grid.Row="2" Classes="caption" Text="{l:L welcome.demo.note}" IsVisible="{Binding CanTryDemo}"
                  TextAlignment="Center" TextWrapping="Wrap" Margin="28,14,28,0" />
     </Grid>
