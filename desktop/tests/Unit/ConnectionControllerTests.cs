@@ -199,10 +199,24 @@ public class ConnectionControllerTests
         gateway.Calls.ShouldBe(["resume"]);
     }
 
+    [Fact]
+    public async Task Shield_in_a_strict_pause_connects_instead_of_closing_the_network()
+    {
+        var gateway = new FakeGateway(ConnectionState.Blocked, "nl", pausedUntil: DateTimeOffset.UnixEpoch.AddMinutes(5), strict: true);
+        var controller = new ConnectionController(gateway, new FakeCatalog(Nl) { SelectedId = "nl" });
+
+        (await controller.ToggleAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+
+        gateway.Calls.ShouldBe(["connect:nl"], "вошли в Wi-Fi — щит включает защиту, а закрытую сеть возвращает кнопка паузы");
+    }
+
     [Theory]
     [InlineData(ConnectionState.Connected, true)]
     [InlineData(ConnectionState.Blocked, true)]
     [InlineData(ConnectionState.Off, false)]
+    [InlineData(ConnectionState.Connecting, false)]
+    [InlineData(ConnectionState.Reconnecting, false)]
+    [InlineData(ConnectionState.Error, false)]
     public async Task Captive_pause_is_asked_only_while_protection_is_on(ConnectionState state, bool paused)
     {
         var gateway = new FakeGateway(state, "nl");
@@ -213,11 +227,47 @@ public class ConnectionControllerTests
         gateway.Calls.ShouldBe(paused ? ["pause:5"] : []);
     }
 
+    [Theory]
+    [InlineData(ConnectionMode.Vpn, CheckState.Stopped, true)]
+    [InlineData(ConnectionMode.Vpn, CheckState.Off, false)]
+    [InlineData(ConnectionMode.Proxy, CheckState.Waiting, true)]
+    public async Task Captive_pause_in_an_error_only_while_the_network_is_closed(ConnectionMode mode, CheckState allTraffic, bool paused)
+    {
+        var gateway = new FakeGateway(ConnectionState.Error, "nl");
+        gateway.Status = gateway.Status with { Mode = mode, Protection = gateway.Status.Protection with { AllTraffic = allTraffic } };
+
+        (await new ConnectionController(gateway, new FakeCatalog()).PauseForCaptivePortalAsync(TestContext.Current.CancellationToken))
+            .ShouldBe(paused, "блок или системный прокси на остановленном ядре держат сеть закрытой — без них пауза не нужна");
+    }
+
+    [Fact]
+    public async Task Captive_pause_is_not_asked_twice()
+    {
+        var gateway = new FakeGateway(ConnectionState.Connected, "nl", pausedUntil: DateTimeOffset.UnixEpoch.AddMinutes(5));
+
+        (await new ConnectionController(gateway, new FakeCatalog()).PauseForCaptivePortalAsync(TestContext.Current.CancellationToken)).ShouldBeFalse();
+
+        gateway.Calls.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(ConnectionState.Off, CheckState.Off, true)]
+    [InlineData(ConnectionState.Error, CheckState.Off, true)]
+    [InlineData(ConnectionState.Error, CheckState.Stopped, false)]
+    [InlineData(ConnectionState.Blocked, CheckState.Stopped, false)]
+    [InlineData(ConnectionState.Connected, CheckState.Ok, false)]
+    public void Network_is_open_without_protection_or_after_an_error_without_a_block(ConnectionState state, CheckState allTraffic, bool open)
+    {
+        var status = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state };
+
+        ConnectionController.NetworkIsOpen(status with { Protection = status.Protection with { AllTraffic = allTraffic } }).ShouldBe(open);
+    }
+
     internal sealed class FakeGateway(ConnectionState state, string? serverId = null, DateTimeOffset? pausedUntil = null, bool strict = false) : IGatewayClient
     {
         public List<string> Calls { get; } = [];
 
-        public ConnectionStatus Status { get; } =
+        public ConnectionStatus Status { get; set; } =
             ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId, CaptivePauseUntil = pausedUntil, StrictBlock = strict };
 
         public ServiceKind Service => ServiceKind.Simulated;

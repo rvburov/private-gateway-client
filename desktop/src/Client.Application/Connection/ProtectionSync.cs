@@ -12,7 +12,10 @@ namespace PrivateGateway.Client.Application.Connection;
 /// подряд — одно переподключение через <see cref="Quiet"/> после последнего. Защита выключена, сломана
 /// («Ошибка») или на паузе для входа в Wi-Fi — ничего: новые настройки войдут в следующее подключение.
 /// «Блокировка» строгого режима — защиту выключили вручную: не подключаться, а открыть сеть, если строгий
-/// режим больше не действует (выключен сам, блок при обрыве или режим VPN).
+/// режим больше не действует (выключен сам, блок при обрыве или режим VPN). Служба помнит строгий режим и после
+/// своего перезапуска, а выключить его в окне могли, пока ее не было: такую «Блокировку» окно открывает, как только
+/// служба ее прислала. Строгую «Блокировку», которую это окно не выключало (другой пользователь машины, сброшенные
+/// настройки), окно само не открывает.
 /// </summary>
 public sealed class ProtectionSync(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time)
 {
@@ -23,10 +26,23 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
     private AppSettings? _last;
     private ITimer? _timer;
 
+    // 1 — строгий режим выключили в этом окне, а «Блокировку» строгого режима еще не открыли: служба была недоступна
+    // или прислала ее позже. Открывается один раз.
+    private int _openStrict;
+
     public void Start()
     {
         _last = settings.Current;
         settings.Changed += (_, next) => OnChanged(next);
+        gateway.StatusChanged += (_, status) => OnStatus(status);
+    }
+
+    private void OnStatus(ConnectionStatus status)
+    {
+        if (status.StrictBlock && !ConnectionController.KeepsBlock(settings.Current) && Interlocked.Exchange(ref _openStrict, 0) == 1)
+        {
+            _ = gateway.DisconnectAsync();
+        }
     }
 
     /// <summary>То, что служба получает в Connect: остальное (язык, тема, автозапуск) подключения не меняет.</summary>
@@ -42,6 +58,8 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
     {
         var previous = _last ?? next;
         _last = next;
+        Interlocked.Exchange(ref _openStrict, ConnectionController.KeepsBlock(next) ? 0
+            : ConnectionController.KeepsBlock(previous) ? 1 : Volatile.Read(ref _openStrict));
         if (!Affects(previous, next))
         {
             return;
@@ -59,7 +77,7 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
         var status = gateway.Status;
         if (status.StrictBlock)
         {
-            if (!ConnectionController.KeepsBlock(settings.Current))
+            if (!ConnectionController.KeepsBlock(settings.Current) && Interlocked.Exchange(ref _openStrict, 0) == 1)
             {
                 await gateway.DisconnectAsync().ConfigureAwait(false);
             }

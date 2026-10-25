@@ -36,6 +36,9 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
     private CancellationTokenSource? _pending;
     private ITimer? _pauseEnd;
+
+    // Сервер последнего подключения: пауза в «Блокировке», где попытки кончились, кончается подключением к нему.
+    private ServerProfile? _server;
     private ConnectionStatus _status = ConnectionStatus.Initial(time.GetUtcNow()) with
     {
         Network = DemoNetwork,
@@ -85,6 +88,11 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
             _pending?.Dispose();
             _pending = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             token = _pending.Token;
+
+            // Переход заканчивает и паузу для входа в Wi-Fi (подключение со строгой паузы).
+            _pauseEnd?.Dispose();
+            _pauseEnd = null;
+            _server = server;
             _status = (_status with { Mode = mode }).MoveTo(ConnectionState.Connecting, time.GetUtcNow()) with { ServerId = server.Id };
         }
 
@@ -174,13 +182,16 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
             // Строгий режим: защита выключена, сеть закрыта — как у службы.
             if (settings?.Current is { } current && ConnectionController.KeepsBlock(current))
             {
-                if (_status.StrictBlock)
+                if (_status is { StrictBlock: true, IsPaused: false })
                 {
                     return Task.CompletedTask;
                 }
 
                 var blocked = _status.State == ConnectionState.Blocked ? _status : _status.MoveTo(ConnectionState.Blocked, time.GetUtcNow());
-                _status = blocked with { StrictBlock = true, Traffic = TrafficStats.Empty, CaptivePauseUntil = null };
+                _status = blocked with
+                {
+                    StrictBlock = true, Traffic = TrafficStats.Empty, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Blocked),
+                };
                 _pauseEnd?.Dispose();
                 _pauseEnd = null;
                 Log(JournalLevel.Info, "service", "strict mode: protection off, network blocked");
@@ -208,7 +219,8 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
     {
         lock (_gate)
         {
-            if (_status.State == ConnectionState.Off)
+            // Как у службы: в «Защищено», «Блокировке» и «Ошибке», где сеть закрыта, — не дважды.
+            if (!ConnectionController.CanPause(_status))
             {
                 return Task.FromResult(false);
             }
@@ -271,15 +283,21 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
     private void Raise() => StatusChanged?.Invoke(this, Status);
 
-    /// <summary>Конец паузы — по времени или кнопкой «Вернуть защиту»: туннель и блок снова на месте.</summary>
+    /// <summary>
+    /// Конец паузы — по времени или кнопкой «Вернуть защиту»: туннель и блок снова на месте; в «Блокировке» — тот же
+    /// блок, строгий режим остается; где попытки кончились — подключение к тому же серверу, как у службы.
+    /// </summary>
     private void EndPause(string reason)
     {
+        ServerProfile? again;
         lock (_gate)
         {
             if (_status.CaptivePauseUntil is null)
             {
                 return;
             }
+
+            again = _status is { State: ConnectionState.Blocked, StrictBlock: false } ? _server : null;
 
             _pauseEnd?.Dispose();
             _pauseEnd = null;
@@ -293,6 +311,10 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
         Log(JournalLevel.Info, "firewall", $"captive pause end ({reason})  killswitch on");
         Raise();
+        if (again is not null)
+        {
+            _ = ConnectAsync(again);
+        }
     }
 
     /// <summary>Проверки по состоянию имитации. Служба честно отвечает, что она — имитация.</summary>

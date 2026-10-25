@@ -128,6 +128,72 @@ public class SimulatedGatewayClientTests
     }
 
     [Fact]
+    public async Task Strict_block_pauses_and_closes_the_network_again_like_the_service()
+    {
+        var time = new FakeTimeProvider();
+        var settings = new SettingsService(new MemorySettings());
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
+        using var gateway = new SimulatedGatewayClient(time, settings);
+        var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+
+        (await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken)).ShouldBeTrue();
+        (await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken)).ShouldBeFalse("пауза уже идет");
+        time.Advance(TimeSpan.FromMinutes(5));
+
+        (gateway.Status.State, gateway.Status.StrictBlock, gateway.Status.IsPaused).ShouldBe((ConnectionState.Blocked, true, false));
+        gateway.Status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Blocked), "после паузы — тот же блок");
+
+        await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+
+        (gateway.Status.StrictBlock, gateway.Status.IsPaused, gateway.Status.Protection).ShouldBe((true, false, ProtectionChecks.For(ConnectionState.Blocked)),
+            "«Закрыть сеть» через отключение тоже заканчивает паузу");
+
+        await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken);
+        connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        gateway.Status.IsPaused.ShouldBeFalse("подключение со строгой паузы паузу заканчивает");
+        time.Advance(TimeSpan.FromMinutes(5));
+        await connect;
+
+        (gateway.Status.State, gateway.Status.IsPaused).ShouldBe((ConnectionState.Connected, false), "таймер прежней паузы подключение не трогает");
+    }
+
+    [Fact]
+    public async Task Pause_in_a_block_where_attempts_ran_out_ends_with_a_new_connect_like_the_service()
+    {
+        var time = new FakeTimeProvider();
+        using var gateway = new SimulatedGatewayClient(time);
+        var connect = gateway.ConnectAsync(Server with { LatencyMs = null }, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+        gateway.Status.State.ShouldBe(ConnectionState.Blocked);
+
+        (await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken)).ShouldBeTrue();
+        time.Advance(TimeSpan.FromMinutes(5));
+
+        (gateway.Status.State, gateway.Status.IsPaused).ShouldBe((ConnectionState.Connecting, false), "вошли в Wi-Fi — сервер снова пробуется");
+    }
+
+    [Theory]
+    [InlineData(ConnectionState.Connecting)]
+    [InlineData(ConnectionState.Off)]
+    public async Task Pause_is_only_for_connected_or_blocked(ConnectionState state)
+    {
+        var time = new FakeTimeProvider();
+        using var gateway = new SimulatedGatewayClient(time);
+        if (state == ConnectionState.Connecting)
+        {
+            _ = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        }
+
+        (await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken)).ShouldBeFalse();
+        gateway.Status.State.ShouldBe(state);
+    }
+
+    [Fact]
     public async Task Disconnect_when_already_off_raises_nothing()
     {
         using var gateway = new SimulatedGatewayClient(new FakeTimeProvider());

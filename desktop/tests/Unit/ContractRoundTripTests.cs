@@ -107,6 +107,8 @@ public sealed class ContractRoundTripTests
         V1.Status.Parser.ParseFrom(off.ToContract().ToByteArray()).ToCore().ShouldBe(off);
         var strict = off with { State = ConnectionState.Blocked, StrictBlock = true };
         V1.Status.Parser.ParseFrom(strict.ToContract().ToByteArray()).ToCore().StrictBlock.ShouldBeTrue("«Блокировка» строгого режима доходит до окна");
+        var strictPause = strict with { CaptivePauseUntil = at.AddMinutes(5), Protection = ProtectionChecks.Paused };
+        V1.Status.Parser.ParseFrom(strictPause.ToContract().ToByteArray()).ToCore().ShouldBe(strictPause, "пауза строгой «Блокировки» — тоже");
     }
 
     [Fact]

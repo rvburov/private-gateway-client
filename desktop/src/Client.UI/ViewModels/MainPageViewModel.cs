@@ -31,6 +31,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
     private readonly SettingsService _settings;
+    private readonly OverlayViewModel _overlay;
+    private readonly IUrlLauncher _launcher;
     private readonly DispatcherTimer _clock;
 
     public MainPageViewModel(
@@ -42,7 +44,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         IClipboardService clipboard,
         INavigator navigator,
         ToastViewModel toast,
-        SettingsService settings)
+        SettingsService settings,
+        OverlayViewModel overlay,
+        IUrlLauncher launcher)
     {
         ArgumentNullException.ThrowIfNull(protection);
         Protection = protection;
@@ -54,6 +58,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _navigator = navigator;
         _toast = toast;
         _settings = settings;
+        _overlay = overlay;
+        _launcher = launcher;
         Chips = [new("all"), new("dns"), new("ipv6"), new("ks")];
         foreach (var chip in Chips)
         {
@@ -109,6 +115,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             ? Loc.Instance["status.connected.subPlain"]
             : Loc.Instance["status.connected.sub"],
         ConnectionState.Reconnecting => Loc.Instance.Format("status.reconnecting.sub", Status.Attempt),
+        // Подключение не состоялось, а блок остался (строгий режим, загрузка): причина — рядом с «сеть закрыта».
+        ConnectionState.Blocked when Status.ErrorCode is { } code =>
+            Loc.Instance.Format(Status.StrictBlock ? "status.strict.subError" : "status.error.sub", code),
         // Ошибка — не всегда блокировка: без службы и после отказа защиты нет, в режиме прокси блокировать нечем.
         ConnectionState.Error => Loc.Instance.Format(
             Status.Protection.AllTraffic == CheckState.Off ? "status.error.sub.direct"
@@ -143,6 +152,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     /// <summary>Пауза для входа в Wi-Fi: полоса с обратным отсчетом и «Вернуть защиту» в карточке состояния.</summary>
     public bool IsPaused => Status.IsPaused;
+
+    /// <summary>Кнопка полосы паузы: «Вернуть защиту»; в строгой «Блокировке» защиты не было — «Закрыть сеть».</summary>
+    public string ResumeText => Loc.Instance[Status.StrictBlock ? "pause.action.close" : "power.action.resume"];
 
     /// <summary>
     /// Раздельный режим при включенной защите: полоса «…идут мимо VPN» — «Защищено» не должно скрывать,
@@ -219,7 +231,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         {
             if (Status.State != ConnectionState.Connected || Status.IsPaused)
             {
-                return Loc.Instance["checked." + StateKey];
+                return Loc.Instance[Status is { IsPaused: true, StrictBlock: true } ? "checked.pausedStrict" : "checked." + StateKey];
             }
 
             if (IsChecking)
@@ -245,10 +257,13 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Кнопка справа от строки проверки: «Проверить», «Повторить», «Подключить» (строгий режим), «Перезапустить службу».</summary>
+    /// <summary>
+    /// Кнопка справа от строки проверки: «Проверить», «Повторить», «Вход в Wi-Fi» (строгий режим: подключает щит, а
+    /// сеть отеля без входа не пустит и VPN), «Перезапустить службу».
+    /// </summary>
     public string CheckActionText => Status.State switch
     {
-        ConnectionState.Blocked when Status.StrictBlock => Loc.Instance["action.connect"],
+        ConnectionState.Blocked when Status.StrictBlock => Loc.Instance["action.captive"],
         ConnectionState.Blocked => Loc.Instance["action.retry"],
         ConnectionState.Error => Loc.Instance["action.restartService"],
         _ => Loc.Instance["action.check"],
@@ -411,6 +426,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 await _gateway.RunChecksAsync().ConfigureAwait(true);
                 // Время проверки служба присылает в состоянии; не прислала (старая служба, сбой) — не висеть в «Проверяем».
                 IsChecking = false;
+                break;
+            case ConnectionState.Blocked when Status.StrictBlock:
+                await CaptivePortalFlow.RunAsync(_gateway, _controller, _overlay, _launcher, _navigator, _toast).ConfigureAwait(true);
                 break;
             case ConnectionState.Blocked or ConnectionState.Error when _catalog.Selected is { } server:
                 await _gateway.ConnectAsync(server).ConfigureAwait(true);

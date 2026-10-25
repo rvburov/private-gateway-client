@@ -13,11 +13,14 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// <summary>Сколько длится пауза для входа в Wi-Fi (доска 5: «на 5 минут»).</summary>
     public static readonly TimeSpan CaptivePause = TimeSpan.FromMinutes(5);
 
-    /// <summary>Нажатие кнопки-щита. Во время паузы для входа в Wi-Fi — вернуть защиту, а не отключить.</summary>
+    /// <summary>
+    /// Нажатие кнопки-щита. Во время паузы для входа в Wi-Fi — вернуть защиту, а не отключить; на паузе строгой
+    /// «Блокировки» — подключить: защиты там не было, а закрытую сеть возвращает кнопка паузы.
+    /// </summary>
     /// <returns>false — подключаться не к чему (нет выбранного сервера).</returns>
     public async Task<bool> ToggleAsync(CancellationToken cancellationToken = default)
     {
-        if (gateway.Status.IsPaused)
+        if (gateway.Status is { IsPaused: true, StrictBlock: false })
         {
             await gateway.ResumeProtectionAsync(cancellationToken).ConfigureAwait(false);
             return true;
@@ -104,12 +107,12 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// «Вход в Wi-Fi отеля или кафе»: открыть трафик мимо туннеля на <see cref="CaptivePause"/>.
     /// </summary>
     /// <returns>
-    /// false — паузы нет: защита выключена или службе нечего менять (режим прокси без системного
-    /// прокси) — страница входа в сеть откроется и без паузы.
+    /// false — паузы нет: сейчас ее не бывает (<see cref="CanPause"/>) или службе нечего менять (режим прокси без
+    /// системного прокси, блок, которого служба не знает).
     /// </returns>
     public async Task<bool> PauseForCaptivePortalAsync(CancellationToken cancellationToken = default)
     {
-        if (gateway.Status.State == ConnectionState.Off)
+        if (!CanPause(gateway.Status))
         {
             return false;
         }
@@ -117,8 +120,27 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
         return await gateway.PauseForCaptivePortalAsync(CaptivePause, cancellationToken).ConfigureAwait(false);
     }
 
-    /// <summary>Защита выключена — VPN не мешает выходу в сеть.</summary>
-    public bool IsProtectionOff => gateway.Status.State == ConnectionState.Off;
+    /// <summary>
+    /// Пауза для входа в Wi-Fi бывает в «Защищено», в «Блокировке» (строгий режим, блок с загрузки или с прошлого
+    /// запуска, попытки кончились) и в «Ошибке», где сеть закрыта (блок при обрыве, системный прокси на остановленном
+    /// ядре), и не идет уже. В «Подключении» и «Переподключении» ее нет.
+    /// </summary>
+    public static bool CanPause(ConnectionStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return !status.IsPaused && (status.State is ConnectionState.Connected or ConnectionState.Blocked
+            || (status.State == ConnectionState.Error && !NetworkIsOpen(status)));
+    }
+
+    /// <summary>
+    /// Сеть уже открыта — страница входа в сеть откроется и без паузы: защита выключена или «Ошибка» без блока
+    /// (трафик идет напрямую).
+    /// </summary>
+    public static bool NetworkIsOpen(ConnectionStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return status.State == ConnectionState.Off || (status.State == ConnectionState.Error && status.Protection.AllTraffic == CheckState.Off);
+    }
 
     /// <summary>«Вернуть защиту» раньше конца паузы.</summary>
     public Task ResumeAsync(CancellationToken cancellationToken = default) => gateway.ResumeProtectionAsync(cancellationToken);

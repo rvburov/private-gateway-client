@@ -22,7 +22,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// пространстве Linux с настоящими nftables, sing-box и Xray.
 /// </summary>
 [Collection(NamespaceSerial.Name)]
-public sealed class VpnModeTests
+public sealed partial class VpnModeTests
 {
     // Что называет проверочный адрес: через туннель — IP сервера, напрямую — реальный.
     private const string TunnelIp = "203.0.113.24";
@@ -201,6 +201,7 @@ public sealed class VpnModeTests
         killSwitch.IsEnabled.ShouldBeFalse("на паузе блок снят — иначе страница входа в сеть не откроется");
         (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля", "страница входа в сеть открывается напрямую");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 3), "туннель на паузе стоит");
+        (await service.Client.PauseForCaptivePortalAsync(hour, cancellationToken: Ct)).Until.ShouldBeNull("пауза уже идет — повтором ее не продлить");
 
         await service.Client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Cancel = true }, cancellationToken: Ct);
 
@@ -492,8 +493,8 @@ public sealed class VpnModeTests
         var file = Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8] + ".json");
         try
         {
-            BootBlock.Save(file, new KillSwitchPolicy("pgtun0", [new(IPAddress.Parse("198.51.100.20"), 443)], AllowLan: true, BlockOutsideDns: false,
-                Direct: new DirectExit("/opt/pg/sing-box", 0x5047)));
+            BootBlock.Save(file, new HeldBlock(new KillSwitchPolicy("pgtun0", [new(IPAddress.Parse("198.51.100.20"), 443)], AllowLan: true,
+                BlockOutsideDns: false, Direct: new DirectExit("/opt/pg/sing-box", 0x5047)), "vpn.example.com", Boot: true, Strict: false));
             var killSwitch = new FakeKillSwitch();
 
             // Как после перезагрузки: правил нет, служба только что запустилась.
@@ -546,7 +547,8 @@ public sealed class VpnModeTests
                 await service.Client.ConnectAsync(off, cancellationToken: Ct);
                 await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
 
-                File.Exists(file).ShouldBeFalse("«Защита при загрузке» выключена — блок перезагрузку не переживет");
+                BootBlock.Load(file).ShouldBeNull("«Защита при загрузке» выключена — блок перезагрузку не переживет");
+                BootBlock.Read(file).ShouldNotBeNull("а перезапуск службы — переживет: файл блока помнит его");
                 rig.KillSwitch.Last!.Persistent.ShouldBeFalse("и фильтры WFP — не постоянные");
 
                 await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
@@ -633,7 +635,7 @@ public sealed class VpnModeTests
             await next.Client.ConnectAsync(bootOff, cancellationToken: Ct);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connecting);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connected);
-            (File.Exists(block), File.Exists(connect)).ShouldBe((false, false));
+            (BootBlock.Load(block) is null, File.Exists(connect)).ShouldBe((true, false));
             await next.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connecting);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connected);
@@ -641,6 +643,7 @@ public sealed class VpnModeTests
             // Строгий режим: защиту выключили вручную — после перезагрузки блок, а не подключение.
             await next.Client.DisconnectAsync(new V1.DisconnectRequest { KeepBlock = true }, cancellationToken: Ct);
             (File.Exists(block), File.Exists(connect)).ShouldBe((true, false));
+            BootBlock.Read(block)!.Strict.ShouldBeTrue("строгий режим помнит и перезагрузка");
 
             await next.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
             (File.Exists(block), File.Exists(connect), rig.KillSwitch.IsEnabled).ShouldBe((false, false, false));
@@ -1082,7 +1085,11 @@ public sealed class VpnModeTests
 
         public KillSwitchPolicy? Policy { get; private set; }
 
-        public bool Fails { get; init; }
+        public bool Fails { get; set; }
+
+        public bool DisableFails { get; set; }
+
+        public int Enables { get; private set; }
 
         public int Disabled { get; private set; }
 
@@ -1093,12 +1100,18 @@ public sealed class VpnModeTests
                 throw new IOException("nft: правила не приняты");
             }
 
+            Enables++;
             IsEnabled = true;
             Policy = policy;
         }
 
         public void Disable()
         {
+            if (DisableFails)
+            {
+                throw new IOException("nft: таблица занята");
+            }
+
             Disabled++;
             IsEnabled = false;
         }

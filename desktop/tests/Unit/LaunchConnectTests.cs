@@ -61,6 +61,18 @@ public sealed class LaunchConnectTests
     }
 
     [Fact]
+    public async Task Pause_for_wifi_sign_in_is_not_cut_by_a_window_restart()
+    {
+        var (launch, gateway, _) = Start(ConnectionState.Blocked, pausedUntil: DateTimeOffset.UnixEpoch.AddMinutes(5));
+
+        var run = launch.RunAsync(Ct);
+        gateway.Announce();
+        await run;
+
+        gateway.Calls.ShouldBeEmpty("пользователь входит в сеть — подключение оборвало бы паузу");
+    }
+
+    [Fact]
     public async Task Nothing_without_the_setting_the_first_run_or_a_server()
     {
         (await Calls(s => s with { ConnectOnLaunch = false })).ShouldBeEmpty("переключатель выключен");
@@ -79,11 +91,11 @@ public sealed class LaunchConnectTests
     }
 
     private static (LaunchConnect Launch, ConnectionControllerTests.FakeGateway Gateway, FakeTimeProvider Time) Start(ConnectionState state,
-        Func<AppSettings, AppSettings>? change = null, string? selected = "nl")
+        Func<AppSettings, AppSettings>? change = null, string? selected = "nl", DateTimeOffset? pausedUntil = null)
     {
         var settings = new SettingsService(new MemorySettings());
         settings.Update(s => (change ?? (x => x))(s with { ConnectOnLaunch = true, OnboardingDone = true }));
-        var gateway = new ConnectionControllerTests.FakeGateway(state, "nl");
+        var gateway = new ConnectionControllerTests.FakeGateway(state, "nl", pausedUntil);
         var time = new FakeTimeProvider();
         return (new LaunchConnect(settings, gateway, new ConnectionControllerTests.FakeCatalog(Nl) { SelectedId = selected }, time), gateway, time);
     }

@@ -46,7 +46,8 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         Code = gateway.Status.ErrorCode is ErrorCodes.AdminRequired or ErrorCodes.OtherVpn ? gateway.Status.ErrorCode : ErrorCodes.ServiceNotRunning;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() =>
         {
-            if (status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn })
+            if (status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn }
+                or { State: ConnectionState.Blocked, ErrorCode: ErrorCodes.OtherVpn })
             {
                 Code = status.ErrorCode;
             }
@@ -230,7 +231,8 @@ public sealed partial class ProblemPageViewModel : ObservableObject
             IsWorking = false;
         }
 
-        if (_gateway.Status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.OtherVpn })
+        // В строгом режиме и при загрузке отказ оставляет «Блокировку» с тем же кодом.
+        if (_gateway.Status is { State: ConnectionState.Error or ConnectionState.Blocked, ErrorCode: ErrorCodes.OtherVpn })
         {
             _toast.Show(Loc.Instance["problem.conflict.still"], ToastViewModel.LongDuration);
             return;

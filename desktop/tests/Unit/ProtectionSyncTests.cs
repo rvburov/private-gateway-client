@@ -72,6 +72,46 @@ public sealed class ProtectionSyncTests
     }
 
     [Fact]
+    public void Strict_mode_turned_off_while_the_service_was_away_opens_the_block_it_sends_later_once()
+    {
+        var (settings, gateway, time) = Start(ConnectionState.Error, change: s => s with { Protection = s.Protection with { StrictMode = true } });
+
+        // Службы нет («Ошибка»): строгий режим выключили, а открыть еще нечего.
+        settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
+        time.Advance(ProtectionSync.Quiet * 2);
+        gateway.Calls.ShouldBeEmpty();
+
+        // Служба вернулась и помнит строгий режим.
+        gateway.Status = gateway.Status with { State = ConnectionState.Blocked, StrictBlock = true };
+        gateway.Announce();
+        gateway.Announce();
+
+        gateway.Calls.ShouldBe(["disconnect"], "одна устаревшая «Блокировка» — одно отключение");
+    }
+
+    [Fact]
+    public void Strict_block_this_window_did_not_turn_off_is_left_closed()
+    {
+        // Другой пользователь машины или сброшенные настройки окна: строгий режим в окне выключен, а выключало его не оно.
+        var (_, gateway, _) = Start(ConnectionState.Blocked, strict: true);
+
+        gateway.Announce();
+
+        gateway.Calls.ShouldBeEmpty("открыть сеть без нажатия можно, только если строгий режим выключили в этом окне");
+    }
+
+    [Fact]
+    public void Strict_block_of_the_strict_mode_that_is_on_stays_closed_also_on_a_pause()
+    {
+        var (_, gateway, _) = Start(ConnectionState.Blocked, pausedUntil: DateTimeOffset.UnixEpoch.AddMinutes(5), strict: true,
+            change: s => s with { Protection = s.Protection with { StrictMode = true } });
+
+        gateway.Announce();
+
+        gateway.Calls.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Settings_the_service_does_not_get_do_not_reconnect()
     {
         var (settings, gateway, time) = Start(ConnectionState.Connected);

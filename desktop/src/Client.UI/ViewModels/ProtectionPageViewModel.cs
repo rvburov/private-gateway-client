@@ -18,6 +18,7 @@ namespace PrivateGateway.Client.UI.ViewModels;
 public sealed partial class ProtectionPageViewModel : ObservableObject
 {
     private readonly SettingsService _settings;
+    private readonly IGatewayClient _gateway;
     private readonly ConnectionController _controller;
     private readonly OverlayViewModel _overlay;
     private readonly ToastViewModel _toast;
@@ -26,6 +27,7 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
 
     public ProtectionPageViewModel(
         SettingsService settings,
+        IGatewayClient gateway,
         ConnectionController controller,
         OverlayViewModel overlay,
         ToastViewModel toast,
@@ -33,6 +35,7 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         IUrlLauncher launcher)
     {
         _settings = settings;
+        _gateway = gateway;
         _controller = controller;
         _overlay = overlay;
         _toast = toast;
@@ -171,29 +174,10 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
 
     /// <summary>
     /// «Вход в Wi-Fi отеля или кафе»: при включенной защите — вопрос, пауза на 5 минут и страница входа
-    /// в браузере; без защиты — сразу страница: VPN ей не мешает.
+    /// в браузере; без защиты — сразу страница: VPN ей не мешает (<see cref="CaptivePortalFlow"/>).
     /// </summary>
     [RelayCommand]
-    private async Task OpenCaptivePortalAsync()
-    {
-        if (_controller.IsProtectionOff)
-        {
-            await _launcher.OpenAsync(CaptivePortal.CheckPage).ConfigureAwait(true);
-            _toast.Show(Loc.Instance["pause.off"], ToastViewModel.LongDuration);
-            return;
-        }
-
-        if (!await SafetyDialogs.ConfirmCaptivePauseAsync(_overlay).ConfigureAwait(true))
-        {
-            return;
-        }
-
-        // Служба может ответить, что паузе нечего менять: тогда так и сказать, а не делать вид паузы.
-        var paused = await _controller.PauseForCaptivePortalAsync().ConfigureAwait(true);
-        await _launcher.OpenAsync(CaptivePortal.CheckPage).ConfigureAwait(true);
-        _navigator.Navigate(Pages.Home);
-        _toast.Show(Loc.Instance[paused ? "pause.started" : "pause.notNeeded"], ToastViewModel.LongDuration);
-    }
+    private Task OpenCaptivePortalAsync() => CaptivePortalFlow.RunAsync(_gateway, _controller, _overlay, _launcher, _navigator, _toast);
 
     internal void SaveCustomDns(string address) => Set(p => p with { Dns = DnsChoice.Custom, CustomDns = address });
 

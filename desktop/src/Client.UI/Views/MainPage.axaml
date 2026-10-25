@@ -53,7 +53,7 @@
       <!-- Состояние защиты -->
       <Border Classes="card" Margin="20,0" Padding="16,14,14,12">
         <StackPanel Spacing="12">
-          <!-- Пауза для входа в Wi-Fi: отсчет и «Вернуть защиту» -->
+          <!-- Пауза для входа в Wi-Fi: отсчет и «Вернуть защиту» («Закрыть сеть» в строгом режиме) -->
           <Border x:Name="PauseBanner" IsVisible="{Binding IsPaused}" CornerRadius="12" Padding="10,8,8,8"
                   BorderThickness="1" Background="{StaticResource PgBrush.Status.Caution.Tint}"
                   BorderBrush="{StaticResource PgBrush.Status.Caution.Line}">
@@ -69,7 +69,8 @@
               <Button x:Name="ResumeButton" Grid.Column="2" Height="30" Padding="10,0" CornerRadius="8" BorderThickness="0"
                       VerticalContentAlignment="Center" Background="{StaticResource PgBrush.Surface.Solid}"
                       Foreground="{StaticResource PgBrush.Status.Caution.Badge}" FontSize="{StaticResource PgFontSize.Caption}"
-                      FontWeight="Bold" Command="{Binding ResumeCommand}" Content="{l:L power.action.resume}" />
+                      FontWeight="Bold" Command="{Binding ResumeCommand}" Content="{Binding ResumeText}"
+                      AutomationProperties.Name="{Binding ResumeText}" />
             </Grid>
           </Border>
           <!-- Раздельный режим: что-то идет мимо VPN; нажатие — в «Маршрутизацию» -->

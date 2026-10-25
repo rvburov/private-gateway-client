@@ -92,7 +92,7 @@ public sealed class MainWindowTests : WindowHarness
         (Text(window, "StatusTitle"), main.StatusSubtitle, Text(window, "StateLabel"))
             .ShouldBe(("Интернет заблокирован", "Строгий режим: без VPN сеть закрыта", "Блокировка"));
         shell.Protection.ActionText.ShouldBe(Loc.Instance["power.action.connect"], "щит в строгом режиме включает защиту");
-        (main.CheckedText, main.CheckActionText).ShouldBe(("Выключается в «Защите и утечках»", "Подключить"));
+        (main.CheckedText, main.CheckActionText).ShouldBe(("Выключается в «Защите и утечках»", "Вход в Wi-Fi"), "подключает щит, а сеть отеля без входа не пустит");
         Snapshot(window, "main-strict");
 
         Press(window, "Power");
@@ -100,6 +100,55 @@ public sealed class MainWindowTests : WindowHarness
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
 
         shell.Overlay.HasDialog.ShouldBeFalse("о снятии защиты спрашивать не о чем — она включается");
+    }
+
+    [AvaloniaFact]
+    public async Task Strict_block_pauses_for_wifi_sign_in_and_closes_the_network_after()
+    {
+        var (window, shell) = Open();
+        var main = (MainPageViewModel)shell.CurrentPage!;
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
+        Press(window, "Power");
+        Time.Advance(SimulatedGatewayClient.ConnectDelay);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        Press(window, "Power");
+        WaitFor(() => shell.Protection.Status.StrictBlock);
+
+        var open = main.CheckActionCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        var dialog = shell.Overlay.Dialog.ShouldNotBeNull();
+        dialog.Text.ShouldBe(Loc.Instance["pause.dialog.textStrict"], "после паузы сеть закроется, а не вернется VPN");
+        dialog.SecondaryCommand.Execute(null);
+        await open;
+        WaitFor(() => shell.Protection.Status.IsPaused);
+
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage]);
+        shell.Toast.Text.ShouldBe("Пауза на 5 минут: войдите в сеть на открывшейся странице");
+        Find<Border>(window, "PauseBanner").IsVisible.ShouldBeTrue();
+        Find<Button>(window, "ResumeButton").Content.ShouldBe("Закрыть сеть");
+        (Text(window, "StatusTitle"), main.CheckedText).ShouldBe(("Защита на паузе", "После паузы сеть снова закроется"));
+        (shell.Protection.Tone, shell.Protection.ActionText).ShouldBe((Tone.Partial, "Включить защиту"), "вошли в сеть — щит подключает VPN");
+        Snapshot(window, "main-strict-paused");
+
+        Press(window, "ResumeButton");
+        WaitFor(() => !shell.Protection.Status.IsPaused);
+
+        (shell.Protection.Status.State, shell.Protection.Status.StrictBlock).ShouldBe((ConnectionState.Blocked, true));
+        (Text(window, "StatusTitle"), main.StatusSubtitle, shell.Protection.Tone).ShouldBe(("Интернет заблокирован", "Строгий режим: без VPN сеть закрыта", Tone.Blocked));
+
+        (await Service<ConnectionController>().PauseForCaptivePortalAsync()).ShouldBeTrue();
+        WaitFor(() => shell.Protection.Status.IsPaused);
+        Time.Advance(ConnectionController.CaptivePause);
+        WaitFor(() => !shell.Protection.Status.IsPaused);
+        shell.Protection.Status.StrictBlock.ShouldBeTrue("пауза кончилась сама — сеть снова закрыта");
+
+        (await Service<ConnectionController>().PauseForCaptivePortalAsync()).ShouldBeTrue();
+        WaitFor(() => shell.Protection.Status.IsPaused);
+        Press(window, "Power");
+        Time.Advance(SimulatedGatewayClient.ConnectDelay);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+
+        (shell.Overlay.HasDialog, shell.Protection.Status.IsPaused, shell.Protection.Status.StrictBlock).ShouldBe((false, false, false));
     }
 
     [AvaloniaFact]
@@ -374,6 +423,27 @@ public sealed class MainWindowTests : WindowHarness
 
         shell.CurrentPage.ShouldBeOfType<MainPageViewModel>().StatusSubtitle.ShouldBe(subtitle);
         shell.CurrentKey.ShouldBe(Pages.Home, "ошибка ядра — не экран ошибки службы");
+    }
+
+    [AvaloniaTheory]
+    [InlineData(true, ErrorCodes.ServerNotFound, "PGC-NET-002 · строгий режим: без VPN сеть закрыта", Pages.Home)]
+    [InlineData(false, ErrorCodes.ServerNotFound, "PGC-NET-002 · трафик заблокирован", Pages.Home)]
+    [InlineData(true, ErrorCodes.OtherVpn, "PGC-NET-010 · строгий режим: без VPN сеть закрыта", Pages.Problem)]
+    public async Task Refusal_that_keeps_the_block_is_shown_with_its_reason(bool strict, string code, string subtitle, string page)
+    {
+        // Строгий режим и загрузка: отказ в подключении сеть не открывает — «Блокировка» с причиной.
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = connecting => connecting.MoveTo(ConnectionState.Blocked, Time.GetUtcNow()) with { StrictBlock = strict, ErrorCode = code },
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.ErrorCode == code);
+
+        main.StatusSubtitle.ShouldBe(subtitle);
+        WaitFor(() => shell.CurrentKey == page);
     }
 
     [AvaloniaFact]

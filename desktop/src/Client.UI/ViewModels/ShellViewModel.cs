@@ -135,10 +135,14 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     // Последняя показанная ошибка службы: то же состояние, присланное повторно, экран не открывает.
     private DateTimeOffset? _problemSince;
 
-    /// <summary>Новая ошибка службы — экран ошибки, на каком бы экране ни был.</summary>
+    /// <summary>
+    /// Новая ошибка службы — экран ошибки, на каком бы экране ни был. «Работает другой VPN» — и в «Блокировке»: в
+    /// строгом режиме и при загрузке отказ сеть не открывает.
+    /// </summary>
     private void ShowProblem(ConnectionStatus status)
     {
-        if (status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn }
+        if (status is not ({ State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn }
+                or { State: ConnectionState.Blocked, ErrorCode: ErrorCodes.OtherVpn })
             || status.Since == _problemSince)
         {
             return;

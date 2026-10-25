@@ -109,6 +109,10 @@ public sealed partial class Gateway : IAsyncDisposable
     private IReadOnlyList<IPAddress> _addresses = [];
     private bool _killSwitchOn;
 
+    // Блок, который держит служба (и после паузы, когда правила сняты): вернуть его после паузы и при остановке,
+    // узнать тот же сервер, когда имя под блоком не найти. Поставлен этим запуском или прочитан из файла блока.
+    private HeldBlock? _held;
+
     // Конец паузы для входа в Wi-Fi; любая смена состояния паузу заканчивает.
     private ITimer? _pauseEnd;
 
@@ -128,20 +132,38 @@ public sealed partial class Gateway : IAsyncDisposable
             network.Changed += OnNetworkChanged;
         }
 
+        var held = options.BootBlock is { } path ? Service.BootBlock.Read(path) : null;
         if (options.KillSwitch is { } killSwitch && Try(() => killSwitch.IsEnabled, "Не прочитать правила блока при обрыве"))
         {
-            // Служба упала или остановилась с включенной защитой: трафик заблокирован — так и показывать.
-            _blocking = true;
-            _status = _status with { State = ConnectionState.Blocked, Protection = ProtectionChecks.For(ConnectionState.Blocked) };
-            journal.Add(JournalLevel.Warning, "service", "Блок при обрыве остался с прошлого запуска: трафик заблокирован до подключения или выключения защиты");
+            // Служба упала или остановилась с включенной защитой: трафик заблокирован — так и показывать. Какой это
+            // блок и строгий ли режим — из файла блока (на Windows постоянные фильтры WFP стоят и после перезагрузки).
+            HoldAtStart(held);
+            journal.Add(JournalLevel.Warning, "service", held is { Strict: true }
+                ? "Строгий режим: блок при обрыве остался с прошлого запуска — сеть закрыта до подключения или выключения строгого режима"
+                : "Блок при обрыве остался с прошлого запуска: трафик заблокирован до подключения или выключения защиты");
         }
-        else if (options.KillSwitch is { } boot && options.BootBlock is { } path && Service.BootBlock.Load(path) is { } policy
-            && Try(() => { boot.Enable(policy); return true; }, "«Защита при загрузке»: блок не включился"))
+        else if (options.KillSwitch is { } boot && held is { Boot: true }
+            && Try(() => { boot.Enable(held.Policy); return true; }, "«Защита при загрузке»: блок не включился"))
         {
             // Защита была включена, когда машина выключилась: блок — раньше сети, до подключения или выключения.
-            _blocking = true;
-            _status = _status with { State = ConnectionState.Blocked, Protection = ProtectionChecks.For(ConnectionState.Blocked) };
-            journal.Add(JournalLevel.Warning, "service", "Защита при загрузке: защита была включена — трафик заблокирован до подключения или выключения защиты");
+            HoldAtStart(held);
+            RememberBlock(_held);
+            journal.Add(JournalLevel.Warning, "service", held.Strict
+                ? "Защита при загрузке, строгий режим: сеть закрыта до подключения или выключения строгого режима"
+                : "Защита при загрузке: защита была включена — трафик заблокирован до подключения или выключения защиты");
+        }
+        else if (options.KillSwitch is { } paused && held is { Paused: true }
+            && Try(() => { paused.Enable(held.Policy); return true; }, "Блок при обрыве не вернулся после паузы"))
+        {
+            // Служба упала на паузе для входа в Wi-Fi: пауза кончилась вместе с ней — блок возвращается.
+            HoldAtStart(held);
+            RememberBlock(_held);
+            journal.Add(JournalLevel.Warning, "service", "Служба остановилась на паузе для входа в Wi-Fi: блок при обрыве возвращен");
+        }
+        else if (held is { Boot: false })
+        {
+            // Блок без «Защиты при загрузке» перезагрузку не пережил — помнить нечего.
+            RememberBlock(null);
         }
 
         // Своего sing-box еще нет: правила маршрутизации, оставшиеся от его аварии в прошлом запуске, — убрать.
@@ -200,7 +222,8 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     public async Task<bool> ConnectAtBootAsync(CancellationToken cancellationToken = default)
     {
-        if (!_blocking || _options.BootConnect?.Load() is not { } stored)
+        // Строгий режим: защиту выключили вручную — при загрузке сеть закрыта, а не подключена.
+        if (!_blocking || Status.StrictBlock || _options.BootConnect?.Load() is not { } stored)
         {
             return false;
         }
@@ -238,20 +261,20 @@ public sealed partial class Gateway : IAsyncDisposable
         }
         catch (ArgumentException e)
         {
-            return await RejectAsync(request.Server?.Id, null, ErrorCodes.BadRequest, e.Message, cancellationToken).ConfigureAwait(false);
+            return await RejectAsync(request, null, ErrorCodes.BadRequest, e.Message, cancellationToken).ConfigureAwait(false);
         }
 
         var serverId = request.Server.Id;
         var vpn = core.Mode == ConnectionMode.Vpn;
         if (vpn && !_options.CanVpn)
         {
-            return await RejectAsync(serverId, core.Mode, ErrorCodes.AdminRequired, "Режиму VPN нужны права администратора", cancellationToken)
+            return await RejectAsync(request, core.Mode, ErrorCodes.AdminRequired, "Режиму VPN нужны права администратора", cancellationToken)
                 .ConfigureAwait(false);
         }
 
         if (vpn && (_options.KillSwitch is null || _options.SingBoxPath is not { } singBox || !File.Exists(singBox)))
         {
-            return await RejectAsync(serverId, core.Mode, ErrorCodes.VpnNotReady,
+            return await RejectAsync(request, core.Mode, ErrorCodes.VpnNotReady,
                 _options.KillSwitch is null ? "Режим VPN на этой ОС еще не готов: нет блока при обрыве" : "Нет сборки sing-box", cancellationToken)
                 .ConfigureAwait(false);
         }
@@ -261,13 +284,13 @@ public sealed partial class Gateway : IAsyncDisposable
         var built = XrayConfigBuilder.Build(core, probe: probe);
         if (built.Config is not { } config)
         {
-            return await RejectAsync(serverId, core.Mode, ErrorCodes.UnsupportedServer, "Ядро Xray не возьмется за сервер: " + built.Rejection,
+            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, "Ядро Xray не возьмется за сервер: " + built.Rejection,
                 cancellationToken).ConfigureAwait(false);
         }
 
         if (_options.XrayPath is not { } xray || !File.Exists(xray))
         {
-            return await RejectAsync(serverId, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", cancellationToken).ConfigureAwait(false);
+            return await RejectAsync(request, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", cancellationToken).ConfigureAwait(false);
         }
 
         // Чужой туннель с маршрутом ко всему интернету: два VPN сразу — трафик может пойти мимо нашего.
@@ -275,7 +298,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             if (!request.AllowOtherVpn)
             {
-                return await RejectAsync(serverId, core.Mode, ErrorCodes.OtherVpn,
+                return await RejectAsync(request, core.Mode, ErrorCodes.OtherVpn,
                     $"Работает другой VPN: маршрут ко всему интернету через {string.Join(", ", other)}", cancellationToken).ConfigureAwait(false);
             }
 
@@ -289,10 +312,17 @@ public sealed partial class Gateway : IAsyncDisposable
             : Task.FromResult<string?>(null);
         IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
         _directIp = await direct.ConfigureAwait(false) ?? _directIp;
+        if (vpn && addresses.Count == 0 && HeldAddresses(core) is { Count: > 0 } held)
+        {
+            // Под блоком DNS мимо туннеля закрыт, имени не найти: тот же сервер — по адресам, найденным раньше.
+            addresses = held;
+            _journal.Add(JournalLevel.Info, "service", "Адрес сервера под блоком не найден — взят найденный при прежнем подключении");
+        }
+
         if (vpn && addresses.Count == 0)
         {
-            // Под блоком без туннеля имя не разрешить: отказ снимает блок, повторное подключение найдет адрес.
-            return await RejectAsync(serverId, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", cancellationToken).ConfigureAwait(false);
+            // Отказ снимает блок (в строгом режиме — нет), повторное подключение найдет адрес.
+            return await RejectAsync(request, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", cancellationToken).ConfigureAwait(false);
         }
 
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -396,7 +426,8 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>
     /// Выключить защиту. <paramref name="keepBlock"/> — строгий режим: в режиме VPN с блоком при обрыве сеть
     /// остается закрытой — ядра остановлены, блок без туннеля, «Блокировка» до подключения или выключения
-    /// строгого режима. Без блока или в режиме прокси закрывать нечем — защита просто выключается.
+    /// строгого режима; так же — с блоком, оставшимся с прошлого запуска. Без блока или в режиме прокси
+    /// закрывать нечем — защита просто выключается.
     /// </summary>
     public async Task DisconnectAsync(bool keepBlock = false, CancellationToken cancellationToken = default)
     {
@@ -407,12 +438,15 @@ public sealed partial class Gateway : IAsyncDisposable
             await StopCoreAsync().ConfigureAwait(false);
             _systemProxy?.Release();
             _journal.Hide([]);
-            if (keepBlock && Status.State != ConnectionState.Off && _request is { Mode: ConnectionMode.Vpn } request && _killSwitchOn
-                && Block(request, _addresses, "оставлен: строгий режим"))
+            // Блок, которого служба не знает (правила остались, файла блока нет), тоже остается: строгий режим просил
+            // оставить сеть закрытой — вернуть его после паузы нечем, но и открывать нельзя.
+            if (keepBlock && Status.State != ConnectionState.Off && (HoldStrictBlock() || _blocking))
             {
                 if (Status.State == ConnectionState.Blocked)
                 {
-                    Update(s => s with { StrictBlock = true, CaptivePauseUntil = null });
+                    // И пауза для входа в Wi-Fi кончается: сеть снова закрыта.
+                    EndPauseTimer();
+                    Update(s => s with { StrictBlock = true, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Blocked) });
                 }
                 else
                 {
@@ -439,55 +473,104 @@ public sealed partial class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Пауза для входа в Wi-Fi (только «Защищено»): иначе страница входа в сеть не откроется. В режиме
-    /// VPN на это время туннель останавливается и блок при обрыве снимается; в режиме прокси системный
-    /// прокси возвращается к прямому подключению. По истечении защита возвращается сама. В режиме
-    /// прокси без системного прокси паузе нечего менять — паузы нет (null).
+    /// Пауза для входа в Wi-Fi: иначе страница входа в сеть не откроется. В «Защищено» режима VPN на это время
+    /// блок при обрыве снимается и туннель останавливается, режима прокси — системный прокси возвращается к
+    /// прямому подключению; по истечении защита возвращается сама. В «Блокировке» (строгий режим, блок с
+    /// загрузки или с прошлого запуска, попытки кончились) блок снимается на время, а по истечении — тот же
+    /// блок, если подключения нет (<see cref="ResumeAsync(int, string, CancellationToken)"/>). Паузы нет (null):
+    /// в остальных состояниях, на паузе, без системного прокси в режиме прокси, без известного блока и если
+    /// блок не снялся.
     /// </summary>
     public async Task<DateTimeOffset?> PauseAsync(TimeSpan duration, CancellationToken cancellationToken = default)
     {
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Status.State != ConnectionState.Connected || duration <= TimeSpan.Zero)
+            var status = Status;
+            if (duration <= TimeSpan.Zero || status.IsPaused)
             {
-                return null;
-            }
-
-            var vpn = _request is { Mode: ConnectionMode.Vpn };
-            if (!vpn && _systemProxy is not { IsActive: true })
-            {
-                _journal.Add(JournalLevel.Info, "service", "Пауза для входа в Wi-Fi ничего не меняет: системный прокси не включен");
                 return null;
             }
 
             duration = duration > MaxCaptivePause ? MaxCaptivePause : duration;
-            var until = _time.GetUtcNow() + duration;
-            if (vpn)
+            string what;
+            if (status.State is ConnectionState.Blocked or ConnectionState.Error && _blocking && _held is not null)
             {
-                // Страница входа в сеть — мимо туннеля: туннель стоит, блок снят; защита включена — после перезагрузки блок вернется.
+                // Страница входа в сеть — мимо блока; блок помнит и перезагрузка (файл блока остается).
+                if (!OpenBlock())
+                {
+                    return null;
+                }
+
+                what = status.StrictBlock ? "строгий режим — сеть открыта без VPN" : "блок снят, трафик идет напрямую";
+            }
+            else if (status.State == ConnectionState.Connected && _request is { Mode: ConnectionMode.Vpn })
+            {
+                // Блок снимается раньше туннеля: не снялся — туннель цел, «Защищено» остается правдой.
+                if (!OpenBlock())
+                {
+                    return null;
+                }
+
                 await StopCoreAsync().ConfigureAwait(false);
-                ReleaseBlock(forget: false);
+                what = "трафик идет напрямую";
+            }
+            else if (status.State is ConnectionState.Connected or ConnectionState.Error && _systemProxy is { IsActive: true } systemProxy)
+            {
+                // В «Ошибке» режима прокси системный прокси ведет на остановленное ядро — страница входа тоже не открылась бы.
+                systemProxy.Release();
+                what = "трафик идет напрямую";
             }
             else
             {
-                _systemProxy!.Release();
+                if (status.State == ConnectionState.Connected)
+                {
+                    _journal.Add(JournalLevel.Info, "service", "Пауза для входа в Wi-Fi ничего не меняет: системный прокси не включен");
+                }
+
+                return null;
             }
 
+            var until = _time.GetUtcNow() + duration;
             var session = _session;
             Update(s => s with { CaptivePauseUntil = until, Protection = ProtectionChecks.Paused });
             lock (_gate)
             {
+                _pauseEnd?.Dispose();
                 _pauseEnd = _time.CreateTimer(_ => _ = ResumeAsync(session, "время вышло"), null, duration, Timeout.InfiniteTimeSpan);
             }
 
-            _journal.Add(JournalLevel.Warning, "service", $"Пауза для входа в Wi-Fi на {duration.TotalMinutes:0.#} мин: трафик идет напрямую");
+            _journal.Add(JournalLevel.Warning, "service", $"Пауза для входа в Wi-Fi на {duration.TotalMinutes:0.#} мин: {what}");
             return until;
         }
         finally
         {
             _switch.Release();
         }
+    }
+
+    /// <summary>
+    /// Снять блок на паузу, не забывая его: в файле блока — отметка паузы, служба, упавшая на паузе, вернет блок при
+    /// запуске. Не снялся — паузы нет, это в журнале.
+    /// </summary>
+    private bool OpenBlock()
+    {
+        if (_held is { } held)
+        {
+            RememberBlock(held with { Paused = true });
+        }
+
+        ReleaseBlock(forget: false);
+        if (_blocking)
+        {
+            _journal.Add(JournalLevel.Error, "service", "Пауза для входа в Wi-Fi не началась: блок при обрыве не снялся");
+            if (_held is { } kept)
+            {
+                RememberBlock(kept);
+            }
+        }
+
+        return !_blocking;
     }
 
     /// <summary>«Вернуть защиту» раньше конца паузы.</summary>
@@ -542,6 +625,13 @@ public sealed partial class Gateway : IAsyncDisposable
 
         await StopCoreAsync().ConfigureAwait(false);
         _systemProxy?.Release();
+
+        // Остановка на паузе для входа в Wi-Fi: защита не выключалась — блок возвращается, как при любой остановке.
+        if (Status.IsPaused && !_blocking && _held is { } held)
+        {
+            Restore(held, "возвращен: служба остановлена на паузе");
+        }
+
         if (_blocking)
         {
             _journal.Add(JournalLevel.Warning, "service", "Служба остановлена, блок при обрыве оставлен: трафик заблокирован до выключения защиты");
@@ -553,11 +643,14 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>
     /// Отказ: запрошенное подключение не состоится, а прежнее не остается работать молча — ядро
     /// останавливается, состояние «Ошибка» с кодом, его видят все подписчики. Из «Выключено» и
-    /// «Ошибки» — через «Подключение», как любая попытка.
+    /// «Ошибки» — через «Подключение», как любая попытка. Блок при загрузке и строгий режим сеть не открывают:
+    /// «Блокировка» с кодом причины.
     /// </summary>
-    private async Task<V1.ConnectReply> RejectAsync(string? serverId, ConnectionMode? mode, string code, string message,
+    private async Task<V1.ConnectReply> RejectAsync(V1.ConnectRequest request, ConnectionMode? mode, string code, string message,
         CancellationToken cancellationToken)
     {
+        var serverId = request.Server?.Id;
+        var strict = mode == ConnectionMode.Vpn && request.Protection?.StrictMode == true;
         _journal.Add(JournalLevel.Warning, "service", $"Подключение отклонено ({code}): {message}");
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -570,11 +663,39 @@ public sealed partial class Gateway : IAsyncDisposable
                 ServerId = serverId is { Length: > 0 } ? serverId : s.ServerId,
             };
 
-            // При загрузке блок стоит до подключения или выключения защиты — отказ его не снимает.
-            if (_holdBlock && _blocking && Status.State == ConnectionState.Blocked)
+            // При загрузке и в строгом режиме блок стоит до подключения или выключения защиты — отказ его не снимает,
+            // а на паузе для входа в Wi-Fi возвращает. Строгий режим держит сеть закрытой и после отказа из «Защищено»
+            // или «Ошибки»: «Блокировка» строгого режима.
+            var status = Status;
+            var held = status.State == ConnectionState.Blocked && (_holdBlock || status.StrictBlock)
+                && (_blocking || (_held is { } block && Restore(block, "возвращен: подключение не состоялось")));
+            if (held || (strict && status.State != ConnectionState.Off && HoldStrictBlock()))
             {
-                Update(s => Requested(s) with { ErrorCode = code });
-                _journal.Add(JournalLevel.Warning, "service", "Защита при загрузке: подключиться не удалось — трафик заблокирован до подключения или выключения защиты");
+                // Новое время — окно видит новый отказ (и экран «Работает другой VPN»), даже если «Блокировка» та же.
+                var now = _time.GetUtcNow();
+                EndPauseTimer();
+                if (Status.State == ConnectionState.Blocked)
+                {
+                    Update(s => Requested(s) with
+                    {
+                        ErrorCode = code, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Blocked), Since = now,
+                        StrictBlock = s.StrictBlock || !held,
+                    });
+                }
+                else
+                {
+                    Move(Requested, ConnectionState.Blocked, after: s => s with { ErrorCode = code, StrictBlock = true });
+                }
+
+                if (Status.StrictBlock)
+                {
+                    // Как ручное отключение в строгом режиме: после перезагрузки — блок, а не подключение.
+                    RememberBootConnection(null, []);
+                }
+
+                _journal.Add(JournalLevel.Warning, "service", Status.StrictBlock
+                    ? "Строгий режим: подключиться не удалось — сеть закрыта до подключения или выключения строгого режима"
+                    : "Защита при загрузке: подключиться не удалось — трафик заблокирован до подключения или выключения защиты");
                 return new V1.ConnectReply { Accepted = false, Error = new V1.ErrorInfo { Code = code, Message = message } };
             }
 
@@ -742,15 +863,43 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>
     /// Конец паузы: защита и системный прокси — обратно; в режиме VPN — блок и туннель заново, через
-    /// «Подключение». Подключение сменилось — ничего.
+    /// «Подключение»; в «Блокировке» без подключения — тот же блок. Подключение сменилось — ничего.
     /// </summary>
     private async Task ResumeAsync(int session, string why, CancellationToken cancellationToken = default)
     {
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (session != _session || Status.CaptivePauseUntil is null)
+            var status = Status;
+            if (session != _session || status.CaptivePauseUntil is null)
             {
+                return;
+            }
+
+            // «Блокировка» без подключения (строгий режим, блок с загрузки или с прошлого запуска) и «Ошибка» под блоком —
+            // тот же блок, без «Подключения» и ядер. Блок не вернулся — честная «Ошибка»: трафик идет напрямую.
+            if ((status.State == ConnectionState.Blocked && (status.StrictBlock || _request is null))
+                || (status.State == ConnectionState.Error && _held is not null))
+            {
+                EndPauseTimer();
+                if (_held is { } held && Restore(held, "возвращен: пауза для входа в Wi-Fi закончилась"))
+                {
+                    Update(s => s with { CaptivePauseUntil = null, Protection = ProtectionChecks.For(s.State) });
+                    _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): сеть снова закрыта");
+                    return;
+                }
+
+                _journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.KillSwitchFailed}: после паузы для входа в Wi-Fi блок при обрыве не вернулся — трафик идет напрямую");
+                if (status.State == ConnectionState.Error)
+                {
+                    Update(s => s with { ErrorCode = ErrorCodes.KillSwitchFailed, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Off) });
+                }
+                else
+                {
+                    Move(s => s with { ErrorCode = ErrorCodes.KillSwitchFailed }, ConnectionState.Error,
+                        s => s with { Protection = ProtectionChecks.For(ConnectionState.Off) });
+                }
+
                 return;
             }
 
@@ -772,17 +921,23 @@ public sealed partial class Gateway : IAsyncDisposable
 
             ApplySystemProxy();
             Update(s => s with { CaptivePauseUntil = null, Protection = ProtectionChecks.For(s.State, s.Mode) });
-            lock (_gate)
-            {
-                _pauseEnd?.Dispose();
-                _pauseEnd = null;
-            }
+            EndPauseTimer();
 
             _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): защита снова включена");
         }
         finally
         {
             _switch.Release();
+        }
+    }
+
+    /// <summary>Таймер конца паузы больше не нужен.</summary>
+    private void EndPauseTimer()
+    {
+        lock (_gate)
+        {
+            _pauseEnd?.Dispose();
+            _pauseEnd = null;
         }
     }
 
@@ -809,7 +964,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             _pauseEnd?.Dispose();
             _pauseEnd = null;
-            _status = Honest(change(_status).MoveTo(state, _time.GetUtcNow()) with { CaptivePauseUntil = null });
+            _status = Honest(change(_status).MoveTo(state, _time.GetUtcNow()));
             if (after is not null)
             {
                 _status = after(_status);
@@ -952,8 +1107,11 @@ public sealed partial class Gateway : IAsyncDisposable
         return PickAddresses(found, core.Protection);
     }
 
-    /// <summary>Поставить (или заменить) блок при обрыве под это подключение; не вышло — false.</summary>
-    private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses, string done = "включен")
+    /// <summary>
+    /// Поставить (или заменить) блок при обрыве под это подключение и запомнить его в файле блока; <paramref name="strict"/> —
+    /// блок строгого режима. Не вышло — false.
+    /// </summary>
+    private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses, string done = "включен", bool strict = false)
     {
         var killSwitch = _options.KillSwitch!;
 
@@ -972,22 +1130,75 @@ public sealed partial class Gateway : IAsyncDisposable
             return false;
         }
 
-        RememberBootBlock(core.Protection.BootProtection ? policy : null);
+        _held = new HeldBlock(policy, core.Server.Host, core.Protection.BootProtection, strict);
+        RememberBlock(_held);
         _blocking = true;
         _journal.Add(JournalLevel.Info, "service",
             $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}");
         return true;
     }
 
+    /// <summary>Вернуть блок, который служба держит (после паузы, при остановке, в строгом режиме); не встал — false.</summary>
+    private bool Restore(HeldBlock held, string done)
+    {
+        if (_options.KillSwitch is not { } killSwitch || !Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве не включился"))
+        {
+            return false;
+        }
+
+        _held = held;
+        RememberBlock(held);
+        _blocking = true;
+        _journal.Add(JournalLevel.Info, "service", $"Блок при обрыве {done} ({killSwitch.Name})");
+        return true;
+    }
+
+    /// <summary>
+    /// Строгий режим: блок без туннеля — под последнее подключение или тот, что служба держит с прошлого запуска; не
+    /// встал или держать нечего — false.
+    /// </summary>
+    private bool HoldStrictBlock()
+    {
+        if (_request is { Mode: ConnectionMode.Vpn } request)
+        {
+            return _killSwitchOn && Block(request, _addresses, "оставлен: строгий режим", strict: true);
+        }
+
+        return _request is null && _held is { } held && Restore(held with { Strict = true }, "оставлен: строгий режим");
+    }
+
+    /// <summary>
+    /// Адреса того же сервера, найденные раньше, — пока стоит блок, под которым имени не найти; другой сервер или блока
+    /// нет — пусто.
+    /// </summary>
+    private IReadOnlyList<IPAddress> HeldAddresses(CoreRequest core) =>
+        _blocking && _held is { Host.Length: > 0 } held && string.Equals(held.Host, core.Server.Host, StringComparison.OrdinalIgnoreCase)
+            ? PickAddresses(held.Policy.Servers.Where(s => s.Port == core.Server.Port).Select(s => s.Address), core.Protection)
+            : [];
+
+    /// <summary>Блок с прошлого запуска или с загрузки: «Блокировка», строгого ли режима — по файлу блока.</summary>
+    private void HoldAtStart(HeldBlock? held)
+    {
+        (_blocking, _held) = (true, held is null ? null : held with { Paused = false });
+        _status = _status with
+        {
+            State = ConnectionState.Blocked,
+            Protection = ProtectionChecks.For(ConnectionState.Blocked),
+            StrictBlock = held is { Strict: true },
+        };
+    }
+
     /// <summary>
     /// Снять блок при обрыве, если он стоит; не снялся — остается и виден в проверках. Защиту выключили —
-    /// и «Защита при загрузке» забывает ее; на паузе для входа в Wi-Fi (<paramref name="forget"/> = false) — помнит.
+    /// служба забывает блок (и «Защиту при загрузке»); на паузе для входа в Wi-Fi (<paramref name="forget"/> = false) —
+    /// помнит, чтобы вернуть его после паузы и после перезагрузки.
     /// </summary>
     private void ReleaseBlock(bool forget = true)
     {
         if (forget)
         {
-            RememberBootBlock(null);
+            _held = null;
+            RememberBlock(null);
         }
 
         if (!_blocking || _options.KillSwitch is not { } killSwitch)
@@ -1003,12 +1214,12 @@ public sealed partial class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Политика блока для «Защиты при загрузке»; null — забыть и ее, и подключение. Не записалось — в журнал,
-    /// подключение идет.
+    /// Блок в файле блока (<see cref="Service.BootBlock"/>); null — забыть его. Без «Защиты при загрузке» служба
+    /// забывает и подключение для нее. Не записалось — в журнал, подключение идет.
     /// </summary>
-    private void RememberBootBlock(KillSwitchPolicy? policy)
+    private void RememberBlock(HeldBlock? block)
     {
-        if (policy is null)
+        if (block is not { Boot: true })
         {
             RememberBootConnection(null, []);
         }
@@ -1020,18 +1231,18 @@ public sealed partial class Gateway : IAsyncDisposable
 
         try
         {
-            if (policy is null)
+            if (block is null)
             {
                 Service.BootBlock.Forget(path);
             }
             else
             {
-                Service.BootBlock.Save(path, policy);
+                Service.BootBlock.Save(path, block);
             }
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            _journal.Add(JournalLevel.Error, "service", "«Защита при загрузке» не записана: " + e.Message);
+            _journal.Add(JournalLevel.Error, "service", "Блок при обрыве не записан в файл — после перезагрузки его не будет: " + e.Message);
         }
     }
 

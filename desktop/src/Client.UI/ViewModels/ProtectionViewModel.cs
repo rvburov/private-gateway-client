@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.UI.Localization;
 
@@ -18,17 +19,20 @@ public sealed partial class ProtectionViewModel : ObservableObject
     private readonly IServerCatalog _catalog;
     private readonly ConnectionController _controller;
     private readonly OverlayViewModel _overlay;
+    private readonly SettingsService _settings;
 
     public ProtectionViewModel(
         IGatewayClient gateway,
         IServerCatalog catalog,
         ConnectionController controller,
-        OverlayViewModel overlay)
+        OverlayViewModel overlay,
+        SettingsService settings)
     {
         _gateway = gateway;
         _catalog = catalog;
         _controller = controller;
         _overlay = overlay;
+        _settings = settings;
         Status = gateway.Status;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => Status = status);
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
@@ -67,18 +71,19 @@ public sealed partial class ProtectionViewModel : ObservableObject
     /// <summary>Крутится кольцо ожидания.</summary>
     public bool IsBusy => Status.State is ConnectionState.Connecting or ConnectionState.Reconnecting;
 
-    /// <summary>Что сделает нажатие — подсказка и имя для чтения с экрана.</summary>
-    public string ActionText => Status.IsPaused ? Loc.Instance["power.action.resume"]
+    /// <summary>Что сделает нажатие — подсказка и имя для чтения с экрана. На паузе строгой «Блокировки» — подключить.</summary>
+    public string ActionText => Status is { IsPaused: true, StrictBlock: false } ? Loc.Instance["power.action.resume"]
         : ConnectionController.WantsConnect(Status) ? Loc.Instance["power.action.connect"]
         : Loc.Instance["power.action.disconnect"];
 
     // Нажатие доступно и во время подключения — им подключение и прерывают.
     // При блокировке снять защиту — значит открыть сайтам реальный IP: сначала спросить (доска 18). В строгом
-    // режиме нажатие подключает — спрашивать не о чем.
+    // режиме нажатие подключает, а при включенном строгом режиме отключение оставляет сеть закрытой — спрашивать
+    // не о чем.
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task<bool> ToggleAsync()
     {
-        if (Status is { State: ConnectionState.Blocked, IsPaused: false, StrictBlock: false })
+        if (Status is { State: ConnectionState.Blocked, IsPaused: false, StrictBlock: false } && !ConnectionController.KeepsBlock(_settings.Current))
         {
             var dialog = new DialogViewModel(
                 DialogKind.Warning,

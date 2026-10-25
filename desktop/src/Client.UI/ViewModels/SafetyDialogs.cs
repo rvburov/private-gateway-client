@@ -20,14 +20,16 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.ksOff.keep"],
             Loc.Instance["dialog.ksOff.drop"]) { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
+    /// <param name="overlay">Слой диалогов.</param>
+    /// <param name="strict">«Блокировка» строгого режима: после паузы сеть снова закроется, а не вернется VPN.</param>
     /// <returns>true — пользователь выбрал «Открыть на 5 минут».</returns>
-    public static async Task<bool> ConfirmCaptivePauseAsync(OverlayViewModel overlay) =>
+    public static async Task<bool> ConfirmCaptivePauseAsync(OverlayViewModel overlay, bool strict = false) =>
         await overlay.AskAsync(new DialogViewModel(
             DialogKind.Warning,
             "Icon.Shield",
             "Icon.Mark.Alert",
             Loc.Instance["pause.dialog.title"],
-            Loc.Instance["pause.dialog.text"],
+            Loc.Instance[strict ? "pause.dialog.textStrict" : "pause.dialog.text"],
             Loc.Instance["pause.dialog.keep"],
             Loc.Instance["pause.dialog.open"]) { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 

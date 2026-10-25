@@ -91,6 +91,7 @@ public sealed record ExitInfo(string? Ip, string? City, string? NetworkType, str
 /// Снимок состояния защиты, который служба присылает интерфейсу. Главный экран, трей и
 /// уведомления показывают один и тот же снимок. <c>StrictBlock</c> — «Блокировка» строгого режима:
 /// защиту выключили вручную, а сеть закрыта до подключения или выключения строгого режима.
+/// <c>CaptivePauseUntil</c> — пауза для входа в Wi-Fi: в «Защищено» или в «Блокировке», и строгого режима тоже.
 /// </summary>
 public sealed record ConnectionStatus(
     ConnectionState State,
@@ -117,7 +118,10 @@ public sealed record ConnectionStatus(
         ConnectionState.Off, ConnectionMode.Vpn, null, now, 0, ProtectionChecks.For(ConnectionState.Off),
         TrafficStats.Empty, ExitInfo.Unknown, NetworkInfo.Unknown, null, null);
 
-    /// <summary>Переход в новое состояние по правилам <see cref="ConnectionStateMachine"/>.</summary>
+    /// <summary>
+    /// Переход в новое состояние по правилам <see cref="ConnectionStateMachine"/>. Любой переход заканчивает паузу для
+    /// входа в Wi-Fi и «Блокировку» строгого режима.
+    /// </summary>
     public ConnectionStatus MoveTo(ConnectionState state, DateTimeOffset now) => this with
     {
         State = ConnectionStateMachine.Move(State, state),
@@ -125,6 +129,7 @@ public sealed record ConnectionStatus(
         Protection = ProtectionChecks.For(state, Mode),
         Attempt = state == ConnectionState.Reconnecting ? Attempt + 1 : 0,
         ErrorCode = state == ConnectionState.Error ? ErrorCode : null,
+        CaptivePauseUntil = null,
         StrictBlock = false,
     };
 }

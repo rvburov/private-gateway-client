@@ -9,7 +9,8 @@ namespace PrivateGateway.Client.Application.Connection;
 /// она еще не включена. Служба могла держать защиту и без окна (установленная служба) — состояние приходит
 /// от нее потоком, поэтому сначала дождаться его, чтобы не переподключать работающую защиту. «Блокировка»
 /// и «Ошибка» — тоже повод подключиться: служба перезапустилась после сбоя с блоком при обрыве, и
-/// подключение возвращает защиту с теми же настройками. До конца первого запуска — ничего.
+/// подключение возвращает защиту с теми же настройками. До конца первого запуска — ничего; на паузе для входа в
+/// Wi-Fi — тоже: пользователь входит в сеть, и перезапуск окна паузу не обрывает.
 /// </summary>
 public sealed class LaunchConnect(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time)
 {
@@ -28,7 +29,7 @@ public sealed class LaunchConnect(SettingsService settings, IGatewayClient gatew
             await FirstStatusAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        if (gateway.Status.State is ConnectionState.Off or ConnectionState.Blocked or ConnectionState.Error)
+        if (gateway.Status is { IsPaused: false, State: ConnectionState.Off or ConnectionState.Blocked or ConnectionState.Error })
         {
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }

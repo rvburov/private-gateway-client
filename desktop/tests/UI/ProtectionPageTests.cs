@@ -9,6 +9,8 @@ using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Infrastructure.Demo;
+using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -184,6 +186,7 @@ public sealed class ProtectionPageTests : WindowHarness
     {
         // Режим прокси без системного прокси: служба отвечает, что паузе нечего менять.
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User));
+        Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
@@ -198,6 +201,117 @@ public sealed class ProtectionPageTests : WindowHarness
         Urls.Opened.ShouldBe([CaptivePortal.CheckPage]);
         shell.Toast.Text.ShouldBe("Пауза не нужна: системный прокси выключен — страница входа в сеть откроется напрямую",
             "паузы нет — и окно не делает вид, что она есть");
+    }
+
+    [AvaloniaFact]
+    public async Task Wifi_sign_in_that_the_service_refuses_in_vpn_does_not_open_the_page()
+    {
+        // Режим VPN: служба отказала (блок не снялся) — сеть закрыта, страница входа не загрузится.
+        var service = default(ScriptedService);
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User));
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        var page = Navigate(shell);
+
+        var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        await open;
+
+        (service!.Pauses, Urls.Opened.Count).ShouldBe((1, 0));
+        shell.Toast.Text.ShouldBe(Loc.Instance["pause.failed"]);
+    }
+
+    [AvaloniaFact]
+    public async Task Wifi_sign_in_while_reconnecting_explains_without_asking()
+    {
+        var service = default(ScriptedService);
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User));
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        service!.Push(s => s.MoveTo(ConnectionState.Reconnecting, Time.GetUtcNow()));
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Reconnecting);
+        var page = Navigate(shell);
+
+        var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.HasDialog.ShouldBeFalse("паузы сейчас не бывает — не спрашивать о ней");
+        await open;
+
+        (service.Pauses, Urls.Opened.Count).ShouldBe((0, 0), "служба не спрошена, страница под блоком не загрузится");
+        shell.Toast.Text.ShouldBe(Loc.Instance["pause.unavailable"]);
+    }
+
+    [AvaloniaFact]
+    public async Task Wifi_sign_in_after_a_proxy_error_pauses_the_dead_system_proxy()
+    {
+        // Режим прокси, сервер не ответил: «Ошибка», а системный прокси ведет на остановленное ядро — сеть для браузера закрыта.
+        var (_, shell) = Open();
+        Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
+        var dead = Service<IServerCatalog>().Servers.Single(s => s.Name == "Турция 01");
+        var connect = Service<ConnectionController>().ConnectToAsync(dead.Id);
+        Time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
+        var page = Navigate(shell);
+
+        var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        await open;
+
+        WaitFor(() => shell.Protection.Status.IsPaused);
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage]);
+        shell.Toast.Text.ShouldBe("Пауза на 5 минут: войдите в сеть на открывшейся странице");
+    }
+
+    [AvaloniaFact]
+    public async Task Wifi_sign_in_after_an_error_without_a_block_just_opens_the_page()
+    {
+        var service = default(ScriptedService);
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User)
+        {
+            // Отказ в подключении: защиты нет, трафик идет напрямую.
+            Outcome = c => (c with { ErrorCode = "PGC-NET-003" }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+            {
+                Protection = ProtectionChecks.For(ConnectionState.Off),
+            },
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
+        var page = Navigate(shell);
+
+        var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.HasDialog.ShouldBeFalse("сеть открыта — спрашивать о паузе незачем");
+        await open;
+
+        service!.Pauses.ShouldBe(0);
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage], "сеть открыта — страница входа откроется и без паузы");
+    }
+
+    [AvaloniaFact]
+    public async Task Wifi_sign_in_again_during_the_pause_reopens_the_page_without_asking()
+    {
+        var (_, shell) = Open();
+        await Connect(shell);
+        var page = Navigate(shell);
+        var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        await open;
+        WaitFor(() => shell.Protection.Status.IsPaused);
+        page = Navigate(shell);
+
+        var again = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.HasDialog.ShouldBeFalse("пауза уже идет — спрашивать не о чем");
+        await again;
+
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage, CaptivePortal.CheckPage], "страницу закрыли раньше, чем вошли, — открыть снова");
+        shell.Toast.Text.ShouldBe(Loc.Instance["pause.running"]);
     }
 
     [AvaloniaFact]

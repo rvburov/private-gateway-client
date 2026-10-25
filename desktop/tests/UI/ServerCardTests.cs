@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Services;
@@ -277,6 +278,25 @@ public sealed class ServerCardTests : WindowHarness
         await drop;
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
         shell.Overlay.HasDialog.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public async Task Shield_in_block_with_strict_mode_closes_the_network_without_promising_the_real_ip()
+    {
+        var (_, shell, page) = OpenServers();
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
+        var connect = OpenCard(page, "Турция 01").ConnectCommand.ExecuteAsync(null);
+        Time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Blocked);
+
+        var toggle = shell.Protection.ToggleCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.HasDialog.ShouldBeFalse("строгий режим оставит сеть закрытой — «сайты увидят реальный IP» было бы неправдой");
+        await toggle;
+
+        WaitFor(() => shell.Protection.Status.StrictBlock);
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Blocked);
     }
 
     private ShellViewModel? _shell;

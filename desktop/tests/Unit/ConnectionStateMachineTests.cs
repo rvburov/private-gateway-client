@@ -74,6 +74,21 @@ public class ConnectionStateMachineTests
     }
 
     [Fact]
+    public void Any_transition_ends_the_wifi_pause_and_the_strict_block()
+    {
+        var paused = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with
+        {
+            State = ConnectionState.Blocked, StrictBlock = true, CaptivePauseUntil = DateTimeOffset.UnixEpoch.AddMinutes(5),
+        };
+
+        foreach (var state in new[] { ConnectionState.Connecting, ConnectionState.Error, ConnectionState.Off })
+        {
+            var moved = paused.MoveTo(state, DateTimeOffset.UnixEpoch);
+            (moved.IsPaused, moved.CaptivePauseUntil, moved.StrictBlock).ShouldBe((false, null, false), state.ToString());
+        }
+    }
+
+    [Fact]
     public void Traffic_bypasses_tunnel_only_when_off()
     {
         foreach (var state in Enum.GetValues<ConnectionState>())
