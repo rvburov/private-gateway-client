@@ -103,13 +103,13 @@ public sealed class VpnTunnel : IAsyncDisposable
     }
 
     /// <summary>
-    /// Связь Xray с TUN на одно подключение: свободный порт на 127.0.0.1, имя и пароль — по 128
+    /// Связь Xray с TUN на одно подключение: порт на 127.0.0.1, свободный для TCP и UDP, имя и пароль — по 128
     /// случайных бит; Xray соединяется с <paramref name="server"/>.
     /// </summary>
     public static TunLink NewLink(IPAddress server)
     {
         ArgumentNullException.ThrowIfNull(server);
-        return new TunLink(FreePort(), Secret(), Secret(), server.ToString());
+        return new TunLink(LocalPort.FreeForTcpAndUdp(), Secret(), Secret(), server.ToString());
     }
 
     /// <summary>Остановить: сначала TUN, потом Xray.</summary>
@@ -166,13 +166,6 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     private static bool HasInterface(string name) =>
         NetworkInterface.GetAllNetworkInterfaces().Any(n => n.Name == name && n.OperationalStatus != OperationalStatus.Down);
-
-    private static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
 
     private static string Secret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 }

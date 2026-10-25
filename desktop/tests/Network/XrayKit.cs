@@ -129,12 +129,8 @@ internal static class XrayKit
         }
     }
 
-    public static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
-    }
+    /// <summary>Порт, свободный для TCP и UDP: вход SOCKS5 ядра занимает оба.</summary>
+    public static int FreePort() => LocalPort.FreeForTcpAndUdp();
 
     private static string? FindXray()
     {
