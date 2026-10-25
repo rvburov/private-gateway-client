@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
         xmlns:c="using:PrivateGateway.Client.UI.Controls"
+        xmlns:l="using:PrivateGateway.Client.UI.Localization"
         x:Class="PrivateGateway.Client.UI.Views.MainWindow"
         x:DataType="vm:ShellViewModel"
         Title="Private Gateway"
@@ -58,9 +59,10 @@
       <c:IslandNav VerticalAlignment="Bottom" IsVisible="{Binding IsIslandVisible}" />
 
       <!-- Слой поверх окна вместе с островком: затемнение, нижний лист, диалог -->
+      <!-- Щелчок мимо листа закрывает его; с клавиатуры — Escape, поэтому в обход Tab -->
       <Button x:Name="Scrim" Classes="scrim" ZIndex="50" IsVisible="{Binding Overlay.HasSheet}"
-              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-              Command="{Binding Overlay.DismissCommand}" />
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch" IsTabStop="False"
+              Command="{Binding Overlay.DismissCommand}" AutomationProperties.Name="{l:L card.close}" />
 
       <Border x:Name="Sheet" ZIndex="60" IsVisible="{Binding Overlay.HasSheet}" Margin="0,92,0,0" Padding="20,10,20,20"
               CornerRadius="25,25,0,0" Background="{StaticResource PgBrush.Surface.Solid}"
@@ -70,8 +72,8 @@
 
       <!-- Диалог поверх листа затемняет и лист -->
       <Button Classes="scrim" ZIndex="65" IsVisible="{Binding Overlay.HasDialog}"
-              HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
-              Command="{Binding Overlay.DismissCommand}" />
+              HorizontalAlignment="Stretch" VerticalAlignment="Stretch" IsTabStop="False"
+              Command="{Binding Overlay.DismissCommand}" AutomationProperties.Name="{l:L card.close}" />
 
       <ContentControl x:Name="Dialog" ZIndex="70" IsVisible="{Binding Overlay.HasDialog}"
                       Content="{Binding Overlay.Dialog}" VerticalAlignment="Center" Margin="24,0" />

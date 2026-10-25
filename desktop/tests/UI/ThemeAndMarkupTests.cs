@@ -36,6 +36,18 @@ public partial class ThemeAndMarkupTests
         offenders.ShouldBeEmpty("цвет в разметке — только ресурс из Tokens.axaml");
     }
 
+    [Fact]
+    public void Views_are_vector_only_and_stay_sharp_at_any_scale()
+    {
+        // Значки — геометрии из Icons.axaml, растровых картинок в разметке нет: при 125–200 % все четкое.
+        var raster = Directory.EnumerateFiles(Repo.UiSource, "*.axaml", SearchOption.AllDirectories)
+            .Where(f => File.ReadAllText(f).Contains("<Image", StringComparison.Ordinal))
+            .Select(Path.GetFileName)
+            .ToArray();
+
+        raster.ShouldBeEmpty();
+    }
+
     [AvaloniaFact]
     public void Theme_resources_resolve_with_token_values()
     {
