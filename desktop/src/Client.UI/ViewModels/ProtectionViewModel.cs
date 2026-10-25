@@ -36,12 +36,18 @@ public sealed partial class ProtectionViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Tone), nameof(Label), nameof(Mark), nameof(IsBusy), nameof(ActionText))]
+    [NotifyPropertyChangedFor(nameof(Tone), nameof(Label), nameof(Mark), nameof(IsBusy), nameof(ActionText), nameof(StateKey), nameof(Title))]
     public partial ConnectionStatus Status { get; private set; }
 
     public bool IsSimulated => _gateway.IsSimulated;
 
     public Tone Tone => ToneOf.State(Status);
+
+    /// <summary>Ключ текстов состояния: «paused», «proxy» или имя состояния — для главного экрана и трея.</summary>
+    public string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.State.ToString().ToLowerInvariant();
+
+    /// <summary>Заголовок состояния: «IP скрыт», «Прокси включен», «Защита на паузе».</summary>
+    public string Title => Loc.Instance[$"status.{StateKey}.title"];
 
     public bool HasServer => _catalog.Selected is not null;
 

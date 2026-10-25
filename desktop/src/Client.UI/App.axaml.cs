@@ -21,13 +21,20 @@ public partial class App : Avalonia.Application
 
     public override void Initialize() => AvaloniaXamlLoader.Load(this);
 
+    /// <summary>С чем запущена программа: папка данных, замок одной копии, запуск в трей.</summary>
+    internal static AppStartup? Startup { get; set; }
+
     public override void OnFrameworkInitializationCompleted()
     {
-        Services = BuildServices(AppPaths.ForCurrentUser());
-        Loc.Instance.SetLanguage(Services.GetRequiredService<SettingsService>().Current.Language);
+        var startup = Startup ?? new AppStartup(AppPaths.ForCurrentUser(), null, Minimized: false);
+        Services = BuildServices(startup.Paths);
+        var settings = Services.GetRequiredService<SettingsService>();
+        Loc.Instance.SetLanguage(settings.Current.Language);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.MainWindow = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
+            var window = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
+            _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
+                startup.Minimized && settings.Current.OnboardingDone);
         }
 
         // Обновление подписок по расписанию — в потоке окна: список серверов меняется там, где его показывают.
@@ -62,7 +69,11 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, AboutPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<AboutPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, WelcomePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<WelcomePageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
+        services.AddSingleton<TrayViewModel>();
         overrides?.Invoke(services);
         return services.BuildServiceProvider();
     }
 }
+
+/// <summary>С чем запущена программа: папка данных, замок одной копии (null — в дизайнере), запуск в трей.</summary>
+internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized);

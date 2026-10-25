@@ -652,5 +652,13 @@
   "welcome.add.text": "Paste a link from your VPN server or a subscription: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.",
   "welcome.add.button": "Add a server",
   "welcome.demo": "Look around with demo servers first",
-  "welcome.demo.note": "Connecting is in demo mode for now: the service that manages the network comes in later versions."
+  "welcome.demo.note": "Connecting is in demo mode for now: the service that manages the network comes in later versions.",
+  "tray.switch": "Switch server",
+  "tray.allServers": "All servers…",
+  "tray.refresh": "Refresh servers",
+  "tray.open": "Open window",
+  "tray.check": "Check",
+  "tray.quit": "Close interface",
+  "tray.quit.note": "VPN and kill switch keep working",
+  "tray.quit.demo": "Quit"
 }

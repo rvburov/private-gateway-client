@@ -99,7 +99,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public Tone Tone => Protection.Tone;
 
-    public string StatusTitle => Loc.Instance[$"status.{StateKey}.title"];
+    public string StatusTitle => Protection.Title;
 
     public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"]
         : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
@@ -412,7 +412,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public void Dispose() => _clock.Stop();
 
-    private string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.State.ToString().ToLowerInvariant();
+    private string StateKey => Protection.StateKey;
 
     private void Refresh()
     {
