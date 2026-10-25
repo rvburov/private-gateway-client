@@ -1,0 +1,119 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.WelcomePage"
+             x:DataType="vm:WelcomePageViewModel">
+  <!-- Первый запуск — docs/design, доска 10: приветствие, потом «Добавьте первый сервер». Островка нет. -->
+  <UserControl.Styles>
+    <Style Selector="Border.feature">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Card}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="CornerRadius" Value="18" />
+      <Setter Property="Padding" Value="16,14" />
+    </Style>
+    <Style Selector="Border.featureIcon">
+      <Setter Property="Width" Value="40" />
+      <Setter Property="Height" Value="40" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.featureIcon c|Icon">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="StrokeThickness" Value="1.9" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Panel>
+    <!-- Приветствие -->
+    <Grid x:Name="Greeting" RowDefinitions="Auto,*,Auto" IsVisible="{Binding IsGreeting}">
+      <Border Classes="segments" HorizontalAlignment="Right" Margin="0,20,24,0">
+        <UniformGrid Columns="2">
+          <RadioButton x:Name="WelcomeRu" Classes="segment" GroupName="welcomeLang" IsChecked="{Binding IsRussian}"
+                       Content="{l:L welcome.lang.ru}" MinWidth="48" />
+          <RadioButton x:Name="WelcomeEn" Classes="segment" GroupName="welcomeLang" IsChecked="{Binding IsEnglish}"
+                       Content="{l:L welcome.lang.en}" MinWidth="48" />
+        </UniformGrid>
+      </Border>
+
+      <ScrollViewer Grid.Row="1" Classes="page">
+        <StackPanel Margin="24,28,24,16" Spacing="12">
+          <Border Width="84" Height="84" CornerRadius="24" HorizontalAlignment="Center"
+                  Background="{StaticResource PgBrush.Surface.Solid}" BorderBrush="{StaticResource PgBrush.Line.Border}"
+                  BorderThickness="1" BoxShadow="{StaticResource PgShadow.Card}">
+            <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}" Width="40" Height="40"
+                    StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Base}" />
+          </Border>
+          <TextBlock Text="{l:L app.title}" FontSize="{StaticResource PgFontSize.Display}" FontWeight="Bold"
+                     HorizontalAlignment="Center" Margin="0,8,0,0" />
+          <TextBlock x:Name="Tagline" Text="{l:L welcome.tagline}" TextAlignment="Center" TextWrapping="Wrap"
+                     HorizontalAlignment="Center" MaxWidth="340" Foreground="{StaticResource PgBrush.Text.Secondary}" LineHeight="22" />
+
+          <StackPanel Spacing="10" Margin="0,16,0,0">
+            <Border Classes="feature">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="featureIcon"><c:Icon Data="{StaticResource Icon.Pulse}" /></Border>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock x:Name="AllTrafficTitle" Classes="strong" Text="{Binding AllTrafficTitle}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{l:L welcome.all.text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Classes="feature">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="featureIcon"><c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Wait}" /></Border>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Classes="strong" Text="{l:L welcome.ks.title}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{l:L welcome.ks.text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+            <Border Classes="feature">
+              <Grid ColumnDefinitions="Auto,*">
+                <Border Classes="featureIcon"><c:Icon Data="{StaticResource Icon.Nav.Servers}" Detail="{StaticResource Icon.Nav.Servers.Detail}" /></Border>
+                <StackPanel Grid.Column="1" Margin="14,0,0,0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Classes="strong" Text="{l:L welcome.choice.title}" TextWrapping="Wrap" />
+                  <TextBlock Classes="caption" Text="{l:L welcome.choice.text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </Grid>
+            </Border>
+          </StackPanel>
+        </StackPanel>
+      </ScrollViewer>
+
+      <Button x:Name="StartButton" Grid.Row="2" Classes="primary" Height="54" HorizontalAlignment="Stretch" Margin="24,8,24,24"
+              Command="{Binding StartCommand}" Content="{l:L welcome.start}" />
+    </Grid>
+
+    <!-- Добавьте первый сервер -->
+    <Grid x:Name="AddServerStep" RowDefinitions="Auto,Auto,Auto" IsVisible="{Binding IsAddServer}">
+      <Grid Height="60" Margin="20,0,12,0" ColumnDefinitions="Auto,*">
+        <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}"
+                Width="28" Height="28" Foreground="{StaticResource PgBrush.Accent.Base}" />
+        <TextBlock Grid.Column="1" Classes="brand" Text="{l:L app.title}" Margin="10,0,8,0" VerticalAlignment="Center" />
+      </Grid>
+      <Border Grid.Row="1" Classes="card" Margin="20,8,20,0" Padding="22,28,22,22">
+        <StackPanel Spacing="12">
+          <Border Width="64" Height="64" CornerRadius="20" HorizontalAlignment="Center" Background="{StaticResource PgBrush.Accent.Tint}">
+            <c:Icon Data="{StaticResource Icon.ServerAdd}" Width="32" Height="32"
+                    StrokeThickness="1.7" Foreground="{StaticResource PgBrush.Accent.Text}" />
+          </Border>
+          <TextBlock Text="{l:L welcome.add.title}" FontSize="{StaticResource PgFontSize.Status}" FontWeight="Bold"
+                     HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" />
+          <TextBlock Text="{l:L welcome.add.text}" TextAlignment="Center" TextWrapping="Wrap" LineHeight="20"
+                     Foreground="{StaticResource PgBrush.Text.Secondary}" />
+          <Button x:Name="AddFirstServer" Classes="primary" Height="50" HorizontalAlignment="Stretch" Margin="0,6,0,0"
+                  Command="{Binding AddServerCommand}" Content="{l:L welcome.add.button}" />
+          <Button x:Name="TryDemo" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding CanTryDemo}"
+                  Command="{Binding TryDemoCommand}" Content="{l:L welcome.demo}" />
+        </StackPanel>
+      </Border>
+      <TextBlock Grid.Row="2" Classes="caption" Text="{l:L welcome.demo.note}" IsVisible="{Binding CanTryDemo}"
+                 TextAlignment="Center" TextWrapping="Wrap" Margin="28,14,28,0" />
+    </Grid>
+  </Panel>
+</UserControl>

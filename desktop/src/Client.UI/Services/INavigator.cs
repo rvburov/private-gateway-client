@@ -9,6 +9,9 @@ public static class Pages
     public const string Settings = "settings";
     public const string Add = "add";
 
+    /// <summary>Первый запуск (доска 10) — без островка.</summary>
+    public const string Welcome = "welcome";
+
     /// <summary>«Защита и утечки» — подстраница настроек (доска 5).</summary>
     public const string Protection = "protection";
 

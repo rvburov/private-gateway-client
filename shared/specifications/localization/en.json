@@ -637,5 +637,20 @@
   "status.proxy.sub": "Not all traffic is protected",
   "checked.proxy": "Kill switch is unavailable in proxy mode",
   "ip.meta.proxy": "only for apps using the proxy",
-  "power.label.proxy": "Proxy"
+  "power.label.proxy": "Proxy",
+  "welcome.lang.ru": "RU",
+  "welcome.lang.en": "EN",
+  "welcome.tagline": "A VPN client where only you choose the server, and nothing leaks when the connection drops.",
+  "welcome.all.title": "All {0} traffic through VPN",
+  "welcome.all.text": "Browsers, terminal, Git, background services",
+  "welcome.ks.title": "Kill switch",
+  "welcome.ks.text": "No tunnel — no internet, no leaks",
+  "welcome.choice.title": "Only you choose the server",
+  "welcome.choice.text": "No automatic switching",
+  "welcome.start": "Get started",
+  "welcome.add.title": "Add your first server",
+  "welcome.add.text": "Paste a link from your VPN server or a subscription: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.",
+  "welcome.add.button": "Add a server",
+  "welcome.demo": "Look around with demo servers first",
+  "welcome.demo.note": "Connecting is in demo mode for now: the service that manages the network comes in later versions."
 }

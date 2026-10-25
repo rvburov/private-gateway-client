@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
@@ -30,8 +31,11 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, RoutingPageViewModel> routingPage,
         Func<INavigator, BackupPageViewModel> backupPage,
         Func<INavigator, AboutPageViewModel> aboutPage,
+        Func<INavigator, WelcomePageViewModel> welcomePage,
+        SettingsService settings,
         SubscriptionUpdater updater)
     {
+        ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(mainPage);
         ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
@@ -52,8 +56,11 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Profiles] = () => subscriptionsPage(this),
             [Pages.Backup] = () => backupPage(this),
             [Pages.About] = () => aboutPage(this),
+            [Pages.Welcome] = () => welcomePage(this),
         };
-        Navigate(Pages.Home);
+
+        // Первый запуск — приветствие (доска 10), дальше — сразу главная.
+        Navigate(settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome);
 
         // Выбранный сервер пропал из подписки или изменился — сказать сразу, на каком бы экране ни был.
         updater.SelectedServerChanged += (_, notice) => Dispatcher.UIThread.Post(() => Toast.Show(
@@ -73,8 +80,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsServers), nameof(IsCheck), nameof(IsSettings), nameof(IsIslandVisible))]
     public partial string CurrentKey { get; private set; } = Pages.Home;
 
-    /// <summary>Островок скрыт на экранах-шагах с кнопкой «назад» («Добавить профиль», доска 3).</summary>
-    public bool IsIslandVisible => CurrentKey != Pages.Add;
+    /// <summary>Островок скрыт на экранах-шагах: «Добавить профиль» (доска 3) и первый запуск (доска 10).</summary>
+    public bool IsIslandVisible => CurrentKey is not (Pages.Add or Pages.Welcome);
 
     private string _previousKey = Pages.Home;
 

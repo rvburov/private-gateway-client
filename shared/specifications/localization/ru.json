@@ -637,5 +637,20 @@
   "status.proxy.sub": "Защищен не весь трафик",
   "checked.proxy": "Блок при обрыве в режиме прокси недоступен",
   "ip.meta.proxy": "только для программ через прокси",
-  "power.label.proxy": "Прокси"
+  "power.label.proxy": "Прокси",
+  "welcome.lang.ru": "RU",
+  "welcome.lang.en": "EN",
+  "welcome.tagline": "VPN-клиент, в котором сервер выбираете только вы, а при обрыве ничего не утекает.",
+  "welcome.all.title": "Весь трафик {0} через VPN",
+  "welcome.all.text": "Браузеры, терминал, Git, фоновые службы",
+  "welcome.ks.title": "Блок при обрыве",
+  "welcome.ks.text": "Нет туннеля — нет интернета, утечек нет",
+  "welcome.choice.title": "Сервер выбираете только вы",
+  "welcome.choice.text": "Никакой автоматической подмены",
+  "welcome.start": "Начать",
+  "welcome.add.title": "Добавьте первый сервер",
+  "welcome.add.text": "Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.",
+  "welcome.add.button": "Добавить сервер",
+  "welcome.demo": "Сначала посмотреть на демо-серверах",
+  "welcome.demo.note": "Подключение пока в демо-режиме: служба, которая управляет сетью, появится в следующих версиях."
 }

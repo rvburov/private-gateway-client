@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Infrastructure.Demo;
@@ -55,7 +56,8 @@ public abstract class WindowHarness : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    protected (MainWindow Window, ShellViewModel Shell) Open()
+    /// <param name="firstLaunch">true — как при первом запуске: с приветствием (доска 10).</param>
+    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false)
     {
         _services = App.BuildServices(_paths, s =>
         {
@@ -67,6 +69,11 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<ISubscriptionDownloader>(Downloads);
             s.AddSingleton<IUrlLauncher>(Urls);
         });
+        if (!firstLaunch)
+        {
+            _services.GetRequiredService<SettingsService>().Update(s => s with { OnboardingDone = true });
+        }
+
         var shell = _services.GetRequiredService<ShellViewModel>();
         var window = new MainWindow { DataContext = shell };
         window.Show();

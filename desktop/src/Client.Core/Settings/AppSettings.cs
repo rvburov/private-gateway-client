@@ -71,6 +71,9 @@ public sealed record AppSettings(
     /// <summary>Канал обновлений («О программе», доска 15); действует, когда появятся подписанные выпуски.</summary>
     public UpdateChannel UpdateChannel { get; init; } = UpdateChannel.Stable;
 
+    /// <summary>Первый запуск пройден (доска 10): приветствие больше не показывается.</summary>
+    public bool OnboardingDone { get; init; }
+
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch
     {

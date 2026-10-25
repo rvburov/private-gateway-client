@@ -103,6 +103,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Connection = core,
             Routing = routing,
             UpdateChannel = Enum("update_channel", d.UpdateChannel),
+            OnboardingDone = Bool("onboarding_done", d.OnboardingDone),
         };
 
         bool Bool(string key, bool fallback) =>
@@ -190,6 +191,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),
             ["update_channel"] = settings.UpdateChannel.ToString(),
+            ["onboarding_done"] = Text(settings.OnboardingDone),
         };
     }
 
