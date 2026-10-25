@@ -558,5 +558,8 @@
   "routing.rule.action": "Что делать",
   "routing.rule.add": "Добавить",
   "routing.rule.save": "Сохранить",
-  "routing.rule.delete": "Удалить"
+  "routing.rule.delete": "Удалить",
+  "main.bypass.apps": "Внимание · программы из списка идут мимо VPN",
+  "main.bypass.sites": "Внимание · сайты из списка идут мимо VPN",
+  "main.bypass.both": "Внимание · программы и сайты из списков идут мимо VPN"
 }

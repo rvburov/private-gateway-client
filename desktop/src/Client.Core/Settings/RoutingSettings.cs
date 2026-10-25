@@ -33,6 +33,12 @@ public sealed record RoutingSettings(RoutingMode Mode, IReadOnlyList<BypassApp> 
 {
     public static RoutingSettings Default { get; } = new(RoutingMode.AllTraffic, [], []);
 
+    /// <summary>Идут ли сейчас программы мимо VPN: только в раздельном режиме и только включенные.</summary>
+    public bool HasBypassApps => Mode == RoutingMode.Split && Apps.Any(a => a.IsEnabled);
+
+    /// <summary>Идут ли сайты мимо VPN: правила «Напрямую» действуют только в раздельном режиме.</summary>
+    public bool HasBypassSites => Mode == RoutingMode.Split && Rules.Any(r => r.Action == RuleAction.Direct);
+
     /// <summary>Списки сравниваются по содержимому — иначе сохраненные настройки не равны прочитанным.</summary>
     public bool Equals(RoutingSettings? other) =>
         other is not null && Mode == other.Mode && Apps.SequenceEqual(other.Apps) && Rules.SequenceEqual(other.Rules);

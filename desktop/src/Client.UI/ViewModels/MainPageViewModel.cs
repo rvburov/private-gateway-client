@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.UI.Localization;
@@ -29,6 +30,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     private readonly IClipboardService _clipboard;
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
+    private readonly SettingsService _settings;
     private readonly DispatcherTimer _clock;
 
     public MainPageViewModel(
@@ -39,7 +41,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         TimeProvider time,
         IClipboardService clipboard,
         INavigator navigator,
-        ToastViewModel toast)
+        ToastViewModel toast,
+        SettingsService settings)
     {
         ArgumentNullException.ThrowIfNull(protection);
         Protection = protection;
@@ -50,6 +53,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _clipboard = clipboard;
         _navigator = navigator;
         _toast = toast;
+        _settings = settings;
         Chips = [new("all"), new("dns"), new("ipv6"), new("ks")];
         foreach (var chip in Chips)
         {
@@ -69,6 +73,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             }
         };
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
+        settings.Changed += (_, _) => Refresh();
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
         _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background,
             (_, _) =>
@@ -131,6 +136,34 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     /// <summary>Пауза для входа в Wi-Fi: полоса с обратным отсчетом и «Вернуть защиту» в карточке состояния.</summary>
     public bool IsPaused => Status.IsPaused;
+
+    /// <summary>
+    /// Раздельный режим при включенной защите: полоса «…идут мимо VPN» — «Защищено» не должно скрывать,
+    /// что часть трафика идет мимо туннеля. Во время паузы мимо VPN и так все — там своя полоса.
+    /// </summary>
+    public bool HasBypass => BypassKey is not null;
+
+    public string? BypassText => BypassKey is { } key ? Loc.Instance[key] : null;
+
+    private string? BypassKey
+    {
+        get
+        {
+            var routing = _settings.Current.Routing;
+            if (Status.State == ConnectionState.Off || Status.IsPaused || _settings.Current.Mode != ConnectionMode.Vpn)
+            {
+                return null;
+            }
+
+            return (routing.HasBypassApps, routing.HasBypassSites) switch
+            {
+                (true, true) => "main.bypass.both",
+                (true, false) => "main.bypass.apps",
+                (false, true) => "main.bypass.sites",
+                _ => null,
+            };
+        }
+    }
 
     /// <summary>Сколько осталось паузы: «4:59».</summary>
     public string PauseLeft

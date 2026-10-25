@@ -6,6 +6,23 @@
              x:Class="PrivateGateway.Client.UI.Views.MainPage"
              x:DataType="vm:MainPageViewModel">
   <!-- Главный экран — docs/design, доска 1. -->
+  <UserControl.Styles>
+    <!-- Полоса «…идут мимо VPN» — баннер дизайн-системы (доска 24); при наведении рамка ярче -->
+    <Style Selector="Button.bypass">
+      <Setter Property="HorizontalAlignment" Value="Stretch" />
+      <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+      <Setter Property="Padding" Value="10,8" />
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Cursor" Value="Hand" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <Style Selector="Button.bypass:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.bypass:pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Base}" />
+    </Style>
+  </UserControl.Styles>
   <ScrollViewer Classes="page">
     <StackPanel>
 
@@ -55,6 +72,19 @@
                       FontWeight="Bold" Command="{Binding ResumeCommand}" Content="{l:L power.action.resume}" />
             </Grid>
           </Border>
+          <!-- Раздельный режим: что-то идет мимо VPN; нажатие — в «Маршрутизацию» -->
+          <Button x:Name="BypassBanner" Classes="bypass" IsVisible="{Binding HasBypass}"
+                  Command="{Binding NavigateCommand}" CommandParameter="routing" AutomationProperties.Name="{Binding BypassText}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <c:Icon Data="{StaticResource Icon.Warning}" Width="16" Height="16" StrokeThickness="2"
+                      Foreground="{StaticResource PgBrush.Status.Warning.Badge}" VerticalAlignment="Center" />
+              <TextBlock x:Name="BypassText" Grid.Column="1" Margin="10,0,8,0" VerticalAlignment="Center" TextWrapping="Wrap"
+                         Text="{Binding BypassText}" FontSize="{StaticResource PgFontSize.Caption}"
+                         Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+              <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="14" Height="14" StrokeThickness="2.2"
+                      Foreground="{StaticResource PgBrush.Status.Warning.Badge}" VerticalAlignment="Center" />
+            </Grid>
+          </Button>
           <Grid ColumnDefinitions="Auto,*,Auto">
             <Border Width="46" Height="46" CornerRadius="{StaticResource PgRadius.Button}" VerticalAlignment="Top"
                     Background="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Tint}">

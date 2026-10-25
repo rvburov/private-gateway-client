@@ -558,5 +558,8 @@
   "routing.rule.action": "Action",
   "routing.rule.add": "Add",
   "routing.rule.save": "Save",
-  "routing.rule.delete": "Delete"
+  "routing.rule.delete": "Delete",
+  "main.bypass.apps": "Note · apps from the list bypass VPN",
+  "main.bypass.sites": "Note · sites from the list bypass VPN",
+  "main.bypass.both": "Note · apps and sites from the lists bypass VPN"
 }

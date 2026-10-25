@@ -3,7 +3,9 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -206,6 +208,53 @@ public sealed class MainWindowTests : WindowHarness
         Find<Border>(window, "PauseBanner").IsVisible.ShouldBeFalse();
         shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
         main.Chips.Select(c => c.Value).ShouldBe(["через туннель", "запросы в туннеле", "нет обхода", "Kill Switch вкл"]);
+    }
+
+    [AvaloniaFact]
+    public async Task Traffic_outside_vpn_is_shown_on_main_while_protected_and_opens_routing()
+    {
+        var (window, shell) = Open();
+        var settings = Service<SettingsService>();
+        settings.Update(s => s with
+        {
+            Routing = new RoutingSettings(
+                RoutingMode.Split,
+                [new BypassApp("/opt/game/game", "game")],
+                [new DomainRule("example.com", RuleAction.Direct), new DomainRule("ads.example.net", RuleAction.Block)]),
+        });
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+        main.HasBypass.ShouldBeFalse("VPN выключен — полоса не нужна");
+
+        await Connect(shell);
+        Dispatcher.UIThread.RunJobs();
+        Find<Button>(window, "BypassBanner").IsVisible.ShouldBeTrue();
+        Text(window, "BypassText").ShouldBe("Внимание · программы и сайты из списков идут мимо VPN");
+        Snapshot(window, "main-bypass");
+
+        settings.Update(s => s with { Routing = s.Routing with { Rules = [new DomainRule("ads.example.net", RuleAction.Block)] } });
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "BypassText").ShouldBe("Внимание · программы из списка идут мимо VPN", "блок — не обход");
+        settings.Update(s => s with
+        {
+            Routing = s.Routing with { Apps = [new BypassApp("/opt/game/game", "game", IsEnabled: false)], Rules = [new DomainRule("example.com", RuleAction.Direct)] },
+        });
+        main.BypassText.ShouldBe("Внимание · сайты из списка идут мимо VPN", "выключенная программа идет через VPN");
+        settings.Update(s => s with { Routing = s.Routing with { Mode = RoutingMode.AllTraffic } });
+        main.HasBypass.ShouldBeFalse("в режиме «Весь трафик» мимо VPN ничего не идет");
+        settings.Update(s => s with { Mode = ConnectionMode.Proxy, Routing = s.Routing with { Mode = RoutingMode.Split } });
+        main.HasBypass.ShouldBeFalse("прокси и так покрывает не все — об этом говорит сам режим");
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn });
+
+        main.HasBypass.ShouldBeTrue();
+        (await Service<ConnectionController>().PauseForCaptivePortalAsync()).ShouldBeTrue();
+        WaitFor(() => shell.Protection.Status.IsPaused);
+        main.HasBypass.ShouldBeFalse("в паузе — своя полоса");
+        await Service<ConnectionController>().ResumeAsync();
+        WaitFor(() => !shell.Protection.Status.IsPaused);
+        Dispatcher.UIThread.RunJobs();
+
+        Press(window, "BypassBanner");
+        shell.CurrentKey.ShouldBe(Pages.Routing);
     }
 
     [AvaloniaFact]
