@@ -7,18 +7,6 @@
              x:DataType="vm:SubscriptionsPageViewModel">
   <!-- Профили и подписки — docs/design, доска 12. Подстраница настроек: островок виден, «назад» — к настройкам. -->
   <UserControl.Styles>
-    <!-- Кнопка выбора промежутка: белая, с рамкой и синей галочкой вниз -->
-    <Style Selector="Button.select">
-      <Setter Property="Height" Value="36" />
-      <Setter Property="Padding" Value="12,0,10,0" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
-      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
-      <Setter Property="FontWeight" Value="Medium" />
-      <Setter Property="Cursor" Value="Hand" />
-    </Style>
 
     <!-- Карточка подписки -->
     <Style Selector="Border.subscription">
@@ -64,32 +52,6 @@
       <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
 
-    <!-- Кнопки карточки: «Обновить» — синим, «Изменить» — белая, удаление — красный значок.
-         Не «accent»: так называется свой стиль кнопки во Fluent. -->
-    <Style Selector="Button.small">
-      <Setter Property="Height" Value="36" />
-      <Setter Property="Padding" Value="12,0" />
-      <Setter Property="VerticalContentAlignment" Value="Center" />
-      <Setter Property="CornerRadius" Value="10" />
-      <Setter Property="BorderThickness" Value="1" />
-      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
-      <Setter Property="Cursor" Value="Hand" />
-      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
-      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
-    </Style>
-    <Style Selector="Button.small.update">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
-      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
-      <Setter Property="FontWeight" Value="SemiBold" />
-    </Style>
-    <Style Selector="Button.small:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
-    </Style>
-    <Style Selector="Button.small.update:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
-    </Style>
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
@@ -131,7 +93,7 @@
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
                   <ItemsControl ItemsSource="{Binding RefreshOptions}">
                     <ItemsControl.ItemTemplate>
-                      <DataTemplate x:DataType="vm:RefreshOptionViewModel">
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
                         <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="12,9"
                                 Command="{Binding ChooseCommand}" Content="{Binding Label}" />
                       </DataTemplate>
@@ -197,7 +159,7 @@
                     <TextBlock Text="{Binding Error}" />
                   </Border>
                   <Grid ColumnDefinitions="Auto,Auto,*,Auto" Margin="0,2,0,0">
-                    <Button Classes="small update" IsVisible="{Binding CanUpdate}" Margin="0,0,6,0"
+                    <Button Classes="small soft" IsVisible="{Binding CanUpdate}" Margin="0,0,6,0"
                             Command="{Binding UpdateCommand}" AutomationProperties.Name="{l:L subs.update}">
                       <StackPanel Orientation="Horizontal" Spacing="6">
                         <c:Icon Data="{StaticResource Icon.Refresh}" Width="15" Height="15" StrokeThickness="2.2"

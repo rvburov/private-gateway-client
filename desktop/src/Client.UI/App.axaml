@@ -46,6 +46,12 @@
     <DataTemplate DataType="vm:SubscriptionEditViewModel">
       <views:SubscriptionEditView />
     </DataTemplate>
+    <DataTemplate DataType="vm:ProtectionPageViewModel">
+      <views:ProtectionPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:DnsAddressViewModel">
+      <views:DnsAddressView />
+    </DataTemplate>
     <DataTemplate DataType="vm:StubPageViewModel">
       <views:StubPage />
     </DataTemplate>

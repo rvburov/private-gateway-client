@@ -43,6 +43,10 @@ public sealed class SettingsStorageTests : IDisposable
             SubscriptionRefresh = SubscriptionRefresh.Every24Hours,
             UpdateOnlyViaVpn = false,
             NotifySelectedServerChange = false,
+            Protection = new ProtectionSettings(
+                BootProtection: false, StrictMode: true, Dns: DnsChoice.Custom, CustomDns: "9.9.9.9", BlockOutsideDns: false,
+                FakeDns: true, CheckLeaksAfterConnect: false, BlockIpv6: false, Addresses: AddressPreference.Ipv4Only,
+                AllowLan: true, LanDiscovery: true),
         };
         Store().Save(changed);
 

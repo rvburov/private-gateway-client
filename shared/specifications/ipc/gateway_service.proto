@@ -285,12 +285,31 @@ message ProtectionSettings {
   // Доступ к локальной сети мимо VPN (по умолчанию запрещен).
   bool allow_lan = 3;
   DnsSettings dns = 4;
+  // Блок действует с загрузки ОС до старта службы.
+  bool boot_protection = 5;
+  // Строгий режим: блок и при ручном отключении VPN.
+  bool strict_mode = 6;
+  // Обнаружение устройств (mDNS/SSDP) — только вместе с allow_lan.
+  bool lan_discovery = 7;
+  AddressPreference address_preference = 8;
+  // Сразу после подключения проверить утечки DNS и IP.
+  bool check_leaks_after_connect = 9;
+}
+
+// Приоритет адресов для сайтов с IPv4 и IPv6.
+enum AddressPreference {
+  ADDRESS_PREFERENCE_UNSPECIFIED = 0;
+  ADDRESS_PREFERENCE_PREFER_IPV4 = 1;
+  ADDRESS_PREFERENCE_PREFER_IPV6 = 2;
+  ADDRESS_PREFERENCE_IPV4_ONLY = 3;
 }
 
 message DnsSettings {
+  // IP-адреса или DoH (https://…); пусто — DNS из профиля сервера.
   repeated string servers = 1;
   // Запретить DNS мимо туннеля.
   bool block_outside_dns = 2;
+  bool fake_dns = 3;
 }
 
 message ApplyProtectionReply {

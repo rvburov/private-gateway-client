@@ -53,9 +53,12 @@ public sealed class SettingsPageTests : IDisposable
     [AvaloniaFact]
     public void Changes_are_saved_at_once_and_survive_a_restart()
     {
-        var (_, page) = OpenSettings();
+        var (window, page) = OpenSettings();
 
         page.KillSwitch = false;
+        Dispatcher.UIThread.RunJobs();
+        ((ShellViewModel)window.DataContext!).Overlay.Dialog!.SecondaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
         page.ConnectOnLaunch = true;
         page.NotifyOff = true;
 
@@ -63,6 +66,29 @@ public sealed class SettingsPageTests : IDisposable
         reopened.KillSwitch.ShouldBeFalse();
         reopened.ConnectOnLaunch.ShouldBeTrue();
         reopened.Notifications.ShouldBe(Core.Settings.NotificationLevel.Off);
+    }
+
+    [AvaloniaFact]
+    public void Turning_the_kill_switch_off_asks_first_and_keeps_it_by_default()
+    {
+        var (window, page) = OpenSettings();
+        var overlay = ((ShellViewModel)window.DataContext!).Overlay;
+
+        page.KillSwitch = false;
+        Dispatcher.UIThread.RunJobs();
+
+        var dialog = overlay.Dialog.ShouldNotBeNull();
+        dialog.Title.ShouldBe("Выключить блок при обрыве?");
+        dialog.PrimaryText.ShouldBe("Оставить включенным");
+        dialog.IsSecondaryDanger.ShouldBeTrue();
+        page.KillSwitch.ShouldBeTrue("до ответа ничего не меняется");
+        window.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "KillSwitchToggle").IsChecked.ShouldBe(true);
+
+        overlay.DismissCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.KillSwitch.ShouldBeTrue("Escape — безопасный вариант");
+        Build().GetRequiredService<SettingsService>().Current.KillSwitch.ShouldBeTrue();
     }
 
     [AvaloniaFact]

@@ -2,8 +2,10 @@ using CoreCheck = PrivateGateway.Client.Core.DiagnosticCheck;
 using CoreCheckState = PrivateGateway.Client.Core.CheckState;
 using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
 using CoreState = PrivateGateway.Client.Core.ConnectionState;
+using CoreAddresses = PrivateGateway.Client.Core.Settings.AddressPreference;
 using CoreProtocol = PrivateGateway.Client.Core.ProxyProtocol;
 using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
+using CoreSettings = PrivateGateway.Client.Core.Settings.AppSettings;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Contracts;
@@ -144,4 +146,44 @@ public static class ContractMapping
         "other_vpn" => CoreCheck.OtherVpn,
         _ => null,
     };
+
+    public static V1.AddressPreference ToContract(this CoreAddresses preference) => preference switch
+    {
+        CoreAddresses.PreferIpv4 => V1.AddressPreference.PreferIpv4,
+        CoreAddresses.PreferIpv6 => V1.AddressPreference.PreferIpv6,
+        CoreAddresses.Ipv4Only => V1.AddressPreference.Ipv4Only,
+        _ => throw new ArgumentOutOfRangeException(nameof(preference), preference, null),
+    };
+
+    public static CoreAddresses ToCore(this V1.AddressPreference preference) => preference switch
+    {
+        V1.AddressPreference.PreferIpv4 => CoreAddresses.PreferIpv4,
+        V1.AddressPreference.PreferIpv6 => CoreAddresses.PreferIpv6,
+        V1.AddressPreference.Ipv4Only => CoreAddresses.Ipv4Only,
+        _ => throw new ArgumentOutOfRangeException(nameof(preference), preference, "Приоритет адресов не задан"),
+    };
+
+    /// <summary>
+    /// Защита для службы (ApplyProtection): блок при обрыве — из «Основных», остальное — из «Защиты
+    /// и утечек». Обнаружение устройств без локальной сети не включается.
+    /// </summary>
+    public static V1.ProtectionSettings ToContract(this CoreSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var p = settings.Protection;
+        var dns = new V1.DnsSettings { BlockOutsideDns = p.BlockOutsideDns, FakeDns = p.FakeDns };
+        dns.Servers.AddRange(p.DnsServers);
+        return new V1.ProtectionSettings
+        {
+            KillSwitch = settings.KillSwitch,
+            BlockIpv6 = p.BlockIpv6,
+            AllowLan = p.AllowLan,
+            Dns = dns,
+            BootProtection = p.BootProtection,
+            StrictMode = p.StrictMode && settings.KillSwitch,
+            LanDiscovery = p.LanDiscovery && p.AllowLan,
+            AddressPreference = p.Addresses.ToContract(),
+            CheckLeaksAfterConnect = p.CheckLeaksAfterConnect,
+        };
+    }
 }

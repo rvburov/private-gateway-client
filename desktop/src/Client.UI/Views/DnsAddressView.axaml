@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.DnsAddressView"
+             x:DataType="vm:DnsAddressViewModel">
+  <!-- Лист «Свой адрес DNS» (доска 5): IP-адрес или DoH. Рамку и тень дает окно. -->
+  <DockPanel AutomationProperties.Name="{l:L prot.dnsCustom.title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock Classes="status" Text="{l:L prot.dnsCustom.title}" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding CancelCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,8,*">
+      <Button Classes="secondary" Height="50" HorizontalAlignment="Stretch" Command="{Binding CancelCommand}"
+              Content="{l:L dialog.cancel}" />
+      <Button x:Name="SaveDns" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding SaveCommand}" Content="{l:L subs.edit.save}" />
+    </Grid>
+
+    <StackPanel Margin="0,16,0,16" Spacing="6">
+      <TextBlock Classes="small" Text="{l:L prot.dnsCustom.label}" FontWeight="SemiBold"
+                 Foreground="{StaticResource PgBrush.Text.Secondary}" />
+      <TextBox x:Name="DnsAddress" Classes="input" Text="{Binding Address}" PlaceholderText="{l:L prot.dnsCustom.placeholder}"
+               FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+               AutomationProperties.Name="{l:L prot.dnsCustom.label}">
+        <TextBox.KeyBindings>
+          <KeyBinding Gesture="Enter" Command="{Binding SaveCommand}" />
+        </TextBox.KeyBindings>
+      </TextBox>
+      <TextBlock Classes="caption" Text="{l:L prot.dnsCustom.note}" TextWrapping="Wrap" />
+      <TextBlock x:Name="DnsError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                 TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+    </StackPanel>
+  </DockPanel>
+</UserControl>

@@ -1,0 +1,199 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ProtectionPage"
+             x:DataType="vm:ProtectionPageViewModel">
+  <!-- Защита и утечки — docs/design, доска 5. Подстраница настроек: островок виден, «назад» — к настройкам. -->
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L settings.adv.protection.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0">
+        <TextBlock Classes="overline" Text="{l:L prot.group.ks, Upper=True}" Margin="6,0,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.ks.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{Binding KillSwitchText}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{Binding KillSwitchNote}" TextWrapping="Wrap"
+                           IsVisible="{Binding KillSwitchNote, Converter={x:Static ObjectConverters.IsNotNull}}"
+                           Foreground="{StaticResource PgBrush.Status.Caution.Text}" />
+              </StackPanel>
+              <ToggleButton x:Name="KillSwitchToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanKillSwitch}"
+                            IsChecked="{Binding KillSwitch}" AutomationProperties.Name="{l:L prot.ks.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{Binding BootTitle}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.boot.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="BootToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding BootProtection}" AutomationProperties.Name="{Binding BootTitle}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.strict.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.strict.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="StrictToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanStrictMode}"
+                            IsChecked="{Binding StrictMode}" AutomationProperties.Name="{l:L prot.strict.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.captive.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.captive.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="CaptiveButton" Grid.Column="1" Classes="small soft" Padding="14,0" VerticalAlignment="Center"
+                      Command="{Binding OpenCaptivePortalCommand}" Content="{l:L prot.captive.open}"
+                      AutomationProperties.Name="{l:L prot.captive.title}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L prot.group.dns, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L prot.dns.title}" />
+                <TextBlock Classes="caption" Text="{l:L prot.dns.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="DnsChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleDnsCommand}"
+                      AutomationProperties.Name="{l:L prot.dns.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="DnsChoiceText" Text="{Binding DnsText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #DnsChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsDnsOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding DnsOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.dnsBlock.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.dnsBlock.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="DnsBlockToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding BlockOutsideDns}" AutomationProperties.Name="{l:L prot.dnsBlock.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.fakeDns.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.fakeDns.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="FakeDnsToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding FakeDns}" AutomationProperties.Name="{l:L prot.fakeDns.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.leaks.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.leaks.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="LeaksToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding CheckLeaksAfterConnect}" AutomationProperties.Name="{l:L prot.leaks.title}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L prot.group.ipv6, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.ipv6.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.ipv6.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="Ipv6Toggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding BlockIpv6}" AutomationProperties.Name="{l:L prot.ipv6.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L prot.addr.title}" />
+                <TextBlock Classes="caption" Text="{l:L prot.addr.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="AddressChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleAddressesCommand}"
+                      AutomationProperties.Name="{l:L prot.addr.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="AddressChoiceText" Text="{Binding AddressesText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #AddressChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsAddressesOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding AddressOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L prot.group.lan, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.lan.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.lan.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="LanToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding AllowLan}" AutomationProperties.Name="{l:L prot.lan.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.lanDisc.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.lanDisc.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="LanDiscoveryToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding AllowLan}"
+                            IsChecked="{Binding LanDiscovery}" AutomationProperties.Name="{l:L prot.lanDisc.title}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

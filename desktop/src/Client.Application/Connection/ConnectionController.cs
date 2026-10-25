@@ -114,6 +114,9 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
         return true;
     }
 
+    /// <summary>Защита выключена — VPN не мешает выходу в сеть.</summary>
+    public bool IsProtectionOff => gateway.Status.State == ConnectionState.Off;
+
     /// <summary>«Вернуть защиту» раньше конца паузы.</summary>
     public Task ResumeAsync(CancellationToken cancellationToken = default) => gateway.ResumeProtectionAsync(cancellationToken);
 

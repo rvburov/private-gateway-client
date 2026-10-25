@@ -40,6 +40,8 @@ public abstract class WindowHarness : IDisposable
 
     protected FakeDownloader Downloads { get; } = new();
 
+    protected FakeUrlLauncher Urls { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -63,6 +65,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<IFileOpenService>(OpenFiles);
             s.AddSingleton<ISecretStore>(Secrets);
             s.AddSingleton<ISubscriptionDownloader>(Downloads);
+            s.AddSingleton<IUrlLauncher>(Urls);
         });
         var shell = _services.GetRequiredService<ShellViewModel>();
         var window = new MainWindow { DataContext = shell };
@@ -198,6 +201,18 @@ public abstract class WindowHarness : IDisposable
             return Responses.TryGetValue(url, out var text)
                 ? Task.FromResult(text)
                 : Task.FromException<string>(new SubscriptionDownloadException(DownloadFailure.Status, 404));
+        }
+    }
+
+    /// <summary>Открытые адреса — вместо браузера.</summary>
+    protected sealed class FakeUrlLauncher : IUrlLauncher
+    {
+        public List<Uri> Opened { get; } = [];
+
+        public Task<bool> OpenAsync(Uri url)
+        {
+            Opened.Add(url);
+            return Task.FromResult(true);
         }
     }
 }

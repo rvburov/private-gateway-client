@@ -50,7 +50,8 @@ public sealed partial class SubscriptionsPageViewModel : ObservableObject
         _toast = toast;
         _navigator = navigator;
         _time = time;
-        RefreshOptions = [.. Enum.GetValues<SubscriptionRefresh>().Select(v => new RefreshOptionViewModel(v, this))];
+        RefreshOptions = [.. Enum.GetValues<SubscriptionRefresh>().Select(v =>
+            new ChoiceOptionViewModel(() => RefreshLabel(v), () => _settings.Current.SubscriptionRefresh == v, () => ChooseRefresh(v)))];
         store.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
         updater.BusyChanged += (_, _) => Dispatcher.UIThread.Post(Rebuild);
         gateway.StatusChanged += (_, _) => Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(BlockNote)));
@@ -68,7 +69,7 @@ public sealed partial class SubscriptionsPageViewModel : ObservableObject
 
     // ── Настройки ────────────────────────────────────────────────────────────
 
-    public IReadOnlyList<RefreshOptionViewModel> RefreshOptions { get; }
+    public IReadOnlyList<ChoiceOptionViewModel> RefreshOptions { get; }
 
     /// <summary>«каждые 12 ч» на кнопке выбора.</summary>
     public string RefreshText => RefreshLabel(_settings.Current.SubscriptionRefresh);
@@ -103,8 +104,6 @@ public sealed partial class SubscriptionsPageViewModel : ObservableObject
         SubscriptionRefresh.Every24Hours => "subs.refresh.24",
         _ => "subs.refresh.off",
     }];
-
-    internal bool IsCurrentRefresh(SubscriptionRefresh value) => _settings.Current.SubscriptionRefresh == value;
 
     internal void ChooseRefresh(SubscriptionRefresh value)
     {
@@ -194,19 +193,6 @@ public sealed partial class SubscriptionsPageViewModel : ObservableObject
 
         OnPropertyChanged(string.Empty);
     }
-}
-
-/// <summary>Вариант автообновления во всплывающем списке.</summary>
-public sealed partial class RefreshOptionViewModel(SubscriptionRefresh value, SubscriptionsPageViewModel page) : ObservableObject
-{
-    public string Label => SubscriptionsPageViewModel.RefreshLabel(value);
-
-    public bool IsCurrent => page.IsCurrentRefresh(value);
-
-    internal void Refresh() => OnPropertyChanged(string.Empty);
-
-    [RelayCommand]
-    private void Choose() => page.ChooseRefresh(value);
 }
 
 /// <summary>Чем помечена группа: работает, последняя попытка не удалась, без адреса.</summary>

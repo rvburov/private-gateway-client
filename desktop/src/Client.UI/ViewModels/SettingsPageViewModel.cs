@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -18,13 +19,15 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly INavigator _navigator;
     private readonly IGatewayClient _gateway;
+    private readonly OverlayViewModel _overlay;
 
-    public SettingsPageViewModel(SettingsService settings, INavigator navigator, IGatewayClient gateway)
+    public SettingsPageViewModel(SettingsService settings, INavigator navigator, IGatewayClient gateway, OverlayViewModel overlay)
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
         _navigator = navigator;
         _gateway = gateway;
+        _overlay = overlay;
         settings.Changed += (_, _) => OnPropertyChanged(string.Empty);
         Loc.Instance.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
         Advanced =
@@ -64,10 +67,29 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// <summary>В режиме прокси блок при обрыве недоступен (макет).</summary>
     public bool CanKillSwitch => IsVpnMode;
 
+    /// <summary>Выключение — только после «Выключить» в диалоге: до ответа переключатель стоит на месте.</summary>
     public bool KillSwitch
     {
         get => S.KillSwitch;
-        set => Set(s => s with { KillSwitch = value });
+        set
+        {
+            if (value || !S.KillSwitch)
+            {
+                Set(s => s with { KillSwitch = value });
+                return;
+            }
+
+            Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(KillSwitch)));
+            _ = TurnKillSwitchOffAsync();
+        }
+    }
+
+    private async Task TurnKillSwitchOffAsync()
+    {
+        if (await SafetyDialogs.ConfirmKillSwitchOffAsync(_overlay).ConfigureAwait(true))
+        {
+            Set(s => s with { KillSwitch = false });
+        }
     }
 
     public string AutostartTitle => Loc.Instance.Format("settings.autostart.title", OsName);

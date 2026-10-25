@@ -117,6 +117,50 @@
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
   </Style>
+
+  <!-- Кнопка выбора из списка (доски 5, 6, 12): белая, с рамкой и синей галочкой вниз -->
+  <Style Selector="Button.select">
+    <Setter Property="Height" Value="36" />
+    <Setter Property="Padding" Value="12,0,10,0" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+    <Setter Property="FontWeight" Value="Medium" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+
+  <!-- Небольшая кнопка в строке (доски 5, 12): белая с рамкой; soft — синяя мягкая («Обновить», «Открыть»).
+       Не «accent»: так называется свой стиль кнопки во Fluent. -->
+  <Style Selector="Button.small">
+    <Setter Property="Height" Value="36" />
+    <Setter Property="Padding" Value="12,0" />
+    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="CornerRadius" Value="10" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+  </Style>
+
+  <Style Selector="Button.small.soft">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+
+  <Style Selector="Button.small:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
+  </Style>
+
+  <Style Selector="Button.small.soft:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+  </Style>
+
   <Style Selector="Button.option">
     <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
     <Setter Property="MinHeight" Value="{StaticResource PgLayout.TouchTarget}" />

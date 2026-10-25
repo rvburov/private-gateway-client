@@ -27,6 +27,19 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
         }
 
         var d = AppSettings.Default;
+        var p = d.Protection;
+        var protection = new ProtectionSettings(
+            Bool("protection.boot", p.BootProtection),
+            Bool("protection.strict", p.StrictMode),
+            Enum("protection.dns", p.Dns),
+            values.TryGetValue("protection.dns_custom", out var custom) ? DnsAddress.Normalize(custom) : p.CustomDns,
+            Bool("protection.block_outside_dns", p.BlockOutsideDns),
+            Bool("protection.fake_dns", p.FakeDns),
+            Bool("protection.check_leaks", p.CheckLeaksAfterConnect),
+            Bool("protection.block_ipv6", p.BlockIpv6),
+            Enum("protection.addresses", p.Addresses),
+            Bool("protection.allow_lan", p.AllowLan),
+            Bool("protection.lan_discovery", p.LanDiscovery));
         return new AppSettings(
             Enum("mode", d.Mode),
             Bool("kill_switch", d.KillSwitch),
@@ -37,7 +50,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language,
             Enum("subscription_refresh", d.SubscriptionRefresh),
             Bool("update_only_via_vpn", d.UpdateOnlyViaVpn),
-            Bool("notify_selected_server_change", d.NotifySelectedServerChange));
+            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) { Protection = protection };
 
         bool Bool(string key, bool fallback) =>
             !values.TryGetValue(key, out var text) ? fallback
@@ -66,6 +79,17 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["subscription_refresh"] = settings.SubscriptionRefresh.ToString(),
             ["update_only_via_vpn"] = settings.UpdateOnlyViaVpn.ToString(CultureInfo.InvariantCulture),
             ["notify_selected_server_change"] = settings.NotifySelectedServerChange.ToString(CultureInfo.InvariantCulture),
+            ["protection.boot"] = Text(settings.Protection.BootProtection),
+            ["protection.strict"] = Text(settings.Protection.StrictMode),
+            ["protection.dns"] = settings.Protection.Dns.ToString(),
+            ["protection.dns_custom"] = settings.Protection.CustomDns ?? string.Empty,
+            ["protection.block_outside_dns"] = Text(settings.Protection.BlockOutsideDns),
+            ["protection.fake_dns"] = Text(settings.Protection.FakeDns),
+            ["protection.check_leaks"] = Text(settings.Protection.CheckLeaksAfterConnect),
+            ["protection.block_ipv6"] = Text(settings.Protection.BlockIpv6),
+            ["protection.addresses"] = settings.Protection.Addresses.ToString(),
+            ["protection.allow_lan"] = Text(settings.Protection.AllowLan),
+            ["protection.lan_discovery"] = Text(settings.Protection.LanDiscovery),
         };
 
         using var connection = database.Open();
@@ -83,6 +107,8 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
 
         transaction.Commit();
     }
+
+    private static string Text(bool value) => value.ToString(CultureInfo.InvariantCulture);
 
     private T Invalid<T>(string key, T fallback)
     {
