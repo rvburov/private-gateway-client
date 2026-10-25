@@ -59,6 +59,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         new("Protocol Buffers", "BSD-3-Clause", "Google.Protobuf"),
         new("gRPC", "Apache-2.0", "Grpc.Core.Api"),
         new("YamlDotNet", "MIT", "YamlDotNet"),
+        new("ZXing.Net", "Apache-2.0", "ZXing.Net"),
     ];
 
     /// <summary>«Версия 0.1 · Windows 11 · x64».</summary>

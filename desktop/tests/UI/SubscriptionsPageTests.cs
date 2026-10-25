@@ -225,8 +225,8 @@ public sealed class SubscriptionsPageTests : WindowHarness
         Find<TextBlock>(window, "ToastText").TextLayout.TextLines.Count.ShouldBeGreaterThan(1, "длинное сообщение переносится, а не уходит за край");
         Snapshot(window, "toast-long");
         store.Selected!.Name.ShouldBe("A");
-        var card = new ServerCardViewModel(store.Selected.Id, Service<IServerCatalog>(), Service<ProtectionViewModel>(),
-            Service<ConnectionController>(), shell.Overlay, shell.Toast);
+        var card = new ServerCardViewModel(store.Selected.Id, Service<IServerCatalog>(), Service<IServerStore>(), Clipboard,
+            Service<ProtectionViewModel>(), Service<ConnectionController>(), shell.Overlay, shell.Toast);
         card.Subtitle.ShouldBe("Пропал из подписки — остается, пока выбран");
     }
 

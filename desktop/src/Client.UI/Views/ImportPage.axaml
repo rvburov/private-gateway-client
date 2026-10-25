@@ -121,6 +121,21 @@
             </Grid>
           </Button>
         </Border>
+        <Border Classes="sourceShadow" Classes.chosen="{Binding IsQr}">
+          <Button x:Name="FromQr" Classes="source" Classes.chosen="{Binding IsQr}"
+                  Command="{Binding FromQrCommand}" AutomationProperties.Name="{l:L import.qr.title}">
+            <Grid ColumnDefinitions="Auto,*">
+              <Border Classes="sourceIcon">
+                <c:Icon Data="{StaticResource Icon.Qr}" Width="22" Height="22" StrokeThickness="1.9"
+                        Foreground="{StaticResource PgBrush.Accent.Text}" />
+              </Border>
+              <StackPanel Grid.Column="1" Margin="12,0,0,0" Spacing="2" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L import.qr.title}" />
+                <TextBlock Classes="caption" Text="{Binding QrText}" TextWrapping="Wrap" />
+              </StackPanel>
+            </Grid>
+          </Button>
+        </Border>
         <Border Classes="sourceShadow" Classes.chosen="{Binding IsLink}">
           <Button x:Name="EnterLink" Classes="source" Classes.chosen="{Binding IsLink}"
                   Command="{Binding OpenLinkCommand}" AutomationProperties.Name="{l:L import.link.title}">

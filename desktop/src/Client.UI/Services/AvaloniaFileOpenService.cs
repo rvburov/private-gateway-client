@@ -3,6 +3,7 @@ using System.Text;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.UI.Localization;
 
 namespace PrivateGateway.Client.UI.Services;
@@ -28,6 +29,42 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         }).ConfigureAwait(true);
         return files.Count == 0 ? null : await ReadAsync(files[0]).ConfigureAwait(true);
     }
+
+    public async Task<(string Name, ImagePixels Image)?> OpenImageAsync()
+    {
+        if (Storage() is not { } storage)
+        {
+            return null;
+        }
+
+        var files = await storage.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            AllowMultiple = false,
+            FileTypeFilter = [FilePickerFileTypes.ImageAll, FilePickerFileTypes.All],
+        }).ConfigureAwait(true);
+        return files.Count == 0 ? null : await ReadImageAsync(files[0]).ConfigureAwait(true);
+    }
+
+    /// <summary>Картинка, выбранная в окне или перетащенная в окно программы.</summary>
+    /// <exception cref="InvalidDataException">Файл больше <see cref="IFileOpenService.MaxImageBytes"/> или не картинка.</exception>
+    public static async Task<(string Name, ImagePixels Image)> ReadImageAsync(IStorageFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        await using var stream = await file.OpenReadAsync().ConfigureAwait(true);
+        using var buffer = new MemoryStream();
+        await stream.CopyToAsync(buffer).ConfigureAwait(true);
+        if (buffer.Length > IFileOpenService.MaxImageBytes)
+        {
+            throw new InvalidDataException("Картинка больше 30 МБ");
+        }
+
+        buffer.Position = 0;
+        return (file.Name, BitmapPixels.Read(buffer));
+    }
+
+    /// <summary>Похоже ли имя файла на картинку — для перетаскивания: картинка — QR-код, остальное — текст.</summary>
+    public static bool IsImage(string name) =>
+        Path.GetExtension(name).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".bmp" or ".gif" or ".webp";
 
     /// <summary>Текст файла, выбранного в окне или перетащенного в окно программы.</summary>
     /// <exception cref="InvalidDataException">Файл больше <see cref="IFileOpenService.MaxBytes"/> или не UTF-8.</exception>

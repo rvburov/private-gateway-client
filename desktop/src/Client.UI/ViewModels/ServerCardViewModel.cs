@@ -3,16 +3,19 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.UI.Localization;
+using PrivateGateway.Client.UI.Services;
 
 namespace PrivateGateway.Client.UI.ViewModels;
 
 /// <summary>
 /// Карточка сервера (доска 11) — нижний лист по «⋯» в списке: избранное, пинг, сведения о
-/// подключении, «Подключиться», переименование и удаление с подтверждением.
+/// подключении, «Подключиться», переименование, «Поделиться» (QR-код и ссылка с ключом) и удаление
+/// с подтверждением.
 /// </summary>
 public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
 {
@@ -20,15 +23,22 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     public const int MaxNameLength = 64;
 
     private readonly IServerCatalog _catalog;
+    private readonly IServerStore _store;
+    private readonly IClipboardService _clipboard;
     private readonly ProtectionViewModel _protection;
     private readonly ConnectionController _controller;
     private readonly OverlayViewModel _overlay;
     private readonly ToastViewModel _toast;
     private ServerProfile _server;
 
+    // Ссылка с ключом — только пока открыт QR-код.
+    private string? _link;
+
     public ServerCardViewModel(
         string serverId,
         IServerCatalog catalog,
+        IServerStore store,
+        IClipboardService clipboard,
         ProtectionViewModel protection,
         ConnectionController controller,
         OverlayViewModel overlay,
@@ -36,7 +46,10 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(protection);
+        ArgumentNullException.ThrowIfNull(store);
         _catalog = catalog;
+        _store = store;
+        _clipboard = clipboard;
         _protection = protection;
         _controller = controller;
         _overlay = overlay;
@@ -131,12 +144,14 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     public partial string NewName { get; set; } = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShowsDetails))]
     public partial bool IsRenaming { get; private set; }
 
     [RelayCommand]
     private void StartRename()
     {
         NewName = Name;
+        HideShare();
         IsRenaming = true;
     }
 
@@ -152,10 +167,64 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
 
     private bool CanSaveName() => NewName.Trim().Length is > 0 and <= MaxNameLength;
 
-    /// <summary>Поделиться можно только ссылкой с ключом — ключи хранятся в хранилище ОС с импортом ссылок.</summary>
-    public bool CanShare => false;
+    /// <summary>Поделиться можно своим сервером — у демо-серверов ключа нет.</summary>
+    public bool CanShare => _store.Contains(Id);
 
-    public string ShareHint => Loc.Instance["card.share.unavailable"];
+    /// <summary>Почему «Поделиться» недоступно; у доступного подсказки нет.</summary>
+    public string? ShareHint => CanShare ? null : Loc.Instance["card.share.unavailable"];
+
+    /// <summary>Открыт QR-код: вместо сведений — код, предупреждение и «Копировать ссылку».</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ShareLabel), nameof(ShowsDetails))]
+    public partial bool IsSharing { get; private set; }
+
+    /// <summary>Сведения о подключении — когда не открыты ни переименование, ни QR-код.</summary>
+    public bool ShowsDetails => !IsRenaming && !IsSharing;
+
+    public string ShareLabel => Loc.Instance[IsSharing ? "card.share.hide" : "card.share"];
+
+    /// <summary>Модули QR-кода ссылки; null — код закрыт.</summary>
+    [ObservableProperty]
+    public partial bool[,]? QrModules { get; private set; }
+
+    [RelayCommand(CanExecute = nameof(CanShare))]
+    private void ToggleShare()
+    {
+        if (IsSharing)
+        {
+            HideShare();
+            return;
+        }
+
+        // Ключ читается из хранилища ОС только сейчас, по действию пользователя.
+        if (_store.Definition(Id) is not { } definition || definition.Credentials == new ServerCredentials())
+        {
+            _toast.Show(Loc.Instance["card.share.noKey"]);
+            return;
+        }
+
+        IsRenaming = false;
+        _link = LinkWriter.Write(definition);
+        QrModules = QrCode.Encode(_link);
+        IsSharing = true;
+    }
+
+    [RelayCommand]
+    private async Task CopyLinkAsync()
+    {
+        if (_link is { } link)
+        {
+            await _clipboard.SetTextAsync(link).ConfigureAwait(true);
+            _toast.Show(Loc.Instance["card.share.copied"]);
+        }
+    }
+
+    private void HideShare()
+    {
+        _link = null;
+        QrModules = null;
+        IsSharing = false;
+    }
 
     [RelayCommand]
     private async Task DeleteAsync()
@@ -183,6 +252,7 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        HideShare();
         _catalog.Changed -= OnCatalogChanged;
         _protection.PropertyChanged -= OnProtectionChanged;
         Loc.Instance.LanguageChanged -= OnLanguageChanged;

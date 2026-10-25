@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Input.Platform;
+using PrivateGateway.Client.Application.Import;
 
 namespace PrivateGateway.Client.UI.Services;
 
@@ -17,6 +18,17 @@ public sealed class AvaloniaClipboardService : IClipboardService
 
     public async Task<string?> GetTextAsync() =>
         Clipboard() is { } clipboard ? await clipboard.TryGetTextAsync().ConfigureAwait(true) : null;
+
+    public async Task<ImagePixels?> GetImageAsync()
+    {
+        if (Clipboard() is not { } clipboard)
+        {
+            return null;
+        }
+
+        using var bitmap = await clipboard.TryGetBitmapAsync().ConfigureAwait(true);
+        return bitmap is null ? null : BitmapPixels.From(bitmap);
+    }
 
     private static IClipboard? Clipboard()
     {

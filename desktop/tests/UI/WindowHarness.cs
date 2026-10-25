@@ -172,6 +172,11 @@ public abstract class WindowHarness : IDisposable
         }
 
         public Task<string?> GetTextAsync() => Task.FromResult(Text);
+
+        /// <summary>Снимок области экрана в буфере; null — в буфере не картинка.</summary>
+        public ImagePixels? Image { get; set; }
+
+        public Task<ImagePixels?> GetImageAsync() => Task.FromResult(Image);
     }
 
     protected sealed class FakeFileOpener : IFileOpenService
@@ -180,6 +185,17 @@ public abstract class WindowHarness : IDisposable
         public (string Name, string Text)? File { get; set; }
 
         public Task<(string Name, string Text)?> OpenTextAsync() => Task.FromResult(File);
+
+        /// <summary>Выбранная картинка; null — окно закрыто.</summary>
+        public (string Name, ImagePixels Image)? Image { get; set; }
+
+        public int ImagePickerOpened { get; private set; }
+
+        public Task<(string Name, ImagePixels Image)?> OpenImageAsync()
+        {
+            ImagePickerOpened++;
+            return Task.FromResult(Image);
+        }
 
         /// <summary>Выбранная программа; null — окно закрыто.</summary>
         public (string Path, string Name)? Program { get; set; }

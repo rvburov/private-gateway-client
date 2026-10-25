@@ -59,6 +59,9 @@ public interface IServerStore : IServerCatalog
     /// <exception cref="InvalidOperationException">Хранилище секретов недоступно — ничего не сохранено.</exception>
     ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName, Uri? subscriptionUrl = null);
 
+    /// <summary>Свой ли это сервер (добавлен ссылкой или подпиской), не читая ключа из хранилища ОС.</summary>
+    bool Contains(string serverId);
+
     /// <summary>Полное описание сервера с секретами — для подключения; null — сервера нет.</summary>
     ServerDefinition? Definition(string serverId);
 

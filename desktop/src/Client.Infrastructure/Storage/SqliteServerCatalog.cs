@@ -283,6 +283,14 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         return new ImportOutcome(added, duplicates);
     }
 
+    public bool Contains(string serverId)
+    {
+        lock (_gate)
+        {
+            return Rows.Exists(r => r.Profile.Id == serverId);
+        }
+    }
+
     public ServerDefinition? Definition(string serverId)
     {
         string definition;

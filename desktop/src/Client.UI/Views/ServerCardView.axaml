@@ -53,6 +53,19 @@
     <Style Selector="ContentPresenter:nth-last-child(1) Border.detailRow">
       <Setter Property="BorderThickness" Value="0" />
     </Style>
+    <!-- «Поделиться» нажата: QR-код открыт -->
+    <Style Selector="Button.tile.on">
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <Style Selector="Border.shareWarning">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Caution.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Caution.Line}" />
+    </Style>
     <Style Selector="Button.favorite">
       <Setter Property="Width" Value="40" />
       <Setter Property="Height" Value="40" />
@@ -119,12 +132,13 @@
           </StackPanel>
         </Button>
         <!-- В подсказке — почему недоступно: у выключенной кнопки подсказка тоже видна -->
-        <Button Classes="secondary tile" IsEnabled="{Binding CanShare}"
+        <Button x:Name="ShareButton" Classes="secondary tile" Classes.on="{Binding IsSharing}"
+                Command="{Binding ToggleShareCommand}"
                 ToolTip.Tip="{Binding ShareHint}" ToolTip.ShowOnDisabled="True"
-                AutomationProperties.Name="{l:L card.share}" AutomationProperties.HelpText="{Binding ShareHint}">
+                AutomationProperties.Name="{Binding ShareLabel}" AutomationProperties.HelpText="{Binding ShareHint}">
           <StackPanel Spacing="4">
             <c:Icon Data="{StaticResource Icon.Qr}" Width="18" Height="18" StrokeThickness="1.9" HorizontalAlignment="Center" />
-            <TextBlock Text="{l:L card.share}" FontSize="{StaticResource PgFontSize.Caption}" HorizontalAlignment="Center"
+            <TextBlock Text="{Binding ShareLabel}" FontSize="{StaticResource PgFontSize.Caption}" HorizontalAlignment="Center"
                        TextTrimming="CharacterEllipsis" />
           </StackPanel>
         </Button>
@@ -156,7 +170,25 @@
         </Border>
       </StackPanel>
 
-      <Border Classes="inset" Padding="14,2" IsVisible="{Binding !IsRenaming}">
+      <!-- «Поделиться»: QR-код со ссылкой, предупреждение о ключе и копирование ссылки -->
+      <Border Classes="inset" Padding="16" IsVisible="{Binding IsSharing}">
+        <StackPanel Spacing="12" HorizontalAlignment="Stretch">
+          <Border Background="{StaticResource PgBrush.Surface.Solid}" BorderBrush="{StaticResource PgBrush.Line.Divider}"
+                  BorderThickness="1" CornerRadius="12" Padding="10" HorizontalAlignment="Center">
+            <c:QrCodeView x:Name="ShareQr" Modules="{Binding QrModules}" Width="168" Height="168"
+                          Foreground="{StaticResource PgBrush.Text.Primary}"
+                          AutomationProperties.Name="{l:L card.share.qr}" />
+          </Border>
+          <Border Classes="shareWarning">
+            <TextBlock Text="{l:L card.share.warning}" TextWrapping="Wrap" FontSize="{StaticResource PgFontSize.Small}"
+                       Foreground="{StaticResource PgBrush.Status.Caution.Text}" />
+          </Border>
+          <Button x:Name="CopyLink" Classes="secondary" HorizontalAlignment="Stretch" Height="44"
+                  Command="{Binding CopyLinkCommand}" Content="{l:L card.share.copy}" />
+        </StackPanel>
+      </Border>
+
+      <Border Classes="inset" Padding="14,2" IsVisible="{Binding ShowsDetails}">
         <ItemsControl ItemsSource="{Binding Details}">
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:CardDetail">

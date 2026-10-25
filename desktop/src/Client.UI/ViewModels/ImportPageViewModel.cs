@@ -15,13 +15,14 @@ public enum ImportSource
 {
     None,
     Clipboard,
+    Qr,
     Link,
     File,
 }
 
 /// <summary>
-/// «Добавить профиль» по макету (доска 3): источник — буфер обмена, ссылка или адрес подписки,
-/// файл; предпросмотр — сколько найдено, новых, дублей и ошибок с номерами строк; название
+/// «Добавить профиль» по макету (доска 3): источник — буфер обмена, QR-код (снимок области экрана в
+/// буфере или картинка), ссылка или адрес подписки, файл; предпросмотр — сколько найдено, новых, дублей и ошибок с номерами строк; название
 /// профиля и «Добавить N серверов». Сохраняет только <see cref="IServerStore"/>, секреты — в
 /// хранилище ОС.
 /// </summary>
@@ -59,10 +60,16 @@ public sealed partial class ImportPageViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsClipboard), nameof(IsLink), nameof(IsFile))]
+    [NotifyPropertyChangedFor(nameof(IsClipboard), nameof(IsQr), nameof(IsLink), nameof(IsFile))]
     public partial ImportSource Source { get; private set; }
 
     public bool IsClipboard => Source == ImportSource.Clipboard;
+
+    public bool IsQr => Source == ImportSource.Qr;
+
+    /// <summary>Подсказка карточки QR: как снять область экрана в буфер на этой ОС.</summary>
+    public string QrText => Loc.Instance[OperatingSystem.IsWindows() ? "import.qr.text.windows"
+        : OperatingSystem.IsMacOS() ? "import.qr.text.macos" : "import.qr.text.linux"];
 
     public bool IsLink => Source == ImportSource.Link;
 
@@ -170,6 +177,69 @@ public sealed partial class ImportPageViewModel : ObservableObject
         }
 
         await AnalyzeAsync(text, suggestedName: null).ConfigureAwait(true);
+    }
+
+    /// <summary>
+    /// QR-код: снимок области экрана в буфере обмена (средствами ОС), а если в буфере не картинка —
+    /// картинка из файла.
+    /// </summary>
+    [RelayCommand]
+    private async Task FromQrAsync()
+    {
+        Source = ImportSource.Qr;
+        if (await _clipboard.GetImageAsync().ConfigureAwait(true) is { } snapshot)
+        {
+            await FromImageAsync(snapshot).ConfigureAwait(true);
+            return;
+        }
+
+        try
+        {
+            if (await _files.OpenImageAsync().ConfigureAwait(true) is { } file)
+            {
+                await FromImageAsync(file.Image).ConfigureAwait(true);
+            }
+        }
+        catch (InvalidDataException e)
+        {
+            Show(Loc.Instance.Format("import.file.failed", e.Message));
+        }
+        catch (IOException e)
+        {
+            Show(Loc.Instance.Format("import.file.failed", e.Message));
+        }
+    }
+
+    /// <summary>Картинка с QR-кодом — из буфера, файла или перетащенная в окно.</summary>
+    public async Task FromImageAsync(ImagePixels image)
+    {
+        Source = ImportSource.Qr;
+        var attempt = _attempt;
+        // Распознавание большой картинки — заметная работа: не в потоке интерфейса.
+        var text = await Task.Run(() => QrCode.Decode(image)).ConfigureAwait(true);
+        if (attempt != _attempt)
+        {
+            // Пока распознавали, выбран другой источник или экран закрыт.
+            return;
+        }
+
+        if (text is null)
+        {
+            Show(Loc.Instance["import.qr.none"]);
+            return;
+        }
+
+        await AnalyzeAsync(text, suggestedName: null).ConfigureAwait(true);
+    }
+
+    /// <summary>Перетащенный файл не прочитан: большой, не текст или не картинка.</summary>
+    public void ShowFileError(string reason) => Show(Loc.Instance.Format("import.file.failed", reason));
+
+    /// <summary>Перетащенный в окно текстовый файл — как выбранный кнопкой «Открыть файл».</summary>
+    public Task FromDroppedFileAsync(string name, string text)
+    {
+        Source = ImportSource.File;
+        return AnalyzeAsync(text, Path.GetFileNameWithoutExtension(name));
     }
 
     [RelayCommand]

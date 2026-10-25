@@ -21,6 +21,8 @@ public sealed partial class ServersPageViewModel : ObservableObject
     /// <summary>Пинг выше этого — серым, как в макете: сервер работает, но медленно.</summary>
     public const int SlowLatencyMs = 120;
 
+    private readonly IServerStore _store;
+    private readonly IClipboardService _clipboard;
     private readonly IServerCatalog _catalog;
     private readonly ConnectionController _controller;
     private readonly INavigator _navigator;
@@ -31,6 +33,8 @@ public sealed partial class ServersPageViewModel : ObservableObject
     public ServersPageViewModel(
         ProtectionViewModel protection,
         IServerCatalog catalog,
+        IServerStore store,
+        IClipboardService clipboard,
         ConnectionController controller,
         INavigator navigator,
         ToastViewModel toast,
@@ -40,6 +44,8 @@ public sealed partial class ServersPageViewModel : ObservableObject
         ArgumentNullException.ThrowIfNull(catalog);
         Protection = protection;
         _catalog = catalog;
+        _store = store;
+        _clipboard = clipboard;
         _controller = controller;
         _navigator = navigator;
         _toast = toast;
@@ -213,7 +219,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
     private void OpenCard(string serverId)
     {
         IsFilterOpen = false;
-        _overlay.ShowSheet(new ServerCardViewModel(serverId, _catalog, Protection, _controller, _overlay, _toast));
+        _overlay.ShowSheet(new ServerCardViewModel(serverId, _catalog, _store, _clipboard, Protection, _controller, _overlay, _toast));
     }
 
     private void PickTab(bool picked, ServerListTab tab)

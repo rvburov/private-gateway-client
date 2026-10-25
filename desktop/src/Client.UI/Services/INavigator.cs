@@ -1,3 +1,5 @@
+using PrivateGateway.Client.Application.Import;
+
 namespace PrivateGateway.Client.UI.Services;
 
 /// <summary>Страницы окна. Имена совпадают с ключами навигации островка.</summary>
@@ -47,6 +49,9 @@ public interface IClipboardService
 
     /// <returns>Текст из буфера; null — в буфере не текст.</returns>
     Task<string?> GetTextAsync();
+
+    /// <returns>Картинка из буфера (снимок области экрана); null — в буфере не картинка.</returns>
+    Task<ImagePixels?> GetImageAsync();
 }
 
 /// <summary>Выбор файла через окно ОС: текст со ссылками или программа; в тестах подменяется.</summary>
@@ -56,12 +61,20 @@ public interface IFileOpenService
     /// <exception cref="InvalidDataException">Файл больше <see cref="MaxBytes"/> или не UTF-8.</exception>
     Task<(string Name, string Text)?> OpenTextAsync();
 
+    /// <summary>Картинка с QR-кодом: PNG, JPEG, BMP и другие, что читает Avalonia.</summary>
+    /// <returns>Имя файла без пути и пиксели; null — пользователь закрыл окно.</returns>
+    /// <exception cref="InvalidDataException">Файл больше <see cref="MaxImageBytes"/> или не картинка.</exception>
+    Task<(string Name, ImagePixels Image)?> OpenImageAsync();
+
     /// <summary>Программа для «мимо VPN»: исполняемый файл, на macOS — приложение .app.</summary>
     /// <returns>Полный путь и имя для подписи; null — пользователь закрыл окно.</returns>
     Task<(string Path, string Name)?> PickProgramAsync();
 
     /// <summary>Больше этого — не список серверов.</summary>
     const int MaxBytes = 1024 * 1024;
+
+    /// <summary>Больше этого — не снимок экрана с QR-кодом.</summary>
+    const int MaxImageBytes = 30 * 1024 * 1024;
 }
 
 /// <summary>Сохранение файла через окно выбора ОС; в тестах подменяется.</summary>

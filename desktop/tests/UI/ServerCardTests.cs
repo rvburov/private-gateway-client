@@ -3,6 +3,8 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Services;
@@ -41,8 +43,61 @@ public sealed class ServerCardTests : WindowHarness
         ]);
         Find<Border>(window, "InUse").IsVisible.ShouldBeTrue();
         Find<Button>(window, "ConnectButton").IsVisible.ShouldBeFalse();
-        card.CanShare.ShouldBeFalse("ссылки с ключом появятся вместе с импортом");
+        card.CanShare.ShouldBeFalse("у демо-сервера ключа нет — делиться нечем");
+        card.ShareHint.ShouldBe("Поделиться можно сервером, добавленным ссылкой или подпиской: в ссылке есть ключ доступа.");
         Snapshot(window, "server-card");
+    }
+
+    [AvaloniaFact]
+    public async Task Share_shows_a_readable_qr_code_and_copies_the_link()
+    {
+        var link = File.ReadAllText(Path.Combine(Repo.Root, "shared", "testdata", "links", "vless", "private-gateway.txt")).Trim();
+        var (window, shell) = Open();
+        _shell = shell;
+        Service<IServerStore>().Add([LinkParser.Parse(link).Server!], null);
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        var card = OpenCard(shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>(), "Ноутбук & «дом»");
+        card.CanShare.ShouldBeTrue();
+        card.ShareHint.ShouldBeNull();
+
+        Press(window, "ShareButton");
+        Dispatcher.UIThread.RunJobs();
+
+        card.IsSharing.ShouldBeTrue();
+        card.ShareLabel.ShouldBe("Скрыть QR");
+        card.ShowsDetails.ShouldBeFalse("вместо сведений — QR-код");
+        Find<Button>(window, "ShareButton").Classes.ShouldContain("on");
+        // Код на экране — тот, что прочитает телефон: кадр окна распознается тем же QrCode, что импорт.
+        QrCode.Decode(BitmapPixels.From(window.CaptureRenderedFrame()!)).ShouldBe(LinkWriter.Write(LinkParser.Parse(link).Server!));
+        Snapshot(window, "server-card-share");
+
+        Press(window, "CopyLink");
+        await Task.Yield();
+        Dispatcher.UIThread.RunJobs();
+        Clipboard.Text.ShouldBe(LinkWriter.Write(LinkParser.Parse(link).Server!));
+        shell.Toast.Text.ShouldBe("Ссылка скопирована");
+
+        Press(window, "ShareButton");
+        Dispatcher.UIThread.RunJobs();
+        (card.IsSharing, card.QrModules, card.ShowsDetails).ShouldBe((false, (bool[,]?)null, true));
+    }
+
+    [AvaloniaFact]
+    public void Share_without_a_key_in_the_store_says_so()
+    {
+        var (_, shell) = Open();
+        _shell = shell;
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-1@198.51.100.9:443#Ключ пропал").Server!], null);
+        Secrets.Values.Clear();
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        var card = OpenCard(shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>(), "Ключ пропал");
+
+        card.ToggleShareCommand.Execute(null);
+
+        card.IsSharing.ShouldBeFalse();
+        shell.Toast.Text.ShouldBe("Ключа сервера нет в хранилище ОС — поделиться нечем");
     }
 
     [AvaloniaFact]

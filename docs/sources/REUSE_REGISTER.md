@@ -49,3 +49,5 @@
 | CommunityToolkit.Mvvm | MIT | MVVM |
 | Google.Protobuf, Grpc.* | BSD-3-Clause, Apache-2.0 | контракт IPC |
 | xUnit v3, Shouldly | Apache-2.0, BSD-3-Clause | тесты |
+| YamlDotNet | MIT | разбор YAML Clash/Mihomo — только события разборщика (`YamlTree`) |
+| ZXing.Net | Apache-2.0 | QR-код: распознавание картинки при импорте и рисование для «Поделиться» |

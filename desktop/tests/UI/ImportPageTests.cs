@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -66,6 +67,106 @@ public sealed class ImportPageTests : WindowHarness
         Text(window, "FailedCount").ShouldBe("10");
         page.ErrorLines[0].ShouldBe("Строка 53: протокол не поддерживается — пропущено.");
         Find<Button>(window, "AddButton").Content.ShouldBe("Добавить 8 серверов");
+    }
+
+    [AvaloniaFact]
+    public async Task Qr_code_from_a_screen_snapshot_in_the_clipboard_is_imported()
+    {
+        var (window, _, page) = OpenImport();
+        var link = File.ReadAllText(Path.Combine(Repo.Root, "shared", "testdata", "links", "vless", "private-gateway.txt")).Trim();
+        Clipboard.Image = QrPicture(link);
+
+        Press(window, "FromQr");
+        await WaitForPreviewAsync(page);
+
+        page.IsQr.ShouldBeTrue();
+        OpenFiles.ImagePickerOpened.ShouldBe(0, "картинка есть в буфере — окно «Открыть» не нужно");
+        Text(window, "FoundCount").ShouldBe("1");
+        Text(window, "FormatText").ShouldBe("ссылки · VLESS");
+        Find<Button>(window, "AddButton").Content.ShouldBe("Добавить 1 сервер");
+    }
+
+    [AvaloniaFact]
+    public async Task Without_a_snapshot_the_qr_card_opens_a_picture()
+    {
+        var (window, _, page) = OpenImport();
+        OpenFiles.Image = ("qr.png", QrPicture("trojan://pw-qr@198.51.100.9:443#С картинки"));
+
+        Press(window, "FromQr");
+        await WaitForPreviewAsync(page);
+
+        OpenFiles.ImagePickerOpened.ShouldBe(1);
+        page.Preview.ShouldNotBeNull().Servers.ShouldHaveSingleItem().Name.ShouldBe("С картинки");
+    }
+
+    [AvaloniaFact]
+    public async Task Picture_without_a_code_says_so()
+    {
+        var (window, _, page) = OpenImport();
+        Clipboard.Image = new ImagePixels(200, 100, Enumerable.Repeat((byte)0xFF, 200 * 100 * 4).ToArray());
+
+        await page.FromQrCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.HasPreview.ShouldBeFalse();
+        Text(window, "Message").ShouldBe("QR-код не найден: снимите область с кодом крупнее или выберите другую картинку");
+    }
+
+    [AvaloniaFact]
+    public async Task Code_read_after_leaving_the_screen_is_dropped()
+    {
+        var (_, _, page) = OpenImport();
+
+        var reading = page.FromImageAsync(QrPicture("trojan://pw-late@198.51.100.9:443#Поздно"));
+        page.BackCommand.Execute(null);
+        await reading;
+        Dispatcher.UIThread.RunJobs();
+
+        page.HasPreview.ShouldBeFalse("пока распознавали, пользователь ушел — предпросмотр не нужен");
+    }
+
+    [AvaloniaFact]
+    public void Qr_card_tells_how_to_take_a_snapshot_on_this_os()
+    {
+        var (_, _, page) = OpenImport();
+
+        page.QrText.ShouldBe(OperatingSystem.IsWindows() ? "Снимок области (Win+Shift+S) или картинка с кодом"
+            : OperatingSystem.IsMacOS() ? "Снимок области (Shift+Ctrl+Cmd+4) или картинка с кодом"
+            : "Снимок области в буфер обмена или картинка с кодом");
+    }
+
+    /// <summary>Распознавание идет в фоне: ждать предпросмотра, прокручивая очередь интерфейса.</summary>
+    private static async Task WaitForPreviewAsync(ImportPageViewModel page)
+    {
+        for (var i = 0; i < 200 && !page.HasPreview && !page.HasMessage; i++)
+        {
+            await Task.Delay(10);
+            Dispatcher.UIThread.RunJobs();
+        }
+
+        page.Message.ShouldBeNull();
+    }
+
+    /// <summary>QR-код как снимок: по 4 пикселя на модуль, белое поле в 4 модуля.</summary>
+    private static ImagePixels QrPicture(string text)
+    {
+        var modules = QrCode.Encode(text);
+        var size = (modules.GetLength(0) + 8) * 4;
+        var pixels = Enumerable.Repeat((byte)0xFF, size * size * 4).ToArray();
+        for (var y = 0; y < size; y++)
+        {
+            for (var x = 0; x < size; x++)
+            {
+                var (my, mx) = ((y / 4) - 4, (x / 4) - 4);
+                if (my >= 0 && mx >= 0 && my < modules.GetLength(0) && mx < modules.GetLength(1) && modules[my, mx])
+                {
+                    var at = ((y * size) + x) * 4;
+                    pixels[at] = pixels[at + 1] = pixels[at + 2] = 0;
+                }
+            }
+        }
+
+        return new ImagePixels(size, size, pixels);
     }
 
     [AvaloniaFact]

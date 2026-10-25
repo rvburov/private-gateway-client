@@ -30,6 +30,33 @@ public class LinkParserTests
     }
 
     [Theory]
+    [MemberData(nameof(Links))]
+    public void Written_link_parses_back_to_the_same_server(string fixture)
+    {
+        var (input, _) = Load(fixture);
+        var parsed = LinkParser.Parse(input);
+        if (parsed.Server is not { } server)
+        {
+            return;
+        }
+
+        var written = LinkWriter.Write(server);
+
+        JsonNode.DeepEquals(ToJson(LinkParser.Parse(written)), ToJson(parsed)).ShouldBeTrue($"{fixture}: {written}");
+    }
+
+    [Theory]
+    [InlineData("ss://2022-blake3-aes-128-gcm:AAAAAAAAAAAAAAAAAAAAAA%3D%3D@192.0.2.1:8388#SS", "ss://2022-blake3-aes-128-gcm:AAAAAAAAAAAAAAAAAAAAAA%3D%3D@192.0.2.1:8388#SS")]
+    [InlineData("ss://YWVzLTI1Ni1nY206cHctMQ@192.0.2.1:8388#SS", "ss://YWVzLTI1Ni1nY206cHctMQ@192.0.2.1:8388#SS")]
+    [InlineData("vless://11111111-2222-3333-4444-555555555555@[2001:db8::1]:443?security=tls&sni=example.com#%F0%9F%87%B3%F0%9F%87%B1%20NL",
+        "vless://11111111-2222-3333-4444-555555555555@[2001:db8::1]:443?encryption=none&type=tcp&security=tls&sni=example.com#%F0%9F%87%B3%F0%9F%87%B1%20NL")]
+    public void Written_link_has_the_common_form(string link, string written)
+    {
+        // Shadowsocks 2022 — открытым текстом (SIP022), обычные шифры — base64url без «=» (SIP002); флаг страны — в названии.
+        LinkWriter.Write(LinkParser.Parse(link).Server!).ShouldBe(written);
+    }
+
+    [Theory]
     [MemberData(nameof(Subscriptions))]
     public void Subscription_parses_as_in_the_shared_fixture(string fixture)
     {
