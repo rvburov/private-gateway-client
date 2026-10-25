@@ -5,11 +5,13 @@ using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
 using PrivateGateway.Client.Infrastructure.Logging;
 using PrivateGateway.Client.Infrastructure.Secrets;
+using PrivateGateway.Client.Infrastructure.Startup;
 using PrivateGateway.Client.Infrastructure.Storage;
 
 namespace PrivateGateway.Client.Infrastructure;
@@ -41,6 +43,7 @@ public static class InfrastructureModule
         services.AddSingleton<DemoServerCatalog>();
         services.AddSingleton<IServerCatalog, UserOrDemoCatalog>();
         services.AddSingleton<BackupService>();
+        services.AddSingleton<IAutostart>(_ => OsAutostart.ForCurrentUser());
         services.AddSingleton<ISubscriptionDownloader>(sp =>
             new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>()));
         return services;

@@ -1,14 +1,12 @@
 using Avalonia;
 using Avalonia.Controls;
+using PrivateGateway.Client.Infrastructure.Startup;
 using PrivateGateway.Client.Infrastructure.Storage;
 
 namespace PrivateGateway.Client.UI;
 
 internal static class Program
 {
-    /// <summary>Флаг автозапуска: окно не показывать, ждать в трее.</summary>
-    public const string MinimizedArgument = "--minimized";
-
     [STAThread]
     public static void Main(string[] args)
     {
@@ -21,7 +19,7 @@ internal static class Program
             return;
         }
 
-        App.Startup = new AppStartup(paths, instance, args.Contains(MinimizedArgument));
+        App.Startup = new AppStartup(paths, instance, args.Contains(OsAutostart.MinimizedArgument));
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
     }
 

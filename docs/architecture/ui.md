@@ -253,4 +253,10 @@ dotnet test --project desktop/tests/UI
   интерфейс» с подсказкой «VPN и блок при обрыве продолжат работать».
 - Закрыть окно при включенном «Сворачивать в трей» — спрятать его; щелчок по значку или вторая копия
   программы — показать. Запуск с `--minimized` (автозапуск) после первого запуска — только значок.
+- Запуск вместе с ОС — `Application/Startup/AutostartSync` и `Infrastructure/Startup/OsAutostart`:
+  Windows — значение в `HKCU\…\CurrentVersion\Run`, macOS — LaunchAgent
+  `~/Library/LaunchAgents/com.privategateway.client.plist`, Linux — XDG Autostart
+  `~/.config/autostart/private-gateway.desktop`; везде с `--minimized`. Запись меняется только по явному
+  решению — при переключении «Запуск вместе с ОС» и один раз после первого запуска; убранную
+  средствами ОС запись программа не возвращает. Запуск из исходников (`dotnet run`) не записывается.
 

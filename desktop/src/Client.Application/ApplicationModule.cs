@@ -2,6 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Startup;
 
 namespace PrivateGateway.Client.Application;
 
@@ -17,6 +18,7 @@ public static class ApplicationModule
         services.AddSingleton<ConnectionController>();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<SubscriptionUpdater>();
+        services.AddSingleton<AutostartSync>();
         return services;
     }
 }

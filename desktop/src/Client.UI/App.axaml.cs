@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Infrastructure;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI.Localization;
@@ -39,6 +40,7 @@ public partial class App : Avalonia.Application
 
         // Обновление подписок по расписанию — в потоке окна: список серверов меняется там, где его показывают.
         Services.GetRequiredService<SubscriptionUpdater>().Start();
+        Services.GetRequiredService<AutostartSync>().Start();
 
         base.OnFrameworkInitializationCompleted();
     }

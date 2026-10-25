@@ -8,6 +8,7 @@ using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Infrastructure.Demo;
@@ -43,6 +44,9 @@ public abstract class WindowHarness : IDisposable
 
     protected FakeUrlLauncher Urls { get; } = new();
 
+    /// <summary>Автозагрузка ОС в тестах не трогается.</summary>
+    protected FakeAutostart Autostart { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -68,6 +72,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<ISecretStore>(Secrets);
             s.AddSingleton<ISubscriptionDownloader>(Downloads);
             s.AddSingleton<IUrlLauncher>(Urls);
+            s.AddSingleton<IAutostart>(Autostart);
         });
         if (!firstLaunch)
         {
@@ -145,6 +150,15 @@ public abstract class WindowHarness : IDisposable
 
             return Task.FromResult(Accept);
         }
+    }
+
+    protected sealed class FakeAutostart : IAutostart
+    {
+        public List<bool> Applied { get; } = [];
+
+        public bool IsSupported => true;
+
+        public void Apply(bool enabled) => Applied.Add(enabled);
     }
 
     protected sealed class FakeClipboard : IClipboardService
