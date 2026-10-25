@@ -28,7 +28,10 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="BootConnect"/> — последнее подключение для «Защиты при загрузке» (<see cref="BootConnection"/>):
 /// служба подключается при загрузке сама; null — только блок;
 /// <paramref name="Trace6"/> — проверочный адрес по IPv6 (<see cref="LatencyProbe.DefaultTrace6"/>): открывает ли сервер IPv6;
-/// null — не спрашивать, IPv6 через туннель не идет.
+/// null — не спрашивать, IPv6 через туннель не идет;
+/// <paramref name="Doh"/> — DoH для поиска адреса сервера по имени через поднятый туннель (<see cref="LatencyProbe.DefaultDoh"/>);
+/// null — только через систему; <paramref name="Lookup"/> — этот поиск (тесты); null — <see cref="LatencyProbe.LookupAsync"/>;
+/// <paramref name="Resolve"/> — поиск адреса через систему (тесты); null — DNS ОС.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -45,7 +48,10 @@ public sealed record GatewayOptions(
     Uri? Trace = null,
     Func<ServerProbe, CancellationToken, Task<string?>>? ExitIp = null,
     BootConnection? BootConnect = null,
-    Uri? Trace6 = null);
+    Uri? Trace6 = null,
+    Uri? Doh = null,
+    Func<ServerProbe, string, CancellationToken, Task<IReadOnlyList<IPAddress>>>? Lookup = null,
+    Func<string, CancellationToken, Task<IPAddress[]>>? Resolve = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -72,6 +78,9 @@ public sealed record ReconnectTiming(TimeSpan? Every, TimeSpan ProbeTimeout, Tim
 public sealed partial class Gateway : IAsyncDisposable
 {
     private static readonly TimeSpan LatencyTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>Адреса FakeDNS: ни один сервер на них не живет — такой ответ DNS ОС дал Xray в туннеле.</summary>
+    private static readonly IPNetwork FakeDnsPool = IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool);
 
     /// <summary>Дольше пауза для входа в Wi-Fi не бывает: защита не должна забыться выключенной.</summary>
     public static readonly TimeSpan MaxCaptivePause = TimeSpan.FromMinutes(15);
@@ -325,7 +334,12 @@ public sealed partial class Gateway : IAsyncDisposable
             : Task.FromResult<string?>(null);
         IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
         _directIp = await direct.ConfigureAwait(false) ?? _directIp;
-        if (vpn && addresses.Count == 0 && HeldAddresses(core) is { Count: > 0 } held)
+        if (vpn && addresses.Count == 0 && SameServer(core) && _addresses.Count > 0)
+        {
+            // Тот же сервер, а имя не нашлось (с FakeDNS DNS ОС в туннеле дает только адреса пула) — по нынешним адресам.
+            addresses = _addresses;
+        }
+        else if (vpn && addresses.Count == 0 && HeldAddresses(core) is { Count: > 0 } held)
         {
             // Под блоком DNS мимо туннеля закрыт, имени не найти: тот же сервер — по адресам, найденным раньше.
             addresses = held;
@@ -1102,33 +1116,47 @@ public sealed partial class Gateway : IAsyncDisposable
         var ipv6 = protection.Ipv6Allowed;
         return [.. found
             .Where(a => a.AddressFamily == AddressFamily.InterNetwork || (ipv6 && a.AddressFamily == AddressFamily.InterNetworkV6))
+            .Where(a => !FakeDnsPool.Contains(a))
             .OrderBy(a => a.AddressFamily == AddressFamily.InterNetworkV6)
             .Take(KillSwitchPolicy.MaxServers)];
     }
 
-    /// <summary>Адреса сервера для туннеля и блока: адрес в описании — как есть, имя — через систему. Не нашлось — пусто.</summary>
-    private static async Task<IReadOnlyList<IPAddress>> ResolveAsync(CoreRequest core, CancellationToken cancellationToken)
+    /// <summary>
+    /// Адреса сервера для туннеля и блока: адрес в описании — как есть, имя — через систему. Пока туннель поднят, DNS ОС идет
+    /// в Xray, и с FakeDNS его ответ — адрес из пула: имя сначала ищется DoH через вход проверки, через сервер. Не нашлось — пусто.
+    /// </summary>
+    private async Task<IReadOnlyList<IPAddress>> ResolveAsync(CoreRequest core, CancellationToken cancellationToken)
     {
         var host = core.Server.Host.Trim('[', ']');
-        IPAddress[] found;
         if (IPAddress.TryParse(host, out var literal))
         {
-            found = [literal];
+            return PickAddresses([literal], core.Protection);
         }
-        else
+
+        if (Volatile.Read(ref _tunnel) is not null && _probe is { } link && _options.Doh is { } doh)
         {
-            try
+            var probe = new ServerProbe(link.Port, new NetworkCredential(link.User, link.Password), doh, Timing.ProbeTimeout);
+            var tunneled = PickAddresses(await (_options.Lookup ?? LatencyProbe.LookupAsync)(probe, host, cancellationToken).ConfigureAwait(false),
+                core.Protection);
+            if (tunneled.Count > 0)
             {
-                found = await Dns.GetHostAddressesAsync(host, cancellationToken).ConfigureAwait(false);
-            }
-            catch (SocketException)
-            {
-                return [];
+                return tunneled;
             }
         }
 
-        return PickAddresses(found, core.Protection);
+        try
+        {
+            return PickAddresses(await (_options.Resolve ?? Dns.GetHostAddressesAsync)(host, cancellationToken).ConfigureAwait(false), core.Protection);
+        }
+        catch (SocketException)
+        {
+            return [];
+        }
     }
+
+    /// <summary>Тот же сервер, что у нынешнего подключения (имя и порт).</summary>
+    private bool SameServer(CoreRequest core) => _request is { } current
+        && string.Equals(current.Server.Host, core.Server.Host, StringComparison.OrdinalIgnoreCase) && current.Server.Port == core.Server.Port;
 
     /// <summary>
     /// Поставить (или заменить) блок при обрыве под это подключение и запомнить его в файле блока; <paramref name="strict"/> —

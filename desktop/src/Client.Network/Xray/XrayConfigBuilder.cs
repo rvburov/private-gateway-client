@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -161,7 +162,7 @@ public static class XrayConfigBuilder
                 ["access"] = "none",
                 ["dnsLog"] = false,
             },
-            ["dns"] = Dns(request.Protection, fakeDns),
+            ["dns"] = Dns(request, fakeDns),
             ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
             ["routing"] = Routing(request, tunDns: tun is not null, probe: probe is not null, bypass, fakeDns),
@@ -369,8 +370,9 @@ public static class XrayConfigBuilder
     /// «IPv6 — в блок» закрыло бы целиком любой сайт, у которого есть AAAA. Иначе AAAA отвечается: IPv6 идет через
     /// сервер, а в режиме VPN без IPv6 у сервера его закрывает TUN — программа сразу берет IPv4.
     /// </summary>
-    private static JsonObject Dns(ProtectionSettings protection, bool fakeDns)
+    private static JsonObject Dns(CoreRequest request, bool fakeDns)
     {
+        var protection = request.Protection;
         JsonNode server = protection.Dns switch
         {
             DnsChoice.CloudflareDoh => "https://1.1.1.1/dns-query",
@@ -380,9 +382,25 @@ public static class XrayConfigBuilder
         };
         return new JsonObject
         {
-            ["servers"] = fakeDns ? new JsonArray("fakedns", server) : new JsonArray(server),
+            ["servers"] = fakeDns ? new JsonArray(RealNames(request, server), "fakedns", server.DeepClone()) : new JsonArray(server),
             ["queryStrategy"] = protection.Ipv6Allowed ? "UseIP" : "UseIPv4",
         };
+    }
+
+    /// <summary>
+    /// С FakeDNS — имена, которым нужен настоящий адрес: проверка сети Windows (NCSI сверяет адрес dns.msftncsi.com, с адресом
+    /// пула покажет «Нет подключения к Интернету») и сам сервер подключения. Их отвечает настоящий DNS раньше FakeDNS.
+    /// </summary>
+    private static JsonObject RealNames(CoreRequest request, JsonNode server)
+    {
+        var domains = new JsonArray("domain:msftncsi.com", "domain:msftconnecttest.com");
+        var host = request.Server.Host.Trim('[', ']');
+        if (!IPAddress.TryParse(host, out _))
+        {
+            domains.Add("full:" + host);
+        }
+
+        return new JsonObject { ["address"] = server.DeepClone(), ["domains"] = domains, ["skipFallback"] = true };
     }
 
     private static JsonObject Routing(CoreRequest request, bool tunDns, bool probe, bool bypass, bool fakeDns)

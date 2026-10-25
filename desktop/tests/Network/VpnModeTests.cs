@@ -215,6 +215,45 @@ public sealed partial class VpnModeTests
         var picked = Gateway.PickAddresses(many, ProtectionSettings.Default);
         picked.Count.ShouldBe(KillSwitchPolicy.MaxServers, "больше блок при обрыве не держит — подключение не должно падать из-за длинного списка");
         picked.Take(12).ShouldAllBe(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork, "IPv4 — первыми");
+        Gateway.PickAddresses([IPAddress.Parse("198.18.0.7"), IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default)
+            .ShouldBe([IPAddress.Parse("198.51.100.20")], "адрес из пула FakeDNS — ответ Xray в туннеле, сервера там нет");
+    }
+
+    [Fact]
+    public async Task Server_by_name_is_found_past_fake_dns_while_the_tunnel_is_up()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var real = IPAddress.Parse(rig.Definition.Host);
+        var resolved = 0;
+        var lookups = new List<string>();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            // DNS ОС: до туннеля — настоящий адрес, в туннеле с FakeDNS — адрес из пула (его дает Xray).
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>([Interlocked.Increment(ref resolved) == 1 ? real : IPAddress.Parse("198.18.0.7")]),
+            Doh = new Uri("https://1.1.1.1/dns-query"),
+            Lookup = (_, name, _) =>
+            {
+                lock (lookups)
+                {
+                    lookups.Add(name);
+                }
+
+                return Task.FromResult<IReadOnlyList<IPAddress>>(name == "other.example.com" ? [real] : []);
+            },
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        // Без блока при обрыве: прежних адресов в блоке нет — тот же сервер берется по адресам подключения.
+        foreach (var (host, killSwitch) in new[] { ("vpn.example.com", false), ("vpn.example.com", false), ("other.example.com", true) })
+        {
+            await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = host }, killSwitch, fakeDns: true), cancellationToken: Ct);
+            var end = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+            end.State.ShouldBe(V1.ConnectionState.Connected, $"{host}: {end.Error?.Message} — с адресом из пула Xray до сервера не дошел бы");
+        }
+
+        rig.KillSwitch.Last!.Servers.ShouldBe([new KillSwitchEndpoint(real, rig.Definition.Port)], "настоящий адрес, не из пула");
+        lookups.ShouldBe(["vpn.example.com", "other.example.com"],
+            "пока туннель поднят, имя ищется DoH через сервер; тот же сервер, не найденный так, — по нынешним адресам");
     }
 
     [Fact]
@@ -1127,14 +1166,14 @@ public sealed partial class VpnModeTests
     /// ядре ОС есть IPv6.
     /// </summary>
     private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false,
-        bool strictRoutes = true, bool blockIpv6 = true)
+        bool strictRoutes = true, bool blockIpv6 = true, bool fakeDns = false)
     {
         var settings = AppSettings.Default with
         {
             Mode = ConnectionMode.Vpn,
             KillSwitch = killSwitch,
             Routing = routing ?? RoutingSettings.Default,
-            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6 },
+            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6, FakeDns = fakeDns },
             Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 20, StrictRoutes = strictRoutes },
         };
         return new V1.ConnectRequest

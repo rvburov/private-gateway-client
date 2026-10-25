@@ -196,17 +196,29 @@ internal sealed class NetworkNamespace : IDisposable
         RunAsync("curl", "-sS", "-g", "-m", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), url.ToString());
 
     /// <summary>Запрос A по UDP к <paramref name="server"/> изнутри пространства: адрес из ответа или «none».</summary>
-    public Task<string> ResolveAsync(string name, IPAddress server, int seconds = 10) => RunAsync("python3", "-c", """
+    /// <summary>Запрос A к DNS <paramref name="server"/> по UDP или по TCP; ответ — адрес или «none».</summary>
+    public Task<string> ResolveAsync(string name, IPAddress server, int seconds = 10, bool tcp = false) => RunAsync("python3", "-c", """
         import socket, struct, sys
-        name, server, seconds = sys.argv[1], sys.argv[2], int(sys.argv[3])
+        name, server, seconds, tcp = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4] == "tcp"
         query = struct.pack(">HHHHHH", 0x5047, 0x0100, 1, 0, 0, 0)
         query += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0" + struct.pack(">HH", 1, 1)
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.settimeout(seconds)
-        s.sendto(query, (server, 53))
-        reply = s.recv(512)
+        if tcp:
+            s = socket.create_connection((server, 53), timeout=seconds)
+            s.sendall(struct.pack(">H", len(query)) + query)
+            data = b""
+            while len(data) < 2 or len(data) < 2 + struct.unpack(">H", data[:2])[0]:
+                chunk = s.recv(4096)
+                if not chunk:
+                    raise SystemExit("соединение закрыто без ответа")
+                data += chunk
+            reply = data[2:2 + struct.unpack(">H", data[:2])[0]]
+        else:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.settimeout(seconds)
+            s.sendto(query, (server, 53))
+            reply = s.recv(512)
         print(socket.inet_ntoa(reply[-4:]) if struct.unpack(">H", reply[6:8])[0] else "none", end="")
-        """, name, server.ToString(), seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        """, name, server.ToString(), seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), tcp ? "tcp" : "udp");
 
     public void Dispose()
     {

@@ -125,7 +125,11 @@ public sealed class CoreProcess : IDisposable
         if (netns is not null)
         {
             info.ArgumentList.Add("--net=" + netns);
-            info.ArgumentList.Add(executable);
+            info.ArgumentList.Add(Path.GetFullPath(executable));
+
+            // Только тесты: ядру — PATH без программ. sing-box прописывает DNS туннеля через resolvectl, а тот по D-Bus
+            // меняет systemd-resolved машины, а не пространства теста.
+            info.Environment["PATH"] = "/nonexistent";
         }
 
         foreach (var argument in arguments)

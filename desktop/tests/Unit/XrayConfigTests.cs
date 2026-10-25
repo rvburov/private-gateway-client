@@ -327,7 +327,11 @@ public sealed class XrayConfigTests
 
         var pool = config["fakedns"]!.AsArray().ShouldHaveSingleItem()!;
         (pool["ipPool"]!.GetValue<string>(), pool["poolSize"]!.GetValue<int>()).ShouldBe(("198.18.0.0/15", 65535));
-        Servers(config).ShouldBe(["fakedns", XrayConfigBuilder.DefaultDns], "запросы из TUN — сначала FakeDNS; свои запросы Xray его пропускают");
+        Servers(config).ShouldBe([NcsiNames(server), "fakedns", XrayConfigBuilder.DefaultDns],
+            "запросы из TUN — сначала FakeDNS, кроме имен проверки сети Windows и самого сервера; свои запросы Xray FakeDNS пропускают");
+        Servers(XrayConfigBuilder.Build(Request(server with { Host = "vpn.example.com" }, protection: fake), tun).Config!)[0]
+            .ShouldBe($"{XrayConfigBuilder.DefaultDns} → domain:msftncsi.com,domain:msftconnecttest.com,full:vpn.example.com",
+                "сервер по имени: служба ищет его адрес и через DNS ОС в туннеле — ей нужен настоящий");
         Sniffing(config).ShouldBe((true, "http,tls,quic,fakedns", false, true),
             "имя по адресу из пула; для остальных адресов домен — только для правил");
         Outbound(config, XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>()
@@ -425,8 +429,14 @@ public sealed class XrayConfigTests
             sniffing["metadataOnly"]?.GetValue<bool>() ?? false, sniffing["routeOnly"]!.GetValue<bool>());
     }
 
+    /// <summary>Серверы DNS: адрес, а у сервера для своих имен — «адрес → имена» (и только для них: skipFallback).</summary>
     private static List<string> Servers(JsonObject config) =>
-        [.. config["dns"]!["servers"]!.AsArray().Select(s => s!.GetValue<string>())];
+    [
+        .. config["dns"]!["servers"]!.AsArray().Select(s => s is JsonObject named
+            ? $"{named["address"]!.GetValue<string>()} → {string.Join(",", named["domains"]!.AsArray().Select(d => d!.GetValue<string>()))}"
+                + (named["skipFallback"]!.GetValue<bool>() ? string.Empty : " и для остальных")
+            : s!.GetValue<string>()),
+    ];
 
     private static List<(string Condition, string Outbound)> Rules(JsonObject config) =>
     [
@@ -434,6 +444,11 @@ public sealed class XrayConfigTests
             r!["ip"] is JsonArray ip ? "ip:" + ip[0]!.GetValue<string>() : "domain:" + r["domain"]![0]!.GetValue<string>(),
             r["outboundTag"]!.GetValue<string>())),
     ];
+
+    /// <summary>Настоящий DNS раньше FakeDNS: имена проверки сети Windows и имя сервера, если он задан именем.</summary>
+    private static string NcsiNames(ServerDefinition server) =>
+        $"{XrayConfigBuilder.DefaultDns} → domain:msftncsi.com,domain:msftconnecttest.com"
+        + (System.Net.IPAddress.TryParse(server.Host.Trim('[', ']'), out _) ? string.Empty : ",full:" + server.Host);
 
     private static ServerDefinition Link(string name) =>
         LinkParser.Parse(File.ReadAllText(Path.Combine(Links, name + ".txt")).Trim()).Server.ShouldNotBeNull(name);

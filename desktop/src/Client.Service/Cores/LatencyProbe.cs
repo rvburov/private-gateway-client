@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.Xray;
@@ -28,6 +30,11 @@ public static class LatencyProbe
 
     /// <summary>Тот же проверочный адрес по IPv6: ответил через сервер — сервер открывает IPv6.</summary>
     public static readonly Uri DefaultTrace6 = new("https://[2606:4700:4700::1111]/cdn-cgi/trace");
+
+    /// <summary>DoH в формате JSON — найти адрес сервера по имени через туннель (служба, пока туннель поднят).</summary>
+    public static readonly Uri DefaultDoh = new("https://1.1.1.1/dns-query");
+
+    private static readonly string[] DohTypes = ["A", "AAAA"];
 
     /// <summary>Сколько серверов проверяется одновременно.</summary>
     public const int MaxParallel = 8;
@@ -117,6 +124,60 @@ public static class LatencyProbe
         catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
             return null;
+        }
+    }
+
+    /// <summary>
+    /// Адреса имени — запросами DoH (JSON, A и AAAA) через вход ядра <paramref name="probe"/>: через сервер, мимо DNS ОС.
+    /// Нет ответа — пусто.
+    /// </summary>
+    public static async Task<IReadOnlyList<IPAddress>> LookupAsync(ServerProbe probe, string name, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        using var handler = new SocketsHttpHandler
+        {
+            Proxy = new FixedProxy(new Uri($"socks5://127.0.0.1:{probe.Port}")) { Credentials = probe.Credentials },
+            UseProxy = true,
+            AllowAutoRedirect = false,
+            UseCookies = false,
+        };
+        using var http = new HttpClient(handler) { Timeout = probe.Timeout };
+        var answers = await Task.WhenAll(DohTypes.Select(async type =>
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(probe.Target, $"?name={Uri.EscapeDataString(name)}&type={type}"));
+            request.Headers.Accept.ParseAdd("application/dns-json");
+            try
+            {
+                using var response = await http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                return response.IsSuccessStatusCode ? DohAnswers(await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false)) : [];
+            }
+            catch (HttpRequestException)
+            {
+                return [];
+            }
+            catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                return [];
+            }
+        })).ConfigureAwait(false);
+        return [.. answers.SelectMany(a => a)];
+    }
+
+    /// <summary>Адреса из ответа DoH в формате JSON (записи раздела Answer с адресом — A и AAAA); не разобрать — пусто.</summary>
+    public static IReadOnlyList<IPAddress> DohAnswers(string json)
+    {
+        ArgumentNullException.ThrowIfNull(json);
+        try
+        {
+            return JsonNode.Parse(json)?["Answer"] is JsonArray answer
+                ? [.. answer.OfType<JsonObject>()
+                    .Select(a => a["data"]?.GetValueKind() == JsonValueKind.String && IPAddress.TryParse(a["data"]!.GetValue<string>(), out var ip) ? ip : null)
+                    .OfType<IPAddress>()]
+                : [];
+        }
+        catch (JsonException)
+        {
+            return [];
         }
     }
 

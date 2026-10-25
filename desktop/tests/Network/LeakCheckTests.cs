@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
@@ -26,6 +27,18 @@ public sealed class LeakCheckTests
         LatencyProbe.TraceIp("ip=not-an-address\nip=198.51.100.7\n").ShouldBe("198.51.100.7");
         LatencyProbe.TraceIp("h=1.1.1.1\nvisit_scheme=https\n").ShouldBeNull();
         LatencyProbe.TraceIp("<html>ip=</html>").ShouldBeNull();
+    }
+
+    [Fact]
+    public void Doh_answer_gives_the_a_and_aaaa_records()
+    {
+        LatencyProbe.DohAnswers("""
+            {"Status":0,"Answer":[{"name":"vpn.example.com","type":5,"data":"edge.example.net."},
+            {"name":"edge.example.net","type":1,"TTL":60,"data":"203.0.113.24"},{"name":"edge.example.net","type":28,"data":"2001:db8::24"}]}
+            """).ShouldBe([IPAddress.Parse("203.0.113.24"), IPAddress.Parse("2001:db8::24")], "CNAME пропускается");
+        LatencyProbe.DohAnswers("""{"Status":3,"Authority":[{"type":6,"data":"a.example. b.example. 1 2 3 4 5"}]}""").ShouldBeEmpty("имени нет");
+        LatencyProbe.DohAnswers("""{"Answer":[{"type":1,"data":"not-an-address"},{"type":1,"data":4}]}""").ShouldBeEmpty();
+        LatencyProbe.DohAnswers("<html>").ShouldBeEmpty("не JSON — пусто, а не ошибка");
     }
 
     [Theory]

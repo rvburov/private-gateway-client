@@ -33,7 +33,7 @@ public sealed record TunIpv6(bool Kernel, bool Tunnel);
 /// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда в SOCKS5 Xray на
 /// 127.0.0.1 (основное ядро — Xray, sing-box лишь переводит пакеты в соединения). DNS — такой же
 /// трафик: запросы к любому адресу уходят в Xray, и там их отвечает выход DNS по настройкам DNS Xray —
-/// один DNS в режимах прокси и VPN. Адреса сервера — мимо туннеля, иначе соединение с ним ушло бы в
+/// один DNS в режимах прокси и VPN; DNS ОС — адрес <see cref="TunDns"/>, его sing-box прописывает ОС. Адреса сервера — мимо туннеля, иначе соединение с ним ушло бы в
 /// сам туннель. IPv6 идет через туннель, если служба решила, что сервер его открывает (<see cref="TunIpv6"/>); иначе у TUN
 /// нет IPv6, и строгие маршруты делают его недоступным (<see cref="StrictRoutes"/>). Раздельный
 /// режим — правило по пути программы: ее соединения sing-box отправляет своим выходом напрямую, с
@@ -56,6 +56,14 @@ public static class SingBoxConfigBuilder
     public const string TunAddress = "172.19.0.1/30";
 
     public const string TunAddress6 = "fdfe:dcba:9876::1/126";
+
+    /// <summary>
+    /// Адрес DNS туннеля — следующий за адресом TUN. Его sing-box прописывает ОС (Windows — DNS адаптера, Linux —
+    /// systemd-resolved), и запросы к нему идут в Xray, как к любому адресу.
+    /// </summary>
+    public const string TunDns = "172.19.0.2";
+
+    public const string TunDns6 = "fdfe:dcba:9876::2";
 
     /// <summary>Имя адаптера — по нему правила блока при обрыве узнают туннель.</summary>
     public static string InterfaceName =>
@@ -114,6 +122,10 @@ public static class SingBoxConfigBuilder
             ["type"] = "tun",
             ["tag"] = TunTag,
             ["address"] = Ipv6Tunneled(request) ? new JsonArray(TunAddress, TunAddress6) : new JsonArray(TunAddress),
+
+            // Адрес DNS ОС задан явно: без него sing-box перехватывает запросы к нему и отвечает своим DNS (системный,
+            // мимо Xray и сервера). С ним это обычный трафик TUN — в Xray, как DNS к любому адресу.
+            ["dns_address"] = Ipv6Tunneled(request) ? new JsonArray(TunDns, TunDns6) : new JsonArray(TunDns),
             ["auto_route"] = true,
             ["strict_route"] = StrictRoutes(request),
             ["stack"] = connection.Stack switch

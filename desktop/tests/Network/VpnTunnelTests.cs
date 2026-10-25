@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Network.Xray;
 using PrivateGateway.Client.Service.Cores;
 
@@ -72,6 +73,35 @@ public sealed class VpnTunnelTests
             "туннеля нет — и пути из пространства нет");
         site.Requests.ShouldBe(1);
         (await netns.RunAsync("ip", "rule", "show")).ShouldBe(rulesBefore, "sing-box ушел сам и убрал свои правила маршрутизации");
+    }
+
+    [Theory]
+    [InlineData(TunEngine.System, false)]
+    [InlineData(TunEngine.System, true)]
+    [InlineData(TunEngine.Gvisor, false)]
+    [InlineData(TunEngine.Gvisor, true)]
+    [InlineData(TunEngine.Mixed, false)]
+    [InlineData(TunEngine.Mixed, true)]
+    public async Task Dns_of_the_os_at_the_tunnel_address_is_answered_through_xray(TunEngine stack, bool tcp)
+    {
+        SkipWithoutNamespaces();
+        using var netns = NetworkNamespace.Create();
+        var (host, _, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель по имени");
+        using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
+        var (definition, server) = await NameOnlyServerAsync(host, site, dns);
+        using var _ = server;
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
+            ConnectionSettings.Default with { Stack = stack, CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
+        var output = new CoreOutput();
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+
+        // Этот адрес sing-box прописывает ОС: Windows — DNS адаптера, Linux — systemd-resolved.
+        (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), tcp: tcp)))
+            .ShouldBe("203.0.113.7", "DNS ОС отвечает Xray через сервер, а не sing-box своим DNS мимо туннеля");
+        dns.Queries.ShouldContain("example.com");
     }
 
     [Fact]

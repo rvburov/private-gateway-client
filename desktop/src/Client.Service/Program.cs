@@ -77,7 +77,7 @@ var bootConnect = canVpn && ServiceHost.Sealer() is { } sealer ? new BootConnect
 await using var gateway = new Gateway(
     new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
         Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
-        Trace6: LatencyProbe.DefaultTrace6),
+        Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh),
     time, journal, systemProxy);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
