@@ -1,0 +1,235 @@
+using System.Text.Json.Nodes;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Network.Xray;
+
+namespace PrivateGateway.Client.Tests.Unit;
+
+/// <summary>Конфиг Xray-core из эталонных ссылок shared/testdata и настроек.</summary>
+public sealed class XrayConfigTests
+{
+    private static readonly string Links = Path.Combine(FindRoot(), "shared", "testdata", "links");
+
+    [Fact]
+    public void Vless_reality_vision_becomes_a_vless_outbound_with_reality()
+    {
+        var config = Build(Link("vless/reality-vision"));
+
+        var proxy = Outbound(config, XrayConfigBuilder.ProxyTag);
+        proxy["protocol"]!.GetValue<string>().ShouldBe("vless");
+        var server = proxy["settings"]!["vnext"]![0]!;
+        (server["address"]!.GetValue<string>(), server["port"]!.GetValue<int>()).ShouldBe(("203.0.113.24", 443));
+        var user = server["users"]![0]!;
+        (user["id"]!.GetValue<string>(), user["encryption"]!.GetValue<string>(), user["flow"]!.GetValue<string>())
+            .ShouldBe(("11111111-2222-3333-4444-555555555555", "none", "xtls-rprx-vision"));
+        var stream = proxy["streamSettings"]!;
+        (stream["network"]!.GetValue<string>(), stream["security"]!.GetValue<string>()).ShouldBe(("raw", "reality"));
+        var reality = stream["realitySettings"]!;
+        reality["serverName"]!.GetValue<string>().ShouldBe("www.example.com");
+        reality["fingerprint"]!.GetValue<string>().ShouldBe("chrome");
+        reality["publicKey"]!.GetValue<string>().ShouldBe("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
+        reality["shortId"]!.GetValue<string>().ShouldBe("0123abcd");
+
+        var link = Link("vless/reality-vision");
+        var noFingerprint = link with { Security = link.Security with { Fingerprint = null } };
+        Outbound(Build(noFingerprint), XrayConfigBuilder.ProxyTag)["streamSettings"]!["realitySettings"]!["fingerprint"]!.GetValue<string>()
+            .ShouldBe("chrome", "REALITY без отпечатка не работает");
+    }
+
+    [Fact]
+    public void Tls_transports_carry_path_host_alpn_and_service_name()
+    {
+        var xhttp = Outbound(Build(Link("vless/tls-xhttp")), XrayConfigBuilder.ProxyTag)["streamSettings"]!;
+        xhttp["network"]!.GetValue<string>().ShouldBe("xhttp");
+        (xhttp["xhttpSettings"]!["path"]!.GetValue<string>(), xhttp["xhttpSettings"]!["host"]!.GetValue<string>()).ShouldBe(("/xh", "cdn.example.org"));
+        xhttp["tlsSettings"]!["serverName"]!.GetValue<string>().ShouldBe("example.org");
+        xhttp["tlsSettings"]!["alpn"]!.AsArray().Select(a => a!.GetValue<string>()).ShouldBe(["h2", "http/1.1"]);
+
+        var grpc = Outbound(Build(Link("vless/grpc-raw-utf8-name")), XrayConfigBuilder.ProxyTag)["streamSettings"]!;
+        (grpc["network"]!.GetValue<string>(), grpc["grpcSettings"]!["serviceName"]!.GetValue<string>()).ShouldBe(("grpc", "grpc-svc"));
+
+        var trojan = Outbound(Build(Link("trojan/ws")), XrayConfigBuilder.ProxyTag);
+        trojan["protocol"]!.GetValue<string>().ShouldBe("trojan");
+        trojan["settings"]!["servers"]![0]!["password"]!.GetValue<string>().ShouldBe("pw-trojan-1");
+        trojan["streamSettings"]!["wsSettings"]!["path"]!.GetValue<string>().ShouldBe("/tr");
+    }
+
+    [Fact]
+    public void Vmess_shadowsocks_and_wireguard_have_their_own_settings()
+    {
+        var vmess = Outbound(Build(Link("vmess/ws-tls")), XrayConfigBuilder.ProxyTag);
+        vmess["protocol"]!.GetValue<string>().ShouldBe("vmess");
+        vmess["settings"]!["vnext"]![0]!["users"]![0]!["security"]!.GetValue<string>().ShouldBe("auto");
+        vmess["streamSettings"]!["tlsSettings"]!["fingerprint"]!.GetValue<string>().ShouldBe("firefox");
+
+        var ss = Outbound(Build(Link("shadowsocks/2022-plain-userinfo")), XrayConfigBuilder.ProxyTag);
+        var ssServer = ss["settings"]!["servers"]![0]!;
+        (ssServer["method"]!.GetValue<string>(), ssServer["password"]!.GetValue<string>()).ShouldBe(("2022-blake3-aes-128-gcm", "aaaaaaaaaaaaaaaaaaaaaa=="));
+        ss["streamSettings"]!["security"]!.GetValue<string>().ShouldBe("none");
+
+        var wg = Outbound(Build(Link("wireguard/basic")), XrayConfigBuilder.ProxyTag);
+        wg["protocol"]!.GetValue<string>().ShouldBe("wireguard");
+        wg["streamSettings"].ShouldBeNull();
+        var settings = wg["settings"]!;
+        settings["secretKey"]!.GetValue<string>().ShouldBe("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa=");
+        settings["peers"]![0]!["endpoint"]!.GetValue<string>().ShouldBe("192.0.2.33:51820");
+        settings["address"]!.AsArray().Select(a => a!.GetValue<string>()).ShouldBe(["10.0.0.2/32", "fd00::2/128"]);
+        settings["mtu"]!.GetValue<int>().ShouldBe(1420);
+    }
+
+    [Fact]
+    public void Hysteria2_and_tuic_wait_for_the_second_core()
+    {
+        XrayConfigBuilder.Build(Request(Link("hysteria2/hy2-short-scheme"))).ShouldBe(new XrayConfigResult(null, CoreRejection.UnsupportedProtocol));
+        XrayConfigBuilder.Build(Request(Link("tuic/bbr"))).Rejection.ShouldBe(CoreRejection.UnsupportedProtocol);
+        var noKey = Link("vless/reality-vision") with { Credentials = new ServerCredentials() };
+        XrayConfigBuilder.Build(Request(noKey)).Rejection.ShouldBe(CoreRejection.MissingCredentials);
+        var quic = Link("vless/reality-vision") with { Transport = TransportOptions.Quic };
+        XrayConfigBuilder.Build(Request(quic)).Rejection.ShouldBe(CoreRejection.UnsupportedTransport);
+    }
+
+    [Fact]
+    public void Inbound_is_local_unless_the_proxy_is_opened_to_the_lan()
+    {
+        var vpn = Build(Link("vless/reality-vision"), mode: ConnectionMode.Vpn, connection: ConnectionSettings.Default with { ProxyAllowLan = true });
+        var inbound = vpn["inbounds"]![0]!;
+        (inbound["protocol"]!.GetValue<string>(), inbound["port"]!.GetValue<int>(), inbound["listen"]!.GetValue<string>())
+            .ShouldBe(("socks", 10808, "127.0.0.1"), "в режиме VPN вход только для своего TUN");
+        inbound["sniffing"]!["routeOnly"]!.GetValue<bool>().ShouldBeTrue();
+
+        var lan = Build(Link("vless/reality-vision"), mode: ConnectionMode.Proxy, connection: ConnectionSettings.Default with { ProxyAllowLan = true, ProxyPort = 2080 });
+        (lan["inbounds"]![0]!["listen"]!.GetValue<string>(), lan["inbounds"]![0]!["port"]!.GetValue<int>()).ShouldBe(("0.0.0.0", 2080));
+
+        var local = Build(Link("vless/reality-vision"), mode: ConnectionMode.Proxy);
+        local["inbounds"]![0]!["listen"]!.GetValue<string>().ShouldBe("127.0.0.1");
+    }
+
+    [Fact]
+    public void Log_never_records_sites()
+    {
+        var config = Build(Link("vless/reality-vision"), connection: ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug });
+
+        config["log"]!["access"]!.GetValue<string>().ShouldBe("none");
+        config["log"]!["dnsLog"]!.GetValue<bool>().ShouldBeFalse();
+        config["log"]!["loglevel"]!.GetValue<string>().ShouldBe("debug");
+        Build(Link("vless/reality-vision"))["log"]!["loglevel"]!.GetValue<string>().ShouldBe("warning");
+    }
+
+    [Fact]
+    public void Dns_follows_protection_settings()
+    {
+        Servers(Build(Link("vless/reality-vision"))).ShouldBe([XrayConfigBuilder.DefaultDns]);
+        Servers(Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with { Dns = DnsChoice.Quad9Doh }))
+            .ShouldBe(["https://9.9.9.9/dns-query"]);
+        var custom = Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with
+        {
+            Dns = DnsChoice.Custom, CustomDns = "192.0.2.53", Addresses = AddressPreference.Ipv4Only,
+        });
+        Servers(custom).ShouldBe(["192.0.2.53"]);
+        custom["dns"]!["queryStrategy"]!.GetValue<string>().ShouldBe("UseIPv4");
+        Outbound(custom, XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>().ShouldBe("UseIPv4");
+    }
+
+    [Fact]
+    public void Rules_block_the_lan_and_ipv6_and_keep_direct_only_in_split_mode()
+    {
+        var rules = new[]
+        {
+            new DomainRule("example.com", RuleAction.Direct),
+            new DomainRule("*.example.net", RuleAction.Block),
+            new DomainRule("geosite:category-ads-all", RuleAction.Block),
+            new DomainRule("example.org", RuleAction.Proxy),
+        };
+
+        var all = Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules)));
+        all.ShouldBe(
+        [
+            ("ip:geoip:private", "block"), ("ip:::/0", "block"),
+            ("domain:domain:example.net", "block"), ("domain:geosite:category-ads-all", "block"), ("domain:domain:example.org", "proxy"),
+        ]);
+
+        var split = Rules(Build(Link("vless/reality-vision"),
+            protection: ProtectionSettings.Default with { AllowLan = true, BlockIpv6 = false },
+            routing: new RoutingSettings(RoutingMode.Split, [], rules)));
+        split[0].ShouldBe(("ip:geoip:private", "direct"), "локальная сеть разрешена");
+        split.ShouldContain(("domain:domain:example.com", "direct"));
+        split.ShouldNotContain(("ip:::/0", "block"));
+    }
+
+    [Fact]
+    public void Mux_and_tls_fragment_are_added_when_chosen_but_mux_not_with_vision()
+    {
+        var connection = ConnectionSettings.Default with { Mux = true, TlsFragment = true, Fingerprint = TlsFingerprint.Safari };
+
+        var vision = Build(Link("vless/reality-vision"), connection: connection);
+        Outbound(vision, XrayConfigBuilder.ProxyTag)["mux"].ShouldBeNull("Mux несовместим с XTLS Vision");
+        Outbound(vision, XrayConfigBuilder.ProxyTag)["streamSettings"]!["sockopt"]!["dialerProxy"]!.GetValue<string>().ShouldBe(XrayConfigBuilder.FragmentTag);
+        Outbound(vision, XrayConfigBuilder.FragmentTag)["settings"]!["fragment"]!["packets"]!.GetValue<string>().ShouldBe("tlshello");
+        Outbound(vision, XrayConfigBuilder.ProxyTag)["streamSettings"]!["realitySettings"]!["fingerprint"]!.GetValue<string>().ShouldBe("safari");
+
+        var trojan = Build(Link("trojan/ws"), connection: connection);
+        Outbound(trojan, XrayConfigBuilder.ProxyTag)["mux"]!["enabled"]!.GetValue<bool>().ShouldBeTrue();
+        Build(Link("trojan/ws"))["outbounds"]!.AsArray().Select(o => o!["tag"]!.GetValue<string>()).ShouldBe(["proxy", "direct", "block"]);
+    }
+
+    [Theory]
+    [InlineData("example.com", "domain:example.com")]
+    [InlineData("*.example.com", "domain:example.com")]
+    [InlineData("*.local", "domain:local")]
+    [InlineData("geosite:category-ads-all", "geosite:category-ads-all")]
+    public void Site_patterns_become_xray_conditions(string pattern, string condition)
+    {
+        XrayConfigBuilder.DomainCondition(pattern).ShouldBe(condition);
+    }
+
+    private static JsonObject Build(
+        ServerDefinition server,
+        ConnectionMode mode = ConnectionMode.Vpn,
+        ProtectionSettings? protection = null,
+        ConnectionSettings? connection = null,
+        RoutingSettings? routing = null)
+    {
+        var result = XrayConfigBuilder.Build(Request(server, mode, protection, connection, routing));
+        result.Rejection.ShouldBeNull();
+        return result.Config.ShouldNotBeNull();
+    }
+
+    private static CoreRequest Request(
+        ServerDefinition server,
+        ConnectionMode mode = ConnectionMode.Vpn,
+        ProtectionSettings? protection = null,
+        ConnectionSettings? connection = null,
+        RoutingSettings? routing = null) =>
+        new(server, mode, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default, routing ?? RoutingSettings.Default);
+
+    private static JsonNode Outbound(JsonObject config, string tag) =>
+        config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == tag)!;
+
+    private static List<string> Servers(JsonObject config) =>
+        [.. config["dns"]!["servers"]!.AsArray().Select(s => s!.GetValue<string>())];
+
+    private static List<(string Condition, string Outbound)> Rules(JsonObject config) =>
+    [
+        .. config["routing"]!["rules"]!.AsArray().Select(r => (
+            r!["ip"] is JsonArray ip ? "ip:" + ip[0]!.GetValue<string>() : "domain:" + r["domain"]![0]!.GetValue<string>(),
+            r["outboundTag"]!.GetValue<string>())),
+    ];
+
+    private static ServerDefinition Link(string name) =>
+        LinkParser.Parse(File.ReadAllText(Path.Combine(Links, name + ".txt")).Trim()).Server.ShouldNotBeNull(name);
+
+    private static string FindRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "PrivateGateway.slnx")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("Не найден корень репозитория");
+    }
+}
