@@ -14,6 +14,9 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// </summary>
 public static class IpcChannel
 {
+    /// <summary>Сколько ждать pipe службы: pipe, которого нет, ждали бы бесконечно — службы нет, вызов падает.</summary>
+    private static readonly TimeSpan PipeWait = TimeSpan.FromSeconds(2);
+
     /// <param name="endpoint">Имя pipe или путь к сокету (<see cref="IpcEndpoints"/>).</param>
     /// <param name="system">true — установленная служба, false — служба пользователя.</param>
     public static GrpcChannel Create(string endpoint, bool system)
@@ -21,8 +24,9 @@ public static class IpcChannel
         var handler = new SocketsHttpHandler
         {
             ConnectCallback = (_, cancellationToken) => ConnectAsync(endpoint, system, cancellationToken),
-            // Pipe, которого нет, ждали бы бесконечно: службы нет — вызов падает, окно показывает ошибку.
-            ConnectTimeout = TimeSpan.FromSeconds(2),
+            // Соединение вместе с согласованием HTTP/2: на занятой машине служба отвечает не сразу. Pipe,
+            // которого нет, отказывает раньше — через PipeWait.
+            ConnectTimeout = TimeSpan.FromSeconds(10),
             // Канал живет, пока живет программа: соединение не закрывать по простою.
             PooledConnectionIdleTimeout = Timeout.InfiniteTimeSpan,
             KeepAlivePingDelay = TimeSpan.FromSeconds(30),
@@ -54,7 +58,7 @@ public static class IpcChannel
             var pipe = new NamedPipeClientStream(".", endpoint, PipeDirection.InOut, PipeOptions.Asynchronous);
             try
             {
-                await pipe.ConnectAsync(cancellationToken).ConfigureAwait(false);
+                await pipe.ConnectAsync((int)PipeWait.TotalMilliseconds, cancellationToken).ConfigureAwait(false);
                 CheckOwner(pipe, system);
                 return pipe;
             }
