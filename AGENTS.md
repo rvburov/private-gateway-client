@@ -126,8 +126,9 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `PrivateGateway.slnx` — решение, все команды ниже запускаются из корня;
 - `desktop/src/` — проекты десктопа, слои — в разделе «Правила кода»;
 - `desktop/tests/` — тесты: `Unit` (быстрый гейт), `Architecture` (границы модулей), `UI`
-  (интерфейс без экрана, снимки в `artifacts/ui-snapshots`), дальше `Integration`, `Network`,
-  `Security` — по мере появления кода;
+  (интерфейс без экрана, снимки в `artifacts/ui-snapshots`), `Network` (настоящее ядро Xray на
+  127.0.0.1: сборку кладет `scripts/get-xray.sh`, без нее эти тесты пропускаются), дальше
+  `Integration`, `Security` — по мере появления кода;
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;

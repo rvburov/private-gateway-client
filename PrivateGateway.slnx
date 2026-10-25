@@ -16,6 +16,9 @@
   <Folder Name="/desktop/tests/Architecture/">
     <Project Path="desktop/tests/Architecture/Client.Tests.Architecture.csproj" />
   </Folder>
+  <Folder Name="/desktop/tests/Network/">
+    <Project Path="desktop/tests/Network/Client.Tests.Network.csproj" />
+  </Folder>
   <Folder Name="/desktop/tests/UI/">
     <Project Path="desktop/tests/UI/Client.Tests.UI.csproj" />
   </Folder>

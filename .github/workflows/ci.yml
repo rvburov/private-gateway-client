@@ -29,6 +29,11 @@ jobs:
       - name: Сборка
         run: dotnet build PrivateGateway.slnx -c Release
 
+      # Ядро Xray для прокси-теста на localhost (desktop/tests/Network): версия и SHA-256 — в shared/cores.
+      - name: Ядро Xray
+        shell: bash
+        run: scripts/get-xray.sh
+
       - name: Тесты
         run: dotnet test --solution PrivateGateway.slnx -c Release --no-build
 
