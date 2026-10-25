@@ -131,8 +131,9 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `desktop/tests/` — тесты: `Unit` (быстрый гейт), `Architecture` (границы модулей), `UI`
   (интерфейс без экрана, снимки в `artifacts/ui-snapshots`), `Network` (настоящее ядро Xray на
   127.0.0.1: сборку кладет `scripts/get-xray.sh`, в облаке — `scripts/get-xray.sh --build`; тесту
-  туннеля нужны еще sing-box — `scripts/get-singbox.sh` — и root на Linux с `ip`, `curl` и `python3`;
-  без сборок эти тесты пропускаются), дальше
+  туннеля нужны еще sing-box — `scripts/get-singbox.sh` — и root на Linux с `ip`, `curl` и `python3`,
+  тесту блока при обрыве — еще `nft`; правила и TUN ставятся только в своем сетевом пространстве;
+  без сборок и прав эти тесты пропускаются), дальше
   `Integration`, `Security` — по мере появления кода;
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);

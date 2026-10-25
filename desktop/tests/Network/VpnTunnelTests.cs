@@ -1,9 +1,7 @@
-using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
-using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
@@ -19,8 +17,6 @@ namespace PrivateGateway.Client.Tests.Network;
 /// </summary>
 public sealed class VpnTunnelTests
 {
-    private static readonly string[] Tools = ["unshare", "nsenter", "curl", "python3", "ip"];
-
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -54,12 +50,12 @@ public sealed class VpnTunnelTests
             TimeProvider.System, netns.Path, Ct);
         try
         {
-            (await netns.RunAsync("curl", "-sS", "-m", "10", "http://1.1.1.1/")).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
+            (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
             site.Requests.ShouldBe(1);
             (await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53"))).ShouldBe("1.1.1.1",
                 "DNS к любому адресу отвечает Xray — через сервер, а не DNS провайдера или роутера");
             dns.Queries.ShouldContain("example.com");
-            await Should.ThrowAsync<InvalidOperationException>(() => netns.RunAsync("curl", "-sS", "-m", "10", lan.Url.ToString()),
+            await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url),
                 "локальная сеть не разрешена — закрыта и в режиме VPN");
             lan.Requests.ShouldBe(0);
         }
@@ -68,7 +64,7 @@ public sealed class VpnTunnelTests
             await tunnel.DisposeAsync();
         }
 
-        await Should.ThrowAsync<InvalidOperationException>(() => netns.RunAsync("curl", "-sS", "-m", "10", "http://1.1.1.1/"),
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(new Uri("http://1.1.1.1/")),
             "туннеля нет — и пути из пространства нет");
         site.Requests.ShouldBe(1);
         (await netns.RunAsync("ip", "rule", "show")).ShouldBe(rulesBefore, "sing-box ушел сам и убрал свои правила маршрутизации");
@@ -148,12 +144,8 @@ public sealed class VpnTunnelTests
 
     private static void SkipWithoutNamespaces()
     {
-        Assert.SkipUnless(OperatingSystem.IsLinux(), "сетевые пространства есть только в Linux");
-        Assert.SkipWhen(PeerCredentials.CurrentUid() != 0, "нужен root: TUN и сетевое пространство");
+        NetworkNamespace.SkipUnlessAvailable("curl", "python3", "ip");
         Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
-        var missing = Tools.Where(tool =>
-            !(Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(':').Any(dir => File.Exists(System.IO.Path.Combine(dir, tool)))).ToList();
-        Assert.SkipWhen(missing.Count > 0, "нет " + string.Join(", ", missing));
     }
 
     /// <summary>Первый работающий адрес машины не на loopback: его видно из пространства теста через туннель.</summary>
@@ -163,73 +155,4 @@ public sealed class VpnTunnelTests
             .SelectMany(n => n.GetIPProperties().UnicastAddresses)
             .Select(a => a.Address)
             .First(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a));
-
-    /// <summary>Свое сетевое пространство Linux (unshare): в нем только то, что поднимет тест.</summary>
-    private sealed class NetworkNamespace : IDisposable
-    {
-        private NetworkNamespace(string path) => Path = path;
-
-        public string Path { get; }
-
-        public static NetworkNamespace Create()
-        {
-            Directory.CreateDirectory("/run/netns");
-            var path = "/run/netns/pg-test-" + Guid.NewGuid().ToString("N")[..8];
-            File.WriteAllText(path, string.Empty);
-            Run("unshare", "--net=" + path, "true");
-            return new NetworkNamespace(path);
-        }
-
-        /// <summary>Команда изнутри пространства; не вышла успешно — исключение с ее выводом.</summary>
-        public async Task<string> RunAsync(params string[] command)
-        {
-            var start = new ProcessStartInfo("nsenter") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-            start.ArgumentList.Add("--net=" + Path);
-            foreach (var argument in command)
-            {
-                start.ArgumentList.Add(argument);
-            }
-
-            using var process = Process.Start(start)!;
-            var output = await process.StandardOutput.ReadToEndAsync(Ct);
-            var error = await process.StandardError.ReadToEndAsync(Ct);
-            await process.WaitForExitAsync(Ct);
-            return process.ExitCode == 0 ? output : throw new InvalidOperationException(command[0] + ": " + error);
-        }
-
-        /// <summary>Запрос A по UDP к <paramref name="server"/> изнутри пространства: адрес из ответа или «none».</summary>
-        public Task<string> ResolveAsync(string name, IPAddress server) => RunAsync("python3", "-c", """
-            import socket, struct, sys
-            name, server = sys.argv[1], sys.argv[2]
-            query = struct.pack(">HHHHHH", 0x5047, 0x0100, 1, 0, 0, 0)
-            query += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0" + struct.pack(">HH", 1, 1)
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            s.settimeout(10)
-            s.sendto(query, (server, 53))
-            reply = s.recv(512)
-            print(socket.inet_ntoa(reply[-4:]) if struct.unpack(">H", reply[6:8])[0] else "none", end="")
-            """, name, server.ToString());
-
-        public void Dispose()
-        {
-            Run("umount", Path);
-            File.Delete(Path);
-        }
-
-        private static void Run(string program, params string[] arguments)
-        {
-            var start = new ProcessStartInfo(program) { UseShellExecute = false, RedirectStandardError = true };
-            foreach (var argument in arguments)
-            {
-                start.ArgumentList.Add(argument);
-            }
-
-            using var process = Process.Start(start)!;
-            process.WaitForExit();
-            if (process.ExitCode != 0)
-            {
-                throw new InvalidOperationException($"{program}: {process.StandardError.ReadToEnd()}");
-            }
-        }
-    }
 }

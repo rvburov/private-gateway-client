@@ -5,17 +5,20 @@ using System.Text;
 
 namespace PrivateGateway.Client.Tests.Network;
 
-/// <summary>DNS на 127.0.0.1 по UDP: на запрос A отвечает одним адресом, на остальные — пустым ответом; помнит имена.</summary>
+/// <summary>DNS по UDP (по умолчанию на 127.0.0.1): на запрос A отвечает одним адресом, на остальные — пустым ответом; помнит имена.</summary>
 internal sealed class TestDns : IDisposable
 {
-    private readonly UdpClient _socket = new(new IPEndPoint(IPAddress.Loopback, 0));
+    private readonly UdpClient _socket;
     private readonly IPAddress _answer;
     private readonly CancellationTokenSource _stop = new();
     private readonly List<string> _queries = [];
 
-    public TestDns(IPAddress answer)
+    /// <param name="answer">Адрес в ответе на запрос A.</param>
+    /// <param name="listen">Где слушать; null — свободный порт на 127.0.0.1.</param>
+    public TestDns(IPAddress answer, IPEndPoint? listen = null)
     {
         _answer = answer;
+        _socket = new UdpClient(listen ?? new IPEndPoint(IPAddress.Loopback, 0));
         _ = Task.Run(ServeAsync);
     }
 
