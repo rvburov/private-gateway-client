@@ -175,7 +175,8 @@ public abstract class WindowHarness : IDisposable
             return Task.CompletedTask;
         }
 
-        public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.CompletedTask;
+        /// <summary>Как служба в режиме прокси без системного прокси: паузе нечего менять.</summary>
+        public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.FromResult(false);
 
         public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 

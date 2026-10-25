@@ -187,20 +187,20 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         return Task.CompletedTask;
     }
 
-    public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
+    public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
     {
         lock (_gate)
         {
             if (_status.State == ConnectionState.Off)
             {
-                return Task.CompletedTask;
+                return Task.FromResult(false);
             }
 
             // Мимо туннеля: DNS у провайдера, IPv6 открыт, блок при обрыве на паузе.
             _status = _status with
             {
                 CaptivePauseUntil = time.GetUtcNow() + duration,
-                Protection = new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null),
+                Protection = ProtectionChecks.Paused,
             };
             _pauseEnd?.Dispose();
             _pauseEnd = time.CreateTimer(_ => EndPause("timeout"), null, duration, Timeout.InfiniteTimeSpan);
@@ -208,7 +208,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
         Log(JournalLevel.Warning, "firewall", $"captive pause  {duration.TotalMinutes:0} min  direct traffic allowed");
         Raise();
-        return Task.CompletedTask;
+        return Task.FromResult(true);
     }
 
     public Task ResumeProtectionAsync(CancellationToken cancellationToken = default)

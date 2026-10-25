@@ -28,6 +28,9 @@ public sealed class Gateway : IAsyncDisposable
 {
     private static readonly TimeSpan LatencyTimeout = TimeSpan.FromSeconds(5);
 
+    /// <summary>Дольше пауза для входа в Wi-Fi не бывает: защита не должна забыться выключенной.</summary>
+    public static readonly TimeSpan MaxCaptivePause = TimeSpan.FromMinutes(15);
+
     private readonly GatewayOptions _options;
     private readonly TimeProvider _time;
     private readonly ServiceJournal _journal;
@@ -43,6 +46,9 @@ public sealed class Gateway : IAsyncDisposable
 
     // Что просили в текущем подключении: режим и системный прокси нужны, когда ядро готово.
     private CoreRequest? _request;
+
+    // Конец паузы для входа в Wi-Fi; любая смена состояния паузу заканчивает.
+    private ITimer? _pauseEnd;
 
     /// <param name="options">Что умеет служба.</param>
     /// <param name="time">Часы.</param>
@@ -188,6 +194,49 @@ public sealed class Gateway : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Пауза для входа в Wi-Fi (только «Защищено»): в режиме прокси системный прокси на это время
+    /// возвращается к прямому подключению — иначе страница входа в сеть не откроется; по истечении
+    /// включается сам. Включен ли системный прокси — паузе есть что менять; нет — паузы нет (null).
+    /// </summary>
+    public async Task<DateTimeOffset?> PauseAsync(TimeSpan duration, CancellationToken cancellationToken = default)
+    {
+        await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (Status.State != ConnectionState.Connected || duration <= TimeSpan.Zero)
+            {
+                return null;
+            }
+
+            if (_systemProxy is not { IsActive: true } proxy)
+            {
+                _journal.Add(JournalLevel.Info, "service", "Пауза для входа в Wi-Fi ничего не меняет: системный прокси не включен");
+                return null;
+            }
+
+            duration = duration > MaxCaptivePause ? MaxCaptivePause : duration;
+            var until = _time.GetUtcNow() + duration;
+            proxy.Release();
+            var session = _session;
+            Update(s => s with { CaptivePauseUntil = until, Protection = ProtectionChecks.Paused });
+            lock (_gate)
+            {
+                _pauseEnd = _time.CreateTimer(_ => _ = ResumeAsync(session, "время вышло"), null, duration, Timeout.InfiniteTimeSpan);
+            }
+
+            _journal.Add(JournalLevel.Warning, "service", $"Пауза для входа в Wi-Fi на {duration.TotalMinutes:0.#} мин: трафик идет напрямую");
+            return until;
+        }
+        finally
+        {
+            _switch.Release();
+        }
+    }
+
+    /// <summary>«Вернуть защиту» раньше конца паузы.</summary>
+    public Task ResumeAsync(CancellationToken cancellationToken = default) => ResumeAsync(Volatile.Read(ref _session), "по кнопке", cancellationToken);
+
     /// <summary>Задержка через каждый сервер — запросом через ядро (<see cref="LatencyProbe"/>).</summary>
     public async Task<V1.MeasureLatencyReply> MeasureLatencyAsync(V1.MeasureLatencyRequest request, CancellationToken cancellationToken = default)
     {
@@ -223,6 +272,11 @@ public sealed class Gateway : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        lock (_gate)
+        {
+            _pauseEnd?.Dispose();
+        }
+
         await StopCoreAsync().ConfigureAwait(false);
         _systemProxy?.Release();
         _switch.Dispose();
@@ -377,14 +431,57 @@ public sealed class Gateway : IAsyncDisposable
         }
     }
 
+    /// <summary>Конец паузы: защита и системный прокси — обратно; подключение сменилось — ничего.</summary>
+    private async Task ResumeAsync(int session, string why, CancellationToken cancellationToken = default)
+    {
+        await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (session != _session || Status.CaptivePauseUntil is null)
+            {
+                return;
+            }
+
+            ApplySystemProxy();
+            Update(s => s with { CaptivePauseUntil = null, Protection = ProtectionChecks.For(s.State, s.Mode) });
+            lock (_gate)
+            {
+                _pauseEnd?.Dispose();
+                _pauseEnd = null;
+            }
+
+            _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): защита снова включена");
+        }
+        finally
+        {
+            _switch.Release();
+        }
+    }
+
+    /// <summary>Поменять состояние без перехода (пауза) и разослать подписчикам.</summary>
+    private void Update(Func<ConnectionStatus, ConnectionStatus> change)
+    {
+        lock (_gate)
+        {
+            _status = change(_status);
+            foreach (var watcher in _watchers)
+            {
+                watcher.TryWrite(_status);
+            }
+        }
+    }
+
     /// <param name="change">Что поменять до перехода.</param>
     /// <param name="state">Новое состояние.</param>
     /// <param name="after">Что поменять после перехода — подписчики получат уже итог.</param>
+    /// <remarks>Любой переход заканчивает паузу для входа в Wi-Fi.</remarks>
     private void Move(Func<ConnectionStatus, ConnectionStatus> change, ConnectionState state, Func<ConnectionStatus, ConnectionStatus>? after = null)
     {
         lock (_gate)
         {
-            _status = change(_status).MoveTo(state, _time.GetUtcNow());
+            _pauseEnd?.Dispose();
+            _pauseEnd = null;
+            _status = change(_status).MoveTo(state, _time.GetUtcNow()) with { CaptivePauseUntil = null };
             if (after is not null)
             {
                 _status = after(_status);

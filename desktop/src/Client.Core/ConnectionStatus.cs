@@ -50,6 +50,9 @@ public sealed record ProtectionChecks(
     CheckState KillSwitch,
     DateTimeOffset? CheckedAt)
 {
+    /// <summary>Пауза для входа в Wi-Fi: трафик мимо туннеля — все четыре проверки требуют внимания.</summary>
+    public static ProtectionChecks Paused { get; } = new(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null);
+
     /// <summary>Проверки для состояния, когда служба еще ничего не мерила.</summary>
     public static ProtectionChecks For(ConnectionState state) => state switch
     {

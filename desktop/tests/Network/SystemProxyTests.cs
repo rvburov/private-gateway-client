@@ -118,7 +118,7 @@ public sealed class SystemProxyTests : IDisposable
     [Fact]
     public void Guard_keeps_the_settings_from_before_the_first_switch_on()
     {
-        var proxy = new FakeProxy();
+        var proxy = new FakeSystemProxy();
         var guard = new SystemProxyGuard(proxy, Backup, _journal);
 
         guard.Apply(10808);
@@ -142,7 +142,7 @@ public sealed class SystemProxyTests : IDisposable
     [Fact]
     public void Guard_restores_settings_left_after_a_crash()
     {
-        var proxy = new FakeProxy();
+        var proxy = new FakeSystemProxy();
         new SystemProxyGuard(proxy, Backup, _journal).Apply(10808);
 
         // Служба упала: снимок остался, прокси включен. Новая служба возвращает его при запуске.
@@ -156,7 +156,7 @@ public sealed class SystemProxyTests : IDisposable
     [Fact]
     public void Stale_snapshot_is_not_overwritten_by_settings_of_the_crashed_run()
     {
-        var proxy = new FakeProxy();
+        var proxy = new FakeSystemProxy();
         new SystemProxyGuard(proxy, Backup, _journal).Apply(10808);
         var restarted = new SystemProxyGuard(proxy, Backup, _journal);
 
@@ -169,7 +169,7 @@ public sealed class SystemProxyTests : IDisposable
     [Fact]
     public void Settings_that_cannot_be_changed_do_not_break_the_connection()
     {
-        var guard = new SystemProxyGuard(new FakeProxy { Refuses = true }, Backup, _journal);
+        var guard = new SystemProxyGuard(new FakeSystemProxy { Refuses = true }, Backup, _journal);
 
         guard.Apply(10808);
 
@@ -181,7 +181,7 @@ public sealed class SystemProxyTests : IDisposable
     public async Task Proxy_mode_switches_the_system_proxy_on_while_connected()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
-        var proxy = new FakeProxy();
+        var proxy = new FakeSystemProxy();
         await using var service = await RunningService.StartAsync(systemProxy: (proxy, Backup));
         var serverPort = XrayKit.FreePort();
         var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
@@ -204,7 +204,7 @@ public sealed class SystemProxyTests : IDisposable
     public async Task Refused_switch_and_the_setting_off_leave_the_system_proxy_alone()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
-        var proxy = new FakeProxy();
+        var proxy = new FakeSystemProxy();
         await using var service = await RunningService.StartAsync(systemProxy: (proxy, Backup));
         var serverPort = XrayKit.FreePort();
         var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
@@ -226,23 +226,6 @@ public sealed class SystemProxyTests : IDisposable
 
         proxy.Port.ShouldBeNull("настройка выключена — системный прокси не трогается");
         File.Exists(Backup).ShouldBeFalse();
-    }
-
-    /// <summary>Настройки прокси «ОС» в памяти: включен — порт, выключен — null.</summary>
-    private sealed class FakeProxy : ISystemProxy
-    {
-        public int? Port { get; private set; }
-
-        public bool Refuses { get; init; }
-
-        public string Name => "подделка";
-
-        public SystemProxySnapshot Read() => new(new Dictionary<string, string?> { ["port"] = Port?.ToString(System.Globalization.CultureInfo.InvariantCulture) });
-
-        public void Enable(int port) => Port = Refuses ? throw new UnauthorizedAccessException("нет доступа") : port;
-
-        public void Restore(SystemProxySnapshot previous) =>
-            Port = previous.Values["port"] is { } port ? int.Parse(port, System.Globalization.CultureInfo.InvariantCulture) : null;
     }
 
     /// <summary>gsettings в памяти: get — значение ключа, set — запись; порядок записей запоминается.</summary>
@@ -270,4 +253,21 @@ public sealed class SystemProxyTests : IDisposable
             }
         }
     }
+}
+
+/// <summary>Настройки прокси «ОС» в памяти: включен — порт, выключен — null.</summary>
+internal sealed class FakeSystemProxy : ISystemProxy
+{
+    public int? Port { get; private set; }
+
+    public bool Refuses { get; init; }
+
+    public string Name => "подделка";
+
+    public SystemProxySnapshot Read() => new(new Dictionary<string, string?> { ["port"] = Port?.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+
+    public void Enable(int port) => Port = Refuses ? throw new UnauthorizedAccessException("нет доступа") : port;
+
+    public void Restore(SystemProxySnapshot previous) =>
+        Port = previous.Values["port"] is { } port ? int.Parse(port, System.Globalization.CultureInfo.InvariantCulture) : null;
 }

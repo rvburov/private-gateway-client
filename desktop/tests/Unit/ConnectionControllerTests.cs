@@ -214,10 +214,10 @@ public class ConnectionControllerTests
             return Task.CompletedTask;
         }
 
-        public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
+        public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
         {
             Calls.Add("pause:" + duration.TotalMinutes);
-            return Task.CompletedTask;
+            return Task.FromResult(true);
         }
 
         public Task ResumeProtectionAsync(CancellationToken cancellationToken = default)

@@ -120,15 +120,18 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    public async Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
+    /// <summary>Пауза началась — в ответе службы есть срок; службы нет — паузы нет.</summary>
+    public async Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
     {
         try
         {
-            await _client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Duration = Duration.FromTimeSpan(duration) },
+            var reply = await _client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Duration = Duration.FromTimeSpan(duration) },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            return reply.Until is not null;
         }
         catch (RpcException)
         {
+            return false;
         }
     }
 

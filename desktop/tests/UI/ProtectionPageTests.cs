@@ -2,6 +2,10 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
@@ -173,6 +177,27 @@ public sealed class ProtectionPageTests : WindowHarness
         shell.Protection.Status.IsPaused.ShouldBeFalse();
         Urls.Opened.ShouldBeEmpty();
         shell.CurrentKey.ShouldBe(Pages.Protection);
+    }
+
+    [AvaloniaFact]
+    public async Task Wifi_sign_in_when_the_service_has_nothing_to_pause_says_so()
+    {
+        // Режим прокси без системного прокси: служба отвечает, что паузе нечего менять.
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User));
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        var page = Navigate(shell);
+
+        var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        await open;
+
+        shell.Protection.Status.IsPaused.ShouldBeFalse();
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage]);
+        shell.Toast.Text.ShouldBe("Пауза не нужна: системный прокси выключен — страница входа в сеть откроется напрямую",
+            "паузы нет — и окно не делает вид, что она есть");
     }
 
     [AvaloniaFact]

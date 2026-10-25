@@ -183,15 +183,16 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
             return;
         }
 
-        if (!await SafetyDialogs.ConfirmCaptivePauseAsync(_overlay).ConfigureAwait(true)
-            || !await _controller.PauseForCaptivePortalAsync().ConfigureAwait(true))
+        if (!await SafetyDialogs.ConfirmCaptivePauseAsync(_overlay).ConfigureAwait(true))
         {
             return;
         }
 
+        // Служба может ответить, что паузе нечего менять: тогда так и сказать, а не делать вид паузы.
+        var paused = await _controller.PauseForCaptivePortalAsync().ConfigureAwait(true);
         await _launcher.OpenAsync(CaptivePortal.CheckPage).ConfigureAwait(true);
         _navigator.Navigate(Pages.Home);
-        _toast.Show(Loc.Instance["pause.started"], ToastViewModel.LongDuration);
+        _toast.Show(Loc.Instance[paused ? "pause.started" : "pause.notNeeded"], ToastViewModel.LongDuration);
     }
 
     internal void SaveCustomDns(string address) => Set(p => p with { Dns = DnsChoice.Custom, CustomDns = address });

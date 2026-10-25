@@ -122,8 +122,8 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         StatusChanged?.Invoke(this, status);
     }
 
-    public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) =>
-        Current?.PauseForCaptivePortalAsync(duration, cancellationToken) ?? Task.CompletedTask;
+    public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) =>
+        Current?.PauseForCaptivePortalAsync(duration, cancellationToken) ?? Task.FromResult(false);
 
     public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) =>
         Current?.ResumeProtectionAsync(cancellationToken) ?? Task.CompletedTask;

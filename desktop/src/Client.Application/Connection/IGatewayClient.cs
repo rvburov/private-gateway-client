@@ -27,7 +27,8 @@ public interface IGatewayClient
     /// туннеля, чтобы открылась страница авторизации сети; потом защита возвращается сама. Только по
     /// явному действию пользователя. Защита выключена — паузе нечего снимать, ничего не происходит.
     /// </summary>
-    Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default);
+    /// <returns>Началась ли пауза: служба может ответить, что менять нечего (режим прокси без системного прокси).</returns>
+    Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default);
 
     /// <summary>Вернуть защиту раньше конца паузы.</summary>
     Task ResumeProtectionAsync(CancellationToken cancellationToken = default);

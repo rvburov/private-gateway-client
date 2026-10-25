@@ -102,7 +102,10 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// <summary>
     /// «Вход в Wi-Fi отеля или кафе»: открыть трафик мимо туннеля на <see cref="CaptivePause"/>.
     /// </summary>
-    /// <returns>false — защита выключена: страница входа в сеть откроется и без паузы.</returns>
+    /// <returns>
+    /// false — паузы нет: защита выключена или службе нечего менять (режим прокси без системного
+    /// прокси) — страница входа в сеть откроется и без паузы.
+    /// </returns>
     public async Task<bool> PauseForCaptivePortalAsync(CancellationToken cancellationToken = default)
     {
         if (gateway.Status.State == ConnectionState.Off)
@@ -110,8 +113,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
             return false;
         }
 
-        await gateway.PauseForCaptivePortalAsync(CaptivePause, cancellationToken).ConfigureAwait(false);
-        return true;
+        return await gateway.PauseForCaptivePortalAsync(CaptivePause, cancellationToken).ConfigureAwait(false);
     }
 
     /// <summary>Защита выключена — VPN не мешает выходу в сеть.</summary>

@@ -451,6 +451,7 @@
   "pause.dialog.keep": "Keep protection",
   "pause.dialog.open": "Open for 5 minutes",
   "pause.off": "Protection is off — the network sign-in page opens without a pause",
+  "pause.notNeeded": "No pause needed: the system proxy is off — the network sign-in page opens directly",
   "pause.started": "Paused for 5 minutes: sign in to the network on the page that opened",
   "prot.group.ks": "Kill switch",
   "prot.group.dns": "DNS",
