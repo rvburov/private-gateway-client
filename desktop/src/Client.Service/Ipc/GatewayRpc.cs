@@ -86,8 +86,13 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         report.Results.Add(new V1.CheckResult
         {
             Id = DiagnosticCheck.Core.ToContractId(),
-            State = status.State == ConnectionState.Connected ? V1.CheckState.Ok
-                : status.State == ConnectionState.Error ? V1.CheckState.Stopped : V1.CheckState.Off,
+            State = status.State switch
+            {
+                ConnectionState.Connected => V1.CheckState.Ok,
+                ConnectionState.Connecting or ConnectionState.Reconnecting => V1.CheckState.Waiting,
+                ConnectionState.Error or ConnectionState.Blocked => V1.CheckState.Stopped,
+                _ => V1.CheckState.Off,
+            },
         });
         report.Results.Add(new V1.CheckResult
         {

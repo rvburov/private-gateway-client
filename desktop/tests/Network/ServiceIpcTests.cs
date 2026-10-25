@@ -137,8 +137,10 @@ public sealed class ServiceIpcTests
 
         await service.Client.ConnectAsync(Request(definition, ((IPEndPoint)busy.LocalEndpoint).Port), cancellationToken: Ct);
 
-        var error = (await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error))[^1];
-        error.Error.Code.ShouldBe(ErrorCodes.CoreFailed);
+        var states = await ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Error or V1.ConnectionState.Connected);
+        states[^1].State.ShouldBe(V1.ConnectionState.Error, "чужой вход на порту — не готовность ядра");
+        states[^1].Error.Code.ShouldBe(ErrorCodes.CoreFailed);
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.Contains("занят другой программой", StringComparison.Ordinal));
     }
 
     [Theory]

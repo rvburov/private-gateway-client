@@ -231,6 +231,31 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Probe_inbound_goes_straight_to_the_server_past_every_rule()
+    {
+        var probe = new ProbeLink(32000, "probe-user", "probe-pass");
+        var routing = new RoutingSettings(RoutingMode.Split, [], [new DomainRule("cp.cloudflare.com", RuleAction.Direct)]);
+        var request = Request(Link("vless/reality-vision")) with { Routing = routing, Protection = ProtectionSettings.Default with { AllowLan = true } };
+
+        foreach (var config in new[]
+        {
+            XrayConfigBuilder.Build(request, probe: probe).Config!,
+            XrayConfigBuilder.Build(request, new TunLink(31000, "user-1", "pass-1", "198.51.100.20"), probe).Config!,
+        })
+        {
+            var inbound = config["inbounds"]!.AsArray().Single(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.ProbeTag)!;
+            (inbound["listen"]!.GetValue<string>(), inbound["port"]!.GetValue<int>(), inbound["settings"]!["auth"]!.GetValue<string>())
+                .ShouldBe(("127.0.0.1", 32000, "password"), "вход проверки — только для службы");
+            var first = config["routing"]!["rules"]![0]!;
+            (first["inboundTag"]![0]!.GetValue<string>(), first["outboundTag"]!.GetValue<string>())
+                .ShouldBe((XrayConfigBuilder.ProbeTag, XrayConfigBuilder.ProxyTag),
+                    "первым правилом и прямо в сервер: ни «Напрямую» для проверочного адреса, ни локальная сеть пробу не обманут");
+        }
+
+        XrayConfigBuilder.Build(request).Config!["inbounds"]!.AsArray().ShouldHaveSingleItem("без пробы — один вход");
+    }
+
+    [Fact]
     public void Tun_link_takes_only_its_own_tun_and_dials_the_resolved_address()
     {
         var tun = new TunLink(31000, "user-1", "pass-1", "198.51.100.20");

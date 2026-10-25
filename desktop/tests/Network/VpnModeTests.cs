@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Contracts;
@@ -322,6 +323,48 @@ public sealed class VpnModeTests
         outside.Requests.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task Vpn_keeps_the_block_while_reconnecting_and_blocks_when_the_server_is_gone()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var (netns, lan, killSwitch) = (rig.Netns, rig.Lan, rig.KillSwitch);
+
+        // Проверочный адрес — по HTTP: сервер теста отвечает своим сайтом на любой адрес.
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"),
+            options: o => rig.Vpn(o) with { Reconnect = ReconnectTests.Fast, Probe = rig.ProbeAsync });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        var request = VpnRequest(rig.Definition);
+        request.Connection.Reconnect = V1.ReconnectPolicy.UpTo5Minutes;
+        await service.Client.ConnectAsync(request, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        rig.StopServer();
+
+        var reconnecting = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting))[^1].ToCore();
+        (reconnecting.ServerId, reconnecting.Protection.AllTraffic).ShouldBe(("srv-1", CheckState.Waiting), "к тому же серверу, трафик на паузе");
+        killSwitch.IsEnabled.ShouldBeTrue("пока служба ищет связь, блок держит трафик");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 2), "мимо туннеля — ничего");
+
+        var enables = killSwitch.Enables;
+        await rig.StartServerAsync();
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "связь вернулась — снова через туннель");
+        killSwitch.Enables.ShouldBeGreaterThan(enables, "новый адаптер туннеля — блок обновлен (на Windows разрешение по LUID)");
+
+        rig.StopServer();
+
+        var blocked = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Blocked or V1.ConnectionState.Error))[^1];
+        blocked.State.ShouldBe(V1.ConnectionState.Blocked, "попытки кончились — «Блокировка», другой сервер сам не выбирается");
+        killSwitch.IsEnabled.ShouldBeTrue();
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 2));
+
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+
+        killSwitch.IsEnabled.ShouldBeFalse("защиту выключил пользователь — блок снят");
+        (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля");
+    }
+
     /// <summary>
     /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
     /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в
@@ -330,11 +373,15 @@ public sealed class VpnModeTests
     private sealed class Rig : IAsyncDisposable
     {
         private readonly IDisposable[] _owned;
+        private readonly JsonObject _serverConfig;
+        private readonly int _serverPort;
+        private CoreProcess? _server;
 
         private Rig(NetworkNamespace netns, LocalSite lan, IPAddress @public, ServerDefinition definition, CountingKillSwitch killSwitch,
-            params IDisposable[] owned)
+            (JsonObject Config, int Port, CoreProcess Process) server, params IDisposable[] owned)
         {
             (Netns, Lan, Public, Definition, KillSwitch, _owned) = (netns, lan, @public, definition, killSwitch, owned);
+            (_serverConfig, _serverPort, _server) = server;
         }
 
         public NetworkNamespace Netns { get; }
@@ -350,6 +397,35 @@ public sealed class VpnModeTests
 
         public GatewayOptions Vpn(GatewayOptions options) =>
             options with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = KillSwitch, TunnelNetns = Netns.Path };
+
+        /// <summary>Сервер перестал отвечать.</summary>
+        public void StopServer()
+        {
+            _server?.Dispose();
+            _server = null;
+        }
+
+        /// <summary>Сервер вернулся — на том же адресе и порту.</summary>
+        public async Task StartServerAsync() => _server = await XrayKit.Start(_serverConfig, _serverPort);
+
+        /// <summary>
+        /// Проба связи изнутри пространства: вход проверки Xray там, и из сети машины его не видно. curl через
+        /// SOCKS5 с паролем подключения.
+        /// </summary>
+        public async Task<bool> ProbeAsync(ServerProbe probe, CancellationToken cancellationToken)
+        {
+            var user = probe.Credentials!;
+            try
+            {
+                await Netns.RunAsync("curl", "-sS", "-o", "/dev/null", "-m", ((int)Math.Ceiling(probe.Timeout.TotalSeconds)).ToString(CultureInfo.InvariantCulture),
+                    "-x", $"socks5h://{user.UserName}:{user.Password}@127.0.0.1:{probe.Port}", probe.Target.ToString());
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
 
         public static async Task<Rig> CreateAsync()
         {
@@ -371,12 +447,12 @@ public sealed class VpnModeTests
                 // Выход сервера теста — на свой сайт: из машины ничего не уходит.
                 serverConfig["outbounds"] = new JsonArray(
                     new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
-                owned.Add(await XrayKit.Start(serverConfig, serverPort));
+                var server = await XrayKit.Start(serverConfig, serverPort);
                 var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
 
-                // Убирать — в обратном порядке: сервер и сайты, потом пространство.
+                // Убирать — в обратном порядке: сайты, потом пространство; сервер — раньше всего.
                 owned.Reverse();
-                return new Rig(netns, lan, @public, definition, killSwitch, [.. owned]);
+                return new Rig(netns, lan, @public, definition, killSwitch, (serverConfig, serverPort, server), [.. owned]);
             }
             catch
             {
@@ -391,6 +467,7 @@ public sealed class VpnModeTests
 
         public ValueTask DisposeAsync()
         {
+            StopServer();
             foreach (var owned in _owned)
             {
                 owned.Dispose();

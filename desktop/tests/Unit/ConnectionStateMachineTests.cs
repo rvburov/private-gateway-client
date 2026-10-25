@@ -16,6 +16,7 @@ public class ConnectionStateMachineTests
         { ConnectionState.Connected, ConnectionState.Error },
         { ConnectionState.Connected, ConnectionState.Off },
         { ConnectionState.Reconnecting, ConnectionState.Connected },
+        { ConnectionState.Reconnecting, ConnectionState.Connecting },
         { ConnectionState.Reconnecting, ConnectionState.Blocked },
         { ConnectionState.Reconnecting, ConnectionState.Error },
         { ConnectionState.Reconnecting, ConnectionState.Off },

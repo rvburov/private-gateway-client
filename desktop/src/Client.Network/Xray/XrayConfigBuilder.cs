@@ -40,6 +40,14 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
 /// </summary>
 public sealed record TunLink(int Port, string User, string Password, string ServerAddress);
 
+/// <summary>
+/// Вход проверки связи с сервером: SOCKS5 на 127.0.0.1:<paramref name="Port"/> с паролем на это
+/// подключение — только для службы. Его соединения идут прямо в выход сервера, мимо правил
+/// маршрутизации: проба проверяет сервер, а не правила пользователя («Напрямую» для проверочного
+/// адреса или локальная сеть не обманут пробу).
+/// </summary>
+public sealed record ProbeLink(int Port, string User, string Password);
+
 /// <summary>Конфиг проверки задержки и причина отказа для каждого сервера (null — сервер проверяется).</summary>
 public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejection?> Rejections);
 
@@ -52,6 +60,7 @@ public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejec
 public static class XrayConfigBuilder
 {
     public const string InboundTag = "socks-in";
+    public const string ProbeTag = "probe-in";
     public const string ProxyTag = "proxy";
     public const string DirectTag = "direct";
     public const string BlockTag = "block";
@@ -65,7 +74,8 @@ public static class XrayConfigBuilder
 
     /// <param name="request">Сервер и настройки.</param>
     /// <param name="tun">Режим VPN: вход только для своего TUN и адрес сервера; null — вход прокси из настроек.</param>
-    public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null)
+    /// <param name="probe">Вход проверки связи с сервером; null — без него.</param>
+    public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null, ProbeLink? probe = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         var outbound = Outbound(request.Server, request.Connection, out var rejection);
@@ -117,9 +127,11 @@ public static class XrayConfigBuilder
                 ["dnsLog"] = false,
             },
             ["dns"] = Dns(request.Protection),
-            ["inbounds"] = new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun) },
+            ["inbounds"] = probe is null
+                ? new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun) }
+                : new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun), ProbeInbound(probe) },
             ["outbounds"] = outbounds,
-            ["routing"] = Routing(request, tunDns: tun is not null),
+            ["routing"] = Routing(request, tunDns: tun is not null, probe: probe is not null),
         }, null);
     }
 
@@ -243,6 +255,20 @@ public static class XrayConfigBuilder
         },
     };
 
+    private static JsonObject ProbeInbound(ProbeLink probe) => new()
+    {
+        ["tag"] = ProbeTag,
+        ["listen"] = "127.0.0.1",
+        ["port"] = probe.Port,
+        ["protocol"] = "socks",
+        ["settings"] = new JsonObject
+        {
+            ["auth"] = "password",
+            ["accounts"] = new JsonArray(new JsonObject { ["user"] = probe.User, ["pass"] = probe.Password }),
+            ["udp"] = false,
+        },
+    };
+
     /// <summary>Выход соединяется с уже разрешенным адресом сервера: в vnext, servers и у WireGuard — в endpoint.</summary>
     private static void Dial(JsonObject outbound, string address)
     {
@@ -275,9 +301,16 @@ public static class XrayConfigBuilder
         ["queryStrategy"] = protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : "UseIP",
     };
 
-    private static JsonObject Routing(CoreRequest request, bool tunDns)
+    private static JsonObject Routing(CoreRequest request, bool tunDns, bool probe)
     {
         var rules = new JsonArray();
+
+        // Проба связи — первым правилом и прямо в выход сервера: ни DNS, ни правила пользователя ее не трогают.
+        if (probe)
+        {
+            rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray(ProbeTag), ["outboundTag"] = ProxyTag });
+        }
+
         if (tunDns)
         {
             // DNS из TUN — к любому адресу, хоть к роутеру в локальной сети: отвечает выход DNS по

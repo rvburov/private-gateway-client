@@ -35,6 +35,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <summary>Одно из ядер вышло само.</summary>
     public event EventHandler? Exited;
 
+
     /// <summary>Одно из ядер уже не работает — и до подписки на <see cref="Exited"/>.</summary>
     public bool HasExited => _xray.HasExited || _singBox.HasExited;
 
@@ -50,9 +51,11 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <param name="time">Часы.</param>
     /// <param name="netns">Запустить оба ядра в сетевом пространстве Linux (тесты) — TUN и маршруты там же; null — в системе.</param>
     /// <param name="output">Строка вывода ядра — источник («xray», «sing-box») и текст, с самого запуска; приходит из потока чтения.</param>
+    /// <param name="probe">Вход проверки связи с сервером; null — без него.</param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
-        TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, CancellationToken cancellationToken = default)
+        TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, ProbeLink? probe = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -62,7 +65,7 @@ public sealed class VpnTunnel : IAsyncDisposable
         }
 
         var link = NewLink(serverAddresses[0]);
-        var built = XrayConfigBuilder.Build(request, link);
+        var built = XrayConfigBuilder.Build(request, link, probe);
         if (built.Config is not { } xrayConfig)
         {
             throw new TunnelException("Ядро Xray не возьмется за сервер: " + built.Rejection);
@@ -104,6 +107,9 @@ public sealed class VpnTunnel : IAsyncDisposable
             throw;
         }
     }
+
+    /// <summary>Вход проверки связи на одно подключение: свободный порт на 127.0.0.1, имя и пароль — по 128 случайных бит.</summary>
+    public static ProbeLink NewProbe() => new(LocalPort.FreeForTcpAndUdp(), Secret(), Secret());
 
     /// <summary>
     /// Связь Xray с TUN на одно подключение: порт на 127.0.0.1, свободный для TCP и UDP, имя и пароль — по 128

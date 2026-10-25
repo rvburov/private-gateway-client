@@ -14,8 +14,9 @@ public static class ConnectionStateMachine
             [ConnectionState.Connected, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
         [ConnectionState.Connected] =
             [ConnectionState.Reconnecting, ConnectionState.Connecting, ConnectionState.Error, ConnectionState.Off],
+        // «Переподключение → Подключение» — пользователь выбрал другой сервер или поменял настройки, пока служба ждала свой.
         [ConnectionState.Reconnecting] =
-            [ConnectionState.Connected, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
+            [ConnectionState.Connected, ConnectionState.Connecting, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
         [ConnectionState.Blocked] = [ConnectionState.Connecting, ConnectionState.Error, ConnectionState.Off],
         [ConnectionState.Error] = [ConnectionState.Connecting, ConnectionState.Off],
     };

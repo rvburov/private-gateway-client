@@ -7,6 +7,12 @@ using PrivateGateway.Client.Network.Xray;
 namespace PrivateGateway.Client.Service.Cores;
 
 /// <summary>
+/// Проба связи с сервером через вход работающего ядра: SOCKS5 на 127.0.0.1:<paramref name="Port"/>
+/// (в режиме VPN — с паролем туннеля), запрос к <paramref name="Target"/> не дольше <paramref name="Timeout"/>.
+/// </summary>
+public sealed record ServerProbe(int Port, NetworkCredential? Credentials, Uri Target, TimeSpan Timeout);
+
+/// <summary>
 /// Задержка серверов через настоящее ядро, а не пинг адреса: одно ядро на все серверы
 /// (<see cref="XrayConfigBuilder.BuildProbe"/>), через вход каждого — запрос HTTP к проверочному
 /// адресу. Задержка — время запроса вместе с установкой соединения через сервер: так ее почувствует
@@ -70,11 +76,20 @@ public static class LatencyProbe
         }
     }
 
-    private static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken)
+    /// <summary>Отвечает ли сервер: любой ответ HTTP через ядро — да; нет ответа за время пробы — нет.</summary>
+    public static async Task<bool> ReachesAsync(ServerProbe probe, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        return (await RequestAsync(probe.Port, probe.Target, probe.Timeout, TimeProvider.System, cancellationToken, probe.Credentials)
+            .ConfigureAwait(false)).Milliseconds is not null;
+    }
+
+    private static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,
+        NetworkCredential? credentials = null)
     {
         using var handler = new SocketsHttpHandler
         {
-            Proxy = new FixedProxy(new Uri($"socks5://127.0.0.1:{port}")),
+            Proxy = new FixedProxy(new Uri($"socks5://127.0.0.1:{port}")) { Credentials = credentials },
             UseProxy = true,
             AllowAutoRedirect = false,
             UseCookies = false,

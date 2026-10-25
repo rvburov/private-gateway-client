@@ -58,7 +58,8 @@ var systemProxy = user && ServiceHost.SystemProxy() is { } proxy
 systemProxy?.RestoreStale();
 var canVpn = !user && Environment.IsPrivilegedProcess;
 await using var gateway = new Gateway(
-    new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes()), time, journal, systemProxy);
+    new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
+        Reconnect: ReconnectTiming.Default), time, journal, systemProxy);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
 if (int.TryParse(Option("--parent"), out var parent))

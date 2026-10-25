@@ -18,7 +18,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="LatencyTarget"/> — проверочный адрес задержки (в тестах — свой сайт);
 /// <paramref name="SingBoxPath"/> — TUN режима VPN; <paramref name="KillSwitch"/> — блок при обрыве
 /// этой ОС, без него режима VPN нет; <paramref name="TunnelNetns"/> — ядра режима VPN в сетевом пространстве Linux (тесты);
-/// <paramref name="Routes"/> — маршруты машины, чтобы найти чужой VPN; null — проверки нет.
+/// <paramref name="Routes"/> — маршруты машины, чтобы найти чужой VPN; null — проверки нет;
+/// <paramref name="Reconnect"/> — проба связи с сервером и паузы переподключения; null — без проб
+/// (только выход ядра), паузы по умолчанию; <paramref name="Probe"/> — проба (тесты); null — через ядро.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -27,7 +29,22 @@ public sealed record GatewayOptions(
     string? SingBoxPath = null,
     IKillSwitch? KillSwitch = null,
     string? TunnelNetns = null,
-    IRouteTable? Routes = null);
+    IRouteTable? Routes = null,
+    ReconnectTiming? Reconnect = null,
+    Func<ServerProbe, CancellationToken, Task<bool>>? Probe = null);
+
+/// <summary>
+/// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
+/// проверять, что сервер отвечает (null — не проверять, переподключаться только при выходе ядра);
+/// <paramref name="ProbeTimeout"/> — сколько ждать ответа; паузы между попытками — от
+/// <paramref name="FirstPause"/> вдвое до <paramref name="MaxPause"/>; <paramref name="GiveUpAfter"/> —
+/// предел политики «До 5 минут».
+/// </summary>
+public sealed record ReconnectTiming(TimeSpan? Every, TimeSpan ProbeTimeout, TimeSpan FirstPause, TimeSpan MaxPause, TimeSpan GiveUpAfter)
+{
+    public static ReconnectTiming Default { get; } =
+        new(TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(10), TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(60), TimeSpan.FromMinutes(5));
+}
 
 /// <summary>
 /// Защита на стороне службы: запрос Connect — конфиг ядра собирается здесь же из описания сервера
@@ -35,9 +52,10 @@ public sealed record GatewayOptions(
 /// <see cref="ConnectionStateMachine"/> и уходит подписчикам WatchStatus. Служба — единственный
 /// источник состояния: и отказ в подключении — ее «Ошибка». Режим прокси — Xray с входом на
 /// 127.0.0.1; режим VPN — блок при обрыве до запуска ядер, затем туннель (<see cref="VpnTunnel"/>).
-/// Блок держится и при сбое ядра, и после остановки службы; снимают его отключение и отказ.
+/// Блок держится и при сбое ядра, и после остановки службы; снимают его отключение и отказ. Связь с
+/// сервером пропала — переподключение к нему же (Gateway.Reconnect.cs).
 /// </summary>
-public sealed class Gateway : IAsyncDisposable
+public sealed partial class Gateway : IAsyncDisposable
 {
     private static readonly TimeSpan LatencyTimeout = TimeSpan.FromSeconds(5);
 
@@ -63,6 +81,9 @@ public sealed class Gateway : IAsyncDisposable
 
     // Что просили в текущем подключении: режим и системный прокси нужны, когда ядро готово.
     private CoreRequest? _request;
+
+    // Вход проверки связи с сервером в ядре этого подключения.
+    private ProbeLink? _probe;
 
     // Режим VPN: адреса сервера и блок при обрыве — чтобы поднять туннель снова после паузы.
     private IReadOnlyList<IPAddress> _addresses = [];
@@ -165,7 +186,9 @@ public sealed class Gateway : IAsyncDisposable
                 .ConfigureAwait(false);
         }
 
-        var built = XrayConfigBuilder.Build(core);
+        // Вход проверки связи с сервером — свой на каждое подключение.
+        var probe = VpnTunnel.NewProbe();
+        var built = XrayConfigBuilder.Build(core, probe: probe);
         if (built.Config is not { } config)
         {
             return await RejectAsync(serverId, core.Mode, ErrorCodes.UnsupportedServer, "Ядро Xray не возьмется за сервер: " + built.Rejection,
@@ -203,6 +226,7 @@ public sealed class Gateway : IAsyncDisposable
             // Сначала новый номер: выход старого ядра при остановке не должен стать ошибкой нового подключения.
             session = ++_session;
             _request = core;
+            _probe = probe;
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
             _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey]);
@@ -234,12 +258,21 @@ public sealed class Gateway : IAsyncDisposable
             ReleaseBlock();
             BeginConnecting(core.Mode, serverId);
             _journal.Add(JournalLevel.Info, "service", $"Подключение в режиме прокси: {core.Server.Protocol}, порт {core.Connection.ProxyPort}");
+
+            // Порт занят другой программой — ядро на нем не откроется, а проверка готовности приняла бы чужой вход за свой.
+            if (!PortIsFree(core.Connection.ProxyPort, core.Connection.ProxyAllowLan))
+            {
+                Fail(session, ErrorCodes.CoreFailed, $"Порт {core.Connection.ProxyPort} занят другой программой — выберите другой в «Подключении и ядре»");
+                return new V1.ConnectReply { Accepted = true };
+            }
+
             try
             {
                 var process = CoreProcess.StartXray(xray, config);
                 process.Output += (_, line) => _journal.Add(JournalLevel.Info, "xray", line);
                 process.Exited += (_, _) => OnCoreExited(session, process);
                 _core = process;
+                _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id);
             }
             catch (System.ComponentModel.Win32Exception e)
             {
@@ -395,6 +428,9 @@ public sealed class Gateway : IAsyncDisposable
             _pauseEnd?.Dispose();
         }
 
+        // Переподключение и проверка связи останавливаются: подключения больше нет.
+        Interlocked.Increment(ref _session);
+
         await StopCoreAsync().ConfigureAwait(false);
         _systemProxy?.Release();
         if (_blocking)
@@ -445,6 +481,21 @@ public sealed class Gateway : IAsyncDisposable
         return new V1.ConnectReply { Accepted = false, Error = new V1.ErrorInfo { Code = code, Message = message } };
     }
 
+    /// <summary>Свободен ли порт входа прокси — на том адресе, где его откроет ядро.</summary>
+    private static bool PortIsFree(int port, bool allowLan)
+    {
+        try
+        {
+            using var listener = new TcpListener(allowLan ? IPAddress.Any : IPAddress.Loopback, port);
+            listener.Start();
+            return true;
+        }
+        catch (SocketException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>Готово, когда ядро открыло вход прокси; не открыло за время ожидания — ошибка ядра.</summary>
     private async Task WaitReadyAsync(int session, int port, TimeSpan timeout)
     {
@@ -467,10 +518,25 @@ public sealed class Gateway : IAsyncDisposable
         Fail(session, ErrorCodes.CoreFailed, "Ядро не открыло вход прокси за " + timeout.TotalSeconds + " с");
     }
 
+    /// <summary>
+    /// Ядро вышло: при подключении — «Ошибка», из «Защищено» — переподключение. Ядро, которое служба
+    /// уже заменила новым (переподключение), в состояние не вмешивается.
+    /// </summary>
     private void OnCoreExited(int session, CoreProcess process)
     {
-        var code = process.HasExited ? process.ExitCode : 0;
-        Fail(session, ErrorCodes.CoreFailed, "Ядро остановилось, код " + code);
+        if (Volatile.Read(ref _core) is { } current && !ReferenceEquals(current, process))
+        {
+            return;
+        }
+
+        var message = "Ядро остановилось, код " + (process.HasExited ? process.ExitCode : 0);
+        if (Status.State == ConnectionState.Connected)
+        {
+            _ = LostAsync(session, ErrorCodes.CoreFailed, message);
+            return;
+        }
+
+        Fail(session, ErrorCodes.CoreFailed, message);
     }
 
     /// <summary>
@@ -494,6 +560,7 @@ public sealed class Gateway : IAsyncDisposable
             ApplySystemProxy();
             Move(s => s, ConnectionState.Connected);
             _journal.Add(JournalLevel.Info, "service", "Подключено: прокси на 127.0.0.1 готов");
+            StartWatch(session);
         }
         finally
         {
@@ -675,7 +742,7 @@ public sealed class Gateway : IAsyncDisposable
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line)).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -699,7 +766,7 @@ public sealed class Gateway : IAsyncDisposable
             }
 
             _tunnel = tunnel;
-            tunnel.Exited += (_, _) => Fail(session, ErrorCodes.CoreFailed, "Ядро туннеля остановилось");
+            tunnel.Exited += (_, _) => OnTunnelExited(session);
             if (tunnel.HasExited)
             {
                 Fail(session, ErrorCodes.CoreFailed, "Ядро туннеля остановилось");
@@ -717,6 +784,7 @@ public sealed class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Info, "service", core.Routing.HasBypassApps || core.Routing.HasBypassSites
                 ? "Подключено: трафик через туннель, обход раздельного режима — напрямую"
                 : "Подключено: весь трафик через туннель");
+            StartWatch(session);
         }
         finally
         {

@@ -34,6 +34,9 @@ public sealed class CoreProcess : IDisposable
 
     public bool HasExited => _process.HasExited;
 
+    /// <summary>Номер процесса — для журнала.</summary>
+    public int Id => _process.Id;
+
     public int ExitCode => _process.ExitCode;
 
     /// <summary>
