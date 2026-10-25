@@ -115,6 +115,37 @@ public sealed class SingBoxConfigTests
         Build([IPAddress.Parse("198.51.100.20")])["route"]!.AsObject().ContainsKey("rules").ShouldBeFalse();
     }
 
+    [Fact]
+    public void Programs_around_the_tunnel_reach_fake_dns_addresses_through_xray()
+    {
+        BypassApp[] apps = [new("/opt/game/game", "Игра"), new("/opt/old/old", "Старая", IsEnabled: false)];
+        var split = new RoutingSettings(RoutingMode.Split, apps, []);
+        var fake = ProtectionSettings.Default with { FakeDns = true };
+
+        SingBoxConfigBuilder.FakeIpPrograms(split, fake).ShouldBe(["/opt/game/game"]);
+        SingBoxConfigBuilder.FakeIpPrograms(split, ProtectionSettings.Default).ShouldBeEmpty("без FakeDNS программы получают настоящие адреса");
+        SingBoxConfigBuilder.FakeIpPrograms(new RoutingSettings(RoutingMode.AllTraffic, apps, []), fake).ShouldBeEmpty();
+        SingBoxConfigBuilder.DirectPrograms(split, fake, "/x/xray").ShouldBe(["/opt/game/game", "/x/xray"],
+            "Xray соединяет программу напрямую — его выход не должен вернуться в TUN");
+        SingBoxConfigBuilder.DirectPrograms(split, ProtectionSettings.Default, "/x/xray").ShouldBe(["/opt/game/game"]);
+
+        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link with { BypassPort = 31001 }, [IPAddress.Parse("198.51.100.20")], fake,
+            ConnectionSettings.Default, ["/opt/game/game", "/x/xray"], ["/opt/game/game"]));
+
+        var rules = config["route"]!["rules"]!.AsArray();
+        rules.Count.ShouldBe(2);
+        (string.Join(',', Strings(rules[0]!["process_path"])), string.Join(',', Strings(rules[0]!["ip_cidr"])), rules[0]!["outbound"]!.GetValue<string>())
+            .ShouldBe(("/opt/game/game", XrayConfigBuilder.FakeDnsPool, SingBoxConfigBuilder.BypassTag),
+                "адрес FakeDNS у программы мимо туннеля — во вход обхода Xray, раньше правила «напрямую»");
+        rules[1]!["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
+        var bypass = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.BypassTag)!;
+        (bypass["server"]!.GetValue<string>(), bypass["server_port"]!.GetValue<int>(), bypass["username"]!.GetValue<string>(), bypass["password"]!.GetValue<string>())
+            .ShouldBe(("127.0.0.1", 31001, "user-1", "pass-1"));
+
+        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, ["/opt/game/game", "/x/xray"],
+            ["/opt/game/game"]))["route"]!["rules"]!.AsArray().ShouldHaveSingleItem("нет входа обхода — нет и правила");
+    }
+
     private static JsonObject Build(IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null) =>
         SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default));
 

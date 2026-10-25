@@ -73,6 +73,64 @@ public sealed class VpnTunnelTests
     }
 
     [Fact]
+    public async Task Fake_dns_answers_from_its_pool_and_the_server_gets_the_name()
+    {
+        SkipWithoutNamespaces();
+        using var netns = NetworkNamespace.Create();
+        var (host, _, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель по имени");
+        using var dns = new TestDns(IPAddress.Parse("1.1.1.1"));
+        var (definition, server) = await NameOnlyServerAsync(host, site, dns);
+        using var _ = server;
+        var request = new CoreRequest(definition, ConnectionMode.Vpn,
+            ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
+            ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") }, RoutingSettings.Default);
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, cancellationToken: Ct);
+
+        var fake = IPAddress.Parse(await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53")));
+        IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool).Contains(fake).ShouldBeTrue($"{fake} — адрес из пула FakeDNS");
+        dns.Queries.ShouldNotContain("example.com", "адрес из пула — сразу, без запроса к DNS");
+        (await netns.RunAsync("curl", "-sS", "-m", "10", "--resolve", $"example.com:80:{fake}", "http://example.com/"))
+            .ShouldBe("через туннель по имени", "Xray узнал имя по адресу из пула и отдал серверу имя, а не адрес");
+        site.Requests.ShouldBe(1);
+        dns.Queries.ShouldNotContain("example.com", "имя разрешает сервер: правилам адрес не нужен — локальная сеть закрыта, правил для адресов нет");
+    }
+
+    [Fact]
+    public async Task Fake_dns_address_of_a_program_around_the_tunnel_is_dialed_directly_by_name()
+    {
+        SkipWithoutNamespaces();
+        using var netns = NetworkNamespace.Create();
+        var (host, neighbor, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель по имени");
+        using var lan = new LocalSite("мимо туннеля", neighbor);
+        // Настоящий адрес имени — у сайта мимо туннеля.
+        using var dns = new TestDns(neighbor);
+        var (definition, server) = await NameOnlyServerAsync(host, site, dns);
+        using var _ = server;
+        var curl = VpnTunnel.RealPath((Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(':')
+            .Select(dir => Path.Combine(dir, "curl")).First(File.Exists));
+        var request = new CoreRequest(definition, ConnectionMode.Vpn,
+            ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
+            ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") },
+            new RoutingSettings(RoutingMode.Split, [new BypassApp(curl, "curl")], []));
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, cancellationToken: Ct);
+
+        // DNS за программу спросила другая (как служба DNS ОС) — через туннель, и ответ — из пула.
+        var fake = await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53"));
+        IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool).Contains(IPAddress.Parse(fake)).ShouldBeTrue();
+        var port = lan.Url.Port;
+        (await netns.RunAsync("curl", "-sS", "-m", "10", "--resolve", $"example.com:{port}:{fake}", $"http://example.com:{port}/"))
+            .ShouldBe("мимо туннеля", "программа мимо туннеля пришла на адрес из пула — Xray соединил ее напрямую с настоящим адресом имени");
+        lan.Requests.ShouldBe(1);
+        (await netns.FetchAsync(new Uri($"http://{fake}:{port}/"))).ShouldBe("через туннель по имени", "другая программа — через туннель");
+    }
+
+    [Fact]
     public async Task Xray_that_dies_at_start_gives_no_tunnel()
     {
         SkipWithoutNamespaces();
@@ -175,6 +233,28 @@ public sealed class VpnTunnelTests
         {
             Directory.Delete(root, recursive: true);
         }
+    }
+
+    /// <summary>
+    /// Сервер теста на адресе машины: к сайту пускает только по имени example.com, соединение с адресом — в блок;
+    /// DNS (порт 53) — на DNS теста.
+    /// </summary>
+    private static async Task<(ServerDefinition Definition, CoreProcess Server)> NameOnlyServerAsync(IPAddress host, LocalSite site, TestDns dns)
+    {
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);
+        serverConfig["outbounds"] = new JsonArray(
+            new JsonObject { ["tag"] = "site", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } },
+            new JsonObject { ["tag"] = "dns", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{dns.Port}" } },
+            new JsonObject { ["tag"] = "block", ["protocol"] = "blackhole" });
+        serverConfig["routing"] = new JsonObject
+        {
+            ["rules"] = new JsonArray(
+                new JsonObject { ["type"] = "field", ["port"] = "53", ["outboundTag"] = "dns" },
+                new JsonObject { ["type"] = "field", ["domain"] = new JsonArray("full:example.com"), ["outboundTag"] = "site" },
+                new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("0.0.0.0/0", "::/0"), ["outboundTag"] = "block" }),
+        };
+        return (definition, await XrayKit.Start(serverConfig, serverPort));
     }
 
     private static void SkipWithoutNamespaces()

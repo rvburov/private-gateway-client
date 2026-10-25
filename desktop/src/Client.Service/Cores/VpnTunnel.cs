@@ -73,7 +73,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             throw new TunnelException("Нет адреса сервера");
         }
 
-        var link = NewLink(serverAddresses[0]);
+        var link = NewLink(serverAddresses[0], bypass: XrayConfigBuilder.NeedsBypassInbound(request));
         var built = XrayConfigBuilder.Build(request, link, probe);
         if (built.Config is not { } xrayConfig)
         {
@@ -90,7 +90,8 @@ public sealed class VpnTunnel : IAsyncDisposable
             await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : time.GetElapsedTime(started) >= TimeSpan.FromSeconds(1)),
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
             singBoxCore = CoreProcess.StartSingBox(singBox,
-                SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, DirectPrograms(request, xray))),
+                SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, DirectPrograms(request, xray),
+                    FakeIpPrograms(request))),
                 netns);
             singBoxCore.Output += (_, line) => output?.Invoke("sing-box", line);
             var core = singBoxCore;
@@ -122,12 +123,13 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     /// <summary>
     /// Связь Xray с TUN на одно подключение: порт на 127.0.0.1, свободный для TCP и UDP, имя и пароль — по 128
-    /// случайных бит; Xray соединяется с <paramref name="server"/>.
+    /// случайных бит; Xray соединяется с <paramref name="server"/>. <paramref name="bypass"/> — еще порт входа
+    /// обхода для FakeDNS (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>).
     /// </summary>
-    public static TunLink NewLink(IPAddress server)
+    public static TunLink NewLink(IPAddress server, bool bypass = false)
     {
         ArgumentNullException.ThrowIfNull(server);
-        return new TunLink(LocalPort.FreeForTcpAndUdp(), Secret(), Secret(), server.ToString());
+        return new TunLink(LocalPort.FreeForTcpAndUdp(), Secret(), Secret(), server.ToString(), bypass ? LocalPort.FreeForTcpAndUdp() : 0);
     }
 
     /// <summary>
@@ -138,6 +140,13 @@ public sealed class VpnTunnel : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(request);
         return [.. SingBoxConfigBuilder.DirectPrograms(request.Routing, request.Protection, xray).Select(p => RealPath(p)).Distinct(StringComparer.Ordinal)];
+    }
+
+    /// <summary>Программы мимо туннеля, чьи соединения с адресами FakeDNS ведет Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>), — настоящими путями.</summary>
+    public static IReadOnlyList<string> FakeIpPrograms(CoreRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return [.. SingBoxConfigBuilder.FakeIpPrograms(request.Routing, request.Protection).Select(p => RealPath(p)).Distinct(StringComparer.Ordinal)];
     }
 
     /// <summary>

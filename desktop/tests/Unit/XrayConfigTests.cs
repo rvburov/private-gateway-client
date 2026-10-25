@@ -290,6 +290,80 @@ public sealed class XrayConfigTests
             .GetValue<string>().ShouldBe("198.51.100.20:" + Link("wireguard/preshared-key").Port);
     }
 
+    [Fact]
+    public void Fake_dns_answers_tun_queries_from_its_pool_and_restores_names()
+    {
+        var tun = new TunLink(31000, "user-1", "pass-1", "198.51.100.20");
+        var server = Link("vless/reality-vision");
+        var fake = ProtectionSettings.Default with { FakeDns = true };
+
+        var config = XrayConfigBuilder.Build(Request(server, protection: fake), tun).Config.ShouldNotBeNull();
+
+        var pool = config["fakedns"]!.AsArray().ShouldHaveSingleItem()!;
+        (pool["ipPool"]!.GetValue<string>(), pool["poolSize"]!.GetValue<int>()).ShouldBe(("198.18.0.0/15", 65535));
+        Servers(config).ShouldBe(["fakedns", XrayConfigBuilder.DefaultDns], "запросы из TUN — сначала FakeDNS; свои запросы Xray его пропускают");
+        Sniffing(config).ShouldBe((true, "http,tls,quic,fakedns", false, true),
+            "имя по адресу из пула; для остальных адресов домен — только для правил");
+        Outbound(config, XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>()
+            .ShouldBe("UseIP", "имя из FakeDNS разрешает DNS ядра через туннель, а не DNS ОС");
+
+        var bare = XrayConfigBuilder.Build(Request(server, protection: fake, connection: ConnectionSettings.Default with { Sniffing = false }), tun).Config!;
+        Sniffing(bare).ShouldBe((true, "fakedns", true, true), "без распознавания FakeDNS берет имя по адресу, не читая данных");
+
+        var proxy = Build(server, ConnectionMode.Proxy, fake);
+        proxy.ContainsKey("fakedns").ShouldBeFalse("в режиме прокси программы отдают имя сами");
+        Servers(proxy).ShouldBe([XrayConfigBuilder.DefaultDns]);
+        Sniffing(proxy).ShouldBe((true, "http,tls,quic", false, true));
+        Outbound(proxy, XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>().ShouldBe("AsIs");
+
+        Strategy(config).ShouldBe("AsIs", "правилам адрес имени не нужен — имя разрешает сервер, без запроса к DNS через туннель");
+        Strategy(XrayConfigBuilder.Build(Request(server, protection: fake with { AllowLan = true }), tun).Config!)
+            .ShouldBe("IPIfNonMatch", "локальная сеть разрешена — имя с адресом в ней идет напрямую");
+        var subnet = new RoutingSettings(RoutingMode.Split, [], [new DomainRule("203.0.113.0/24", RuleAction.Direct)]);
+        Strategy(XrayConfigBuilder.Build(Request(server, protection: fake, routing: subnet), tun).Config!)
+            .ShouldBe("IPIfNonMatch", "правило для подсети сравнивает и адреса имен");
+        var names = new RoutingSettings(RoutingMode.Split, [], [new DomainRule("example.com", RuleAction.Direct)]);
+        Strategy(XrayConfigBuilder.Build(Request(server, protection: fake, routing: names), tun).Config!).ShouldBe("AsIs");
+        Strategy(proxy).ShouldBe("IPIfNonMatch");
+
+        var plain = XrayConfigBuilder.Build(Request(server), tun).Config!;
+        Strategy(plain).ShouldBe("IPIfNonMatch");
+        plain.ContainsKey("fakedns").ShouldBeFalse();
+        Servers(plain).ShouldBe([XrayConfigBuilder.DefaultDns]);
+        Sniffing(plain).ShouldBe((true, "http,tls,quic", false, true));
+    }
+
+    [Fact]
+    public void Fake_dns_with_split_programs_gets_a_bypass_inbound_straight_to_direct()
+    {
+        var server = Link("vless/reality-vision");
+        var fake = ProtectionSettings.Default with { FakeDns = true };
+        var split = new RoutingSettings(RoutingMode.Split, [new BypassApp("/opt/game/game", "Игра")], []);
+        var request = Request(server, protection: fake, routing: split);
+
+        XrayConfigBuilder.NeedsBypassInbound(request).ShouldBeTrue();
+        XrayConfigBuilder.NeedsBypassInbound(request with { Protection = ProtectionSettings.Default }).ShouldBeFalse("без FakeDNS программы получают настоящие адреса");
+        XrayConfigBuilder.NeedsBypassInbound(request with { Routing = RoutingSettings.Default }).ShouldBeFalse("«Весь трафик» — обхода нет");
+        XrayConfigBuilder.NeedsBypassInbound(request with { Mode = ConnectionMode.Proxy }).ShouldBeFalse();
+
+        var config = XrayConfigBuilder.Build(request, new TunLink(31000, "user-1", "pass-1", "198.51.100.20", BypassPort: 31001)).Config!;
+
+        var bypass = config["inbounds"]!.AsArray().Single(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag)!;
+        (bypass["listen"]!.GetValue<string>(), bypass["port"]!.GetValue<int>(), bypass["settings"]!["auth"]!.GetValue<string>())
+            .ShouldBe(("127.0.0.1", 31001, "password"));
+        var account = bypass["settings"]!["accounts"]![0]!;
+        (account["user"]!.GetValue<string>(), account["pass"]!.GetValue<string>()).ShouldBe(("user-1", "pass-1"));
+        bypass["sniffing"]!["destOverride"]!.AsArray().Select(d => d!.GetValue<string>()).ShouldContain("fakedns", "имя по адресу из пула");
+        var first = config["routing"]!["rules"]![0]!;
+        (first["inboundTag"]![0]!.GetValue<string>(), first["outboundTag"]!.GetValue<string>())
+            .ShouldBe((XrayConfigBuilder.BypassTag, XrayConfigBuilder.DirectTag), "первым правилом: программа мимо туннеля — напрямую");
+
+        XrayConfigBuilder.Build(request, new TunLink(31000, "user-1", "pass-1", "198.51.100.20")).Config!["inbounds"]!.AsArray()
+            .ShouldNotContain(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag, "нет порта — нет входа");
+        XrayConfigBuilder.Build(request with { Protection = ProtectionSettings.Default }, new TunLink(31000, "user-1", "pass-1", "198.51.100.20", BypassPort: 31001))
+            .Config!["inbounds"]!.AsArray().ShouldNotContain(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag, "без FakeDNS — не нужен");
+    }
+
     private static JsonObject Build(
         ServerDefinition server,
         ConnectionMode mode = ConnectionMode.Vpn,
@@ -312,6 +386,16 @@ public sealed class XrayConfigTests
 
     private static JsonNode Outbound(JsonObject config, string tag) =>
         config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == tag)!;
+
+    private static string Strategy(JsonObject config) => config["routing"]!["domainStrategy"]!.GetValue<string>();
+
+    /// <summary>Распознавание первого входа; destOverride — через запятую.</summary>
+    private static (bool Enabled, string DestOverride, bool MetadataOnly, bool RouteOnly) Sniffing(JsonObject config)
+    {
+        var sniffing = config["inbounds"]![0]!["sniffing"]!;
+        return (sniffing["enabled"]!.GetValue<bool>(), string.Join(',', sniffing["destOverride"]!.AsArray().Select(d => d!.GetValue<string>())),
+            sniffing["metadataOnly"]?.GetValue<bool>() ?? false, sniffing["routeOnly"]!.GetValue<bool>());
+    }
 
     private static List<string> Servers(JsonObject config) =>
         [.. config["dns"]!["servers"]!.AsArray().Select(s => s!.GetValue<string>())];

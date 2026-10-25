@@ -10,13 +10,16 @@ namespace PrivateGateway.Client.Network.SingBox;
 /// Что нужно TUN режима VPN: связь с Xray (<see cref="TunLink"/>), адреса сервера, которые идут мимо
 /// туннеля, и настройки. <paramref name="DirectPrograms"/> — раздельный режим: программы, чьи
 /// соединения идут мимо туннеля (<see cref="SingBoxConfigBuilder.DirectPrograms"/>); пусто — обхода нет.
+/// <paramref name="FakeIpPrograms"/> — те из них, чьи соединения с адресами FakeDNS идут во вход обхода
+/// Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>, <see cref="TunLink.BypassPort"/>).
 /// </summary>
 public sealed record TunRequest(
     TunLink Xray,
     IReadOnlyList<IPAddress> ServerAddresses,
     ProtectionSettings Protection,
     ConnectionSettings Connection,
-    IReadOnlyList<string>? DirectPrograms = null);
+    IReadOnlyList<string>? DirectPrograms = null,
+    IReadOnlyList<string>? FakeIpPrograms = null);
 
 /// <summary>
 /// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда в SOCKS5 Xray на
@@ -33,6 +36,9 @@ public static class SingBoxConfigBuilder
     public const string TunTag = "tun-in";
     public const string XrayTag = "xray";
     public const string DirectTag = "direct";
+
+    /// <summary>Выход во вход обхода Xray — для программ мимо туннеля с адресом FakeDNS.</summary>
+    public const string BypassTag = "xray-bypass";
 
     /// <summary>Метка пакетов выхода мимо туннеля (Linux): «PG».</summary>
     public const uint DirectMark = 0x5047;
@@ -115,6 +121,30 @@ public static class SingBoxConfigBuilder
             ["final"] = XrayTag,
             ["auto_detect_interface"] = true,
         };
+        var rules = new JsonArray();
+
+        // Программа мимо туннеля пришла на адрес FakeDNS (DNS за нее спросила служба ОС через туннель):
+        // имя знает только Xray — он и соединит напрямую. Раньше правила «программа — напрямую».
+        if (request.FakeIpPrograms is { Count: > 0 } fake && xray.BypassPort > 0)
+        {
+            outbounds.Add(new JsonObject
+            {
+                ["type"] = "socks",
+                ["tag"] = BypassTag,
+                ["server"] = "127.0.0.1",
+                ["server_port"] = xray.BypassPort,
+                ["version"] = "5",
+                ["username"] = xray.User,
+                ["password"] = xray.Password,
+            });
+            rules.Add(new JsonObject
+            {
+                ["process_path"] = new JsonArray([.. fake.Select(p => (JsonNode)p)]),
+                ["ip_cidr"] = new JsonArray(XrayConfigBuilder.FakeDnsPool),
+                ["outbound"] = BypassTag,
+            });
+        }
+
         if (request.DirectPrograms is { Count: > 0 } programs)
         {
             var direct = new JsonObject { ["type"] = "direct", ["tag"] = DirectTag };
@@ -124,11 +154,16 @@ public static class SingBoxConfigBuilder
             }
 
             outbounds.Add(direct);
-            route["rules"] = new JsonArray(new JsonObject
+            rules.Add(new JsonObject
             {
                 ["process_path"] = new JsonArray([.. programs.Select(p => (JsonNode)p)]),
                 ["outbound"] = DirectTag,
             });
+        }
+
+        if (rules.Count > 0)
+        {
+            route["rules"] = rules;
         }
 
         return new JsonObject
@@ -151,10 +186,10 @@ public static class SingBoxConfigBuilder
 
     /// <summary>
     /// Программы мимо туннеля: в раздельном режиме — включенные программы из настроек; и сам Xray, когда у
-    /// него есть прямой выход — сайты «Напрямую» или разрешенная локальная сеть. Иначе его прямое
-    /// соединение вернулось бы в TUN и снова в Xray: в исключениях TUN не все, что Xray считает
-    /// локальным (<c>geoip:private</c> — еще CGNAT, адреса документации, групповые). Ничего из этого нет —
-    /// никого. Пути — как их видит ОС у процесса (<paramref name="xray"/> — настоящий путь, без ссылок).
+    /// него есть прямой выход — сайты «Напрямую», разрешенная локальная сеть или программы мимо туннеля с
+    /// FakeDNS. Иначе его прямое соединение вернулось бы в TUN и снова в Xray: в исключениях TUN не все, что
+    /// Xray считает локальным (<c>geoip:private</c> — еще CGNAT, адреса документации, групповые). Ничего из
+    /// этого нет — никого. Пути — как их видит ОС у процесса (<paramref name="xray"/> — настоящий путь, без ссылок).
     /// </summary>
     public static IReadOnlyList<string> DirectPrograms(RoutingSettings routing, ProtectionSettings protection, string xray)
     {
@@ -163,7 +198,19 @@ public static class SingBoxConfigBuilder
         return
         [
             .. routing.HasBypassApps ? routing.Apps.Where(a => a.IsEnabled).Select(a => a.Path) : [],
-            .. routing.HasBypassSites || protection.AllowLan ? [xray] : Array.Empty<string>(),
+            .. routing.HasBypassSites || protection.AllowLan || FakeIpPrograms(routing, protection).Count > 0 ? [xray] : Array.Empty<string>(),
         ];
+    }
+
+    /// <summary>
+    /// Программы мимо туннеля, чьи соединения с адресами FakeDNS ведет Xray (вход обхода): с FakeDNS — все
+    /// включенные программы раздельного режима, без него — никто. Сам Xray сюда не входит: его соединение с
+    /// адресом из пула вернулось бы в него же.
+    /// </summary>
+    public static IReadOnlyList<string> FakeIpPrograms(RoutingSettings routing, ProtectionSettings protection)
+    {
+        ArgumentNullException.ThrowIfNull(routing);
+        ArgumentNullException.ThrowIfNull(protection);
+        return protection.FakeDns && routing.HasBypassApps ? [.. routing.Apps.Where(a => a.IsEnabled).Select(a => a.Path)] : [];
     }
 }

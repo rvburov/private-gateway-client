@@ -37,8 +37,10 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
 /// подключение — другие программы машины в него не войдут; выход — к <paramref name="ServerAddress"/>,
 /// адресу сервера, который служба разрешила заранее и вывела из маршрутов TUN (иначе соединение с
 /// сервером ушло бы в сам туннель). Имя сервера для TLS и заголовков остается прежним.
+/// <paramref name="BypassPort"/> — вход с тем же паролем для программ мимо туннеля, пришедших на адрес
+/// FakeDNS (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>): Xray узнает имя и соединяет напрямую; 0 — входа нет.
 /// </summary>
-public sealed record TunLink(int Port, string User, string Password, string ServerAddress);
+public sealed record TunLink(int Port, string User, string Password, string ServerAddress, int BypassPort = 0);
 
 /// <summary>
 /// Вход проверки связи с сервером: SOCKS5 на 127.0.0.1:<paramref name="Port"/> с паролем на это
@@ -69,6 +71,15 @@ public static class XrayConfigBuilder
     /// <summary>Выход DNS режима VPN: отвечает на запросы из TUN по настройкам DNS этого конфига.</summary>
     public const string DnsTag = "dns-out";
 
+    /// <summary>Вход программ мимо туннеля, пришедших на адрес FakeDNS (<see cref="TunLink.BypassPort"/>).</summary>
+    public const string BypassTag = "bypass-in";
+
+    /// <summary>
+    /// Адреса FakeDNS: сеть для тестов производительности (RFC 2544) — в интернете ее нет, в исключения
+    /// TUN и блока при обрыве она не входит.
+    /// </summary>
+    public const string FakeDnsPool = "198.18.0.0/15";
+
     /// <summary>DNS по умолчанию, если в профиле своего нет: DoH через туннель.</summary>
     public const string DefaultDns = "https://1.1.1.1/dns-query";
 
@@ -89,6 +100,9 @@ public static class XrayConfigBuilder
             Dial(outbound, tun.ServerAddress);
         }
 
+        // FakeDNS — только в режиме VPN: в режиме прокси программы отдают Xray имя сами.
+        var fakeDns = tun is not null && request.Protection.FakeDns;
+
         var outbounds = new JsonArray
         {
             outbound,
@@ -98,7 +112,8 @@ public static class XrayConfigBuilder
                 ["protocol"] = "freedom",
                 ["settings"] = new JsonObject
                 {
-                    ["domainStrategy"] = request.Protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : "AsIs",
+                    // Имя из FakeDNS разрешает DNS этого конфига (через туннель), а не DNS ОС мимо него.
+                    ["domainStrategy"] = request.Protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : fakeDns ? "UseIP" : "AsIs",
                 },
             },
             new JsonObject { ["tag"] = BlockTag, ["protocol"] = "blackhole" },
@@ -113,7 +128,19 @@ public static class XrayConfigBuilder
             outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns" });
         }
 
-        return new XrayConfigResult(new JsonObject
+        var inbounds = new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun, InboundTag, tun.Port) };
+        var bypass = tun is { BypassPort: > 0 } && NeedsBypassInbound(request);
+        if (bypass)
+        {
+            inbounds.Add(TunInbound(request, tun!, BypassTag, tun!.BypassPort));
+        }
+
+        if (probe is not null)
+        {
+            inbounds.Add(ProbeInbound(probe));
+        }
+
+        var config = new JsonObject
         {
             ["log"] = new JsonObject
             {
@@ -126,13 +153,28 @@ public static class XrayConfigBuilder
                 ["access"] = "none",
                 ["dnsLog"] = false,
             },
-            ["dns"] = Dns(request.Protection),
-            ["inbounds"] = probe is null
-                ? new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun) }
-                : new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun), ProbeInbound(probe) },
+            ["dns"] = Dns(request.Protection, fakeDns),
+            ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
-            ["routing"] = Routing(request, tunDns: tun is not null, probe: probe is not null),
-        }, null);
+            ["routing"] = Routing(request, tunDns: tun is not null, probe: probe is not null, bypass, fakeDns),
+        };
+        if (fakeDns)
+        {
+            config["fakedns"] = new JsonArray(new JsonObject { ["ipPool"] = FakeDnsPool, ["poolSize"] = 65535 });
+        }
+
+        return new XrayConfigResult(config, null);
+    }
+
+    /// <summary>
+    /// Нужен ли вход для программ мимо туннеля: FakeDNS в режиме VPN и программы в раздельном режиме. DNS за них
+    /// спрашивает служба ОС (Windows, systemd-resolved) через туннель и получает адрес FakeDNS — напрямую по нему
+    /// не уйти, имя знает только Xray.
+    /// </summary>
+    public static bool NeedsBypassInbound(CoreRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return request.Mode == ConnectionMode.Vpn && request.Protection.FakeDns && request.Routing.HasBypassApps;
     }
 
     /// <summary>
@@ -235,11 +277,11 @@ public static class XrayConfigBuilder
         },
     };
 
-    private static JsonObject TunInbound(CoreRequest request, TunLink tun) => new()
+    private static JsonObject TunInbound(CoreRequest request, TunLink tun, string tag, int port) => new()
     {
-        ["tag"] = InboundTag,
+        ["tag"] = tag,
         ["listen"] = "127.0.0.1",
-        ["port"] = tun.Port,
+        ["port"] = port,
         ["protocol"] = "socks",
         ["settings"] = new JsonObject
         {
@@ -247,13 +289,35 @@ public static class XrayConfigBuilder
             ["accounts"] = new JsonArray(new JsonObject { ["user"] = tun.User, ["pass"] = tun.Password }),
             ["udp"] = true,
         },
-        ["sniffing"] = new JsonObject
-        {
-            ["enabled"] = request.Connection.Sniffing,
-            ["destOverride"] = new JsonArray("http", "tls", "quic"),
-            ["routeOnly"] = true,
-        },
+        ["sniffing"] = TunSniffing(request),
     };
+
+    /// <summary>
+    /// Распознавание в TUN: домен из HTTP, TLS и QUIC — только для правил; с FakeDNS — еще имя по адресу из пула,
+    /// и с ним соединение идет уже к имени (Xray меняет цель для адресов FakeDNS и при routeOnly). Без
+    /// распознавания HTTP и TLS FakeDNS берет имя только из адреса, не читая данных.
+    /// </summary>
+    private static JsonObject TunSniffing(CoreRequest request)
+    {
+        var sniffing = request.Connection.Sniffing;
+        if (!request.Protection.FakeDns)
+        {
+            return new JsonObject
+            {
+                ["enabled"] = sniffing,
+                ["destOverride"] = new JsonArray("http", "tls", "quic"),
+                ["routeOnly"] = true,
+            };
+        }
+
+        return new JsonObject
+        {
+            ["enabled"] = true,
+            ["destOverride"] = sniffing ? new JsonArray("http", "tls", "quic", "fakedns") : new JsonArray("fakedns"),
+            ["metadataOnly"] = !sniffing,
+            ["routeOnly"] = true,
+        };
+    }
 
     private static JsonObject ProbeInbound(ProbeLink probe) => new()
     {
@@ -289,19 +353,28 @@ public static class XrayConfigBuilder
         }
     }
 
-    private static JsonObject Dns(ProtectionSettings protection) => new()
+    /// <summary>
+    /// DNS ядра. С FakeDNS первым идет он: запросы из TUN получают адрес из пула сразу, без запроса к DNS;
+    /// собственные запросы Xray (прямой выход, правила по IP) FakeDNS пропускают и идут к настоящему DNS. Пул
+    /// только IPv4 — на запросы AAAA отвечает настоящий DNS.
+    /// </summary>
+    private static JsonObject Dns(ProtectionSettings protection, bool fakeDns)
     {
-        ["servers"] = new JsonArray(protection.Dns switch
+        JsonNode server = protection.Dns switch
         {
             DnsChoice.CloudflareDoh => "https://1.1.1.1/dns-query",
             DnsChoice.Quad9Doh => "https://9.9.9.9/dns-query",
             DnsChoice.Custom when protection.CustomDns is { Length: > 0 } custom => custom,
             _ => DefaultDns,
-        }),
-        ["queryStrategy"] = protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : "UseIP",
-    };
+        };
+        return new JsonObject
+        {
+            ["servers"] = fakeDns ? new JsonArray("fakedns", server) : new JsonArray(server),
+            ["queryStrategy"] = protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : "UseIP",
+        };
+    }
 
-    private static JsonObject Routing(CoreRequest request, bool tunDns, bool probe)
+    private static JsonObject Routing(CoreRequest request, bool tunDns, bool probe, bool bypass, bool fakeDns)
     {
         var rules = new JsonArray();
 
@@ -309,6 +382,12 @@ public static class XrayConfigBuilder
         if (probe)
         {
             rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray(ProbeTag), ["outboundTag"] = ProxyTag });
+        }
+
+        // Программы мимо туннеля с адресом FakeDNS — напрямую, к настоящему адресу имени.
+        if (bypass)
+        {
+            rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray(BypassTag), ["outboundTag"] = DirectTag });
         }
 
         if (tunDns)
@@ -355,8 +434,16 @@ public static class XrayConfigBuilder
             });
         }
 
-        return new JsonObject { ["domainStrategy"] = "IPIfNonMatch", ["rules"] = rules };
+        return new JsonObject { ["domainStrategy"] = NeedsAddressOfName(request) || !fakeDns ? "IPIfNonMatch" : "AsIs", ["rules"] = rules };
     }
+
+    /// <summary>
+    /// Нужен ли правилам адрес имени: разрешенная локальная сеть (имя с адресом в ней — напрямую) и правила для
+    /// адресов и подсетей в раздельном режиме. Без них с FakeDNS Xray имя не разрешает — его разрешает сервер, и
+    /// новое имя не ждет запроса к DNS через туннель. Адреса без имени правила проверяют как прежде.
+    /// </summary>
+    private static bool NeedsAddressOfName(CoreRequest request) =>
+        request.Protection.AllowLan || request.Routing.Mode == RoutingMode.Split && request.Routing.Rules.Any(r => SitePattern.IsAddress(r.Pattern));
 
     private static JsonObject? Outbound(ServerDefinition server, ConnectionSettings connection, out CoreRejection? rejection)
     {
