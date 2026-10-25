@@ -1,12 +1,14 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <!--
-    Сеть на localhost: настоящее ядро Xray, свой сервер VLESS и свой HTTP-сервер, без интернета и без
-    прав администратора. Сборку ядра кладет scripts/get-xray.sh; без нее тесты пропускаются.
+    Сеть на localhost: настоящее ядро Xray, свой сервер и свой HTTP-сервер, без интернета и без прав
+    администратора. Сборку ядра кладет scripts/get-xray.sh; без нее тесты пропускаются. Application —
+    ради разбора ссылок в тесте совместимости с PRIVATE GATEWAY.
   -->
 
   <ItemGroup>
     <ProjectReference Include="../../src/Client.Core/Client.Core.csproj" />
+    <ProjectReference Include="../../src/Client.Application/Client.Application.csproj" />
     <ProjectReference Include="../../src/Client.Network/Client.Network.csproj" />
     <ProjectReference Include="../../src/Client.Service/Client.Service.csproj" />
   </ItemGroup>

@@ -1,0 +1,25 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: warning
+proxies:
+  - name: "Ноутбук \u0026 «дом»"
+    type: vless
+    server: "203.0.113.10"
+    port: 443
+    uuid: "11111111-2222-3333-4444-555555555555"
+    network: tcp
+    tls: true
+    flow: xtls-rprx-vision
+    servername: "www.example.com"
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      short-id: "0123abcd"
+proxy-groups:
+  - name: GATEWAY
+    type: select
+    proxies:
+      - "Ноутбук \u0026 «дом»"
+rules:
+  - MATCH,GATEWAY

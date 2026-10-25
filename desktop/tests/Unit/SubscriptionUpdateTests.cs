@@ -405,10 +405,12 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
         public List<Uri> Requested { get; } = [];
 
-        public Task<string> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
+        public Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
         {
             Requested.Add(url);
-            return Failure is { } failure ? Task.FromException<string>(failure) : Task.FromResult(Text ?? string.Empty);
+            return Failure is { } failure
+                ? Task.FromException<SubscriptionContent>(failure)
+                : Task.FromResult(new SubscriptionContent(Text ?? string.Empty, null));
         }
     }
 

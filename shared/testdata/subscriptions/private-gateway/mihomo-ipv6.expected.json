@@ -1,0 +1,30 @@
+{
+  "format": "clash",
+  "lines": [
+    {
+      "line": 6,
+      "server": {
+        "name": "Телефон",
+        "protocol": "vless",
+        "host": "2001:db8::10",
+        "port": 8443,
+        "transport": {
+          "kind": "tcp"
+        },
+        "security": {
+          "kind": "reality",
+          "sni": "www.example.org",
+          "fingerprint": "chrome",
+          "realityPublicKey": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+          "realityShortId": "ab"
+        },
+        "options": {
+          "flow": "xtls-rprx-vision"
+        },
+        "credentials": {
+          "uuid": "11111111-2222-3333-4444-555555555555"
+        }
+      }
+    }
+  ]
+}

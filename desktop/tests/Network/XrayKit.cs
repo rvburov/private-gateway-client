@@ -16,6 +16,9 @@ internal static class XrayKit
     public const string Uuid = "11111111-2222-3333-4444-555555555555";
     public const string Password = "not-a-real-password";
 
+    /// <summary>Корень репозитория — по PrivateGateway.slnx.</summary>
+    public static string Root { get; } = FindRoot();
+
     /// <summary>Сборка ядра: PG_XRAY или artifacts/cores/xray; null — тесты с ядром пропускаются.</summary>
     public static string? Xray { get; } = FindXray();
 
@@ -134,15 +137,20 @@ internal static class XrayKit
             return path;
         }
 
+        var xray = Path.Combine(Root, "artifacts", "cores", "xray", OperatingSystem.IsWindows() ? "xray.exe" : "xray");
+        return File.Exists(xray) ? xray : null;
+    }
+
+    private static string FindRoot()
+    {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
         {
             if (File.Exists(Path.Combine(dir.FullName, "PrivateGateway.slnx")))
             {
-                var xray = Path.Combine(dir.FullName, "artifacts", "cores", "xray", OperatingSystem.IsWindows() ? "xray.exe" : "xray");
-                return File.Exists(xray) ? xray : null;
+                return dir.FullName;
             }
         }
 
-        return null;
+        throw new InvalidOperationException("Не найден корень репозитория (PrivateGateway.slnx)");
     }
 }

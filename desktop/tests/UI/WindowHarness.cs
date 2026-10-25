@@ -206,27 +206,25 @@ public abstract class WindowHarness : IDisposable
         public void Delete(string key) => Values.Remove(key);
     }
 
-    /// <summary>Загрузка подписки без сети: адрес → текст или ошибка.</summary>
+    /// <summary>Загрузка подписки без сети: адрес → текст (и название из Profile-Title) или ошибка.</summary>
     protected sealed class FakeDownloader : ISubscriptionDownloader
     {
         public Dictionary<Uri, string> Responses { get; } = [];
+
+        public Dictionary<Uri, string> Titles { get; } = [];
 
         public List<Uri> Requested { get; } = [];
 
         /// <summary>Ответ, который еще не пришел: тест завершает его сам.</summary>
         public TaskCompletionSource<string>? Pending { get; set; }
 
-        public Task<string> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
+        public async Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
         {
             Requested.Add(url);
-            if (Pending is { } pending)
-            {
-                return pending.Task;
-            }
-
-            return Responses.TryGetValue(url, out var text)
-                ? Task.FromResult(text)
-                : Task.FromException<string>(new SubscriptionDownloadException(DownloadFailure.Status, 404));
+            var text = Pending is { } pending ? await pending.Task.ConfigureAwait(true)
+                : Responses.TryGetValue(url, out var known) ? known
+                : throw new SubscriptionDownloadException(DownloadFailure.Status, 404);
+            return new SubscriptionContent(text, Titles.GetValueOrDefault(url));
         }
     }
 

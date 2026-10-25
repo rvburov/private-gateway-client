@@ -60,6 +60,23 @@ sing-box (JSON) или Clash/Mihomo (YAML) — раздел «Конфиги sin
 - Разбор YAML — YamlDotNet (MIT), только события разборщика; модель документа YamlDotNet не
   используется.
 
+## Совместимость с PRIVATE GATEWAY
+
+Сервер PRIVATE GATEWAY выдает профиль устройства VLESS + REALITY + Vision в четырех видах:
+ссылка, base64 (по умолчанию), sing-box JSON и Mihomo YAML; формат он выбирает по `?format=`,
+`User-Agent` и `Accept`. Программа ходит с `User-Agent: PrivateGateway/0.1` без `text/html` и
+получает base64; разбирает и остальные три.
+
+- Эталоны — вывод самого сервера на ненастоящих значениях (`shared/testdata/subscriptions/private-gateway`);
+  все четыре вида дают один сервер (`LinkParserTests`). В sing-box сервер называет выход
+  `gateway`, а не именем устройства: название группы при этом берется из `Profile-Title`.
+- `Profile-Title: base64:…` (имя устройства) становится названием группы при импорте по адресу;
+  обычный текст ASCII — тоже, остальное — домен подписки (`SubscriptionContent.TitleFrom`).
+- Профиль работает с сервером, настроенным как у PRIVATE GATEWAY (`Render`): тест
+  `PrivateGatewayCompatibilityTests` поднимает Xray с VLESS + REALITY + Vision, маской REALITY —
+  свой сайт TLS 1.3 на 127.0.0.1 — и проходит через него с конфигом, собранным из эталонной ссылки.
+  На macOS тест пропускается: `SslStream` там не поднимает сервер TLS 1.3.
+
 ## Коды ошибок
 
 | Код | Когда |

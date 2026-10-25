@@ -42,7 +42,45 @@ public sealed record ImportPreview(ImportBatch Batch, int Duplicates)
 public interface ISubscriptionDownloader
 {
     /// <exception cref="SubscriptionDownloadException">Не загрузилось: сеть, код ответа, размер.</exception>
-    Task<string> DownloadAsync(Uri url, CancellationToken cancellationToken = default);
+    Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Ответ подписки: текст и название из заголовка Profile-Title (у PRIVATE GATEWAY — имя устройства,
+/// так же его читают v2rayN, Clash и Hiddify).
+/// </summary>
+public sealed record SubscriptionContent(string Text, string? Title)
+{
+    private const int MaxTitle = 100;
+
+    /// <summary>
+    /// Название из Profile-Title: «base64:…» в UTF-8 или обычный текст ASCII (иначе заголовок HTTP
+    /// искажает буквы). Пустое, битое и с управляющими знаками — null; длинное обрезается.
+    /// </summary>
+    public static string? TitleFrom(string? header)
+    {
+        var value = header?.Trim();
+        if (string.IsNullOrEmpty(value))
+        {
+            return null;
+        }
+
+        if (value.StartsWith("base64:", StringComparison.OrdinalIgnoreCase))
+        {
+            value = LinkParser.DecodeBase64(value["base64:".Length..])?.Trim();
+        }
+        else if (value.Any(c => c > '~'))
+        {
+            return null;
+        }
+
+        if (string.IsNullOrEmpty(value) || value.Any(char.IsControl))
+        {
+            return null;
+        }
+
+        return value.Length > MaxTitle ? value[..MaxTitle].TrimEnd() : value;
+    }
 }
 
 /// <summary>Подписка не загрузилась. Ни причина, ни текст исключения не содержат адреса подписки.</summary>

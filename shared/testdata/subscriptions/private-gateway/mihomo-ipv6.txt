@@ -1,0 +1,25 @@
+mixed-port: 7890
+allow-lan: false
+mode: rule
+log-level: warning
+proxies:
+  - name: "Телефон"
+    type: vless
+    server: "2001:db8::10"
+    port: 8443
+    uuid: "11111111-2222-3333-4444-555555555555"
+    network: tcp
+    tls: true
+    flow: xtls-rprx-vision
+    servername: "www.example.org"
+    client-fingerprint: chrome
+    reality-opts:
+      public-key: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+      short-id: "ab"
+proxy-groups:
+  - name: GATEWAY
+    type: select
+    proxies:
+      - "Телефон"
+rules:
+  - MATCH,GATEWAY

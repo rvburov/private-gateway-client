@@ -164,7 +164,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
             string text;
             try
             {
-                text = await _downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(true);
+                text = (await _downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(true)).Text;
             }
             catch (SubscriptionDownloadException e)
             {

@@ -7,7 +7,8 @@ namespace PrivateGateway.Client.Infrastructure.Import;
 
 /// <summary>
 /// Загрузка подписки по http(s): не дольше <see cref="Timeout"/>, не больше <see cref="MaxBytes"/>
-/// после распаковки. Адрес подписки — секрет: в ошибках только причина и код ответа.
+/// после распаковки. Адрес подписки — секрет: в ошибках только причина и код ответа. Название — из
+/// заголовка Profile-Title.
 /// </summary>
 public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider time) : ISubscriptionDownloader
 {
@@ -19,7 +20,7 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
     public static HttpClient CreateClient() =>
         new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All });
 
-    public async Task<string> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
+    public async Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(url);
         if (url.Scheme is not ("https" or "http"))
@@ -59,7 +60,9 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
                 buffer.Write(chunk, 0, read);
             }
 
-            return Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
+            var title = response.Headers.TryGetValues("Profile-Title", out var titles) ? titles.FirstOrDefault() : null;
+            return new SubscriptionContent(
+                Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length), SubscriptionContent.TitleFrom(title));
         }
         catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
         {

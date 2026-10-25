@@ -256,9 +256,10 @@ public sealed partial class ImportPageViewModel : ObservableObject
         {
             IsBusy = true;
             Message = Loc.Instance["import.downloading"];
+            SubscriptionContent content;
             try
             {
-                trimmed = await _downloader.DownloadAsync(url).ConfigureAwait(true);
+                content = await _downloader.DownloadAsync(url).ConfigureAwait(true);
             }
             catch (SubscriptionDownloadException e)
             {
@@ -284,7 +285,9 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
             _subscriptionUrl = url;
             IsInsecure = url.Scheme == "http";
-            suggestedName = url.Host;
+            trimmed = content.Text;
+            // Название из Profile-Title (у PRIVATE GATEWAY — имя устройства), без него — домен подписки.
+            suggestedName = content.Title ?? url.Host;
             Message = null;
         }
 

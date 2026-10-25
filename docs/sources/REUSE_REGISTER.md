@@ -28,9 +28,15 @@
 
 ## PRIVATE GATEWAY — форматы
 
-`rvburov/private-gateway` (приватный). Источник форматов ссылок и подписок для тестов
-совместимости. Секреты, ключи, реальные адреса подписок, UUID устройств и учетные данные не
-переносятся. Пока не использовался.
+`rvburov/private-gateway`, коммит `883e6f7` (25.10.2026), проект того же автора. Источник форматов
+ссылок и подписок для тестов совместимости. Секреты, ключи, реальные адреса подписок, UUID устройств
+и учетные данные не переносятся.
+
+| Задача | Файл источника | Что сделано | Проверка | Решение |
+| --- | --- | --- | --- | --- |
+| Эталоны профиля устройства | `internal/xray/config.go` (`ClientProfiles`, `Profile`), `internal/httpapi/subscription.go` | вывод `ClientProfiles` на заведомо ненастоящих значениях (адреса из документации, UUID `11111111-…`, ключ из нулей) записан эталонами `shared/testdata/subscriptions/private-gateway` и `links/vless/private-gateway*`: ссылка, base64, sing-box, Mihomo, IPv6; код сервера не переносится | `LinkParserTests` | перенесены данные |
+| Сервер для теста совместимости | `internal/xray/config.go` (`Render`) | форма конфига сервера (VLESS + REALITY + Vision на raw) повторена в тесте как JSON; ключ REALITY — тестовый | `PrivateGatewayCompatibilityTests` | повторен формат |
+| Название подписки | `internal/httpapi/subscription.go` | заголовок `Profile-Title: base64:…` читается как название группы | `SubscriptionDownloaderTests`, `ImportPageTests` | написано заново |
 
 ## Ядра и библиотеки
 

@@ -1,0 +1,1 @@
+vless://11111111-2222-3333-4444-555555555555@[2001:db8::10]:8443?encryption=none&flow=xtls-rprx-vision&fp=chrome&pbk=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA&security=reality&sid=ab&sni=www.example.org&spx=%2F&type=tcp#%D0%A2%D0%B5%D0%BB%D0%B5%D1%84%D0%BE%D0%BD

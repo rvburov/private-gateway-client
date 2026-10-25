@@ -1,0 +1,10 @@
+{
+  "format": "base64",
+  "lines": [
+    {
+      "line": 1,
+      "protocol": "vless",
+      "name": "Ноутбук & «дом»"
+    }
+  ]
+}

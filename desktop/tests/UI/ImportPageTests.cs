@@ -109,6 +109,24 @@ public sealed class ImportPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Profile_title_of_the_subscription_becomes_the_suggested_name()
+    {
+        var (window, _, page) = OpenImport();
+        var url = new Uri("https://panel.example.com/sub/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA");
+        Downloads.Responses[url] = File.ReadAllText(Path.Combine(Repo.Root, "shared", "testdata", "subscriptions", "private-gateway", "base64.txt"));
+        Downloads.Titles[url] = "Ноутбук";
+
+        page.OpenLinkCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Find<TextBox>(window, "LinkText").Text = url.ToString();
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.ProfileName.ShouldBe("Ноутбук", "имя устройства из Profile-Title, а не домен панели");
+        Text(window, "FormatText").ShouldBe("base64 · VLESS");
+    }
+
+    [AvaloniaFact]
     public async Task Failed_download_is_explained_without_the_address()
     {
         var (window, _, page) = OpenImport();

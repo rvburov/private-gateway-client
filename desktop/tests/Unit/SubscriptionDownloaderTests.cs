@@ -21,7 +21,41 @@ public sealed class SubscriptionDownloaderTests
     {
         var downloader = Downloader(_ => Ok("vless://… #Нидерланды"));
 
-        (await downloader.DownloadAsync(Url, Ct)).ShouldBe("vless://… #Нидерланды");
+        (await downloader.DownloadAsync(Url, Ct)).ShouldBe(new SubscriptionContent("vless://… #Нидерланды", null));
+    }
+
+    [Fact]
+    public async Task Profile_title_names_the_subscription()
+    {
+        var downloader = Downloader(_ =>
+        {
+            var response = Ok("vless://…");
+            // Так присылает PRIVATE GATEWAY: имя устройства в base64.
+            response.Headers.Add("Profile-Title", "base64:" + Convert.ToBase64String(Encoding.UTF8.GetBytes("Ноутбук & «дом»")));
+            return response;
+        });
+
+        (await downloader.DownloadAsync(Url, Ct)).Title.ShouldBe("Ноутбук & «дом»");
+    }
+
+    [Theory]
+    [InlineData("Office VPN", "Office VPN")]
+    [InlineData("  base64:0J3QvtGD0YLQsdGD0Lo=  ", "Ноутбук")]
+    [InlineData("BASE64:0J3QvtGD0YLQsdGD0Lo", "Ноутбук")]
+    [InlineData("base64:not base64!", null)]
+    [InlineData("base64:AQID", null)]
+    [InlineData("CafÃ©", null)]
+    [InlineData("   ", null)]
+    [InlineData(null, null)]
+    public void Profile_title_is_base64_utf8_or_plain_ascii(string? header, string? title)
+    {
+        SubscriptionContent.TitleFrom(header).ShouldBe(title);
+    }
+
+    [Fact]
+    public void Long_profile_title_is_cut()
+    {
+        SubscriptionContent.TitleFrom(new string('a', 150)).ShouldBe(new string('a', 100));
     }
 
     [Theory]
@@ -69,7 +103,7 @@ public sealed class SubscriptionDownloaderTests
         var body = Encoding.ASCII.GetBytes(new string('a', HttpSubscriptionDownloader.MaxBytes));
         var downloader = Downloader(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new MemoryStream(body)) });
 
-        (await downloader.DownloadAsync(Url, Ct)).Length.ShouldBe(HttpSubscriptionDownloader.MaxBytes);
+        (await downloader.DownloadAsync(Url, Ct)).Text.Length.ShouldBe(HttpSubscriptionDownloader.MaxBytes);
     }
 
     [Theory]

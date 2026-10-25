@@ -67,6 +67,19 @@ public class LinkParserTests
     }
 
     [Fact]
+    public void Private_gateway_formats_give_one_and_the_same_server()
+    {
+        // Название в sing-box — тег «gateway», spx есть только в ссылке; остальное обязано совпасть.
+        var servers = PrivateGatewayFormats
+            .Select(f => ImportParser.Parse(File.ReadAllText(Path.Combine(TestData, "subscriptions", "private-gateway", f + ".txt"))))
+            .Select(b => b.Lines.ShouldHaveSingleItem().Result.Server.ShouldNotBeNull())
+            .Select(s => s with { Name = string.Empty, Security = s.Security with { RealitySpiderX = null } })
+            .ToList();
+
+        servers.Distinct().ShouldHaveSingleItem();
+    }
+
+    [Fact]
     public void Credentials_never_show_up_in_text()
     {
         var server = LinkParser.Parse("trojan://pw-very-secret@example.com:443#X").Server!;
@@ -86,6 +99,8 @@ public class LinkParserTests
     }
 
     private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
+
+    private static readonly string[] PrivateGatewayFormats = ["base64", "uri", "sing-box", "mihomo"];
 
     private static TheoryData<string> Cases(string folder)
     {
