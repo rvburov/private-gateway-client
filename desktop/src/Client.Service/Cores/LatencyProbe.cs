@@ -23,6 +23,9 @@ public static class LatencyProbe
     /// <summary>Проверочный адрес по умолчанию: пустой ответ 204, без cookies и без Google.</summary>
     public static readonly Uri DefaultTarget = new("https://cp.cloudflare.com/generate_204");
 
+    /// <summary>Проверочный адрес внешнего IP: Cloudflare по адресу (имя не нужно разрешать), ответ — строки «ключ=значение».</summary>
+    public static readonly Uri DefaultTrace = new("https://1.1.1.1/cdn-cgi/trace");
+
     /// <summary>Сколько серверов проверяется одновременно.</summary>
     public const int MaxParallel = 8;
 
@@ -82,6 +85,44 @@ public static class LatencyProbe
         ArgumentNullException.ThrowIfNull(probe);
         return (await RequestAsync(probe.Port, probe.Target, probe.Timeout, TimeProvider.System, cancellationToken, probe.Credentials)
             .ConfigureAwait(false)).Milliseconds is not null;
+    }
+
+    /// <summary>
+    /// Внешний IP по ответу проверочного адреса (строка «ip=…»): через вход ядра (порт не 0) — IP выхода сервера;
+    /// при порте 0 — без прокси, как у любой программы: до туннеля — реальный IP, в туннеле — IP, который видят
+    /// сайты. Нет ответа или IP в нем — null.
+    /// </summary>
+    public static async Task<string?> ExitIpAsync(ServerProbe probe, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        using var handler = new SocketsHttpHandler
+        {
+            Proxy = probe.Port == 0 ? null : new FixedProxy(new Uri($"socks5://127.0.0.1:{probe.Port}")) { Credentials = probe.Credentials },
+            UseProxy = probe.Port != 0,
+            AllowAutoRedirect = false,
+            UseCookies = false,
+        };
+        using var http = new HttpClient(handler) { Timeout = probe.Timeout };
+        try
+        {
+            return TraceIp(await http.GetStringAsync(probe.Target, cancellationToken).ConfigureAwait(false));
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>IP из ответа проверочного адреса: строка «ip=…»; нет ее или в ней не адрес — null.</summary>
+    public static string? TraceIp(string text)
+    {
+        ArgumentNullException.ThrowIfNull(text);
+        return text.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("ip=", StringComparison.Ordinal)).Select(l => l[3..])
+            .FirstOrDefault(v => IPAddress.TryParse(v, out _));
     }
 
     private static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,

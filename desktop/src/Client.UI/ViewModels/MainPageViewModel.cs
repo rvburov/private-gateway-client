@@ -409,6 +409,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 _lastCheckedAt = Status.Protection.CheckedAt;
                 IsChecking = true;
                 await _gateway.RunChecksAsync().ConfigureAwait(true);
+                // Время проверки служба присылает в состоянии; не прислала (старая служба, сбой) — не висеть в «Проверяем».
+                IsChecking = false;
                 break;
             case ConnectionState.Blocked or ConnectionState.Error when _catalog.Selected is { } server:
                 await _gateway.ConnectAsync(server).ConfigureAwait(true);

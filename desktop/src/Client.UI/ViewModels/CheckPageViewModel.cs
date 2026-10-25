@@ -54,9 +54,19 @@ public sealed partial class CheckPageViewModel : ObservableObject
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
         Protection.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName is nameof(ProtectionViewModel.Status) or "" && Protection.Status.State != _reportState)
+            if (e.PropertyName is not (nameof(ProtectionViewModel.Status) or ""))
+            {
+                return;
+            }
+
+            // Другое состояние — проверить заново; то же — обновить строки: IP для сайтов служба присылает в состоянии.
+            if (Protection.Status.State != _reportState)
             {
                 RunAgain();
+            }
+            else
+            {
+                Refresh();
             }
         };
         Refresh();
@@ -221,7 +231,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
         var status = Protection.Status;
         switch (check)
         {
-            case DiagnosticCheck.ExitIp when state == CheckState.Ok:
+            case DiagnosticCheck.ExitIp when state == CheckState.Ok && status.Exit.Ip is not null:
                 return string.Join(" · ", new[] { status.Exit.Ip, status.Exit.City, status.Exit.NetworkType }
                     .Where(s => !string.IsNullOrEmpty(s)));
             case DiagnosticCheck.ExitIp when state == CheckState.Off:

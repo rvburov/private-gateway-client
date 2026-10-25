@@ -161,7 +161,7 @@ public abstract class WindowHarness : IDisposable
         public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());
 
         /// <summary>Что покажут проверки; по умолчанию — ничего.</summary>
-        public IReadOnlyList<DiagnosticResult> Checks { get; init; } = [];
+        public IReadOnlyList<DiagnosticResult> Checks { get; set; } = [];
 
         public IReadOnlyList<JournalEntry> Journal => [];
 
@@ -171,6 +171,9 @@ public abstract class WindowHarness : IDisposable
 
         /// <summary>Прислать то же состояние еще раз — как служба после переподключения потока.</summary>
         public void Resend() => StatusChanged?.Invoke(this, Status);
+
+        /// <summary>Прислать измененное состояние — как служба после замера (IP для сайтов).</summary>
+        public void Push(Func<ConnectionStatus, ConnectionStatus> change) => Raise(change(Status));
 
         /// <summary>Выбрано «Продолжить (не рекомендуется)» на «Работает другой VPN»; отключение выбор снимает.</summary>
         public bool OtherVpnAllowed { get; private set; }

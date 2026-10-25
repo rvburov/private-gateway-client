@@ -78,8 +78,13 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         return new V1.CaptivePauseReply { Until = until is { } at ? Timestamp.FromDateTimeOffset(at) : null };
     }
 
-    public override Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
+    /// <summary>
+    /// Все восемь проверок «Проверки»: служба и ядро, весь трафик, блок, DNS и IPv6 — по состоянию, IP для сайтов —
+    /// замером через сервер (<see cref="Gateway.CheckExitAsync"/>), другие VPN — по маршрутам.
+    /// </summary>
+    public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
+        var (exitState, exitReason) = await gateway.CheckExitAsync().ConfigureAwait(false);
         var status = gateway.Status;
         var report = new V1.CheckReport { FinishedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Service.ToContractId(), State = V1.CheckState.Ok });
@@ -101,6 +106,10 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
             Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy"
                 : status.Protection.AllTraffic == CheckState.Warning && !status.IsPaused ? "split" : string.Empty,
         });
+        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.KillSwitch.ToContractId(), State = status.Protection.KillSwitch.ToContract() });
+        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = status.Protection.Dns.ToContract() });
+        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Ipv6.ToContractId(), State = status.Protection.Ipv6.ToContract() });
+        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.ExitIp.ToContractId(), State = exitState.ToContract(), Reason = exitReason ?? string.Empty });
         if (gateway.OtherVpnAdapters() is { } other)
         {
             report.Results.Add(new V1.CheckResult
@@ -112,7 +121,7 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
             });
         }
 
-        return Task.FromResult(report);
+        return report;
     }
 
     /// <summary>Последние записи и новые по мере появления; секреты уже скрыты журналом.</summary>

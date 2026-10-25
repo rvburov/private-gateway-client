@@ -111,6 +111,13 @@ public sealed partial class Gateway
     /// </summary>
     private void OnNetworkChanged(object? sender, EventArgs e)
     {
+        // В другой сети и реальный IP другой: прежний замер не годится для проверки утечек.
+        _directIp = null;
+        if (Status.Exit.DirectIp is not null)
+        {
+            Update(s => s with { Exit = s.Exit with { DirectIp = null } });
+        }
+
         var status = Status;
         var session = Volatile.Read(ref _session);
         if (status.State is ConnectionState.Connected or ConnectionState.Reconnecting && OtherVpnStarted(session))
@@ -414,7 +421,7 @@ public sealed partial class Gateway
 
             Move(s => s, ConnectionState.Connected);
             _journal.Add(JournalLevel.Info, "service", $"Связь с сервером восстановлена (попытка {attempt})");
-            StartWatch(session);
+            AfterConnected(session);
         }
         finally
         {

@@ -23,6 +23,10 @@ namespace PrivateGateway.Client.Tests.Network;
 /// </summary>
 public sealed class VpnModeTests
 {
+    // Что называет проверочный адрес: через туннель — IP сервера, напрямую — реальный.
+    private const string TunnelIp = "203.0.113.24";
+    private const string RealIp = "198.51.100.7";
+
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
@@ -300,6 +304,8 @@ public sealed class VpnModeTests
 
         await service.Client.ConnectAsync(VpnRequest(definition), cancellationToken: Ct);
 
+        // Проверка прислала прежнее «Защищено» со временем проверки — новое подключение идет после «Подключения».
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connecting);
         (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1]
             .ToCore().Protection.AllTraffic.ShouldBe(CheckState.Ok, "«Весь трафик» — снова весь");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3), "без раздельного режима обхода нет");
@@ -607,6 +613,98 @@ public sealed class VpnModeTests
         (await rig.Netns.CurlAsync(rig.Lan.Url)).ShouldBe("мимо туннеля");
     }
 
+    [Fact]
+    public async Task Leak_check_sees_the_server_ip_through_the_tunnel_and_the_real_ip_before_it()
+    {
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        using var direct = rig.DirectTrace($"fl=1\nip={RealIp}\n");
+        var network = new FakeNetwork();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Trace = Rig.Trace, ExitIp = rig.ExitIpAsync, Network = network,
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+
+        var measured = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.Exit?.Ip == TunnelIp || s.State == V1.ConnectionState.Error))[^1];
+        measured.State.ShouldBe(V1.ConnectionState.Connected, measured.Error?.Message);
+        measured.Exit.DirectIp.ShouldBe(RealIp, "реальный IP — напрямую, до блока и туннеля");
+        (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.ExitIp.ToContractId()).State.ShouldBe(V1.CheckState.Ok, "запрос без прокси ушел в туннель");
+        direct.Requests.ShouldBe(1);
+
+        // Реальный IP мерится один раз на сеть: следующее подключение его не спрашивает.
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Off);
+        await ReconnectAsync();
+        direct.Requests.ShouldBe(1);
+
+        // Другая сеть — реальный IP забыт. Новое подключение при поднятом туннеле его не мерит: ответ пришел бы через туннель.
+        network.Raise();
+        await ServiceIpcTests.ReadUntilAsync(watch, s => string.IsNullOrEmpty(s.Exit?.DirectIp));
+        await ReconnectAsync();
+
+        (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.ExitIp.ToContractId()).State.ShouldBe(V1.CheckState.Ok, "сравнить не с чем — но и ложной утечки нет");
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Exit.DirectIp.ShouldBeEmpty();
+        direct.Requests.ShouldBe(1, "напрямую проверочный адрес спрошен один раз — до первого туннеля");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Проверка утечек: IP для сайтов измерен, реальный IP неизвестен — сравнить не с чем");
+
+        // Подключение без блока при обрыве: блока нет, а туннель прежнего подключения, если был, еще стоит.
+        async Task ReconnectAsync()
+        {
+            await service.Client.ConnectAsync(VpnRequest(rig.Definition, killSwitch: false), cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connecting);
+            var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s =>
+                s.State == V1.ConnectionState.Connected && s.Exit?.Ip == TunnelIp || s.State == V1.ConnectionState.Error))[^1];
+            connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+        }
+    }
+
+    [Fact]
+    public async Task Without_the_setting_connect_does_not_ask_the_check_address()
+    {
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        using var direct = rig.DirectTrace($"fl=1\nip={RealIp}\n");
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { Trace = Rig.Trace, ExitIp = rig.ExitIpAsync });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        var request = VpnRequest(rig.Definition);
+        request.Protection.CheckLeaksAfterConnect = false;
+
+        await service.Client.ConnectAsync(request, cancellationToken: Ct);
+
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+        connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+        direct.Requests.ShouldBe(0, "«Проверять утечки после подключения» выключено — проверочный адрес не спрашивается");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldNotContain(e => e.Message.StartsWith("Проверка утечек", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Leak_check_sees_the_real_ip_when_traffic_goes_around_the_tunnel()
+    {
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        using var direct = rig.DirectTrace($"fl=1\nip={RealIp}\n");
+        // Запрос проверки идет от curl — его раздельный режим пускает мимо туннеля: так выглядит утечка.
+        var curl = VpnTunnel.RealPath((Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(':')
+            .Select(dir => Path.Combine(dir, "curl")).First(File.Exists));
+        var routing = new RoutingSettings(RoutingMode.Split, [new BypassApp(curl, "curl")], []);
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { Trace = Rig.Trace, ExitIp = rig.ExitIpAsync });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition, routing: routing), cancellationToken: Ct);
+
+        var measured = (await ServiceIpcTests.ReadUntilAsync(watch, s => !string.IsNullOrEmpty(s.Exit?.Ip) || s.State == V1.ConnectionState.Error))[^1];
+        measured.State.ShouldBe(V1.ConnectionState.Connected, measured.Error?.Message);
+        measured.Exit.Ip.ShouldBe(RealIp, "сайты видят реальный IP");
+        var exit = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.ExitIp.ToContractId());
+        (exit.State, exit.Reason).ShouldBe((V1.CheckState.Warning, "same_ip"));
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e =>
+            e.Level == JournalLevel.Error && e.Message == "Проверка утечек: IP для сайтов совпадает с реальным — трафик идет мимо туннеля");
+    }
+
     /// <summary>
     /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
     /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в
@@ -687,7 +785,43 @@ public sealed class VpnModeTests
             }
         }
 
-        public static async Task<Rig> CreateAsync()
+        /// <summary>Проверочный адрес внешнего IP в тестах стенда: через туннель он приходит на сайт сервера.</summary>
+        public static Uri Trace { get; } = new("http://1.1.1.1/");
+
+        /// <summary>
+        /// Проверочный адрес напрямую, мимо туннеля, — сайт на адресе машины: правило nftables пространства ведет туда
+        /// запросы к <see cref="Trace"/>, которые уходят в сеть машины. В туннель они идут как были — к серверу.
+        /// </summary>
+        public LocalSite DirectTrace(string page)
+        {
+            var site = new LocalSite(page, Public);
+            Netns.Run($$"""
+                table ip pgtest {
+                    chain output {
+                        type nat hook output priority -100; policy accept;
+                        oifname "pgnet0" ip daddr {{Trace.Host}} tcp dport {{Trace.Port}} dnat to {{Public}}:{{site.Url.Port}}
+                    }
+                }
+                """, "nft", "-f", "-");
+            return site;
+        }
+
+        /// <summary>Внешний IP — запросом изнутри пространства, как у службы: без прокси (порт 0) или через вход проверки.</summary>
+        public async Task<string?> ExitIpAsync(ServerProbe probe, CancellationToken cancellationToken)
+        {
+            var seconds = ((int)Math.Ceiling(probe.Timeout.TotalSeconds)).ToString(CultureInfo.InvariantCulture);
+            var proxy = probe.Credentials is { } user ? ["-x", $"socks5h://{user.UserName}:{user.Password}@127.0.0.1:{probe.Port}"] : Array.Empty<string>();
+            try
+            {
+                return LatencyProbe.TraceIp(await Netns.RunAsync(["curl", "-sS", "-m", seconds, .. proxy, probe.Target.ToString()]));
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+
+        public static async Task<Rig> CreateAsync(string page = "через туннель")
         {
             NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
             Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
@@ -700,7 +834,7 @@ public sealed class VpnModeTests
                 var (host, neighbor, @public) = netns.LinkAsMachine();
                 var lan = new LocalSite("мимо туннеля", neighbor);
                 owned.Add(lan);
-                var site = new LocalSite("через туннель");
+                var site = new LocalSite(page);
                 owned.Add(site);
                 var serverPort = XrayKit.FreePort();
                 var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);

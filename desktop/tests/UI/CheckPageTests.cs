@@ -2,6 +2,11 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Controls;
@@ -84,6 +89,41 @@ public sealed class CheckPageTests : WindowHarness
         Row(page, DiagnosticCheck.ExitIp).Chip.ShouldBe("Скрыт");
         page.Journal.Select(j => j.Level).ShouldContain("WRN");
         Snapshot(window, "check-blocked");
+    }
+
+    [AvaloniaFact]
+    public async Task Exit_ip_shows_when_the_service_measures_it_and_a_leak_or_silence_is_named()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Checks = [new DiagnosticResult(DiagnosticCheck.ExitIp, CheckState.Ok)],
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning);
+        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "Работает", "Скрыт"), "IP еще не пришел — пустой строки нет");
+
+        // Замер служба присылает в состоянии — строка обновляется сразу, без новой проверки.
+        service!.Push(s => s with { Exit = ExitInfo.Unknown with { Ip = "203.0.113.24", DirectIp = "198.51.100.7" } });
+        WaitFor(() => Row(page, DiagnosticCheck.ExitIp).Detail == "203.0.113.24");
+
+        service.Checks = [new DiagnosticResult(DiagnosticCheck.ExitIp, CheckState.Warning, "same_ip")];
+        page.RunCommand.Execute(null);
+        WaitFor(() => !page.IsRunning);
+        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "Сайты видят ваш реальный IP — трафик идет мимо туннеля", "Виден"));
+        Snapshot(window, "check-leak");
+
+        service.Checks = [new DiagnosticResult(DiagnosticCheck.ExitIp, CheckState.Warning, "no_answer")];
+        page.RunCommand.Execute(null);
+        WaitFor(() => !page.IsRunning);
+        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "Не измерен: проверочный адрес не ответил", "Нет ответа"));
+
+        Loc.Instance.SetLanguage("en");
+        Dispatcher.UIThread.RunJobs();
+        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP seen by sites", "Not measured: the check address did not answer", "No answer"));
     }
 
     [AvaloniaFact]

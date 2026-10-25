@@ -22,7 +22,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="Reconnect"/> — проба связи с сервером и паузы переподключения; null — без проб
 /// (только выход ядра), паузы по умолчанию; <paramref name="Probe"/> — проба (тесты); null — через ядро;
 /// <paramref name="Network"/> — смена сети машины: проверить сервер сразу; null — не следить;
-/// <paramref name="BootBlock"/> — файл «Защиты при загрузке» (<see cref="Service.BootBlock"/>); null — без нее.
+/// <paramref name="BootBlock"/> — файл «Защиты при загрузке» (<see cref="Service.BootBlock"/>); null — без нее;
+/// <paramref name="Trace"/> — проверочный адрес внешнего IP (<see cref="LatencyProbe.DefaultTrace"/>); null — IP не мерить;
+/// <paramref name="ExitIp"/> — запрос внешнего IP (тесты); null — <see cref="LatencyProbe.ExitIpAsync"/>.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -35,7 +37,9 @@ public sealed record GatewayOptions(
     ReconnectTiming? Reconnect = null,
     Func<ServerProbe, CancellationToken, Task<bool>>? Probe = null,
     INetworkEvents? Network = null,
-    string? BootBlock = null);
+    string? BootBlock = null,
+    Uri? Trace = null,
+    Func<ServerProbe, CancellationToken, Task<string?>>? ExitIp = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -91,6 +95,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
     // Пользователь выбрал подключение, хотя работает другой VPN: на ходу чужой VPN тоже не проверять.
     private volatile bool _allowOtherVpn;
+
+    // Реальный IP — измеренный напрямую, пока блока и туннеля нет; с ним сравнивается IP для сайтов. Сеть сменилась — забыт.
+    private string? _directIp;
 
     // Режим VPN: адреса сервера и блок при обрыве — чтобы поднять туннель снова после паузы.
     private IReadOnlyList<IPAddress> _addresses = [];
@@ -238,8 +245,14 @@ public sealed partial class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({string.Join(", ", other)}) — подключение по выбору пользователя");
         }
 
-        IReadOnlyList<IPAddress> addresses = [];
-        if (vpn && (addresses = await ResolveAsync(core, cancellationToken).ConfigureAwait(false)).Count == 0)
+        // Реальный IP — до блока и туннеля, пока прямой путь открыт: один раз на сеть, вместе с поиском адреса сервера,
+        // чтобы не ждать дважды. Под блоком и в туннеле прежнего подключения прямого пути нет.
+        var direct = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect
+            ? DirectIpAsync()
+            : Task.FromResult<string?>(null);
+        IReadOnlyList<IPAddress> addresses = vpn ? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
+        _directIp = await direct.ConfigureAwait(false) ?? _directIp;
+        if (vpn && addresses.Count == 0)
         {
             // Под блоком без туннеля имя не разрешить: отказ снимает блок, повторное подключение найдет адрес.
             return await RejectAsync(serverId, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", cancellationToken).ConfigureAwait(false);
@@ -612,7 +625,7 @@ public sealed partial class Gateway : IAsyncDisposable
             ApplySystemProxy();
             Move(s => s, ConnectionState.Connected);
             _journal.Add(JournalLevel.Info, "service", "Подключено: прокси на 127.0.0.1 готов");
-            StartWatch(session);
+            AfterConnected(session);
         }
         finally
         {
@@ -759,13 +772,16 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>«Подключение» к серверу; уже подключается (повторное нажатие) — только новый сервер и режим.</summary>
     private void BeginConnecting(ConnectionMode mode, string serverId)
     {
+        // IP прежнего сервера сайтам уже не виден; реальный — измерен перед подключением.
+        var direct = _directIp;
+        ExitInfo Exit(ConnectionStatus s) => ExitInfo.Unknown with { DirectIp = direct ?? s.Exit.DirectIp };
         if (Status.State == ConnectionState.Connecting)
         {
-            Update(s => Honest(s with { Mode = mode, ServerId = serverId, Protection = ProtectionChecks.For(ConnectionState.Connecting, mode) }));
+            Update(s => Honest(s with { Mode = mode, ServerId = serverId, Protection = ProtectionChecks.For(ConnectionState.Connecting, mode), Exit = Exit(s) }));
         }
         else
         {
-            Move(s => s with { Mode = mode, ServerId = serverId }, ConnectionState.Connecting);
+            Move(s => s with { Mode = mode, ServerId = serverId, Exit = Exit(s) }, ConnectionState.Connecting);
         }
     }
 
@@ -837,7 +853,7 @@ public sealed partial class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Info, "service", core.Routing.HasBypassApps || core.Routing.HasBypassSites
                 ? "Подключено: трафик через туннель, обход раздельного режима — напрямую"
                 : "Подключено: весь трафик через туннель");
-            StartWatch(session);
+            AfterConnected(session);
         }
         finally
         {

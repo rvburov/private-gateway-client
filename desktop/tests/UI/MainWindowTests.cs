@@ -316,6 +316,21 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Check_button_comes_back_even_if_the_service_sends_no_check_time()
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        await main.CheckActionCommand.ExecuteAsync(null);
+
+        main.IsChecking.ShouldBeFalse("проверка закончилась — «Проверяем…» не висит");
+        main.HasCheckAction.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
     public async Task Proxy_mode_is_amber_and_says_what_is_not_protected()
     {
         var (window, shell) = Open();

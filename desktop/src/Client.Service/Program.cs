@@ -63,7 +63,7 @@ using var network = new SystemNetworkEvents(time);
 var bootBlock = canVpn ? Path.Combine(Option("--state") ?? AppContext.BaseDirectory, "boot-block.json") : null;
 await using var gateway = new Gateway(
     new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
-        Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock), time, journal, systemProxy);
+        Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace), time, journal, systemProxy);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
 if (int.TryParse(Option("--parent"), out var parent))
