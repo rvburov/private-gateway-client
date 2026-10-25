@@ -55,7 +55,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         new("CommunityToolkit.Mvvm", "MIT", "CommunityToolkit.Mvvm"),
         new("Microsoft.Extensions", "MIT",
             "Microsoft.Extensions.DependencyInjection", "Microsoft.Extensions.DependencyInjection.Abstractions",
-            "Microsoft.Extensions.Logging", "Microsoft.Extensions.Logging.Abstractions"),
+            "Microsoft.Extensions.Logging", "Microsoft.Extensions.Logging.Abstractions", "Microsoft.Extensions.Hosting.WindowsServices"),
         new("Microsoft.Data.Sqlite", "MIT", "Microsoft.Data.Sqlite"),
         new("SQLite", "Public domain"),
         new("SQLitePCLRaw", "Apache-2.0"),

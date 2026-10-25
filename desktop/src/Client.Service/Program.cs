@@ -10,12 +10,42 @@ if (args.Contains("--version"))
     return 0;
 }
 
+// --install --owner <SID или uid> — поставить службу (от администратора или root): копия в защищенную папку и запуск с ОС;
+// --uninstall — удалить ее и снять блок при обрыве. --service-name, --install-dir — для тестов.
+if (args.Contains("--install") || args.Contains("--uninstall"))
+{
+    var name = Option("--service-name") ?? ServiceSetup.DefaultName;
+    var folder = Option("--install-dir") ?? ServiceSetup.DefaultFolder;
+    try
+    {
+        if (args.Contains("--uninstall"))
+        {
+            ServiceSetup.Uninstall(name, folder, ServiceHost.KillSwitch());
+            Console.WriteLine($"Служба {name} удалена");
+            return 0;
+        }
+
+        ServiceSetup.Install(new SetupOptions(name, folder, Option("--owner") ?? string.Empty, Option("--ipc")), AppContext.BaseDirectory,
+            Option("--xray") ?? ServiceHost.DefaultXray(), Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory));
+        Console.WriteLine($"Служба {name} установлена в {folder} и запущена");
+        return 0;
+    }
+    catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or PlatformNotSupportedException
+        or System.ComponentModel.Win32Exception)
+    {
+        Console.Error.WriteLine((args.Contains("--uninstall") ? "Служба не удалена: " : "Служба не установлена: ") + e.Message);
+        return 1;
+    }
+}
+
 // --user — служба пользователя без прав (только режим прокси), адрес IPC — в папке пользователя;
 // --parent <pid> — окно, которое ее запустило: закроется окно — остановится и служба;
-// --ipc <адрес>, --xray <путь>, --sing-box <путь>, --state <папка> — для разработки и тестов; --owner <uid> — кого пускать (ставит установщик).
+// --ipc <адрес>, --xray <путь>, --sing-box <путь>, --state <папка> — для разработки и тестов;
+// --owner <uid или SID> — кого пускать, --service-name — имя службы Windows (их ставит установка).
 var user = args.Contains("--user");
 var endpoint = Option("--ipc") ?? (user ? IpcEndpoints.User : IpcEndpoints.System);
 var owner = uint.TryParse(Option("--owner"), out var uid) ? uid : (uint?)null;
+var ownerSid = Option("--owner") is { } sid && sid.StartsWith("S-", StringComparison.Ordinal) && ServiceSetup.IsValidOwner(sid) ? sid : null;
 var xray = Option("--xray") ?? ServiceHost.DefaultXray();
 var singBox = Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory);
 var time = TimeProvider.System;
@@ -29,7 +59,7 @@ systemProxy?.RestoreStale();
 var canVpn = !user && Environment.IsPrivilegedProcess;
 await using var gateway = new Gateway(
     new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null), time, journal, systemProxy);
-await using var app = IpcServer.Build(new IpcOptions(endpoint, owner), gateway, journal, ServiceHost.Info(xray, singBox));
+await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
 if (int.TryParse(Option("--parent"), out var parent))
 {

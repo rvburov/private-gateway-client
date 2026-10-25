@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Connections.Features;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
@@ -16,10 +17,12 @@ namespace PrivateGateway.Client.Service.Ipc;
 
 /// <summary>
 /// Где слушать и кого пускать. <paramref name="Endpoint"/> — путь к Unix-сокету или имя named pipe
-/// (<see cref="IpcEndpoints"/>). <paramref name="OwnerUid"/> — пользователь, установивший службу
-/// (Unix); null — только тот, от чьего имени запущена служба. root/администраторы пускаются всегда.
+/// (<see cref="IpcEndpoints"/>). Пользователь, установивший службу: <paramref name="OwnerUid"/> на
+/// Unix, <paramref name="OwnerSid"/> на Windows; null — только тот, от чьего имени запущена служба.
+/// root, администраторы и SYSTEM пускаются всегда. <paramref name="ServiceName"/> — имя службы
+/// Windows, когда ее запускает диспетчер служб.
 /// </summary>
-public sealed record IpcOptions(string Endpoint, uint? OwnerUid = null);
+public sealed record IpcOptions(string Endpoint, uint? OwnerUid = null, string? OwnerSid = null, string? ServiceName = null);
 
 /// <summary>
 /// Сервер IPC службы: gRPC по HTTP/2 без TLS — канал локальный, в сеть служба не слушает. Unix-сокет
@@ -34,10 +37,13 @@ public static class IpcServer
         ArgumentNullException.ThrowIfNull(options);
         var builder = WebApplication.CreateSlimBuilder();
         builder.Logging.ClearProviders();
+
+        // Запущена диспетчером служб Windows — живет по его командам; иначе ничего не меняется.
+        builder.Host.UseWindowsService(o => o.ServiceName = options.ServiceName ?? "PrivateGateway");
         var pipe = IpcEndpoints.IsPipe(options.Endpoint);
         if (pipe && OperatingSystem.IsWindows())
         {
-            var access = PipeAccess();
+            var access = PipeAccess(options.OwnerSid);
             builder.WebHost.UseNamedPipes(o =>
             {
                 o.CurrentUserOnly = false;
@@ -134,9 +140,9 @@ public static class IpcServer
         }
     }
 
-    /// <summary>Pipe: текущий пользователь, администраторы и SYSTEM — да; вход по сети (SMB) — нет.</summary>
+    /// <summary>Pipe: текущий пользователь, владелец (установивший службу), администраторы и SYSTEM — да; вход по сети (SMB) — нет.</summary>
     [System.Runtime.Versioning.SupportedOSPlatform("windows")]
-    private static PipeSecurity PipeAccess()
+    private static PipeSecurity PipeAccess(string? owner)
     {
         var security = new PipeSecurity();
         var rights = PipeAccessRights.ReadWrite | PipeAccessRights.Synchronize;
@@ -144,6 +150,11 @@ public static class IpcServer
         security.AddAccessRule(new PipeAccessRule(WindowsIdentity.GetCurrent().User!, rights | PipeAccessRights.CreateNewInstance, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), rights, AccessControlType.Allow));
         security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), rights, AccessControlType.Allow));
+        if (owner is not null)
+        {
+            security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(owner), rights, AccessControlType.Allow));
+        }
+
         return security;
     }
 }
