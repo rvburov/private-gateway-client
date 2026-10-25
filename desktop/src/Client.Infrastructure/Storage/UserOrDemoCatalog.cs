@@ -38,7 +38,7 @@ public sealed class UserOrDemoCatalog : IServerCatalog
     public event EventHandler? Changed;
 
     /// <summary>Показываются демо-серверы: своих пока нет, а подключение — имитация.</summary>
-    public bool IsDemo => _gateway.IsSimulated && _user.Servers.Count == 0;
+    public bool IsDemo => _gateway.Service == ServiceKind.Simulated && _user.Servers.Count == 0;
 
     public IReadOnlyList<ServerProfile> Servers => Current.Servers;
 

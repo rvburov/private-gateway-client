@@ -5,14 +5,55 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Service;
 
-/// <summary>Сведения о службе для GetServiceInfo и путь к ядру по умолчанию.</summary>
+/// <summary>Сведения о службе для GetServiceInfo, путь к ядру по умолчанию и жизнь службы пользователя.</summary>
 public static partial class ServiceHost
 {
-    /// <summary>Ядро рядом со службой: cores/xray/xray(.exe); нет — null, подключение откажет с PGC-SVC-002.</summary>
-    public static string? DefaultXray()
+    /// <summary>
+    /// Ядро рядом со службой: cores/xray/xray(.exe), так его кладет установщик. Служба запущена из
+    /// папки сборки (artifacts/bin/Client.Service/&lt;конфигурация&gt;) — ядро из artifacts/cores/xray,
+    /// куда его кладет scripts/get-xray.sh. Нет — null, подключение откажет с PGC-SVC-002.
+    /// </summary>
+    public static string? DefaultXray() => DefaultXray(AppContext.BaseDirectory);
+
+    /// <param name="serviceFolder">Папка исполняемого файла службы.</param>
+    public static string? DefaultXray(string serviceFolder)
     {
-        var path = Path.Combine(AppContext.BaseDirectory, "cores", "xray", OperatingSystem.IsWindows() ? "xray.exe" : "xray");
-        return File.Exists(path) ? path : null;
+        var name = OperatingSystem.IsWindows() ? "xray.exe" : "xray";
+        var installed = Path.Combine(serviceFolder, "cores", "xray", name);
+        if (File.Exists(installed))
+        {
+            return installed;
+        }
+
+        // Только точное расположение папки сборки, без поиска вверх: чужой файл выше по дереву ядром не станет.
+        var build = new DirectoryInfo(serviceFolder);
+        if (build.Parent is { Name: "Client.Service" } project && project.Parent is { Name: "bin" } bin && bin.Parent is { Name: "artifacts" } artifacts
+            && Path.Combine(artifacts.FullName, "cores", "xray", name) is var built && File.Exists(built))
+        {
+            return built;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Служба пользователя живет, пока живет окно, которое ее запустило (--parent): прокси без окна
+    /// некому выключить. Окно закрылось или его уже нет — <paramref name="stop"/>.
+    /// </summary>
+    public static async Task StopWithParentAsync(int parentId, Func<Task> stop, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(stop);
+        try
+        {
+            using var parent = Process.GetProcessById(parentId);
+            await parent.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (ArgumentException)
+        {
+            // Окна уже нет.
+        }
+
+        await stop().ConfigureAwait(false);
     }
 
     public static V1.ServiceInfo Info(string? xray)

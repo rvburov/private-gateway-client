@@ -1,0 +1,100 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ProblemPage"
+             x:DataType="vm:ProblemPageViewModel">
+  <!-- Ошибки службы — docs/design, доска 16. Окно работает: островок виден, уйти можно на любой экран. -->
+  <UserControl.Styles>
+    <!-- Знак ошибки: красный щит («Служба не запущена») или оранжевый замок («Нужны права») -->
+    <Style Selector="Border.mark">
+      <Setter Property="Width" Value="72" />
+      <Setter Property="Height" Value="72" />
+      <Setter Property="CornerRadius" Value="20" />
+      <Setter Property="HorizontalAlignment" Value="Center" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Tint}" />
+    </Style>
+    <Style Selector="Border.mark c|Icon">
+      <Setter Property="StrokeThickness" Value="1.9" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
+    </Style>
+    <Style Selector="Border.mark.admin">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Caution.Tint}" />
+    </Style>
+    <Style Selector="Border.mark.admin c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Caution.Text}" />
+    </Style>
+    <!-- Строка факта: кружок, что проверено, моноширинный итог справа -->
+    <Style Selector="Ellipse.dot">
+      <Setter Property="Width" Value="8" />
+      <Setter Property="Height" Value="8" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <!-- Серый — как в макете: «нет», но и не беда -->
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Control.CheckboxBorder}" />
+    </Style>
+    <Style Selector="Ellipse.dot.bad">
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Status.Danger.Base}" />
+    </Style>
+    <Style Selector="Ellipse.dot.warning">
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Status.Caution.Base}" />
+    </Style>
+    <Style Selector="TextBlock.factValue">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="12,0,0,0" />
+    </Style>
+  </UserControl.Styles>
+
+  <ScrollViewer Classes="page">
+    <StackPanel>
+      <!-- Шапка: знак и название, как на главной -->
+      <Grid Height="60" Margin="20,0,12,0" ColumnDefinitions="Auto,*">
+        <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}"
+                Width="28" Height="28" Foreground="{StaticResource PgBrush.Accent.Base}" />
+        <TextBlock Grid.Column="1" Classes="brand" Text="{l:L app.title}" Margin="10,0,8,0" VerticalAlignment="Center" />
+      </Grid>
+
+      <StackPanel Margin="24,20,24,0" Spacing="12">
+        <Border Classes="mark" Classes.admin="{Binding IsAdmin}">
+          <Panel>
+            <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Off}" Width="34" Height="34" IsVisible="{Binding !IsAdmin}" />
+            <c:Icon Data="{StaticResource Icon.Lock}" Width="34" Height="34" IsVisible="{Binding IsAdmin}" />
+          </Panel>
+        </Border>
+        <TextBlock x:Name="ProblemTitle" Text="{Binding Title}" FontSize="{StaticResource PgFontSize.Display}" FontWeight="Bold"
+                   HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap" Margin="0,8,0,0" />
+        <TextBlock x:Name="ProblemText" Text="{Binding Text}" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
+                   MaxWidth="360" Foreground="{StaticResource PgBrush.Text.Secondary}" LineHeight="22" />
+
+        <Border Classes="card" Padding="16,4" Margin="0,8,0,0">
+          <ItemsControl x:Name="ProblemFacts" ItemsSource="{Binding Facts}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:ProblemFact">
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,11">
+                  <Ellipse Classes="dot" Classes.bad="{Binding IsBad}" Classes.warning="{Binding IsWarning}" />
+                  <TextBlock Grid.Column="1" Text="{Binding Label}" Margin="12,0,0,0" VerticalAlignment="Center" TextWrapping="Wrap" />
+                  <TextBlock Grid.Column="2" Classes="factValue" Text="{Binding Value}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <Button x:Name="UseProxy" Classes="primary" Height="50" HorizontalAlignment="Stretch" Margin="0,16,0,0"
+                Command="{Binding UseProxyCommand}" Content="{l:L problem.proxy}" />
+        <Button x:Name="Cancel" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding HasCancel}"
+                Command="{Binding CancelCommand}" Content="{l:L dialog.cancel}" />
+        <Button x:Name="Details" Classes="link" HorizontalAlignment="Center" Command="{Binding DetailsCommand}"
+                Content="{Binding DetailsText}" />
+      </StackPanel>
+
+      <!-- Запас под островок: содержимое прокручивается под ним -->
+      <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+    </StackPanel>
+  </ScrollViewer>
+</UserControl>

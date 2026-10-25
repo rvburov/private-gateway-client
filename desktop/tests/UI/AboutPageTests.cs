@@ -23,7 +23,7 @@ public sealed class AboutPageTests : WindowHarness
         AppInfo.OsVersion.ShouldStartWith(OperatingSystem.IsLinux() ? string.Empty : AppInfo.OsName);
         AppInfo.OsVersion.ShouldNotBeNullOrWhiteSpace();
         Text(window, "ClientVersion").ShouldBe(AppInfo.Version);
-        Text(window, "ServiceState").ShouldBe("демо-режим, службы нет");
+        Text(window, "ServiceState").ShouldBe("имитация, демо-режим");
         Text(window, "AboutXray").ShouldBe("не установлено");
         Text(window, "AboutSecondCore").ShouldBe("не выбрано");
         Text(window, "TunDriver").ShouldBe(OperatingSystem.IsWindows() ? "не установлен" : "встроен в ОС");

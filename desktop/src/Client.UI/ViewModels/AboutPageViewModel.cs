@@ -76,8 +76,8 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     public string ClientVersion => AppInfo.Version;
 
-    /// <summary>Пока службы нет, подключение — имитация: так и пишем.</summary>
-    public string ServiceState => Loc.Instance[_gateway.IsSimulated ? "about.service.demo" : "about.service.running"];
+    /// <summary>Какая служба отвечает окну: установленная, пользователя (только прокси), никакой, имитация.</summary>
+    public string ServiceState => ServiceTexts.State(_gateway.Service);
 
     public string XrayVersion => Loc.Instance["core.version.none"];
 

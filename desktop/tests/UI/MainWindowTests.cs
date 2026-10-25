@@ -2,7 +2,10 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
@@ -278,6 +281,29 @@ public sealed class MainWindowTests : WindowHarness
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
         Text(window, "StatusTitle").ShouldNotBe("Прокси включен");
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ConnectionMode.Vpn, false, "PGC-SVC-002 · трафик заблокирован")]
+    [InlineData(ConnectionMode.Proxy, false, "PGC-SVC-002 · прокси остановлен")]
+    [InlineData(ConnectionMode.Vpn, true, "PGC-SVC-002 · защиты нет, трафик идет напрямую")]
+    public async Task Error_says_whether_traffic_is_blocked(ConnectionMode mode, bool unprotected, string subtitle)
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = connecting => (connecting with { ErrorCode = ErrorCodes.CoreFailed }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) is var error
+                && unprotected
+                ? error with { Protection = ProtectionChecks.For(ConnectionState.Off) }
+                : error,
+        });
+        Service<SettingsService>().Update(s => s with { Mode = mode });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
+
+        shell.CurrentPage.ShouldBeOfType<MainPageViewModel>().StatusSubtitle.ShouldBe(subtitle);
+        shell.CurrentKey.ShouldBe(Pages.Home, "ошибка ядра — не экран ошибки службы");
     }
 
     [AvaloniaFact]

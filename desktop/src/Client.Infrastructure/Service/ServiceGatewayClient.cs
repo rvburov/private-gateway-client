@@ -37,12 +37,15 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     private ConnectionStatus _status;
 
     /// <param name="channel">Канал до службы (<see cref="IpcChannel"/>); клиент его закрывает.</param>
+    /// <param name="service">Какая это служба: установленная или пользователя.</param>
     /// <param name="definitions">Описание сервера с ключами по id — из хранилища (ключи — из хранилища ОС).</param>
     /// <param name="settings">Текущие настройки: режим, защита, подключение, маршрутизация.</param>
     /// <param name="time">Часы программы.</param>
-    public ServiceGatewayClient(GrpcChannel channel, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings, TimeProvider time)
+    public ServiceGatewayClient(GrpcChannel channel, ServiceKind service, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings,
+        TimeProvider time)
     {
         _channel = channel;
+        Service = service;
         _client = new V1.GatewayService.GatewayServiceClient(channel);
         _definitions = definitions;
         _settings = settings;
@@ -64,7 +67,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    public bool IsSimulated => false;
+    public ServiceKind Service { get; }
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
@@ -210,7 +213,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                 current = current.MoveTo(ConnectionState.Connecting, now);
             }
 
-            status = _status = (current with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, now);
+            status = _status = NoService((current with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, now));
         }
 
         StatusChanged?.Invoke(this, status);
@@ -262,11 +265,14 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                 return;
             }
 
-            status = _status = (_status with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, _time.GetUtcNow());
+            status = _status = NoService((_status with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, _time.GetUtcNow()));
         }
 
         StatusChanged?.Invoke(this, status);
     }
+
+    /// <summary>Что делает служба, неизвестно — окно не обещает защиту: проверки как при выключенной.</summary>
+    private static ConnectionStatus NoService(ConnectionStatus status) => status with { Protection = ProtectionChecks.For(ConnectionState.Off) };
 
     private async Task WatchLogAsync()
     {

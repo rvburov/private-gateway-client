@@ -160,9 +160,11 @@ public sealed class ServiceIpcTests
         var reply = await service.Client.ConnectAsync(request, cancellationToken: Ct);
 
         (reply.Accepted, reply.Error.Code).ShouldBe((false, code));
-        (await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error)).Select(s => (s.State, s.ServerId, s.Error?.Code))
+        var states = await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error);
+        states.Select(s => (s.State, s.ServerId, s.Error?.Code))
             .ShouldBe([(V1.ConnectionState.Connecting, "srv-1", null), (V1.ConnectionState.Error, "srv-1", code)],
                 "отказ видят все окна, а не только то, что просило");
+        states[^1].ToCore().Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off), "подключения нет — проверки не обещают блок");
     }
 
     [Fact]

@@ -31,6 +31,9 @@ public static class Pages
 
     /// <summary>«О программе» — подстраница настроек (доска 15).</summary>
     public const string About = "about";
+
+    /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
+    public const string Problem = "problem";
 }
 
 /// <summary>Переход между страницами окна.</summary>

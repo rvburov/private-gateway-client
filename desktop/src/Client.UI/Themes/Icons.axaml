@@ -60,5 +60,6 @@
   <!-- Стрелка вверх: выбрать файл резервной копии (доска 14) -->
   <StreamGeometry x:Key="Icon.Upload">M12 15V3M7 8l5-5 5 5M4 19h16</StreamGeometry>
   <!-- Треугольник: предупреждение раздельного режима (доска 13) -->
+  <StreamGeometry x:Key="Icon.Lock">M5 11h14v10H5zM8 11V8a4 4 0 0 1 8 0v3M12 15v2</StreamGeometry>
   <StreamGeometry x:Key="Icon.Warning">M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01</StreamGeometry>
 </ResourceDictionary>

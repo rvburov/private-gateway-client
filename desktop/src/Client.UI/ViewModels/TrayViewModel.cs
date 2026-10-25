@@ -150,10 +150,14 @@ public sealed partial class TrayViewModel : ObservableObject
         Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.check"]) { Command = OpenCommand, CommandParameter = Pages.Check });
         Menu.Items.Add(new NativeMenuItemSeparator());
 
-        // Пока служба — имитация внутри окна, закрыть окно — значит выключить и VPN: так и пишем.
-        Menu.Items.Add(_gateway.IsSimulated
-            ? new NativeMenuItem(Loc.Instance["tray.quit.demo"]) { Command = QuitCommand }
-            : new NativeMenuItem(Loc.Instance["tray.quit"]) { Command = QuitCommand, ToolTip = Loc.Instance["tray.quit.note"] });
+        // Установленная служба работает и без окна — закрывается только интерфейс; служба пользователя и
+        // имитация уходят вместе с окном — закрывается программа, а с ней и прокси.
+        Menu.Items.Add(_gateway.Service switch
+        {
+            ServiceKind.Installed => new NativeMenuItem(Loc.Instance["tray.quit"]) { Command = QuitCommand, ToolTip = Loc.Instance["tray.quit.note"] },
+            ServiceKind.User => new NativeMenuItem(Loc.Instance["tray.quit.app"]) { Command = QuitCommand, ToolTip = Loc.Instance["tray.quit.user.note"] },
+            _ => new NativeMenuItem(Loc.Instance["tray.quit.app"]) { Command = QuitCommand },
+        });
         OnPropertyChanged(string.Empty);
     }
 

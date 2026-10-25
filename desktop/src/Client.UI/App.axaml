@@ -73,6 +73,9 @@
     <DataTemplate DataType="vm:WelcomePageViewModel">
       <views:WelcomePage />
     </DataTemplate>
+    <DataTemplate DataType="vm:ProblemPageViewModel">
+      <views:ProblemPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:AboutPageViewModel">
       <views:AboutPage />
     </DataTemplate>

@@ -15,8 +15,8 @@ public interface IGatewayClient
     /// <summary>Новое состояние от службы. Может прийти из любого потока.</summary>
     event EventHandler<ConnectionStatus>? StatusChanged;
 
-    /// <summary>Работает ли интерфейс без службы, на имитации (демо-режим этапа 1).</summary>
-    bool IsSimulated { get; }
+    /// <summary>Какая служба отвечает окну: установленная, пользователя, никакой или имитация.</summary>
+    ServiceKind Service { get; }
 
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
 

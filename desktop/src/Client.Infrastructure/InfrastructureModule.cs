@@ -25,11 +25,12 @@ namespace PrivateGateway.Client.Infrastructure;
 public static class InfrastructureModule
 {
     /// <summary>
-    /// Подключение — через службу по IPC (<see cref="ServiceGatewayClient"/>), если при запуске она
-    /// нашлась (<see cref="ServiceLocator"/>), иначе — имитация <see cref="SimulatedGatewayClient"/>.
-    /// Серверы — свои из базы, а пока их нет и службы нет — демо-серверы (<see cref="UserOrDemoCatalog"/>).
+    /// Подключение — через службу по IPC (<see cref="GatewayHost"/>): найденную при запуске или позже, в
+    /// режиме прокси — службу пользователя, которую окно запускает само. Демо-режим (<paramref name="demo"/>,
+    /// <c>--demo</c>) — имитация <see cref="SimulatedGatewayClient"/> и, пока своих серверов нет, демо-серверы
+    /// (<see cref="UserOrDemoCatalog"/>).
     /// </summary>
-    public static IServiceCollection AddClientInfrastructure(this IServiceCollection services, AppPaths paths)
+    public static IServiceCollection AddClientInfrastructure(this IServiceCollection services, AppPaths paths, bool demo = false)
     {
         ArgumentNullException.ThrowIfNull(services);
         services.AddSingleton(paths);
@@ -38,11 +39,14 @@ public static class InfrastructureModule
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<ISettingsStore, SqliteSettingsStore>();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IGatewayClient>(sp => ServiceLocator.Find(ServiceLocator.Candidates) is { } service
-            ? new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, service.System),
-                id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
-                () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>())
-            : ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp));
+        services.AddSingleton<IGatewayClient>(sp => demo
+            ? ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp)
+            : new GatewayHost(ServiceLocator.ForThisWindow(sp.GetRequiredService<TimeProvider>()),
+                address => new ServiceGatewayClient(IpcChannel.Create(address.Endpoint, address.System),
+                    address.System ? ServiceKind.Installed : ServiceKind.User,
+                    id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
+                    () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()),
+                () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());

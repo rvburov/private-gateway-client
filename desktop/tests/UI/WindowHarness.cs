@@ -12,6 +12,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI;
@@ -62,7 +63,9 @@ public abstract class WindowHarness : IDisposable
     }
 
     /// <param name="firstLaunch">true — как при первом запуске: с приветствием (доска 10).</param>
-    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false)
+    /// <param name="gateway">Своя служба для окна; null — имитация.</param>
+    /// <remarks>Окно — в демо-режиме, на имитации службы, даже если на машине запущена настоящая служба.</remarks>
+    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false, Func<IServiceProvider, IGatewayClient>? gateway = null)
     {
         _services = App.BuildServices(_paths, s =>
         {
@@ -74,9 +77,11 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<ISubscriptionDownloader>(Downloads);
             s.AddSingleton<IUrlLauncher>(Urls);
             s.AddSingleton<IAutostart>(Autostart);
-            // Окно в тестах — на имитации, даже если на машине запущена настоящая служба.
-            s.AddSingleton<IGatewayClient>(sp => ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp));
-        });
+            if (gateway is not null)
+            {
+                s.AddSingleton<IGatewayClient>(gateway);
+            }
+        }, demo: true);
         if (!firstLaunch)
         {
             _services.GetRequiredService<SettingsService>().Update(s => s with { OnboardingDone = true });
@@ -132,6 +137,59 @@ public abstract class WindowHarness : IDisposable
     {
         Dispatcher.UIThread.RunJobs();
         window.CaptureRenderedFrame()?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+    }
+
+    /// <summary>
+    /// Служба по сценарию: подключение — сразу «Подключение» и итог от <see cref="Outcome"/> (по умолчанию
+    /// «Защищено»); режим — из настроек, как у настоящей службы.
+    /// </summary>
+    protected sealed class ScriptedService(TimeProvider time, Func<AppSettings> settings, ServiceKind kind) : IGatewayClient
+    {
+        public ConnectionStatus Status { get; private set; } = ConnectionStatus.Initial(time.GetUtcNow());
+
+        public ServiceKind Service => kind;
+
+        /// <summary>Что служба сделает из «Подключения».</summary>
+        public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());
+
+        public IReadOnlyList<JournalEntry> Journal => [];
+
+        public event EventHandler<ConnectionStatus>? StatusChanged;
+
+        public event EventHandler<JournalEntry>? JournalAdded { add { } remove { } }
+
+        /// <summary>Прислать то же состояние еще раз — как служба после переподключения потока.</summary>
+        public void Resend() => StatusChanged?.Invoke(this, Status);
+
+        public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default)
+        {
+            var connecting = (Status with { Mode = settings().Mode, ServerId = server.Id }).MoveTo(ConnectionState.Connecting, time.GetUtcNow());
+            Raise(connecting);
+            Raise(Outcome(connecting));
+            return Task.CompletedTask;
+        }
+
+        public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        {
+            Raise(Status.MoveTo(ConnectionState.Off, time.GetUtcNow()));
+            return Task.CompletedTask;
+        }
+
+        public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DiagnosticReport([], time.GetUtcNow()));
+
+        public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());
+
+        private void Raise(ConnectionStatus status)
+        {
+            Status = status;
+            StatusChanged?.Invoke(this, status);
+        }
     }
 
     protected sealed class FakeFileSaver : IFileSaveService

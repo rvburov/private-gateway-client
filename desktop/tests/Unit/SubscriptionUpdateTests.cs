@@ -254,9 +254,11 @@ public sealed class SubscriptionUpdateTests : IDisposable
         var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
         var updater = Updater(catalog);
 
-        _gateway.Simulated = true;
+        _gateway.Service = ServiceKind.Simulated;
         (await updater.UpdateAsync(id, Ct)).Block.ShouldBe(UpdateBlock.ServiceMissing);
-        _gateway.Simulated = false;
+        _gateway.Service = ServiceKind.None;
+        (await updater.UpdateAsync(id, Ct)).Block.ShouldBe(UpdateBlock.ServiceMissing, "службы нет — и VPN нет");
+        _gateway.Service = ServiceKind.Installed;
         _gateway.State = ConnectionState.Blocked;
         (await updater.UpdateAsync(id, Ct)).Block.ShouldBe(UpdateBlock.ProtectionOff);
         _downloads.Requested.ShouldBeEmpty("адрес подписки не ушел в сеть мимо VPN");
@@ -419,7 +421,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
     {
         private ConnectionState _state = ConnectionState.Connected;
 
-        public bool Simulated { get; set; }
+        public ServiceKind Service { get; set; } = ServiceKind.Installed;
 
         public ConnectionState State
         {
@@ -432,8 +434,6 @@ public sealed class SubscriptionUpdateTests : IDisposable
         }
 
         public ConnectionStatus Status => ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = _state };
-
-        public bool IsSimulated => Simulated;
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
 

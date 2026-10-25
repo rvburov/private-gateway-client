@@ -53,7 +53,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         }
     }
 
-    public bool IsSimulated => true;
+    public ServiceKind Service => ServiceKind.Simulated;
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
 

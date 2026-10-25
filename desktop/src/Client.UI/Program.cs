@@ -19,7 +19,8 @@ internal static class Program
             return;
         }
 
-        App.Startup = new AppStartup(paths, instance, args.Contains(OsAutostart.MinimizedArgument));
+        // --demo — показать программу без службы: подключение — имитация, пока своих серверов нет — демо-серверы.
+        App.Startup = new AppStartup(paths, instance, args.Contains(OsAutostart.MinimizedArgument), args.Contains("--demo"));
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args, ShutdownMode.OnExplicitShutdown);
     }
 

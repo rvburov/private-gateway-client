@@ -212,7 +212,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
 
         public ConnectionStatus Status { get; } = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch);
 
-        public bool IsSimulated => false;
+        public ServiceKind Service => ServiceKind.Installed;
 
         public IReadOnlyList<JournalEntry> Journal => [];
 

@@ -6,10 +6,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
-using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
-using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI;
 using PrivateGateway.Client.UI.Localization;
@@ -153,7 +151,7 @@ public sealed class SettingsPageTests : IDisposable
 
     private ServiceProvider Build()
     {
-        var provider = App.BuildServices(_paths, s => s.AddSingleton<IGatewayClient>(sp => ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp)));
+        var provider = App.BuildServices(_paths, demo: true);
         _providers.Add(provider);
         return provider;
     }

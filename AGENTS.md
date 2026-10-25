@@ -145,6 +145,7 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 ```bash
 dotnet build PrivateGateway.slnx                       # все проекты
 dotnet run --project desktop/src/Client.UI             # интерфейс
+dotnet run --project desktop/src/Client.UI -- --demo   # интерфейс на имитации службы, с демо-серверами
 dotnet run --project desktop/src/Client.Service -- --version
 dotnet run scripts/gen-tokens.cs                       # тема Avalonia из design-tokens.json
 ```

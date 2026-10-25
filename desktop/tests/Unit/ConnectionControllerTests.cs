@@ -197,7 +197,7 @@ public class ConnectionControllerTests
         public ConnectionStatus Status { get; } =
             ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId, CaptivePauseUntil = pausedUntil };
 
-        public bool IsSimulated => true;
+        public ServiceKind Service => ServiceKind.Simulated;
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
 

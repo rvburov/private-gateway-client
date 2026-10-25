@@ -133,7 +133,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
         {
             loc.Format("diag.report.title", AppInfo.Version),
             loc.Format("diag.report.system",
-                loc[_gateway.IsSimulated ? "settings.service.simulated" : "diag.service.title"], AppInfo.OsName),
+                ServiceTexts.State(_gateway.Service), AppInfo.OsName),
             loc.Format("diag.report.checkedAt", (_report?.FinishedAt ?? _time.GetUtcNow()).ToLocalTime()
                 .ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)),
             loc.Format("diag.report.state", Protection.Label),

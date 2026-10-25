@@ -1,15 +1,18 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
 namespace PrivateGateway.Client.UI.ViewModels;
 
 /// <summary>
-/// Окно: текущая страница, островок навигации с кнопкой-щитом и всплывающая подсказка.
+/// Окно: текущая страница, островок навигации с кнопкой-щитом и всплывающая подсказка. Новая ошибка
+/// «Служба не запущена» или «Нужны права администратора» открывает экран ошибки (доска 16).
 /// </summary>
 public sealed partial class ShellViewModel : ObservableObject, INavigator
 {
@@ -32,9 +35,12 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, BackupPageViewModel> backupPage,
         Func<INavigator, AboutPageViewModel> aboutPage,
         Func<INavigator, WelcomePageViewModel> welcomePage,
+        Func<INavigator, ProblemPageViewModel> problemPage,
+        IGatewayClient gateway,
         SettingsService settings,
         SubscriptionUpdater updater)
     {
+        ArgumentNullException.ThrowIfNull(gateway);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(mainPage);
         ArgumentNullException.ThrowIfNull(serversPage);
@@ -57,6 +63,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Backup] = () => backupPage(this),
             [Pages.About] = () => aboutPage(this),
             [Pages.Welcome] = () => welcomePage(this),
+            [Pages.Problem] = () => problemPage(this),
         };
 
         // Первый запуск — приветствие (доска 10), дальше — сразу главная.
@@ -67,6 +74,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             Loc.Instance.Format(notice.Change == SelectedServerChange.Changed ? "subs.notice.changed" : "subs.notice.missing",
                 notice.ServerName, notice.SubscriptionName),
             ToastViewModel.LongDuration));
+
+        gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => ShowProblem(status));
     }
 
     public ProtectionViewModel Protection { get; }
@@ -122,4 +131,20 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     }
 
     public void Back() => Navigate(_previousKey == CurrentKey ? Pages.Home : _previousKey);
+
+    // Последняя показанная ошибка службы: то же состояние, присланное повторно, экран не открывает.
+    private DateTimeOffset? _problemSince;
+
+    /// <summary>Новая ошибка службы — экран ошибки, на каком бы экране ни был.</summary>
+    private void ShowProblem(ConnectionStatus status)
+    {
+        if (status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired }
+            || status.Since == _problemSince)
+        {
+            return;
+        }
+
+        _problemSince = status.Since;
+        Navigate(Pages.Problem);
+    }
 }

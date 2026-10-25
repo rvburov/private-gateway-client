@@ -27,8 +27,8 @@ public partial class App : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        var startup = Startup ?? new AppStartup(AppPaths.ForCurrentUser(), null, Minimized: false);
-        Services = BuildServices(startup.Paths);
+        var startup = Startup ?? new AppStartup(AppPaths.ForCurrentUser(), null, Minimized: false, Demo: false);
+        Services = BuildServices(startup.Paths, demo: startup.Demo);
         var settings = Services.GetRequiredService<SettingsService>();
         Loc.Instance.SetLanguage(settings.Current.Language);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
@@ -45,12 +45,12 @@ public partial class App : Avalonia.Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>Тот же состав, что у программы; тесты без экрана строят окно отсюда.</summary>
-    public static ServiceProvider BuildServices(AppPaths paths, Action<IServiceCollection>? overrides = null)
+    /// <summary>Тот же состав, что у программы; тесты без экрана строят окно отсюда (в демо-режиме).</summary>
+    public static ServiceProvider BuildServices(AppPaths paths, Action<IServiceCollection>? overrides = null, bool demo = false)
     {
         var services = new ServiceCollection()
             .AddClientApplication()
-            .AddClientInfrastructure(paths);
+            .AddClientInfrastructure(paths, demo);
         services.AddSingleton<ToastViewModel>();
         services.AddSingleton<OverlayViewModel>();
         services.AddSingleton<ProtectionViewModel>();
@@ -70,6 +70,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, BackupPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<BackupPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, AboutPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<AboutPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, WelcomePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<WelcomePageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, ProblemPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProblemPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<TrayViewModel>();
         overrides?.Invoke(services);
@@ -77,5 +78,5 @@ public partial class App : Avalonia.Application
     }
 }
 
-/// <summary>С чем запущена программа: папка данных, замок одной копии (null — в дизайнере), запуск в трей.</summary>
-internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized);
+/// <summary>С чем запущена программа: папка данных, замок одной копии (null — в дизайнере), запуск в трей, демо-режим.</summary>
+internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized, bool Demo);

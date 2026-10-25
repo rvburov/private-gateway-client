@@ -91,7 +91,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     private ConnectionStatus Status => Protection.Status;
 
-    public bool IsDemo => _gateway.IsSimulated;
+    public bool IsDemo => _gateway.Service == ServiceKind.Simulated;
 
     public string Version => AppInfo.Version;
 
@@ -109,7 +109,12 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             ? Loc.Instance["status.connected.subPlain"]
             : Loc.Instance["status.connected.sub"],
         ConnectionState.Reconnecting => Loc.Instance.Format("status.reconnecting.sub", Status.Attempt),
-        ConnectionState.Error => Loc.Instance.Format("status.error.sub", Status.ErrorCode ?? "PGC-SVC"),
+        // Ошибка — не всегда блокировка: без службы и после отказа защиты нет, в режиме прокси блокировать нечем.
+        ConnectionState.Error => Loc.Instance.Format(
+            Status.Protection.AllTraffic == CheckState.Off ? "status.error.sub.direct"
+                : Status.Mode == ConnectionMode.Proxy ? "status.error.sub.proxy"
+                : "status.error.sub",
+            Status.ErrorCode ?? "PGC-SVC"),
         _ => Loc.Instance[$"status.{StateKey}.sub"],
     };
 

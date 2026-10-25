@@ -50,8 +50,8 @@ public sealed partial class WelcomePageViewModel : ObservableObject
     /// <summary>«Весь трафик Windows через VPN» — с именем текущей ОС.</summary>
     public string AllTrafficTitle => Loc.Instance.Format("welcome.all.title", AppInfo.OsName);
 
-    /// <summary>Пока службы нет, серверы можно посмотреть на демо-данных.</summary>
-    public bool CanTryDemo => _gateway.IsSimulated;
+    /// <summary>В демо-режиме серверы можно посмотреть на демо-данных.</summary>
+    public bool CanTryDemo => _gateway.Service == ServiceKind.Simulated;
 
     /// <summary>
     /// «Начать»: первый запуск пройден. Своих серверов нет — предложить добавить первый, есть (например,

@@ -242,7 +242,9 @@ public sealed class Gateway : IAsyncDisposable
                 Move(Requested, ConnectionState.Connecting);
             }
 
-            Move(s => Requested(s) with { ErrorCode = code }, ConnectionState.Error);
+            // Подключения нет и прежнее остановлено: защиты нет, трафик идет напрямую — так и говорить.
+            Move(s => Requested(s) with { ErrorCode = code }, ConnectionState.Error,
+                s => s with { Protection = ProtectionChecks.For(ConnectionState.Off) });
         }
         finally
         {
@@ -327,11 +329,19 @@ public sealed class Gateway : IAsyncDisposable
         }
     }
 
-    private void Move(Func<ConnectionStatus, ConnectionStatus> change, ConnectionState state)
+    /// <param name="change">Что поменять до перехода.</param>
+    /// <param name="state">Новое состояние.</param>
+    /// <param name="after">Что поменять после перехода — подписчики получат уже итог.</param>
+    private void Move(Func<ConnectionStatus, ConnectionStatus> change, ConnectionState state, Func<ConnectionStatus, ConnectionStatus>? after = null)
     {
         lock (_gate)
         {
             _status = change(_status).MoveTo(state, _time.GetUtcNow());
+            if (after is not null)
+            {
+                _status = after(_status);
+            }
+
             foreach (var watcher in _watchers)
             {
                 watcher.TryWrite(_status);

@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -63,6 +65,7 @@ public sealed class ServiceGatewayClientTests
         await client.ConnectAsync(Profile(definition), Ct);
 
         (client.Status.State, client.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.ServiceNotRunning));
+        client.Status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off), "без службы окно защиту не обещает");
         (await client.MeasureLatencyAsync(["srv-1"], Ct)).ShouldBeEmpty();
         (await client.RunChecksAsync(Ct)).Results.ShouldHaveSingleItem()
             .ShouldBe(new DiagnosticResult(DiagnosticCheck.Service, CheckState.Stopped, "no_reply"));
@@ -86,6 +89,7 @@ public sealed class ServiceGatewayClientTests
         // Служба закрывает потоки сразу, а не по истечении 30 с на остановку.
         await WaitFor(() => client.Status.State == ConnectionState.Error);
         client.Status.ErrorCode.ShouldBe(ErrorCodes.ServiceNotRunning, "защита без службы не подтверждена");
+        client.Status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off));
         await stopping;
     }
 
@@ -157,9 +161,9 @@ public sealed class ServiceGatewayClientTests
         var running = new ServiceAddress(service.Endpoint, System: false);
         var second = new ServiceAddress(other.Endpoint, System: false);
 
-        ServiceLocator.Find([missing, running]).ShouldBe(running);
-        ServiceLocator.Find([running, second]).ShouldBe(running);
-        ServiceLocator.Find([missing]).ShouldBeNull();
+        Locator([missing, running]).Find().ShouldBe(running);
+        Locator([running, second]).Find().ShouldBe(running);
+        Locator([missing]).Find().ShouldBeNull();
         ServiceLocator.Candidates.ShouldBe([new(IpcEndpoints.System, System: true), new(IpcEndpoints.User, System: false)],
             "сначала установленная служба — у нее есть режим VPN");
     }
@@ -188,8 +192,40 @@ public sealed class ServiceGatewayClientTests
         IpcChannel.TrustsUnix(peer, system, self: 1000).ShouldBe(trusted);
     }
 
+    [Fact]
+    public async Task Window_starts_the_user_service_for_proxy_mode_and_it_stops_with_the_window()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        // «Окно» — отдельный процесс службы на своем адресе: его можно закрыть, не закрывая тест.
+        using var window = Process.Start(new ProcessStartInfo(ServiceExecutable) { ArgumentList = { "--user", "--ipc", MissingEndpoint() } })!;
+        var user = new ServiceAddress(MissingEndpoint(), System: false);
+        try
+        {
+            var settings = Settings(XrayKit.FreePort());
+            var locator = new ServiceLocator([new(MissingEndpoint(), System: true), user], Answers,
+                new UserServiceLauncher(ServiceExecutable, window.Id, user.Endpoint), TimeProvider.System);
+            using var host = new GatewayHost(locator, a => Client(a.Endpoint, definition, settings), () => settings, TimeProvider.System);
+
+            await host.ConnectAsync(Profile(definition), Ct);
+            await WaitFor(() => host.Status.State == ConnectionState.Connected);
+
+            host.Status.Mode.ShouldBe(ConnectionMode.Proxy);
+            host.Journal.ShouldContain(e => e.Source == "app" && e.Message.StartsWith("Запущена служба пользователя", StringComparison.Ordinal));
+        }
+        finally
+        {
+            // Закрыть «окно» — и служба пользователя остановится сама.
+            window.Kill();
+        }
+
+        await WaitFor(() => !Answers(user));
+    }
+
     private static ServiceGatewayClient Client(string endpoint, ServerDefinition? definition, AppSettings settings) =>
-        new(IpcChannel.Create(endpoint, system: false), id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System);
+        new(IpcChannel.Create(endpoint, system: false), ServiceKind.User, id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System);
 
     private static AppSettings Settings(int proxyPort) => AppSettings.Default with
     {
@@ -200,6 +236,15 @@ public sealed class ServiceGatewayClientTests
 
     private static ServerProfile Profile(ServerDefinition server) =>
         new("srv-1", server.Name, "", server.Protocol, server.Security.Kind, server.Host, server.Port, "tcp", null);
+
+    private static bool Answers(ServiceAddress address) => IpcChannel.Answers(address.Endpoint, address.System, ServiceLocator.ProbeTimeout);
+
+    private static ServiceLocator Locator(IReadOnlyList<ServiceAddress> candidates) =>
+        new(candidates, Answers, new UserServiceLauncher(null, Environment.ProcessId), TimeProvider.System);
+
+    /// <summary>Собранная служба из соседней папки сборки — той же конфигурации, что и тест.</summary>
+    private static string ServiceExecutable => Path.Combine(XrayKit.Root, "artifacts", "bin", "Client.Service",
+        new DirectoryInfo(AppContext.BaseDirectory).Name, UserServiceLauncher.FileName);
 
     private static string MissingEndpoint() => OperatingSystem.IsWindows()
         ? "PrivateGateway.Missing." + Guid.NewGuid().ToString("N")

@@ -157,9 +157,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     public IReadOnlyList<AdvancedLinkViewModel> Advanced { get; }
 
-    public string Footer => Loc.Instance.Format("settings.footer", AppInfo.Version,
-        _gateway.IsSimulated ? Loc.Instance["settings.service.simulated"] : "—",
-        _gateway.IsSimulated ? Loc.Instance["settings.core.none"] : "Xray-core");
+    public string Footer => Loc.Instance.Format("settings.footer", AppInfo.Version, ServiceTexts.State(_gateway.Service),
+        _gateway.Service is ServiceKind.Installed or ServiceKind.User ? "Xray-core" : Loc.Instance["settings.core.none"]);
 
     [RelayCommand]
     private void Open(string page) => _navigator.Navigate(page == "check" ? Pages.Check : page);

@@ -82,7 +82,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     /// <summary>Можно ли обновлять сейчас — по настройке «только через VPN» и состоянию защиты.</summary>
     public UpdateBlock Block =>
         !_settings.Current.UpdateOnlyViaVpn ? UpdateBlock.None
-        : _gateway.IsSimulated ? UpdateBlock.ServiceMissing
+        : _gateway.Service is ServiceKind.Simulated or ServiceKind.None ? UpdateBlock.ServiceMissing
         : _gateway.Status.State != ConnectionState.Connected ? UpdateBlock.ProtectionOff
         : UpdateBlock.None;
 
