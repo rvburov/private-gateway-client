@@ -126,6 +126,17 @@ public static class SingBoxConfigBuilder
                 .. request.ServerAddresses.Select(a => (JsonNode)(a.AddressFamily == AddressFamily.InterNetworkV6 ? $"{a}/128" : $"{a}/32")),
                 .. protection.AllowLan ? PrivateNetworks.Select(n => (JsonNode)n) : []]),
         };
+        if (OperatingSystem.IsLinux())
+        {
+            // Маршруты туннеля — половинами, а не одним маршрутом по умолчанию: правило sing-box «таблица туннеля без
+            // маршрута по умолчанию» пропускает /0, и тогда адрес с более узким маршрутом в основной таблице (своя сеть
+            // IPv6, маршрут из объявления роутера в чужом Wi-Fi) ушел бы мимо туннеля. У IPv4 таблицу дробит адрес
+            // сервера, у IPv6 сервера по IPv6 может не быть.
+            tun["route_address"] = Ipv6Tunneled(request)
+                ? new JsonArray("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1")
+                : new JsonArray("0.0.0.0/1", "128.0.0.0/1");
+        }
+
         if (InterfaceName is { Length: > 0 } name)
         {
             tun["interface_name"] = name;

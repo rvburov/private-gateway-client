@@ -294,6 +294,35 @@ public sealed class VpnTunnelTests
         (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "туннель поднят без IPv6");
     }
 
+    [Fact]
+    public async Task Server_over_ipv6_carries_ipv6_through_the_tunnel_without_a_check()
+    {
+        SkipWithoutNamespaces();
+        NetworkNamespace.SkipUnlessIpv6();
+        using var netns = NetworkNamespace.Create();
+        netns.LinkAsMachine();
+        var (host6, _) = netns.LinkIpv6();
+        using var site = new LocalSite("через туннель");
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host6);
+        serverConfig["outbounds"] = new JsonArray(
+            new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default, RoutingSettings.Default);
+        var asked = 0;
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host6], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, probe: VpnTunnel.NewProbe(), serverIpv6: (_, _) =>
+            {
+                Interlocked.Increment(ref asked);
+                return Task.FromResult(false);
+            }, cancellationToken: Ct);
+
+        (tunnel.Ipv6, asked).ShouldBe((true, 0), "с сервером Xray соединяется по IPv6 — IPv6 у него есть, без проверки");
+        (await netns.CurlAsync(new Uri("http://[2606:4700:4700::1111]/"))).ShouldBe("через туннель", "IPv6 — через TUN и сервер по IPv6");
+        (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "и IPv4");
+    }
+
     private static void SkipWithoutNamespaces()
     {
         NetworkNamespace.SkipUnlessAvailable("curl", "python3", "ip");

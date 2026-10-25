@@ -109,6 +109,24 @@ public sealed class SingBoxConfigTests
     }
 
     [Fact]
+    public void Linux_tunnel_routes_are_halves_so_no_narrower_route_goes_around_it()
+    {
+        var closed = Tun(Build([IPAddress.Parse("198.51.100.20")]));
+        var tunneled = Tun(Build([IPAddress.Parse("198.51.100.20")], ipv6: Closed with { Tunnel = true }));
+
+        if (OperatingSystem.IsLinux())
+        {
+            Strings(closed["route_address"]).ShouldBe(["0.0.0.0/1", "128.0.0.0/1"]);
+            Strings(tunneled["route_address"]).ShouldBe(["0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"],
+                "маршрут ::/0 правило sing-box пропускает, и адрес с более узким маршрутом в основной таблице ушел бы мимо туннеля");
+        }
+        else
+        {
+            closed.ContainsKey("route_address").ShouldBeFalse("правила по таблицам — только в Linux");
+        }
+    }
+
+    [Fact]
     public void Linux_without_ipv6_in_the_kernel_gets_no_strict_routes()
     {
         var tun = Tun(Build([IPAddress.Parse("198.51.100.20")], ipv6: new TunIpv6(Kernel: false, Tunnel: false)));

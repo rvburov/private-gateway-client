@@ -139,9 +139,11 @@ public sealed class VpnTunnel : IAsyncDisposable
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
 
             // IPv6 через туннель — только если сервер его открывает: иначе соединения IPv6 принимал бы TUN, а рвал сервер, и
-            // программа не перешла бы на IPv4.
-            var ipv6 = request.Protection.Ipv6Allowed && probe is not null && serverIpv6 is not null && AdapterIpv6()
-                && await serverIpv6(probe, cancellationToken).ConfigureAwait(false);
+            // программа не перешла бы на IPv4. С сервером Xray соединяется по IPv6 — у него IPv6 есть, проверять нечего: без
+            // IPv6 у TUN строгие маршруты (настройка пользователя) пришлось бы снять, иначе они отрезали бы Xray.
+            var serverOverIpv6 = serverAddresses[0].AddressFamily == AddressFamily.InterNetworkV6;
+            var ipv6 = request.Protection.Ipv6Allowed && AdapterIpv6()
+                && (serverOverIpv6 || (probe is not null && serverIpv6 is not null && await serverIpv6(probe, cancellationToken).ConfigureAwait(false)));
             while (true)
             {
                 var ready = 0;
