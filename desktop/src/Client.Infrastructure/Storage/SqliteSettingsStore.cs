@@ -98,7 +98,12 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language,
             Enum("subscription_refresh", d.SubscriptionRefresh),
             Bool("update_only_via_vpn", d.UpdateOnlyViaVpn),
-            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) { Protection = protection, Connection = core, Routing = routing };
+            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) {
+            Protection = protection,
+            Connection = core,
+            Routing = routing,
+            UpdateChannel = Enum("update_channel", d.UpdateChannel),
+        };
 
         bool Bool(string key, bool fallback) =>
             !values.TryGetValue(key, out var text) ? fallback
@@ -184,6 +189,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["routing.mode"] = settings.Routing.Mode.ToString(),
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),
+            ["update_channel"] = settings.UpdateChannel.ToString(),
         };
     }
 

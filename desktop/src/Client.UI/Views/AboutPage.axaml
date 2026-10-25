@@ -1,0 +1,192 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.AboutPage"
+             x:DataType="vm:AboutPageViewModel">
+  <!-- О программе — docs/design, доска 15. Подстраница настроек: островок виден, «назад» — к настройкам. -->
+  <UserControl.Styles>
+    <!-- Строка компонента: название слева, версия моноширинным справа -->
+    <Style Selector="Grid.component">
+      <Setter Property="Margin" Value="0,11" />
+    </Style>
+    <Style Selector="Grid.component TextBlock.value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="TextAlignment" Value="Right" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+      <Setter Property="Margin" Value="12,0,0,0" />
+    </Style>
+    <!-- Приватность: зеленый кружок с галочкой -->
+    <Style Selector="Border.yes">
+      <Setter Property="Width" Value="20" />
+      <Setter Property="Height" Value="20" />
+      <Setter Property="CornerRadius" Value="10" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Base}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L settings.adv.about.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="14">
+        <!-- Программа -->
+        <Border Classes="card" Padding="16,14">
+          <Grid ColumnDefinitions="Auto,*">
+            <Border Width="56" Height="56" CornerRadius="16" Background="{StaticResource PgBrush.Surface.Solid}"
+                    BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1">
+              <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}" Width="30" Height="30"
+                      StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Base}" />
+            </Border>
+            <StackPanel Grid.Column="1" Margin="16,0,0,0" Spacing="3" VerticalAlignment="Center">
+              <TextBlock Text="{l:L about.name}" FontWeight="Bold" FontSize="{StaticResource PgFontSize.Status}" />
+              <TextBlock x:Name="VersionLine" Classes="small" Text="{Binding VersionLine}" Foreground="{StaticResource PgBrush.Text.Secondary}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+          </Grid>
+        </Border>
+
+        <!-- Обновления -->
+        <Border Classes="card" Padding="16,14,16,4">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="title" Text="{l:L about.updates.title}" />
+            <TextBlock x:Name="UpdatesText" Classes="caption" Text="{l:L about.updates.text}" TextWrapping="Wrap" />
+            <Border Classes="divider" Margin="0,4,0,0" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,8">
+              <TextBlock Classes="strong" Text="{l:L about.channel}" VerticalAlignment="Center" />
+              <Button x:Name="ChannelChoice" Grid.Column="1" Classes="select" Command="{Binding ToggleChannelCommand}"
+                      AutomationProperties.Name="{l:L about.channel}">
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                  <TextBlock x:Name="ChannelText" Text="{Binding ChannelText}" VerticalAlignment="Center" />
+                  <c:Icon Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </StackPanel>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #ChannelChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsChannelOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding ChannelOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Компоненты -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="overline" Text="{l:L about.components, Upper=True}" Margin="6,0" />
+          <Border Classes="card" Padding="16,2">
+            <StackPanel>
+              <Grid Classes="component" ColumnDefinitions="Auto,*">
+                <TextBlock Classes="strong" Text="{l:L about.client}" VerticalAlignment="Center" />
+                <TextBlock x:Name="ClientVersion" Grid.Column="1" Classes="value" Text="{Binding ClientVersion}" />
+              </Grid>
+              <Border Classes="divider" />
+              <Grid Classes="component" ColumnDefinitions="Auto,*">
+                <TextBlock Classes="strong" Text="{l:L about.service}" VerticalAlignment="Center" />
+                <TextBlock x:Name="ServiceState" Grid.Column="1" Classes="value" Text="{Binding ServiceState}" />
+              </Grid>
+              <Border Classes="divider" />
+              <Grid Classes="component" ColumnDefinitions="Auto,*">
+                <TextBlock Classes="strong" Text="{l:L core.xray.title}" VerticalAlignment="Center" />
+                <TextBlock x:Name="AboutXray" Grid.Column="1" Classes="value" Text="{Binding XrayVersion}" />
+              </Grid>
+              <Border Classes="divider" />
+              <Grid Classes="component" ColumnDefinitions="Auto,*">
+                <TextBlock Classes="strong" Text="{l:L core.second.title}" VerticalAlignment="Center" />
+                <TextBlock x:Name="AboutSecondCore" Grid.Column="1" Classes="value" Text="{Binding SecondCore}" />
+              </Grid>
+              <Border Classes="divider" />
+              <Grid Classes="component" ColumnDefinitions="Auto,*">
+                <TextBlock Classes="strong" Text="{l:L about.tun}" VerticalAlignment="Center" />
+                <TextBlock x:Name="TunDriver" Grid.Column="1" Classes="value" Text="{Binding TunDriver}" />
+              </Grid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Приватность -->
+        <StackPanel Spacing="8">
+          <TextBlock Classes="overline" Text="{l:L about.privacy.group, Upper=True}" Margin="6,0" />
+          <Border Classes="card" Padding="16,6">
+            <StackPanel>
+              <Grid ColumnDefinitions="Auto,*" Margin="0,8">
+                <Border Classes="yes">
+                  <c:Icon Data="{StaticResource Icon.Chip.Ok}" Width="11" Height="11" StrokeThickness="3.4"
+                          Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                </Border>
+                <TextBlock Grid.Column="1" Margin="10,0,0,0" Text="{l:L about.privacy.telemetry}" VerticalAlignment="Center" TextWrapping="Wrap" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*" Margin="0,8">
+                <Border Classes="yes">
+                  <c:Icon Data="{StaticResource Icon.Chip.Ok}" Width="11" Height="11" StrokeThickness="3.4"
+                          Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                </Border>
+                <TextBlock Grid.Column="1" Margin="10,0,0,0" Text="{l:L about.privacy.logs}" VerticalAlignment="Center" TextWrapping="Wrap" />
+              </Grid>
+              <Grid ColumnDefinitions="Auto,*" Margin="0,8">
+                <Border Classes="yes">
+                  <c:Icon Data="{StaticResource Icon.Chip.Ok}" Width="11" Height="11" StrokeThickness="3.4"
+                          Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                </Border>
+                <TextBlock Grid.Column="1" Margin="10,0,0,0" Text="{l:L about.privacy.report}" VerticalAlignment="Center" TextWrapping="Wrap" />
+              </Grid>
+            </StackPanel>
+          </Border>
+        </StackPanel>
+
+        <!-- Ссылки -->
+        <Border Classes="card" Padding="6">
+          <StackPanel>
+            <Button x:Name="LicensesLink" Classes="plain" Padding="10,0" MinHeight="46" HorizontalAlignment="Stretch"
+                    Command="{Binding OpenLicensesCommand}" AutomationProperties.Name="{l:L about.licenses}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{l:L about.licenses}" FontWeight="Medium" VerticalAlignment="Center" />
+                <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" StrokeThickness="2.2"
+                        Foreground="{StaticResource PgBrush.Text.Muted}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="PrivacyLink" Classes="plain" Padding="10,0" MinHeight="46" HorizontalAlignment="Stretch"
+                    Command="{Binding OpenPrivacyCommand}" AutomationProperties.Name="{l:L about.privacy}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{l:L about.privacy}" FontWeight="Medium" VerticalAlignment="Center" />
+                <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" StrokeThickness="2.2"
+                        Foreground="{StaticResource PgBrush.Text.Muted}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+            <Button x:Name="ReportLink" Classes="plain" Padding="10,0" MinHeight="46" HorizontalAlignment="Stretch"
+                    Command="{Binding ReportProblemCommand}" AutomationProperties.Name="{l:L about.report}">
+              <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Text="{l:L about.report}" FontWeight="Medium" VerticalAlignment="Center" />
+                <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" StrokeThickness="2.2"
+                        Foreground="{StaticResource PgBrush.Text.Muted}" VerticalAlignment="Center" />
+              </Grid>
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

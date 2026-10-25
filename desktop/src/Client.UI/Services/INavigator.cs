@@ -23,6 +23,9 @@ public static class Pages
 
     /// <summary>«Резервная копия» — подстраница настроек (доска 14).</summary>
     public const string Backup = "backup";
+
+    /// <summary>«О программе» — подстраница настроек (доска 15).</summary>
+    public const string About = "about";
 }
 
 /// <summary>Переход между страницами окна.</summary>

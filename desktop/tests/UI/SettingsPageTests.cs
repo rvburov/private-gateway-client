@@ -136,7 +136,7 @@ public sealed class SettingsPageTests : IDisposable
 
         page.Advanced.Single(a => a.Id == "about").OpenCommand.Execute("about");
         shell.IsSettings.ShouldBeTrue();
-        shell.CurrentPage.ShouldBeOfType<StubPageViewModel>().Title.ShouldBe("О программе");
+        shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
     }
 
     private (MainWindow Window, SettingsPageViewModel Page) OpenSettings()

@@ -23,6 +23,16 @@ public enum SubscriptionRefresh
     Every24Hours,
 }
 
+/// <summary>Откуда брать обновления программы (доска 15).</summary>
+public enum UpdateChannel
+{
+    /// <summary>Только выпуски.</summary>
+    Stable,
+
+    /// <summary>Предварительные версии — раньше, но с ошибками.</summary>
+    Beta,
+}
+
 /// <summary>
 /// Настройки разделов «Основные» (доска 4) и «Профили и подписки» (доска 12). Значения по умолчанию —
 /// решения из docs/roadmap/DECISIONS.md и макета: блок при обрыве включен, уведомления — только
@@ -57,6 +67,9 @@ public sealed record AppSettings(
 
     /// <summary>«Маршрутизация» (доска 13).</summary>
     public RoutingSettings Routing { get; init; } = RoutingSettings.Default;
+
+    /// <summary>Канал обновлений («О программе», доска 15); действует, когда появятся подписанные выпуски.</summary>
+    public UpdateChannel UpdateChannel { get; init; } = UpdateChannel.Stable;
 
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch

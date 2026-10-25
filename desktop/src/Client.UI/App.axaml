@@ -70,8 +70,11 @@
     <DataTemplate DataType="vm:RestoreBackupViewModel">
       <views:RestoreBackupView />
     </DataTemplate>
-    <DataTemplate DataType="vm:StubPageViewModel">
-      <views:StubPage />
+    <DataTemplate DataType="vm:AboutPageViewModel">
+      <views:AboutPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:AboutSheetViewModel">
+      <views:AboutSheetView />
     </DataTemplate>
   </Application.DataTemplates>
 
