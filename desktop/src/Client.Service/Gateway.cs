@@ -24,7 +24,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="Network"/> — смена сети машины: проверить сервер сразу; null — не следить;
 /// <paramref name="BootBlock"/> — файл «Защиты при загрузке» (<see cref="Service.BootBlock"/>); null — без нее;
 /// <paramref name="Trace"/> — проверочный адрес внешнего IP (<see cref="LatencyProbe.DefaultTrace"/>); null — IP не мерить;
-/// <paramref name="ExitIp"/> — запрос внешнего IP (тесты); null — <see cref="LatencyProbe.ExitIpAsync"/>.
+/// <paramref name="ExitIp"/> — запрос внешнего IP (тесты); null — <see cref="LatencyProbe.ExitIpAsync"/>;
+/// <paramref name="BootConnect"/> — последнее подключение для «Защиты при загрузке» (<see cref="BootConnection"/>):
+/// служба подключается при загрузке сама; null — только блок.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -39,7 +41,8 @@ public sealed record GatewayOptions(
     INetworkEvents? Network = null,
     string? BootBlock = null,
     Uri? Trace = null,
-    Func<ServerProbe, CancellationToken, Task<string?>>? ExitIp = null);
+    Func<ServerProbe, CancellationToken, Task<string?>>? ExitIp = null,
+    BootConnection? BootConnect = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -98,6 +101,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
     // Реальный IP — измеренный напрямую, пока блока и туннеля нет; с ним сравнивается IP для сайтов. Сеть сменилась — забыт.
     private string? _directIp;
+
+    // Подключение при загрузке (ConnectAtBootAsync): отказ не снимает блок, поставленный при запуске.
+    private volatile bool _holdBlock;
 
     // Режим VPN: адреса сервера и блок при обрыве — чтобы поднять туннель снова после паузы.
     private IReadOnlyList<IPAddress> _addresses = [];
@@ -183,7 +189,38 @@ public sealed partial class Gateway : IAsyncDisposable
         return (current, channel.Reader);
     }
 
-    public async Task<V1.ConnectReply> ConnectAsync(V1.ConnectRequest request, CancellationToken cancellationToken = default)
+    public Task<V1.ConnectReply> ConnectAsync(V1.ConnectRequest request, CancellationToken cancellationToken = default) =>
+        ConnectAsync(request, null, cancellationToken);
+
+    /// <summary>
+    /// «Защита при загрузке» с запомненным подключением (<see cref="GatewayOptions.BootConnect"/>): служба сама
+    /// подключается к последнему серверу, до входа пользователя, по адресам, найденным тогда, — сети при загрузке
+    /// может еще не быть. Блок стоит с запуска; отказ его не снимает — «Блокировка», как без подключения.
+    /// Подключения нет или блока нет (защиту выключили) — false.
+    /// </summary>
+    public async Task<bool> ConnectAtBootAsync(CancellationToken cancellationToken = default)
+    {
+        if (!_blocking || _options.BootConnect?.Load() is not { } stored)
+        {
+            return false;
+        }
+
+        _journal.Add(JournalLevel.Info, "service", "Защита при загрузке: подключение к последнему серверу до входа пользователя");
+        _holdBlock = true;
+        try
+        {
+            return (await ConnectAsync(stored.Request, stored.Addresses, cancellationToken).ConfigureAwait(false)).Accepted;
+        }
+        finally
+        {
+            _holdBlock = false;
+        }
+    }
+
+    /// <param name="request">Запрос окна.</param>
+    /// <param name="known">Адреса сервера, найденные раньше (подключение при загрузке); null — найти сейчас.</param>
+    /// <param name="cancellationToken">Отмена.</param>
+    private async Task<V1.ConnectReply> ConnectAsync(V1.ConnectRequest request, IReadOnlyList<IPAddress>? known, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
         CoreRequest core;
@@ -250,7 +287,7 @@ public sealed partial class Gateway : IAsyncDisposable
         var direct = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect
             ? DirectIpAsync()
             : Task.FromResult<string?>(null);
-        IReadOnlyList<IPAddress> addresses = vpn ? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
+        IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
         _directIp = await direct.ConfigureAwait(false) ?? _directIp;
         if (vpn && addresses.Count == 0)
         {
@@ -280,6 +317,11 @@ public sealed partial class Gateway : IAsyncDisposable
                     BeginConnecting(core.Mode, serverId);
                     Fail(session, ErrorCodes.KillSwitchFailed, "Блок при обрыве не включился");
                     return new V1.ConnectReply { Accepted = true };
+                }
+
+                if (killSwitchOn && core.Protection.BootProtection)
+                {
+                    RememberBootConnection(request, addresses);
                 }
 
                 if (!killSwitchOn)
@@ -377,6 +419,8 @@ public sealed partial class Gateway : IAsyncDisposable
                     Move(s => s, ConnectionState.Blocked, after: s => s with { StrictBlock = true });
                 }
 
+                // Защиту выключили вручную: после перезагрузки — блок, а не подключение.
+                RememberBootConnection(null, []);
                 _journal.Add(JournalLevel.Info, "service", "Строгий режим: защита выключена вручную, сеть закрыта до подключения");
                 return;
             }
@@ -520,14 +564,23 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
-            ReleaseBlock();
-            _systemProxy?.Release();
-            _journal.Hide([]);
             ConnectionStatus Requested(ConnectionStatus s) => s with
             {
                 Mode = mode ?? s.Mode,
                 ServerId = serverId is { Length: > 0 } ? serverId : s.ServerId,
             };
+
+            // При загрузке блок стоит до подключения или выключения защиты — отказ его не снимает.
+            if (_holdBlock && _blocking && Status.State == ConnectionState.Blocked)
+            {
+                Update(s => Requested(s) with { ErrorCode = code });
+                _journal.Add(JournalLevel.Warning, "service", "Защита при загрузке: подключиться не удалось — трафик заблокирован до подключения или выключения защиты");
+                return new V1.ConnectReply { Accepted = false, Error = new V1.ErrorInfo { Code = code, Message = message } };
+            }
+
+            ReleaseBlock();
+            _systemProxy?.Release();
+            _journal.Hide([]);
 
             if (!ConnectionStateMachine.CanMove(Status.State, ConnectionState.Error))
             {
@@ -949,9 +1002,17 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
-    /// <summary>Политика блока для «Защиты при загрузке»; null — забыть. Не записалось — в журнал, подключение идет.</summary>
+    /// <summary>
+    /// Политика блока для «Защиты при загрузке»; null — забыть и ее, и подключение. Не записалось — в журнал,
+    /// подключение идет.
+    /// </summary>
     private void RememberBootBlock(KillSwitchPolicy? policy)
     {
+        if (policy is null)
+        {
+            RememberBootConnection(null, []);
+        }
+
         if (_options.BootBlock is not { } path)
         {
             return;
@@ -971,6 +1032,34 @@ public sealed partial class Gateway : IAsyncDisposable
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             _journal.Add(JournalLevel.Error, "service", "«Защита при загрузке» не записана: " + e.Message);
+        }
+    }
+
+    /// <summary>
+    /// Подключение для «Защиты при загрузке» (<see cref="BootConnection"/>); null — забыть. Не записалось — в журнал:
+    /// после перезагрузки будет только блок.
+    /// </summary>
+    private void RememberBootConnection(V1.ConnectRequest? request, IReadOnlyList<IPAddress> addresses)
+    {
+        if (_options.BootConnect is not { } boot)
+        {
+            return;
+        }
+
+        try
+        {
+            if (request is null)
+            {
+                boot.Forget();
+            }
+            else
+            {
+                boot.Save(request, addresses);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _journal.Add(JournalLevel.Error, "service", "«Защита при загрузке»: подключение не записано: " + e.Message);
         }
     }
 

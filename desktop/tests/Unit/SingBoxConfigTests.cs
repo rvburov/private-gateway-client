@@ -50,7 +50,7 @@ public sealed class SingBoxConfigTests
         route["auto_detect_interface"]!.GetValue<bool>().ShouldBeTrue();
         route.ContainsKey("rules").ShouldBeFalse("и DNS — в Xray: его отвечает выход DNS Xray, а не sing-box и не провайдер");
         config.ContainsKey("dns").ShouldBeFalse("своего DNS у sing-box нет — имен он не ищет");
-        config["log"]!["level"]!.GetValue<string>().ShouldBe("warn", "журнал соединений с адресами сайтов не пишется");
+        config["log"]!["level"]!.GetValue<string>().ShouldBe("info", "строка «sing-box started» — признак готовности; адреса соединений в журнал не пускает служба");
     }
 
     [Fact]
@@ -144,6 +144,21 @@ public sealed class SingBoxConfigTests
 
         SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, ["/opt/game/game", "/x/xray"],
             ["/opt/game/game"]))["route"]!["rules"]!.AsArray().ShouldHaveSingleItem("нет входа обхода — нет и правила");
+    }
+
+    [Theory]
+    [InlineData("INFO [3870541312 0ms] inbound/tun[tun-in]: inbound connection to 203.0.113.24:443", CoreLogLevel.Warning, false)]
+    [InlineData("INFO [3870541312 0ms] inbound/tun[tun-in]: inbound connection to 203.0.113.24:443", CoreLogLevel.Info, true)]
+    [InlineData("DEBUG [1 0ms] router: match[0]", CoreLogLevel.Info, false)]
+    [InlineData("DEBUG [1 0ms] router: match[0]", CoreLogLevel.Debug, true)]
+    [InlineData("INFO sing-box started (0.31s)", CoreLogLevel.Warning, false)]
+    [InlineData("WARN inbound/tun[tun-in]: open interface take too much time", CoreLogLevel.Warning, true)]
+    [InlineData("ERROR [1 10ms] connection: open outbound connection: dial tcp: refused", CoreLogLevel.Warning, true)]
+    [InlineData("FATAL start service: start inbound/tun[tun-in]: configure tun interface: operation not permitted", CoreLogLevel.Warning, true)]
+    [InlineData("goroutine 1 [running]:", CoreLogLevel.Warning, true)]
+    public void Sing_box_lines_below_the_core_log_level_stay_out_of_the_journal(string line, CoreLogLevel level, bool shown)
+    {
+        SingBoxConfigBuilder.ShownLine(line, level).ShouldBe(shown);
     }
 
     private static JsonObject Build(IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null) =>

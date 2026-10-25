@@ -168,19 +168,43 @@ public static class SingBoxConfigBuilder
 
         return new JsonObject
         {
+            // Не ниже info: строка «sing-box started» — признак готовности туннеля (VpnTunnel). Строки ниже уровня
+            // «Журнала ядра» — с адресами соединений — служба в журнал не пускает (ShownLine).
             ["log"] = new JsonObject
             {
-                ["level"] = connection.CoreLog switch
-                {
-                    CoreLogLevel.Debug => "debug",
-                    CoreLogLevel.Info => "info",
-                    _ => "warn",
-                },
+                ["level"] = connection.CoreLog == CoreLogLevel.Debug ? "debug" : "info",
                 ["timestamp"] = false,
             },
             ["inbounds"] = new JsonArray(tun),
             ["outbounds"] = outbounds,
             ["route"] = route,
+        };
+    }
+
+    /// <summary>Строка вывода sing-box, после которой все его части запущены и туннель пропускает трафик.</summary>
+    public const string StartedLine = "sing-box started";
+
+    /// <summary>
+    /// Пускать ли строку вывода sing-box в журнал: ее уровень (первое слово: DEBUG, INFO, WARN, ERROR…) не ниже
+    /// «Журнала ядра». На info и debug sing-box пишет адреса соединений — при уровне по умолчанию (warning)
+    /// они в журнал не попадают. Строка без уровня (продолжение ошибки) — пускать.
+    /// </summary>
+    public static bool ShownLine(string line, CoreLogLevel level)
+    {
+        ArgumentNullException.ThrowIfNull(line);
+        var rank = line.Split(' ', 2)[0] switch
+        {
+            "TRACE" or "DEBUG" => 0,
+            "INFO" => 1,
+            "WARN" => 2,
+            "ERROR" or "FATAL" or "PANIC" => 3,
+            _ => 3,
+        };
+        return rank >= level switch
+        {
+            CoreLogLevel.Debug => 0,
+            CoreLogLevel.Info => 1,
+            _ => 2,
         };
     }
 

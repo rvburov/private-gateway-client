@@ -69,11 +69,15 @@ systemProxy?.RestoreStale();
 var canVpn = !user && Environment.IsPrivilegedProcess;
 using var network = new SystemNetworkEvents(time);
 
-// «Защита при загрузке» — в папке установленной службы: туда пишут только администраторы и root.
-var bootBlock = canVpn ? Path.Combine(Option("--state") ?? AppContext.BaseDirectory, "boot-block.json") : null;
+// «Защита при загрузке» — в папке установленной службы: туда пишут только администраторы и root. Последнее
+// подключение — там же, зашифрованное хранилищем ОС; нет хранилища — при загрузке только блок.
+var bootFolder = Option("--state") ?? AppContext.BaseDirectory;
+var bootBlock = canVpn ? Path.Combine(bootFolder, "boot-block.json") : null;
+var bootConnect = canVpn && ServiceHost.Sealer() is { } sealer ? new BootConnection(Path.Combine(bootFolder, "boot-connect.sealed"), sealer) : null;
 await using var gateway = new Gateway(
     new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
-        Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace), time, journal, systemProxy);
+        Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect),
+    time, journal, systemProxy);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
 if (int.TryParse(Option("--parent"), out var parent))
@@ -85,6 +89,8 @@ if (int.TryParse(Option("--parent"), out var parent))
     });
 }
 
+// Защита была включена, когда машина выключилась: подключиться самой, не дожидаясь входа пользователя.
+_ = gateway.ConnectAtBootAsync();
 await app.RunAsync().ConfigureAwait(false);
 return 0;
 

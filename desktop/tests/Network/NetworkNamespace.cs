@@ -12,6 +12,12 @@ internal sealed class NetworkNamespace : IDisposable
 {
     private static readonly string[] Tools = ["unshare", "nsenter"];
 
+    // Номера сетей живых пространств процесса: тесты идут параллельно, и одинаковый адрес на двух парах veth
+    // машины уводил бы пакеты одного теста в пространство другого.
+    private static readonly HashSet<int> Taken = [];
+
+    private int _octet;
+
     private NetworkNamespace(string path) => Path = path;
 
     /// <summary>Файл пространства в /run/netns.</summary>
@@ -19,6 +25,28 @@ internal sealed class NetworkNamespace : IDisposable
 
     /// <summary>Имя для <c>ip … netns</c>.</summary>
     public string Name => System.IO.Path.GetFileName(Path);
+
+    /// <summary>
+    /// Номер сети пространства (1–249) для адресов его пар veth (10.252–10.254.N.x, 203.0.113.N): у живых
+    /// пространств процесса не повторяется, освобождается вместе с пространством.
+    /// </summary>
+    public int Octet
+    {
+        get
+        {
+            lock (Taken)
+            {
+                if (_octet == 0)
+                {
+                    var free = Enumerable.Range(1, 249).Where(o => !Taken.Contains(o)).ToList();
+                    _octet = free[Random.Shared.Next(free.Count)];
+                    Taken.Add(_octet);
+                }
+
+                return _octet;
+            }
+        }
+    }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -71,7 +99,7 @@ internal sealed class NetworkNamespace : IDisposable
     /// </summary>
     public (IPAddress Host, IPAddress Neighbor, IPAddress Public) LinkAsMachine()
     {
-        var octet = Random.Shared.Next(1, 250);
+        var octet = Octet;
         var host = IPAddress.Parse($"10.252.{octet}.1");
         var neighbor = IPAddress.Parse($"10.252.{octet}.5");
         var @public = IPAddress.Parse($"203.0.113.{octet}");
@@ -142,6 +170,10 @@ internal sealed class NetworkNamespace : IDisposable
     {
         Host("umount", Path);
         File.Delete(Path);
+        lock (Taken)
+        {
+            Taken.Remove(_octet);
+        }
     }
 
     private static string Execute(string? input, string program, IReadOnlyList<string> arguments)

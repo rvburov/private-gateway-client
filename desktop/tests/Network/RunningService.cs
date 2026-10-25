@@ -33,6 +33,9 @@ internal sealed class RunningService : IAsyncDisposable
 
     public ServiceJournal Journal { get; }
 
+    /// <summary>Сама служба — для того, что делает она сама, без окна (подключение при загрузке).</summary>
+    public Gateway Gateway => _gateway;
+
     /// <param name="latencyTarget">Проверочный адрес задержки; null — настоящий.</param>
     /// <param name="endpoint">Адрес прежней службы — как служба, запущенная заново; null — новый.</param>
     /// <param name="systemProxy">Системный прокси (подделка) и файл его снимка; null — служба его не трогает.</param>

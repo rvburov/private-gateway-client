@@ -85,6 +85,16 @@ public static partial class ServiceHost
         : null;
 
     /// <summary>
+    /// Хранилище ОС для секретов установленной службы (подключение при загрузке): Windows — DPAPI от имени
+    /// службы, Linux — <c>systemd-creds</c> с ключом машины; macOS и Linux без systemd-creds — нет, и при
+    /// загрузке служба только держит блок.
+    /// </summary>
+    public static ISecretSealer? Sealer() =>
+        OperatingSystem.IsWindows() ? new DpapiSealer()
+        : OperatingSystem.IsLinux() ? SystemdCredsSealer.ForThisMachine("private-gateway-boot")
+        : null;
+
+    /// <summary>
     /// Маршруты этой ОС — найти чужой VPN: Windows — таблица маршрутов, Linux — <c>ip</c>; macOS — еще
     /// нет, проверки там нет. Читать маршруты можно и без прав: проверка есть и у службы пользователя.
     /// </summary>

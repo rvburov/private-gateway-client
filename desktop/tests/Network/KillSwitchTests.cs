@@ -116,7 +116,7 @@ public sealed class KillSwitchTests
     {
         NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl", "python3");
         using var netns = NetworkNamespace.Create();
-        var octet = Random.Shared.Next(1, 250);
+        var octet = netns.Octet;
         var host = IPAddress.Parse($"10.254.{octet}.1");
         var tunnelHost = IPAddress.Parse($"10.253.{octet}.1");
         netns.Link("pgnet0", host, IPAddress.Parse($"10.254.{octet}.2"));
@@ -170,7 +170,7 @@ public sealed class KillSwitchTests
         NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl", "sysctl");
         using var machine = NetworkNamespace.Create();
         using var container = NetworkNamespace.Create();
-        var octet = Random.Shared.Next(1, 250);
+        var octet = machine.Octet;
         var host = IPAddress.Parse($"10.254.{octet}.1");
         var tunnelHost = IPAddress.Parse($"10.253.{octet}.1");
         machine.Link("pgnet0", host, IPAddress.Parse($"10.254.{octet}.2"));

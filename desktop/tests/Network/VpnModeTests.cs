@@ -583,6 +583,138 @@ public sealed class VpnModeTests
     }
 
     [Fact]
+    public async Task Vpn_with_boot_protection_connects_by_itself_after_a_reboot()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var sealer = new CountingSealer(BootConnectionTests.OsSealer());
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        var (block, connect) = (Path.Combine(folder, "boot-block.json"), Path.Combine(folder, "boot-connect.sealed"));
+        GatewayOptions Boot(GatewayOptions o) => rig.Vpn(o) with { BootBlock = block, BootConnect = new BootConnection(connect, sealer) };
+        try
+        {
+            await using (var service = await RunningService.StartAsync(options: Boot))
+            {
+                using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+                var off = VpnRequest(rig.Definition);
+                off.Protection.BootProtection = false;
+                await service.Client.ConnectAsync(off, cancellationToken: Ct);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+                (File.Exists(connect), sealer.Seals).ShouldBe((false, 0), "без «Защиты при загрузке» ключи не шифруются и на диск не попадают ни на миг");
+
+                await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connecting);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+                File.Exists(connect).ShouldBeTrue("подключение запомнено — зашифрованным хранилищем ОС");
+            }
+
+            // При загрузке имя сервера не найти (сети еще нет): служба подключается по запомненным адресам.
+            var (stored, addresses) = new BootConnection(connect, sealer).Load().ShouldNotBeNull();
+            stored.Server.Host = "server.invalid";
+            new BootConnection(connect, sealer).Save(stored, addresses);
+
+            // Перезагрузка: правил нет, служба запускается раньше сети и до входа пользователя.
+            rig.KillSwitch.Disable();
+            await using var next = await RunningService.StartAsync(options: Boot);
+            using var updates = next.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+            (await next.Gateway.ConnectAtBootAsync(Ct)).ShouldBeTrue();
+
+            var connected = (await ServiceIpcTests.ReadUntilAsync(updates, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+            connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+            connected.ServerId.ShouldBe("srv-1");
+            (await rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "окна нет, а защита работает");
+            rig.KillSwitch.IsEnabled.ShouldBeTrue();
+
+            // «Защиту при загрузке» выключили на ходу (окно подключается заново) — ключи служба забывает.
+            var bootOff = VpnRequest(rig.Definition);
+            bootOff.Protection.BootProtection = false;
+            await next.Client.ConnectAsync(bootOff, cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connecting);
+            await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connected);
+            (File.Exists(block), File.Exists(connect)).ShouldBe((false, false));
+            await next.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connecting);
+            await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connected);
+
+            // Строгий режим: защиту выключили вручную — после перезагрузки блок, а не подключение.
+            await next.Client.DisconnectAsync(new V1.DisconnectRequest { KeepBlock = true }, cancellationToken: Ct);
+            (File.Exists(block), File.Exists(connect)).ShouldBe((true, false));
+
+            await next.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+            (File.Exists(block), File.Exists(connect), rig.KillSwitch.IsEnabled).ShouldBe((false, false, false));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Without_a_boot_block_the_service_does_not_connect_by_itself()
+    {
+        var sealer = BootConnectionTests.OsSealer();
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        var connect = Path.Combine(folder, "boot-connect.sealed");
+        try
+        {
+            // Подключение запомнено, а блока при запуске нет: защиту выключили или блок не встал — без защиты не подключаться самой.
+            var (definition, _) = XrayKit.Pair("vless", 443);
+            new BootConnection(connect, sealer).Save(VpnRequest(definition), [IPAddress.Parse("198.51.100.20")]);
+            var killSwitch = new FakeKillSwitch();
+            await using var service = await RunningService.StartAsync(options: o => o with
+            {
+                CanVpn = true, KillSwitch = killSwitch, BootConnect = new BootConnection(connect, sealer),
+            });
+
+            (await service.Gateway.ConnectAtBootAsync(Ct)).ShouldBeFalse();
+            (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Off);
+            killSwitch.Policy.ShouldBeNull();
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Boot_connect_that_is_refused_keeps_the_block()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var sealer = BootConnectionTests.OsSealer();
+        var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8])).FullName;
+        var (block, connect) = (Path.Combine(folder, "boot-block.json"), Path.Combine(folder, "boot-connect.sealed"));
+        GatewayOptions Boot(GatewayOptions o) => rig.Vpn(o) with { Routes = rig.Routes, BootBlock = block, BootConnect = new BootConnection(connect, sealer) };
+        try
+        {
+            await using (var service = await RunningService.StartAsync(options: Boot))
+            {
+                using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+                await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+            }
+
+            // После перезагрузки другой VPN поднялся раньше: подключение служба не начинает, а блок остается.
+            rig.KillSwitch.Disable();
+            rig.StartOtherVpn();
+            await using var next = await RunningService.StartAsync(options: Boot);
+
+            (await next.Gateway.ConnectAtBootAsync(Ct)).ShouldBeFalse();
+
+            var status = await next.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct);
+            (status.State, status.Error?.Code).ShouldBe((V1.ConnectionState.Blocked, ErrorCodes.OtherVpn));
+            rig.KillSwitch.IsEnabled.ShouldBeTrue("отказ при загрузке блок не снимает");
+            await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
+            next.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e =>
+                e.Message == "Защита при загрузке: подключиться не удалось — трафик заблокирован до подключения или выключения защиты");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Strict_mode_disconnect_keeps_the_network_closed_until_the_user_connects_or_drops_it()
     {
         await using var rig = await Rig.CreateAsync();
@@ -919,6 +1051,22 @@ public sealed class VpnModeTests
         }
 
         public void Disable() => inner.Disable();
+    }
+
+    /// <summary>Хранилище ОС, которое считает, сколько раз в него шифровали.</summary>
+    private sealed class CountingSealer(ISecretSealer inner) : ISecretSealer
+    {
+        public int Seals { get; private set; }
+
+        public string Name => inner.Name;
+
+        public byte[] Seal(byte[] plain)
+        {
+            Seals++;
+            return inner.Seal(plain);
+        }
+
+        public byte[]? Unseal(byte[] sealedData) => inner.Unseal(sealedData);
     }
 
     /// <summary>Блок при обрыве без брандмауэра: помнит политику и сколько раз его снимали.</summary>

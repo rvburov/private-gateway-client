@@ -4,4 +4,8 @@
     <ProjectReference Include="../Client.Core/Client.Core.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+  </ItemGroup>
+
 </Project>

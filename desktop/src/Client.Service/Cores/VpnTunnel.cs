@@ -1,5 +1,4 @@
 using System.Net;
-using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using PrivateGateway.Client.Network.SingBox;
@@ -93,15 +92,25 @@ public sealed class VpnTunnel : IAsyncDisposable
                 SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, DirectPrograms(request, xray),
                     FakeIpPrograms(request))),
                 netns);
-            singBoxCore.Output += (_, line) => output?.Invoke("sing-box", line);
-            var core = singBoxCore;
-            var alive = time.GetTimestamp();
+            // Готов, когда запущены все части sing-box: правила маршрутизации TUN появляются раньше, чем выходы и
+            // сетевой менеджер, и соединение в эту щель сбрасывается.
+            var ready = 0;
+            singBoxCore.Output += (_, line) =>
+            {
+                if (line.Contains(SingBoxConfigBuilder.StartedLine, StringComparison.Ordinal))
+                {
+                    Volatile.Write(ref ready, 1);
+                }
 
-            // TUN поднят — адаптер виден в системе; в своем сетевом пространстве его отсюда не видно — sing-box жив секунду.
-            await WaitAsync(() => netns is null && SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name
-                    ? HasInterface(name)
-                    : time.GetElapsedTime(alive) >= TimeSpan.FromSeconds(1),
-                "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
+                if (SingBoxConfigBuilder.ShownLine(line, request.Connection.CoreLog))
+                {
+                    output?.Invoke("sing-box", line);
+                }
+            };
+            var core = singBoxCore;
+
+            await WaitAsync(() => Volatile.Read(ref ready) == 1, "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken)
+                .ConfigureAwait(false);
             return new VpnTunnel(xrayCore, core, netns, output);
         }
         catch
@@ -268,9 +277,6 @@ public sealed class VpnTunnel : IAsyncDisposable
             return false;
         }
     }
-
-    private static bool HasInterface(string name) =>
-        NetworkInterface.GetAllNetworkInterfaces().Any(n => n.Name == name && n.OperationalStatus != OperationalStatus.Down);
 
     private static string Secret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 }
