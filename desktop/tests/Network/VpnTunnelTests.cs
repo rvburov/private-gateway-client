@@ -156,15 +156,20 @@ public sealed class VpnTunnelTests
         var root = Directory.CreateTempSubdirectory("pg-real-").FullName;
         try
         {
-            var real = Directory.CreateDirectory(Path.Combine(root, "lib")).FullName;
+            // Цель ссылки сама идет через ссылку на папку — как /var → /private/var на macOS.
+            var top = Directory.CreateDirectory(Path.Combine(root, "top")).FullName;
+            Directory.CreateSymbolicLink(Path.Combine(root, "alias"), top);
+            var real = Directory.CreateDirectory(Path.Combine(root, "alias", "lib")).FullName;
             File.WriteAllText(Path.Combine(real, "app"), string.Empty);
             Directory.CreateSymbolicLink(Path.Combine(root, "bin"), real);
             File.CreateSymbolicLink(Path.Combine(real, "app-link"), "app");
-            var expected = Path.Combine(VpnTunnel.RealPath(real), "app");
+            File.CreateSymbolicLink(Path.Combine(root, "loop"), Path.Combine(root, "loop"));
+            var expected = Path.Combine(VpnTunnel.RealPath(top), "lib", "app");
 
             VpnTunnel.RealPath(Path.Combine(root, "bin", "app-link")).ShouldBe(expected, "ссылка на папку и ссылка на файл — как путь процесса у ОС");
             VpnTunnel.RealPath(Path.Combine(root, "bin", "..", "bin", "app")).ShouldBe(expected);
-            VpnTunnel.RealPath(Path.Combine(root, "bin", "gone")).ShouldBe(Path.Combine(VpnTunnel.RealPath(real), "gone"), "удаленная программа — путь как есть");
+            VpnTunnel.RealPath(Path.Combine(root, "bin", "gone")).ShouldBe(Path.Combine(VpnTunnel.RealPath(top), "lib", "gone"), "удаленная программа — путь как есть");
+            Should.NotThrow(() => VpnTunnel.RealPath(Path.Combine(root, "loop")), "ссылка сама на себя не уводит в бесконечность");
         }
         finally
         {

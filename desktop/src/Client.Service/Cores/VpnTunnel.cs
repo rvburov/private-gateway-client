@@ -122,17 +122,22 @@ public sealed class VpnTunnel : IAsyncDisposable
     public static IReadOnlyList<string> DirectPrograms(CoreRequest request, string xray)
     {
         ArgumentNullException.ThrowIfNull(request);
-        return [.. SingBoxConfigBuilder.DirectPrograms(request.Routing, request.Protection, xray).Select(RealPath).Distinct(StringComparer.Ordinal)];
+        return [.. SingBoxConfigBuilder.DirectPrograms(request.Routing, request.Protection, xray).Select(p => RealPath(p)).Distinct(StringComparer.Ordinal)];
     }
 
     /// <summary>
     /// Путь, как его видит ОС у процесса: полный и без символических ссылок ни в одной части (на Linux
-    /// /bin бывает ссылкой на /usr/bin, а /usr/bin/firefox — на /usr/lib/firefox/firefox).
+    /// /bin бывает ссылкой на /usr/bin, а /usr/bin/firefox — на /usr/lib/firefox/firefox; на macOS
+    /// /var — ссылка на /private/var). Цель ссылки разрешается заново целиком: в ней самой бывают ссылки.
     /// </summary>
-    public static string RealPath(string path)
+    public static string RealPath(string path) => RealPath(path, depth: 0);
+
+    private static string RealPath(string path, int depth)
     {
         var full = Path.GetFullPath(path);
-        if (OperatingSystem.IsWindows())
+
+        // Ссылки по кругу — путь как есть: такой программы все равно не запустить.
+        if (OperatingSystem.IsWindows() || depth > 40)
         {
             return full;
         }
@@ -141,15 +146,19 @@ public sealed class VpnTunnel : IAsyncDisposable
         foreach (var part in full[resolved.Length..].Split('/', StringSplitOptions.RemoveEmptyEntries))
         {
             var next = Path.Combine(resolved, part);
+            string? target;
             try
             {
-                resolved = new FileInfo(next).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? next;
+                target = new FileInfo(next).LinkTarget;
             }
             catch (IOException)
             {
                 // Части пути нет (программу удалили) — путь остается как есть.
-                resolved = next;
+                target = null;
             }
+
+            // Цель ссылки — от папки ссылки, если она не полный путь.
+            resolved = target is null ? next : RealPath(Path.Combine(resolved, target), depth + 1);
         }
 
         return resolved;

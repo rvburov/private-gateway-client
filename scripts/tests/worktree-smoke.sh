@@ -42,7 +42,7 @@ expect() {
   if grep -qF -- "$want" <<< "$out"; then
     echo "ok   $*"
   else
-    echo "FAIL $* — нет «$want». Вывод:"
+    echo "FAIL $* — нет «${want}». Вывод:"
     sed 's/^/     /' <<< "$out"
     fails=$((fails + 1))
   fi
