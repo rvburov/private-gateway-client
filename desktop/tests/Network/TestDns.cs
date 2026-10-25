@@ -5,19 +5,25 @@ using System.Text;
 
 namespace PrivateGateway.Client.Tests.Network;
 
-/// <summary>DNS по UDP (по умолчанию на 127.0.0.1): на запрос A отвечает одним адресом, на остальные — пустым ответом; помнит имена.</summary>
+/// <summary>
+/// DNS по UDP (по умолчанию на 127.0.0.1): на запрос A отвечает одним адресом, на AAAA — адресом IPv6, если он задан,
+/// на остальные — пустым ответом; помнит имена.
+/// </summary>
 internal sealed class TestDns : IDisposable
 {
     private readonly UdpClient _socket;
     private readonly IPAddress _answer;
+    private readonly IPAddress? _answer6;
     private readonly CancellationTokenSource _stop = new();
     private readonly List<string> _queries = [];
 
     /// <param name="answer">Адрес в ответе на запрос A.</param>
     /// <param name="listen">Где слушать; null — свободный порт на 127.0.0.1.</param>
-    public TestDns(IPAddress answer, IPEndPoint? listen = null)
+    /// <param name="answer6">Адрес в ответе на запрос AAAA; null — пустой ответ.</param>
+    public TestDns(IPAddress answer, IPEndPoint? listen = null, IPAddress? answer6 = null)
     {
         _answer = answer;
+        _answer6 = answer6;
         _socket = new UdpClient(listen ?? new IPEndPoint(IPAddress.Loopback, 0));
         _ = Task.Run(ServeAsync);
     }
@@ -97,18 +103,25 @@ internal sealed class TestDns : IDisposable
             _queries.Add(name.ToString());
         }
 
-        var isA = BinaryPrimitives.ReadUInt16BigEndian(query.AsSpan(at + 1)) == 1;
+        var type = BinaryPrimitives.ReadUInt16BigEndian(query.AsSpan(at + 1));
+        var answer = type switch
+        {
+            1 => _answer,
+            28 => _answer6,
+            _ => null,
+        };
         var reply = new List<byte>(query[..questionEnd]);
         reply[2] = 0x81; // ответ, рекурсия запрошена
         reply[3] = 0x80; // рекурсия доступна, без ошибки
         reply[6] = 0;
-        reply[7] = isA ? (byte)1 : (byte)0;
+        reply[7] = answer is null ? (byte)0 : (byte)1;
         reply[8] = reply[9] = reply[10] = reply[11] = 0;
-        if (isA)
+        if (answer is not null)
         {
-            // Имя — ссылкой на вопрос, тип A, класс IN, TTL 60 с, 4 байта адреса.
-            reply.AddRange([0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 60, 0, 4]);
-            reply.AddRange(_answer.GetAddressBytes());
+            // Имя — ссылкой на вопрос, тип A или AAAA, класс IN, TTL 60 с, адрес.
+            var bytes = answer.GetAddressBytes();
+            reply.AddRange([0xC0, 0x0C, 0, (byte)type, 0, 1, 0, 0, 0, 60, 0, (byte)bytes.Length]);
+            reply.AddRange(bytes);
         }
 
         return [.. reply];

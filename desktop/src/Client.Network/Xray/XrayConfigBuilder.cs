@@ -356,7 +356,9 @@ public static class XrayConfigBuilder
     /// <summary>
     /// DNS ядра. С FakeDNS первым идет он: запросы из TUN получают адрес из пула сразу, без запроса к DNS;
     /// собственные запросы Xray (прямой выход, правила по IP) FakeDNS пропускают и идут к настоящему DNS. Пул
-    /// только IPv4 — на запросы AAAA отвечает настоящий DNS.
+    /// только IPv4 — на запросы AAAA отвечает настоящий DNS. IPv6 закрыт — только адреса IPv4: на AAAA пустой ответ,
+    /// программы не пробуют IPv6, а правила по адресам (IPIfNonMatch) не видят у имени адресов IPv6 — иначе правило
+    /// «IPv6 — в блок» закрыло бы целиком любой сайт, у которого есть AAAA.
     /// </summary>
     private static JsonObject Dns(ProtectionSettings protection, bool fakeDns)
     {
@@ -370,7 +372,7 @@ public static class XrayConfigBuilder
         return new JsonObject
         {
             ["servers"] = fakeDns ? new JsonArray("fakedns", server) : new JsonArray(server),
-            ["queryStrategy"] = protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : "UseIP",
+            ["queryStrategy"] = protection.Ipv6Allowed ? "UseIP" : "UseIPv4",
         };
     }
 
@@ -410,9 +412,17 @@ public static class XrayConfigBuilder
             ["ip"] = new JsonArray("geoip:private"),
             ["outboundTag"] = request.Protection.AllowLan ? DirectTag : BlockTag,
         });
-        if (request.Protection.BlockIpv6)
+        // IPv6 закрыт: адреса IPv6 без имени — в блок. Только с входа программ: собственный DNS Xray, заданный адресом
+        // IPv6, идет через сервер.
+        if (!request.Protection.Ipv6Allowed)
         {
-            rules.Add(new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("::/0"), ["outboundTag"] = BlockTag });
+            rules.Add(new JsonObject
+            {
+                ["type"] = "field",
+                ["inboundTag"] = new JsonArray(InboundTag),
+                ["ip"] = new JsonArray("::/0"),
+                ["outboundTag"] = BlockTag,
+            });
         }
 
         // «Напрямую» — только в раздельном режиме: в режиме «Весь трафик» мимо VPN ничего не идет.

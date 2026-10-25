@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
@@ -57,6 +58,32 @@ public sealed class XrayProxyTests
         await Should.ThrowAsync<Exception>(() => Get(site.Url, $"socks5://127.0.0.1:{proxyPort}"));
 
         site.Requests.ShouldBe(0, "geoip:private — блок: до сайта в локальной сети запрос не дошел");
+    }
+
+    [Fact]
+    public async Task Name_with_an_ipv6_address_goes_through_when_ipv6_is_closed()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        using var site = new LocalSite(Page);
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        // Выход сервера — на свой сайт: из машины ничего не уходит, куда бы ни вело имя.
+        serverConfig["outbounds"] = new JsonArray(
+            new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        // У имени и A, и AAAA — как у большинства сайтов.
+        using var dns = new TestDns(IPAddress.Parse("1.1.1.1"), answer6: IPAddress.Parse("2606:4700:4700::1111"));
+        var proxyPort = XrayKit.FreePort();
+        var config = ClientConfig(definition, proxyPort);
+        config["dns"]!["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = dns.Port });
+        // DNS теста — на 127.0.0.1, а локальная сеть закрыта: запросам ядра к нему — напрямую, остальные правила как есть.
+        config["routing"]!["rules"]!.AsArray().Insert(0,
+            new JsonObject { ["type"] = "field", ["network"] = "udp", ["port"] = dns.Port.ToString(CultureInfo.InvariantCulture), ["outboundTag"] = XrayConfigBuilder.DirectTag });
+        using var client = await XrayKit.Start(config, proxyPort);
+
+        (await Get(new Uri("http://dual.example.com/"), $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page,
+            "IPv6 закрыт — сайт идет по IPv4, а не закрывается целиком из-за адреса IPv6 в ответе DNS");
+        dns.Queries.ShouldContain("dual.example.com", "имя разрешало ядро — правила по адресам проверены");
     }
 
     [Fact]

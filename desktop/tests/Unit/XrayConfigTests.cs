@@ -174,6 +174,29 @@ public sealed class XrayConfigTests
         Outbound(custom, XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>().ShouldBe("UseIPv4");
     }
 
+    [Theory]
+    [InlineData(true, AddressPreference.PreferIpv4, "UseIPv4", true)]
+    [InlineData(false, AddressPreference.PreferIpv4, "UseIP", false)]
+    [InlineData(false, AddressPreference.PreferIpv6, "UseIP", false)]
+    [InlineData(false, AddressPreference.Ipv4Only, "UseIPv4", true)]
+    public void Closed_ipv6_asks_dns_for_ipv4_only_and_blocks_ipv6_of_programs(bool blockIpv6, AddressPreference addresses, string strategy, bool closed)
+    {
+        var config = Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with { BlockIpv6 = blockIpv6, Addresses = addresses });
+
+        // С AAAA в ответе правило «IPv6 — в блок» по адресам имени (IPIfNonMatch) закрыло бы и сайт, доступный по IPv4.
+        config["dns"]!["queryStrategy"]!.GetValue<string>().ShouldBe(strategy);
+        var ipv6 = config["routing"]!["rules"]!.AsArray().SingleOrDefault(r => r!["ip"] is JsonArray ip && ip[0]!.GetValue<string>() == "::/0");
+        if (!closed)
+        {
+            ipv6.ShouldBeNull("IPv6 открыт — идет через туннель");
+            return;
+        }
+
+        ipv6.ShouldNotBeNull()["outboundTag"]!.GetValue<string>().ShouldBe(XrayConfigBuilder.BlockTag);
+        ipv6["inboundTag"]!.AsArray().Select(t => t!.GetValue<string>()).ShouldBe([XrayConfigBuilder.InboundTag],
+            "только программы: собственный DNS ядра, заданный адресом IPv6, идет через сервер");
+    }
+
     [Fact]
     public void Rules_block_the_lan_and_ipv6_and_keep_direct_only_in_split_mode()
     {

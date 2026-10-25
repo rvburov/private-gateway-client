@@ -43,6 +43,12 @@ public sealed record ProtectionSettings(
 {
     public static ProtectionSettings Default { get; } = new();
 
+    /// <summary>
+    /// IPv6 открыт — идет через туннель: «Блокировать IPv6» выключен и адреса не «Только IPv4». Иначе IPv6 закрыт
+    /// везде: в TUN, в правилах ядра и в ответах DNS ядра.
+    /// </summary>
+    public bool Ipv6Allowed => !BlockIpv6 && Addresses != AddressPreference.Ipv4Only;
+
     /// <summary>Адреса DNS для службы: пусто — из профиля сервера.</summary>
     public IReadOnlyList<string> DnsServers => Dns switch
     {

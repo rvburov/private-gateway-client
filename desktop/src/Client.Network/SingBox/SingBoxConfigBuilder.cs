@@ -71,7 +71,7 @@ public static class SingBoxConfigBuilder
         ArgumentNullException.ThrowIfNull(request);
         var connection = request.Connection;
         var protection = request.Protection;
-        var ipv6 = !protection.BlockIpv6 && protection.Addresses != AddressPreference.Ipv4Only;
+        var ipv6 = protection.Ipv6Allowed;
         var tun = new JsonObject
         {
             ["type"] = "tun",

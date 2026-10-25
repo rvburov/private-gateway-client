@@ -1076,7 +1076,7 @@ public sealed partial class Gateway : IAsyncDisposable
     public static IReadOnlyList<IPAddress> PickAddresses(IEnumerable<IPAddress> found, ProtectionSettings protection)
     {
         ArgumentNullException.ThrowIfNull(protection);
-        var ipv6 = !protection.BlockIpv6 && protection.Addresses != AddressPreference.Ipv4Only;
+        var ipv6 = protection.Ipv6Allowed;
         var preferV6 = protection.Addresses == AddressPreference.PreferIpv6;
         return [.. found
             .Where(a => a.AddressFamily == AddressFamily.InterNetwork || (ipv6 && a.AddressFamily == AddressFamily.InterNetworkV6))
