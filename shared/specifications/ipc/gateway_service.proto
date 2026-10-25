@@ -94,6 +94,9 @@ message Status {
   google.protobuf.Timestamp captive_pause_until = 10;
   // Сеть машины — строка под заголовком на главном экране.
   NetworkInfo network = 11;
+  // «Блокировка» строгого режима: защиту выключили вручную, сеть закрыта до подключения
+  // или выключения строгого режима.
+  bool strict_block = 12;
 }
 
 enum NetworkKind {
@@ -221,7 +224,11 @@ message ConnectReply {
   ErrorInfo error = 2;
 }
 
-message DisconnectRequest {}
+message DisconnectRequest {
+  // Строгий режим («Защита и утечки»): выключить защиту, но оставить сеть закрытой — блок без туннеля,
+  // «Блокировка». Действует только в режиме VPN с блоком при обрыве.
+  bool keep_block = 1;
+}
 message DisconnectReply {}
 
 enum Protocol {

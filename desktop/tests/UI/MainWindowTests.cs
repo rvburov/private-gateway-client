@@ -77,6 +77,32 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Strict_mode_shield_closes_the_network_and_opens_the_tunnel_without_asking()
+    {
+        var (window, shell) = Open();
+        var main = (MainPageViewModel)shell.CurrentPage!;
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
+        Press(window, "Power");
+        Time.Advance(SimulatedGatewayClient.ConnectDelay);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+
+        Press(window, "Power");
+        WaitFor(() => shell.Protection.Status.StrictBlock);
+
+        (Text(window, "StatusTitle"), main.StatusSubtitle, Text(window, "StateLabel"))
+            .ShouldBe(("Интернет заблокирован", "Строгий режим: без VPN сеть закрыта", "Блокировка"));
+        shell.Protection.ActionText.ShouldBe(Loc.Instance["power.action.connect"], "щит в строгом режиме включает защиту");
+        (main.CheckedText, main.CheckActionText).ShouldBe(("Выключается в «Защите и утечках»", "Подключить"));
+        Snapshot(window, "main-strict");
+
+        Press(window, "Power");
+        Time.Advance(SimulatedGatewayClient.ConnectDelay);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+
+        shell.Overlay.HasDialog.ShouldBeFalse("о снятии защиты спрашивать не о чем — она включается");
+    }
+
+    [AvaloniaFact]
     public async Task Copy_puts_exit_ip_into_clipboard_and_shows_toast()
     {
         var (window, shell) = Open();

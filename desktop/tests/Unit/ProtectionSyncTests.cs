@@ -55,6 +55,23 @@ public sealed class ProtectionSyncTests
     }
 
     [Fact]
+    public void Strict_mode_block_opens_the_network_when_strict_mode_stops_and_never_reconnects()
+    {
+        var (settings, gateway, time) = Start(ConnectionState.Blocked, strict: true,
+            change: s => s with { Protection = s.Protection with { StrictMode = true } });
+
+        settings.Update(s => s with { Protection = s.Protection with { AllowLan = true } });
+        time.Advance(ProtectionSync.Quiet * 2);
+
+        gateway.Calls.ShouldBeEmpty("защиту выключили вручную — подключаться без просьбы нельзя, сеть закрыта по-прежнему");
+
+        settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
+        time.Advance(ProtectionSync.Quiet * 2);
+
+        gateway.Calls.ShouldBe(["disconnect"], "строгий режим выключен — сеть открывается");
+    }
+
+    [Fact]
     public void Settings_the_service_does_not_get_do_not_reconnect()
     {
         var (settings, gateway, time) = Start(ConnectionState.Connected);
@@ -75,10 +92,15 @@ public sealed class ProtectionSyncTests
     }
 
     private static (SettingsService Settings, ConnectionControllerTests.FakeGateway Gateway, FakeTimeProvider Time) Start(
-        ConnectionState state, DateTimeOffset? pausedUntil = null)
+        ConnectionState state, DateTimeOffset? pausedUntil = null, bool strict = false, Func<AppSettings, AppSettings>? change = null)
     {
         var settings = new SettingsService(new MemorySettings());
-        var gateway = new ConnectionControllerTests.FakeGateway(state, "nl", pausedUntil);
+        if (change is not null)
+        {
+            settings.Update(change);
+        }
+
+        var gateway = new ConnectionControllerTests.FakeGateway(state, "nl", pausedUntil, strict);
         var time = new FakeTimeProvider();
         new ProtectionSync(settings, gateway, new ConnectionControllerTests.FakeCatalog(Nl) { SelectedId = "nl" }, time).Start();
         return (settings, gateway, time);

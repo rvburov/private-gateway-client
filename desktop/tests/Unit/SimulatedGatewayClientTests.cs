@@ -103,6 +103,31 @@ public class SimulatedGatewayClientTests
     }
 
     [Fact]
+    public async Task Strict_mode_disconnect_keeps_the_network_closed_until_strict_mode_is_off()
+    {
+        var time = new FakeTimeProvider();
+        var settings = new SettingsService(new MemorySettings());
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
+        using var gateway = new SimulatedGatewayClient(time, settings);
+        var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+
+        (gateway.Status.State, gateway.Status.StrictBlock).ShouldBe((ConnectionState.Blocked, true), "как у службы: защита выключена, сеть закрыта");
+
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+
+        gateway.Status.StrictBlock.ShouldBeTrue("строгий режим действует — повторное отключение сеть не открывает");
+
+        settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+
+        (gateway.Status.State, gateway.Status.StrictBlock).ShouldBe((ConnectionState.Off, false));
+    }
+
+    [Fact]
     public async Task Disconnect_when_already_off_raises_nothing()
     {
         using var gateway = new SimulatedGatewayClient(new FakeTimeProvider());

@@ -52,7 +52,7 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
 
     public override async Task<V1.DisconnectReply> Disconnect(V1.DisconnectRequest request, ServerCallContext context)
     {
-        await gateway.DisconnectAsync(context?.CancellationToken ?? default).ConfigureAwait(false);
+        await gateway.DisconnectAsync(request?.KeepBlock == true, context?.CancellationToken ?? default).ConfigureAwait(false);
         return new V1.DisconnectReply();
     }
 

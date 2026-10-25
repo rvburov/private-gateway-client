@@ -12,13 +12,14 @@ public static class ConnectionStateMachine
         [ConnectionState.Off] = [ConnectionState.Connecting],
         [ConnectionState.Connecting] =
             [ConnectionState.Connected, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
+        // «Защищено → Блокировка» и «Ошибка → Блокировка» — ручное отключение в строгом режиме: сеть остается закрытой.
         [ConnectionState.Connected] =
-            [ConnectionState.Reconnecting, ConnectionState.Connecting, ConnectionState.Error, ConnectionState.Off],
+            [ConnectionState.Reconnecting, ConnectionState.Connecting, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
         // «Переподключение → Подключение» — пользователь выбрал другой сервер или поменял настройки, пока служба ждала свой.
         [ConnectionState.Reconnecting] =
             [ConnectionState.Connected, ConnectionState.Connecting, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
         [ConnectionState.Blocked] = [ConnectionState.Connecting, ConnectionState.Error, ConnectionState.Off],
-        [ConnectionState.Error] = [ConnectionState.Connecting, ConnectionState.Off],
+        [ConnectionState.Error] = [ConnectionState.Connecting, ConnectionState.Blocked, ConnectionState.Off],
     };
 
     /// <summary>Можно ли перейти из <paramref name="from"/> в <paramref name="to"/>.</summary>

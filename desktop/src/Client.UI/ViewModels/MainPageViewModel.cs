@@ -245,9 +245,10 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    /// <summary>Кнопка справа от строки проверки: «Проверить», «Повторить», «Перезапустить службу».</summary>
+    /// <summary>Кнопка справа от строки проверки: «Проверить», «Повторить», «Подключить» (строгий режим), «Перезапустить службу».</summary>
     public string CheckActionText => Status.State switch
     {
+        ConnectionState.Blocked when Status.StrictBlock => Loc.Instance["action.connect"],
         ConnectionState.Blocked => Loc.Instance["action.retry"],
         ConnectionState.Error => Loc.Instance["action.restartService"],
         _ => Loc.Instance["action.check"],

@@ -338,16 +338,37 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
-    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Выключить защиту. <paramref name="keepBlock"/> — строгий режим: в режиме VPN с блоком при обрыве сеть
+    /// остается закрытой — ядра остановлены, блок без туннеля, «Блокировка» до подключения или выключения
+    /// строгого режима. Без блока или в режиме прокси закрывать нечем — защита просто выключается.
+    /// </summary>
+    public async Task DisconnectAsync(bool keepBlock = false, CancellationToken cancellationToken = default)
     {
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
-            ReleaseBlock();
             _systemProxy?.Release();
             _journal.Hide([]);
+            if (keepBlock && Status.State != ConnectionState.Off && _request is { Mode: ConnectionMode.Vpn } request && _killSwitchOn
+                && Block(request, _addresses, "оставлен: строгий режим"))
+            {
+                if (Status.State == ConnectionState.Blocked)
+                {
+                    Update(s => s with { StrictBlock = true, CaptivePauseUntil = null });
+                }
+                else
+                {
+                    Move(s => s, ConnectionState.Blocked, after: s => s with { StrictBlock = true });
+                }
+
+                _journal.Add(JournalLevel.Info, "service", "Строгий режим: защита выключена вручную, сеть закрыта до подключения");
+                return;
+            }
+
+            ReleaseBlock();
             if (Status.State != ConnectionState.Off)
             {
                 Move(s => s, ConnectionState.Off);

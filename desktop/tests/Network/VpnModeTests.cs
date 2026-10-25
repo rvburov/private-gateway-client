@@ -576,6 +576,37 @@ public sealed class VpnModeTests
         }
     }
 
+    [Fact]
+    public async Task Strict_mode_disconnect_keeps_the_network_closed_until_the_user_connects_or_drops_it()
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(options: rig.Vpn);
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest { KeepBlock = true }, cancellationToken: Ct);
+
+        var strict = await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct);
+        (strict.State, strict.StrictBlock).ShouldBe((V1.ConnectionState.Blocked, true), "защита выключена вручную, а сеть закрыта");
+        rig.KillSwitch.IsEnabled.ShouldBeTrue();
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2), "туннеля тоже нет");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Строгий режим: защита выключена вручную, сеть закрыта до подключения");
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected))[^1];
+
+        connected.StrictBlock.ShouldBeFalse();
+        (await rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
+
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Off, "строгий режим выключен — сеть открыта");
+        rig.KillSwitch.IsEnabled.ShouldBeFalse();
+        (await rig.Netns.CurlAsync(rig.Lan.Url)).ShouldBe("мимо туннеля");
+    }
+
     /// <summary>
     /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
     /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в

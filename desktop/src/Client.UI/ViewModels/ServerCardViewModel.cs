@@ -93,7 +93,7 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     private bool IsSelected => _catalog.Selected?.Id == Id;
 
     /// <summary>Защита идет через этот сервер или подключается к нему.</summary>
-    public bool IsInUse => IsSelected && !ConnectionController.WantsConnect(_protection.Status.State);
+    public bool IsInUse => IsSelected && !ConnectionController.WantsConnect(_protection.Status);
 
     /// <summary>«Активен» — защита через него; «Выбран» — к нему подключит кнопка-щит.</summary>
     public string? StatusText => IsInUse

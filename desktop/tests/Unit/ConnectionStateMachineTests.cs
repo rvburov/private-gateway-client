@@ -13,6 +13,7 @@ public class ConnectionStateMachineTests
         { ConnectionState.Connecting, ConnectionState.Off },
         { ConnectionState.Connected, ConnectionState.Reconnecting },
         { ConnectionState.Connected, ConnectionState.Connecting },
+        { ConnectionState.Connected, ConnectionState.Blocked },
         { ConnectionState.Connected, ConnectionState.Error },
         { ConnectionState.Connected, ConnectionState.Off },
         { ConnectionState.Reconnecting, ConnectionState.Connected },
@@ -24,6 +25,7 @@ public class ConnectionStateMachineTests
         { ConnectionState.Blocked, ConnectionState.Error },
         { ConnectionState.Blocked, ConnectionState.Off },
         { ConnectionState.Error, ConnectionState.Connecting },
+        { ConnectionState.Error, ConnectionState.Blocked },
         { ConnectionState.Error, ConnectionState.Off },
     };
 

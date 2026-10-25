@@ -128,13 +128,16 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         _allowOtherVpn = false;
         try
         {
-            await _client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            await _client.DisconnectAsync(Disconnect(_settings()), cancellationToken: cancellationToken).ConfigureAwait(false);
         }
         catch (RpcException)
         {
             // Службы нет — и защиты через нее нет; состояние обновится, когда она вернется.
         }
     }
+
+    /// <summary>Запрос отключения: в строгом режиме защита выключается, а сеть остается закрытой.</summary>
+    public static V1.DisconnectRequest Disconnect(AppSettings settings) => new() { KeepBlock = ConnectionController.KeepsBlock(settings) };
 
     /// <summary>Пауза началась — в ответе службы есть срок; службы нет — паузы нет.</summary>
     public async Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)

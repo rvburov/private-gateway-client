@@ -340,6 +340,7 @@ public static partial class ContractMapping
                 IsMetered = status.Network.IsMetered,
             },
             CaptivePauseUntil = status.CaptivePauseUntil is { } until ? Timestamp.FromDateTimeOffset(until) : null,
+            StrictBlock = status.StrictBlock,
         };
         if (status.ErrorCode is { } code)
         {
@@ -366,7 +367,8 @@ public static partial class ContractMapping
                 : ExitInfo.Unknown,
             status.Network is { } n ? new NetworkInfo(n.Kind.ToCore(), Empty(n.Name), n.IsOpen, n.IsMetered) : NetworkInfo.Unknown,
             Empty(status.Error?.Code),
-            status.CaptivePauseUntil?.ToDateTimeOffset());
+            status.CaptivePauseUntil?.ToDateTimeOffset(),
+            status.StrictBlock);
     }
 
     /// <summary>Пустая строка контракта — как отсутствующее значение.</summary>

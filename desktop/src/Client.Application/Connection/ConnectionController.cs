@@ -1,5 +1,6 @@
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.Application.Connection;
 
@@ -22,7 +23,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
             return true;
         }
 
-        if (WantsConnect(gateway.Status.State))
+        if (WantsConnect(gateway.Status))
         {
             var server = catalog.Selected;
             if (server is null)
@@ -50,7 +51,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
         }
 
         catalog.Choose(serverId);
-        if (!WantsConnect(gateway.Status.State) && catalog.Selected is { } server)
+        if (!WantsConnect(gateway.Status) && catalog.Selected is { } server)
         {
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }
@@ -63,7 +64,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     public async Task ConnectToAsync(string serverId, CancellationToken cancellationToken = default)
     {
         var status = gateway.Status;
-        if (status.ServerId == serverId && !WantsConnect(status.State))
+        if (status.ServerId == serverId && !WantsConnect(status))
         {
             return;
         }
@@ -125,4 +126,21 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// <summary>Нажатие в этом состоянии означает «включить»: защита выключена или сломана.</summary>
     public static bool WantsConnect(ConnectionState state) =>
         state is ConnectionState.Off or ConnectionState.Error;
+
+    /// <summary>
+    /// Нажатие подключает: защита выключена, сломана или выключена вручную в строгом режиме («Блокировка» строгого
+    /// режима — сеть закрыта, а защиты нет: щит ее включает, выключает ее сам строгий режим в настройках).
+    /// </summary>
+    public static bool WantsConnect(ConnectionStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return WantsConnect(status.State) || status.StrictBlock;
+    }
+
+    /// <summary>Строгий режим действует: режим VPN с блоком при обрыве, ручное отключение оставляет сеть закрытой.</summary>
+    public static bool KeepsBlock(AppSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        return settings is { Mode: ConnectionMode.Vpn, KillSwitch: true, Protection.StrictMode: true };
+    }
 }

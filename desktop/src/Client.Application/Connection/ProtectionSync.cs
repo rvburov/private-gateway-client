@@ -11,6 +11,8 @@ namespace PrivateGateway.Client.Application.Connection;
 /// Служба меняет подключение без щели: блок при обрыве заменяется, а не снимается. Несколько изменений
 /// подряд — одно переподключение через <see cref="Quiet"/> после последнего. Защита выключена, сломана
 /// («Ошибка») или на паузе для входа в Wi-Fi — ничего: новые настройки войдут в следующее подключение.
+/// «Блокировка» строгого режима — защиту выключили вручную: не подключаться, а открыть сеть, если строгий
+/// режим больше не действует (выключен сам, блок при обрыве или режим VPN).
 /// </summary>
 public sealed class ProtectionSync(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time)
 {
@@ -55,6 +57,16 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
     private async Task ApplyAsync()
     {
         var status = gateway.Status;
+        if (status.StrictBlock)
+        {
+            if (!ConnectionController.KeepsBlock(settings.Current))
+            {
+                await gateway.DisconnectAsync().ConfigureAwait(false);
+            }
+
+            return;
+        }
+
         if (status.IsPaused || status.State is not (ConnectionState.Connecting or ConnectionState.Connected
                 or ConnectionState.Reconnecting or ConnectionState.Blocked) || catalog.Selected is not { } server)
         {

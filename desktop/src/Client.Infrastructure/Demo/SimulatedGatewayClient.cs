@@ -171,6 +171,23 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
                 return Task.CompletedTask;
             }
 
+            // Строгий режим: защита выключена, сеть закрыта — как у службы.
+            if (settings?.Current is { } current && ConnectionController.KeepsBlock(current))
+            {
+                if (_status.StrictBlock)
+                {
+                    return Task.CompletedTask;
+                }
+
+                var blocked = _status.State == ConnectionState.Blocked ? _status : _status.MoveTo(ConnectionState.Blocked, time.GetUtcNow());
+                _status = blocked with { StrictBlock = true, Traffic = TrafficStats.Empty, CaptivePauseUntil = null };
+                _pauseEnd?.Dispose();
+                _pauseEnd = null;
+                Log(JournalLevel.Info, "service", "strict mode: protection off, network blocked");
+                Raise();
+                return Task.CompletedTask;
+            }
+
             _status = _status.MoveTo(ConnectionState.Off, time.GetUtcNow()) with
             {
                 ServerId = null,

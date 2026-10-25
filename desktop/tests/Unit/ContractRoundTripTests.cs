@@ -105,6 +105,8 @@ public sealed class ContractRoundTripTests
         back.ShouldBe(status);
         var off = ConnectionStatus.Initial(at);
         V1.Status.Parser.ParseFrom(off.ToContract().ToByteArray()).ToCore().ShouldBe(off);
+        var strict = off with { State = ConnectionState.Blocked, StrictBlock = true };
+        V1.Status.Parser.ParseFrom(strict.ToContract().ToByteArray()).ToCore().StrictBlock.ShouldBeTrue("«Блокировка» строгого режима доходит до окна");
     }
 
     [Fact]

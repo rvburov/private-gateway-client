@@ -2,6 +2,7 @@ using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.Tests.Unit;
 
@@ -39,6 +40,28 @@ public class ConnectionControllerTests
         (await controller.ToggleAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
 
         gateway.Calls.ShouldBe(["disconnect"]);
+    }
+
+    [Fact]
+    public async Task Toggle_in_a_strict_mode_block_connects_instead_of_disconnecting()
+    {
+        var gateway = new FakeGateway(ConnectionState.Blocked, strict: true);
+        var controller = new ConnectionController(gateway, new FakeCatalog(Nl) { SelectedId = "nl" });
+
+        (await controller.ToggleAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+
+        gateway.Calls.ShouldBe(["connect:nl"], "защиту выключили вручную, сеть закрыта — щит включает защиту, открывает сеть только сам строгий режим");
+    }
+
+    [Fact]
+    public void Strict_mode_keeps_the_block_only_in_vpn_mode_with_the_kill_switch()
+    {
+        var strict = AppSettings.Default with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = ProtectionSettings.Default with { StrictMode = true } };
+
+        ConnectionController.KeepsBlock(strict).ShouldBeTrue();
+        ConnectionController.KeepsBlock(strict with { Protection = strict.Protection with { StrictMode = false } }).ShouldBeFalse();
+        ConnectionController.KeepsBlock(strict with { KillSwitch = false }).ShouldBeFalse("без блока при обрыве закрывать нечем");
+        ConnectionController.KeepsBlock(strict with { Mode = ConnectionMode.Proxy }).ShouldBeFalse("в режиме прокси блока нет");
     }
 
     [Fact]
@@ -190,12 +213,12 @@ public class ConnectionControllerTests
         gateway.Calls.ShouldBe(paused ? ["pause:5"] : []);
     }
 
-    internal sealed class FakeGateway(ConnectionState state, string? serverId = null, DateTimeOffset? pausedUntil = null) : IGatewayClient
+    internal sealed class FakeGateway(ConnectionState state, string? serverId = null, DateTimeOffset? pausedUntil = null, bool strict = false) : IGatewayClient
     {
         public List<string> Calls { get; } = [];
 
         public ConnectionStatus Status { get; } =
-            ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId, CaptivePauseUntil = pausedUntil };
+            ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = state, ServerId = serverId, CaptivePauseUntil = pausedUntil, StrictBlock = strict };
 
         public ServiceKind Service => ServiceKind.Simulated;
 
