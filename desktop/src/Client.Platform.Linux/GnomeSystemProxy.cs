@@ -8,7 +8,7 @@ namespace PrivateGateway.Client.Platform.Linux;
 /// <summary>
 /// Системный прокси GNOME (gsettings, org.gnome.system.proxy): им следуют Chrome, Firefox с «системным
 /// прокси» и программы GNOME. Локальные адреса и частные сети — напрямую. Значения в снимке — как их
-/// печатает gsettings (GVariant), так же они и возвращаются. KDE — отдельной реализацией позже.
+/// печатает gsettings (GVariant), так же они и возвращаются. KDE — <see cref="KdeSystemProxy"/>.
 /// </summary>
 /// <param name="gsettings">Вызов gsettings: аргументы → вывод; null — не вышло.</param>
 public sealed class GnomeSystemProxy(Func<IReadOnlyList<string>, string?> gsettings) : ISystemProxy

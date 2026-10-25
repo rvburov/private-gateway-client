@@ -10,8 +10,8 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
-/// Системный прокси в режиме прокси: настройки ОС (GNOME — на подделке gsettings, Windows — в своем
-/// разделе реестра, а не в настоящем), снимок прежних настроек и его возврат, связка со службой.
+/// Системный прокси в режиме прокси: настройки ОС (GNOME — на подделке gsettings, KDE — во временном
+/// kioslaverc, Windows — в своем разделе реестра, а не в настоящем), снимок прежних настроек и его возврат, связка со службой.
 /// Настоящие настройки машины тесты не трогают.
 /// </summary>
 public sealed class SystemProxyTests : IDisposable
@@ -61,6 +61,81 @@ public sealed class SystemProxyTests : IDisposable
         gsettings.Values.ShouldBe(gsettings.Initial, ignoreOrder: true);
         gsettings.Written[^1].ShouldBe("org.gnome.system.proxy mode");
         proxy.IsAvailable.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Kde_proxy_points_every_protocol_at_the_core_and_comes_back_leaving_the_rest_of_the_file()
+    {
+        Directory.CreateDirectory(_root);
+        var file = Path.Combine(_root, "kioslaverc");
+        const string Before = """
+            [$Version]
+            update_info=kioslave.upd:esr
+
+            [Proxy Settings]
+            NoProxyFor=localhost
+            ProxyType=2
+            Proxy Config Script=http://example.com/proxy.pac
+            httpProxy[$e]=http://proxy.example.com 8080
+
+            [UserAgent]
+            DefaultUserAgent=Mozilla/5.0
+            """;
+        File.WriteAllText(file, Before.ReplaceLineEndings("\n") + "\n");
+        var reparsed = 0;
+        var proxy = new KdeSystemProxy(file, () => reparsed++);
+        var before = proxy.Read();
+
+        proxy.Enable(10808);
+
+        var text = File.ReadAllText(file);
+        text.ShouldContain("[Proxy Settings]\nProxy Config Script=http://example.com/proxy.pac\n" +
+            "httpProxy=http://127.0.0.1 10808\nhttpsProxy=http://127.0.0.1 10808\nsocksProxy=socks://127.0.0.1 10808\n" +
+            $"NoProxyFor={KdeSystemProxy.Bypass}\nProxyType=1\n\n[UserAgent]", Case.Sensitive, "тип — последним: адреса уже на месте");
+        text.ShouldStartWith("[$Version]\nupdate_info=kioslave.upd:esr\n\n", Case.Sensitive, "чужие разделы — как были");
+        text.ShouldEndWith("[UserAgent]\nDefaultUserAgent=Mozilla/5.0\n");
+        reparsed.ShouldBe(1, "KDE просят перечитать настройки");
+
+        proxy.Restore(before);
+
+        File.ReadAllText(file).ShouldBe(("""
+            [$Version]
+            update_info=kioslave.upd:esr
+
+            [Proxy Settings]
+            Proxy Config Script=http://example.com/proxy.pac
+            httpProxy[$e]=http://proxy.example.com 8080
+            NoProxyFor=localhost
+            ProxyType=2
+
+            [UserAgent]
+            DefaultUserAgent=Mozilla/5.0
+            """ + "\n").ReplaceLineEndings("\n"), "прежние значения вернулись с пометками KDE; httpsProxy и socksProxy не было — их и нет");
+        File.Exists(file + ".pg-tmp").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Kde_proxy_without_the_file_creates_the_section_and_takes_it_back_empty()
+    {
+        var file = Path.Combine(_root, "config", "kioslaverc");
+        var proxy = new KdeSystemProxy(file, null);
+        var before = proxy.Read();
+
+        before.Values.ShouldBeEmpty("файла нет — ни одного ключа");
+
+        proxy.Enable(10808);
+
+        new KdeSystemProxy(file, null).Read().Values["ProxyType"].ShouldBe("1");
+
+        proxy.Restore(before);
+
+        File.ReadAllText(file).ShouldBe("[Proxy Settings]\n", "прокси выключен, как и было: ключей нет");
+
+        File.WriteAllText(file, "[UserAgent]\nDefaultUserAgent=Mozilla/5.0\n");
+        proxy.Enable(10808);
+
+        File.ReadAllText(file).ShouldStartWith("[UserAgent]\nDefaultUserAgent=Mozilla/5.0\n\n[Proxy Settings]\nhttpProxy=", Case.Sensitive,
+            "раздела не было — он дописан после чужих, через пустую строку");
     }
 
     [Fact]

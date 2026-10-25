@@ -66,12 +66,13 @@ public static partial class ServiceHost
     }
 
     /// <summary>
-    /// Системный прокси этой ОС для службы пользователя: Windows — параметры Интернета, Linux — GNOME;
-    /// нет такого (macOS — нужны права, другой рабочий стол) — null, и программы направляются вручную.
+    /// Системный прокси этой ОС для службы пользователя: Windows — параметры Интернета, Linux — KDE в сеансе
+    /// Plasma, иначе GNOME; нет такого (macOS — нужны права, другой рабочий стол) — null, и программы
+    /// направляются вручную.
     /// </summary>
     public static ISystemProxy? SystemProxy() =>
         OperatingSystem.IsWindows() ? new WindowsSystemProxy()
-        : OperatingSystem.IsLinux() ? GnomeSystemProxy.ForThisSession()
+        : OperatingSystem.IsLinux() ? (ISystemProxy?)KdeSystemProxy.ForThisSession() ?? GnomeSystemProxy.ForThisSession()
         : null;
 
     /// <summary>
