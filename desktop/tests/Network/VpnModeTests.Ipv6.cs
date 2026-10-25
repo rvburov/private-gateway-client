@@ -21,7 +21,8 @@ public sealed partial class VpnModeTests
     {
         NetworkNamespace.SkipUnlessIpv6();
         await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n", page6: $"fl=1\nip={TunnelIp6}\n");
-        // У машины своя сеть IPv6 и маршрут уже маршрута по умолчанию — как от объявления роутера в чужом Wi-Fi.
+        // У машины своя сеть IPv6 (глобальный адрес на линии) и маршрут уже маршрута по умолчанию — как от объявления роутера
+        // в чужом Wi-Fi.
         var (host6, _) = rig.Netns.LinkIpv6();
         rig.Netns.Run(null, "ip", "-6", "route", "add", "2606:4700::/32", "dev", "pgnet0");
         using var lan6 = new LocalSite("своя сеть IPv6", host6);
@@ -40,8 +41,8 @@ public sealed partial class VpnModeTests
         (await rig.Netns.RunAsync("ip", "-6", "addr", "show", "dev", "pgtun0")).ShouldContain(SingBoxConfigBuilder.TunAddress6.Split('/')[0]);
         (await rig.Netns.CurlAsync(Rig.Trace6)).ShouldBe($"fl=1\nip={TunnelIp6}\n",
             "IPv6 машины — через TUN, Xray и сервер, даже с более узким маршрутом мимо туннеля");
-        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(lan6.Url, seconds: 3),
-            "своя сеть IPv6 не разрешена — она в туннеле, и Xray ее закрывает, как и IPv4");
+        (await rig.Netns.CurlAsync(lan6.Url)).ShouldBe($"fl=1\nip={TunnelIp6}\n",
+            "своя сеть IPv6 с глобальным адресом (как от провайдера) — тоже через туннель и сервер, а не напрямую");
         lan6.Requests.ShouldBe(0);
         var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
             .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());
