@@ -32,6 +32,9 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
     public bool IsOk => Config is not null;
 }
 
+/// <summary>Конфиг проверки задержки и причина отказа для каждого сервера (null — сервер проверяется).</summary>
+public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejection?> Rejections);
+
 /// <summary>
 /// Конфиг Xray-core собирает служба сама — из описания сервера и настроек, а не из готового текста
 /// (модель угроз). Вход — SOCKS5 и HTTP на одном порту (к нему же подключается TUN); выход — выбранный
@@ -74,16 +77,7 @@ public static class XrayConfigBuilder
         };
         if (request.Connection.TlsFragment)
         {
-            // Фрагментация TLS ClientHello против DPI: выход «proxy» дозванивается через этот.
-            outbounds.Add(new JsonObject
-            {
-                ["tag"] = FragmentTag,
-                ["protocol"] = "freedom",
-                ["settings"] = new JsonObject
-                {
-                    ["fragment"] = new JsonObject { ["packets"] = "tlshello", ["length"] = "100-200", ["interval"] = "10-20" },
-                },
-            });
+            outbounds.Add(Fragment());
         }
 
         return new XrayConfigResult(new JsonObject
@@ -106,6 +100,70 @@ public static class XrayConfigBuilder
         }, null);
     }
 
+    /// <summary>
+    /// Конфиг проверки задержки: на каждый сервер — свой вход SOCKS5 на 127.0.0.1 (порт из
+    /// <paramref name="ports"/> с тем же номером) и свой выход, вход ведет только в свой выход. Без DNS,
+    /// правил и журнала соединений — проверяется путь через сервер с настройками подключения
+    /// (фрагментация, Mux, отпечаток). Сервер, за который ядро не возьмется, входа не получает.
+    /// </summary>
+    public static XrayProbeConfig BuildProbe(IReadOnlyList<ServerDefinition> servers, IReadOnlyList<int> ports, ConnectionSettings connection)
+    {
+        ArgumentNullException.ThrowIfNull(servers);
+        ArgumentNullException.ThrowIfNull(ports);
+        ArgumentNullException.ThrowIfNull(connection);
+        if (ports.Count != servers.Count)
+        {
+            throw new ArgumentException("Порт нужен каждому серверу", nameof(ports));
+        }
+
+        var inbounds = new JsonArray();
+        var outbounds = new JsonArray();
+        var rules = new JsonArray();
+        var rejections = new CoreRejection?[servers.Count];
+        for (var i = 0; i < servers.Count; i++)
+        {
+            if (Outbound(servers[i], connection, out rejections[i]) is not { } outbound)
+            {
+                continue;
+            }
+
+            outbound["tag"] = $"probe-out-{i}";
+            outbounds.Add(outbound);
+            inbounds.Add(new JsonObject
+            {
+                ["tag"] = $"probe-in-{i}",
+                ["listen"] = "127.0.0.1",
+                ["port"] = ports[i],
+                ["protocol"] = "socks",
+                ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = false },
+            });
+            rules.Add(new JsonObject
+            {
+                ["type"] = "field",
+                ["inboundTag"] = new JsonArray($"probe-in-{i}"),
+                ["outboundTag"] = $"probe-out-{i}",
+            });
+        }
+
+        if (outbounds.Count == 0)
+        {
+            return new XrayProbeConfig(null, rejections);
+        }
+
+        if (connection.TlsFragment)
+        {
+            outbounds.Add(Fragment());
+        }
+
+        return new XrayProbeConfig(new JsonObject
+        {
+            ["log"] = new JsonObject { ["loglevel"] = "warning", ["access"] = "none", ["dnsLog"] = false },
+            ["inbounds"] = inbounds,
+            ["outbounds"] = outbounds,
+            ["routing"] = new JsonObject { ["rules"] = rules },
+        }, rejections);
+    }
+
     /// <summary>Шаблон сайта из «Маршрутизации» — в условие Xray: «example.com» и «*.example.com» — домен с поддоменами.</summary>
     public static string DomainCondition(string pattern)
     {
@@ -113,6 +171,17 @@ public static class XrayConfigBuilder
         return pattern.StartsWith("geosite:", StringComparison.Ordinal) ? pattern
             : "domain:" + (pattern.StartsWith("*.", StringComparison.Ordinal) ? pattern[2..] : pattern);
     }
+
+    /// <summary>Фрагментация TLS ClientHello против DPI: выход к серверу дозванивается через этот.</summary>
+    private static JsonObject Fragment() => new()
+    {
+        ["tag"] = FragmentTag,
+        ["protocol"] = "freedom",
+        ["settings"] = new JsonObject
+        {
+            ["fragment"] = new JsonObject { ["packets"] = "tlshello", ["length"] = "100-200", ["interval"] = "10-20" },
+        },
+    };
 
     private static JsonObject Inbound(CoreRequest request) => new()
     {

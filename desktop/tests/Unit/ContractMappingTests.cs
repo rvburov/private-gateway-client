@@ -1,4 +1,5 @@
 using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using CoreCheck = PrivateGateway.Client.Core.DiagnosticCheck;
 using CoreCheckState = PrivateGateway.Client.Core.CheckState;
@@ -94,6 +95,26 @@ public class ContractMappingTests
         {
             security.ToCore().ToContract().ShouldBe(security);
         }
+    }
+
+    [Fact]
+    public void Every_latency_failure_and_result_round_trips()
+    {
+        foreach (var failure in Enum.GetValues<LatencyFailure>())
+        {
+            failure.ToContract().ToCore().ShouldBe(failure);
+            LatencyResult.Failed(failure).ToContract("a").ToCore().ShouldBe(LatencyResult.Failed(failure));
+        }
+
+        foreach (var failure in Enum.GetValues<V1.LatencyFailure>().Where(f => f != V1.LatencyFailure.Unspecified))
+        {
+            failure.ToCore().ToContract().ShouldBe(failure);
+        }
+
+        var reachable = new LatencyResult(42, null).ToContract("srv-1");
+        (reachable.Id, reachable.Reachable, reachable.LatencyMs, reachable.Failure).ShouldBe(("srv-1", true, 42, V1.LatencyFailure.Unspecified));
+        reachable.ToCore().ShouldBe(new LatencyResult(42, null));
+        Should.Throw<ArgumentOutOfRangeException>(() => new V1.LatencyResult { Id = "x", Reachable = false }.ToCore());
     }
 
     [Fact]

@@ -56,6 +56,31 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Probe_config_pairs_each_local_inbound_with_its_own_server()
+    {
+        var probe = XrayConfigBuilder.BuildProbe(
+            [Link("vless/reality-vision"), Link("hysteria2/hy2-short-scheme"), Link("trojan/ws")],
+            [20001, 20002, 20003],
+            ConnectionSettings.Default with { TlsFragment = true });
+
+        probe.Rejections.ShouldBe([null, CoreRejection.UnsupportedProtocol, null]);
+        var config = probe.Config.ShouldNotBeNull();
+        var inbounds = config["inbounds"]!.AsArray();
+        inbounds.Select(i => (i!["port"]!.GetValue<int>(), i["listen"]!.GetValue<string>(), i["protocol"]!.GetValue<string>()))
+            .ShouldBe([(20001, "127.0.0.1", "socks"), (20003, "127.0.0.1", "socks")]);
+        var rules = config["routing"]!["rules"]!.AsArray()
+            .Select(r => (r!["inboundTag"]![0]!.GetValue<string>(), r["outboundTag"]!.GetValue<string>())).ToList();
+        rules.ShouldBe([("probe-in-0", "probe-out-0"), ("probe-in-2", "probe-out-2")]);
+        Outbound(config, "probe-out-0")["settings"]!["vnext"]![0]!["address"]!.GetValue<string>().ShouldBe("203.0.113.24");
+        Outbound(config, "probe-out-2")["protocol"]!.GetValue<string>().ShouldBe("trojan");
+        Outbound(config, "probe-out-2")["streamSettings"]!["sockopt"]!["dialerProxy"]!.GetValue<string>().ShouldBe(XrayConfigBuilder.FragmentTag);
+        Outbound(config, XrayConfigBuilder.FragmentTag)["protocol"]!.GetValue<string>().ShouldBe("freedom");
+        config["log"]!["access"]!.GetValue<string>().ShouldBe("none");
+
+        XrayConfigBuilder.BuildProbe([Link("tuic/bbr")], [20001], ConnectionSettings.Default).Config.ShouldBeNull();
+    }
+
+    [Fact]
     public void Tls_transports_carry_path_host_alpn_and_service_name()
     {
         var xhttp = Outbound(Build(Link("vless/tls-xhttp")), XrayConfigBuilder.ProxyTag)["streamSettings"]!;

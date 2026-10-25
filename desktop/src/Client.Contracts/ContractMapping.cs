@@ -1,6 +1,8 @@
 using CoreCheck = PrivateGateway.Client.Core.DiagnosticCheck;
 using CoreCheckState = PrivateGateway.Client.Core.CheckState;
 using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
+using CoreLatency = PrivateGateway.Client.Core.Servers.LatencyResult;
+using CoreLatencyFailure = PrivateGateway.Client.Core.Servers.LatencyFailure;
 using CoreState = PrivateGateway.Client.Core.ConnectionState;
 using CoreAddresses = PrivateGateway.Client.Core.Settings.AddressPreference;
 using CoreFingerprint = PrivateGateway.Client.Core.Settings.TlsFingerprint;
@@ -46,6 +48,38 @@ public static class ContractMapping
         V1.ConnectionState.Error => CoreState.Error,
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Состояние не задано"),
     };
+
+    public static V1.LatencyFailure ToContract(this CoreLatencyFailure failure) => failure switch
+    {
+        CoreLatencyFailure.Unsupported => V1.LatencyFailure.Unsupported,
+        CoreLatencyFailure.NoResponse => V1.LatencyFailure.NoResponse,
+        CoreLatencyFailure.CoreFailed => V1.LatencyFailure.CoreFailed,
+        _ => throw new ArgumentOutOfRangeException(nameof(failure), failure, null),
+    };
+
+    public static CoreLatencyFailure ToCore(this V1.LatencyFailure failure) => failure switch
+    {
+        V1.LatencyFailure.Unsupported => CoreLatencyFailure.Unsupported,
+        V1.LatencyFailure.NoResponse => CoreLatencyFailure.NoResponse,
+        V1.LatencyFailure.CoreFailed => CoreLatencyFailure.CoreFailed,
+        _ => throw new ArgumentOutOfRangeException(nameof(failure), failure, "Причина не задана"),
+    };
+
+    /// <summary>Результат проверки задержки для ответа MeasureLatency.</summary>
+    public static V1.LatencyResult ToContract(this CoreLatency result, string id)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Milliseconds is { } ms
+            ? new V1.LatencyResult { Id = id, Reachable = true, LatencyMs = ms }
+            : new V1.LatencyResult { Id = id, Reachable = false, Failure = result.Failure!.Value.ToContract() };
+    }
+
+    /// <summary>Результат из ответа службы; недоступный без причины — ошибка отправителя.</summary>
+    public static CoreLatency ToCore(this V1.LatencyResult result)
+    {
+        ArgumentNullException.ThrowIfNull(result);
+        return result.Reachable ? new CoreLatency(result.LatencyMs, null) : CoreLatency.Failed(result.Failure.ToCore());
+    }
 
     public static V1.Protocol ToContract(this CoreProtocol protocol) => protocol switch
     {

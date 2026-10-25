@@ -454,8 +454,21 @@ message LogEntry {
 
 message LatencyTarget {
   string id = 1;
+  // Адрес и порт — для подписи в журнале службы; меряет служба по server.
   string host = 2;
   uint32 port = 3;
+  // Сервер целиком: задержку служба меряет запросом через ядро, как при подключении, а не пингом адреса.
+  ServerEndpoint server = 4;
+}
+
+enum LatencyFailure {
+  LATENCY_FAILURE_UNSPECIFIED = 0;
+  // Ядро за сервер не возьмется (Hysteria2 и TUIC — до второго ядра, нет ключа).
+  LATENCY_FAILURE_UNSUPPORTED = 1;
+  // Через сервер не пришел ответ за отведенное время.
+  LATENCY_FAILURE_NO_RESPONSE = 2;
+  // Ядро не запустилось — проверка не состоялась, сервер ни при чем.
+  LATENCY_FAILURE_CORE_FAILED = 3;
 }
 
 message MeasureLatencyRequest {
@@ -466,6 +479,8 @@ message LatencyResult {
   string id = 1;
   bool reachable = 2;
   int32 latency_ms = 3;
+  // Почему reachable = false; у доступного — UNSPECIFIED.
+  LatencyFailure failure = 4;
 }
 
 message MeasureLatencyReply {
