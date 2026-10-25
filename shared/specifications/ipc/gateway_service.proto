@@ -33,7 +33,8 @@ service GatewayService {
   rpc Connect(ConnectRequest) returns (ConnectReply);
   rpc Disconnect(DisconnectRequest) returns (DisconnectReply);
 
-  // Настройки защиты без переподключения (блок при обрыве, IPv6, локальная сеть, DNS).
+  // Не используется: настройки на ходу окно применяет повторным Connect к тому же серверу
+  // (служба меняет подключение без щели). Служба принимает вызов и ничего не меняет.
   rpc ApplyProtection(ProtectionSettings) returns (ApplyProtectionReply);
 
   // Пауза защиты для входа в Wi-Fi отеля или кафе — только на время, с обратным отсчетом.

@@ -190,7 +190,7 @@ public class ConnectionControllerTests
         gateway.Calls.ShouldBe(paused ? ["pause:5"] : []);
     }
 
-    private sealed class FakeGateway(ConnectionState state, string? serverId = null, DateTimeOffset? pausedUntil = null) : IGatewayClient
+    internal sealed class FakeGateway(ConnectionState state, string? serverId = null, DateTimeOffset? pausedUntil = null) : IGatewayClient
     {
         public List<string> Calls { get; } = [];
 
@@ -243,7 +243,7 @@ public class ConnectionControllerTests
         }
     }
 
-    private sealed class FakeCatalog(params ServerProfile[] servers) : IServerCatalog
+    internal sealed class FakeCatalog(params ServerProfile[] servers) : IServerCatalog
     {
         public string? SelectedId { get; set; }
 

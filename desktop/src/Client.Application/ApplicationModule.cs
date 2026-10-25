@@ -19,6 +19,7 @@ public static class ApplicationModule
         services.AddSingleton<SettingsService>();
         services.AddSingleton<SubscriptionUpdater>();
         services.AddSingleton<AutostartSync>();
+        services.AddSingleton<ProtectionSync>();
         return services;
     }
 }
