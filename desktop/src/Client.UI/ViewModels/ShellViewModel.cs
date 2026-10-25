@@ -26,6 +26,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, SettingsPageViewModel> settingsPage,
         Func<INavigator, SubscriptionsPageViewModel> subscriptionsPage,
         Func<INavigator, ProtectionPageViewModel> protectionPage,
+        Func<INavigator, CorePageViewModel> corePage,
         SubscriptionUpdater updater)
     {
         ArgumentNullException.ThrowIfNull(mainPage);
@@ -43,7 +44,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Settings] = () => settingsPage(this),
             [Pages.Add] = () => importPage(this),
             [Pages.Protection] = () => protectionPage(this),
-            ["core"] = () => new StubPageViewModel("settings.adv.core.title"),
+            [Pages.Core] = () => corePage(this),
             ["routing"] = () => new StubPageViewModel("settings.adv.routing.title"),
             [Pages.Profiles] = () => subscriptionsPage(this),
             ["backup"] = () => new StubPageViewModel("settings.adv.backup.title"),
@@ -84,7 +85,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     public bool IsCheck => CurrentKey == Pages.Check;
 
     /// <summary>Подстраницы настроек подсвечивают в островке «Настройки».</summary>
-    public bool IsSettings => CurrentKey is Pages.Settings or Pages.Protection or "core" or "routing" or Pages.Profiles or "backup" or "about";
+    public bool IsSettings => CurrentKey is Pages.Settings or Pages.Protection or Pages.Core or "routing" or Pages.Profiles or "backup" or "about";
 
     [RelayCommand]
     public void Navigate(string page)

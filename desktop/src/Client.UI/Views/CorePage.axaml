@@ -1,0 +1,316 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.CorePage"
+             x:DataType="vm:CorePageViewModel">
+  <!-- Подключение и ядро — docs/design, доска 6. Подстраница настроек: островок виден, «назад» — к настройкам. -->
+  <UserControl.Styles>
+    <!-- Значение только для чтения: версия ядра, порт — моноширинным в рамке -->
+    <Style Selector="Border.value">
+      <Setter Property="Padding" Value="8,4" />
+      <Setter Property="CornerRadius" Value="8" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Control.SegmentTrack}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+      <Setter Property="BorderThickness" Value="1" />
+    </Style>
+    <Style Selector="Border.value TextBlock">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L settings.adv.core.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0">
+        <TextBlock Classes="overline" Text="{l:L core.group.core, Upper=True}" Margin="6,0,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.xray.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.xray.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Border Grid.Column="1" Classes="value" VerticalAlignment="Center">
+                <TextBlock x:Name="XrayVersion" Text="{Binding XrayVersion}" />
+              </Border>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.second.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.second.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Border Grid.Column="1" Classes="value" VerticalAlignment="Center">
+                <TextBlock x:Name="SecondCore" Text="{Binding SecondCore}" />
+              </Border>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L core.log.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.log.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="LogChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleLogCommand}"
+                      AutomationProperties.Name="{l:L core.log.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="LogChoiceText" Text="{Binding LogText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #LogChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsLogOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding LogOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L core.group.tun, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L core.stack.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.stack.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="StackChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleStackCommand}"
+                      AutomationProperties.Name="{l:L core.stack.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="StackChoiceText" Text="{Binding StackText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #StackChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsStackOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding StackOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L core.mtu.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.mtu.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="MtuChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleMtuCommand}"
+                      AutomationProperties.Name="{l:L core.mtu.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="MtuChoiceText" Text="{Binding MtuText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #MtuChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsMtuOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding MtuOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.strict.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L core.strict.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="StrictRoutesToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding StrictRoutes}" AutomationProperties.Name="{l:L core.strict.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.sniff.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L core.sniff.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="SniffingToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding Sniffing}" AutomationProperties.Name="{l:L core.sniff.title}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L core.group.conn, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L core.fp.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.fp.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="FingerprintChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleFingerprintCommand}"
+                      AutomationProperties.Name="{l:L core.fp.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="FingerprintChoiceText" Text="{Binding FingerprintText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #FingerprintChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsFingerprintOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding FingerprintOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.mux.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L core.mux.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="MuxToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding Mux}" AutomationProperties.Name="{l:L core.mux.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.frag.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L core.frag.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="FragmentToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding TlsFragment}" AutomationProperties.Name="{l:L core.frag.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L core.timeout.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.timeout.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="TimeoutChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleTimeoutCommand}"
+                      AutomationProperties.Name="{l:L core.timeout.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="TimeoutChoiceText" Text="{Binding TimeoutText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #TimeoutChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsTimeoutOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding TimeoutOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L core.reconnect.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.reconnect.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="ReconnectChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleReconnectCommand}"
+                      AutomationProperties.Name="{l:L core.reconnect.title}">
+                <Grid ColumnDefinitions="*,Auto">
+                  <TextBlock x:Name="ReconnectChoiceText" Text="{Binding ReconnectText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                          Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
+                </Grid>
+              </Button>
+              <Popup Grid.Column="1" PlacementTarget="{Binding #ReconnectChoice}" Placement="BottomEdgeAlignedRight"
+                     IsOpen="{Binding IsReconnectOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                        BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                        CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+                  <ItemsControl ItemsSource="{Binding ReconnectOptions}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                        <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="14,10"
+                                Command="{Binding ChooseCommand}" Content="{Binding Label}" />
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </Border>
+              </Popup>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L core.group.proxy, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.port.title}" />
+                <TextBlock Classes="caption" Text="{l:L core.port.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Border Grid.Column="1" Classes="value" VerticalAlignment="Center">
+                <TextBlock x:Name="ProxyPort" Text="{Binding ProxyPort}" />
+              </Border>
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.lanProxy.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L core.lanProxy.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="LanProxyToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding ProxyAllowLan}" AutomationProperties.Name="{l:L core.lanProxy.title}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

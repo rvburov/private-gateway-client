@@ -12,6 +12,9 @@ public static class Pages
     /// <summary>«Защита и утечки» — подстраница настроек (доска 5).</summary>
     public const string Protection = "protection";
 
+    /// <summary>«Подключение и ядро» — подстраница настроек (доска 6).</summary>
+    public const string Core = "core";
+
     /// <summary>«Профили и подписки» — подстраница настроек (доска 12).</summary>
     public const string Profiles = "profiles";
 }

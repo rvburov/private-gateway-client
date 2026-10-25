@@ -3,9 +3,13 @@ using CoreCheckState = PrivateGateway.Client.Core.CheckState;
 using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
 using CoreState = PrivateGateway.Client.Core.ConnectionState;
 using CoreAddresses = PrivateGateway.Client.Core.Settings.AddressPreference;
+using CoreFingerprint = PrivateGateway.Client.Core.Settings.TlsFingerprint;
+using CoreLog = PrivateGateway.Client.Core.Settings.CoreLogLevel;
 using CoreProtocol = PrivateGateway.Client.Core.ProxyProtocol;
+using CoreReconnect = PrivateGateway.Client.Core.Settings.ReconnectPolicy;
 using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
 using CoreSettings = PrivateGateway.Client.Core.Settings.AppSettings;
+using CoreTun = PrivateGateway.Client.Core.Settings.TunEngine;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Contracts;
@@ -184,6 +188,96 @@ public static class ContractMapping
             LanDiscovery = p.LanDiscovery && p.AllowLan,
             AddressPreference = p.Addresses.ToContract(),
             CheckLeaksAfterConnect = p.CheckLeaksAfterConnect,
+        };
+    }
+
+    public static V1.CoreLogLevel ToContract(this CoreLog level) => level switch
+    {
+        CoreLog.Warning => V1.CoreLogLevel.Warning,
+        CoreLog.Info => V1.CoreLogLevel.Info,
+        CoreLog.Debug => V1.CoreLogLevel.Debug,
+        _ => throw new ArgumentOutOfRangeException(nameof(level), level, null),
+    };
+
+    public static CoreLog ToCore(this V1.CoreLogLevel level) => level switch
+    {
+        V1.CoreLogLevel.Warning => CoreLog.Warning,
+        V1.CoreLogLevel.Info => CoreLog.Info,
+        V1.CoreLogLevel.Debug => CoreLog.Debug,
+        _ => throw new ArgumentOutOfRangeException(nameof(level), level, "Подробность журнала ядра не задана"),
+    };
+
+    public static V1.TunEngine ToContract(this CoreTun engine) => engine switch
+    {
+        CoreTun.System => V1.TunEngine.System,
+        CoreTun.Gvisor => V1.TunEngine.Gvisor,
+        CoreTun.Mixed => V1.TunEngine.Mixed,
+        _ => throw new ArgumentOutOfRangeException(nameof(engine), engine, null),
+    };
+
+    public static CoreTun ToCore(this V1.TunEngine engine) => engine switch
+    {
+        V1.TunEngine.System => CoreTun.System,
+        V1.TunEngine.Gvisor => CoreTun.Gvisor,
+        V1.TunEngine.Mixed => CoreTun.Mixed,
+        _ => throw new ArgumentOutOfRangeException(nameof(engine), engine, "Стек TUN не задан"),
+    };
+
+    public static V1.TlsFingerprint ToContract(this CoreFingerprint fingerprint) => fingerprint switch
+    {
+        CoreFingerprint.Profile => V1.TlsFingerprint.Profile,
+        CoreFingerprint.Chrome => V1.TlsFingerprint.Chrome,
+        CoreFingerprint.Firefox => V1.TlsFingerprint.Firefox,
+        CoreFingerprint.Safari => V1.TlsFingerprint.Safari,
+        CoreFingerprint.Random => V1.TlsFingerprint.Random,
+        _ => throw new ArgumentOutOfRangeException(nameof(fingerprint), fingerprint, null),
+    };
+
+    public static CoreFingerprint ToCore(this V1.TlsFingerprint fingerprint) => fingerprint switch
+    {
+        V1.TlsFingerprint.Profile => CoreFingerprint.Profile,
+        V1.TlsFingerprint.Chrome => CoreFingerprint.Chrome,
+        V1.TlsFingerprint.Firefox => CoreFingerprint.Firefox,
+        V1.TlsFingerprint.Safari => CoreFingerprint.Safari,
+        V1.TlsFingerprint.Random => CoreFingerprint.Random,
+        _ => throw new ArgumentOutOfRangeException(nameof(fingerprint), fingerprint, "Отпечаток TLS не задан"),
+    };
+
+    public static V1.ReconnectPolicy ToContract(this CoreReconnect policy) => policy switch
+    {
+        CoreReconnect.Backoff60Seconds => V1.ReconnectPolicy.Backoff60S,
+        CoreReconnect.UpTo5Minutes => V1.ReconnectPolicy.UpTo5Minutes,
+        CoreReconnect.Never => V1.ReconnectPolicy.Never,
+        _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, null),
+    };
+
+    public static CoreReconnect ToCore(this V1.ReconnectPolicy policy) => policy switch
+    {
+        V1.ReconnectPolicy.Backoff60S => CoreReconnect.Backoff60Seconds,
+        V1.ReconnectPolicy.UpTo5Minutes => CoreReconnect.UpTo5Minutes,
+        V1.ReconnectPolicy.Never => CoreReconnect.Never,
+        _ => throw new ArgumentOutOfRangeException(nameof(policy), policy, "Переподключение не задано"),
+    };
+
+    /// <summary>«Подключение и ядро» для службы — в запросе Connect вместе с защитой.</summary>
+    public static V1.ConnectionSettings ToConnection(this CoreSettings settings)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        var c = settings.Connection;
+        return new V1.ConnectionSettings
+        {
+            CoreLog = c.CoreLog.ToContract(),
+            TunEngine = c.Stack.ToContract(),
+            Mtu = (uint)(c.Mtu ?? 0),
+            StrictRoutes = c.StrictRoutes,
+            Sniffing = c.Sniffing,
+            Fingerprint = c.Fingerprint.ToContract(),
+            Mux = c.Mux,
+            TlsFragment = c.TlsFragment,
+            ConnectTimeout = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromSeconds(c.ConnectTimeoutSeconds)),
+            Reconnect = c.Reconnect.ToContract(),
+            ProxyPort = (uint)c.ProxyPort,
+            ProxyAllowLan = c.ProxyAllowLan,
         };
     }
 }

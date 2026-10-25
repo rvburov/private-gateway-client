@@ -156,6 +156,59 @@ message ConnectRequest {
   Mode mode = 2;
   ProtectionSettings protection = 3;
   RoutingSettings routing = 4;
+  ConnectionSettings connection = 5;
+}
+
+// «Подключение и ядро» (доска 6): ядро, TUN, соединение, режим прокси.
+message ConnectionSettings {
+  CoreLogLevel core_log = 1;
+  TunEngine tun_engine = 2;
+  // 0 — MTU подбирает служба.
+  uint32 mtu = 3;
+  // Запретить обход туннеля через другие адаптеры.
+  bool strict_routes = 4;
+  // Определение домена — для правил маршрутизации по доменам.
+  bool sniffing = 5;
+  TlsFingerprint fingerprint = 6;
+  bool mux = 7;
+  bool tls_fragment = 8;
+  google.protobuf.Duration connect_timeout = 9;
+  // Переподключение — только к выбранному серверу.
+  ReconnectPolicy reconnect = 10;
+  // Локальный вход ядра HTTP + SOCKS5 (mixed) в режиме прокси.
+  uint32 proxy_port = 11;
+  bool proxy_allow_lan = 12;
+}
+
+enum CoreLogLevel {
+  CORE_LOG_LEVEL_UNSPECIFIED = 0;
+  CORE_LOG_LEVEL_WARNING = 1;
+  CORE_LOG_LEVEL_INFO = 2;
+  CORE_LOG_LEVEL_DEBUG = 3;
+}
+
+enum TunEngine {
+  TUN_ENGINE_UNSPECIFIED = 0;
+  TUN_ENGINE_SYSTEM = 1;
+  TUN_ENGINE_GVISOR = 2;
+  TUN_ENGINE_MIXED = 3;
+}
+
+enum TlsFingerprint {
+  TLS_FINGERPRINT_UNSPECIFIED = 0;
+  // Как в ссылке или подписке.
+  TLS_FINGERPRINT_PROFILE = 1;
+  TLS_FINGERPRINT_CHROME = 2;
+  TLS_FINGERPRINT_FIREFOX = 3;
+  TLS_FINGERPRINT_SAFARI = 4;
+  TLS_FINGERPRINT_RANDOM = 5;
+}
+
+enum ReconnectPolicy {
+  RECONNECT_POLICY_UNSPECIFIED = 0;
+  RECONNECT_POLICY_BACKOFF_60S = 1;
+  RECONNECT_POLICY_UP_TO_5_MINUTES = 2;
+  RECONNECT_POLICY_NEVER = 3;
 }
 
 message ConnectReply {

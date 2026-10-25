@@ -180,4 +180,52 @@ public class ContractMappingTests
     {
         DnsAddress.Normalize(text).ShouldBe(expected);
     }
+
+    [Fact]
+    public void Every_connection_choice_round_trips_and_unspecified_is_rejected()
+    {
+        foreach (var value in Enum.GetValues<CoreLogLevel>())
+        {
+            value.ToContract().ToCore().ShouldBe(value);
+        }
+
+        foreach (var value in Enum.GetValues<TunEngine>())
+        {
+            value.ToContract().ToCore().ShouldBe(value);
+        }
+
+        foreach (var value in Enum.GetValues<TlsFingerprint>())
+        {
+            value.ToContract().ToCore().ShouldBe(value);
+        }
+
+        foreach (var value in Enum.GetValues<ReconnectPolicy>())
+        {
+            value.ToContract().ToCore().ShouldBe(value);
+        }
+
+        Enum.GetValues<V1.CoreLogLevel>().Where(v => v != V1.CoreLogLevel.Unspecified).ShouldAllBe(v => v.ToCore().ToContract() == v);
+        Enum.GetValues<V1.TunEngine>().Where(v => v != V1.TunEngine.Unspecified).ShouldAllBe(v => v.ToCore().ToContract() == v);
+        Enum.GetValues<V1.TlsFingerprint>().Where(v => v != V1.TlsFingerprint.Unspecified).ShouldAllBe(v => v.ToCore().ToContract() == v);
+        Enum.GetValues<V1.ReconnectPolicy>().Where(v => v != V1.ReconnectPolicy.Unspecified).ShouldAllBe(v => v.ToCore().ToContract() == v);
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.CoreLogLevel.Unspecified.ToCore());
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.TunEngine.Unspecified.ToCore());
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.TlsFingerprint.Unspecified.ToCore());
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.ReconnectPolicy.Unspecified.ToCore());
+    }
+
+    [Fact]
+    public void Connection_settings_reach_the_service_as_chosen()
+    {
+        var auto = AppSettings.Default.ToConnection();
+        auto.Mtu.ShouldBe(0u, "0 — MTU подбирает служба");
+        auto.ConnectTimeout.ToTimeSpan().ShouldBe(TimeSpan.FromSeconds(10));
+        (auto.StrictRoutes, auto.Sniffing, auto.Mux, auto.TlsFragment, auto.ProxyAllowLan).ShouldBe((true, true, false, false, false));
+        auto.ProxyPort.ShouldBe(10808u);
+
+        var custom = (AppSettings.Default with { Connection = ConnectionSettings.Default with { Mtu = 1420, ConnectTimeoutSeconds = 30, ProxyPort = 2080 } })
+            .ToConnection();
+
+        (custom.Mtu, custom.ConnectTimeout.ToTimeSpan(), custom.ProxyPort).ShouldBe((1420u, TimeSpan.FromSeconds(30), 2080u));
+    }
 }

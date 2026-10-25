@@ -52,6 +52,12 @@
     <DataTemplate DataType="vm:DnsAddressViewModel">
       <views:DnsAddressView />
     </DataTemplate>
+    <DataTemplate DataType="vm:CorePageViewModel">
+      <views:CorePage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:MtuViewModel">
+      <views:MtuView />
+    </DataTemplate>
     <DataTemplate DataType="vm:StubPageViewModel">
       <views:StubPage />
     </DataTemplate>

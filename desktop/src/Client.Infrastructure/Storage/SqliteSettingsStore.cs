@@ -40,6 +40,20 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Enum("protection.addresses", p.Addresses),
             Bool("protection.allow_lan", p.AllowLan),
             Bool("protection.lan_discovery", p.LanDiscovery));
+        var c = d.Connection;
+        var core = new ConnectionSettings(
+            Enum("connection.core_log", c.CoreLog),
+            Enum("connection.tun_engine", c.Stack),
+            Int("connection.mtu", ConnectionSettings.MinMtu, ConnectionSettings.MaxMtu) ?? c.Mtu,
+            Bool("connection.strict_routes", c.StrictRoutes),
+            Bool("connection.sniffing", c.Sniffing),
+            Enum("connection.fingerprint", c.Fingerprint),
+            Bool("connection.mux", c.Mux),
+            Bool("connection.tls_fragment", c.TlsFragment),
+            Int("connection.timeout", 1, 120) ?? c.ConnectTimeoutSeconds,
+            Enum("connection.reconnect", c.Reconnect),
+            Int("connection.proxy_port", 1024, 65535) ?? c.ProxyPort,
+            Bool("connection.proxy_allow_lan", c.ProxyAllowLan));
         return new AppSettings(
             Enum("mode", d.Mode),
             Bool("kill_switch", d.KillSwitch),
@@ -50,12 +64,18 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language,
             Enum("subscription_refresh", d.SubscriptionRefresh),
             Bool("update_only_via_vpn", d.UpdateOnlyViaVpn),
-            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) { Protection = protection };
+            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) { Protection = protection, Connection = core };
 
         bool Bool(string key, bool fallback) =>
             !values.TryGetValue(key, out var text) ? fallback
             : bool.TryParse(text, out var value) ? value
             : Invalid(key, fallback);
+
+        // Число в пределах; нет ключа, пусто или вне пределов — значение по умолчанию.
+        int? Int(string key, int min, int max) =>
+            values.TryGetValue(key, out var text) && int.TryParse(text, CultureInfo.InvariantCulture, out var value) && value >= min && value <= max
+                ? value
+                : null;
 
         T Enum<T>(string key, T fallback)
             where T : struct, Enum =>
@@ -90,6 +110,18 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["protection.addresses"] = settings.Protection.Addresses.ToString(),
             ["protection.allow_lan"] = Text(settings.Protection.AllowLan),
             ["protection.lan_discovery"] = Text(settings.Protection.LanDiscovery),
+            ["connection.core_log"] = settings.Connection.CoreLog.ToString(),
+            ["connection.tun_engine"] = settings.Connection.Stack.ToString(),
+            ["connection.mtu"] = settings.Connection.Mtu?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,
+            ["connection.strict_routes"] = Text(settings.Connection.StrictRoutes),
+            ["connection.sniffing"] = Text(settings.Connection.Sniffing),
+            ["connection.fingerprint"] = settings.Connection.Fingerprint.ToString(),
+            ["connection.mux"] = Text(settings.Connection.Mux),
+            ["connection.tls_fragment"] = Text(settings.Connection.TlsFragment),
+            ["connection.timeout"] = settings.Connection.ConnectTimeoutSeconds.ToString(CultureInfo.InvariantCulture),
+            ["connection.reconnect"] = settings.Connection.Reconnect.ToString(),
+            ["connection.proxy_port"] = settings.Connection.ProxyPort.ToString(CultureInfo.InvariantCulture),
+            ["connection.proxy_allow_lan"] = Text(settings.Connection.ProxyAllowLan),
         };
 
         using var connection = database.Open();

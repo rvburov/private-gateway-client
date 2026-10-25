@@ -52,6 +52,9 @@ public sealed record AppSettings(
     /// <summary>«Защита и утечки» (доска 5); блок при обрыве — <see cref="KillSwitch"/>.</summary>
     public ProtectionSettings Protection { get; init; } = ProtectionSettings.Default;
 
+    /// <summary>«Подключение и ядро» (доска 6).</summary>
+    public ConnectionSettings Connection { get; init; } = ConnectionSettings.Default;
+
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch
     {

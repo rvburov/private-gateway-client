@@ -47,6 +47,9 @@ public sealed class SettingsStorageTests : IDisposable
                 BootProtection: false, StrictMode: true, Dns: DnsChoice.Custom, CustomDns: "9.9.9.9", BlockOutsideDns: false,
                 FakeDns: true, CheckLeaksAfterConnect: false, BlockIpv6: false, Addresses: AddressPreference.Ipv4Only,
                 AllowLan: true, LanDiscovery: true),
+            Connection = new ConnectionSettings(
+                CoreLogLevel.Debug, TunEngine.Gvisor, Mtu: 1420, StrictRoutes: false, Sniffing: false, TlsFingerprint.Firefox,
+                Mux: true, TlsFragment: true, ConnectTimeoutSeconds: 20, ReconnectPolicy.Never, ProxyPort: 2080, ProxyAllowLan: true),
         };
         Store().Save(changed);
 
