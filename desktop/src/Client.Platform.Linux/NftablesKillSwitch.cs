@@ -8,12 +8,12 @@ using PrivateGateway.Client.Core.Platform;
 namespace PrivateGateway.Client.Platform.Linux;
 
 /// <summary>
-/// Блок при обрыве на Linux — своя таблица nftables <c>inet private_gateway</c>: цепочка output с
-/// политикой drop и разрешениями из <see cref="KillSwitchPolicy"/>. Своя таблица не трогает правила
-/// других программ (ufw, firewalld, docker) и снимается целиком; блок только сужает: наш drop чужим
-/// accept не отменить, а наш accept не отменяет чужой drop. Замена правил — одной транзакцией
-/// <c>nft -f -</c>: щели между старыми и новыми нет. Перенаправленный трафик (контейнеры и виртуальные
-/// машины со своим NAT) цепочка output не видит — это отдельный пункт.
+/// Блок при обрыве на Linux — своя таблица nftables <c>inet private_gateway</c>: цепочки output (трафик
+/// самой машины) и forward (контейнеры и виртуальные машины со своим NAT: Docker, libvirt) с политикой
+/// drop и разрешениями из <see cref="KillSwitchPolicy"/>. Своя таблица не трогает правила других программ
+/// (ufw, firewalld, docker) и снимается целиком; блок только сужает: наш drop чужим accept не отменить, а
+/// наш accept не отменяет чужой drop. Замена правил — одной транзакцией <c>nft -f -</c>: щели между
+/// старыми и новыми нет.
 /// </summary>
 /// <param name="nft">Вызов nft: аргументы и stdin → вывод; не вышло — <see cref="IOException"/> с текстом nft.</param>
 public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, string> nft) : IKillSwitch
@@ -41,6 +41,10 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
     {
         ArgumentNullException.ThrowIfNull(policy);
         var rules = new List<string> { "oifname \"lo\" accept" };
+
+        // Перенаправленное — в туннель и из него (ответы sing-box контейнерам), остальное — как у машины:
+        // DNS мимо туннеля закрыт, локальная сеть по настройке. Сервера здесь нет: к нему ходит только служба.
+        var forward = new List<string>();
         if (policy.TunnelInterface is { } tunnel)
         {
             // Имя попадает в текст правил — только буквы, цифры, «_», «.», «-» и не длиннее 15 знаков (IFNAMSIZ).
@@ -50,6 +54,8 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             }
 
             rules.Add($"oifname \"{tunnel}\" accept");
+            forward.Add($"iifname \"{tunnel}\" accept");
+            forward.Add($"oifname \"{tunnel}\" accept");
         }
 
         // Раздельный режим: выход sing-box по правилам обхода помечен — его пакеты идут мимо туннеля, DNS тоже.
@@ -73,35 +79,48 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
         rules.Add("udp sport 68 udp dport 67 accept");
         rules.Add("udp sport 546 udp dport 547 accept");
         rules.Add("icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept");
+        var shared = new List<string>();
         if (policy.BlockOutsideDns)
         {
             // Раньше локальной сети: DNS роутера мимо туннеля — утечка, даже если локальная сеть разрешена.
-            rules.Add("meta l4proto { tcp, udp } th dport { 53, 853 } drop");
+            shared.Add("meta l4proto { tcp, udp } th dport { 53, 853 } drop");
         }
 
+        // Для перенаправленного — по адресу назначения в обе стороны: и контейнер в локальную сеть, и ответ
+        // ему (адрес контейнера частный). Наружу мимо туннеля адрес назначения не частный — закрыто.
         if (policy.AllowLan)
         {
-            rules.Add("ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept");
-            rules.Add("ip6 daddr { fc00::/7, fe80::/10 } accept");
+            shared.Add("ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept");
+            shared.Add("ip6 daddr { fc00::/7, fe80::/10 } accept");
             if (policy.LanDiscovery)
             {
-                rules.Add("ip daddr { 224.0.0.0/4, 255.255.255.255 } accept");
-                rules.Add("ip6 daddr ff00::/8 accept");
+                shared.Add("ip daddr { 224.0.0.0/4, 255.255.255.255 } accept");
+                shared.Add("ip6 daddr ff00::/8 accept");
             }
         }
+
+        rules.AddRange(shared);
+        forward.AddRange(shared);
 
         var text = new StringBuilder()
             .Append(CultureInfo.InvariantCulture, $"table inet {Table}\n")
             .Append(CultureInfo.InvariantCulture, $"delete table inet {Table}\n")
-            .Append(CultureInfo.InvariantCulture, $"table inet {Table} {{\n")
-            .Append("\tchain output {\n")
-            .Append("\t\ttype filter hook output priority 0; policy drop;\n");
+            .Append(CultureInfo.InvariantCulture, $"table inet {Table} {{\n");
+        Chain(text, "output", rules);
+        Chain(text, "forward", forward);
+        return text.Append("}\n").ToString();
+    }
+
+    private static void Chain(StringBuilder text, string hook, List<string> rules)
+    {
+        text.Append(CultureInfo.InvariantCulture, $"\tchain {hook} {{\n")
+            .Append(CultureInfo.InvariantCulture, $"\t\ttype filter hook {hook} priority 0; policy drop;\n");
         foreach (var rule in rules)
         {
             text.Append("\t\t").Append(rule).Append('\n');
         }
 
-        return text.Append("\t}\n}\n").ToString();
+        text.Append("\t}\n");
     }
 
     private static string Run(string program, IReadOnlyList<string> arguments, string? input)

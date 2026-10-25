@@ -6,7 +6,8 @@ namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
 /// Блок при обрыве на Linux: текст правил nftables и сами правила в своем сетевом пространстве с
-/// двумя парами veth к сети машины — обычная сеть и «туннель». Правила машины тест не трогает.
+/// двумя парами veth к сети машины — обычная сеть и «туннель»; пересланный трафик — из «контейнера» в
+/// соседнем пространстве. Правила машины тест не трогает.
 /// </summary>
 public sealed class KillSwitchTests
 {
@@ -32,8 +33,15 @@ public sealed class KillSwitchTests
             "icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept",
             "meta l4proto { tcp, udp } th dport { 53, 853 } drop",
             "}",
+            "chain forward {",
+            "type filter hook forward priority 0; policy drop;",
+            "iifname \"pgtun0\" accept",
+            "oifname \"pgtun0\" accept",
+            "meta l4proto { tcp, udp } th dport { 53, 853 } drop",
             "}",
-        ], "прежняя таблица удаляется и новая ставится одной транзакцией; локальная сеть по умолчанию закрыта");
+            "}",
+        ], "прежняя таблица удаляется и новая ставится одной транзакцией; локальная сеть по умолчанию закрыта; " +
+            "пересланное (контейнеры, виртуальные машины) — только через туннель, к серверу мимо него ходит одна служба");
     }
 
     [Fact]
@@ -154,6 +162,49 @@ public sealed class KillSwitchTests
         killSwitch.IsEnabled.ShouldBeFalse();
         (await netns.ResolveAsync("example.com", host)).ShouldBe("1.1.1.1");
         dns.Queries.Count.ShouldBe(2, "закрытые запросы до DNS не дошли");
+    }
+
+    [Fact]
+    public async Task Forwarded_traffic_of_containers_goes_only_into_the_tunnel_and_the_allowed_local_network()
+    {
+        NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl", "sysctl");
+        using var machine = NetworkNamespace.Create();
+        using var container = NetworkNamespace.Create();
+        var octet = Random.Shared.Next(1, 250);
+        var host = IPAddress.Parse($"10.254.{octet}.1");
+        var tunnelHost = IPAddress.Parse($"10.253.{octet}.1");
+        machine.Link("pgnet0", host, IPAddress.Parse($"10.254.{octet}.2"));
+        machine.Link("pgtun0", tunnelHost, IPAddress.Parse($"10.253.{octet}.2"));
+
+        // «Контейнер» за машиной, как у Docker: своя сеть, машина пересылает его пакеты и подменяет адрес (NAT).
+        machine.Run(null, "ip", "link", "add", "pgbr0", "type", "veth", "peer", "name", "eth0", "netns", container.Name);
+        machine.Run(null, "ip", "addr", "add", $"10.251.{octet}.1/30", "dev", "pgbr0");
+        machine.Run(null, "ip", "link", "set", "pgbr0", "up");
+        container.Run(null, "ip", "addr", "add", $"10.251.{octet}.2/30", "dev", "eth0");
+        container.Run(null, "ip", "link", "set", "eth0", "up");
+        container.Run(null, "ip", "route", "add", "default", "via", $"10.251.{octet}.1");
+        machine.Run(null, "sysctl", "-qw", "net.ipv4.ip_forward=1");
+        machine.Run("table ip pgtest_nat {\n\tchain post {\n\t\ttype nat hook postrouting priority 100;\n\t\toifname != \"pgbr0\" masquerade\n\t}\n}\n", "nft", "-f", "-");
+        using var server = new LocalSite("сервер", host);
+        using var lan = new LocalSite("локальная сеть", host);
+        using var tunnel = new LocalSite("туннель", tunnelHost);
+        var killSwitch = new NftablesKillSwitch((arguments, input) => machine.Run(input, ["nft", .. arguments]));
+        (await container.CurlAsync(lan.Url)).ShouldBe("локальная сеть", "без блока пересылка открыта");
+
+        killSwitch.Enable(new KillSwitchPolicy("pgtun0", [new(host, server.Url.Port)]));
+
+        (await container.CurlAsync(tunnel.Url)).ShouldBe("туннель", "пересланное в туннель — проходит, ответ из туннеля — тоже");
+        await Should.ThrowAsync<InvalidOperationException>(() => container.CurlAsync(lan.Url, seconds: 3), "мимо туннеля — закрыто");
+        await Should.ThrowAsync<InvalidOperationException>(() => container.CurlAsync(server.Url, seconds: 3), "к серверу мимо туннеля ходит только служба");
+        (await machine.CurlAsync(server.Url)).ShouldBe("сервер", "сама машина к серверу — по-прежнему");
+
+        killSwitch.Enable(new KillSwitchPolicy("pgtun0", [], AllowLan: true));
+
+        (await container.CurlAsync(lan.Url)).ShouldBe("локальная сеть", "разрешенная локальная сеть — и контейнерам");
+
+        killSwitch.Disable();
+
+        (await container.CurlAsync(lan.Url)).ShouldBe("локальная сеть", "блок снят — пересылка открыта");
     }
 
     private static List<string> Lines(string rules) => [.. rules.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)];
