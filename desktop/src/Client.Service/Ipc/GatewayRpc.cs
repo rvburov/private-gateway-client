@@ -82,8 +82,8 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
     }
 
     /// <summary>
-    /// Все восемь проверок «Проверки»: служба и ядро, весь трафик, блок, DNS и IPv6 — по состоянию, IP для сайтов —
-    /// замером через сервер (<see cref="Gateway.CheckExitAsync"/>), другие VPN — по маршрутам.
+    /// Все восемь проверок «Проверки»: служба и ядро, весь трафик, блок, DNS и IPv6 (через туннель или мимо него) — по
+    /// состоянию, IP для сайтов — замером через сервер (<see cref="Gateway.CheckExitAsync"/>), другие VPN — по маршрутам.
     /// </summary>
     public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
@@ -111,7 +111,14 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.KillSwitch.ToContractId(), State = status.Protection.KillSwitch.ToContract() });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = status.Protection.Dns.ToContract() });
-        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Ipv6.ToContractId(), State = status.Protection.Ipv6.ToContract() });
+        report.Results.Add(new V1.CheckResult
+        {
+            Id = DiagnosticCheck.Ipv6.ToContractId(),
+            State = status.Protection.Ipv6.ToContract(),
+            Reason = status.Protection.Ipv6Tunnel ? "tunnel"
+                : status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Ipv6: CheckState.Warning } ? "outside"
+                : string.Empty,
+        });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.ExitIp.ToContractId(), State = exitState.ToContract(), Reason = exitReason ?? string.Empty });
         if (gateway.OtherVpnAdapters() is { } other)
         {

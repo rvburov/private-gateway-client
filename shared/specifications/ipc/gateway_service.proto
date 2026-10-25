@@ -127,6 +127,8 @@ message ProtectionStatus {
   CheckState ipv6 = 3;
   CheckState kill_switch = 4;
   google.protobuf.Timestamp checked_at = 5;
+  // IPv6 идет через туннель (сервер его открывает); false — IPv6 закрыт.
+  bool ipv6_tunnel = 6;
 }
 
 message TrafficStats {

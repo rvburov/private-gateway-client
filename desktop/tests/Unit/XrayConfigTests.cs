@@ -175,11 +175,12 @@ public sealed class XrayConfigTests
     }
 
     [Theory]
-    [InlineData(true, AddressPreference.PreferIpv4, "UseIPv4", true)]
+    [InlineData(true, AddressPreference.PreferIpv4, "UseIP", false)]
     [InlineData(false, AddressPreference.PreferIpv4, "UseIP", false)]
-    [InlineData(false, AddressPreference.PreferIpv6, "UseIP", false)]
+    [InlineData(true, AddressPreference.PreferIpv6, "UseIP", false)]
+    [InlineData(true, AddressPreference.Ipv4Only, "UseIPv4", true)]
     [InlineData(false, AddressPreference.Ipv4Only, "UseIPv4", true)]
-    public void Closed_ipv6_asks_dns_for_ipv4_only_and_blocks_ipv6_of_programs(bool blockIpv6, AddressPreference addresses, string strategy, bool closed)
+    public void Ipv4_only_asks_dns_for_ipv4_only_and_blocks_ipv6_of_programs(bool blockIpv6, AddressPreference addresses, string strategy, bool closed)
     {
         var config = Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with { BlockIpv6 = blockIpv6, Addresses = addresses });
 
@@ -188,7 +189,7 @@ public sealed class XrayConfigTests
         var ipv6 = config["routing"]!["rules"]!.AsArray().SingleOrDefault(r => r!["ip"] is JsonArray ip && ip[0]!.GetValue<string>() == "::/0");
         if (!closed)
         {
-            ipv6.ShouldBeNull("IPv6 открыт — идет через туннель");
+            ipv6.ShouldBeNull("IPv6 идет через сервер; без IPv6 у сервера его закрывает TUN, а не правило по адресам имени");
             return;
         }
 
@@ -213,7 +214,7 @@ public sealed class XrayConfigTests
         var all = Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules)));
         all.ShouldBe(
         [
-            ("ip:geoip:private", "block"), ("ip:::/0", "block"),
+            ("ip:geoip:private", "block"),
             ("domain:domain:example.net", "block"), ("domain:geosite:category-ads-all", "block"), ("domain:domain:example.org", "proxy"),
             ("ip:203.0.113.9", "block"),
         ], "адрес и подсеть — условием IP, в порядке списка");
@@ -225,6 +226,8 @@ public sealed class XrayConfigTests
         split.ShouldContain(("domain:domain:example.com", "direct"));
         split.ShouldContain(("ip:198.51.100.0/24", "direct"));
         split.ShouldNotContain(("ip:::/0", "block"));
+        Rules(Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with { Addresses = AddressPreference.Ipv4Only }))
+            .ShouldContain(("ip:::/0", "block"), "«Только IPv4» — IPv6 закрыт и в правилах");
     }
 
     [Fact]

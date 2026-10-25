@@ -60,8 +60,10 @@ public sealed class XrayProxyTests
         site.Requests.ShouldBe(0, "geoip:private — блок: до сайта в локальной сети запрос не дошел");
     }
 
-    [Fact]
-    public async Task Name_with_an_ipv6_address_goes_through_when_ipv6_is_closed()
+    [Theory]
+    [InlineData(AddressPreference.PreferIpv4)]
+    [InlineData(AddressPreference.Ipv4Only)]
+    public async Task Name_with_an_ipv6_address_goes_through_when_ipv6_is_closed(AddressPreference addresses)
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
         using var site = new LocalSite(Page);
@@ -74,7 +76,7 @@ public sealed class XrayProxyTests
         // У имени и A, и AAAA — как у большинства сайтов.
         using var dns = new TestDns(IPAddress.Parse("1.1.1.1"), answer6: IPAddress.Parse("2606:4700:4700::1111"));
         var proxyPort = XrayKit.FreePort();
-        var config = ClientConfig(definition, proxyPort);
+        var config = ClientConfig(definition, proxyPort, ProtectionSettings.Default with { Addresses = addresses });
         config["dns"]!["servers"] = new JsonArray(new JsonObject { ["address"] = "127.0.0.1", ["port"] = dns.Port });
         // DNS теста — на 127.0.0.1, а локальная сеть закрыта: запросам ядра к нему — напрямую, остальные правила как есть.
         config["routing"]!["rules"]!.AsArray().Insert(0,
@@ -82,7 +84,7 @@ public sealed class XrayProxyTests
         using var client = await XrayKit.Start(config, proxyPort);
 
         (await Get(new Uri("http://dual.example.com/"), $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page,
-            "IPv6 закрыт — сайт идет по IPv4, а не закрывается целиком из-за адреса IPv6 в ответе DNS");
+            "сайт с A и AAAA не закрывается целиком из-за адреса IPv6 в ответе DNS — и при «Только IPv4»");
         dns.Queries.ShouldContain("dual.example.com", "имя разрешало ядро — правила по адресам проверены");
     }
 
@@ -94,9 +96,9 @@ public sealed class XrayProxyTests
         Should.Throw<System.ComponentModel.Win32Exception>(() => CoreProcess.StartXray(missing, new JsonObject()));
     }
 
-    private static JsonObject ClientConfig(ServerDefinition server, int proxyPort)
+    private static JsonObject ClientConfig(ServerDefinition server, int proxyPort, ProtectionSettings? protection = null)
     {
-        var request = new CoreRequest(server, ConnectionMode.Proxy, ProtectionSettings.Default,
+        var request = new CoreRequest(server, ConnectionMode.Proxy, protection ?? ProtectionSettings.Default,
             ConnectionSettings.Default with { ProxyPort = proxyPort, CoreLog = CoreLogLevel.Info }, RoutingSettings.Default);
         return XrayConfigBuilder.Build(request).Config.ShouldNotBeNull();
     }

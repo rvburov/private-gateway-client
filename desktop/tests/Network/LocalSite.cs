@@ -25,7 +25,8 @@ internal sealed class LocalSite : IDisposable
         _ = Task.Run(ServeAsync);
     }
 
-    public Uri Url => new($"http://{((IPEndPoint)_listener.LocalEndpoint).Address}:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
+    /// <summary>Адрес сайта; адрес IPv6 — в скобках.</summary>
+    public Uri Url => new($"http://{(IPEndPoint)_listener.LocalEndpoint}/");
 
     public int Requests => Volatile.Read(ref _requests);
 

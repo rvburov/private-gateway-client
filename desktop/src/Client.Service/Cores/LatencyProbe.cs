@@ -26,6 +26,9 @@ public static class LatencyProbe
     /// <summary>Проверочный адрес внешнего IP: Cloudflare по адресу (имя не нужно разрешать), ответ — строки «ключ=значение».</summary>
     public static readonly Uri DefaultTrace = new("https://1.1.1.1/cdn-cgi/trace");
 
+    /// <summary>Тот же проверочный адрес по IPv6: ответил через сервер — сервер открывает IPv6.</summary>
+    public static readonly Uri DefaultTrace6 = new("https://[2606:4700:4700::1111]/cdn-cgi/trace");
+
     /// <summary>Сколько серверов проверяется одновременно.</summary>
     public const int MaxParallel = 8;
 

@@ -42,13 +42,14 @@ public sealed record NetworkInfo(NetworkKind Kind, string? Name, bool IsOpen, bo
     public static NetworkInfo Unknown { get; } = new(NetworkKind.None, null, false, false);
 }
 
-/// <summary>Четыре проверки главного экрана.</summary>
+/// <summary>Четыре проверки главного экрана; <paramref name="Ipv6Tunnel"/> — IPv6 идет через туннель, а не закрыт.</summary>
 public sealed record ProtectionChecks(
     CheckState AllTraffic,
     CheckState Dns,
     CheckState Ipv6,
     CheckState KillSwitch,
-    DateTimeOffset? CheckedAt)
+    DateTimeOffset? CheckedAt,
+    bool Ipv6Tunnel = false)
 {
     /// <summary>Пауза для входа в Wi-Fi: трафик мимо туннеля — все четыре проверки требуют внимания.</summary>
     public static ProtectionChecks Paused { get; } = new(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null);

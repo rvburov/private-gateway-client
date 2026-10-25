@@ -317,6 +317,7 @@ public static partial class ContractMapping
                 Ipv6 = p.Ipv6.ToContract(),
                 KillSwitch = p.KillSwitch.ToContract(),
                 CheckedAt = p.CheckedAt is { } checkedAt ? Timestamp.FromDateTimeOffset(checkedAt) : null,
+                Ipv6Tunnel = p.Ipv6Tunnel,
             },
             Traffic = new V1.TrafficStats
             {
@@ -360,7 +361,7 @@ public static partial class ContractMapping
             Empty(status.ServerId),
             status.Since?.ToDateTimeOffset() ?? DateTimeOffset.UnixEpoch,
             status.Attempt,
-            new ProtectionChecks(p.AllTraffic.ToCore(), p.Dns.ToCore(), p.Ipv6.ToCore(), p.KillSwitch.ToCore(), p.CheckedAt?.ToDateTimeOffset()),
+            new ProtectionChecks(p.AllTraffic.ToCore(), p.Dns.ToCore(), p.Ipv6.ToCore(), p.KillSwitch.ToCore(), p.CheckedAt?.ToDateTimeOffset(), p.Ipv6Tunnel),
             status.Traffic is { } t ? new TrafficStats(t.LatencyMs > 0 ? t.LatencyMs : null, t.DownloadMbps, t.UploadMbps) : TrafficStats.Empty,
             status.Exit is { } e
                 ? new ExitInfo(Empty(e.Ip), Empty(e.City), Empty(e.NetworkType), Empty(e.Asn), Empty(e.DirectIp))

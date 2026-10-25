@@ -28,8 +28,10 @@ public sealed class VpnTunnel : IAsyncDisposable
     private readonly Action<string, string>? _output;
     private int _stopping;
 
-    private VpnTunnel(CoreProcess xray, CoreProcess singBox, string? netns, Action<string, string>? output)
+    private VpnTunnel(CoreProcess xray, CoreProcess singBox, string? netns, Action<string, string>? output, TunRequest tun)
     {
+        Ipv6 = SingBoxConfigBuilder.Ipv6Tunneled(tun);
+        Ipv6Outside = SingBoxConfigBuilder.Ipv6Outside(tun);
         _xray = xray;
         _singBox = singBox;
         _netns = netns;
@@ -48,6 +50,39 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <summary>Номера процессов ядер — для журнала.</summary>
     public (int Xray, int SingBox) Processes => (_xray.Id, _singBox.Id);
 
+    /// <summary>IPv6 идет через туннель: у адаптера есть адрес IPv6 и сервер открывает IPv6.</summary>
+    public bool Ipv6 { get; }
+
+    /// <summary>
+    /// IPv6 программ идет мимо туннеля: сервер его не открывает, а «Блокировать IPv6 вне туннеля» и «Строгие маршруты»
+    /// выключены. Держит его только блок при обрыве.
+    /// </summary>
+    public bool Ipv6Outside { get; }
+
+    /// <summary>В ядре ОС есть IPv6: правила маршрутизации IPv6 ставятся (строгим маршрутам на Linux это нужно).</summary>
+    public static bool KernelIpv6() => OperatingSystem.IsLinux() ? Directory.Exists("/proc/sys/net/ipv6") : Socket.OSSupportsIPv6;
+
+    /// <summary>
+    /// ОС даст новому адаптеру адрес IPv6: на Linux IPv6 не выключен для новых адаптеров, на Windows и macOS — IPv6 есть в
+    /// ОС. Не дала (Windows с выключенным IPv6) — sing-box выйдет при запуске, служба поднимет туннель без IPv6.
+    /// </summary>
+    public static bool AdapterIpv6()
+    {
+        if (!OperatingSystem.IsLinux())
+        {
+            return Socket.OSSupportsIPv6;
+        }
+
+        try
+        {
+            return File.ReadAllText("/proc/sys/net/ipv6/conf/default/disable_ipv6").Trim() == "0";
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     /// <summary>
     /// Поднять туннель. <paramref name="serverAddresses"/> — адреса сервера, разрешенные заранее: к первому
     /// соединяется Xray, все идут мимо TUN. Не поднялось за <paramref name="timeout"/> — <see cref="TunnelException"/>.
@@ -61,10 +96,14 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <param name="netns">Запустить оба ядра в сетевом пространстве Linux (тесты) — TUN и маршруты там же; null — в системе.</param>
     /// <param name="output">Строка вывода ядра — источник («xray», «sing-box») и текст, с самого запуска; приходит из потока чтения.</param>
     /// <param name="probe">Вход проверки связи с сервером; null — без него.</param>
+    /// <param name="serverIpv6">
+    /// Открывает ли сервер IPv6 — запросом через вход проверки, после запуска Xray и до TUN; null — не спрашивать: IPv6 через
+    /// туннель не идет.
+    /// </param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
         TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, ProbeLink? probe = null,
-        CancellationToken cancellationToken = default)
+        Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -98,30 +137,50 @@ public sealed class VpnTunnel : IAsyncDisposable
             // печатает, когда входы уже слушают.
             await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : Volatile.Read(ref xrayStarted) == 1),
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
-            var ready = 0;
-            singBoxCore = CoreProcess.StartSingBox(singBox,
-                SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, DirectPrograms(request, xray),
-                    FakeIpPrograms(request))),
-                netns,
-                line =>
+
+            // IPv6 через туннель — только если сервер его открывает: иначе соединения IPv6 принимал бы TUN, а рвал сервер, и
+            // программа не перешла бы на IPv4.
+            var ipv6 = request.Protection.Ipv6Allowed && probe is not null && serverIpv6 is not null && AdapterIpv6()
+                && await serverIpv6(probe, cancellationToken).ConfigureAwait(false);
+            while (true)
+            {
+                var ready = 0;
+                var tun = new TunRequest(link, serverAddresses, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
+                    DirectPrograms(request, xray), FakeIpPrograms(request));
+                singBoxCore = CoreProcess.StartSingBox(singBox, SingBoxConfigBuilder.BuildTun(tun), netns,
+                    line =>
+                    {
+                        if (line.Contains(SingBoxConfigBuilder.StartedLine, StringComparison.Ordinal))
+                        {
+                            Volatile.Write(ref ready, 1);
+                        }
+
+                        if (SingBoxConfigBuilder.ShownLine(line, request.Connection.CoreLog))
+                        {
+                            output?.Invoke("sing-box", line);
+                        }
+                    });
+
+                // Готов, когда запущены все части sing-box: правила маршрутизации TUN появляются раньше, чем выходы и
+                // сетевой менеджер, и соединение в эту щель сбрасывается.
+                var core = singBoxCore;
+                try
                 {
-                    if (line.Contains(SingBoxConfigBuilder.StartedLine, StringComparison.Ordinal))
-                    {
-                        Volatile.Write(ref ready, 1);
-                    }
+                    await WaitAsync(() => Volatile.Read(ref ready) == 1, "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (TunnelException) when (ipv6 && core.HasExited)
+                {
+                    // ОС не дала адаптеру адрес IPv6 (Windows с выключенным IPv6): туннель — без IPv6, он закрыт.
+                    core.Dispose();
+                    singBoxCore = null;
+                    ipv6 = false;
+                    output?.Invoke("service", "sing-box не поднял адаптер с IPv6 — на это подключение IPv6 закрыт");
+                    continue;
+                }
 
-                    if (SingBoxConfigBuilder.ShownLine(line, request.Connection.CoreLog))
-                    {
-                        output?.Invoke("sing-box", line);
-                    }
-                });
-            // Готов, когда запущены все части sing-box: правила маршрутизации TUN появляются раньше, чем выходы и
-            // сетевой менеджер, и соединение в эту щель сбрасывается.
-            var core = singBoxCore;
-
-            await WaitAsync(() => Volatile.Read(ref ready) == 1, "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken)
-                .ConfigureAwait(false);
-            return new VpnTunnel(xrayCore, core, netns, output);
+                return new VpnTunnel(xrayCore, core, netns, output, tun);
+            }
         }
         catch
         {

@@ -26,7 +26,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="Trace"/> — проверочный адрес внешнего IP (<see cref="LatencyProbe.DefaultTrace"/>); null — IP не мерить;
 /// <paramref name="ExitIp"/> — запрос внешнего IP (тесты); null — <see cref="LatencyProbe.ExitIpAsync"/>;
 /// <paramref name="BootConnect"/> — последнее подключение для «Защиты при загрузке» (<see cref="BootConnection"/>):
-/// служба подключается при загрузке сама; null — только блок.
+/// служба подключается при загрузке сама; null — только блок;
+/// <paramref name="Trace6"/> — проверочный адрес по IPv6 (<see cref="LatencyProbe.DefaultTrace6"/>): открывает ли сервер IPv6;
+/// null — не спрашивать, IPv6 через туннель не идет.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -42,7 +44,8 @@ public sealed record GatewayOptions(
     string? BootBlock = null,
     Uri? Trace = null,
     Func<ServerProbe, CancellationToken, Task<string?>>? ExitIp = null,
-    BootConnection? BootConnect = null);
+    BootConnection? BootConnect = null,
+    Uri? Trace6 = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -915,7 +918,7 @@ public sealed partial class Gateway : IAsyncDisposable
                     return;
                 }
 
-                _ = StartTunnelAsync(next, request, _addresses, _killSwitchOn);
+                _ = StartTunnelAsync(next, request, _addresses, _killSwitchOn, reuseIpv6: true);
                 return;
             }
 
@@ -1009,16 +1012,17 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>
     /// Туннель поднят — «Защищено»; не поднялся или ядро вышло — «Ошибка», блок остается. Пока туннель
-    /// поднимался, подключение сменилось — поднятый туннель останавливается.
+    /// поднимался, подключение сменилось — поднятый туннель останавливается. <paramref name="reuseIpv6"/> — взять вывод
+    /// прошлой проверки, открывает ли сервер IPv6 (после паузы); false — проверить заново (подключение).
     /// </summary>
-    private async Task StartTunnelAsync(int session, CoreRequest core, IReadOnlyList<IPAddress> addresses, bool killSwitchOn)
+    private async Task StartTunnelAsync(int session, CoreRequest core, IReadOnlyList<IPAddress> addresses, bool killSwitchOn, bool reuseIpv6 = false)
     {
         VpnTunnel tunnel;
         try
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6)).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -1070,17 +1074,17 @@ public sealed partial class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Какие из найденных адресов сервера брать: IPv6 — только если он не закрыт; первым — адрес
-    /// предпочтенного семейства (к первому соединяется Xray).
+    /// Какие из найденных адресов сервера брать: IPv6 — только если не «Только IPv4». Первым — IPv4, если он есть: к
+    /// первому соединяется Xray, а пойдет ли IPv6 через туннель, станет известно только после запуска Xray; без IPv6 у
+    /// TUN строгие маршруты закрыли бы соединение с сервером по IPv6. «Приоритет адресов» — для сайтов, а не для сервера.
     /// </summary>
     public static IReadOnlyList<IPAddress> PickAddresses(IEnumerable<IPAddress> found, ProtectionSettings protection)
     {
         ArgumentNullException.ThrowIfNull(protection);
         var ipv6 = protection.Ipv6Allowed;
-        var preferV6 = protection.Addresses == AddressPreference.PreferIpv6;
         return [.. found
             .Where(a => a.AddressFamily == AddressFamily.InterNetwork || (ipv6 && a.AddressFamily == AddressFamily.InterNetworkV6))
-            .OrderBy(a => (a.AddressFamily == AddressFamily.InterNetworkV6) != preferV6)];
+            .OrderBy(a => a.AddressFamily == AddressFamily.InterNetworkV6)];
     }
 
     /// <summary>Адреса сервера для туннеля и блока: адрес в описании — как есть, имя — через систему. Не нашлось — пусто.</summary>
@@ -1299,6 +1303,19 @@ public sealed partial class Gateway : IAsyncDisposable
             && (routing.HasBypassApps || routing.HasBypassSites))
         {
             status = status with { Protection = status.Protection with { AllTraffic = CheckState.Warning } };
+        }
+
+        // IPv6 через туннель — только пока туннель с IPv6 работает. IPv6 мимо туннеля (сервер без IPv6, «Блокировать IPv6 вне
+        // туннеля» и строгие маршруты выключены) держит только блок при обрыве: без него — «не контролируется».
+        var tunnel = status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } ? Volatile.Read(ref _tunnel) : null;
+        if (status.Protection.Ipv6Tunnel != tunnel is { Ipv6: true })
+        {
+            status = status with { Protection = status.Protection with { Ipv6Tunnel = tunnel is { Ipv6: true } } };
+        }
+
+        if (tunnel is { Ipv6Outside: true } && !_blocking)
+        {
+            status = status with { Protection = status.Protection with { Ipv6 = CheckState.Warning } };
         }
 
         return status.Mode != ConnectionMode.Vpn || status.State == ConnectionState.Off || _blocking

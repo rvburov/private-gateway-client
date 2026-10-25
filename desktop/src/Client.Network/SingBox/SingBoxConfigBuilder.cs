@@ -8,7 +8,7 @@ namespace PrivateGateway.Client.Network.SingBox;
 
 /// <summary>
 /// Что нужно TUN режима VPN: связь с Xray (<see cref="TunLink"/>), адреса сервера, которые идут мимо
-/// туннеля, и настройки. <paramref name="DirectPrograms"/> — раздельный режим: программы, чьи
+/// туннеля, настройки и IPv6 (<see cref="TunIpv6"/>). <paramref name="DirectPrograms"/> — раздельный режим: программы, чьи
 /// соединения идут мимо туннеля (<see cref="SingBoxConfigBuilder.DirectPrograms"/>); пусто — обхода нет.
 /// <paramref name="FakeIpPrograms"/> — те из них, чьи соединения с адресами FakeDNS идут во вход обхода
 /// Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>, <see cref="TunLink.BypassPort"/>).
@@ -18,15 +18,24 @@ public sealed record TunRequest(
     IReadOnlyList<IPAddress> ServerAddresses,
     ProtectionSettings Protection,
     ConnectionSettings Connection,
+    TunIpv6 Ipv6,
     IReadOnlyList<string>? DirectPrograms = null,
     IReadOnlyList<string>? FakeIpPrograms = null);
+
+/// <summary>
+/// IPv6 для TUN — решает служба: <paramref name="Kernel"/> — в ядре ОС есть IPv6 (правила маршрутизации IPv6 ставятся);
+/// <paramref name="Tunnel"/> — IPv6 идет через туннель: настройки его разрешают, сервер его открывает, ОС дает адаптеру
+/// адрес IPv6.
+/// </summary>
+public sealed record TunIpv6(bool Kernel, bool Tunnel);
 
 /// <summary>
 /// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда в SOCKS5 Xray на
 /// 127.0.0.1 (основное ядро — Xray, sing-box лишь переводит пакеты в соединения). DNS — такой же
 /// трафик: запросы к любому адресу уходят в Xray, и там их отвечает выход DNS по настройкам DNS Xray —
 /// один DNS в режимах прокси и VPN. Адреса сервера — мимо туннеля, иначе соединение с ним ушло бы в
-/// сам туннель. IPv6 закрыт — у TUN нет IPv6, строгие маршруты делают его недоступным. Раздельный
+/// сам туннель. IPv6 идет через туннель, если служба решила, что сервер его открывает (<see cref="TunIpv6"/>); иначе у TUN
+/// нет IPv6, и строгие маршруты делают его недоступным (<see cref="StrictRoutes"/>). Раздельный
 /// режим — правило по пути программы: ее соединения sing-box отправляет своим выходом напрямую, с
 /// меткой <see cref="DirectMark"/> — по ней их пропускает блок при обрыве. Журнал соединений выключен.
 /// sing-box — GPL-3.0: только отдельным процессом, конфиг — через stdin.
@@ -66,19 +75,47 @@ public static class SingBoxConfigBuilder
     /// <summary>Частные сети — мимо туннеля, если локальная сеть разрешена.</summary>
     private static readonly string[] PrivateNetworks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fc00::/7", "fe80::/10"];
 
+    /// <summary>IPv6 идет через туннель: настройки его разрешают, и служба решила, что сервер и ОС его дают.</summary>
+    public static bool Ipv6Tunneled(TunRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return request.Ipv6.Tunnel && request.Protection.Ipv6Allowed;
+    }
+
+    /// <summary>
+    /// Строгие маршруты TUN. IPv6, который не идет через туннель, закрывают только они (если блок при обрыве выключен): у
+    /// TUN без адреса IPv6 sing-box ставит на все IPv6 правило «недоступно» (Linux) или фильтр «block ipv6» (Windows) — и
+    /// для сокетов, привязанных к адресу. Поэтому при «Блокировать IPv6 вне туннеля» и «Только IPv4» они включены всегда.
+    /// На Linux без IPv6 в ядре sing-box с ними не стартует (правило IPv6 не поставить) — и закрывать там нечего. Сервер
+    /// только с IPv6 (Xray соединяется с ним по IPv6), а у TUN IPv6 нет — строгих маршрутов нет: они закрыли бы и это
+    /// соединение; IPv6 программ тогда держит блок при обрыве.
+    /// </summary>
+    public static bool StrictRoutes(TunRequest request)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var protection = request.Protection;
+        var tunneled = Ipv6Tunneled(request);
+        var serverOverIpv6 = IPAddress.TryParse(request.Xray.ServerAddress, out var server) && server.AddressFamily == AddressFamily.InterNetworkV6;
+        return (request.Connection.StrictRoutes || (!tunneled && (protection.BlockIpv6 || !protection.Ipv6Allowed)))
+            && (request.Ipv6.Kernel || !OperatingSystem.IsLinux())
+            && (tunneled || !serverOverIpv6);
+    }
+
+    /// <summary>IPv6 программ идет мимо туннеля: через туннель не идет, строгих маршрутов нет, а IPv6 в ОС есть.</summary>
+    public static bool Ipv6Outside(TunRequest request) => !Ipv6Tunneled(request) && !StrictRoutes(request) && request.Ipv6.Kernel;
+
     public static JsonObject BuildTun(TunRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
         var connection = request.Connection;
         var protection = request.Protection;
-        var ipv6 = protection.Ipv6Allowed;
         var tun = new JsonObject
         {
             ["type"] = "tun",
             ["tag"] = TunTag,
-            ["address"] = ipv6 ? new JsonArray(TunAddress, TunAddress6) : new JsonArray(TunAddress),
+            ["address"] = Ipv6Tunneled(request) ? new JsonArray(TunAddress, TunAddress6) : new JsonArray(TunAddress),
             ["auto_route"] = true,
-            ["strict_route"] = connection.StrictRoutes,
+            ["strict_route"] = StrictRoutes(request),
             ["stack"] = connection.Stack switch
             {
                 TunEngine.Gvisor => "gvisor",

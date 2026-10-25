@@ -448,7 +448,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         Chips[0].Update(protection.AllTraffic, paused,
             Status.Mode == ConnectionMode.Vpn && protection.AllTraffic == CheckState.Warning ? "split" : null);
         Chips[1].Update(protection.Dns, paused);
-        Chips[2].Update(protection.Ipv6, paused);
+        // IPv6 в режиме VPN: через туннель (сервер его открывает) или мимо него — свои заголовок, подпись и пояснение.
+        Chips[2].Update(protection.Ipv6, paused,
+            protection.Ipv6Tunnel ? "tunnel"
+            : Status.Mode == ConnectionMode.Vpn && Status.State == ConnectionState.Connected && protection.Ipv6 == CheckState.Warning ? "outside"
+            : null);
         Chips[3].Update(protection.KillSwitch, paused);
         OnPropertyChanged(string.Empty);
     }
@@ -496,12 +500,17 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    public string Title => Loc.Instance[$"check.{Id}.title"];
+    public string Title => Loc.Instance[Variant is { } variant && !IsPaused && Loc.Instance.Has($"check.{Id}.{variant}.title")
+        ? $"check.{Id}.{variant}.title"
+        : $"check.{Id}.title"];
 
     /// <summary>Пауза для входа в Wi-Fi: «напрямую», «у провайдера», «открыт», «на паузе».</summary>
     public bool IsPaused { get; private set; }
 
-    /// <summary>Особый случай состояния со своими подписью и пояснением: «split» — раздельный режим.</summary>
+    /// <summary>
+    /// Особый случай состояния со своими подписью и пояснением (и заголовком, если он есть): «split» — раздельный режим,
+    /// «tunnel» и «outside» — IPv6 через туннель и мимо него.
+    /// </summary>
     public string? Variant { get; private set; }
 
     public string Value => Loc.Instance[$"check.{Id}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];

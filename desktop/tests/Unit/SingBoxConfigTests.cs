@@ -11,6 +11,9 @@ public sealed class SingBoxConfigTests
 {
     private static readonly TunLink Link = new(31000, "user-1", "pass-1", "198.51.100.20");
 
+    /// <summary>IPv6 есть в ядре, через туннель не идет — сервер его не открывает.</summary>
+    private static readonly TunIpv6 Closed = new(Kernel: true, Tunnel: false);
+
     [Fact]
     public void Everything_goes_through_xray_and_the_server_goes_around_the_tunnel()
     {
@@ -19,7 +22,7 @@ public sealed class SingBoxConfigTests
         var tun = Tun(config);
         (tun["auto_route"]!.GetValue<bool>(), tun["strict_route"]!.GetValue<bool>(), tun["stack"]!.GetValue<string>())
             .ShouldBe((true, true, "system"));
-        Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress], "IPv6 закрыт по умолчанию — у TUN его нет");
+        Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress], "сервер не открывает IPv6 — у TUN его нет");
         Strings(tun["route_exclude_address"]).ShouldBe(["198.51.100.20/32", "2001:db8::20/128"], "локальная сеть не разрешена — мимо туннеля только сервер");
         tun.ContainsKey("mtu").ShouldBeFalse("MTU подбирает sing-box");
         if (OperatingSystem.IsMacOS())
@@ -57,8 +60,9 @@ public sealed class SingBoxConfigTests
     public void Settings_shape_the_tunnel()
     {
         var config = Build([IPAddress.Parse("198.51.100.20")],
-            ProtectionSettings.Default with { BlockIpv6 = false, AllowLan = true },
-            ConnectionSettings.Default with { Stack = TunEngine.Gvisor, Mtu = 1420, StrictRoutes = false, CoreLog = CoreLogLevel.Debug });
+            ProtectionSettings.Default with { AllowLan = true },
+            ConnectionSettings.Default with { Stack = TunEngine.Gvisor, Mtu = 1420, StrictRoutes = false, CoreLog = CoreLogLevel.Debug },
+            Closed with { Tunnel = true });
 
         var tun = Tun(config);
         Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress, SingBoxConfigBuilder.TunAddress6]);
@@ -69,15 +73,58 @@ public sealed class SingBoxConfigTests
 
         Tun(Build([IPAddress.Parse("198.51.100.20")], connection: ConnectionSettings.Default with { Stack = TunEngine.Mixed }))["stack"]!
             .GetValue<string>().ShouldBe("mixed");
-        Strings(Tun(Build([IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default with { BlockIpv6 = false, Addresses = AddressPreference.Ipv4Only }))["address"])
-            .ShouldBe([SingBoxConfigBuilder.TunAddress], "только IPv4 — и у TUN только IPv4");
+        Strings(Tun(Build([IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default with { Addresses = AddressPreference.Ipv4Only },
+                ipv6: Closed with { Tunnel = true }))["address"])
+            .ShouldBe([SingBoxConfigBuilder.TunAddress], "только IPv4 — и у TUN только IPv4, даже если сервер открывает IPv6");
+    }
+
+    [Theory]
+    [InlineData(true, AddressPreference.PreferIpv4, false, true, "IPv6 вне туннеля блокируется — его закрывают строгие маршруты")]
+    [InlineData(false, AddressPreference.PreferIpv4, false, false, "IPv6 вне туннеля разрешен — идет напрямую")]
+    [InlineData(false, AddressPreference.Ipv4Only, false, true, "только IPv4 — IPv6 закрыт везде")]
+    [InlineData(false, AddressPreference.Ipv4Only, true, true, "только IPv4 — и сервер с IPv6 его не открывает")]
+    [InlineData(true, AddressPreference.PreferIpv4, true, false, "IPv6 идет через туннель — закрывать нечего")]
+    public void Ipv6_outside_the_tunnel_is_closed_by_strict_routes_even_when_they_are_off(
+        bool blockIpv6, AddressPreference addresses, bool tunnel, bool strict, string because)
+    {
+        var tun = Tun(Build([IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default with { BlockIpv6 = blockIpv6, Addresses = addresses },
+            ConnectionSettings.Default with { StrictRoutes = false }, Closed with { Tunnel = tunnel }));
+
+        tun["strict_route"]!.GetValue<bool>().ShouldBe(strict, because);
+        SingBoxConfigBuilder.Ipv6Outside(new TunRequest(Link, [], ProtectionSettings.Default with { BlockIpv6 = blockIpv6, Addresses = addresses },
+            ConnectionSettings.Default with { StrictRoutes = false }, Closed with { Tunnel = tunnel })).ShouldBe(!strict && !tunnel);
+    }
+
+    [Fact]
+    public void Server_over_ipv6_keeps_its_connection_when_ipv6_is_not_tunneled()
+    {
+        var link = Link with { ServerAddress = "2001:db8::20" };
+        TunRequest Request(bool tunnel) => new(link, [IPAddress.Parse("2001:db8::20")], ProtectionSettings.Default, ConnectionSettings.Default,
+            Closed with { Tunnel = tunnel });
+
+        Tun(SingBoxConfigBuilder.BuildTun(Request(tunnel: false)))["strict_route"]!.GetValue<bool>()
+            .ShouldBeFalse("строгие маршруты без IPv6 у TUN закрыли бы и соединение Xray с сервером по IPv6");
+        SingBoxConfigBuilder.Ipv6Outside(Request(tunnel: false)).ShouldBeTrue("IPv6 программ тогда держит только блок при обрыве — это видно");
+        Tun(SingBoxConfigBuilder.BuildTun(Request(tunnel: true)))["strict_route"]!.GetValue<bool>().ShouldBeTrue("IPv6 через туннель — сервер мимо него");
+    }
+
+    [Fact]
+    public void Linux_without_ipv6_in_the_kernel_gets_no_strict_routes()
+    {
+        var tun = Tun(Build([IPAddress.Parse("198.51.100.20")], ipv6: new TunIpv6(Kernel: false, Tunnel: false)));
+
+        tun["strict_route"]!.GetValue<bool>().ShouldBe(!OperatingSystem.IsLinux(),
+            "на Linux без IPv6 в ядре sing-box со строгими маршрутами не стартует, а закрывать там нечего");
+        SingBoxConfigBuilder.Ipv6Outside(new TunRequest(Link, [], ProtectionSettings.Default, ConnectionSettings.Default, new TunIpv6(Kernel: false, Tunnel: false)))
+            .ShouldBeFalse("IPv6 в ОС нет — и мимо туннеля ему идти некуда");
+        Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress]);
     }
 
     [Fact]
     public void Chosen_programs_go_around_the_tunnel_through_a_marked_exit()
     {
         var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
-            ConnectionSettings.Default, ["/opt/game/game", "/usr/bin/xray"]));
+            ConnectionSettings.Default, Closed, ["/opt/game/game", "/usr/bin/xray"]));
 
         var direct = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.DirectTag)!;
         direct["type"]!.GetValue<string>().ShouldBe("direct");
@@ -130,7 +177,7 @@ public sealed class SingBoxConfigTests
         SingBoxConfigBuilder.DirectPrograms(split, ProtectionSettings.Default, "/x/xray").ShouldBe(["/opt/game/game"]);
 
         var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link with { BypassPort = 31001 }, [IPAddress.Parse("198.51.100.20")], fake,
-            ConnectionSettings.Default, ["/opt/game/game", "/x/xray"], ["/opt/game/game"]));
+            ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"], ["/opt/game/game"]));
 
         var rules = config["route"]!["rules"]!.AsArray();
         rules.Count.ShouldBe(2);
@@ -142,7 +189,7 @@ public sealed class SingBoxConfigTests
         (bypass["server"]!.GetValue<string>(), bypass["server_port"]!.GetValue<int>(), bypass["username"]!.GetValue<string>(), bypass["password"]!.GetValue<string>())
             .ShouldBe(("127.0.0.1", 31001, "user-1", "pass-1"));
 
-        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, ["/opt/game/game", "/x/xray"],
+        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"],
             ["/opt/game/game"]))["route"]!["rules"]!.AsArray().ShouldHaveSingleItem("нет входа обхода — нет и правила");
     }
 
@@ -161,8 +208,10 @@ public sealed class SingBoxConfigTests
         SingBoxConfigBuilder.ShownLine(line, level).ShouldBe(shown);
     }
 
-    private static JsonObject Build(IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null) =>
-        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default));
+    private static JsonObject Build(
+        IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null, TunIpv6? ipv6 = null) =>
+        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default,
+            ipv6 ?? Closed));
 
     private static JsonObject Tun(JsonObject config) => config["inbounds"]!.AsArray().ShouldHaveSingleItem()!.AsObject();
 

@@ -18,6 +18,9 @@ internal sealed class NetworkNamespace : IDisposable
 
     private int _octet;
 
+    // Конец пары LinkAsMachine в сети машины.
+    private string? _machineLink;
+
     private NetworkNamespace(string path) => Path = path;
 
     /// <summary>Файл пространства в /run/netns.</summary>
@@ -104,10 +107,33 @@ internal sealed class NetworkNamespace : IDisposable
         var neighbor = IPAddress.Parse($"10.252.{octet}.5");
         var @public = IPAddress.Parse($"203.0.113.{octet}");
         var outside = Link("pgnet0", host, IPAddress.Parse($"10.252.{octet}.2"));
+        _machineLink = outside;
         Host("ip", "addr", "add", neighbor + "/32", "dev", outside);
         Host("ip", "addr", "add", @public + "/32", "dev", outside);
         Run(null, "ip", "route", "add", "default", "dev", "pgnet0");
         return (host, neighbor, @public);
+    }
+
+    /// <summary>Пропустить тест, если в ядре машины нет IPv6 или он выключен для новых адаптеров (контейнер облака).</summary>
+    public static void SkipUnlessIpv6()
+    {
+        const string Default = "/proc/sys/net/ipv6/conf/default/disable_ipv6";
+        Assert.SkipUnless(File.Exists(Default) && File.ReadAllText(Default).Trim() == "0", "в ядре машины нет IPv6 или он выключен");
+    }
+
+    /// <summary>
+    /// IPv6 на паре <see cref="LinkAsMachine"/>, как у сети провайдера с IPv6: адрес машины <c>Host</c>, адрес пространства и
+    /// маршрут IPv6 по умолчанию в пару. Адреса — из 2001:db8::/32 (документация).
+    /// </summary>
+    public (IPAddress Host, IPAddress Inside) LinkIpv6()
+    {
+        var outside = _machineLink ?? throw new InvalidOperationException("сначала LinkAsMachine");
+        var host = IPAddress.Parse($"2001:db8:77:{Octet:x}::1");
+        var inside = IPAddress.Parse($"2001:db8:77:{Octet:x}::2");
+        Host("ip", "-6", "addr", "add", host + "/64", "dev", outside, "nodad");
+        Run(null, "ip", "-6", "addr", "add", inside + "/64", "dev", "pgnet0", "nodad");
+        Run(null, "ip", "-6", "route", "add", "default", "dev", "pgnet0");
+        return (host, inside);
     }
 
     /// <summary>Команда изнутри пространства с <paramref name="input"/> в stdin; не вышла успешно — исключение с ее выводом.</summary>
@@ -133,6 +159,21 @@ internal sealed class NetworkNamespace : IDisposable
         """, url.Host, url.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), mark.ToString(System.Globalization.CultureInfo.InvariantCulture),
         seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
+    /// <summary>
+    /// Страница с сайта теста из сокета, привязанного к адресу <paramref name="source"/>, — как кандидаты WebRTC и
+    /// <c>curl --interface</c>: такие сокеты маршруты по адресу источника могут увести мимо TUN. Не соединилось — исключение.
+    /// </summary>
+    public Task<string> FetchFromAsync(Uri url, IPAddress source, int seconds = 5) => RunAsync("python3", "-c", """
+        import socket, sys
+        s = socket.create_connection((sys.argv[1], int(sys.argv[2])), float(sys.argv[4]), (sys.argv[3], 0))
+        s.sendall(b"GET / HTTP/1.0\r\n\r\n")
+        reply = b""
+        while chunk := s.recv(4096):
+            reply += chunk
+        print(reply.decode().split("\r\n\r\n", 1)[1], end="")
+        """, url.Host.Trim('[', ']'), url.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), source.ToString(),
+        seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
     /// <summary>Команда изнутри пространства; не вышла успешно — исключение с ее выводом.</summary>
     public async Task<string> RunAsync(params string[] command)
     {
@@ -151,7 +192,8 @@ internal sealed class NetworkNamespace : IDisposable
     }
 
     /// <summary>Страница по HTTP изнутри пространства; не ответило за <paramref name="seconds"/> с — исключение.</summary>
-    public Task<string> CurlAsync(Uri url, int seconds = 10) => RunAsync("curl", "-sS", "-m", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), url.ToString());
+    public Task<string> CurlAsync(Uri url, int seconds = 10) =>
+        RunAsync("curl", "-sS", "-g", "-m", seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), url.ToString());
 
     /// <summary>Запрос A по UDP к <paramref name="server"/> изнутри пространства: адрес из ответа или «none».</summary>
     public Task<string> ResolveAsync(string name, IPAddress server, int seconds = 10) => RunAsync("python3", "-c", """

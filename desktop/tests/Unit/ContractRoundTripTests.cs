@@ -109,6 +109,8 @@ public sealed class ContractRoundTripTests
         V1.Status.Parser.ParseFrom(strict.ToContract().ToByteArray()).ToCore().StrictBlock.ShouldBeTrue("«Блокировка» строгого режима доходит до окна");
         var strictPause = strict with { CaptivePauseUntil = at.AddMinutes(5), Protection = ProtectionChecks.Paused };
         V1.Status.Parser.ParseFrom(strictPause.ToContract().ToByteArray()).ToCore().ShouldBe(strictPause, "пауза строгой «Блокировки» — тоже");
+        var tunneled = status with { Mode = ConnectionMode.Vpn, Protection = ProtectionChecks.For(ConnectionState.Connected) with { Ipv6Tunnel = true } };
+        V1.Status.Parser.ParseFrom(tunneled.ToContract().ToByteArray()).ToCore().Protection.Ipv6Tunnel.ShouldBeTrue("IPv6 через туннель доходит до окна");
     }
 
     [Fact]

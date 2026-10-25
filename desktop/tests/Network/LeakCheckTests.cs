@@ -28,6 +28,18 @@ public sealed class LeakCheckTests
         LatencyProbe.TraceIp("<html>ip=</html>").ShouldBeNull();
     }
 
+    [Theory]
+    [InlineData("203.0.113.24", "2001:db8:24::24", true)]
+    [InlineData("203.0.113.24", null, false)]
+    [InlineData("203.0.113.24", "203.0.113.24", false)]
+    [InlineData(null, "2001:db8:24::24", true)]
+    [InlineData(null, null, null)]
+    public void Server_opens_ipv6_only_if_it_answers_with_an_ipv6_address(string? ip4, string? ip6, bool? opens)
+    {
+        // По IPv4 ответил, а по IPv6 нет — у сервера нет IPv6; не ответил ни по одному — медленным бывает и сервер: вывода нет.
+        Gateway.Ipv6Verdict(ip4, ip6).ShouldBe(opens);
+    }
+
     [Fact]
     public async Task Exit_ip_without_a_proxy_is_asked_directly_and_silence_is_null()
     {

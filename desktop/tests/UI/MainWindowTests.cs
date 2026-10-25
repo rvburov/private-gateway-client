@@ -364,6 +364,43 @@ public sealed class MainWindowTests : WindowHarness
         (row.Detail, row.ChipText).ShouldBe(("Программы и сайты из раздельного режима идут мимо туннеля", "Частично"));
     }
 
+    [AvaloniaTheory]
+    [InlineData(true, CheckState.Ok, "IPv6 в туннеле", "через сервер", "Сервер открывает IPv6: сайты по IPv6 идут через туннель, как и по IPv4.",
+        "Идет через туннель: сервер открывает IPv6", "В туннеле")]
+    [InlineData(false, CheckState.Warning, "IPv6 открыт", "мимо туннеля",
+        "Сервер без IPv6, и IPv6 идет напрямую, мимо туннеля: сайты видят ваш адрес IPv6. Закроет его «Блокировать IPv6 вне туннеля» или блок при обрыве.",
+        "Идет мимо туннеля: сайты видят ваш адрес IPv6", "Открыт")]
+    [InlineData(false, CheckState.Ok, "IPv6 закрыт", "нет обхода",
+        "IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля.", "Заблокирован вне туннеля", "Закрыт")]
+    public async Task Ipv6_chip_tells_tunneled_open_and_closed_apart(
+        bool tunnel, CheckState state, string title, string value, string text, string detail, string chipText)
+    {
+        var reason = tunnel ? "tunnel" : state == CheckState.Warning ? "outside" : null;
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            // Как служба в режиме VPN: сервер открывает IPv6, или IPv6 идет мимо туннеля, или закрыт.
+            Outcome = c => c.MoveTo(ConnectionState.Connected, Time.GetUtcNow()) is var connected
+                ? connected with { Protection = connected.Protection with { Ipv6 = state, Ipv6Tunnel = tunnel } }
+                : c,
+            Checks = [new DiagnosticResult(DiagnosticCheck.Ipv6, state, reason)],
+        });
+        Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Vpn });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        Dispatcher.UIThread.RunJobs();
+
+        var chip = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>().Chips[2];
+        (chip.Title, chip.Value, chip.Text).ShouldBe((title, value, text));
+
+        shell.NavigateCommand.Execute(Pages.Check);
+        var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
+        WaitFor(() => !check.IsRunning);
+        var row = check.Rows.Single(r => r.Check == DiagnosticCheck.Ipv6);
+        (row.Detail, row.ChipText).ShouldBe((detail, chipText));
+    }
+
     [AvaloniaFact]
     public async Task Check_button_comes_back_even_if_the_service_sends_no_check_time()
     {

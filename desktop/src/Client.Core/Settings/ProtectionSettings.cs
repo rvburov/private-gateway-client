@@ -26,7 +26,9 @@ public enum AddressPreference
 /// <summary>
 /// «Защита и утечки» (доска 5) — все, кроме самого блока при обрыве: он в
 /// <see cref="AppSettings.KillSwitch"/>, общий с разделом «Основные». Значения по умолчанию —
-/// как в макете: защита при загрузке, блок DNS провайдера, IPv6 и локальная сеть закрыты.
+/// как в макете: защита при загрузке, блок DNS провайдера, IPv6 вне туннеля и локальная сеть закрыты.
+/// <c>BlockIpv6</c> — «Блокировать IPv6 вне туннеля»: IPv6, который не идет через туннель (сервер без IPv6, ОС не
+/// дает адаптеру IPv6), закрыт строгими маршрутами всегда, а не только по настройке «Строгие маршруты».
 /// </summary>
 public sealed record ProtectionSettings(
     bool BootProtection = true,
@@ -44,10 +46,11 @@ public sealed record ProtectionSettings(
     public static ProtectionSettings Default { get; } = new();
 
     /// <summary>
-    /// IPv6 открыт — идет через туннель: «Блокировать IPv6» выключен и адреса не «Только IPv4». Иначе IPv6 закрыт
-    /// везде: в TUN, в правилах ядра и в ответах DNS ядра.
+    /// IPv6 разрешен — идет через туннель, если сервер его открывает (режим VPN проверяет это при подключении).
+    /// «Только IPv4» — IPv6 закрыт везде: в TUN, в правилах ядра и в ответах DNS ядра. Чем закрыт IPv6, который через
+    /// туннель не идет, решает <see cref="BlockIpv6"/>.
     /// </summary>
-    public bool Ipv6Allowed => !BlockIpv6 && Addresses != AddressPreference.Ipv4Only;
+    public bool Ipv6Allowed => Addresses != AddressPreference.Ipv4Only;
 
     /// <summary>Адреса DNS для службы: пусто — из профиля сервера.</summary>
     public IReadOnlyList<string> DnsServers => Dns switch

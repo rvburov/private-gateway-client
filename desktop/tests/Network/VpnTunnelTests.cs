@@ -44,10 +44,9 @@ public sealed class VpnTunnelTests
 
         using var server = await XrayKit.Start(serverConfig, serverPort);
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
-            // DNS Xray — обычный, по UDP через сервер: на сервере теста его отвечает свой DNS.
-            ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
-            // Строгим маршрутам нужен IPv6 в ядре; в контейнере облака его нет.
-            ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") }, RoutingSettings.Default);
+            // DNS Xray — обычный, по UDP через сервер: на сервере теста его отвечает свой DNS. Строгие маршруты — только если в
+            // ядре есть IPv6 (в контейнере облака его нет): служба смотрит сама.
+            ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" }, ConnectionSettings.Default, RoutingSettings.Default);
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, cancellationToken: Ct);
@@ -85,7 +84,7 @@ public sealed class VpnTunnelTests
         using var _ = server;
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
-            ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") }, RoutingSettings.Default);
+            ConnectionSettings.Default, RoutingSettings.Default);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, cancellationToken: Ct);
@@ -115,7 +114,7 @@ public sealed class VpnTunnelTests
             .Select(dir => Path.Combine(dir, "curl")).First(File.Exists));
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
-            ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") },
+            ConnectionSettings.Default,
             new RoutingSettings(RoutingMode.Split, [new BypassApp(curl, "curl")], []));
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
@@ -266,6 +265,33 @@ public sealed class VpnTunnelTests
                 new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("0.0.0.0/0", "::/0"), ["outboundTag"] = "block" }),
         };
         return (definition, await XrayKit.Start(serverConfig, serverPort));
+    }
+
+    [Fact]
+    public async Task Adapter_the_os_gives_no_ipv6_gets_a_tunnel_without_ipv6()
+    {
+        SkipWithoutNamespaces();
+        NetworkNamespace.SkipUnlessIpv6();
+        using var netns = NetworkNamespace.Create();
+        var (host, _, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель");
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);
+        serverConfig["outbounds"] = new JsonArray(
+            new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        // Новые адаптеры в пространстве — без IPv6, как Windows с выключенным IPv6: адрес IPv6 sing-box не поставит и выйдет.
+        netns.Run(null, "sysctl", "-qw", "net.ipv6.conf.default.disable_ipv6=1");
+        var lines = new System.Collections.Concurrent.ConcurrentQueue<(string Source, string Line)>();
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default, RoutingSettings.Default);
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, (source, line) => lines.Enqueue((source, line)), VpnTunnel.NewProbe(),
+            (_, _) => Task.FromResult(true), Ct);
+
+        tunnel.Ipv6.ShouldBeFalse("сервер открывает IPv6, но адаптеру ОС его не дала");
+        lines.ShouldContain(("service", "sing-box не поднял адаптер с IPv6 — на это подключение IPv6 закрыт"));
+        (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "туннель поднят без IPv6");
     }
 
     private static void SkipWithoutNamespaces()

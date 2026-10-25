@@ -174,13 +174,17 @@ public sealed partial class VpnModeTests
     {
         IPAddress[] found = [IPAddress.Parse("2001:db8::20"), IPAddress.Parse("198.51.100.20"), IPAddress.Parse("2001:db8::21")];
 
-        Gateway.PickAddresses(found, ProtectionSettings.Default).ShouldBe([IPAddress.Parse("198.51.100.20")], "IPv6 закрыт по умолчанию");
-        Gateway.PickAddresses(found, ProtectionSettings.Default with { BlockIpv6 = false })
-            .ShouldBe([IPAddress.Parse("198.51.100.20"), IPAddress.Parse("2001:db8::20"), IPAddress.Parse("2001:db8::21")], "первым — IPv4");
-        Gateway.PickAddresses(found, ProtectionSettings.Default with { BlockIpv6 = false, Addresses = AddressPreference.PreferIpv6 })
-            .ShouldBe([IPAddress.Parse("2001:db8::20"), IPAddress.Parse("2001:db8::21"), IPAddress.Parse("198.51.100.20")]);
+        IPAddress[] all = [IPAddress.Parse("198.51.100.20"), IPAddress.Parse("2001:db8::20"), IPAddress.Parse("2001:db8::21")];
+
+        Gateway.PickAddresses(found, ProtectionSettings.Default).ShouldBe(all,
+            "первым — IPv4: к нему соединяется Xray, а IPv6 туннеля станет известен позже; адреса IPv6 — мимо туннеля и блока");
+        Gateway.PickAddresses(found, ProtectionSettings.Default with { Addresses = AddressPreference.PreferIpv6 }).ShouldBe(all,
+            "«Приоритет адресов» — для сайтов, а не для сервера");
         Gateway.PickAddresses(found, ProtectionSettings.Default with { BlockIpv6 = false, Addresses = AddressPreference.Ipv4Only })
             .ShouldBe([IPAddress.Parse("198.51.100.20")]);
+        Gateway.PickAddresses([IPAddress.Parse("2001:db8::20")], ProtectionSettings.Default).ShouldBe([IPAddress.Parse("2001:db8::20")],
+            "сервер только с IPv6");
+        Gateway.PickAddresses([IPAddress.Parse("2001:db8::20")], ProtectionSettings.Default with { Addresses = AddressPreference.Ipv4Only }).ShouldBeEmpty();
     }
 
     [Fact]
@@ -926,6 +930,12 @@ public sealed partial class VpnModeTests
         public static Uri Trace { get; } = new("http://1.1.1.1/");
 
         /// <summary>
+        /// Он же по IPv6: адрес не из частных сетей (их закрывает правило локальной сети Xray), через сервер — на его сайт
+        /// IPv6, а у сервера без IPv6 — никуда.
+        /// </summary>
+        public static Uri Trace6 { get; } = new("http://[2606:4700:4700::1111]/");
+
+        /// <summary>
         /// Проверочный адрес напрямую, мимо туннеля, — сайт на адресе машины: правило nftables пространства ведет туда
         /// запросы к <see cref="Trace"/>, которые уходят в сеть машины. В туннель они идут как были — к серверу.
         /// </summary>
@@ -953,7 +963,7 @@ public sealed partial class VpnModeTests
             var proxy = probe.Credentials is { } user ? ["-x", $"socks5h://{user.UserName}:{user.Password}@127.0.0.1:{probe.Port}"] : Array.Empty<string>();
             try
             {
-                return LatencyProbe.TraceIp(await Netns.RunAsync(["curl", "-sS", "-m", seconds, .. proxy, probe.Target.ToString()]));
+                return LatencyProbe.TraceIp(await Netns.RunAsync(["curl", "-sS", "-g", "-m", seconds, .. proxy, probe.Target.ToString()]));
             }
             catch (InvalidOperationException)
             {
@@ -961,7 +971,10 @@ public sealed partial class VpnModeTests
             }
         }
 
-        public static async Task<Rig> CreateAsync(string page = "через туннель")
+        /// <param name="page">Страница сайта сервера.</param>
+        /// <param name="page6">Страница сайта сервера для адресов IPv6; null — тот же сайт.</param>
+        /// <param name="serverIpv6">Сервер открывает IPv6; false — соединения с адресами IPv6 он закрывает.</param>
+        public static async Task<Rig> CreateAsync(string page = "через туннель", string? page6 = null, bool serverIpv6 = true)
         {
             NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
             Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
@@ -981,6 +994,20 @@ public sealed partial class VpnModeTests
                 // Выход сервера теста — на свой сайт: из машины ничего не уходит.
                 serverConfig["outbounds"] = new JsonArray(
                     new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+                if (page6 is not null || !serverIpv6)
+                {
+                    // Адреса IPv6 — на свой сайт или, у сервера без IPv6, в никуда.
+                    var site6 = new LocalSite(page6 ?? page);
+                    owned.Add(site6);
+                    serverConfig["outbounds"]!.AsArray().Add(serverIpv6
+                        ? new JsonObject { ["tag"] = "v6", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site6.Url.Port}" } }
+                        : new JsonObject { ["tag"] = "v6", ["protocol"] = "blackhole" });
+                    serverConfig["routing"] = new JsonObject
+                    {
+                        ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("::/0"), ["outboundTag"] = "v6" }),
+                    };
+                }
+
                 var server = await XrayKit.Start(serverConfig, serverPort);
                 var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
 
@@ -1019,16 +1046,20 @@ public sealed partial class VpnModeTests
         return int.Parse(line[(line.IndexOf(Marker, StringComparison.Ordinal) + Marker.Length)..], CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Подключение в режиме VPN; локальная сеть закрыта, если не сказано иначе; строгие маршруты — если в ядре ОС есть IPv6.</summary>
-    private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false)
+    /// <summary>
+    /// Подключение в режиме VPN; локальная сеть закрыта, если не сказано иначе. Строгие маршруты служба ставит, только если в
+    /// ядре ОС есть IPv6.
+    /// </summary>
+    private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false,
+        bool strictRoutes = true, bool blockIpv6 = true)
     {
         var settings = AppSettings.Default with
         {
             Mode = ConnectionMode.Vpn,
             KillSwitch = killSwitch,
             Routing = routing ?? RoutingSettings.Default,
-            Protection = ProtectionSettings.Default with { AllowLan = allowLan },
-            Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 20, StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") },
+            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6 },
+            Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 20, StrictRoutes = strictRoutes },
         };
         return new V1.ConnectRequest
         {
