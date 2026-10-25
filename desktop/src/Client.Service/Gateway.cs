@@ -82,6 +82,9 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>Адреса FakeDNS: ни один сервер на них не живет — такой ответ DNS ОС дал Xray в туннеле.</summary>
     private static readonly IPNetwork FakeDnsPool = IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool);
 
+    /// <summary>Адрес DNS туннеля: туда блок на Linux перенаправляет DNS к разрешенной локальной сети.</summary>
+    private static readonly IPAddress TunnelDns = IPAddress.Parse(SingBoxConfigBuilder.TunDns);
+
     /// <summary>Дольше пауза для входа в Wi-Fi не бывает: защита не должна забыться выключенной.</summary>
     public static readonly TimeSpan MaxCaptivePause = TimeSpan.FromMinutes(15);
 
@@ -1176,7 +1179,8 @@ public sealed partial class Gateway : IAsyncDisposable
             core.Protection.LanDiscovery,
             core.Protection.BlockOutsideDns,
             direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
-            core.Protection.BootProtection);
+            core.Protection.BootProtection,
+            tunnel ? TunnelDns : null);
         if (!Try(() => { killSwitch.Enable(policy); return true; }, "Блок при обрыве не включился"))
         {
             return false;

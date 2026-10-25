@@ -28,6 +28,11 @@ public sealed record DirectExit(string Program, uint Mark);
 /// «Защита при загрузке»: правила переживают перезагрузку и действуют еще до старта службы (WFP — постоянные
 /// фильтры). Где ОС так не умеет (nftables), служба ставит блок сама при запуске, раньше сети.
 /// </param>
+/// <param name="TunnelDns">
+/// Адрес DNS туннеля: пока туннель поднят, а DNS мимо него закрыт при разрешенной локальной сети, запросы DNS к ней
+/// (роутер из resolv.conf без systemd-resolved) перенаправляются сюда — в туннель (nftables). На Windows ОС и так
+/// спрашивает DNS адаптера туннеля. null — не перенаправлять.
+/// </param>
 public sealed record KillSwitchPolicy(
     string? TunnelInterface,
     IReadOnlyList<KillSwitchEndpoint> Servers,
@@ -35,7 +40,8 @@ public sealed record KillSwitchPolicy(
     bool LanDiscovery = false,
     bool BlockOutsideDns = true,
     DirectExit? Direct = null,
-    bool Persistent = false)
+    bool Persistent = false,
+    IPAddress? TunnelDns = null)
 {
     /// <summary>Сколько адресов сервера держит блок: у ключей фильтров WFP есть предел.</summary>
     public const int MaxServers = 16;

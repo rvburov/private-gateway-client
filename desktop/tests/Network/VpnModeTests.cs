@@ -134,7 +134,7 @@ public sealed partial class VpnModeTests
             "ядро не поднялось — трафик остановлен блоком");
         killSwitch.IsEnabled.ShouldBeTrue();
         var policy = killSwitch.Policy.ShouldNotBeNull();
-        (policy.TunnelInterface, policy.AllowLan, policy.LanDiscovery, policy.BlockOutsideDns).ShouldBe(((string?)null, false, false, true),
+        (policy.TunnelInterface, policy.TunnelDns, policy.AllowLan, policy.LanDiscovery, policy.BlockOutsideDns).ShouldBe(((string?)null, (IPAddress?)null, false, false, true),
             "блок до ядер — без разрешения адаптеру туннеля, его еще нет: на Windows так закрыта и пересылка (хот-спот, ВМ)");
         policy.Servers.ShouldBe([new KillSwitchEndpoint(IPAddress.Loopback, 8443)], "мимо туннеля — только адрес и порт сервера");
         var journal = service.Journal.Tail(ServiceJournal.Capacity).Select(e => e.Message).ToList();
@@ -415,18 +415,20 @@ public sealed partial class VpnModeTests
         await using var rig = await Rig.CreateAsync();
         var (netns, lan, killSwitch) = (rig.Netns, rig.Lan, rig.KillSwitch);
 
-        // Проверочный адрес — по HTTP: сервер теста отвечает своим сайтом на любой адрес.
+        // Проверочный адрес — по HTTP: сервер теста отвечает своим сайтом на любой адрес. Сдаться — через 8 с: сервер
+        // возвращается через ~2,5 с после обрыва (тест проверяет блок), а попытка, начатая до его возврата, длится еще
+        // время пробы — при 3 с служба успевала сдаться раньше, чем вернуть связь (CI, проверка IPv6 сервера).
         await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"),
-            options: o => rig.Vpn(o) with { Reconnect = ReconnectTests.Fast, Probe = rig.ProbeAsync });
+            options: o => rig.Vpn(o) with { Reconnect = ReconnectTests.Fast with { GiveUpAfter = TimeSpan.FromSeconds(8) }, Probe = rig.ProbeAsync });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         var request = VpnRequest(rig.Definition);
         request.Connection.Reconnect = V1.ReconnectPolicy.UpTo5Minutes;
         await service.Client.ConnectAsync(request, cancellationToken: Ct);
-        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
 
         rig.StopServer();
 
-        var reconnecting = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting))[^1].ToCore();
+        var reconnecting = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting, service.Journal))[^1].ToCore();
         (reconnecting.ServerId, reconnecting.Protection.AllTraffic).ShouldBe(("srv-1", CheckState.Waiting), "к тому же серверу, трафик на паузе");
         killSwitch.IsEnabled.ShouldBeTrue("пока служба ищет связь, блок держит трафик");
         killSwitch.Tunnels.Take(3).ShouldBe([null, SingBoxConfigBuilder.InterfaceName, null],
@@ -439,14 +441,15 @@ public sealed partial class VpnModeTests
 
         await rig.StartServerAsync();
 
-        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
         (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "связь вернулась — снова через туннель");
         killSwitch.Last!.TunnelInterface.ShouldBe(SingBoxConfigBuilder.InterfaceName,
             "новый адаптер туннеля — блок обновлен с разрешением ему (на Windows — по LUID)");
+        killSwitch.Last.TunnelDns.ShouldBe(IPAddress.Parse(SingBoxConfigBuilder.TunDns), "DNS к разрешенной локальной сети — в туннель (Linux)");
 
         rig.StopServer();
 
-        var blocked = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Blocked or V1.ConnectionState.Error))[^1];
+        var blocked = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Blocked or V1.ConnectionState.Error, service.Journal))[^1];
         blocked.State.ShouldBe(V1.ConnectionState.Blocked, "попытки кончились — «Блокировка», другой сервер сам не выбирается");
         killSwitch.IsEnabled.ShouldBeTrue();
         killSwitch.Last!.TunnelInterface.ShouldBeNull();

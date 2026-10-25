@@ -81,6 +81,13 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
         rules.Add("ip daddr { 255.255.255.255, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } udp sport 67 udp dport 68 accept");
         rules.Add("udp sport 546 udp dport 547 accept");
         rules.Add("icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept");
+        var redirect = DnsRedirect(policy);
+        if (redirect is not null)
+        {
+            // Перенаправленный запрос (цепочка dns): фильтр после nat видит прежний интерфейс, а не туннель.
+            rules.Add($"ip daddr {policy.TunnelDns} meta l4proto {{ tcp, udp }} th dport 53 accept");
+        }
+
         var shared = new List<string>();
         if (policy.BlockOutsideDns)
         {
@@ -110,13 +117,36 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             .Append(CultureInfo.InvariantCulture, $"table inet {Table} {{\n");
         Chain(text, "output", rules);
         Chain(text, "forward", forward);
+
+        if (redirect is not null)
+        {
+            Chain(text, "dns", [redirect], "type nat hook output priority -100; policy accept;");
+        }
+
         return text.Append("}\n").ToString();
     }
 
-    private static void Chain(StringBuilder text, string hook, List<string> rules)
+    /// <summary>
+    /// DNS к разрешенной локальной сети (роутер из resolv.conf без systemd-resolved) идет мимо туннеля, а там закрыт —
+    /// перенаправить его в адрес DNS туннеля, его отвечает Xray. Раньше фильтра: nat — выше по приоритету. Выход
+    /// sing-box мимо туннеля (метка) — как есть. Не нужно — null.
+    /// </summary>
+    private static string? DnsRedirect(KillSwitchPolicy policy)
+    {
+        if (policy is not { TunnelInterface: { } name, TunnelDns: { AddressFamily: AddressFamily.InterNetwork } dns, BlockOutsideDns: true, AllowLan: true })
+        {
+            return null;
+        }
+
+        var mark = policy.Direct is { } exit ? $"meta mark != {exit.Mark.ToString(CultureInfo.InvariantCulture)} " : string.Empty;
+        return $"oifname != \"{name}\" {mark}ip daddr {{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }} "
+            + $"meta l4proto {{ tcp, udp }} th dport 53 dnat ip to {dns}";
+    }
+
+    private static void Chain(StringBuilder text, string hook, List<string> rules, string? type = null)
     {
         text.Append(CultureInfo.InvariantCulture, $"\tchain {hook} {{\n")
-            .Append(CultureInfo.InvariantCulture, $"\t\ttype filter hook {hook} priority 0; policy drop;\n");
+            .Append(CultureInfo.InvariantCulture, $"\t\t{type ?? $"type filter hook {hook} priority 0; policy drop;"}\n");
         foreach (var rule in rules)
         {
             text.Append("\t\t").Append(rule).Append('\n');

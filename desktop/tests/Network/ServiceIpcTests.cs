@@ -281,19 +281,32 @@ public sealed class ServiceIpcTests
         };
     }
 
-    /// <summary>Читать поток состояния, пока не придет нужное; не пришло за 20 с — ошибка теста.</summary>
-    internal static async Task<List<V1.Status>> ReadUntilAsync(AsyncServerStreamingCall<V1.Status> watch, Func<V1.Status, bool> done)
+    /// <summary>
+    /// Читать поток состояния, пока не придет нужное; не пришло за 20 с — ошибка теста с пройденными состояниями и, если дан
+    /// <paramref name="journal"/>, концом журнала службы: по прогону CI видно, где встало.
+    /// </summary>
+    internal static async Task<List<V1.Status>> ReadUntilAsync(AsyncServerStreamingCall<V1.Status> watch, Func<V1.Status, bool> done,
+        ServiceJournal? journal = null)
     {
         var seen = new List<V1.Status>();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
         timeout.CancelAfter(TimeSpan.FromSeconds(20));
-        while (await watch.ResponseStream.MoveNext(timeout.Token))
+        try
         {
-            seen.Add(watch.ResponseStream.Current);
-            if (done(watch.ResponseStream.Current))
+            while (await watch.ResponseStream.MoveNext(timeout.Token))
             {
-                return seen;
+                seen.Add(watch.ResponseStream.Current);
+                if (done(watch.ResponseStream.Current))
+                {
+                    return seen;
+                }
             }
+        }
+        catch (Exception e) when (e is OperationCanceledException or RpcException && timeout.IsCancellationRequested && !Ct.IsCancellationRequested)
+        {
+            throw new TimeoutException($"За 20 с нужного состояния нет: {string.Join(", ", seen.Select(s => s.State))}"
+                + (journal is null ? string.Empty
+                    : "\nЖурнал службы:\n" + string.Join('\n', journal.Tail(60).Select(j => $"{j.Level} {j.Source}: {j.Message}"))), e);
         }
 
         throw new InvalidOperationException("Поток состояния закрылся: " + string.Join(", ", seen.Select(s => s.State)));

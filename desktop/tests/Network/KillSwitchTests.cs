@@ -77,6 +77,37 @@ public sealed class KillSwitchTests
             .ShouldNotContain(l => l.Contains("224.0.0.0/4", StringComparison.Ordinal), "без локальной сети нет и обнаружения устройств");
     }
 
+    [Fact]
+    public void Dns_to_the_allowed_local_network_is_redirected_into_the_tunnel_only_while_it_is_up()
+    {
+        var dns = IPAddress.Parse("172.19.0.2");
+        var lines = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [new(Server, 443)], AllowLan: true,
+            Direct: new DirectExit("/opt/pg/sing-box", 0x5047), TunnelDns: dns)));
+
+        lines.Skip(lines.IndexOf("chain dns {")).Take(4).ShouldBe([
+            "chain dns {",
+            "type nat hook output priority -100; policy accept;",
+            "oifname != \"pgtun0\" meta mark != 20551 ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } "
+                + "meta l4proto { tcp, udp } th dport 53 dnat ip to 172.19.0.2",
+            "}",
+        ], "DNS роутера (resolv.conf без systemd-resolved) — в туннель, выход sing-box мимо туннеля — как есть");
+        lines.IndexOf("ip daddr 172.19.0.2 meta l4proto { tcp, udp } th dport 53 accept")
+            .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 853 } drop"),
+                "фильтр после nat видит прежний интерфейс — перенаправленное разрешено раньше закрытия DNS");
+
+        foreach (var policy in new KillSwitchPolicy[]
+        {
+            new(null, [], AllowLan: true, TunnelDns: dns),
+            new("pgtun0", [], AllowLan: false, TunnelDns: dns),
+            new("pgtun0", [], AllowLan: true, BlockOutsideDns: false, TunnelDns: dns),
+            new("pgtun0", [], AllowLan: true),
+        })
+        {
+            Lines(NftablesKillSwitch.Ruleset(policy)).ShouldNotContain(l => l.Contains("172.19.0.2", StringComparison.Ordinal),
+                $"{policy}: туннеля нет, локальная сеть закрыта (DNS к ней и так идет в туннель) или DNS роутера разрешен");
+        }
+    }
+
     [Theory]
     [InlineData("pg tun")]
     [InlineData("pgtun0\" accept; flush ruleset; #")]

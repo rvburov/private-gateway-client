@@ -5,7 +5,9 @@ using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Network.SingBox;
+using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Network.Xray;
 using PrivateGateway.Client.Service.Cores;
 
@@ -102,6 +104,39 @@ public sealed class VpnTunnelTests
         (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), tcp: tcp)))
             .ShouldBe("203.0.113.7", "DNS ОС отвечает Xray через сервер, а не sing-box своим DNS мимо туннеля");
         dns.Queries.ShouldContain("example.com");
+    }
+
+    [Fact]
+    public async Task Dns_to_the_router_in_an_allowed_local_network_goes_into_the_tunnel()
+    {
+        SkipWithoutNamespaces();
+        NetworkNamespace.SkipUnlessAvailable("nft");
+        using var netns = NetworkNamespace.Create();
+        var (host, neighbor, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель по имени");
+        using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
+        // «Роутер» в локальной сети: resolv.conf без systemd-resolved спрашивает его, а не адрес DNS туннеля.
+        using var router = new TestDns(IPAddress.Parse("198.51.100.66"), new IPEndPoint(neighbor, 53));
+        var (definition, server) = await NameOnlyServerAsync(host, site, dns);
+        using var _ = server;
+        var protection = ProtectionSettings.Default with { AllowLan = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" };
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, protection, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
+            RoutingSettings.Default);
+        var output = new CoreOutput();
+        var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+        killSwitch.Enable(new KillSwitchPolicy(SingBoxConfigBuilder.InterfaceName, [new(host, definition.Port)], AllowLan: true,
+            BlockOutsideDns: true, TunnelDns: IPAddress.Parse(SingBoxConfigBuilder.TunDns)));
+
+        foreach (var tcp in new[] { false, true })
+        {
+            (await output.TraceAsync(() => netns.ResolveAsync("example.com", neighbor, seconds: 5, tcp: tcp)))
+                .ShouldBe("203.0.113.7", $"{(tcp ? "TCP" : "UDP")}: DNS роутера мимо туннеля закрыт — запрос уходит в туннель и отвечает Xray через сервер");
+        }
+
+        router.Queries.ShouldBeEmpty("роутер ни одного запроса не получил");
     }
 
     [Fact]
