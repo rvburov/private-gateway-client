@@ -206,7 +206,7 @@ public sealed class Gateway : IAsyncDisposable
                 BeginConnecting(core.Mode, serverId);
                 _journal.Add(JournalLevel.Info, "service",
                     $"Подключение в режиме VPN: {core.Server.Protocol}, блок при обрыве {(killSwitchOn ? "включен" : "выключен")}");
-                _ = StartTunnelAsync(session, core, addresses);
+                _ = StartTunnelAsync(session, core, addresses, killSwitchOn);
                 return new V1.ConnectReply { Accepted = true };
             }
 
@@ -595,7 +595,7 @@ public sealed class Gateway : IAsyncDisposable
     /// Туннель поднят — «Защищено»; не поднялся или ядро вышло — «Ошибка», блок остается. Пока туннель
     /// поднимался, подключение сменилось — поднятый туннель останавливается.
     /// </summary>
-    private async Task StartTunnelAsync(int session, CoreRequest core, IReadOnlyList<IPAddress> addresses)
+    private async Task StartTunnelAsync(int session, CoreRequest core, IReadOnlyList<IPAddress> addresses, bool killSwitchOn)
     {
         VpnTunnel tunnel;
         try
@@ -630,6 +630,13 @@ public sealed class Gateway : IAsyncDisposable
             if (tunnel.HasExited)
             {
                 Fail(session, ErrorCodes.CoreFailed, "Ядро туннеля остановилось");
+                return;
+            }
+
+            // Адаптер туннеля появился только сейчас: на Windows разрешение для него — по его LUID.
+            if (killSwitchOn && !Block(core, addresses, "обновлен: адаптер туннеля открыт"))
+            {
+                Fail(session, ErrorCodes.KillSwitchFailed, "Блок при обрыве не обновился");
                 return;
             }
 
@@ -681,7 +688,7 @@ public sealed class Gateway : IAsyncDisposable
     }
 
     /// <summary>Поставить (или заменить) блок при обрыве под это подключение; не вышло — false.</summary>
-    private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses)
+    private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses, string done = "включен")
     {
         var killSwitch = _options.KillSwitch!;
         var policy = new KillSwitchPolicy(
@@ -696,7 +703,7 @@ public sealed class Gateway : IAsyncDisposable
         }
 
         _blocking = true;
-        _journal.Add(JournalLevel.Info, "service", $"Блок при обрыве включен ({killSwitch.Name}): мимо туннеля — только сервер");
+        _journal.Add(JournalLevel.Info, "service", $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер");
         return true;
     }
 

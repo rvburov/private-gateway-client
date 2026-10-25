@@ -21,7 +21,7 @@ public static class ErrorCodes
     /// <summary>Ядро за сервер не возьмется: Hysteria2 и TUIC — до второго ядра, нет ключа, транспорт не тот.</summary>
     public const string UnsupportedServer = "PGC-SVC-005";
 
-    /// <summary>Режим VPN на этой ОС еще не готов: нет блока при обрыве (Windows — до WFP) или сборки sing-box.</summary>
+    /// <summary>Режим VPN на этой ОС еще не готов: нет блока при обрыве (macOS) или сборки sing-box.</summary>
     public const string VpnNotReady = "PGC-SVC-006";
 
     /// <summary>Блок при обрыве не включился: правила брандмауэра не поставить.</summary>

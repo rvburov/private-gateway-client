@@ -75,10 +75,13 @@ public static partial class ServiceHost
         : null;
 
     /// <summary>
-    /// Блок при обрыве этой ОС для установленной службы: Linux — nftables; Windows (WFP) и macOS — еще
+    /// Блок при обрыве этой ОС для установленной службы: Windows — WFP, Linux — nftables; macOS — еще
     /// нет, и режим VPN там отвечает «еще не готов».
     /// </summary>
-    public static IKillSwitch? KillSwitch() => OperatingSystem.IsLinux() ? NftablesKillSwitch.ForThisMachine() : null;
+    public static IKillSwitch? KillSwitch() =>
+        OperatingSystem.IsWindows() ? new WfpKillSwitch()
+        : OperatingSystem.IsLinux() ? NftablesKillSwitch.ForThisMachine()
+        : null;
 
     /// <summary>Сведения для GetServiceInfo: версии службы и контракта, ОС, ядра — какие есть и какой версии.</summary>
     public static V1.ServiceInfo Info(string? xray, string? singBox = null)

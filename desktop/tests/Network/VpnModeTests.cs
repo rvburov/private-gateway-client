@@ -190,7 +190,7 @@ public sealed class VpnModeTests
         serverConfig["outbounds"] = new JsonArray(
             new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
         using var server = await XrayKit.Start(serverConfig, serverPort);
-        var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
+        var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
         GatewayOptions Vpn(GatewayOptions o) => o with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = killSwitch, TunnelNetns = netns.Path };
 
         await using (var service = await RunningService.StartAsync(options: Vpn))
@@ -201,7 +201,7 @@ public sealed class VpnModeTests
             var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
             connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
             connected.ToCore().Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Connected));
-            killSwitch.IsEnabled.ShouldBeTrue();
+            (killSwitch.IsEnabled, killSwitch.Enables).ShouldBe((true, 2), "блок — до ядер и еще раз, когда адаптер туннеля появился (WFP открывает его по LUID)");
             (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
             await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3), "мимо туннеля — только сервер");
 
@@ -261,6 +261,24 @@ public sealed class VpnModeTests
             Connection = settings.ToConnection(),
             Routing = settings.ToRouting(),
         };
+    }
+
+    /// <summary>Настоящий блок при обрыве, который считает, сколько раз его ставили.</summary>
+    private sealed class CountingKillSwitch(IKillSwitch inner) : IKillSwitch
+    {
+        public int Enables { get; private set; }
+
+        public string Name => inner.Name;
+
+        public bool IsEnabled => inner.IsEnabled;
+
+        public void Enable(KillSwitchPolicy policy)
+        {
+            Enables++;
+            inner.Enable(policy);
+        }
+
+        public void Disable() => inner.Disable();
     }
 
     /// <summary>Блок при обрыве без брандмауэра: помнит политику и сколько раз его снимали.</summary>

@@ -38,6 +38,15 @@
 | Сервер для теста совместимости | `internal/xray/config.go` (`Render`) | форма конфига сервера (VLESS + REALITY + Vision на raw) повторена в тесте как JSON; ключ REALITY — тестовый | `PrivateGatewayCompatibilityTests` | повторен формат |
 | Название подписки | `internal/httpapi/subscription.go` | заголовок `Profile-Title: base64:…` читается как название группы | `SubscriptionDownloaderTests`, `ImportPageTests` | написано заново |
 
+## WireGuard для Windows — справочник по WFP
+
+`WireGuard/wireguard-windows`, коммит `6ece77bc487c8aa697e3c092197621c4f3e5ccb8` (25.10.2026),
+лицензия **MIT**.
+
+| Задача | Файл источника | Что сделано | Проверка | Решение |
+| --- | --- | --- | --- | --- |
+| Блок при обрыве на Windows (WFP) | `tunnel/firewall/types_windows.go`, `types_windows_64.go`, `rules.go` | сверены GUID слоев и условий WFP, коды действий и типов значений, смещения FWPM_FILTER0 и FWPM_FILTER_CONDITION0 на 64-битной Windows — это факты API Windows (fwpmu.h, fwpmtypes.h); `WfpRules` и `WfpKillSwitch` написаны заново: своя политика, не динамическая сессия, ключи фильтров по порядку; код не переносится | `WfpKillSwitchTests` (правила на всех ОС, фильтры — в CI на Windows) | изучен как справочник |
+
 ## Ядра и библиотеки
 
 | Компонент | Лицензия | Как используется |
