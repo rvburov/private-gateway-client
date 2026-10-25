@@ -22,7 +22,6 @@ public sealed class SingBoxConfigTests
         Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress], "IPv6 закрыт по умолчанию — у TUN его нет");
         Strings(tun["route_exclude_address"]).ShouldBe(["198.51.100.20/32", "2001:db8::20/128"], "локальная сеть не разрешена — мимо туннеля только сервер");
         tun.ContainsKey("mtu").ShouldBeFalse("MTU подбирает sing-box");
-        tun.ContainsKey("netns").ShouldBeFalse();
         if (OperatingSystem.IsMacOS())
         {
             tun.ContainsKey("interface_name").ShouldBeFalse("на macOS имя адаптера дает система");
@@ -49,15 +48,13 @@ public sealed class SingBoxConfigTests
     {
         var config = Build([IPAddress.Parse("198.51.100.20")],
             ProtectionSettings.Default with { BlockIpv6 = false, AllowLan = true },
-            ConnectionSettings.Default with { Stack = TunEngine.Gvisor, Mtu = 1420, StrictRoutes = false, CoreLog = CoreLogLevel.Debug },
-            netns: "/run/netns/test");
+            ConnectionSettings.Default with { Stack = TunEngine.Gvisor, Mtu = 1420, StrictRoutes = false, CoreLog = CoreLogLevel.Debug });
 
         var tun = Tun(config);
         Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress, SingBoxConfigBuilder.TunAddress6]);
         Strings(tun["route_exclude_address"]).ShouldContain("192.168.0.0/16", "локальная сеть разрешена — мимо туннеля");
         Strings(tun["route_exclude_address"]).ShouldContain("10.0.0.0/8");
-        (tun["stack"]!.GetValue<string>(), tun["mtu"]!.GetValue<int>(), tun["strict_route"]!.GetValue<bool>(), tun["netns"]!.GetValue<string>())
-            .ShouldBe(("gvisor", 1420, false, "/run/netns/test"));
+        (tun["stack"]!.GetValue<string>(), tun["mtu"]!.GetValue<int>(), tun["strict_route"]!.GetValue<bool>()).ShouldBe(("gvisor", 1420, false));
         config["log"]!["level"]!.GetValue<string>().ShouldBe("debug");
 
         Tun(Build([IPAddress.Parse("198.51.100.20")], connection: ConnectionSettings.Default with { Stack = TunEngine.Mixed }))["stack"]!
@@ -66,9 +63,50 @@ public sealed class SingBoxConfigTests
             .ShouldBe([SingBoxConfigBuilder.TunAddress], "только IPv4 — и у TUN только IPv4");
     }
 
-    private static JsonObject Build(IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null,
-        string? netns = null) =>
-        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default, netns));
+    [Fact]
+    public void Chosen_programs_go_around_the_tunnel_through_a_marked_exit()
+    {
+        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
+            ConnectionSettings.Default, ["/opt/game/game", "/usr/bin/xray"]));
+
+        var direct = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.DirectTag)!;
+        direct["type"]!.GetValue<string>().ShouldBe("direct");
+        if (OperatingSystem.IsLinux())
+        {
+            direct["routing_mark"]!.GetValue<uint>().ShouldBe(SingBoxConfigBuilder.DirectMark, "по метке выход мимо туннеля пропускает блок при обрыве");
+        }
+        else
+        {
+            direct.AsObject().ContainsKey("routing_mark").ShouldBeFalse("метка — только в Linux; WFP узнает выход по программе sing-box");
+        }
+
+        var rule = config["route"]!["rules"]!.AsArray().ShouldHaveSingleItem()!;
+        Strings(rule["process_path"]).ShouldBe(["/opt/game/game", "/usr/bin/xray"]);
+        rule["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
+        config["route"]!["final"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag, "остальное — через Xray и сервер");
+    }
+
+    [Fact]
+    public void Programs_of_split_mode_and_xray_with_a_direct_exit_go_around_the_tunnel()
+    {
+        BypassApp[] apps = [new("/opt/game/game", "Игра"), new("/opt/old/old", "Старая", IsEnabled: false)];
+        DomainRule[] direct = [new("example.com", RuleAction.Direct)];
+        DomainRule[] blockOnly = [new("ads.example.net", RuleAction.Block)];
+        var closed = ProtectionSettings.Default;
+
+        SingBoxConfigBuilder.DirectPrograms(new RoutingSettings(RoutingMode.AllTraffic, apps, direct), closed, "/x/xray")
+            .ShouldBeEmpty("«Весь трафик», локальная сеть закрыта — мимо туннеля ничего");
+        SingBoxConfigBuilder.DirectPrograms(new RoutingSettings(RoutingMode.Split, apps, blockOnly), closed, "/x/xray")
+            .ShouldBe(["/opt/game/game"], "выключенная программа идет через VPN; прямого выхода у Xray нет — он в туннеле");
+        SingBoxConfigBuilder.DirectPrograms(new RoutingSettings(RoutingMode.Split, [], direct), closed, "/x/xray")
+            .ShouldBe(["/x/xray"], "прямой выход Xray для сайтов «Напрямую» не должен вернуться в TUN");
+        SingBoxConfigBuilder.DirectPrograms(RoutingSettings.Default, closed with { AllowLan = true }, "/x/xray")
+            .ShouldBe(["/x/xray"], "и для локальной сети: не все, что Xray считает локальным, есть в исключениях TUN");
+        Build([IPAddress.Parse("198.51.100.20")])["route"]!.AsObject().ContainsKey("rules").ShouldBeFalse();
+    }
+
+    private static JsonObject Build(IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null) =>
+        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default));
 
     private static JsonObject Tun(JsonObject config) => config["inbounds"]!.AsArray().ShouldHaveSingleItem()!.AsObject();
 

@@ -291,12 +291,23 @@ public class ContractMappingTests
     [InlineData("https://www.example.com/path?q=1", "www.example.com")]
     [InlineData("geosite:category-ads-all", "geosite:category-ads-all")]
     [InlineData("localhost", null)]
-    [InlineData("192.0.2.1", null)]
+    [InlineData("192.0.2.1", "192.0.2.1")]
+    [InlineData(" 198.51.100.7/24 ", "198.51.100.0/24")]
+    [InlineData("2001:DB8::1/32", "2001:db8::/32")]
+    [InlineData("2001:db8::10", "2001:db8::10")]
+    [InlineData("203.0.113.9/32", "203.0.113.9/32")]
+    [InlineData("0.0.0.0/0", null)]
+    [InlineData("::/0", null)]
+    [InlineData("192.0.2.1/33", null)]
+    [InlineData("192.0.2.1/x", null)]
+    [InlineData("192.0.2.256", null)]
+    [InlineData("1.2", null)]
+    [InlineData("fe80::1%eth0", null)]
     [InlineData("-bad.example.com", null)]
     [InlineData("exa mple.com", null)]
     [InlineData("geosite:", null)]
     [InlineData("", null)]
-    public void Site_pattern_is_a_domain_wildcard_or_geosite(string text, string? expected)
+    public void Site_pattern_is_a_domain_wildcard_geosite_address_or_subnet(string text, string? expected)
     {
         SitePattern.Normalize(text).ShouldBe(expected);
     }

@@ -12,8 +12,9 @@ namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
 /// Туннель режима VPN: клиент в своем сетевом пространстве Linux → TUN sing-box → Xray → свой сервер
-/// Xray → сайт и DNS теста. Сеть машины не трогается: TUN и его маршруты — только в пространстве
-/// теста. Тестам с TUN нужны root, unshare, nsenter, curl и python3, Xray и sing-box.
+/// Xray → сайт и DNS теста. Оба ядра работают в пространстве, как на машине; сервер — на адресе машины
+/// по паре veth. Сеть машины не трогается: TUN и его маршруты — только в пространстве теста. Тестам с
+/// TUN нужны root, unshare, nsenter, curl и python3, Xray и sing-box.
 /// </summary>
 public sealed class VpnTunnelTests
 {
@@ -24,12 +25,13 @@ public sealed class VpnTunnelTests
     {
         SkipWithoutNamespaces();
         using var netns = NetworkNamespace.Create();
+        var (host, neighbor, _) = netns.LinkAsMachine();
         var rulesBefore = await netns.RunAsync("ip", "rule", "show");
         using var site = new LocalSite("через туннель");
-        using var lan = new LocalSite("локальная сеть", HostAddress());
+        using var lan = new LocalSite("локальная сеть", neighbor);
         using var dns = new TestDns(IPAddress.Parse("1.1.1.1"));
         var serverPort = XrayKit.FreePort();
-        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);
         // Выход сервера теста — на свой сайт и свой DNS: из машины ничего не уходит.
         serverConfig["outbounds"] = new JsonArray(
             new JsonObject { ["tag"] = "site", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } },
@@ -46,7 +48,7 @@ public sealed class VpnTunnelTests
             // Строгим маршрутам нужен IPv6 в ядре; в контейнере облака его нет.
             ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") }, RoutingSettings.Default);
 
-        var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [IPAddress.Loopback], TimeSpan.FromSeconds(20),
+        var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, cancellationToken: Ct);
         try
         {
@@ -64,7 +66,7 @@ public sealed class VpnTunnelTests
             await tunnel.DisposeAsync();
         }
 
-        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(new Uri("http://1.1.1.1/")),
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 3),
             "туннеля нет — и пути из пространства нет");
         site.Requests.ShouldBe(1);
         (await netns.RunAsync("ip", "rule", "show")).ShouldBe(rulesBefore, "sing-box ушел сам и убрал свои правила маршрутизации");
@@ -142,17 +144,37 @@ public sealed class VpnTunnelTests
         killed.ExitCode.ShouldNotBe(0, "без отсрочки ядро снимается сразу");
     }
 
+    [Fact]
+    public void Real_path_resolves_links_in_every_part()
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.Skip("символические ссылки в путях программ — на Linux и macOS");
+            return;
+        }
+
+        var root = Directory.CreateTempSubdirectory("pg-real-").FullName;
+        try
+        {
+            var real = Directory.CreateDirectory(Path.Combine(root, "lib")).FullName;
+            File.WriteAllText(Path.Combine(real, "app"), string.Empty);
+            Directory.CreateSymbolicLink(Path.Combine(root, "bin"), real);
+            File.CreateSymbolicLink(Path.Combine(real, "app-link"), "app");
+            var expected = Path.Combine(VpnTunnel.RealPath(real), "app");
+
+            VpnTunnel.RealPath(Path.Combine(root, "bin", "app-link")).ShouldBe(expected, "ссылка на папку и ссылка на файл — как путь процесса у ОС");
+            VpnTunnel.RealPath(Path.Combine(root, "bin", "..", "bin", "app")).ShouldBe(expected);
+            VpnTunnel.RealPath(Path.Combine(root, "bin", "gone")).ShouldBe(Path.Combine(VpnTunnel.RealPath(real), "gone"), "удаленная программа — путь как есть");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static void SkipWithoutNamespaces()
     {
         NetworkNamespace.SkipUnlessAvailable("curl", "python3", "ip");
         Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
     }
-
-    /// <summary>Первый работающий адрес машины не на loopback: его видно из пространства теста через туннель.</summary>
-    private static IPAddress HostAddress() =>
-        NetworkInterface.GetAllNetworkInterfaces()
-            .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
-            .SelectMany(n => n.GetIPProperties().UnicastAddresses)
-            .Select(a => a.Address)
-            .First(a => a.AddressFamily == AddressFamily.InterNetwork && !IPAddress.IsLoopback(a));
 }

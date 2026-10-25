@@ -52,6 +52,12 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             rules.Add($"oifname \"{tunnel}\" accept");
         }
 
+        // Раздельный режим: выход sing-box по правилам обхода помечен — его пакеты идут мимо туннеля, DNS тоже.
+        if (policy.Direct is { } direct)
+        {
+            rules.Add($"meta mark {direct.Mark.ToString(CultureInfo.InvariantCulture)} accept");
+        }
+
         foreach (var server in policy.Servers)
         {
             if (server.Port is <= 0 or > 65535)

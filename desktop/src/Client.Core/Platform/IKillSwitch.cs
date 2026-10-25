@@ -6,6 +6,15 @@ namespace PrivateGateway.Client.Core.Platform;
 public sealed record KillSwitchEndpoint(IPAddress Address, int Port);
 
 /// <summary>
+/// Выход мимо туннеля в раздельном режиме: соединения, которые sing-box по правилам обхода (программы,
+/// сайты «Напрямую») отправляет напрямую. Брандмауэр узнает их по программе sing-box (WFP) или по
+/// метке его выхода (nftables) — другие программы этим путем мимо блока не пройдут.
+/// </summary>
+/// <param name="Program">Полный путь к sing-box.</param>
+/// <param name="Mark">Метка пакетов выхода sing-box (SO_MARK, Linux).</param>
+public sealed record DirectExit(string Program, uint Mark);
+
+/// <summary>
 /// Что пропускает блок при обрыве — все остальное закрыто. Петля (loopback), DHCP и обнаружение
 /// соседей IPv6 открыты всегда: без них не работают ядро и сеть машины, наружу через них ничего не уходит.
 /// </summary>
@@ -14,12 +23,14 @@ public sealed record KillSwitchEndpoint(IPAddress Address, int Port);
 /// <param name="AllowLan">Локальная сеть разрешена.</param>
 /// <param name="LanDiscovery">Обнаружение устройств в локальной сети (mDNS, SSDP — групповые адреса).</param>
 /// <param name="BlockOutsideDns">DNS мимо туннеля закрыт, даже к роутеру в разрешенной локальной сети.</param>
+/// <param name="Direct">Раздельный режим: выход sing-box мимо туннеля открыт целиком, и DNS тоже — обход выбран пользователем; null — обхода нет.</param>
 public sealed record KillSwitchPolicy(
     string? TunnelInterface,
     IReadOnlyList<KillSwitchEndpoint> Servers,
     bool AllowLan = false,
     bool LanDiscovery = false,
-    bool BlockOutsideDns = true);
+    bool BlockOutsideDns = true,
+    DirectExit? Direct = null);
 
 /// <summary>
 /// Блок при обрыве средствами ОС (nftables на Linux, WFP на Windows). Правила живут в ОС, а не в

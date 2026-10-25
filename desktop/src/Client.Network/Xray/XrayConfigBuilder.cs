@@ -307,10 +307,12 @@ public static class XrayConfigBuilder
         var split = request.Routing.Mode == RoutingMode.Split;
         foreach (var rule in request.Routing.Rules.Where(r => split || r.Action != RuleAction.Direct))
         {
+            // Адрес и подсеть — условием IP: с ним сравнивается адрес соединения, а у имени — его адреса.
+            var address = SitePattern.IsAddress(rule.Pattern);
             rules.Add(new JsonObject
             {
                 ["type"] = "field",
-                ["domain"] = new JsonArray(DomainCondition(rule.Pattern)),
+                [address ? "ip" : "domain"] = new JsonArray(address ? rule.Pattern : DomainCondition(rule.Pattern)),
                 ["outboundTag"] = rule.Action switch
                 {
                     RuleAction.Direct => DirectTag,

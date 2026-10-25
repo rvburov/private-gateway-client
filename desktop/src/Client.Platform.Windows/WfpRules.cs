@@ -29,16 +29,19 @@ public enum WfpField
 
     /// <summary>Тип ICMP — у WFP это то же поле, что локальный порт.</summary>
     IcmpType,
+
+    /// <summary>Программа (ALE_APP_ID); значение — полный путь в <see cref="WfpCondition.Program"/>.</summary>
+    App,
 }
 
 /// <summary>
-/// Условие фильтра. Значение — число, адрес (<see cref="IPAddress"/>) или сеть (адрес и длина
-/// префикса). Условия на одно поле объединяются через «или», на разные — через «и».
+/// Условие фильтра. Значение — число, адрес (<see cref="IPAddress"/>), сеть (адрес и длина префикса)
+/// или программа (путь). Условия на одно поле объединяются через «или», на разные — через «и».
 /// </summary>
-public sealed record WfpCondition(WfpField Field, ulong Number = 0, IPAddress? Address = null, int? PrefixLength = null)
+public sealed record WfpCondition(WfpField Field, ulong Number = 0, IPAddress? Address = null, int? PrefixLength = null, string? Program = null)
 {
-    public override string ToString() => Field + " " + (Address is null ? Number.ToString(System.Globalization.CultureInfo.InvariantCulture)
-        : PrefixLength is { } prefix ? $"{Address}/{prefix}" : Address.ToString());
+    public override string ToString() => Field + " " + (Program ?? (Address is null ? Number.ToString(System.Globalization.CultureInfo.InvariantCulture)
+        : PrefixLength is { } prefix ? $"{Address}/{prefix}" : Address.ToString()));
 }
 
 /// <summary>Фильтр WFP: разрешить или закрыть; чем больше вес, тем раньше он решает.</summary>
@@ -84,6 +87,12 @@ public static class WfpRules
             if (tunnelLuid is { } luid)
             {
                 rules.Add(new("tunnel", family, true, 15, [new(WfpField.LocalInterface, luid)]));
+            }
+
+            // Раздельный режим: sing-box отправляет мимо туннеля только то, что выбрал пользователь, — ему можно все, и DNS.
+            if (policy.Direct is { } direct)
+            {
+                rules.Add(new("direct", family, true, 15, [new(WfpField.App, Program: direct.Program)]));
             }
         }
 

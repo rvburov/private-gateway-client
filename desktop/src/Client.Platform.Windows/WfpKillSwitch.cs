@@ -52,6 +52,9 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     private static readonly Guid ConnectV6 = new("4a72393b-319f-44bc-84c3-ba54dcb3b6b4");
     private static readonly Guid AcceptV6 = new("a3b42c97-9f04-4672-b87e-cee9c483257f");
 
+    // Раньше словаря полей: статические поля заполняются по порядку текста.
+    private static readonly Guid AppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971");
+
     private static readonly Dictionary<WfpField, Guid> Fields = new()
     {
         [WfpField.Flags] = new("632ce23b-5167-435c-86d7-e903684aa80c"),
@@ -61,9 +64,8 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         [WfpField.LocalPort] = new("0c1ba1af-5765-453f-af22-a8f791ac775b"),
         [WfpField.Protocol] = new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7"),
         [WfpField.IcmpType] = new("0c1ba1af-5765-453f-af22-a8f791ac775b"),
+        [WfpField.App] = AppId,
     };
-
-    private static readonly Guid AppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971");
 
     public string Name => "WFP";
 
@@ -192,6 +194,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
             { Address: { } address } when address.AddressFamily == AddressFamily.InterNetwork =>
                 (Uint32, new IntPtr(BinaryPrimitives.ReadUInt32BigEndian(address.GetAddressBytes()))),
             { Address: { } address } => (ByteArray16, memory.Bytes(address.GetAddressBytes())),
+            { Program: { } program } => (ByteBlob, memory.AppId(program)),
             { Field: WfpField.LocalInterface } => (Uint64, memory.Bytes(BitConverter.GetBytes(condition.Number))),
             // Протокол — UINT8, флаги — UINT32, порты и тип ICMP — UINT16; значение — в младших байтах.
             { Field: WfpField.Protocol } => (Uint8, new IntPtr(checked((long)condition.Number))),

@@ -156,6 +156,9 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Что служба сделает из «Подключения».</summary>
         public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());
 
+        /// <summary>Что покажут проверки; по умолчанию — ничего.</summary>
+        public IReadOnlyList<DiagnosticResult> Checks { get; init; } = [];
+
         public IReadOnlyList<JournalEntry> Journal => [];
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -195,7 +198,7 @@ public abstract class WindowHarness : IDisposable
         public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
         public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new DiagnosticReport([], time.GetUtcNow()));
+            Task.FromResult(new DiagnosticReport(Checks, time.GetUtcNow()));
 
         public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());

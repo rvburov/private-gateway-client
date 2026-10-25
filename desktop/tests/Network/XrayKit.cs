@@ -32,6 +32,14 @@ internal static class XrayKit
     /// Описание сервера для клиента и конфиг того же сервера в Xray. Без шифрования транспорта — только
     /// для теста на localhost; у Trojan — TLS с самоподписанным сертификатом на example.com.
     /// </summary>
+    /// <summary>Как <see cref="Pair(string, int)"/>, но сервер слушает <paramref name="listen"/>, а не 127.0.0.1.</summary>
+    public static (ServerDefinition Server, JsonObject Config) Pair(string kind, int port, IPAddress listen)
+    {
+        var (definition, config) = Pair(kind, port);
+        config["inbounds"]![0]!["listen"] = listen.ToString();
+        return (definition with { Host = listen.ToString() }, config);
+    }
+
     public static (ServerDefinition Server, JsonObject Config) Pair(string kind, int port)
     {
         var withUuid = new ServerCredentials(Uuid: Uuid);
@@ -102,6 +110,8 @@ internal static class XrayKit
             }
         };
 
+        // Сервер слушает адрес из конфига: 127.0.0.1 или адрес машины на паре veth стенда.
+        var listen = IPAddress.Parse(config["inbounds"]?[0]?["listen"]?.GetValue<string>() ?? "127.0.0.1");
         var deadline = DateTime.UtcNow.AddSeconds(20);
         while (DateTime.UtcNow < deadline)
         {
@@ -113,7 +123,7 @@ internal static class XrayKit
             try
             {
                 using var probe = new TcpClient();
-                await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
+                await probe.ConnectAsync(listen, port).ConfigureAwait(false);
                 return xray;
             }
             catch (SocketException)

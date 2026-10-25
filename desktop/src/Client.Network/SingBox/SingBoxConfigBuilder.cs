@@ -8,27 +8,34 @@ namespace PrivateGateway.Client.Network.SingBox;
 
 /// <summary>
 /// Что нужно TUN режима VPN: связь с Xray (<see cref="TunLink"/>), адреса сервера, которые идут мимо
-/// туннеля, и настройки. <paramref name="Netns"/> — создать TUN в сетевом пространстве Linux (тесты).
+/// туннеля, и настройки. <paramref name="DirectPrograms"/> — раздельный режим: программы, чьи
+/// соединения идут мимо туннеля (<see cref="SingBoxConfigBuilder.DirectPrograms"/>); пусто — обхода нет.
 /// </summary>
 public sealed record TunRequest(
     TunLink Xray,
     IReadOnlyList<IPAddress> ServerAddresses,
     ProtectionSettings Protection,
     ConnectionSettings Connection,
-    string? Netns = null);
+    IReadOnlyList<string>? DirectPrograms = null);
 
 /// <summary>
 /// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда в SOCKS5 Xray на
 /// 127.0.0.1 (основное ядро — Xray, sing-box лишь переводит пакеты в соединения). DNS — такой же
 /// трафик: запросы к любому адресу уходят в Xray, и там их отвечает выход DNS по настройкам DNS Xray —
 /// один DNS в режимах прокси и VPN. Адреса сервера — мимо туннеля, иначе соединение с ним ушло бы в
-/// сам туннель. IPv6 закрыт — у TUN нет IPv6, строгие маршруты делают его недоступным. Журнал
-/// соединений выключен. sing-box — GPL-3.0: только отдельным процессом, конфиг — через stdin.
+/// сам туннель. IPv6 закрыт — у TUN нет IPv6, строгие маршруты делают его недоступным. Раздельный
+/// режим — правило по пути программы: ее соединения sing-box отправляет своим выходом напрямую, с
+/// меткой <see cref="DirectMark"/> — по ней их пропускает блок при обрыве. Журнал соединений выключен.
+/// sing-box — GPL-3.0: только отдельным процессом, конфиг — через stdin.
 /// </summary>
 public static class SingBoxConfigBuilder
 {
     public const string TunTag = "tun-in";
     public const string XrayTag = "xray";
+    public const string DirectTag = "direct";
+
+    /// <summary>Метка пакетов выхода мимо туннеля (Linux): «PG».</summary>
+    public const uint DirectMark = 0x5047;
 
     /// <summary>Адрес TUN.</summary>
     public const string TunAddress = "172.19.0.1/30";
@@ -75,12 +82,38 @@ public static class SingBoxConfigBuilder
             tun["mtu"] = mtu;
         }
 
-        if (request.Netns is { } netns)
+        var xray = request.Xray;
+        var outbounds = new JsonArray(new JsonObject
         {
-            tun["netns"] = netns;
+            ["type"] = "socks",
+            ["tag"] = XrayTag,
+            ["server"] = "127.0.0.1",
+            ["server_port"] = xray.Port,
+            ["version"] = "5",
+            ["username"] = xray.User,
+            ["password"] = xray.Password,
+        });
+        var route = new JsonObject
+        {
+            ["final"] = XrayTag,
+            ["auto_detect_interface"] = true,
+        };
+        if (request.DirectPrograms is { Count: > 0 } programs)
+        {
+            var direct = new JsonObject { ["type"] = "direct", ["tag"] = DirectTag };
+            if (OperatingSystem.IsLinux())
+            {
+                direct["routing_mark"] = DirectMark;
+            }
+
+            outbounds.Add(direct);
+            route["rules"] = new JsonArray(new JsonObject
+            {
+                ["process_path"] = new JsonArray([.. programs.Select(p => (JsonNode)p)]),
+                ["outbound"] = DirectTag,
+            });
         }
 
-        var xray = request.Xray;
         return new JsonObject
         {
             ["log"] = new JsonObject
@@ -94,21 +127,26 @@ public static class SingBoxConfigBuilder
                 ["timestamp"] = false,
             },
             ["inbounds"] = new JsonArray(tun),
-            ["outbounds"] = new JsonArray(new JsonObject
-            {
-                ["type"] = "socks",
-                ["tag"] = XrayTag,
-                ["server"] = "127.0.0.1",
-                ["server_port"] = xray.Port,
-                ["version"] = "5",
-                ["username"] = xray.User,
-                ["password"] = xray.Password,
-            }),
-            ["route"] = new JsonObject
-            {
-                ["final"] = XrayTag,
-                ["auto_detect_interface"] = true,
-            },
+            ["outbounds"] = outbounds,
+            ["route"] = route,
         };
+    }
+
+    /// <summary>
+    /// Программы мимо туннеля: в раздельном режиме — включенные программы из настроек; и сам Xray, когда у
+    /// него есть прямой выход — сайты «Напрямую» или разрешенная локальная сеть. Иначе его прямое
+    /// соединение вернулось бы в TUN и снова в Xray: в исключениях TUN не все, что Xray считает
+    /// локальным (<c>geoip:private</c> — еще CGNAT, адреса документации, групповые). Ничего из этого нет —
+    /// никого. Пути — как их видит ОС у процесса (<paramref name="xray"/> — настоящий путь, без ссылок).
+    /// </summary>
+    public static IReadOnlyList<string> DirectPrograms(RoutingSettings routing, ProtectionSettings protection, string xray)
+    {
+        ArgumentNullException.ThrowIfNull(routing);
+        ArgumentNullException.ThrowIfNull(protection);
+        return
+        [
+            .. routing.HasBypassApps ? routing.Apps.Where(a => a.IsEnabled).Select(a => a.Path) : [],
+            .. routing.HasBypassSites || protection.AllowLan ? [xray] : Array.Empty<string>(),
+        ];
     }
 }

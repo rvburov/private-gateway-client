@@ -261,6 +261,35 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Split_mode_shows_all_traffic_as_partial_on_main_and_in_checks()
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            // Как служба в раздельном режиме с обходом: «Весь трафик» — частично.
+            Outcome = c => c.MoveTo(ConnectionState.Connected, Time.GetUtcNow()) is var connected
+                ? connected with { Protection = connected.Protection with { AllTraffic = CheckState.Warning } }
+                : c,
+            Checks = [new DiagnosticResult(DiagnosticCheck.AllTraffic, CheckState.Warning, "split")],
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        Dispatcher.UIThread.RunJobs();
+
+        var chip = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>().Chips[0];
+        (chip.Value, chip.Text).ShouldBe(("частично",
+            "Программы и сайты из раздельного режима идут напрямую — мимо туннеля и блока при обрыве. Остальное — через туннель."),
+            "в режиме VPN «частично» — раздельный режим, а не «только прокси»");
+
+        shell.NavigateCommand.Execute(Pages.Check);
+        var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
+        WaitFor(() => !check.IsRunning);
+        var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
+        (row.Detail, row.ChipText).ShouldBe(("Программы и сайты из раздельного режима идут мимо туннеля", "Частично"));
+    }
+
+    [AvaloniaFact]
     public async Task Proxy_mode_is_amber_and_says_what_is_not_protected()
     {
         var (window, shell) = Open();

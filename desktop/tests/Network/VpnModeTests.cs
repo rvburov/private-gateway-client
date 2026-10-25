@@ -8,6 +8,7 @@ using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Service;
+using PrivateGateway.Client.Service.Cores;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Tests.Network;
@@ -270,21 +271,76 @@ public sealed class VpnModeTests
         }
     }
 
+    [Fact]
+    public async Task Split_mode_sends_chosen_programs_around_the_tunnel_and_nothing_else()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var (netns, lan, definition) = (rig.Netns, rig.Lan, rig.Definition);
+        var curl = VpnTunnel.RealPath((Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(':')
+            .Select(dir => Path.Combine(dir, "curl")).First(File.Exists));
+        var routing = new RoutingSettings(RoutingMode.Split, [new BypassApp(curl, "curl")], []);
+        await using var service = await RunningService.StartAsync(options: rig.Vpn);
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await service.Client.ConnectAsync(VpnRequest(definition, routing: routing), cancellationToken: Ct);
+
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+        connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+        connected.ToCore().Protection.AllTraffic.ShouldBe(CheckState.Warning, "раздельный режим — «Весь трафик» частично");
+        (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.AllTraffic.ToContractId()).Reason.ShouldBe("split", "«Проверка» объясняет, почему частично");
+        (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля", "программа из списка идет напрямую — и блок при обрыве ее пропускает");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, seconds: 3),
+            "другая программа — через туннель, а там локальная сеть закрыта");
+        (await netns.FetchAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "остальное — через туннель и сервер");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.EndsWith("только сервер и прямой выход sing-box", StringComparison.Ordinal));
+
+        await service.Client.ConnectAsync(VpnRequest(definition), cancellationToken: Ct);
+
+        (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1]
+            .ToCore().Protection.AllTraffic.ShouldBe(CheckState.Ok, "«Весь трафик» — снова весь");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3), "без раздельного режима обхода нет");
+    }
+
+    [Fact]
+    public async Task Direct_exit_of_xray_leaves_through_sing_box_instead_of_looping_into_the_tunnel()
+    {
+        await using var rig = await Rig.CreateAsync();
+
+        // Адрес документации Xray считает локальным (geoip:private), а в исключениях TUN его нет: прямой
+        // выход Xray к нему идет в TUN — и только правило sing-box по процессу Xray выводит его наружу.
+        using var outside = new LocalSite("напрямую", rig.Public);
+        await using var service = await RunningService.StartAsync(options: rig.Vpn);
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition, allowLan: true), cancellationToken: Ct);
+
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+        connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+        (await rig.Netns.FetchAsync(outside.Url)).ShouldBe("напрямую", "локальная сеть разрешена — Xray отвечает напрямую, без петли через TUN");
+        (await rig.Netns.FetchAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
+        outside.Requests.ShouldBe(1);
+    }
+
     /// <summary>
-    /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, свой сервер
-    /// Xray с выходом на свой сайт, настоящий блок nftables в пространстве. Нет прав или сборок — тест
-    /// пропускается.
+    /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
+    /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в
+    /// пространстве, блок nftables — настоящий, тоже там. Нет прав или сборок — тест пропускается.
     /// </summary>
     private sealed class Rig : IAsyncDisposable
     {
         private readonly IDisposable[] _owned;
 
-        private Rig(NetworkNamespace netns, LocalSite lan, ServerDefinition definition, CountingKillSwitch killSwitch, params IDisposable[] owned)
+        private Rig(NetworkNamespace netns, LocalSite lan, IPAddress @public, ServerDefinition definition, CountingKillSwitch killSwitch,
+            params IDisposable[] owned)
         {
-            (Netns, Lan, Definition, KillSwitch, _owned) = (netns, lan, definition, killSwitch, owned);
+            (Netns, Lan, Public, Definition, KillSwitch, _owned) = (netns, lan, @public, definition, killSwitch, owned);
         }
 
         public NetworkNamespace Netns { get; }
+
+        /// <summary>Адрес машины из диапазона документации — как сайт в интернете.</summary>
+        public IPAddress Public { get; }
 
         public LocalSite Lan { get; }
 
@@ -299,20 +355,38 @@ public sealed class VpnModeTests
         {
             NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
             Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
-            var netns = NetworkNamespace.Create();
-            var octet = Random.Shared.Next(1, 250);
-            var host = IPAddress.Parse($"10.252.{octet}.1");
-            netns.Link("pgnet0", host, IPAddress.Parse($"10.252.{octet}.2"));
-            var lan = new LocalSite("мимо туннеля", host);
-            var site = new LocalSite("через туннель");
-            var serverPort = XrayKit.FreePort();
-            var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
-            // Выход сервера теста — на свой сайт: из машины ничего не уходит.
-            serverConfig["outbounds"] = new JsonArray(
-                new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
-            var server = await XrayKit.Start(serverConfig, serverPort);
-            var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
-            return new Rig(netns, lan, definition, killSwitch, server, site, lan, netns);
+            // Не собрался — убрать уже созданное: пространство, оставленное тестом, мешает следующим.
+            var owned = new List<IDisposable>();
+            try
+            {
+                var netns = NetworkNamespace.Create();
+                owned.Add(netns);
+                var (host, neighbor, @public) = netns.LinkAsMachine();
+                var lan = new LocalSite("мимо туннеля", neighbor);
+                owned.Add(lan);
+                var site = new LocalSite("через туннель");
+                owned.Add(site);
+                var serverPort = XrayKit.FreePort();
+                var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);
+                // Выход сервера теста — на свой сайт: из машины ничего не уходит.
+                serverConfig["outbounds"] = new JsonArray(
+                    new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+                owned.Add(await XrayKit.Start(serverConfig, serverPort));
+                var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
+
+                // Убирать — в обратном порядке: сервер и сайты, потом пространство.
+                owned.Reverse();
+                return new Rig(netns, lan, @public, definition, killSwitch, [.. owned]);
+            }
+            catch
+            {
+                foreach (var created in Enumerable.Reverse(owned))
+                {
+                    created.Dispose();
+                }
+
+                throw;
+            }
         }
 
         public ValueTask DisposeAsync()
@@ -326,13 +400,15 @@ public sealed class VpnModeTests
         }
     }
 
-    /// <summary>Подключение в режиме VPN; локальная сеть закрыта, строгие маршруты — если в ядре ОС есть IPv6.</summary>
-    private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true)
+    /// <summary>Подключение в режиме VPN; локальная сеть закрыта, если не сказано иначе; строгие маршруты — если в ядре ОС есть IPv6.</summary>
+    private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false)
     {
         var settings = AppSettings.Default with
         {
             Mode = ConnectionMode.Vpn,
             KillSwitch = killSwitch,
+            Routing = routing ?? RoutingSettings.Default,
+            Protection = ProtectionSettings.Default with { AllowLan = allowLan },
             Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 20, StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") },
         };
         return new V1.ConnectRequest

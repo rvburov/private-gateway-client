@@ -17,7 +17,7 @@ namespace PrivateGateway.Client.Service;
 /// Что умеет эта служба. <paramref name="CanVpn"/> — запущена с правами администратора;
 /// <paramref name="LatencyTarget"/> — проверочный адрес задержки (в тестах — свой сайт);
 /// <paramref name="SingBoxPath"/> — TUN режима VPN; <paramref name="KillSwitch"/> — блок при обрыве
-/// этой ОС, без него режима VPN нет; <paramref name="TunnelNetns"/> — TUN в сетевом пространстве Linux (тесты);
+/// этой ОС, без него режима VPN нет; <paramref name="TunnelNetns"/> — ядра режима VPN в сетевом пространстве Linux (тесты);
 /// <paramref name="Routes"/> — маршруты машины, чтобы найти чужой VPN; null — проверки нет.
 /// </summary>
 public sealed record GatewayOptions(
@@ -714,7 +714,9 @@ public sealed class Gateway : IAsyncDisposable
             }
 
             Move(s => s, ConnectionState.Connected);
-            _journal.Add(JournalLevel.Info, "service", "Подключено: весь трафик через туннель");
+            _journal.Add(JournalLevel.Info, "service", core.Routing.HasBypassApps || core.Routing.HasBypassSites
+                ? "Подключено: трафик через туннель, обход раздельного режима — напрямую"
+                : "Подключено: весь трафик через туннель");
         }
         finally
         {
@@ -764,19 +766,24 @@ public sealed class Gateway : IAsyncDisposable
     private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses, string done = "включен")
     {
         var killSwitch = _options.KillSwitch!;
+
+        // Мимо туннеля — еще прямой выход sing-box: программы раздельного режима и прямой выход Xray.
+        var direct = VpnTunnel.DirectPrograms(core, _options.XrayPath!).Count > 0;
         var policy = new KillSwitchPolicy(
             SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name ? name : null,
             [.. addresses.Select(a => new KillSwitchEndpoint(a, core.Server.Port))],
             core.Protection.AllowLan,
             core.Protection.LanDiscovery,
-            core.Protection.BlockOutsideDns);
+            core.Protection.BlockOutsideDns,
+            direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null);
         if (!Try(() => { killSwitch.Enable(policy); return true; }, "Блок при обрыве не включился"))
         {
             return false;
         }
 
         _blocking = true;
-        _journal.Add(JournalLevel.Info, "service", $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер");
+        _journal.Add(JournalLevel.Info, "service",
+            $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}");
         return true;
     }
 
@@ -811,12 +818,21 @@ public sealed class Gateway : IAsyncDisposable
 
     /// <summary>
     /// Проверки без обещаний: в режиме VPN без блока при обрыве «Ошибка» — это трафик напрямую, а в
-    /// остальных состояниях проверка блока — выключена.
+    /// остальных состояниях проверка блока — выключена. Раздельный режим с обходом — «Весь трафик»
+    /// частично: выбранные программы и сайты идут мимо туннеля.
     /// </summary>
-    private ConnectionStatus Honest(ConnectionStatus status) =>
-        status.Mode != ConnectionMode.Vpn || status.State == ConnectionState.Off || _blocking
+    private ConnectionStatus Honest(ConnectionStatus status)
+    {
+        if (status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected } && _request?.Routing is { } routing
+            && (routing.HasBypassApps || routing.HasBypassSites))
+        {
+            status = status with { Protection = status.Protection with { AllTraffic = CheckState.Warning } };
+        }
+
+        return status.Mode != ConnectionMode.Vpn || status.State == ConnectionState.Off || _blocking
             ? status
             : status.State is ConnectionState.Error or ConnectionState.Blocked
                 ? status with { Protection = ProtectionChecks.For(ConnectionState.Off) }
                 : status with { Protection = status.Protection with { KillSwitch = CheckState.Off } };
+    }
 }

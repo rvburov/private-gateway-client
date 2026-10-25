@@ -37,6 +37,17 @@ public sealed class KillSwitchTests
     }
 
     [Fact]
+    public void Split_mode_exit_passes_by_its_mark_before_the_dns_rule()
+    {
+        var lines = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [new(Server, 443)], Direct: new DirectExit("/opt/pg/sing-box", 0x5047))));
+
+        lines.ShouldContain("meta mark 20551 accept");
+        lines.IndexOf("meta mark 20551 accept").ShouldBe(lines.IndexOf("oifname \"pgtun0\" accept") + 1,
+            "обход выбран пользователем: его DNS тоже идет напрямую — правило раньше закрытия DNS");
+        Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", []))).ShouldNotContain(l => l.StartsWith("meta mark", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Local_network_and_dns_follow_the_settings()
     {
         var lan = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [], AllowLan: true)));
@@ -116,6 +127,14 @@ public sealed class KillSwitchTests
         (await netns.CurlAsync(tunnel.Url)).ShouldBe("туннель", "через адаптер туннеля — все");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3), "другой порт того же адреса — не сервер");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.ResolveAsync("example.com", host, seconds: 3));
+
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, 0x5047, seconds: 3), "без раздельного режима метка не помогает");
+
+        killSwitch.Enable(new KillSwitchPolicy("pgtun0", [new(host, server.Url.Port)], Direct: new DirectExit("/opt/pg/sing-box", 0x5047)));
+
+        (await netns.FetchAsync(lan.Url, 0x5047)).ShouldBe("локальная сеть", "выход sing-box мимо туннеля узнается по метке");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3), "другие программы этим путем не пройдут");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, 0x5048, seconds: 3), "чужая метка — не наш выход");
 
         killSwitch.Enable(new KillSwitchPolicy("pgtun0", [], AllowLan: true));
 

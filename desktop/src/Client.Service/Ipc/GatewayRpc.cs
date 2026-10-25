@@ -93,7 +93,8 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         {
             Id = DiagnosticCheck.AllTraffic.ToContractId(),
             State = status.Protection.AllTraffic.ToContract(),
-            Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy" : string.Empty,
+            Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy"
+                : status.Protection.AllTraffic == CheckState.Warning && !status.IsPaused ? "split" : string.Empty,
         });
         if (gateway.OtherVpnAdapters() is { } other)
         {

@@ -423,7 +423,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     {
         var protection = Status.Protection;
         var paused = Status.IsPaused;
-        Chips[0].Update(protection.AllTraffic, paused);
+        // В режиме VPN «частично» — это раздельный режим, а не прокси.
+        Chips[0].Update(protection.AllTraffic, paused,
+            Status.Mode == ConnectionMode.Vpn && protection.AllTraffic == CheckState.Warning ? "split" : null);
         Chips[1].Update(protection.Dns, paused);
         Chips[2].Update(protection.Ipv6, paused);
         Chips[3].Update(protection.KillSwitch, paused);
@@ -478,16 +480,20 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     /// <summary>Пауза для входа в Wi-Fi: «напрямую», «у провайдера», «открыт», «на паузе».</summary>
     public bool IsPaused { get; private set; }
 
-    public string Value => Loc.Instance[$"check.{Id}.{(IsPaused ? "paused" : State.ToString().ToLowerInvariant())}"];
+    /// <summary>Особый случай состояния со своими подписью и пояснением: «split» — раздельный режим.</summary>
+    public string? Variant { get; private set; }
 
-    public string Text => Loc.Instance[$"check.{Id}.text"];
+    public string Value => Loc.Instance[$"check.{Id}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];
+
+    public string Text => Loc.Instance[Variant is { } variant && !IsPaused ? $"check.{Id}.{variant}.text" : $"check.{Id}.text"];
 
     /// <summary>Ключ иконки в кружке: Icon.Chip.*.</summary>
     public string Icon => CheckIcon.For(State);
 
-    internal void Update(CheckState state, bool paused = false)
+    internal void Update(CheckState state, bool paused = false, string? variant = null)
     {
         IsPaused = paused;
+        Variant = variant;
         State = state;
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(Value));

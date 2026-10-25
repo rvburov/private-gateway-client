@@ -1,3 +1,6 @@
+using System.Net;
+using System.Net.Sockets;
+
 namespace PrivateGateway.Client.Core.Settings;
 
 /// <summary>Что идет через VPN (доска 13).</summary>
@@ -21,7 +24,7 @@ public enum RuleAction
 /// <summary>Программа мимо VPN: путь к исполняемому файлу, имя для подписи, включена ли.</summary>
 public sealed record BypassApp(string Path, string Name, bool IsEnabled = true);
 
-/// <summary>Правило для сайта: домен, «*.домен» или «geosite:категория».</summary>
+/// <summary>Правило для сайта: домен, «*.домен», «geosite:категория», адрес или подсеть.</summary>
 public sealed record DomainRule(string Pattern, RuleAction Action);
 
 /// <summary>
@@ -52,12 +55,18 @@ public static class SitePattern
     private const string Geosite = "geosite:";
 
     /// <summary>
-    /// «example.com», «*.example.com» или «geosite:category» — строчными; null — не подходит. Адрес
-    /// с «https://» и путем сокращается до домена: так его чаще всего и вставляют.
+    /// «example.com», «*.example.com» или «geosite:category» — строчными; адрес «203.0.113.5» или
+    /// подсеть «198.51.100.0/24», «2001:db8::/32» — подсеть приводится к адресу сети. null — не
+    /// подходит. Адрес с «https://» и путем сокращается до домена: так его чаще всего и вставляют.
     /// </summary>
     public static string? Normalize(string? text)
     {
         var value = text?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (Address(value) is { } address)
+        {
+            return address;
+        }
+
         if (value.StartsWith(Geosite, StringComparison.Ordinal))
         {
             var category = value[Geosite.Length..];
@@ -80,5 +89,45 @@ public static class SitePattern
             && !labels[^1].All(char.IsAsciiDigit)
             ? (wildcard ? "*." : string.Empty) + host
             : null;
+    }
+
+    /// <summary>Шаблон — адрес или подсеть, а не имя: правило сравнивает IP соединения.</summary>
+    public static bool IsAddress(string pattern) => Address(pattern) is not null;
+
+    /// <summary>
+    /// Адрес или подсеть в каноническом виде; иначе null. IPv4 — только четыре числа через точку
+    /// («1.2» адресом не считается). Подсеть /0 — весь интернет: это режим, а не правило.
+    /// </summary>
+    private static string? Address(string value)
+    {
+        var slash = value.IndexOf('/', StringComparison.Ordinal);
+        var text = slash < 0 ? value : value[..slash];
+        var v4 = text.Split('.') is { Length: 4 } parts && parts.All(p => p.Length is > 0 and <= 3 && p.All(char.IsAsciiDigit));
+        if (!(v4 || text.Contains(':', StringComparison.Ordinal)) || !IPAddress.TryParse(text, out var address)
+            || address.AddressFamily is not (AddressFamily.InterNetwork or AddressFamily.InterNetworkV6) || text.Contains('%', StringComparison.Ordinal))
+        {
+            return null;
+        }
+
+        if (slash < 0)
+        {
+            return address.ToString();
+        }
+
+        var bits = address.AddressFamily == AddressFamily.InterNetwork ? 32 : 128;
+        if (!int.TryParse(value[(slash + 1)..], System.Globalization.NumberStyles.None, System.Globalization.CultureInfo.InvariantCulture, out var prefix)
+            || prefix is < 1 || prefix > bits)
+        {
+            return null;
+        }
+
+        var bytes = address.GetAddressBytes();
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            var keep = Math.Clamp(prefix - (i * 8), 0, 8);
+            bytes[i] &= (byte)(0xFF << (8 - keep));
+        }
+
+        return $"{new IPAddress(bytes)}/{prefix}";
     }
 }

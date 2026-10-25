@@ -48,7 +48,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <param name="serverAddresses">Адреса сервера.</param>
     /// <param name="timeout">Сколько ждать подъема.</param>
     /// <param name="time">Часы.</param>
-    /// <param name="netns">Создать TUN в сетевом пространстве Linux (тесты); null — в системе.</param>
+    /// <param name="netns">Запустить оба ядра в сетевом пространстве Linux (тесты) — TUN и маршруты там же; null — в системе.</param>
     /// <param name="output">Строка вывода ядра — источник («xray», «sing-box») и текст, с самого запуска; приходит из потока чтения.</param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
@@ -69,15 +69,17 @@ public sealed class VpnTunnel : IAsyncDisposable
         }
 
         var started = time.GetTimestamp();
-        var xrayCore = CoreProcess.StartXray(xray, xrayConfig);
+        var xrayCore = CoreProcess.StartXray(xray, xrayConfig, netns);
         xrayCore.Output += (_, line) => output?.Invoke("xray", line);
         CoreProcess? singBoxCore = null;
         try
         {
-            await WaitAsync(() => !xrayCore.HasExited && Listens(link.Port), "Xray", xrayCore, timeout - time.GetElapsedTime(started), time,
-                cancellationToken).ConfigureAwait(false);
+            // Вход Xray в своем сетевом пространстве отсюда не виден — Xray жив секунду.
+            await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : time.GetElapsedTime(started) >= TimeSpan.FromSeconds(1)),
+                "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
             singBoxCore = CoreProcess.StartSingBox(singBox,
-                SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, netns)));
+                SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, DirectPrograms(request, xray))),
+                netns);
             singBoxCore.Output += (_, line) => output?.Invoke("sing-box", line);
             var core = singBoxCore;
             var alive = time.GetTimestamp();
@@ -111,6 +113,46 @@ public sealed class VpnTunnel : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(server);
         return new TunLink(LocalPort.FreeForTcpAndUdp(), Secret(), Secret(), server.ToString());
+    }
+
+    /// <summary>
+    /// Программы мимо туннеля этого подключения (<see cref="SingBoxConfigBuilder.DirectPrograms"/>) — настоящими
+    /// путями: sing-box сравнивает их с путем процесса, каким его видит ОС.
+    /// </summary>
+    public static IReadOnlyList<string> DirectPrograms(CoreRequest request, string xray)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return [.. SingBoxConfigBuilder.DirectPrograms(request.Routing, request.Protection, xray).Select(RealPath).Distinct(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Путь, как его видит ОС у процесса: полный и без символических ссылок ни в одной части (на Linux
+    /// /bin бывает ссылкой на /usr/bin, а /usr/bin/firefox — на /usr/lib/firefox/firefox).
+    /// </summary>
+    public static string RealPath(string path)
+    {
+        var full = Path.GetFullPath(path);
+        if (OperatingSystem.IsWindows())
+        {
+            return full;
+        }
+
+        var resolved = Path.GetPathRoot(full)!;
+        foreach (var part in full[resolved.Length..].Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var next = Path.Combine(resolved, part);
+            try
+            {
+                resolved = new FileInfo(next).ResolveLinkTarget(returnFinalTarget: true)?.FullName ?? next;
+            }
+            catch (IOException)
+            {
+                // Части пути нет (программу удалили) — путь остается как есть.
+                resolved = next;
+            }
+        }
+
+        return resolved;
     }
 
     /// <summary>Остановить: сначала TUN, потом Xray.</summary>

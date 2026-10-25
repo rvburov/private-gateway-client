@@ -36,16 +36,19 @@ public sealed class CoreProcess : IDisposable
 
     public int ExitCode => _process.ExitCode;
 
-    /// <summary>Xray (<c>run -config stdin:</c>); geoip.dat и geosite.dat ядро ищет рядом с собой. Путь — из папки службы.</summary>
-    public static CoreProcess StartXray(string executable, JsonObject config)
+    /// <summary>
+    /// Xray (<c>run -config stdin:</c>); geoip.dat и geosite.dat ядро ищет рядом с собой. Путь — из папки
+    /// службы. <paramref name="netns"/> — запустить в сетевом пространстве Linux (тесты); null — в системе.
+    /// </summary>
+    public static CoreProcess StartXray(string executable, JsonObject config, string? netns = null)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(executable))!;
-        return Start(executable, ["run", "-config", "stdin:"], config, folder, new Dictionary<string, string> { ["XRAY_LOCATION_ASSET"] = folder });
+        return Start(executable, ["run", "-config", "stdin:"], config, folder, new Dictionary<string, string> { ["XRAY_LOCATION_ASSET"] = folder }, netns);
     }
 
-    /// <summary>sing-box (<c>run -c stdin</c>) — TUN режима VPN.</summary>
-    public static CoreProcess StartSingBox(string executable, JsonObject config) =>
-        Start(executable, ["run", "-c", "stdin", "--disable-color"], config, Path.GetDirectoryName(Path.GetFullPath(executable))!, null);
+    /// <summary>sing-box (<c>run -c stdin</c>) — TUN режима VPN. <paramref name="netns"/> — как у <see cref="StartXray"/>.</summary>
+    public static CoreProcess StartSingBox(string executable, JsonObject config, string? netns = null) =>
+        Start(executable, ["run", "-c", "stdin", "--disable-color"], config, Path.GetDirectoryName(Path.GetFullPath(executable))!, null, netns);
 
     /// <summary>
     /// Остановить ядро и дождаться выхода. <paramref name="grace"/> — сначала попросить (SIGTERM на
@@ -86,10 +89,12 @@ public sealed class CoreProcess : IDisposable
     }
 
     private static CoreProcess Start(string executable, IReadOnlyList<string> arguments, JsonObject config, string folder,
-        IReadOnlyDictionary<string, string>? environment)
+        IReadOnlyDictionary<string, string>? environment, string? netns)
     {
         ArgumentNullException.ThrowIfNull(config);
-        var info = new ProcessStartInfo(executable)
+
+        // В своем сетевом пространстве — через nsenter: он входит в пространство и заменяет себя ядром, процесс тот же.
+        var info = new ProcessStartInfo(netns is null ? executable : "nsenter")
         {
             RedirectStandardInput = true,
             RedirectStandardOutput = true,
@@ -99,6 +104,12 @@ public sealed class CoreProcess : IDisposable
             StandardInputEncoding = new UTF8Encoding(false),
             WorkingDirectory = folder,
         };
+        if (netns is not null)
+        {
+            info.ArgumentList.Add("--net=" + netns);
+            info.ArgumentList.Add(executable);
+        }
+
         foreach (var argument in arguments)
         {
             info.ArgumentList.Add(argument);

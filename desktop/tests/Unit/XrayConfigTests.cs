@@ -183,6 +183,8 @@ public sealed class XrayConfigTests
             new DomainRule("*.example.net", RuleAction.Block),
             new DomainRule("geosite:category-ads-all", RuleAction.Block),
             new DomainRule("example.org", RuleAction.Proxy),
+            new DomainRule("198.51.100.0/24", RuleAction.Direct),
+            new DomainRule("203.0.113.9", RuleAction.Block),
         };
 
         var all = Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules)));
@@ -190,13 +192,15 @@ public sealed class XrayConfigTests
         [
             ("ip:geoip:private", "block"), ("ip:::/0", "block"),
             ("domain:domain:example.net", "block"), ("domain:geosite:category-ads-all", "block"), ("domain:domain:example.org", "proxy"),
-        ]);
+            ("ip:203.0.113.9", "block"),
+        ], "адрес и подсеть — условием IP, в порядке списка");
 
         var split = Rules(Build(Link("vless/reality-vision"),
             protection: ProtectionSettings.Default with { AllowLan = true, BlockIpv6 = false },
             routing: new RoutingSettings(RoutingMode.Split, [], rules)));
         split[0].ShouldBe(("ip:geoip:private", "direct"), "локальная сеть разрешена");
         split.ShouldContain(("domain:domain:example.com", "direct"));
+        split.ShouldContain(("ip:198.51.100.0/24", "direct"));
         split.ShouldNotContain(("ip:::/0", "block"));
     }
 

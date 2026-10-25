@@ -124,7 +124,7 @@ public sealed class RoutingPageTests : WindowHarness
         (sheet.Title, sheet.SaveText, sheet.IsDirect).ShouldBe(("Новое правило", "Добавить", true), "в раздельном режиме правило заводят ради «Напрямую»");
         sheet.Pattern = "localhost";
         sheet.SaveCommand.Execute(null);
-        sheet.Error.ShouldBe("Нужен домен, *.домен или geosite:категория");
+        sheet.Error.ShouldBe("Нужен домен, *.домен, geosite:категория, адрес или подсеть");
         shell.Overlay.HasSheet.ShouldBeTrue();
 
         sheet.Pattern = " https://Example.COM/login ";
@@ -135,6 +135,15 @@ public sealed class RoutingPageTests : WindowHarness
         Service<SettingsService>().Current.Routing.Rules.ShouldBe([new DomainRule("example.com", RuleAction.Direct)]);
         page.Rules.ShouldHaveSingleItem().Pattern.ShouldBe("example.com");
         Find<TextBlock>(window, "RulesEmpty").IsVisible.ShouldBeFalse();
+
+        Press(window, "AddRuleButton");
+        var subnet = shell.Overlay.Sheet.ShouldBeOfType<SiteRuleEditViewModel>();
+        subnet.Pattern = "198.51.100.7/24";
+        subnet.SaveCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        Service<SettingsService>().Current.Routing.Rules.Select(r => r.Pattern).ShouldBe(["example.com", "198.51.100.0/24"],
+            "подсеть — правилом по адресу, к адресу сети");
     }
 
     [AvaloniaFact]

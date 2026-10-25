@@ -64,6 +64,17 @@ public sealed class WfpKillSwitchTests
     }
 
     [Fact]
+    public void Split_mode_exit_is_the_sing_box_program_above_the_dns_rule()
+    {
+        var rules = WfpRules.For(new KillSwitchPolicy("Private Gateway", [], Direct: new DirectExit(@"C:\Program Files\Private Gateway\sing-box.exe", 0x5047)), 42)
+            .Select(r => r.ToString()).ToList();
+
+        rules.ShouldContain(@"15 permit V4 direct: App C:\Program Files\Private Gateway\sing-box.exe");
+        rules.ShouldContain(@"15 permit V6 direct: App C:\Program Files\Private Gateway\sing-box.exe", "вес выше закрытия DNS (10): обход выбран пользователем");
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", []), 42).ShouldNotContain(r => r.Name == "direct");
+    }
+
+    [Fact]
     public void Filter_keys_go_in_order_from_one_base()
     {
         WfpRules.FilterKey(0).ShouldBe(new Guid("c9f98d15-2e6c-4db0-aa5c-48a623d10000"));
@@ -103,6 +114,10 @@ public sealed class WfpKillSwitchTests
             killSwitch.Enable(new KillSwitchPolicy(null, []));
 
             (await Reaches(curl, github, 443)).ShouldBeFalse("сервера в правилах больше нет — закрыто все");
+
+            killSwitch.Enable(new KillSwitchPolicy(null, [], Direct: new DirectExit(curl, 0x5047)));
+
+            (await Reaches(curl, github, 80)).ShouldBeTrue("программа выхода мимо туннеля (в службе — sing-box) проходит куда угодно");
 
             if (adapter is not null)
             {

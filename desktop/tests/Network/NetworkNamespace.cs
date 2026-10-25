@@ -49,8 +49,9 @@ internal sealed class NetworkNamespace : IDisposable
     /// <summary>
     /// Пара veth: конец <paramref name="inside"/> в пространстве с адресом <paramref name="insideAddress"/>,
     /// второй — в сети машины с <paramref name="hostAddress"/> (оба /30). Уйдет вместе с пространством.
+    /// Возвращает имя второго конца.
     /// </summary>
-    public void Link(string inside, IPAddress hostAddress, IPAddress insideAddress)
+    public string Link(string inside, IPAddress hostAddress, IPAddress insideAddress)
     {
         var outside = "pgv" + Guid.NewGuid().ToString("N")[..8];
         Host("ip", "link", "add", outside, "type", "veth", "peer", "name", inside, "netns", Name);
@@ -58,10 +59,51 @@ internal sealed class NetworkNamespace : IDisposable
         Host("ip", "link", "set", outside, "up");
         Run(null, "ip", "addr", "add", insideAddress + "/30", "dev", inside);
         Run(null, "ip", "link", "set", inside, "up");
+        return outside;
+    }
+
+    /// <summary>
+    /// Пространство как машина в сети: пара veth к сети машины и маршрут по умолчанию в нее без шлюза.
+    /// Ядра в пространстве выходят по паре к серверу теста на адресе машины <c>Host</c>; <c>Neighbor</c> —
+    /// еще один адрес машины на той же паре, как другое устройство локальной сети; <c>Public</c> — адрес
+    /// машины из диапазона документации, как сайт в интернете. К остальным адресам пакеты дальше пары не
+    /// уходят — на них никто не отвечает.
+    /// </summary>
+    public (IPAddress Host, IPAddress Neighbor, IPAddress Public) LinkAsMachine()
+    {
+        var octet = Random.Shared.Next(1, 250);
+        var host = IPAddress.Parse($"10.252.{octet}.1");
+        var neighbor = IPAddress.Parse($"10.252.{octet}.5");
+        var @public = IPAddress.Parse($"203.0.113.{octet}");
+        var outside = Link("pgnet0", host, IPAddress.Parse($"10.252.{octet}.2"));
+        Host("ip", "addr", "add", neighbor + "/32", "dev", outside);
+        Host("ip", "addr", "add", @public + "/32", "dev", outside);
+        Run(null, "ip", "route", "add", "default", "dev", "pgnet0");
+        return (host, neighbor, @public);
     }
 
     /// <summary>Команда изнутри пространства с <paramref name="input"/> в stdin; не вышла успешно — исключение с ее выводом.</summary>
     public string Run(string? input, params string[] command) => Execute(input, "nsenter", ["--net=" + Path, .. command]);
+
+    /// <summary>
+    /// Страница с сайта теста из python3, а не curl (другая программа для правил по процессу); с меткой
+    /// <paramref name="mark"/> (SO_MARK) — как пакеты выхода sing-box мимо туннеля, 0 — без метки. Не
+    /// соединилось — исключение.
+    /// </summary>
+    public Task<string> FetchAsync(Uri url, uint mark = 0, int seconds = 10) => RunAsync("python3", "-c", """
+        import socket, sys
+        s = socket.socket()
+        if int(sys.argv[3]):
+            s.setsockopt(socket.SOL_SOCKET, 36, int(sys.argv[3]))
+        s.settimeout(float(sys.argv[4]))
+        s.connect((sys.argv[1], int(sys.argv[2])))
+        s.sendall(b"GET / HTTP/1.0\r\n\r\n")
+        reply = b""
+        while chunk := s.recv(4096):
+            reply += chunk
+        print(reply.decode().split("\r\n\r\n", 1)[1], end="")
+        """, url.Host, url.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), mark.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     /// <summary>Команда изнутри пространства; не вышла успешно — исключение с ее выводом.</summary>
     public async Task<string> RunAsync(params string[] command)
