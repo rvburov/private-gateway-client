@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Text.Json;
 using PrivateGateway.Client.Core.Platform;
 
@@ -13,8 +11,6 @@ namespace PrivateGateway.Client.Platform.Linux;
 /// <param name="ip">Вызов ip: аргументы → вывод; не вышло — <see cref="IOException"/> с текстом ip.</param>
 public sealed class IpRouteTable(Func<IReadOnlyList<string>, string> ip) : IRouteTable
 {
-    private static readonly string[] Programs = ["/usr/sbin/ip", "/sbin/ip", "/usr/bin/ip", "/bin/ip"];
-
     // Половины интернета: VPN ставит две и перебивает основной маршрут, не удаляя его.
     private static readonly string[] Halves = ["0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1"];
 
@@ -22,9 +18,8 @@ public sealed class IpRouteTable(Func<IReadOnlyList<string>, string> ip) : IRout
     private static readonly string[] TunnelLinks = ["none", "ppp", "ipip", "tunnel6", "gre", "gre6"];
     private static readonly string[] TunnelKinds = ["tun", "wireguard", "ppp"];
 
-    /// <summary>ip этой машины — по полному пути, без поиска в PATH: служба работает от root. Нет ip — null.</summary>
-    public static IpRouteTable? ForThisMachine() =>
-        Programs.FirstOrDefault(File.Exists) is { } program ? new IpRouteTable(arguments => Run(program, arguments)) : null;
+    /// <summary>ip этой машины (<see cref="IpCommand"/>); нет ip — null.</summary>
+    public static IpRouteTable? ForThisMachine() => IpCommand.ForThisMachine() is { } ip ? new IpRouteTable(ip) : null;
 
     public IReadOnlyList<DefaultRoute> DefaultRoutes()
     {
@@ -99,26 +94,4 @@ public sealed class IpRouteTable(Func<IReadOnlyList<string>, string> ip) : IRout
 
     private static string? Text(JsonElement element, string name) =>
         element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String ? value.GetString() : null;
-
-    private static string Run(string program, IReadOnlyList<string> arguments)
-    {
-        var start = new ProcessStartInfo(program) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        foreach (var argument in arguments)
-        {
-            start.ArgumentList.Add(argument);
-        }
-
-        try
-        {
-            using var process = Process.Start(start) ?? throw new IOException("ip не запустился");
-            var error = process.StandardError.ReadToEndAsync();
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit();
-            return process.ExitCode == 0 ? output : throw new IOException("ip: " + error.GetAwaiter().GetResult().Trim());
-        }
-        catch (Win32Exception e)
-        {
-            throw new IOException("ip не запустился: " + e.Message, e);
-        }
-    }
 }

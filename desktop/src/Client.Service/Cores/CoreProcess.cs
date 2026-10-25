@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json.Nodes;
+using PrivateGateway.Client.Platform.Windows;
 
 namespace PrivateGateway.Client.Service.Cores;
 
@@ -124,6 +125,20 @@ public sealed class CoreProcess : IDisposable
         }
 
         var process = Process.Start(info) ?? throw new InvalidOperationException("Ядро не запустилось: " + Path.GetFileName(executable));
+        // Windows: ядро — в задании, которое ОС закрывает вместе со службой, и без службы оно не останется.
+        // На Linux то же делает systemd: при сбое службы он останавливает весь ее cgroup.
+        if (OperatingSystem.IsWindows())
+        {
+            try
+            {
+                ChildProcesses.OfThisProcess.Add(process);
+            }
+            catch (System.ComponentModel.Win32Exception)
+            {
+                // Задание не далось — ядро работает, только без этой страховки.
+            }
+        }
+
         var core = new CoreProcess(process);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();

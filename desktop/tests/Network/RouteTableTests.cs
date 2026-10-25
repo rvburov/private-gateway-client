@@ -1,5 +1,6 @@
 using System.Net.NetworkInformation;
 using PrivateGateway.Client.Core.Platform;
+using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Platform.Windows;
 
@@ -8,6 +9,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// <summary>
 /// Маршруты машины для поиска чужого VPN: разбор вывода <c>ip -j</c> (Linux), настоящий туннель в своем
 /// сетевом пространстве Linux, таблица маршрутов Windows (CI) и признаки туннеля у адаптеров Windows.
+/// Правила маршрутизации, оставшиеся после аварии sing-box, — по номерам туннеля.
 /// </summary>
 public sealed class RouteTableTests
 {
@@ -90,6 +92,51 @@ public sealed class RouteTableTests
 
         routes.ShouldContain(r => !r.IsTunnel, "у машины CI маршрут ко всему интернету — через сетевую карту");
         TestContext.Current.TestOutputHelper?.WriteLine(string.Join('\n', routes));
+    }
+
+    [Fact]
+    public void Rules_left_by_the_tunnel_are_removed_by_their_numbers_only()
+    {
+        IpRules.Priorities("""
+            [{"priority":0,"src":"all","table":"local"},{"priority":9047,"dst":"172.19.0.0/30","table":"20551"},
+             {"priority":9049,"src":"all","table":"main","suppress_prefixlen":0},{"priority":9049,"iif":"pgtun0","action":"goto","target":9057}]
+            """).ShouldBe([0, 9047, 9049, 9049], "по одному номеру на правило: у двух правил номер бывает один");
+
+        var calls = new List<string>();
+        var rules = new IpRules(arguments =>
+        {
+            calls.Add(string.Join(' ', arguments));
+            return arguments switch
+            {
+                ["-j", "-4", ..] => """[{"priority":0},{"priority":9000},{"priority":9047},{"priority":9049},{"priority":9049},{"priority":9058},{"priority":32766}]""",
+                ["-j", "-6", ..] => throw new IOException("ip: Address family not supported by protocol"),
+                _ => string.Empty,
+            };
+        });
+
+        rules.Remove(SingBoxConfigBuilder.RuleIndex, SingBoxConfigBuilder.RuleLast).ShouldBe(3);
+        calls.ShouldBe(["-j -4 rule show", "-4 rule del priority 9047", "-4 rule del priority 9049", "-4 rule del priority 9049", "-j -6 rule show"],
+            "9000 — у другой программы на sing-box, 9058 и дальше — не наши; IPv6 выключен в ядре — не ошибка");
+    }
+
+    [Fact]
+    public void Rules_left_in_a_namespace_are_removed_and_others_stay()
+    {
+        NetworkNamespace.SkipUnlessAvailable("ip");
+        using var netns = NetworkNamespace.Create();
+
+        // Как после убитого sing-box: правила на свою таблицу остались, адаптера и маршрутов уже нет.
+        netns.Run(null, "ip", "rule", "add", "priority", "9047", "to", "172.19.0.0/30", "lookup", "20551");
+        netns.Run(null, "ip", "rule", "add", "priority", "9048", "lookup", "20551", "suppress_prefixlength", "0");
+        netns.Run(null, "ip", "rule", "add", "priority", "9057", "nop");
+        netns.Run(null, "ip", "rule", "add", "priority", "9000", "lookup", "2022");
+
+        IpRules.ForThisMachine(netns.Path)!.Remove(SingBoxConfigBuilder.RuleIndex, SingBoxConfigBuilder.RuleLast).ShouldBe(3);
+
+        var left = netns.Run(null, "ip", "rule", "show");
+        left.ShouldNotContain("20551");
+        left.ShouldNotContain("9057:");
+        left.ShouldContain("9000:", Case.Sensitive, "правило другой программы на sing-box — не наше");
     }
 
     [Theory]

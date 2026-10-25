@@ -4,6 +4,7 @@ using System.Net.Sockets;
 using System.Security.Cryptography;
 using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Network.Xray;
+using PrivateGateway.Client.Platform.Linux;
 
 namespace PrivateGateway.Client.Service.Cores;
 
@@ -13,7 +14,8 @@ public sealed class TunnelException(string message) : Exception(message);
 /// <summary>
 /// Туннель режима VPN: Xray со входом только для своего TUN (порт и пароль — на это подключение) и
 /// sing-box с TUN. Запуск — Xray, потом TUN; остановка — наоборот: сначала TUN (sing-box убирает свои
-/// маршруты), потом Xray. Ядро вышло само — <see cref="Exited"/>.
+/// маршруты), потом Xray. Ядро вышло само — <see cref="Exited"/>. Правила маршрутизации, которые sing-box
+/// не убрал (его сняли или он упал), убирает служба (<see cref="RemoveLeftoverRules"/>).
 /// </summary>
 public sealed class VpnTunnel : IAsyncDisposable
 {
@@ -22,12 +24,16 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     private readonly CoreProcess _xray;
     private readonly CoreProcess _singBox;
+    private readonly string? _netns;
+    private readonly Action<string, string>? _output;
     private int _stopping;
 
-    private VpnTunnel(CoreProcess xray, CoreProcess singBox)
+    private VpnTunnel(CoreProcess xray, CoreProcess singBox, string? netns, Action<string, string>? output)
     {
         _xray = xray;
         _singBox = singBox;
+        _netns = netns;
+        _output = output;
         xray.Exited += (_, _) => OnExited();
         singBox.Exited += (_, _) => OnExited();
     }
@@ -38,6 +44,9 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     /// <summary>Одно из ядер уже не работает — и до подписки на <see cref="Exited"/>.</summary>
     public bool HasExited => _xray.HasExited || _singBox.HasExited;
+
+    /// <summary>Номера процессов ядер — для журнала.</summary>
+    public (int Xray, int SingBox) Processes => (_xray.Id, _singBox.Id);
 
     /// <summary>
     /// Поднять туннель. <paramref name="serverAddresses"/> — адреса сервера, разрешенные заранее: к первому
@@ -92,7 +101,7 @@ public sealed class VpnTunnel : IAsyncDisposable
                     ? HasInterface(name)
                     : time.GetElapsedTime(alive) >= TimeSpan.FromSeconds(1),
                 "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
-            return new VpnTunnel(xrayCore, core);
+            return new VpnTunnel(xrayCore, core, netns, output);
         }
         catch
         {
@@ -170,7 +179,7 @@ public sealed class VpnTunnel : IAsyncDisposable
         return resolved;
     }
 
-    /// <summary>Остановить: сначала TUN, потом Xray.</summary>
+    /// <summary>Остановить: сначала TUN, потом Xray; что sing-box не убрал за собой — убрать.</summary>
     public async ValueTask DisposeAsync()
     {
         Interlocked.Exchange(ref _stopping, 1);
@@ -178,6 +187,35 @@ public sealed class VpnTunnel : IAsyncDisposable
         await _xray.StopAsync().ConfigureAwait(false);
         _singBox.Dispose();
         _xray.Dispose();
+        if (RemoveLeftoverRules(_netns) is { Length: > 0 } removed)
+        {
+            _output?.Invoke("service", removed);
+        }
+    }
+
+    /// <summary>
+    /// Linux: правила маршрутизации туннеля (номера <see cref="SingBoxConfigBuilder.RuleIndex"/>…<see cref="SingBoxConfigBuilder.RuleLast"/>),
+    /// которые остались, когда sing-box сняли или он упал. При обычной остановке он убирает их сам; оставшиеся
+    /// после аварии держат IPv6 без связи при строгих маршрутах — и после отключения сеть не вернулась бы
+    /// прямой. Вызывать, когда своего sing-box не работает. Возвращает запись для журнала; убирать нечего — пусто.
+    /// </summary>
+    /// <param name="netns">Сетевое пространство Linux (тесты); null — система.</param>
+    public static string RemoveLeftoverRules(string? netns)
+    {
+        if (!OperatingSystem.IsLinux() || IpRules.ForThisMachine(netns) is not { } rules)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            var removed = rules.Remove(SingBoxConfigBuilder.RuleIndex, SingBoxConfigBuilder.RuleLast);
+            return removed > 0 ? $"Убраны правила маршрутизации, оставшиеся от sing-box: {removed}" : string.Empty;
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException)
+        {
+            return "Правила маршрутизации sing-box не проверены: " + e.Message;
+        }
     }
 
     private void OnExited()

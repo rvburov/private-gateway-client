@@ -43,6 +43,7 @@ public partial class App : Avalonia.Application
         Services.GetRequiredService<SubscriptionUpdater>().Start();
         Services.GetRequiredService<AutostartSync>().Start();
         Services.GetRequiredService<ProtectionSync>().Start();
+        _ = Services.GetRequiredService<LaunchConnect>().RunAsync();
 
         base.OnFrameworkInitializationCompleted();
     }

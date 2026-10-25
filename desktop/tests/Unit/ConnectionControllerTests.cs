@@ -201,6 +201,9 @@ public class ConnectionControllerTests
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
 
+        /// <summary>Служба прислала состояние (то же).</summary>
+        public void Announce() => StatusChanged?.Invoke(this, Status);
+
         public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default)
         {
             Calls.Add("connect:" + server.Id);

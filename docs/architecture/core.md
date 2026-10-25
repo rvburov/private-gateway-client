@@ -97,7 +97,9 @@ TUN-адаптера у Xray на десктопе нет, поэтому пак
 - `Client.Service/Cores/VpnTunnel` поднимает Xray, ждет его порт, поднимает sing-box и ждет адаптер;
   не поднялось за отведенное время или ядро вышло — `TunnelException`, все запущенное остановлено.
   Остановка — наоборот: sing-box с отсрочкой 5 с (снимает маршруты), потом Xray. Ядро вышло само —
-  событие `Exited`.
+  событие `Exited`. На Linux у TUN свои таблица маршрутов и номера правил (`iproute2_table_index`
+  20551, `iproute2_rule_index` 9047): правила, которые убитый sing-box оставил, служба убирает по этим
+  номерам после остановки туннеля и при запуске ([service.md](service.md), «Аварии и перезагрузка»).
 - Сборку кладет `scripts/get-singbox.sh` в `artifacts/cores/sing-box/` вместе с `LICENSE`: версия —
   `shared/cores/sing-box.version`, архив берется только с закрепленной суммой из
   `shared/cores/sing-box.sha256` (Windows x64, macOS arm64, Linux x64). На Windows Wintun встроен в

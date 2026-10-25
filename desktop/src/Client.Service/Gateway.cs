@@ -120,6 +120,12 @@ public sealed partial class Gateway : IAsyncDisposable
             _status = _status with { State = ConnectionState.Blocked, Protection = ProtectionChecks.For(ConnectionState.Blocked) };
             journal.Add(JournalLevel.Warning, "service", "Блок при обрыве остался с прошлого запуска: трафик заблокирован до подключения или выключения защиты");
         }
+
+        // Своего sing-box еще нет: правила маршрутизации, оставшиеся от его аварии в прошлом запуске, — убрать.
+        if (options.CanVpn && VpnTunnel.RemoveLeftoverRules(options.TunnelNetns) is { Length: > 0 } removed)
+        {
+            journal.Add(JournalLevel.Warning, "service", removed);
+        }
     }
 
     public ConnectionStatus Status
@@ -782,6 +788,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
             _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
+            _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
             if (tunnel.HasExited)
             {
                 Fail(session, ErrorCodes.CoreFailed, "Ядро туннеля остановилось");

@@ -360,6 +360,7 @@ public sealed partial class Gateway
 
             _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
+            _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
             if (tunnel.HasExited)
             {
                 return (false, ErrorCodes.CoreFailed);

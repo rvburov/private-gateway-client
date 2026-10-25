@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
@@ -435,6 +436,48 @@ public sealed class VpnModeTests
         (stopped.State, stopped.Error.Code).ShouldBe((V1.ConnectionState.Error, ErrorCodes.OtherVpn));
     }
 
+    [Fact]
+    public async Task Rules_left_by_a_killed_sing_box_are_removed_when_the_tunnel_stops_and_when_the_service_starts()
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using (var service = await RunningService.StartAsync(options: rig.Vpn))
+        {
+            using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+            var request = VpnRequest(rig.Definition);
+            request.Connection.Reconnect = V1.ReconnectPolicy.Never;
+            await service.Client.ConnectAsync(request, cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+            rig.Netns.Run(null, "ip", "rule", "show").ShouldContain("lookup 20551", Case.Sensitive, "у туннеля своя таблица, а не 2022 sing-box по умолчанию");
+
+            // Убитый sing-box за собой не убирает.
+            using (var singBox = Process.GetProcessById(SingBoxProcessId(service)))
+            {
+                singBox.Kill();
+            }
+
+            var failed = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Error or V1.ConnectionState.Off))[^1];
+            failed.Error.Code.ShouldBe(ErrorCodes.CoreFailed);
+
+            // «Ошибка» видна сразу, ядра служба останавливает следом — и убирает правила.
+            var started = Stopwatch.StartNew();
+            while (rig.Netns.Run(null, "ip", "rule", "show").Contains("20551", StringComparison.Ordinal) && started.Elapsed < TimeSpan.FromSeconds(10))
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(100), Ct);
+            }
+
+            rig.Netns.Run(null, "ip", "rule", "show").ShouldNotContain("20551", Case.Sensitive, "туннель остановлен — его правила убраны");
+            service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.StartsWith("Убраны правила маршрутизации, оставшиеся от sing-box", StringComparison.Ordinal));
+        }
+
+        // Служба упала вместе с sing-box — правила остались до следующего запуска.
+        rig.Netns.Run(null, "ip", "rule", "add", "priority", "9048", "lookup", "20551");
+
+        await using var next = await RunningService.StartAsync(options: rig.Vpn);
+
+        rig.Netns.Run(null, "ip", "rule", "show").ShouldNotContain("20551");
+        next.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Убраны правила маршрутизации, оставшиеся от sing-box: 1");
+    }
+
     /// <summary>
     /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
     /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в
@@ -563,6 +606,14 @@ public sealed class VpnModeTests
 
             return ValueTask.CompletedTask;
         }
+    }
+
+    /// <summary>Процесс sing-box, который служба подняла последним, — из ее журнала.</summary>
+    private static int SingBoxProcessId(RunningService service)
+    {
+        const string Marker = ", sing-box — процесс ";
+        var line = service.Journal.Tail(ServiceJournal.Capacity).Last(e => e.Message.StartsWith("Туннель поднят:", StringComparison.Ordinal)).Message;
+        return int.Parse(line[(line.IndexOf(Marker, StringComparison.Ordinal) + Marker.Length)..], CultureInfo.InvariantCulture);
     }
 
     /// <summary>Подключение в режиме VPN; локальная сеть закрыта, если не сказано иначе; строгие маршруты — если в ядре ОС есть IPv6.</summary>

@@ -32,6 +32,16 @@ public sealed class SingBoxConfigTests
                 "по имени адаптера туннель узнают правила блока при обрыве");
         }
 
+        if (OperatingSystem.IsLinux())
+        {
+            (tun["iproute2_table_index"]!.GetValue<int>(), tun["iproute2_rule_index"]!.GetValue<int>()).ShouldBe((20551, 9047),
+                "свои таблица и номера правил: оставшиеся после аварии правила служба убирает по ним, чужие не задевает");
+        }
+        else
+        {
+            tun.ContainsKey("iproute2_rule_index").ShouldBeFalse("правила ip rule — только в Linux");
+        }
+
         var xray = config["outbounds"]!.AsArray().ShouldHaveSingleItem()!;
         (xray["type"]!.GetValue<string>(), xray["server"]!.GetValue<string>(), xray["server_port"]!.GetValue<int>()).ShouldBe(("socks", "127.0.0.1", 31000));
         (xray["username"]!.GetValue<string>(), xray["password"]!.GetValue<string>()).ShouldBe(("user-1", "pass-1"));

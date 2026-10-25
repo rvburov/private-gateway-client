@@ -46,6 +46,17 @@ public static class SingBoxConfigBuilder
     public static string InterfaceName =>
         OperatingSystem.IsWindows() ? "Private Gateway" : OperatingSystem.IsMacOS() ? string.Empty : "pgtun0";
 
+    /// <summary>
+    /// Linux: таблица маршрутов и первый номер правил (<c>ip rule</c>) туннеля — свои, а не 2022 и 9000 sing-box
+    /// по умолчанию: правила, оставшиеся после аварии sing-box, служба убирает по этим номерам и не задевает
+    /// такие же у другой программы на sing-box. Правила занимают номера от <see cref="RuleIndex"/> до <see cref="RuleLast"/>.
+    /// </summary>
+    public const int RouteTable = 20551;
+
+    public const int RuleIndex = 9047;
+
+    public const int RuleLast = RuleIndex + 10;
+
     /// <summary>Частные сети — мимо туннеля, если локальная сеть разрешена.</summary>
     private static readonly string[] PrivateNetworks = ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fc00::/7", "fe80::/10"];
 
@@ -80,6 +91,12 @@ public static class SingBoxConfigBuilder
         if (connection.Mtu is { } mtu)
         {
             tun["mtu"] = mtu;
+        }
+
+        if (OperatingSystem.IsLinux())
+        {
+            tun["iproute2_table_index"] = RouteTable;
+            tun["iproute2_rule_index"] = RuleIndex;
         }
 
         var xray = request.Xray;
