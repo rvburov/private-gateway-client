@@ -149,11 +149,12 @@ artifacts/    # ignored
 ## 10. Этап 6 — Linux/macOS
 - [ ] Общие Core/Application/UI; платформенные адаптеры и службы.
 - [ ] Linux: systemd, TUN, nftables/iptables согласно дистрибутиву, DNS/systemd-resolved, пакеты. — 2026-10-25: TUN (sing-box) и блок при обрыве на nftables — своя таблица `inet private_gateway`, замена правил одной транзакцией ([docs/architecture/kill-switch.md](docs/architecture/kill-switch.md)); iptables без nft не поддерживается.
-- [ ] macOS: Network Extension и entitlements при необходимости, корректная маршрутизация (подпись и нотаризация — «Отложено»).
+- [ ] macOS: служба на C# под launchd, TUN — sing-box (utun), блок при обрыве — pf, системный прокси (решение 2026-10-25); Network Extension, entitlements, подпись и нотаризация — «Отложено».
 - [ ] Одинаковые контрактные тесты: manual exit, kill switch, DNS/IPv6, reconnect, sleep/wake.
 **Готово когда:** реальные машины и VM проходят тесты без нарушения платформенных правил.
 
 ## 11. Этап 7 — Network Inspector (read-only)
+Экранов в макете нет — их рисует агент по дизайн-системе макета (решение 2026-10-25).
 - [ ] Список интерфейсов, MAC, DHCP, шлюзы, DNS, маршруты, IPv4/IPv6.
 - [ ] Публичный IP, ASN/провайдер/регион с указанием источника и возможной погрешности.
 - [ ] Ping, traceroute, DNS lookup, TCP reachability, TLS diagnostics.
@@ -163,6 +164,7 @@ artifacts/    # ignored
 **Готово когда:** инспектор не меняет настройки сети, результаты воспроизводимы.
 
 ## 12. Этап 8 — Network Lab (обучение)
+Экранов в макете нет — их рисует агент по дизайн-системе макета (решение 2026-10-25).
 - [ ] Карта устройство→адаптер→роутер→провайдер→VPN→сайт.
 - [ ] Различать измеренные и условные участки маршрута.
 - [ ] OSI 7 уровней; IP, TCP/UDP, DNS, TLS, HTTP(S), TUN и маршрутизация.
@@ -181,7 +183,7 @@ artifacts/    # ignored
 ## 14. Этап 10 — iOS
 - [ ] Swift/SwiftUI, Network Extension / NEPacketTunnelProvider, entitlements.
 - [ ] Подписки, ручной выход, управление туннелем, DNS, восстановление, логи.
-- [ ] Подпись, provisioning, TestFlight, проверки Apple.
+- [ ] Подпись, provisioning, TestFlight, проверки Apple — когда будет аккаунт Apple Developer; до того — сборка и тесты в CI на симуляторе (решение 2026-10-25).
 - [ ] Ограниченный API диагностики, реальные iPhone.
 **Готово когда:** стабильный туннель на устройстве, соблюдены правила Apple.
 
