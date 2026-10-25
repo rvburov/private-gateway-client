@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Platform.Storage;
+using PrivateGateway.Client.UI.Localization;
 
 namespace PrivateGateway.Client.UI.Services;
 
@@ -15,11 +16,16 @@ public sealed class AvaloniaFileSaveService : IFileSaveService
             return false;
         }
 
+        // Тип файла — по расширению предложенного имени: отчет — .txt, резервная копия — .pgbackup.
+        var extension = Path.GetExtension(suggestedName).TrimStart('.');
+        var type = extension is "" or "txt"
+            ? FilePickerFileTypes.TextPlain
+            : new FilePickerFileType(Loc.Instance["backup.fileType"]) { Patterns = [$"*.{extension}"] };
         var file = await storage.SaveFilePickerAsync(new FilePickerSaveOptions
         {
             SuggestedFileName = suggestedName,
-            DefaultExtension = "txt",
-            FileTypeChoices = [FilePickerFileTypes.TextPlain],
+            DefaultExtension = extension is "" ? "txt" : extension,
+            FileTypeChoices = [type],
         }).ConfigureAwait(true);
         if (file is null)
         {

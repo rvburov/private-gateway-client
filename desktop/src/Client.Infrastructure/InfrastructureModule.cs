@@ -5,6 +5,7 @@ using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
 using PrivateGateway.Client.Infrastructure.Logging;
@@ -39,6 +40,7 @@ public static class InfrastructureModule
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());
         services.AddSingleton<DemoServerCatalog>();
         services.AddSingleton<IServerCatalog, UserOrDemoCatalog>();
+        services.AddSingleton<BackupService>();
         services.AddSingleton<ISubscriptionDownloader>(sp =>
             new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>()));
         return services;

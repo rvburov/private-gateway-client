@@ -297,12 +297,13 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             definition = Scalar("SELECT definition FROM servers WHERE id = $id", ("$id", serverId)) as string ?? string.Empty;
         }
 
-        var stored = JsonSerializer.Deserialize<Stored>(definition, Json)!;
-        var credentials = _secrets.Read(SecretKey(serverId)) is { } secret
+        return JsonSerializer.Deserialize<Stored>(definition, Json)!.ToDefinition(Credentials(serverId));
+    }
+
+    private ServerCredentials Credentials(string serverId) =>
+        _secrets.IsAvailable && _secrets.Read(SecretKey(serverId)) is { } secret
             ? JsonSerializer.Deserialize<ServerCredentials>(secret, Json)!
             : new ServerCredentials();
-        return stored.ToDefinition(credentials);
-    }
 
     // ── Подписки ─────────────────────────────────────────────────────────────
 
@@ -561,6 +562,156 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    // ── Резервная копия ──────────────────────────────────────────────────────
+
+    public IReadOnlyList<SavedGroup> Snapshot()
+    {
+        List<Row> rows;
+        List<ServerSubscription> groups;
+        string? selected;
+        var definitions = new Dictionary<string, Stored>(StringComparer.Ordinal);
+        lock (_gate)
+        {
+            rows = [.. Rows];
+            groups = [.. Groups];
+            selected = _selectedId;
+            using var connection = _database.Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT id, definition FROM servers";
+            using var reader = command.ExecuteReader();
+            while (reader.Read())
+            {
+                definitions[reader.GetString(0)] = JsonSerializer.Deserialize<Stored>(reader.GetString(1), Json)!;
+            }
+        }
+
+        // «Мои серверы» — первыми, дальше группы в своем порядке.
+        return [.. new string?[] { null }.Concat(groups.Select(g => g.Id))
+            .Select(id => new SavedGroup(
+                id is null ? null : groups.Single(g => g.Id == id).Name,
+                id is null ? null : SubscriptionUrl(id),
+                [.. rows.Where(r => r.Profile.SubscriptionId == id).Select(r => new SavedServer(
+                    definitions[r.Profile.Id].ToDefinition(Credentials(r.Profile.Id)), r.CustomName, r.Profile.IsFavorite, r.Profile.Id == selected))]))
+            .Where(g => g.Name is not null || g.Servers.Count > 0)];
+    }
+
+    public RestoreOutcome Restore(IReadOnlyList<SavedGroup> groups)
+    {
+        ArgumentNullException.ThrowIfNull(groups);
+        if (!_secrets.IsAvailable)
+        {
+            throw new InvalidOperationException($"{_secrets.Name} недоступно: серверы с секретами восстановить нельзя");
+        }
+
+        var restored = 0;
+        var withoutKeys = 0;
+        lock (_gate)
+        {
+            // Ключи здешних серверов — для серверов, сохраненных в копии без ключей.
+            var local = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var row in Rows)
+            {
+                if (_secrets.Read(SecretKey(row.Profile.Id)) is { } secret)
+                {
+                    local.TryAdd(row.Endpoint, secret);
+                }
+            }
+
+            var oldKeys = Rows.Select(r => SecretKey(r.Profile.Id)).Concat(Groups.Select(g => SubscriptionKey(g.Id))).ToList();
+            var now = _time.GetUtcNow();
+            var newRows = new List<Row>();
+            var newGroups = new List<ServerSubscription>();
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            string? select = null;
+            var saved = new List<string>();
+            using var connection = _database.Open();
+            using var transaction = connection.BeginTransaction();
+            try
+            {
+                Run(connection, transaction, "DELETE FROM servers");
+                Run(connection, transaction, "DELETE FROM subscriptions");
+                Run(connection, transaction, "DELETE FROM settings WHERE key = $key", ("$key", SelectedKey));
+                foreach (var group in groups)
+                {
+                    string? groupId = null;
+                    if (!string.IsNullOrWhiteSpace(group.Name))
+                    {
+                        groupId = "sub-" + Guid.NewGuid().ToString("N");
+                        var address = group.SubscriptionUrl is null ? null : SubscriptionAddress.Mask(group.SubscriptionUrl);
+                        if (group.SubscriptionUrl is not null)
+                        {
+                            Save(saved, SubscriptionKey(groupId), group.SubscriptionUrl.ToString());
+                        }
+
+                        Run(connection, transaction,
+                            "INSERT INTO subscriptions (id, name, position, updated_at, created_at, address) VALUES ($id, $name, $position, $updated, $at, $address)",
+                            ("$id", groupId), ("$name", group.Name.Trim()), ("$position", newGroups.Count + 1),
+                            ("$updated", address is null ? Text(now) : null), ("$at", Text(now)), ("$address", address));
+                        newGroups.Add(new ServerSubscription(groupId, group.Name.Trim(), address is null ? now : null, address));
+                    }
+
+                    foreach (var server in group.Servers)
+                    {
+                        var definition = server.Definition;
+                        var endpoint = Endpoint(definition);
+                        var secret = definition.Credentials != new ServerCredentials()
+                            ? JsonSerializer.Serialize(definition.Credentials, Json)
+                            : local.GetValueOrDefault(endpoint);
+                        if (secret is null)
+                        {
+                            withoutKeys++;
+                            continue;
+                        }
+
+                        if (!seen.Add(endpoint + "|" + secret))
+                        {
+                            continue;
+                        }
+
+                        var id = "srv-" + Guid.NewGuid().ToString("N");
+                        var position = newRows.Count + 1;
+                        var customName = server.CustomName?.Trim() is { Length: > 0 } name ? name : null;
+                        Save(saved, SecretKey(id), secret);
+                        Run(connection, transaction,
+                            "INSERT INTO servers (id, subscription_id, position, definition, custom_name, is_favorite, created_at) "
+                            + "VALUES ($id, $group, $position, $definition, $custom, $favorite, $at)",
+                            ("$id", id), ("$group", groupId), ("$position", position),
+                            ("$definition", JsonSerializer.Serialize(Stored.From(definition), Json)), ("$custom", customName),
+                            ("$favorite", server.IsFavorite ? 1 : 0), ("$at", Text(now)));
+                        newRows.Add(new Row(ToProfile(id, Stored.From(definition), groupId, customName, null, server.IsFavorite, null),
+                            position, endpoint, definition.Name, customName));
+                        if (server.IsSelected)
+                        {
+                            select = id;
+                        }
+
+                        restored++;
+                    }
+                }
+
+                if (select is not null)
+                {
+                    Run(connection, transaction, "INSERT INTO settings (key, value) VALUES ($key, $value)", ("$key", SelectedKey), ("$value", select));
+                }
+
+                transaction.Commit();
+            }
+            catch
+            {
+                saved.ForEach(_secrets.Delete);
+                throw;
+            }
+
+            oldKeys.ForEach(_secrets.Delete);
+            _rows = newRows;
+            _subscriptions = newGroups;
+            _selectedId = select;
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return new RestoreOutcome(restored, withoutKeys);
     }
 
     // ── Хранение ─────────────────────────────────────────────────────────────

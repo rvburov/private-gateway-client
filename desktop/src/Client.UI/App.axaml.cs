@@ -58,6 +58,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, ProtectionPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProtectionPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, CorePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<CorePageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, RoutingPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<RoutingPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, BackupPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<BackupPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
         overrides?.Invoke(services);
         return services.BuildServiceProvider();

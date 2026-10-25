@@ -28,6 +28,33 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             }
         }
 
+        return Parse(values, key => LogInvalid(logger, key));
+    }
+
+    public void Save(AppSettings settings)
+    {
+        using var connection = database.Open();
+        using var transaction = connection.BeginTransaction();
+        foreach (var (key, value) in Values(settings))
+        {
+            using var command = connection.CreateCommand();
+            command.Transaction = transaction;
+            command.CommandText = "INSERT INTO settings (key, value) VALUES ($key, $value) "
+                + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
+            command.Parameters.AddWithValue("$key", key);
+            command.Parameters.AddWithValue("$value", value);
+            command.ExecuteNonQuery();
+        }
+
+        transaction.Commit();
+    }
+
+    /// <summary>
+    /// Настройки из пар «ключ → значение» — из базы или из резервной копии. Нет ключа или значение не
+    /// читается — значение по умолчанию; о негодном сообщает <paramref name="invalid"/>.
+    /// </summary>
+    internal static AppSettings Parse(IReadOnlyDictionary<string, string> values, Action<string> invalid)
+    {
         var d = AppSettings.Default;
         var p = d.Protection;
         var protection = new ProtectionSettings(
@@ -107,12 +134,19 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             !values.TryGetValue(key, out var text) ? fallback
             : System.Enum.TryParse<T>(text, out var value) && System.Enum.IsDefined(value) ? value
             : Invalid(key, fallback);
+
+        T Invalid<T>(string key, T fallback)
+        {
+            invalid(key);
+            return fallback;
+        }
     }
 
-    public void Save(AppSettings settings)
+    /// <summary>Настройки парами «ключ → значение» — для базы и резервной копии.</summary>
+    internal static Dictionary<string, string> Values(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        var values = new Dictionary<string, string>
+        return new Dictionary<string, string>
         {
             ["mode"] = settings.Mode.ToString(),
             ["kill_switch"] = settings.KillSwitch.ToString(CultureInfo.InvariantCulture),
@@ -151,32 +185,11 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),
         };
-
-        using var connection = database.Open();
-        using var transaction = connection.BeginTransaction();
-        foreach (var (key, value) in values)
-        {
-            using var command = connection.CreateCommand();
-            command.Transaction = transaction;
-            command.CommandText = "INSERT INTO settings (key, value) VALUES ($key, $value) "
-                + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
-            command.Parameters.AddWithValue("$key", key);
-            command.Parameters.AddWithValue("$value", value);
-            command.ExecuteNonQuery();
-        }
-
-        transaction.Commit();
     }
 
     private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
 
     private static string Text(bool value) => value.ToString(CultureInfo.InvariantCulture);
-
-    private T Invalid<T>(string key, T fallback)
-    {
-        LogInvalid(logger, key);
-        return fallback;
-    }
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Настройка {Key} не читается — взято значение по умолчанию")]
     private static partial void LogInvalid(ILogger logger, string key);

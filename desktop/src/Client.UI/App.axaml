@@ -64,6 +64,12 @@
     <DataTemplate DataType="vm:SiteRuleEditViewModel">
       <views:SiteRuleEditView />
     </DataTemplate>
+    <DataTemplate DataType="vm:BackupPageViewModel">
+      <views:BackupPage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:RestoreBackupViewModel">
+      <views:RestoreBackupView />
+    </DataTemplate>
     <DataTemplate DataType="vm:StubPageViewModel">
       <views:StubPage />
     </DataTemplate>

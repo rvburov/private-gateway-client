@@ -20,6 +20,9 @@ public static class Pages
 
     /// <summary>«Профили и подписки» — подстраница настроек (доска 12).</summary>
     public const string Profiles = "profiles";
+
+    /// <summary>«Резервная копия» — подстраница настроек (доска 14).</summary>
+    public const string Backup = "backup";
 }
 
 /// <summary>Переход между страницами окна.</summary>

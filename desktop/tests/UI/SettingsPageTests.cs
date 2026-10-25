@@ -132,8 +132,11 @@ public sealed class SettingsPageTests : IDisposable
         shell.CurrentPage.ShouldBeOfType<RoutingPageViewModel>();
 
         page.Advanced.Single(a => a.Id == "backup").OpenCommand.Execute("backup");
+        shell.CurrentPage.ShouldBeOfType<BackupPageViewModel>();
+
+        page.Advanced.Single(a => a.Id == "about").OpenCommand.Execute("about");
         shell.IsSettings.ShouldBeTrue();
-        shell.CurrentPage.ShouldBeOfType<StubPageViewModel>().Title.ShouldBe("Резервная копия");
+        shell.CurrentPage.ShouldBeOfType<StubPageViewModel>().Title.ShouldBe("О программе");
     }
 
     private (MainWindow Window, SettingsPageViewModel Page) OpenSettings()

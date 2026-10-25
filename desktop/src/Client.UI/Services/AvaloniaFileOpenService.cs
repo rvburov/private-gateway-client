@@ -22,12 +22,15 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
             AllowMultiple = false,
             FileTypeFilter = [FilePickerFileTypes.TextPlain, FilePickerFileTypes.All],
         }).ConfigureAwait(true);
-        if (files.Count == 0)
-        {
-            return null;
-        }
+        return files.Count == 0 ? null : await ReadAsync(files[0]).ConfigureAwait(true);
+    }
 
-        await using var stream = await files[0].OpenReadAsync().ConfigureAwait(true);
+    /// <summary>Текст файла, выбранного в окне или перетащенного в окно программы.</summary>
+    /// <exception cref="InvalidDataException">Файл больше <see cref="IFileOpenService.MaxBytes"/> или не UTF-8.</exception>
+    public static async Task<(string Name, string Text)> ReadAsync(IStorageFile file)
+    {
+        ArgumentNullException.ThrowIfNull(file);
+        await using var stream = await file.OpenReadAsync().ConfigureAwait(true);
         using var buffer = new MemoryStream();
         await stream.CopyToAsync(buffer).ConfigureAwait(true);
         if (buffer.Length > IFileOpenService.MaxBytes)
@@ -38,7 +41,7 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         try
         {
             var text = new UTF8Encoding(false, throwOnInvalidBytes: true).GetString(buffer.GetBuffer(), 0, (int)buffer.Length);
-            return (files[0].Name, text);
+            return (file.Name, text);
         }
         catch (DecoderFallbackException e)
         {

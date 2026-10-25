@@ -53,6 +53,8 @@
   <StreamGeometry x:Key="Icon.Trash">M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6</StreamGeometry>
   <!-- Часы: пауза для входа в Wi-Fi (доска 1) -->
   <StreamGeometry x:Key="Icon.Clock">M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM12 7v5l3 2</StreamGeometry>
+  <!-- Стрелка вверх: выбрать файл резервной копии (доска 14) -->
+  <StreamGeometry x:Key="Icon.Upload">M12 15V3M7 8l5-5 5 5M4 19h16</StreamGeometry>
   <!-- Треугольник: предупреждение раздельного режима (доска 13) -->
   <StreamGeometry x:Key="Icon.Warning">M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01</StreamGeometry>
 </ResourceDictionary>

@@ -1,0 +1,65 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.RestoreBackupView"
+             x:DataType="vm:RestoreBackupViewModel">
+  <!-- Лист «Восстановить из копии» (доска 14): пароль, потом что в копии и «Восстановить». Рамку и тень дает окно. -->
+  <DockPanel AutomationProperties.Name="{l:L backup.sheet.title}">
+    <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
+            Background="{StaticResource PgBrush.Control.Grabber}" />
+
+    <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="*,Auto">
+      <TextBlock Classes="status" Text="{l:L backup.sheet.title}" VerticalAlignment="Center" />
+      <Button Grid.Column="1" Classes="icon" Width="40" Height="40" Command="{Binding CancelCommand}"
+              Foreground="{StaticResource PgBrush.Text.Secondary}"
+              ToolTip.Tip="{l:L card.close}" AutomationProperties.Name="{l:L card.close}">
+        <c:Icon Data="{StaticResource Icon.Close}" Width="20" Height="20" StrokeThickness="2.2" />
+      </Button>
+    </Grid>
+
+    <Grid DockPanel.Dock="Bottom" ColumnDefinitions="*,8,*">
+      <Button Classes="secondary" Height="50" HorizontalAlignment="Stretch" Command="{Binding CancelCommand}"
+              Content="{l:L dialog.cancel}" />
+      <Button x:Name="OpenBackup" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding OpenCommand}" Content="{l:L backup.sheet.open}" IsVisible="{Binding IsLocked}" />
+      <Button x:Name="ApplyBackup" Grid.Column="2" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+              Command="{Binding RestoreCommand}" Content="{l:L backup.sheet.restore}" IsVisible="{Binding IsOpened}" />
+    </Grid>
+
+    <StackPanel Margin="0,16,0,16" Spacing="10">
+      <TextBlock x:Name="BackupFileName" Text="{Binding FileName}" FontFamily="{StaticResource PgFont.Mono}"
+                 FontSize="{StaticResource PgFontSize.Caption}" Foreground="{StaticResource PgBrush.Text.Muted}"
+                 TextTrimming="CharacterEllipsis" />
+      <StackPanel Spacing="6" IsVisible="{Binding IsLocked}">
+        <TextBlock Classes="small" Text="{l:L backup.password}" FontWeight="SemiBold"
+                   Foreground="{StaticResource PgBrush.Text.Secondary}" />
+        <TextBox x:Name="RestorePassword" Classes="input" Text="{Binding Password}" PasswordChar="•"
+                 RevealPassword="{Binding IsPasswordVisible}" AutomationProperties.Name="{l:L backup.password}">
+          <TextBox.InnerRightContent>
+            <Button Classes="icon" Width="36" Height="36" Command="{Binding TogglePasswordCommand}"
+                    Foreground="{StaticResource PgBrush.Text.Muted}"
+                    ToolTip.Tip="{l:L backup.password.show}" AutomationProperties.Name="{l:L backup.password.show}">
+              <Panel>
+                <c:Icon Data="{StaticResource Icon.Eye}" Width="18" Height="18" StrokeThickness="1.9"
+                        IsVisible="{Binding !IsPasswordVisible}" />
+                <c:Icon Data="{StaticResource Icon.EyeOff}" Width="18" Height="18" StrokeThickness="1.9"
+                        IsVisible="{Binding IsPasswordVisible}" />
+              </Panel>
+            </Button>
+          </TextBox.InnerRightContent>
+          <TextBox.KeyBindings>
+            <KeyBinding Gesture="Enter" Command="{Binding OpenCommand}" />
+          </TextBox.KeyBindings>
+        </TextBox>
+        <TextBlock x:Name="RestoreError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                   TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+      </StackPanel>
+      <StackPanel Spacing="6" IsVisible="{Binding IsOpened}">
+        <TextBlock x:Name="BackupSummary" Text="{Binding Summary}" TextWrapping="Wrap" />
+        <TextBlock Classes="caption" Text="{l:L backup.restore.note}" TextWrapping="Wrap" />
+      </StackPanel>
+    </StackPanel>
+  </DockPanel>
+</UserControl>

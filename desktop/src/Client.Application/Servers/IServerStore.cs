@@ -23,6 +23,19 @@ public enum SelectedServerChange
 /// </summary>
 public sealed record SubscriptionUpdate(int Added, int Removed, int Kept, SelectedServerChange Selected);
 
+/// <summary>Сервер в резервной копии: полное описание и отметки пользователя.</summary>
+/// <param name="Definition">Описание; без ключей в копии — с пустыми <see cref="ServerDefinition.Credentials"/>.</param>
+/// <param name="CustomName">Свое название пользователя; null — название из ссылки.</param>
+/// <param name="IsFavorite">Отмечен звездой.</param>
+/// <param name="IsSelected">Выбранный сервер.</param>
+public sealed record SavedServer(ServerDefinition Definition, string? CustomName = null, bool IsFavorite = false, bool IsSelected = false);
+
+/// <summary>Группа в резервной копии: название (null — «Мои серверы»), адрес подписки и серверы.</summary>
+public sealed record SavedGroup(string? Name, Uri? SubscriptionUrl, IReadOnlyList<SavedServer> Servers);
+
+/// <summary>Итог восстановления: сколько серверов вернулось и сколько пропущено — у них нет ключей.</summary>
+public sealed record RestoreOutcome(int Restored, int WithoutKeys);
+
 /// <summary>
 /// Свои серверы пользователя: сохранить разобранные из ссылок или подписки, обновить подписку,
 /// достать полное описание с секретами для подключения. Секреты — только в хранилище ОС.
@@ -76,4 +89,16 @@ public interface IServerStore : IServerCatalog
     /// Выбранный сервер из этой группы перестает быть выбранным.
     /// </summary>
     void RemoveSubscription(string? subscriptionId);
+
+    /// <summary>Все группы и серверы с ключами и отметками — для резервной копии.</summary>
+    IReadOnlyList<SavedGroup> Snapshot();
+
+    /// <summary>
+    /// Заменить все группы и серверы сохраненными в копии — все или ничего. Серверу без ключей в
+    /// копии достаются ключи такого же сервера здесь; такого нет — сервер пропускается: без ключей
+    /// к нему не подключиться (серверы подписки вернутся с ее обновлением). Подписки с адресом
+    /// считаются необновленными — обновятся при ближайшей проверке.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">Хранилище секретов недоступно — ничего не изменено.</exception>
+    RestoreOutcome Restore(IReadOnlyList<SavedGroup> groups);
 }

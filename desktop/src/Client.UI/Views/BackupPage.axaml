@@ -1,0 +1,140 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.BackupPage"
+             x:DataType="vm:BackupPageViewModel">
+  <!-- Резервная копия — docs/design, доска 14. Подстраница настроек: островок виден, «назад» — к настройкам. -->
+  <UserControl.Styles>
+    <!-- Пункт копии: флажок, название и пояснение -->
+    <Style Selector="CheckBox.part">
+      <Setter Property="Padding" Value="0,6" />
+    </Style>
+    <Style Selector="CheckBox.part:disabled">
+      <Setter Property="Opacity" Value="0.45" />
+    </Style>
+    <Style Selector="Border.notice">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <Style Selector="Border.notice TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Перетаскивание файла: рамка ярче -->
+    <Style Selector="Grid.drop.over Rectangle">
+      <Setter Property="Stroke" Value="{StaticResource PgBrush.Accent.Base}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L settings.adv.backup.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="14">
+        <!-- Сохранить копию -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="12">
+            <TextBlock Classes="title" Text="{l:L backup.save.title}" />
+            <StackPanel>
+              <CheckBox x:Name="PartServers" Classes="check part" IsChecked="{Binding IncludeServers}">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="strong" Text="{l:L backup.servers.title}" />
+                  <TextBlock Classes="caption" Text="{l:L backup.servers.text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </CheckBox>
+              <CheckBox x:Name="PartSettings" Classes="check part" IsChecked="{Binding IncludeSettings}">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="strong" Text="{l:L backup.settings.title}" />
+                  <TextBlock Classes="caption" Text="{l:L backup.settings.text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </CheckBox>
+              <CheckBox x:Name="PartKeys" Classes="check part" IsChecked="{Binding IncludeKeys}" IsEnabled="{Binding CanIncludeKeys}">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="strong" Text="{l:L backup.keys.title}" />
+                  <TextBlock Classes="caption" Text="{l:L backup.keys.text}" TextWrapping="Wrap" />
+                </StackPanel>
+              </CheckBox>
+            </StackPanel>
+            <Border x:Name="KeysWarning" Classes="notice" IsVisible="{Binding IncludeKeys}">
+              <TextBlock Text="{l:L backup.keys.warning}" />
+            </Border>
+            <StackPanel Spacing="6">
+              <TextBlock Classes="small" Text="{l:L backup.password}" FontWeight="SemiBold"
+                         Foreground="{StaticResource PgBrush.Text.Secondary}" />
+              <TextBox x:Name="SavePassword" Classes="input" Text="{Binding Password}" PasswordChar="•"
+                       RevealPassword="{Binding IsPasswordVisible}" AutomationProperties.Name="{l:L backup.password}">
+                <TextBox.InnerRightContent>
+                  <Button Classes="icon" Width="36" Height="36" Command="{Binding TogglePasswordCommand}"
+                          Foreground="{StaticResource PgBrush.Text.Muted}"
+                          ToolTip.Tip="{l:L backup.password.show}" AutomationProperties.Name="{l:L backup.password.show}">
+                    <Panel>
+                      <c:Icon Data="{StaticResource Icon.Eye}" Width="18" Height="18" StrokeThickness="1.9"
+                              IsVisible="{Binding !IsPasswordVisible}" />
+                      <c:Icon Data="{StaticResource Icon.EyeOff}" Width="18" Height="18" StrokeThickness="1.9"
+                              IsVisible="{Binding IsPasswordVisible}" />
+                    </Panel>
+                  </Button>
+                </TextBox.InnerRightContent>
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding SaveCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+              <TextBlock Classes="caption" Text="{l:L backup.password.note}" TextWrapping="Wrap" />
+              <TextBlock x:Name="SaveError" Classes="caption" Text="{Binding SaveError}" IsVisible="{Binding HasSaveError}"
+                         TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+            </StackPanel>
+            <Button x:Name="SaveButton" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+                    Command="{Binding SaveCommand}" Content="{l:L backup.save}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Восстановить -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="title" Text="{l:L backup.restore.title}" />
+            <Grid x:Name="DropZone" Classes="drop" Height="96" DragDrop.AllowDrop="True">
+              <Rectangle RadiusX="16" RadiusY="16" StrokeThickness="1.5" StrokeDashArray="4,3"
+                         Stroke="{StaticResource PgBrush.Accent.Line}" Fill="{StaticResource PgBrush.Accent.Tint}" />
+              <Button x:Name="ChooseFileButton" Classes="plain" HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                      HorizontalContentAlignment="Center" CornerRadius="16" Command="{Binding ChooseFileCommand}"
+                      AutomationProperties.Name="{l:L backup.restore.choose}">
+                <StackPanel Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <c:Icon Data="{StaticResource Icon.Upload}" Width="22" Height="22" StrokeThickness="1.9"
+                          Foreground="{StaticResource PgBrush.Accent.Text}" HorizontalAlignment="Center" />
+                  <TextBlock Text="{l:L backup.restore.choose}" FontWeight="SemiBold" HorizontalAlignment="Center"
+                             Foreground="{StaticResource PgBrush.Accent.Text}" />
+                  <TextBlock Classes="caption" Text="{l:L backup.restore.drop}" HorizontalAlignment="Center" />
+                </StackPanel>
+              </Button>
+            </Grid>
+            <TextBlock Classes="caption" Text="{l:L backup.restore.note}" TextWrapping="Wrap" />
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
+              <StackPanel Spacing="2" Margin="0,0,10,0" VerticalAlignment="Center">
+                <TextBlock Classes="strong" Text="{l:L backup.auto.title}" />
+                <TextBlock x:Name="AutoCopyText" Classes="caption" Text="{Binding AutoCopyText}" TextWrapping="Wrap" />
+              </StackPanel>
+              <Button x:Name="RestoreAutoCopyButton" Grid.Column="1" Classes="small" VerticalAlignment="Center"
+                      IsVisible="{Binding HasAutoCopy}" Command="{Binding RestoreAutoCopyCommand}" Content="{l:L backup.auto.restore}" />
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>
