@@ -18,14 +18,25 @@ public sealed class CoreProcess : IDisposable
 
     private readonly Process _process;
 
-    private CoreProcess(Process process)
+    private CoreProcess(Process process, CoreLedger? ledger)
     {
         _process = process;
+        var id = process.Id;
         process.OutputDataReceived += (_, e) => Line(e.Data);
         process.ErrorDataReceived += (_, e) => Line(e.Data);
         process.EnableRaisingEvents = true;
-        process.Exited += (_, _) => Exited?.Invoke(this, EventArgs.Empty);
+        process.Exited += (_, _) =>
+        {
+            ledger?.Remove(id);
+            Exited?.Invoke(this, EventArgs.Empty);
+        };
     }
+
+    /// <summary>
+    /// Где служба помнит запущенные ядра (<see cref="CoreLedger"/>): ставится один раз при запуске службы; null —
+    /// не помнит (тесты в процессе теста).
+    /// </summary>
+    public static CoreLedger? Ledger { get; set; }
 
     /// <summary>Строка вывода ядра. Приходит из потока чтения.</summary>
     public event EventHandler<string>? Output;
@@ -139,7 +150,9 @@ public sealed class CoreProcess : IDisposable
             }
         }
 
-        var core = new CoreProcess(process);
+        var ledger = Ledger;
+        ledger?.Add(process, executable);
+        var core = new CoreProcess(process, ledger);
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
         process.StandardInput.Write(config.ToJsonString());

@@ -51,6 +51,16 @@ var singBox = Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.Base
 var time = TimeProvider.System;
 var journal = new ServiceJournal(time);
 
+// Ядра, которые пережили прошлый запуск службы (служба пользователя на Linux и macOS после сбоя), — снять:
+// они держат порт прокси и ходят через сервер. Папка — та же, что у снимка прокси или «Защиты при загрузке».
+var ledger = new CoreLedger(CoreLedger.In(Option("--state") ?? (user ? UserServiceFiles.Folder : AppContext.BaseDirectory)));
+foreach (var pid in ledger.KillLeftovers())
+{
+    journal.Add(JournalLevel.Warning, "service", $"Ядро прошлого запуска пережило службу (процесс {pid}) — остановлено");
+}
+
+CoreProcess.Ledger = ledger;
+
 // Системный прокси — настройки пользователя: их меняет только служба пользователя. Снимок остался после сбоя — вернуть сразу.
 var systemProxy = user && ServiceHost.SystemProxy() is { } proxy
     ? new SystemProxyGuard(proxy, UserServiceFiles.ProxyBackup(Option("--state") ?? UserServiceFiles.Folder), journal)
