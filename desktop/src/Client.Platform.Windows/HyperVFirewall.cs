@@ -78,14 +78,29 @@ public static class HyperVFirewall
     /// <summary>Постоянное хранилище политики (как у <c>New-NetFirewallHyperVRule</c>) — для всех операций одно.</summary>
     public static ManagementNamedValueCollection Store() => new() { { "PolicyStore", "PersistentStore" } };
 
-    /// <summary>Наши правила: по InstanceID или по началу названия.</summary>
+    /// <summary>
+    /// Наши правила: по InstanceID или по началу названия. Отбор — здесь, а не условием WQL: условие по этим свойствам
+    /// поставщик правил Hyper-V не выполняет (CI, Windows Server 2025), а правил в классе единицы.
+    /// </summary>
     private static List<ManagementObject> Ours(ManagementScope scope)
     {
-        var ids = string.Join(" OR ", Rules.Select(r => $"InstanceID = '{r.Id}'"));
-        using var searcher = new ManagementObjectSearcher(scope,
-            new ObjectQuery($"SELECT * FROM {Class} WHERE {ids} OR ElementName LIKE '{NamePrefix}%'"),
+        using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM " + Class),
             new System.Management.EnumerationOptions { Context = Store(), ReturnImmediately = false, Rewindable = false });
-        return [.. searcher.Get().Cast<ManagementObject>()];
+        var ours = new List<ManagementObject>();
+        foreach (var rule in searcher.Get().Cast<ManagementObject>())
+        {
+            if (Rules.Any(r => string.Equals(rule["InstanceID"] as string, r.Id, StringComparison.OrdinalIgnoreCase))
+                || (rule["ElementName"] as string)?.StartsWith(NamePrefix, StringComparison.Ordinal) == true)
+            {
+                ours.Add(rule);
+            }
+            else
+            {
+                rule.Dispose();
+            }
+        }
+
+        return ours;
     }
 
     private static void Remove(ManagementScope scope)
