@@ -20,7 +20,10 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
             ? new SystemdService(arguments => Run(program, arguments))
             : null;
 
-    /// <summary>Текст юнита: команда — путь и параметры, каждый в кавычках systemd.</summary>
+    /// <summary>
+    /// Текст юнита: команда — путь и параметры, каждый в кавычках systemd. Служба стартует раньше сети
+    /// (network-pre.target), как брандмауэр: «Защита при загрузке» ставит блок до того, как поднимутся адаптеры.
+    /// </summary>
     public static string Unit(string description, IReadOnlyList<string> command)
     {
         ArgumentNullException.ThrowIfNull(command);
@@ -28,8 +31,8 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
         return new StringBuilder()
             .Append("[Unit]\n")
             .Append("Description=").Append(description).Append('\n')
-            .Append("Wants=network-online.target\n")
-            .Append("After=network-online.target\n")
+            .Append("Wants=network-pre.target\n")
+            .Append("Before=network-pre.target\n")
             .Append('\n')
             .Append("[Service]\n")
             .Append("Type=simple\n")

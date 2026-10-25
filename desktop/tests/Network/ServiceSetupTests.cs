@@ -86,8 +86,8 @@ public sealed class ServiceSetupTests : IDisposable
         SystemdService.Unit("Private Gateway", ["/opt/private gateway/svc", "--owner", "1000", "50%"]).ShouldBe("""
             [Unit]
             Description=Private Gateway
-            Wants=network-online.target
-            After=network-online.target
+            Wants=network-pre.target
+            Before=network-pre.target
 
             [Service]
             Type=simple

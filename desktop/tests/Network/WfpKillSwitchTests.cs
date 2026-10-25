@@ -110,6 +110,13 @@ public sealed class WfpKillSwitchTests
             (await Reaches(curl, github, 443)).ShouldBeTrue("к серверу — мимо туннеля");
             (await Reaches(curl, github, 80)).ShouldBeFalse("другой порт того же адреса — не сервер");
             (await Run(curl, "-sS", "-m", "5", loopback.Url.ToString())).ShouldBe("петля");
+            WfpKillSwitch.IsPersistent.ShouldBeFalse("без «Защиты при загрузке» фильтры уходят с перезагрузкой");
+
+            killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)], Persistent: true));
+
+            WfpKillSwitch.IsPersistent.ShouldBeTrue("«Защита при загрузке»: служба фильтрации поставит их и после перезагрузки, до старта службы");
+            (await Reaches(curl, github, 443)).ShouldBeTrue();
+            (await Reaches(curl, github, 80)).ShouldBeFalse("постоянные фильтры закрывают так же");
 
             killSwitch.Enable(new KillSwitchPolicy(null, []));
 

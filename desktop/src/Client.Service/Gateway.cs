@@ -21,7 +21,8 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="Routes"/> — маршруты машины, чтобы найти чужой VPN; null — проверки нет;
 /// <paramref name="Reconnect"/> — проба связи с сервером и паузы переподключения; null — без проб
 /// (только выход ядра), паузы по умолчанию; <paramref name="Probe"/> — проба (тесты); null — через ядро;
-/// <paramref name="Network"/> — смена сети машины: проверить сервер сразу; null — не следить.
+/// <paramref name="Network"/> — смена сети машины: проверить сервер сразу; null — не следить;
+/// <paramref name="BootBlock"/> — файл «Защиты при загрузке» (<see cref="Service.BootBlock"/>); null — без нее.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -33,7 +34,8 @@ public sealed record GatewayOptions(
     IRouteTable? Routes = null,
     ReconnectTiming? Reconnect = null,
     Func<ServerProbe, CancellationToken, Task<bool>>? Probe = null,
-    INetworkEvents? Network = null);
+    INetworkEvents? Network = null,
+    string? BootBlock = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -119,6 +121,14 @@ public sealed partial class Gateway : IAsyncDisposable
             _blocking = true;
             _status = _status with { State = ConnectionState.Blocked, Protection = ProtectionChecks.For(ConnectionState.Blocked) };
             journal.Add(JournalLevel.Warning, "service", "Блок при обрыве остался с прошлого запуска: трафик заблокирован до подключения или выключения защиты");
+        }
+        else if (options.KillSwitch is { } boot && options.BootBlock is { } path && Service.BootBlock.Load(path) is { } policy
+            && Try(() => { boot.Enable(policy); return true; }, "«Защита при загрузке»: блок не включился"))
+        {
+            // Защита была включена, когда машина выключилась: блок — раньше сети, до подключения или выключения.
+            _blocking = true;
+            _status = _status with { State = ConnectionState.Blocked, Protection = ProtectionChecks.For(ConnectionState.Blocked) };
+            journal.Add(JournalLevel.Warning, "service", "Защита при загрузке: защита была включена — трафик заблокирован до подключения или выключения защиты");
         }
 
         // Своего sing-box еще нет: правила маршрутизации, оставшиеся от его аварии в прошлом запуске, — убрать.
@@ -377,9 +387,9 @@ public sealed partial class Gateway : IAsyncDisposable
             var until = _time.GetUtcNow() + duration;
             if (vpn)
             {
-                // Страница входа в сеть — мимо туннеля: туннель стоит, блок снят.
+                // Страница входа в сеть — мимо туннеля: туннель стоит, блок снят; защита включена — после перезагрузки блок вернется.
                 await StopCoreAsync().ConfigureAwait(false);
-                ReleaseBlock();
+                ReleaseBlock(forget: false);
             }
             else
             {
@@ -865,21 +875,31 @@ public sealed partial class Gateway : IAsyncDisposable
             core.Protection.AllowLan,
             core.Protection.LanDiscovery,
             core.Protection.BlockOutsideDns,
-            direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null);
+            direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
+            core.Protection.BootProtection);
         if (!Try(() => { killSwitch.Enable(policy); return true; }, "Блок при обрыве не включился"))
         {
             return false;
         }
 
+        RememberBootBlock(core.Protection.BootProtection ? policy : null);
         _blocking = true;
         _journal.Add(JournalLevel.Info, "service",
             $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}");
         return true;
     }
 
-    /// <summary>Снять блок при обрыве, если он стоит; не снялся — остается и виден в проверках.</summary>
-    private void ReleaseBlock()
+    /// <summary>
+    /// Снять блок при обрыве, если он стоит; не снялся — остается и виден в проверках. Защиту выключили —
+    /// и «Защита при загрузке» забывает ее; на паузе для входа в Wi-Fi (<paramref name="forget"/> = false) — помнит.
+    /// </summary>
+    private void ReleaseBlock(bool forget = true)
     {
+        if (forget)
+        {
+            RememberBootBlock(null);
+        }
+
         if (!_blocking || _options.KillSwitch is not { } killSwitch)
         {
             return;
@@ -889,6 +909,31 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             _blocking = false;
             _journal.Add(JournalLevel.Info, "service", "Блок при обрыве снят");
+        }
+    }
+
+    /// <summary>Политика блока для «Защиты при загрузке»; null — забыть. Не записалось — в журнал, подключение идет.</summary>
+    private void RememberBootBlock(KillSwitchPolicy? policy)
+    {
+        if (_options.BootBlock is not { } path)
+        {
+            return;
+        }
+
+        try
+        {
+            if (policy is null)
+            {
+                Service.BootBlock.Forget(path);
+            }
+            else
+            {
+                Service.BootBlock.Save(path, policy);
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            _journal.Add(JournalLevel.Error, "service", "«Защита при загрузке» не записана: " + e.Message);
         }
     }
 

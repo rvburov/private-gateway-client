@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
+using Google.Protobuf.WellKnownTypes;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Platform;
@@ -478,6 +479,103 @@ public sealed class VpnModeTests
         next.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Убраны правила маршрутизации, оставшиеся от sing-box: 1");
     }
 
+    [Fact]
+    public async Task Boot_protection_blocks_from_the_service_start_until_the_user_connects_or_turns_it_off()
+    {
+        var file = Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+        try
+        {
+            BootBlock.Save(file, new KillSwitchPolicy("pgtun0", [new(IPAddress.Parse("198.51.100.20"), 443)], AllowLan: true, BlockOutsideDns: false,
+                Direct: new DirectExit("/opt/pg/sing-box", 0x5047)));
+            var killSwitch = new FakeKillSwitch();
+
+            // Как после перезагрузки: правил нет, служба только что запустилась.
+            await using var service = await RunningService.StartAsync(options: o => o with { CanVpn = true, KillSwitch = killSwitch, BootBlock = file });
+
+            (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Blocked);
+            killSwitch.Policy.ShouldNotBeNull();
+            (killSwitch.Policy.TunnelInterface, killSwitch.Policy.Direct, killSwitch.Policy.Persistent).ShouldBe((null, null, true),
+                "туннеля и sing-box при запуске нет; блок постоянный, как был");
+            killSwitch.Policy.Servers.ShouldBe([new KillSwitchEndpoint(IPAddress.Parse("198.51.100.20"), 443)], "к серверу — можно: подключиться есть к чему");
+            (killSwitch.Policy.AllowLan, killSwitch.Policy.BlockOutsideDns).ShouldBe((true, false), "локальная сеть и DNS — по настройкам, с которыми выключилась машина");
+            service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.StartsWith("Защита при загрузке: защита была включена", StringComparison.Ordinal));
+
+            await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+
+            (killSwitch.IsEnabled, File.Exists(file)).ShouldBe((false, false), "защиту выключили — после следующей перезагрузки блока нет");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+
+        File.WriteAllText(file, "{испорчен");
+        try
+        {
+            var killSwitch = new FakeKillSwitch();
+            await using var service = await RunningService.StartAsync(options: o => o with { CanVpn = true, KillSwitch = killSwitch, BootBlock = file });
+
+            (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Off, "файл не прочитать — блока нет");
+            killSwitch.IsEnabled.ShouldBeFalse();
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
+    [Fact]
+    public async Task Vpn_with_boot_protection_keeps_the_block_through_a_reboot()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var file = Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+        try
+        {
+            await using (var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { BootBlock = file }))
+            {
+                using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+                var off = VpnRequest(rig.Definition);
+                off.Protection.BootProtection = false;
+                await service.Client.ConnectAsync(off, cancellationToken: Ct);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+                File.Exists(file).ShouldBeFalse("«Защита при загрузке» выключена — блок перезагрузку не переживет");
+                rig.KillSwitch.Last!.Persistent.ShouldBeFalse("и фильтры WFP — не постоянные");
+
+                await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+                BootBlock.Load(file)!.Servers.ShouldHaveSingleItem().Port.ShouldBe(rig.Definition.Port, "запомнен сервер этого подключения");
+                rig.KillSwitch.Last!.Persistent.ShouldBeTrue("на Windows — постоянные фильтры: стоят с загрузки, до старта службы");
+
+                (await service.Client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Duration = Duration.FromTimeSpan(TimeSpan.FromMinutes(5)) }, cancellationToken: Ct))
+                    .Until.ShouldNotBeNull();
+                File.Exists(file).ShouldBeTrue("пауза для входа в Wi-Fi защиту не выключает — после перезагрузки блок вернется");
+                await service.Client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Cancel = true }, cancellationToken: Ct);
+                await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected && s.CaptivePauseUntil is null);
+            }
+
+            // Перезагрузка: служба остановилась с защитой, правила nftables ушли вместе с машиной.
+            rig.KillSwitch.Disable();
+            (await rig.Netns.CurlAsync(rig.Lan.Url)).ShouldBe("мимо туннеля", "до запуска службы правил нет (nftables не переживает перезагрузку)");
+
+            await using var next = await RunningService.StartAsync(options: o => rig.Vpn(o) with { BootBlock = file });
+
+            (await next.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Blocked);
+            rig.KillSwitch.IsEnabled.ShouldBeTrue("служба при запуске ставит блок раньше сети");
+            await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
+
+            await next.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+
+            (rig.KillSwitch.IsEnabled, File.Exists(file)).ShouldBe((false, false));
+            (await rig.Netns.CurlAsync(rig.Lan.Url)).ShouldBe("мимо туннеля");
+        }
+        finally
+        {
+            File.Delete(file);
+        }
+    }
+
     /// <summary>
     /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
     /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в
@@ -637,10 +735,12 @@ public sealed class VpnModeTests
         };
     }
 
-    /// <summary>Настоящий блок при обрыве, который считает, сколько раз его ставили.</summary>
+    /// <summary>Настоящий блок при обрыве, который считает, сколько раз его ставили, и помнит последнюю политику.</summary>
     private sealed class CountingKillSwitch(IKillSwitch inner) : IKillSwitch
     {
         public int Enables { get; private set; }
+
+        public KillSwitchPolicy? Last { get; private set; }
 
         public string Name => inner.Name;
 
@@ -649,6 +749,7 @@ public sealed class VpnModeTests
         public void Enable(KillSwitchPolicy policy)
         {
             Enables++;
+            Last = policy;
             inner.Enable(policy);
         }
 

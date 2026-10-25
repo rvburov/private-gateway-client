@@ -24,13 +24,18 @@ public sealed record DirectExit(string Program, uint Mark);
 /// <param name="LanDiscovery">Обнаружение устройств в локальной сети (mDNS, SSDP — групповые адреса).</param>
 /// <param name="BlockOutsideDns">DNS мимо туннеля закрыт, даже к роутеру в разрешенной локальной сети.</param>
 /// <param name="Direct">Раздельный режим: выход sing-box мимо туннеля открыт целиком, и DNS тоже — обход выбран пользователем; null — обхода нет.</param>
+/// <param name="Persistent">
+/// «Защита при загрузке»: правила переживают перезагрузку и действуют еще до старта службы (WFP — постоянные
+/// фильтры). Где ОС так не умеет (nftables), служба ставит блок сама при запуске, раньше сети.
+/// </param>
 public sealed record KillSwitchPolicy(
     string? TunnelInterface,
     IReadOnlyList<KillSwitchEndpoint> Servers,
     bool AllowLan = false,
     bool LanDiscovery = false,
     bool BlockOutsideDns = true,
-    DirectExit? Direct = null);
+    DirectExit? Direct = null,
+    bool Persistent = false);
 
 /// <summary>
 /// Блок при обрыве средствами ОС (nftables на Linux, WFP на Windows). Правила живут в ОС, а не в

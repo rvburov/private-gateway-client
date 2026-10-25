@@ -10,8 +10,11 @@ namespace PrivateGateway.Client.Platform.Windows;
 /// <summary>
 /// Блок при обрыве на Windows — фильтры Windows Filtering Platform своего провайдера и подслоя на
 /// слоях установки соединения (ALE connect и accept, IPv4 и IPv6), по правилам <see cref="WfpRules"/>.
-/// Сессия не динамическая: фильтры переживают службу (fail-closed) и уходят при снятии или
-/// перезагрузке. Замена — в одной транзакции: прежние фильтры удаляются, новые ставятся, щели нет.
+/// Сессия не динамическая: фильтры переживают службу (fail-closed) и уходят при снятии, а без «Защиты при
+/// загрузке» — и при перезагрузке; с ней фильтры постоянные (<see cref="KillSwitchPolicy.Persistent"/>):
+/// служба фильтрации Windows ставит их при загрузке, еще до старта нашей службы. Провайдер и подслой —
+/// постоянные всегда (на них ссылаются постоянные фильтры) и снимаются вместе с блоком.
+/// Замена — в одной транзакции: прежние фильтры удаляются, новые ставятся, щели нет.
 /// Ключи фильтров — по порядку от своего базового GUID: найти и снять их можно и после падения
 /// службы. Наш block чужим permit не отменить, наш permit не отменяет чужой block (брандмауэр Windows).
 /// Структуры WFP пишутся по смещениям 64-битной Windows (fwpmtypes.h).
@@ -26,6 +29,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     private const uint RpcAuthnWinNt = 10;
     private const uint AlreadyExists = 0x80320009;
     private const uint FilterNotFound = 0x80320003;
+    private const uint Persistent = 1;
     private const ushort SublayerWeight = 0xFFFF;
 
     private const uint ActionBlock = 0x1001;
@@ -69,17 +73,10 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
 
     public string Name => "WFP";
 
-    public bool IsEnabled => WithEngine(engine =>
-    {
-        var key = WfpRules.FilterKey(0);
-        if (FwpmFilterGetByKey0(engine, ref key, out var filter) != 0)
-        {
-            return false;
-        }
+    public bool IsEnabled => FirstFilterFlags() is not null;
 
-        FwpmFreeMemory0(ref filter);
-        return true;
-    });
+    /// <summary>Фильтры постоянные — переживут перезагрузку («Защита при загрузке»).</summary>
+    public static bool IsPersistent => (FirstFilterFlags() & Persistent) != 0;
 
     public void Enable(KillSwitchPolicy policy)
     {
@@ -88,8 +85,8 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         var rules = WfpRules.For(policy, luid);
         WithEngine(engine => Transaction(engine, () =>
         {
-            AddBase(engine);
             DeleteFilters(engine);
+            AddBase(engine);
             using var memory = new NativeMemory();
             var app = onlyProgram is null ? IntPtr.Zero : memory.AppId(onlyProgram);
             var index = 0;
@@ -97,13 +94,32 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
             {
                 foreach (var layer in rule.Family == WfpFamily.V4 ? new[] { ConnectV4, AcceptV4 } : [ConnectV6, AcceptV6])
                 {
-                    Check(FwpmFilterAdd0(engine, Filter(memory, WfpRules.FilterKey(index++), layer, rule, app), IntPtr.Zero, out _), "фильтр " + rule.Name);
+                    Check(FwpmFilterAdd0(engine, Filter(memory, WfpRules.FilterKey(index++), layer, rule, app, policy.Persistent), IntPtr.Zero, out _),
+                        "фильтр " + rule.Name);
                 }
             }
         }));
     }
 
-    public void Disable() => WithEngine(engine => Transaction(engine, () => DeleteFilters(engine)));
+    public void Disable() => WithEngine(engine => Transaction(engine, () =>
+    {
+        DeleteFilters(engine);
+        DeleteBase(engine);
+    }));
+
+    /// <summary>Флаги первого нашего фильтра; фильтров нет — null.</summary>
+    private static uint? FirstFilterFlags() => WithEngine(engine =>
+    {
+        var key = WfpRules.FilterKey(0);
+        if (FwpmFilterGetByKey0(engine, ref key, out var filter) != 0)
+        {
+            return (uint?)null;
+        }
+
+        var flags = (uint)Marshal.ReadInt32(filter, 32);
+        FwpmFreeMemory0(ref filter);
+        return flags;
+    });
 
     /// <summary>Снять наши фильтры: ключи идут подряд от нулевого, первый ненайденный — конец.</summary>
     private static void DeleteFilters(IntPtr engine)
@@ -121,19 +137,25 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         }
     }
 
-    /// <summary>Свой провайдер и подслой с наибольшим весом; уже есть — не ошибка.</summary>
+    /// <summary>
+    /// Свой провайдер и подслой с наибольшим весом, постоянные: на них ссылаются постоянные фильтры. Прежние
+    /// (в том числе непостоянные от прошлой версии) — заново: наших фильтров в эту минуту нет.
+    /// </summary>
     private static void AddBase(IntPtr engine)
     {
+        DeleteBase(engine);
         using var memory = new NativeMemory();
         var name = memory.String("Private Gateway");
         var provider = memory.Zeroed(64);
         Marshal.StructureToPtr(Provider, provider, false);
         Marshal.WriteIntPtr(provider, 16, name);
+        Marshal.WriteInt32(provider, 32, (int)Persistent);
         Ignore(FwpmProviderAdd0(engine, provider, IntPtr.Zero), "провайдер");
 
         var sublayer = memory.Zeroed(72);
         Marshal.StructureToPtr(Sublayer, sublayer, false);
         Marshal.WriteIntPtr(sublayer, 16, name);
+        Marshal.WriteInt32(sublayer, 32, (int)Persistent);
         Marshal.WriteIntPtr(sublayer, 40, memory.Guid(Provider));
         Marshal.WriteInt16(sublayer, 64, unchecked((short)SublayerWeight));
         Ignore(FwpmSubLayerAdd0(engine, sublayer, IntPtr.Zero), "подслой");
@@ -147,8 +169,17 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         }
     }
 
-    /// <summary>FWPM_FILTER0 по смещениям 64-битной Windows.</summary>
-    private static IntPtr Filter(NativeMemory memory, Guid key, Guid layer, WfpRule rule, IntPtr app)
+    /// <summary>Снять подслой и провайдер; их нет — не ошибка. Фильтры к этому времени сняты.</summary>
+    private static void DeleteBase(IntPtr engine)
+    {
+        var sublayer = Sublayer;
+        var provider = Provider;
+        _ = FwpmSubLayerDeleteByKey0(engine, ref sublayer);
+        _ = FwpmProviderDeleteByKey0(engine, ref provider);
+    }
+
+    /// <summary>FWPM_FILTER0 по смещениям 64-битной Windows; <paramref name="persistent"/> — переживает перезагрузку.</summary>
+    private static IntPtr Filter(NativeMemory memory, Guid key, Guid layer, WfpRule rule, IntPtr app, bool persistent)
     {
         var conditions = rule.Conditions.Select(c => (Key: Fields[c.Field], Condition: c)).ToList();
         var count = conditions.Count + (app == IntPtr.Zero ? 0 : 1);
@@ -170,6 +201,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         var filter = memory.Zeroed(FilterSize);
         Marshal.StructureToPtr(key, filter, false);
         Marshal.WriteIntPtr(filter, 16, memory.String("Private Gateway: " + rule.Name));
+        Marshal.WriteInt32(filter, 32, persistent ? (int)Persistent : 0);
         Marshal.WriteIntPtr(filter, 40, memory.Guid(Provider));
         Marshal.StructureToPtr(layer, filter + 64, false);
         Marshal.StructureToPtr(Sublayer, filter + 80, false);
@@ -340,6 +372,14 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     [DllImport("fwpuclnt.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint FwpmSubLayerAdd0(IntPtr engine, IntPtr sublayer, IntPtr securityDescriptor);
+
+    [DllImport("fwpuclnt.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint FwpmProviderDeleteByKey0(IntPtr engine, ref Guid key);
+
+    [DllImport("fwpuclnt.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint FwpmSubLayerDeleteByKey0(IntPtr engine, ref Guid key);
 
     [DllImport("fwpuclnt.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
