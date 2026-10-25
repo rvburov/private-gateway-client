@@ -331,7 +331,9 @@ public sealed class XrayConfigTests
         Sniffing(config).ShouldBe((true, "http,tls,quic,fakedns", false, true),
             "имя по адресу из пула; для остальных адресов домен — только для правил");
         Outbound(config, XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>()
-            .ShouldBe("UseIP", "имя из FakeDNS разрешает DNS ядра через туннель, а не DNS ОС");
+            .ShouldBe("UseIPv4v6", "имя из FakeDNS разрешает DNS ядра через туннель, а не DNS ОС; сначала IPv4 — UseIP брал бы адрес наугад");
+        Outbound(XrayConfigBuilder.Build(Request(server, protection: fake with { Addresses = AddressPreference.PreferIpv6 }), tun).Config!,
+            XrayConfigBuilder.DirectTag)["settings"]!["domainStrategy"]!.GetValue<string>().ShouldBe("UseIPv6v4", "по «Приоритету адресов»");
 
         var bare = XrayConfigBuilder.Build(Request(server, protection: fake, connection: ConnectionSettings.Default with { Sniffing = false }), tun).Config!;
         Sniffing(bare).ShouldBe((true, "fakedns", true, true), "без распознавания FakeDNS берет имя по адресу, не читая данных");

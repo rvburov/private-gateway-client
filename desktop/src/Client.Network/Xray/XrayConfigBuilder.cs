@@ -112,8 +112,16 @@ public static class XrayConfigBuilder
                 ["protocol"] = "freedom",
                 ["settings"] = new JsonObject
                 {
-                    // Имя из FakeDNS разрешает DNS этого конфига (через туннель), а не DNS ОС мимо него.
-                    ["domainStrategy"] = request.Protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : fakeDns ? "UseIP" : "AsIs",
+                    // Имя из FakeDNS разрешает DNS этого конфига (через туннель), а не DNS ОС мимо него — с семейством по
+                    // «Приоритету адресов» и запасным вторым: при UseIP Xray берет случайный адрес из A и AAAA, и без IPv6
+                    // у провайдера часть соединений рвалась бы.
+                    ["domainStrategy"] = request.Protection.Addresses switch
+                    {
+                        AddressPreference.Ipv4Only => "UseIPv4",
+                        _ when !fakeDns => "AsIs",
+                        AddressPreference.PreferIpv6 => "UseIPv6v4",
+                        _ => "UseIPv4v6",
+                    },
                 },
             },
             new JsonObject { ["tag"] = BlockTag, ["protocol"] = "blackhole" },

@@ -35,7 +35,11 @@ public sealed record KillSwitchPolicy(
     bool LanDiscovery = false,
     bool BlockOutsideDns = true,
     DirectExit? Direct = null,
-    bool Persistent = false);
+    bool Persistent = false)
+{
+    /// <summary>Сколько адресов сервера держит блок: у ключей фильтров WFP есть предел.</summary>
+    public const int MaxServers = 16;
+}
 
 /// <summary>
 /// Блок при обрыве средствами ОС (nftables на Linux, WFP на Windows). Правила живут в ОС, а не в

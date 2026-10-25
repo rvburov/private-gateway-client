@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using PrivateGateway.Client.Network.SingBox;
@@ -31,7 +32,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     private VpnTunnel(CoreProcess xray, CoreProcess singBox, string? netns, Action<string, string>? output, TunRequest tun)
     {
         Ipv6 = SingBoxConfigBuilder.Ipv6Tunneled(tun);
-        Ipv6Outside = SingBoxConfigBuilder.Ipv6Outside(tun);
+        Ipv6Outside = SingBoxConfigBuilder.Ipv6Outside(tun) && MachineIpv6(netns);
         _xray = xray;
         _singBox = singBox;
         _netns = netns;
@@ -58,6 +59,44 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// выключены. Держит его только блок при обрыве.
     /// </summary>
     public bool Ipv6Outside { get; }
+
+    /// <summary>
+    /// У машины есть IPv6 наружу: адрес IPv6 вне частных сетей на работающем адаптере (не петле и не туннеле). Нет — IPv6
+    /// мимо туннеля уйти некуда, хоть он и не закрыт. <paramref name="netns"/> — сеть пространства Linux (тесты): ее
+    /// адаптеры отсюда не видны, спрашивается ip внутри него. Узнать не вышло — считается, что есть.
+    /// </summary>
+    public static bool MachineIpv6(string? netns = null)
+    {
+        if (netns is not null)
+        {
+            try
+            {
+                return IpCommand.ForThisMachine(netns) is not { } ip || ip(["-o", "-6", "addr", "show", "scope", "global"])
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    .Select(words => Array.IndexOf(words, "inet6") is var at and >= 0 && at + 1 < words.Length ? words[at + 1].Split('/')[0] : null)
+                    .Any(address => IPAddress.TryParse(address, out var found) && !found.IsIPv6UniqueLocal);
+            }
+            catch (IOException)
+            {
+                return true;
+            }
+        }
+
+        try
+        {
+            return NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up
+                    && n.NetworkInterfaceType is not (NetworkInterfaceType.Loopback or NetworkInterfaceType.Tunnel))
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Any(a => a.Address.AddressFamily == AddressFamily.InterNetworkV6 && !a.Address.IsIPv6LinkLocal && !a.Address.IsIPv6UniqueLocal
+                    && !IPAddress.IsLoopback(a.Address));
+        }
+        catch (NetworkInformationException)
+        {
+            return true;
+        }
+    }
 
     /// <summary>В ядре ОС есть IPv6: правила маршрутизации IPv6 ставятся (строгим маршрутам на Linux это нужно).</summary>
     public static bool KernelIpv6() => OperatingSystem.IsLinux() ? Directory.Exists("/proc/sys/net/ipv6") : Socket.OSSupportsIPv6;
@@ -143,7 +182,8 @@ public sealed class VpnTunnel : IAsyncDisposable
             // IPv6 у TUN строгие маршруты (настройка пользователя) пришлось бы снять, иначе они отрезали бы Xray.
             var serverOverIpv6 = serverAddresses[0].AddressFamily == AddressFamily.InterNetworkV6;
             var ipv6 = request.Protection.Ipv6Allowed && AdapterIpv6()
-                && (serverOverIpv6 || (probe is not null && serverIpv6 is not null && await serverIpv6(probe, cancellationToken).ConfigureAwait(false)));
+                && (serverOverIpv6 || (probe is not null && serverIpv6 is not null
+                    && await AskAsync(serverIpv6, probe, (timeout - time.GetElapsedTime(started)) / 2, time, output, cancellationToken).ConfigureAwait(false)));
             while (true)
             {
                 var ready = 0;
@@ -321,6 +361,26 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// </summary>
     public static bool XrayStarted(string line) =>
         line.Contains("core: Xray ", StringComparison.Ordinal) && line.EndsWith(" started", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Открывает ли сервер IPv6 — не дольше <paramref name="budget"/> (половина оставшегося времени подключения: остальное —
+    /// запуску sing-box). Не успел — на это подключение IPv6 закрыт.
+    /// </summary>
+    private static async Task<bool> AskAsync(Func<ProbeLink, CancellationToken, Task<bool>> serverIpv6, ProbeLink probe, TimeSpan budget,
+        TimeProvider time, Action<string, string>? output, CancellationToken cancellationToken)
+    {
+        using var timer = new CancellationTokenSource(budget > TimeSpan.Zero ? budget : TimeSpan.Zero, time);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timer.Token);
+        try
+        {
+            return await serverIpv6(probe, linked.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            output?.Invoke("service", "Проверка IPv6 сервера не уложилась во время подключения — на это подключение IPv6 закрыт");
+            return false;
+        }
+    }
 
     private static async Task WaitAsync(Func<bool> ready, string name, CoreProcess core, TimeSpan left, TimeProvider time,
         CancellationToken cancellationToken)

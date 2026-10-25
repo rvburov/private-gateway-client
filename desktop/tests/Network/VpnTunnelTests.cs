@@ -323,6 +323,48 @@ public sealed class VpnTunnelTests
         (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "и IPv4");
     }
 
+    [Fact]
+    public async Task Slow_server_ipv6_check_does_not_eat_the_connect_time()
+    {
+        SkipWithoutNamespaces();
+        NetworkNamespace.SkipUnlessIpv6();
+        using var netns = NetworkNamespace.Create();
+        var (host, _, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель");
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);
+        serverConfig["outbounds"] = new JsonArray(
+            new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default, RoutingSettings.Default);
+        var lines = new System.Collections.Concurrent.ConcurrentQueue<(string Source, string Line)>();
+
+        // Сервер молчит по IPv6 дольше всего времени подключения: проверка берет не больше половины, остальное — sing-box.
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(12),
+            TimeProvider.System, netns.Path, (source, line) => lines.Enqueue((source, line)), VpnTunnel.NewProbe(), async (_, cancellationToken) =>
+            {
+                await Task.Delay(Timeout.Infinite, cancellationToken);
+                return true;
+            }, Ct);
+
+        tunnel.Ipv6.ShouldBeFalse();
+        lines.ShouldContain(("service", "Проверка IPv6 сервера не уложилась во время подключения — на это подключение IPv6 закрыт"));
+        (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
+    }
+
+    [Fact]
+    public void Machine_ipv6_is_a_global_address_and_not_just_a_link_local_one()
+    {
+        SkipWithoutNamespaces();
+        NetworkNamespace.SkipUnlessIpv6();
+        using var netns = NetworkNamespace.Create();
+        netns.LinkAsMachine();
+
+        VpnTunnel.MachineIpv6(netns.Path).ShouldBeFalse("только адрес fe80:: — IPv6 мимо туннеля уйти некуда");
+        netns.LinkIpv6();
+        VpnTunnel.MachineIpv6(netns.Path).ShouldBeTrue();
+    }
+
     private static void SkipWithoutNamespaces()
     {
         NetworkNamespace.SkipUnlessAvailable("curl", "python3", "ip");

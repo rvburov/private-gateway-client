@@ -1077,6 +1077,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// Какие из найденных адресов сервера брать: IPv6 — только если не «Только IPv4». Первым — IPv4, если он есть: к
     /// первому соединяется Xray, а пойдет ли IPv6 через туннель, станет известно только после запуска Xray; без IPv6 у
     /// TUN строгие маршруты закрыли бы соединение с сервером по IPv6. «Приоритет адресов» — для сайтов, а не для сервера.
+    /// Адресов не больше, чем держит блок при обрыве (<see cref="KillSwitchPolicy.MaxServers"/>): Xray соединяется с первым.
     /// </summary>
     public static IReadOnlyList<IPAddress> PickAddresses(IEnumerable<IPAddress> found, ProtectionSettings protection)
     {
@@ -1084,7 +1085,8 @@ public sealed partial class Gateway : IAsyncDisposable
         var ipv6 = protection.Ipv6Allowed;
         return [.. found
             .Where(a => a.AddressFamily == AddressFamily.InterNetwork || (ipv6 && a.AddressFamily == AddressFamily.InterNetworkV6))
-            .OrderBy(a => a.AddressFamily == AddressFamily.InterNetworkV6)];
+            .OrderBy(a => a.AddressFamily == AddressFamily.InterNetworkV6)
+            .Take(KillSwitchPolicy.MaxServers)];
     }
 
     /// <summary>Адреса сервера для туннеля и блока: адрес в описании — как есть, имя — через систему. Не нашлось — пусто.</summary>

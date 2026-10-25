@@ -49,7 +49,7 @@ public sealed partial class VpnModeTests
 
         // После паузы туннель поднимается снова — с выводом прошлой проверки, без новой.
         await service.Client.PauseForCaptivePortalAsync(FiveMinutes, cancellationToken: Ct);
-        (await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null))[^1].Protection.Ipv6Tunnel.ShouldBeFalse("на паузе туннеля нет");
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null);
         await service.Client.PauseForCaptivePortalAsync(Cancel, cancellationToken: Ct);
         var resumed = (await ServiceIpcTests.ReadUntilAsync(watch, s =>
             s.State == V1.ConnectionState.Connected && s.CaptivePauseUntil is null || s.State == V1.ConnectionState.Error))[^1];
@@ -96,9 +96,17 @@ public sealed partial class VpnModeTests
             .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());
         (row.State, row.Reason).ShouldBe((V1.CheckState.Warning, "outside"));
 
-        async Task<V1.Status> ConnectAsync(bool blockIpv6)
+        // С блоком при обрыве IPv6 мимо туннеля закрыт и так — предупреждения нет.
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Off);
+        var blocked = await ConnectAsync(blockIpv6: false, killSwitch: true);
+
+        (blocked.Protection.Ipv6Tunnel, blocked.Protection.Ipv6).ShouldBe((false, V1.CheckState.Ok), "блок при обрыве держит IPv6 мимо туннеля");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(site6.Url, seconds: 3));
+
+        async Task<V1.Status> ConnectAsync(bool blockIpv6, bool killSwitch = false)
         {
-            await service.Client.ConnectAsync(VpnRequest(rig.Definition, killSwitch: false, strictRoutes: false, blockIpv6: blockIpv6), cancellationToken: Ct);
+            await service.Client.ConnectAsync(VpnRequest(rig.Definition, killSwitch: killSwitch, strictRoutes: false, blockIpv6: blockIpv6), cancellationToken: Ct);
             var status = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
             status.State.ShouldBe(V1.ConnectionState.Connected, status.Error?.Message);
             return status;

@@ -185,6 +185,10 @@ public sealed partial class VpnModeTests
         Gateway.PickAddresses([IPAddress.Parse("2001:db8::20")], ProtectionSettings.Default).ShouldBe([IPAddress.Parse("2001:db8::20")],
             "сервер только с IPv6");
         Gateway.PickAddresses([IPAddress.Parse("2001:db8::20")], ProtectionSettings.Default with { Addresses = AddressPreference.Ipv4Only }).ShouldBeEmpty();
+        IPAddress[] many = [.. Enumerable.Range(1, 12).Select(i => IPAddress.Parse($"2001:db8::{i:x}")), .. Enumerable.Range(1, 12).Select(i => IPAddress.Parse($"198.51.100.{i}"))];
+        var picked = Gateway.PickAddresses(many, ProtectionSettings.Default);
+        picked.Count.ShouldBe(KillSwitchPolicy.MaxServers, "больше блок при обрыве не держит — подключение не должно падать из-за длинного списка");
+        picked.Take(12).ShouldAllBe(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork, "IPv4 — первыми");
     }
 
     [Fact]
