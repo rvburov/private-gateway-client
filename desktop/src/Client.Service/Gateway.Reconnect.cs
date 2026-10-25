@@ -22,6 +22,9 @@ public sealed partial class Gateway
     // Номер проверки связи: новая проверка останавливает прежнюю.
     private int _watch;
 
+    // Пауза перед попыткой переподключения: сменилась сеть — попытка сразу.
+    private TaskCompletionSource _nudge = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     private ReconnectTiming Timing => _options.Reconnect ?? ReconnectTiming.Default with { Every = null };
 
     /// <summary>«Защищено» — проверять связь с сервером, пока подключение то же.</summary>
@@ -97,6 +100,41 @@ public sealed partial class Gateway
         return await (_options.Probe ?? LatencyProbe.ReachesAsync)(probe, CancellationToken.None).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Сеть машины сменилась (другой Wi-Fi, точка доступа, пробуждение): «Защищено» — проверить сервер
+    /// сразу, а не через минуту; «Переподключение» — попытка сразу, без остатка паузы.
+    /// </summary>
+    private void OnNetworkChanged(object? sender, EventArgs e)
+    {
+        var status = Status;
+        var session = Volatile.Read(ref _session);
+        if (status is { State: ConnectionState.Connected, IsPaused: false } && Timing.Every is not null)
+        {
+            _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — проверка связи с сервером");
+            _ = CheckNowAsync(session, Volatile.Read(ref _watch));
+        }
+        else if (status.State == ConnectionState.Reconnecting)
+        {
+            _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — попытка переподключения сразу");
+            Volatile.Read(ref _nudge).TrySetResult();
+        }
+    }
+
+    private async Task CheckNowAsync(int session, int watch)
+    {
+        try
+        {
+            if (!await ProbeAsync().ConfigureAwait(false) && !await ProbeAsync().ConfigureAwait(false) && watch == Volatile.Read(ref _watch))
+            {
+                await LostAsync(session, ErrorCodes.ServerNotResponding, "Сеть сменилась, сервер не отвечает").ConfigureAwait(false);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Служба остановилась.
+        }
+    }
+
     private void OnTunnelExited(int session)
     {
         if (Status.State == ConnectionState.Connected)
@@ -161,7 +199,9 @@ public sealed partial class Gateway
         var timing = Timing;
         for (var attempt = 1; ; attempt++)
         {
-            await Task.Delay(Reconnect.Delay(attempt, timing.FirstPause, timing.MaxPause), _time).ConfigureAwait(false);
+            var nudge = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            Volatile.Write(ref _nudge, nudge);
+            await Task.WhenAny(Task.Delay(Reconnect.Delay(attempt, timing.FirstPause, timing.MaxPause), _time), nudge.Task).ConfigureAwait(false);
             if (!IsReconnecting(session))
             {
                 return;

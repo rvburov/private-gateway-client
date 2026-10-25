@@ -20,7 +20,8 @@ namespace PrivateGateway.Client.Service;
 /// этой ОС, без него режима VPN нет; <paramref name="TunnelNetns"/> — ядра режима VPN в сетевом пространстве Linux (тесты);
 /// <paramref name="Routes"/> — маршруты машины, чтобы найти чужой VPN; null — проверки нет;
 /// <paramref name="Reconnect"/> — проба связи с сервером и паузы переподключения; null — без проб
-/// (только выход ядра), паузы по умолчанию; <paramref name="Probe"/> — проба (тесты); null — через ядро.
+/// (только выход ядра), паузы по умолчанию; <paramref name="Probe"/> — проба (тесты); null — через ядро;
+/// <paramref name="Network"/> — смена сети машины: проверить сервер сразу; null — не следить.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -31,7 +32,8 @@ public sealed record GatewayOptions(
     string? TunnelNetns = null,
     IRouteTable? Routes = null,
     ReconnectTiming? Reconnect = null,
-    Func<ServerProbe, CancellationToken, Task<bool>>? Probe = null);
+    Func<ServerProbe, CancellationToken, Task<bool>>? Probe = null,
+    INetworkEvents? Network = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -103,6 +105,11 @@ public sealed partial class Gateway : IAsyncDisposable
         _journal = journal;
         _systemProxy = systemProxy;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
+        if (options.Network is { } network)
+        {
+            network.Changed += OnNetworkChanged;
+        }
+
         if (options.KillSwitch is { } killSwitch && Try(() => killSwitch.IsEnabled, "Не прочитать правила блока при обрыве"))
         {
             // Служба упала или остановилась с включенной защитой: трафик заблокирован — так и показывать.
@@ -430,6 +437,10 @@ public sealed partial class Gateway : IAsyncDisposable
 
         // Переподключение и проверка связи останавливаются: подключения больше нет.
         Interlocked.Increment(ref _session);
+        if (_options.Network is { } network)
+        {
+            network.Changed -= OnNetworkChanged;
+        }
 
         await StopCoreAsync().ConfigureAwait(false);
         _systemProxy?.Release();

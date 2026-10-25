@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Contracts;
+using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Service;
 using PrivateGateway.Client.Service.Cores;
@@ -90,12 +92,100 @@ public sealed class ReconnectTests
         (error.State, error.Error.Code).ShouldBe((V1.ConnectionState.Error, ErrorCodes.CoreFailed), "«Не повторять» — сразу «Ошибка»");
     }
 
+    [Fact]
+    public async Task Network_change_checks_the_server_at_once_and_skips_the_rest_of_the_pause()
+    {
+        // Пробы раз в час и паузы по часу: успеть может только смена сети.
+        var hour = TimeSpan.FromHours(1);
+        var network = new FakeNetwork();
+        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network);
+        using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        rig.StopServer();
+        network.Raise();
+
+        var lost = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting))[^1];
+        lost.ServerId.ShouldBe("srv-1");
+        rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сеть сменилась, сервер не отвечает — переподключение к тому же серверу");
+
+        await rig.StartServerAsync();
+        network.Raise();
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сеть машины сменилась — попытка переподключения сразу");
+
+        network.Raise();
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+
+        (await rig.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State
+            .ShouldBe(V1.ConnectionState.Connected, "сервер отвечает — смена сети ничего не ломает");
+    }
+
+    [Fact]
+    public void Network_fingerprint_ignores_the_own_tunnel_the_loopback_and_the_order()
+    {
+        (string, bool, IEnumerable<IPAddress>) Adapter(string name, params string[] addresses) =>
+            (name, false, addresses.Select(IPAddress.Parse));
+
+        var before = SystemNetworkEvents.Fingerprint([Adapter("wlan0", "192.0.2.10", "2001:db8::10"), Adapter("eth0")], "pgtun0");
+
+        SystemNetworkEvents.Fingerprint(
+            [Adapter("eth0"), Adapter("wlan0", "2001:db8::10", "192.0.2.10"), Adapter("pgtun0", "172.19.0.1"), ("lo", true, [IPAddress.Loopback])], "pgtun0")
+            .ShouldBe(before, "свой туннель и петля — не смена сети машины, порядок — тоже");
+        SystemNetworkEvents.Fingerprint([Adapter("wlan0", "198.51.100.7"), Adapter("eth0")], "pgtun0")
+            .ShouldNotBe(before, "новый адрес — другая сеть");
+        SystemNetworkEvents.Fingerprint([Adapter("wlan0", "192.0.2.10", "2001:db8::10")], "pgtun0")
+            .ShouldNotBe(before, "адаптер пропал — другая сеть");
+    }
+
+    [Fact]
+    public void Network_change_is_reported_once_after_the_system_falls_quiet_and_only_if_the_network_differs()
+    {
+        var time = new FakeTimeProvider();
+        var network = "wlan0=192.0.2.10";
+        using var events = new SystemNetworkEvents(time, () => network);
+        var changes = 0;
+        events.Changed += (_, _) => changes++;
+
+        events.Notify();
+        time.Advance(SystemNetworkEvents.Quiet);
+
+        changes.ShouldBe(0, "ОС сообщила о своем туннеле — сеть машины та же");
+
+        network = "wlan0=198.51.100.7";
+        events.Notify();
+        time.Advance(SystemNetworkEvents.Quiet / 2);
+        events.Notify();
+        time.Advance(SystemNetworkEvents.Quiet / 2);
+
+        changes.ShouldBe(0, "ОС еще сообщает о перемене — ждать затишья");
+
+        time.Advance(SystemNetworkEvents.Quiet / 2);
+
+        changes.ShouldBe(1, "одна перемена — одно событие");
+
+        events.Notify();
+        time.Advance(SystemNetworkEvents.Quiet);
+
+        changes.ShouldBe(1, "та же новая сеть — уже не перемена");
+    }
+
     /// <summary>Процесс ядра, которое служба запустила последним, — из ее журнала.</summary>
     private static int CoreProcessId(RunningService service)
     {
         const string prefix = "Ядро Xray запущено, процесс ";
         var line = service.Journal.Tail(ServiceJournal.Capacity).Last(e => e.Message.StartsWith(prefix, StringComparison.Ordinal)).Message;
         return int.Parse(line[prefix.Length..], CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>Смена сети по команде теста.</summary>
+    private sealed class FakeNetwork : INetworkEvents
+    {
+        public event EventHandler? Changed;
+
+        public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>Свой сервер Xray с выходом на свой сайт и служба с быстрыми пробами; проверочный адрес — тот же сайт.</summary>
@@ -116,7 +206,7 @@ public sealed class ReconnectTests
 
         public RunningService Service { get; }
 
-        public static async Task<ProxyRig> CreateAsync()
+        public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var site = new LocalSite("проверка");
@@ -125,7 +215,7 @@ public sealed class ReconnectTests
             serverConfig["outbounds"] = new JsonArray(
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
-            var service = await RunningService.StartAsync(site.Url, options: o => o with { Reconnect = Fast });
+            var service = await RunningService.StartAsync(site.Url, options: o => o with { Reconnect = timing ?? Fast, Network = network });
             return new ProxyRig(site, serverConfig, serverPort, definition, server, service);
         }
 
