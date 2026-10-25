@@ -16,8 +16,9 @@ public sealed record ProblemFact(string Label, string Value, bool IsBad = false,
 
 /// <summary>
 /// Ошибки службы по макету (доска 16): «Служба не запущена» (PGC-SVC-001) и «Нужны права
-/// администратора» (PGC-SVC-004 — работает служба пользователя, а просили VPN). Выход — режим прокси
-/// через службу пользователя: окно запускает ее само. Окно при этом работает: островок виден.
+/// администратора» (PGC-SVC-004 — работает служба пользователя, а просили VPN). Выход — установить
+/// службу (окно просит у ОС права: «Установить службу», «Запросить еще раз») или режим прокси через
+/// службу пользователя: окно запускает ее само. Окно при этом работает: островок виден.
 /// </summary>
 public sealed partial class ProblemPageViewModel : ObservableObject
 {
@@ -26,10 +27,13 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     private readonly IServerCatalog _catalog;
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
+    private readonly IServiceInstaller _installer;
 
-    public ProblemPageViewModel(IGatewayClient gateway, SettingsService settings, IServerCatalog catalog, INavigator navigator, ToastViewModel toast)
+    public ProblemPageViewModel(IGatewayClient gateway, SettingsService settings, IServerCatalog catalog, INavigator navigator, ToastViewModel toast,
+        IServiceInstaller installer)
     {
         _gateway = gateway;
+        _installer = installer;
         _settings = settings;
         _catalog = catalog;
         _navigator = navigator;
@@ -47,7 +51,8 @@ public sealed partial class ProblemPageViewModel : ObservableObject
 
     /// <summary>Код ошибки, которую показывает экран; меняется вместе с новой ошибкой службы.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAdmin), nameof(Title), nameof(Text), nameof(Facts), nameof(HasCancel), nameof(DetailsText))]
+    [NotifyPropertyChangedFor(nameof(IsAdmin), nameof(Title), nameof(Text), nameof(Facts), nameof(HasCancel), nameof(DetailsText), nameof(InstallText),
+        nameof(HasProxy))]
     public partial string Code { get; private set; }
 
     /// <summary>«Нужны права администратора» — оранжевый замок; иначе «Служба не запущена» — красный щит.</summary>
@@ -74,19 +79,62 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// <summary>«Отмена» — только у «Нужны права администратора»: там уже есть рабочая служба.</summary>
     public bool HasCancel => IsAdmin;
 
+    /// <summary>Установить службу можно: Windows или Linux, файл службы рядом с программой. Нельзя — главная кнопка «режим прокси».</summary>
+    public bool CanInstall => _installer.IsAvailable;
+
+    /// <summary>«Установить службу» или, когда уже работает служба пользователя, «Запросить еще раз» (макет).</summary>
+    public string InstallText => Loc.Instance[IsAdmin ? "problem.admin.retry" : "problem.install"];
+
+    /// <summary>«Работать в режиме прокси»: на «Нужны права» с установкой его нет — по макету «Запросить еще раз» и «Отмена».</summary>
+    public bool HasProxy => !IsAdmin || !CanInstall;
+
     /// <summary>«Подробнее в журнале · код PGC-SVC-001».</summary>
     public string DetailsText => Loc.Instance.Format("problem.details", Code);
 
     /// <summary>Идет запуск службы пользователя и подключение.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(UseProxyCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UseProxyCommand), nameof(InstallCommand))]
     public partial bool IsWorking { get; private set; }
+
+    /// <summary>
+    /// Установить службу: ОС спрашивает права, служба ставится и отвечает — подключение к выбранному
+    /// серверу в режиме из настроек. Права не дали или установка не вышла — подсказка, экран остается.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanWork))]
+    private async Task InstallAsync()
+    {
+        IsWorking = true;
+        ServiceInstallResult result;
+        try
+        {
+            result = await _installer.InstallAsync().ConfigureAwait(true);
+            if (result == ServiceInstallResult.Installed && _catalog.Selected is { } server)
+            {
+                await _gateway.ConnectAsync(server).ConfigureAwait(true);
+            }
+        }
+        finally
+        {
+            IsWorking = false;
+        }
+
+        _toast.Show(Loc.Instance[result switch
+        {
+            ServiceInstallResult.Installed => "problem.install.done",
+            ServiceInstallResult.Cancelled => "problem.install.cancelled",
+            _ => "problem.install.failed",
+        }], ToastViewModel.LongDuration);
+        if (result == ServiceInstallResult.Installed)
+        {
+            _navigator.Navigate(_catalog.Selected is null ? Pages.Add : Pages.Home);
+        }
+    }
 
     /// <summary>
     /// «Работать в режиме прокси»: режим — прокси, подключение к выбранному серверу; службы нет — окно
     /// запускает службу пользователя. Сервера нет — сначала добавить. Не вышло — подсказка, экран остается.
     /// </summary>
-    [RelayCommand(CanExecute = nameof(CanUseProxy))]
+    [RelayCommand(CanExecute = nameof(CanWork))]
     private async Task UseProxyAsync()
     {
         _settings.Update(s => s with { Mode = ConnectionMode.Proxy });
@@ -115,7 +163,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         _navigator.Navigate(Pages.Home);
     }
 
-    private bool CanUseProxy() => !IsWorking;
+    private bool CanWork() => !IsWorking;
 
     [RelayCommand]
     private void Cancel() => _navigator.Navigate(Pages.Home);

@@ -85,10 +85,15 @@
           </ItemsControl>
         </Border>
 
-        <Button x:Name="UseProxy" Classes="primary" Height="50" HorizontalAlignment="Stretch" Margin="0,16,0,0"
-                Command="{Binding UseProxyCommand}" Content="{l:L problem.proxy}" />
-        <Button x:Name="Cancel" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding HasCancel}"
-                Command="{Binding CancelCommand}" Content="{l:L dialog.cancel}" />
+        <!-- По макету: главная — «Установить службу» («Запросить еще раз»); без установки главная — режим прокси -->
+        <StackPanel Spacing="12" Margin="0,16,0,0">
+          <Button x:Name="Install" Classes="primary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding CanInstall}"
+                  Command="{Binding InstallCommand}" Content="{Binding InstallText}" />
+          <Button x:Name="UseProxy" Classes.primary="{Binding !CanInstall}" Classes.secondary="{Binding CanInstall}" Height="50"
+                  HorizontalAlignment="Stretch" IsVisible="{Binding HasProxy}" Command="{Binding UseProxyCommand}" Content="{l:L problem.proxy}" />
+          <Button x:Name="Cancel" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding HasCancel}"
+                  Command="{Binding CancelCommand}" Content="{l:L dialog.cancel}" />
+        </StackPanel>
         <Button x:Name="Details" Classes="link" HorizontalAlignment="Center" Command="{Binding DetailsCommand}"
                 Content="{Binding DetailsText}" />
       </StackPanel>

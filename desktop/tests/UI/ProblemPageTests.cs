@@ -128,6 +128,65 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Install_service_then_connect_through_it_in_vpn_mode()
+    {
+        Installer.IsAvailable = true;
+        Installer.OnInstalled = () => _answering.Add(Installed);
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Problem);
+
+        Find<Button>(window, "Install").Content.ShouldBe("Установить службу");
+        Find<Button>(window, "UseProxy").Classes.ShouldContain("secondary", "по макету главная — установка, режим прокси — вторая");
+        Snapshot(window, "problem-install");
+        Press(window, "Install");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+
+        var gateway = Service<IGatewayClient>();
+        (gateway.Service, gateway.Status.State, gateway.Status.Mode).ShouldBe((ServiceKind.Installed, ConnectionState.Connected, ConnectionMode.Vpn));
+        shell.Toast.Text.ShouldBe("Служба установлена");
+        Installer.Installs.ShouldBe(1);
+    }
+
+    [AvaloniaTheory]
+    [InlineData(ServiceInstallResult.Cancelled, "Установка отменена: права администратора не даны")]
+    [InlineData(ServiceInstallResult.Failed, "Служба не установлена — подробности в журнале")]
+    public async Task Refused_or_failed_install_keeps_the_screen_and_says_why(ServiceInstallResult result, string toast)
+    {
+        Installer.IsAvailable = true;
+        Installer.Result = result;
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Problem);
+
+        Press(window, "Install");
+        WaitFor(() => shell.Toast.IsVisible);
+
+        shell.Toast.Text.ShouldBe(toast);
+        shell.CurrentKey.ShouldBe(Pages.Problem);
+        Service<IGatewayClient>().Service.ShouldBe(ServiceKind.None);
+    }
+
+    [AvaloniaFact]
+    public async Task Rights_screen_asks_again_and_moves_to_the_installed_service()
+    {
+        Installer.IsAvailable = true;
+        Installer.OnInstalled = () => _answering.Add(Installed);
+        _answering.Add(User);
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Problem);
+
+        (Find<Button>(window, "Install").Content, Find<Button>(window, "Cancel").IsVisible, Find<Button>(window, "UseProxy").IsVisible)
+            .ShouldBe(("Запросить еще раз", true, false), "по макету: «Запросить еще раз» и «Отмена»");
+        Press(window, "Install");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+
+        var gateway = Service<IGatewayClient>();
+        (gateway.Service, gateway.Status.State).ShouldBe((ServiceKind.Installed, ConnectionState.Connected), "окно ушло со службы пользователя на установленную");
+    }
+
+    [AvaloniaFact]
     public async Task Screen_follows_the_newest_service_error()
     {
         var (window, shell) = OpenWithServer();
@@ -165,9 +224,11 @@ public sealed class ProblemPageTests : WindowHarness
         var (window, shell) = Open(gateway: sp =>
         {
             AppSettings Settings() => sp.GetRequiredService<SettingsService>().Current;
-            // Служба пользователя, как настоящая: прокси подключает сразу, VPN — отказ «нужны права».
+            // Служба пользователя, как настоящая: прокси подключает сразу, VPN — отказ «нужны права»; установленная подключает все.
             return new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, Time),
-                _ => _service = new ScriptedService(Time, Settings, ServiceKind.User)
+                address => address.System
+                    ? new ScriptedService(Time, Settings, ServiceKind.Installed) { Outcome = c => c.MoveTo(ConnectionState.Connected, Time.GetUtcNow()) }
+                    : _service = new ScriptedService(Time, Settings, ServiceKind.User)
                 {
                     Outcome = connecting => connecting.Mode == ConnectionMode.Vpn
                         ? (connecting with { ErrorCode = ErrorCodes.AdminRequired }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with

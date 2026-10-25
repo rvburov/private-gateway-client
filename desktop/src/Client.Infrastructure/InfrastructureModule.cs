@@ -49,6 +49,9 @@ public static class InfrastructureModule
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))));
+        services.AddSingleton<IServiceInstaller>(sp => demo
+            ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
+            : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());

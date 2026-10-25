@@ -49,6 +49,9 @@ public abstract class WindowHarness : IDisposable
     /// <summary>Автозагрузка ОС в тестах не трогается.</summary>
     protected FakeAutostart Autostart { get; } = new();
 
+    /// <summary>Установка службы: по умолчанию недоступна, как в демо-режиме.</summary>
+    protected FakeInstaller Installer { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -77,6 +80,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<ISubscriptionDownloader>(Downloads);
             s.AddSingleton<IUrlLauncher>(Urls);
             s.AddSingleton<IAutostart>(Autostart);
+            s.AddSingleton<IServiceInstaller>(Installer);
             if (gateway is not null)
             {
                 s.AddSingleton<IGatewayClient>(gateway);
@@ -211,6 +215,29 @@ public abstract class WindowHarness : IDisposable
             }
 
             return Task.FromResult(Accept);
+        }
+    }
+
+    /// <summary>Установка службы без запроса прав: отдает заданный итог и выполняет <see cref="OnInstalled"/>.</summary>
+    protected sealed class FakeInstaller : IServiceInstaller
+    {
+        public bool IsAvailable { get; set; }
+
+        public ServiceInstallResult Result { get; set; } = ServiceInstallResult.Installed;
+
+        public Action? OnInstalled { get; set; }
+
+        public int Installs { get; private set; }
+
+        public Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default)
+        {
+            Installs++;
+            if (Result == ServiceInstallResult.Installed)
+            {
+                OnInstalled?.Invoke();
+            }
+
+            return Task.FromResult(Result);
         }
     }
 

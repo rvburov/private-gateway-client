@@ -198,6 +198,36 @@ public sealed class GatewayHostTests
     }
 
     [Fact]
+    public async Task Vpn_moves_from_the_user_service_to_one_installed_later()
+    {
+        _settings = _settings with { Mode = ConnectionMode.Proxy };
+        using var host = Host();
+        await host.ConnectAsync(Server, Ct);
+        _settings = _settings with { Mode = ConnectionMode.Vpn };
+        _answering.Add(Installed);
+
+        await host.ConnectAsync(Server, Ct);
+
+        (_services[User].Disconnects, _services[User].Disposed).ShouldBe((1, true), "сначала служба пользователя отключается — системный прокси вернется, как был");
+        _services[Installed].Connected.ShouldBe(["srv-1"], "VPN — через только что установленную службу");
+        host.Service.ShouldBe(ServiceKind.Installed);
+    }
+
+    [Fact]
+    public async Task Vpn_without_an_installed_service_stays_with_the_user_service()
+    {
+        _settings = _settings with { Mode = ConnectionMode.Proxy };
+        using var host = Host();
+        await host.ConnectAsync(Server, Ct);
+        _settings = _settings with { Mode = ConnectionMode.Vpn };
+
+        await host.ConnectAsync(Server, Ct);
+
+        _services.Keys.ShouldBe([User]);
+        (_services[User].Connected.Count, _services[User].Disconnects).ShouldBe((2, 0), "просьбу VPN получает служба пользователя — она и скажет, что нужны права");
+    }
+
+    [Fact]
     public async Task Disconnect_without_a_service_clears_the_error()
     {
         using var host = Host();
@@ -214,7 +244,7 @@ public sealed class GatewayHostTests
 
     private GatewayHost Host() => new(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time);
 
-    private FakeService Attach(ServiceAddress address) => _services[address] = new FakeService(_time);
+    private FakeService Attach(ServiceAddress address) => _services[address] = new FakeService(_time, address.System ? ServiceKind.Installed : ServiceKind.User);
 
     private sealed class FakeLauncher(Action started) : IUserServiceLauncher
     {
@@ -236,15 +266,17 @@ public sealed class GatewayHostTests
     }
 
     /// <summary>Служба, которая запоминает просьбы и сообщает заданное состояние.</summary>
-    private sealed class FakeService(TimeProvider time) : IGatewayClient, IDisposable
+    private sealed class FakeService(TimeProvider time, ServiceKind kind = ServiceKind.Installed) : IGatewayClient, IDisposable
     {
         public List<string> Connected { get; } = [];
+
+        public int Disconnects { get; private set; }
 
         public bool Disposed { get; private set; }
 
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Initial(time.GetUtcNow());
 
-        public ServiceKind Service => ServiceKind.Installed;
+        public ServiceKind Service => kind;
 
         public IReadOnlyList<JournalEntry> Journal => [];
 
@@ -264,7 +296,11 @@ public sealed class GatewayHostTests
             return Task.CompletedTask;
         }
 
-        public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public Task DisconnectAsync(CancellationToken cancellationToken = default)
+        {
+            Disconnects++;
+            return Task.CompletedTask;
+        }
 
         public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.FromResult(true);
 

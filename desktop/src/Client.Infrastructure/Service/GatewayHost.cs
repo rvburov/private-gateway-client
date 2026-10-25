@@ -148,11 +148,12 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
 
     /// <summary>
     /// Служба для просьбы окна: найденная раньше, если она на связи; иначе — поиск заново, а в режиме
-    /// прокси и при <paramref name="launch"/> — запуск службы пользователя. null — службы нет.
+    /// прокси и при <paramref name="launch"/> — запуск службы пользователя. null — службы нет. Просят
+    /// VPN, а отвечает служба пользователя, — окно ищет установленную (ее могли только что поставить).
     /// </summary>
     private async Task<IGatewayClient?> EnsureAsync(bool launch, CancellationToken cancellationToken)
     {
-        if (Current is { } current && current.Status.ErrorCode != ErrorCodes.ServiceNotRunning)
+        if (Current is { } current && Usable(current))
         {
             return current;
         }
@@ -160,13 +161,25 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         await _finding.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Current is { } found && found.Status.ErrorCode != ErrorCodes.ServiceNotRunning)
+            if (Current is { } found && Usable(found))
             {
                 return found;
             }
 
             if (await Task.Run(_locator.Find, cancellationToken).ConfigureAwait(false) is { } address)
             {
+                if (Current is { Service: ServiceKind.User } same && !address.System)
+                {
+                    return same;
+                }
+
+                // Служба пользователя уступает установленной: сначала отключиться — системный прокси вернется, как был.
+                if (Current is { Service: ServiceKind.User } previous)
+                {
+                    Log(JournalLevel.Info, "Нашлась установленная служба — окно переходит на нее со службы пользователя");
+                    await previous.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+                }
+
                 return Attach(address);
             }
 
@@ -194,6 +207,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             _finding.Release();
         }
     }
+
+    /// <summary>Служба на связи; для режима VPN служба пользователя не годится, если может найтись установленная.</summary>
+    private bool Usable(IGatewayClient service) =>
+        service.Status.ErrorCode != ErrorCodes.ServiceNotRunning && !(service.Service == ServiceKind.User && _settings().Mode == ConnectionMode.Vpn);
 
     /// <summary>Служба пользователя возвращает системный прокси, оставшийся после ее сбоя, сразу при запуске.</summary>
     private async Task RecoverProxyAsync()
