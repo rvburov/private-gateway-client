@@ -174,24 +174,50 @@ public sealed class VpnModeTests
     }
 
     [Fact]
+    public async Task Pause_opens_the_network_without_the_tunnel_and_brings_the_tunnel_and_the_block_back()
+    {
+        await using var rig = await Rig.CreateAsync();
+
+        var (netns, lan, definition, killSwitch) = (rig.Netns, rig.Lan, rig.Definition, rig.KillSwitch);
+        await using var service = await RunningService.StartAsync(options: rig.Vpn);
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        var hour = new V1.CaptivePauseRequest { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromHours(1)) };
+
+        (await service.Client.PauseForCaptivePortalAsync(hour, cancellationToken: Ct)).Until.ShouldNotBeNull("в режиме VPN пауза есть");
+
+        var paused = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null))[^1].ToCore();
+        (paused.State, paused.Protection).ShouldBe((ConnectionState.Connected, ProtectionChecks.Paused));
+        killSwitch.IsEnabled.ShouldBeFalse("на паузе блок снят — иначе страница входа в сеть не откроется");
+        (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля", "страница входа в сеть открывается напрямую");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 3), "туннель на паузе стоит");
+
+        await service.Client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Cancel = true }, cancellationToken: Ct);
+
+        var states = await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error && s.CaptivePauseUntil is null);
+        states.Select(s => s.State).ShouldContain(V1.ConnectionState.Connecting, "туннель поднимается заново, через «Подключение»");
+        states[^1].State.ShouldBe(V1.ConnectionState.Connected, states[^1].Error?.Message);
+        (killSwitch.IsEnabled, killSwitch.Enables).ShouldBe((true, 4), "защита вернулась с блоком — снова до ядер и после подъема адаптера");
+        (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
+        await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3));
+
+        await service.Client.PauseForCaptivePortalAsync(
+            new V1.CaptivePauseRequest { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromSeconds(1)) }, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null);
+
+        (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected && s.CaptivePauseUntil is null))[^1]
+            .ToCore().Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Connected), "пауза кончилась сама — защита снова полная");
+        killSwitch.IsEnabled.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task Vpn_goes_through_the_tunnel_behind_the_block_and_the_block_outlives_failures()
     {
-        NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
-        Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
-        using var netns = NetworkNamespace.Create();
-        var octet = Random.Shared.Next(1, 250);
-        var host = IPAddress.Parse($"10.252.{octet}.1");
-        netns.Link("pgnet0", host, IPAddress.Parse($"10.252.{octet}.2"));
-        using var lan = new LocalSite("мимо туннеля", host);
-        using var site = new LocalSite("через туннель");
-        var serverPort = XrayKit.FreePort();
-        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
-        // Выход сервера теста — на свой сайт: из машины ничего не уходит.
-        serverConfig["outbounds"] = new JsonArray(
-            new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
-        using var server = await XrayKit.Start(serverConfig, serverPort);
-        var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
-        GatewayOptions Vpn(GatewayOptions o) => o with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = killSwitch, TunnelNetns = netns.Path };
+        await using var rig = await Rig.CreateAsync();
+
+        var (netns, lan, definition, killSwitch) = (rig.Netns, rig.Lan, rig.Definition, rig.KillSwitch);
+        GatewayOptions Vpn(GatewayOptions o) => rig.Vpn(o);
 
         await using (var service = await RunningService.StartAsync(options: Vpn))
         {
@@ -241,6 +267,62 @@ public sealed class VpnModeTests
 
             killSwitch.IsEnabled.ShouldBeFalse();
             (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля");
+        }
+    }
+
+    /// <summary>
+    /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, свой сервер
+    /// Xray с выходом на свой сайт, настоящий блок nftables в пространстве. Нет прав или сборок — тест
+    /// пропускается.
+    /// </summary>
+    private sealed class Rig : IAsyncDisposable
+    {
+        private readonly IDisposable[] _owned;
+
+        private Rig(NetworkNamespace netns, LocalSite lan, ServerDefinition definition, CountingKillSwitch killSwitch, params IDisposable[] owned)
+        {
+            (Netns, Lan, Definition, KillSwitch, _owned) = (netns, lan, definition, killSwitch, owned);
+        }
+
+        public NetworkNamespace Netns { get; }
+
+        public LocalSite Lan { get; }
+
+        public ServerDefinition Definition { get; }
+
+        public CountingKillSwitch KillSwitch { get; }
+
+        public GatewayOptions Vpn(GatewayOptions options) =>
+            options with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = KillSwitch, TunnelNetns = Netns.Path };
+
+        public static async Task<Rig> CreateAsync()
+        {
+            NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
+            Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
+            var netns = NetworkNamespace.Create();
+            var octet = Random.Shared.Next(1, 250);
+            var host = IPAddress.Parse($"10.252.{octet}.1");
+            netns.Link("pgnet0", host, IPAddress.Parse($"10.252.{octet}.2"));
+            var lan = new LocalSite("мимо туннеля", host);
+            var site = new LocalSite("через туннель");
+            var serverPort = XrayKit.FreePort();
+            var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+            // Выход сервера теста — на свой сайт: из машины ничего не уходит.
+            serverConfig["outbounds"] = new JsonArray(
+                new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+            var server = await XrayKit.Start(serverConfig, serverPort);
+            var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
+            return new Rig(netns, lan, definition, killSwitch, server, site, lan, netns);
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            foreach (var owned in _owned)
+            {
+                owned.Dispose();
+            }
+
+            return ValueTask.CompletedTask;
         }
     }
 

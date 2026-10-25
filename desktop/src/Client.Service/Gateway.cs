@@ -62,6 +62,10 @@ public sealed class Gateway : IAsyncDisposable
     // Что просили в текущем подключении: режим и системный прокси нужны, когда ядро готово.
     private CoreRequest? _request;
 
+    // Режим VPN: адреса сервера и блок при обрыве — чтобы поднять туннель снова после паузы.
+    private IReadOnlyList<IPAddress> _addresses = [];
+    private bool _killSwitchOn;
+
     // Конец паузы для входа в Wi-Fi; любая смена состояния паузу заканчивает.
     private ITimer? _pauseEnd;
 
@@ -190,6 +194,8 @@ public sealed class Gateway : IAsyncDisposable
             _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey]);
             if (vpn)
             {
+                (_addresses, _killSwitchOn) = (addresses, killSwitchOn);
+
                 // Блок — до запуска ядер: в «Подключение» трафик уже не уходит мимо туннеля.
                 if (killSwitchOn && !Block(core, addresses))
                 {
@@ -259,9 +265,10 @@ public sealed class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Пауза для входа в Wi-Fi (только «Защищено»): в режиме прокси системный прокси на это время
-    /// возвращается к прямому подключению — иначе страница входа в сеть не откроется; по истечении
-    /// включается сам. Включен ли системный прокси — паузе есть что менять; нет — паузы нет (null).
+    /// Пауза для входа в Wi-Fi (только «Защищено»): иначе страница входа в сеть не откроется. В режиме
+    /// VPN на это время туннель останавливается и блок при обрыве снимается; в режиме прокси системный
+    /// прокси возвращается к прямому подключению. По истечении защита возвращается сама. В режиме
+    /// прокси без системного прокси паузе нечего менять — паузы нет (null).
     /// </summary>
     public async Task<DateTimeOffset?> PauseAsync(TimeSpan duration, CancellationToken cancellationToken = default)
     {
@@ -273,7 +280,8 @@ public sealed class Gateway : IAsyncDisposable
                 return null;
             }
 
-            if (_systemProxy is not { IsActive: true } proxy)
+            var vpn = _request is { Mode: ConnectionMode.Vpn };
+            if (!vpn && _systemProxy is not { IsActive: true })
             {
                 _journal.Add(JournalLevel.Info, "service", "Пауза для входа в Wi-Fi ничего не меняет: системный прокси не включен");
                 return null;
@@ -281,7 +289,17 @@ public sealed class Gateway : IAsyncDisposable
 
             duration = duration > MaxCaptivePause ? MaxCaptivePause : duration;
             var until = _time.GetUtcNow() + duration;
-            proxy.Release();
+            if (vpn)
+            {
+                // Страница входа в сеть — мимо туннеля: туннель стоит, блок снят.
+                await StopCoreAsync().ConfigureAwait(false);
+                ReleaseBlock();
+            }
+            else
+            {
+                _systemProxy!.Release();
+            }
+
             var session = _session;
             Update(s => s with { CaptivePauseUntil = until, Protection = ProtectionChecks.Paused });
             lock (_gate)
@@ -501,7 +519,10 @@ public sealed class Gateway : IAsyncDisposable
         }
     }
 
-    /// <summary>Конец паузы: защита и системный прокси — обратно; подключение сменилось — ничего.</summary>
+    /// <summary>
+    /// Конец паузы: защита и системный прокси — обратно; в режиме VPN — блок и туннель заново, через
+    /// «Подключение». Подключение сменилось — ничего.
+    /// </summary>
     private async Task ResumeAsync(int session, string why, CancellationToken cancellationToken = default)
     {
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -509,6 +530,22 @@ public sealed class Gateway : IAsyncDisposable
         {
             if (session != _session || Status.CaptivePauseUntil is null)
             {
+                return;
+            }
+
+            if (_request is { Mode: ConnectionMode.Vpn } request)
+            {
+                // Новый номер: туннель поднимается заново, как при подключении; переход в «Подключение» заканчивает паузу.
+                var next = ++_session;
+                BeginConnecting(request.Mode, Status.ServerId ?? string.Empty);
+                _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): туннель поднимается снова");
+                if (_killSwitchOn && !Block(request, _addresses))
+                {
+                    Fail(next, ErrorCodes.KillSwitchFailed, "Блок при обрыве не включился");
+                    return;
+                }
+
+                _ = StartTunnelAsync(next, request, _addresses, _killSwitchOn);
                 return;
             }
 
