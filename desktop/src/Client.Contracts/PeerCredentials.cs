@@ -2,11 +2,12 @@ using System.Buffers.Binary;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 
-namespace PrivateGateway.Client.Service.Ipc;
+namespace PrivateGateway.Client.Contracts;
 
 /// <summary>
-/// Кто подключился к Unix-сокету службы: uid процесса на том конце, его сообщает ядро ОС, подделать
-/// его нельзя. Linux — SO_PEERCRED (struct ucred), macOS — LOCAL_PEERCRED (struct xucred).
+/// Кто на том конце Unix-сокета: uid процесса, его сообщает ядро ОС, подделать его нельзя. Служба
+/// так проверяет интерфейс, интерфейс — службу. Linux — SO_PEERCRED (struct ucred), macOS —
+/// LOCAL_PEERCRED (struct xucred).
 /// </summary>
 public static class PeerCredentials
 {
@@ -46,7 +47,7 @@ public static class PeerCredentials
         return null;
     }
 
-    /// <summary>uid процесса службы (geteuid) — на Linux и macOS.</summary>
+    /// <summary>uid своего процесса (geteuid) — на Linux и macOS.</summary>
     public static uint CurrentUid() => OperatingSystem.IsWindows() ? 0 : GetEffectiveUid();
 
     // Без параметров и преобразований — LibraryImport (и небезопасный код) не нужен.

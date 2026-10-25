@@ -27,6 +27,7 @@ public interface IServerCatalog
     /// <summary>Удалить сервер. Если он был выбран — выбранного больше нет: другой выбирает пользователь.</summary>
     void Remove(string serverId);
 
-    /// <summary>Перемерить пинг и обновить списки серверов из подписок.</summary>
-    Task RefreshAsync(CancellationToken cancellationToken = default);
+    /// <summary>Перемерить пинг серверов.</summary>
+    /// <returns>true — пинг перемерен; false — мерить некому (служба не запущена), значения прежние.</returns>
+    Task<bool> RefreshAsync(CancellationToken cancellationToken = default);
 }

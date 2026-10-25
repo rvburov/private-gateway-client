@@ -162,10 +162,29 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
     }
 
     /// <summary>Пинг меряет служба, а списки подписок по адресам загружаются отдельно — здесь только уведомление.</summary>
-    public Task RefreshAsync(CancellationToken cancellationToken = default)
+    /// <summary>Сам каталог пинг не меряет — это делает служба через <see cref="UserOrDemoCatalog"/>.</summary>
+    public Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
     {
         Changed?.Invoke(this, EventArgs.Empty);
-        return Task.CompletedTask;
+        return Task.FromResult(false);
+    }
+
+    public void SetLatency(IReadOnlyDictionary<string, int?> latency)
+    {
+        ArgumentNullException.ThrowIfNull(latency);
+        lock (_gate)
+        {
+            foreach (var (id, ms) in latency)
+            {
+                if (Rows.Find(r => r.Profile.Id == id) is { } row)
+                {
+                    Execute("UPDATE servers SET latency_ms = $ms WHERE id = $id", ("$ms", (object?)ms ?? DBNull.Value), ("$id", id));
+                    Replace(row with { Profile = row.Profile with { LatencyMs = ms } });
+                }
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     // ── Импорт ───────────────────────────────────────────────────────────────

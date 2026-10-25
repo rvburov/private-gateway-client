@@ -70,6 +70,10 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
     public event EventHandler<JournalEntry>? JournalAdded;
 
+    /// <summary>Имитация пинг не меряет: у демо-серверов он свой, а свои серверы ждут настоящую службу.</summary>
+    public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());
+
     public async Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(server);

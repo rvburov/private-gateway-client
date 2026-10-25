@@ -20,8 +20,9 @@ public sealed record GatewayOptions(string? XrayPath, bool CanVpn, Uri LatencyTa
 /// <summary>
 /// Защита на стороне службы: запрос Connect — конфиг ядра собирается здесь же из описания сервера
 /// и настроек, ядро запускается отдельным процессом, состояние меняется только по
-/// <see cref="ConnectionStateMachine"/> и уходит подписчикам WatchStatus. Сейчас — режим прокси;
-/// режим VPN (TUN, брандмауэр) — следующие шаги этапа 3.
+/// <see cref="ConnectionStateMachine"/> и уходит подписчикам WatchStatus. Служба — единственный
+/// источник состояния: и отказ в подключении — ее «Ошибка». Сейчас — режим прокси; режим VPN (TUN,
+/// брандмауэр) — следующие шаги этапа 3.
 /// </summary>
 public sealed class Gateway : IAsyncDisposable
 {
@@ -101,23 +102,26 @@ public sealed class Gateway : IAsyncDisposable
         }
         catch (ArgumentException e)
         {
-            return Reject(ErrorCodes.BadRequest, e.Message);
+            return await RejectAsync(request.Server?.Id, null, ErrorCodes.BadRequest, e.Message, cancellationToken).ConfigureAwait(false);
         }
 
+        var serverId = request.Server.Id;
         if (core.Mode == ConnectionMode.Vpn)
         {
-            return Reject(_options.CanVpn ? ErrorCodes.VpnNotReady : ErrorCodes.AdminRequired, "Режим VPN недоступен");
+            return await RejectAsync(serverId, core.Mode, _options.CanVpn ? ErrorCodes.VpnNotReady : ErrorCodes.AdminRequired,
+                "Режим VPN недоступен", cancellationToken).ConfigureAwait(false);
         }
 
         var built = XrayConfigBuilder.Build(core);
         if (built.Config is not { } config)
         {
-            return Reject(ErrorCodes.UnsupportedServer, "Ядро Xray не возьмется за сервер: " + built.Rejection);
+            return await RejectAsync(serverId, core.Mode, ErrorCodes.UnsupportedServer, "Ядро Xray не возьмется за сервер: " + built.Rejection,
+                cancellationToken).ConfigureAwait(false);
         }
 
         if (_options.XrayPath is not { } xray || !File.Exists(xray))
         {
-            return Reject(ErrorCodes.CoreFailed, "Нет сборки ядра Xray");
+            return await RejectAsync(serverId, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", cancellationToken).ConfigureAwait(false);
         }
 
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -129,7 +133,7 @@ public sealed class Gateway : IAsyncDisposable
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
             _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey]);
-            Move(s => s with { Mode = core.Mode, ServerId = request.Server.Id }, ConnectionState.Connecting);
+            Move(s => s with { Mode = core.Mode, ServerId = serverId }, ConnectionState.Connecting);
             _journal.Add(JournalLevel.Info, "service", $"Подключение в режиме прокси: {core.Server.Protocol}, порт {core.Connection.ProxyPort}");
             try
             {
@@ -212,9 +216,39 @@ public sealed class Gateway : IAsyncDisposable
         _switch.Dispose();
     }
 
-    private V1.ConnectReply Reject(string code, string message)
+    /// <summary>
+    /// Отказ: запрошенное подключение не состоится, а прежнее не остается работать молча — ядро
+    /// останавливается, состояние «Ошибка» с кодом, его видят все подписчики. Из «Выключено» и
+    /// «Ошибки» — через «Подключение», как любая попытка.
+    /// </summary>
+    private async Task<V1.ConnectReply> RejectAsync(string? serverId, ConnectionMode? mode, string code, string message,
+        CancellationToken cancellationToken)
     {
         _journal.Add(JournalLevel.Warning, "service", $"Подключение отклонено ({code}): {message}");
+        await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            _session++;
+            await StopCoreAsync().ConfigureAwait(false);
+            _journal.Hide([]);
+            ConnectionStatus Requested(ConnectionStatus s) => s with
+            {
+                Mode = mode ?? s.Mode,
+                ServerId = serverId is { Length: > 0 } ? serverId : s.ServerId,
+            };
+
+            if (!ConnectionStateMachine.CanMove(Status.State, ConnectionState.Error))
+            {
+                Move(Requested, ConnectionState.Connecting);
+            }
+
+            Move(s => Requested(s) with { ErrorCode = code }, ConnectionState.Error);
+        }
+        finally
+        {
+            _switch.Release();
+        }
+
         return new V1.ConnectReply { Accepted = false, Error = new V1.ErrorInfo { Code = code, Message = message } };
     }
 

@@ -91,7 +91,7 @@ public sealed partial class TrayViewModel : ObservableObject
     private Task SwitchServerAsync(string serverId) => _controller.SwitchServerAsync(serverId);
 
     [RelayCommand]
-    private Task RefreshServersAsync() => _catalog.RefreshAsync();
+    private Task<bool> RefreshServersAsync() => _catalog.RefreshAsync();
 
     [RelayCommand]
     private void Open(string page)

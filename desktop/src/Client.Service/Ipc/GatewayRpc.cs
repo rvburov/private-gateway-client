@@ -1,6 +1,7 @@
 using System.Threading.Channels;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
+using Microsoft.Extensions.Hosting;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -9,9 +10,11 @@ namespace PrivateGateway.Client.Service.Ipc;
 
 /// <summary>
 /// gRPC-обертка над <see cref="Gateway"/> и <see cref="ServiceJournal"/>: перевод контракта, потоки
-/// WatchStatus и WatchLog. Сама ничего не решает — решает служба.
+/// WatchStatus и WatchLog. Сама ничего не решает — решает служба. Служба останавливается — потоки
+/// закрываются сразу: интерфейс узнает об этом без ожидания и остановка не ждет окон.
 /// </summary>
-public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.ServiceInfo info) : V1.GatewayService.GatewayServiceBase
+public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, IHostApplicationLifetime lifetime)
+    : V1.GatewayService.GatewayServiceBase
 {
     public override Task<V1.ServiceInfo> GetServiceInfo(V1.GetServiceInfoRequest request, ServerCallContext context) => Task.FromResult(info);
 
@@ -23,18 +26,24 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
     {
         ArgumentNullException.ThrowIfNull(responseStream);
         ArgumentNullException.ThrowIfNull(context);
-        var (current, updates) = gateway.Watch(context.CancellationToken);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, lifetime.ApplicationStopping);
+        var (current, updates) = gateway.Watch(stop.Token);
         try
         {
-            await responseStream.WriteAsync(current.ToContract(), context.CancellationToken).ConfigureAwait(false);
-            await foreach (var status in updates.ReadAllAsync(context.CancellationToken).ConfigureAwait(false))
+            await responseStream.WriteAsync(current.ToContract(), stop.Token).ConfigureAwait(false);
+            await foreach (var status in updates.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
-                await responseStream.WriteAsync(status.ToContract(), context.CancellationToken).ConfigureAwait(false);
+                await responseStream.WriteAsync(status.ToContract(), stop.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            // Интерфейс закрылся.
+            // Интерфейс закрылся или служба останавливается.
+        }
+        finally
+        {
+            // Подписка снимается и тогда, когда запись оборвалась ошибкой.
+            await stop.CancelAsync().ConfigureAwait(false);
         }
     }
 
@@ -84,6 +93,7 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(responseStream);
         ArgumentNullException.ThrowIfNull(context);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, lifetime.ApplicationStopping);
         var updates = Channel.CreateUnbounded<JournalEntry>(new UnboundedChannelOptions { SingleReader = true });
         void OnAdded(object? sender, JournalEntry entry) => updates.Writer.TryWrite(entry);
         journal.Added += OnAdded;
@@ -91,17 +101,17 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         {
             foreach (var entry in journal.Tail(request.Tail))
             {
-                await responseStream.WriteAsync(Entry(entry), context.CancellationToken).ConfigureAwait(false);
+                await responseStream.WriteAsync(Entry(entry), stop.Token).ConfigureAwait(false);
             }
 
-            await foreach (var entry in updates.Reader.ReadAllAsync(context.CancellationToken).ConfigureAwait(false))
+            await foreach (var entry in updates.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
-                await responseStream.WriteAsync(Entry(entry), context.CancellationToken).ConfigureAwait(false);
+                await responseStream.WriteAsync(Entry(entry), stop.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            // Интерфейс закрылся.
+            // Интерфейс закрылся или служба останавливается.
         }
         finally
         {

@@ -91,6 +91,7 @@
   "server.switch": "Change",
   "server.refresh": "Refresh servers",
   "server.refreshed": "Servers refreshed · ping checked",
+  "server.refreshed.noPing": "List refreshed · the service measures ping, and it is not running",
   "server.quick": "Quick switch · manual",
   "server.all": "All servers ›",
   "server.port": "port {0}",

@@ -11,6 +11,7 @@ using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
 using PrivateGateway.Client.Infrastructure.Logging;
 using PrivateGateway.Client.Infrastructure.Secrets;
+using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Infrastructure.Startup;
 using PrivateGateway.Client.Infrastructure.Storage;
 
@@ -24,8 +25,9 @@ namespace PrivateGateway.Client.Infrastructure;
 public static class InfrastructureModule
 {
     /// <summary>
-    /// Пока службы нет (этап 1), подключение — имитация <see cref="SimulatedGatewayClient"/>. Серверы —
-    /// свои из базы, а пока их нет — демо-серверы (<see cref="UserOrDemoCatalog"/>).
+    /// Подключение — через службу по IPC (<see cref="ServiceGatewayClient"/>), если при запуске она
+    /// нашлась (<see cref="ServiceLocator"/>), иначе — имитация <see cref="SimulatedGatewayClient"/>.
+    /// Серверы — свои из базы, а пока их нет и службы нет — демо-серверы (<see cref="UserOrDemoCatalog"/>).
     /// </summary>
     public static IServiceCollection AddClientInfrastructure(this IServiceCollection services, AppPaths paths)
     {
@@ -36,7 +38,11 @@ public static class InfrastructureModule
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<ISettingsStore, SqliteSettingsStore>();
         services.AddSingleton(TimeProvider.System);
-        services.AddSingleton<IGatewayClient, SimulatedGatewayClient>();
+        services.AddSingleton<IGatewayClient>(sp => ServiceLocator.Find(ServiceLocator.Candidates) is { } service
+            ? new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, service.System),
+                id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
+                () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>())
+            : ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp));
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());

@@ -446,6 +446,9 @@ public sealed class SubscriptionUpdateTests : IDisposable
         public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
 
+        public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());
+
         public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new DiagnosticReport([], DateTimeOffset.UnixEpoch));
 

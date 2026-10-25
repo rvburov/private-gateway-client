@@ -38,6 +38,12 @@ public interface IGatewayClient
     /// </summary>
     Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Задержка через каждый сервер — меряет служба через ядро. В ответе только измеренные; службы
+    /// нет (имитация, обрыв) — пусто, и прежние значения остаются.
+    /// </summary>
+    Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default);
+
     /// <summary>Последние записи журнала службы, от старых к новым; секреты уже скрыты.</summary>
     IReadOnlyList<JournalEntry> Journal { get; }
 

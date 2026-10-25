@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Settings;
@@ -73,6 +74,8 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<ISubscriptionDownloader>(Downloads);
             s.AddSingleton<IUrlLauncher>(Urls);
             s.AddSingleton<IAutostart>(Autostart);
+            // Окно в тестах — на имитации, даже если на машине запущена настоящая служба.
+            s.AddSingleton<IGatewayClient>(sp => ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp));
         });
         if (!firstLaunch)
         {

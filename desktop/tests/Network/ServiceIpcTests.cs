@@ -141,9 +141,11 @@ public sealed class ServiceIpcTests
     [InlineData("vpn", ErrorCodes.AdminRequired)]
     [InlineData("hysteria2", ErrorCodes.UnsupportedServer)]
     [InlineData("unspecified", ErrorCodes.BadRequest)]
-    public async Task Refused_request_says_why_and_changes_nothing(string kind, string code)
+    public async Task Refused_request_says_why_and_is_an_error_for_everyone(string kind, string code)
     {
         await using var service = await RunningService.StartAsync();
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await ReadUntilAsync(watch, _ => true);
         var (definition, _) = XrayKit.Pair("vless", 443);
         var request = Request(kind == "hysteria2"
             ? XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password)) with { Transport = TransportOptions.Quic }
@@ -158,7 +160,33 @@ public sealed class ServiceIpcTests
         var reply = await service.Client.ConnectAsync(request, cancellationToken: Ct);
 
         (reply.Accepted, reply.Error.Code).ShouldBe((false, code));
-        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Off);
+        (await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error)).Select(s => (s.State, s.ServerId, s.Error?.Code))
+            .ShouldBe([(V1.ConnectionState.Connecting, "srv-1", null), (V1.ConnectionState.Error, "srv-1", code)],
+                "отказ видят все окна, а не только то, что просило");
+    }
+
+    [Fact]
+    public async Task Refused_switch_does_not_leave_the_previous_server_running()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        await using var service = await RunningService.StartAsync();
+        using var site = new LocalSite("старый сервер");
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        var proxyPort = XrayKit.FreePort();
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(Request(definition, proxyPort), cancellationToken: Ct);
+        await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        var hysteria = Request(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
+            with { Transport = TransportOptions.Quic }, proxyPort);
+        hysteria.Server.Id = "srv-2";
+        (await service.Client.ConnectAsync(hysteria, cancellationToken: Ct)).Accepted.ShouldBeFalse();
+
+        var error = (await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error))[^1];
+        (error.ServerId, error.Error.Code).ShouldBe(("srv-2", ErrorCodes.UnsupportedServer));
+        await Should.ThrowAsync<Exception>(() => Get(site.Url, proxyPort), "прежний прокси остановлен: защита не та, что просили");
     }
 
     [Fact]
@@ -260,46 +288,5 @@ public sealed class ServiceIpcTests
         public Uri GetProxy(Uri destination) => proxy;
 
         public bool IsBypassed(Uri host) => false;
-    }
-
-    /// <summary>Служба в процессе теста на временном сокете (на Windows — pipe) и клиент по настоящему каналу.</summary>
-    private sealed class RunningService : IAsyncDisposable
-    {
-        private readonly Microsoft.AspNetCore.Builder.WebApplication _app;
-        private readonly GrpcChannel _channel;
-        private readonly Gateway _gateway;
-
-        private RunningService(Microsoft.AspNetCore.Builder.WebApplication app, Gateway gateway, GrpcChannel channel, ServiceJournal journal)
-        {
-            _app = app;
-            _gateway = gateway;
-            _channel = channel;
-            Journal = journal;
-            Client = new V1.GatewayService.GatewayServiceClient(channel);
-        }
-
-        public V1.GatewayService.GatewayServiceClient Client { get; }
-
-        public ServiceJournal Journal { get; }
-
-        public static async Task<RunningService> StartAsync(Uri? latencyTarget = null)
-        {
-            var endpoint = OperatingSystem.IsWindows()
-                ? "PrivateGateway.Test." + Guid.NewGuid().ToString("N")
-                : Path.Combine(Path.GetTempPath(), "pg-ipc-" + Guid.NewGuid().ToString("N")[..8], "ipc.sock");
-            var journal = new ServiceJournal(TimeProvider.System);
-            var gateway = new Gateway(new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget), TimeProvider.System, journal);
-            var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray));
-            await app.StartAsync(Ct);
-            return new RunningService(app, gateway, IpcChannel.Create(endpoint, system: false), journal);
-        }
-
-        public async ValueTask DisposeAsync()
-        {
-            _channel.Dispose();
-            await _app.StopAsync(CancellationToken.None);
-            await _app.DisposeAsync();
-            await _gateway.DisposeAsync();
-        }
     }
 }

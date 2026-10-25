@@ -59,6 +59,9 @@ public interface IServerStore : IServerCatalog
     /// <exception cref="InvalidOperationException">Хранилище секретов недоступно — ничего не сохранено.</exception>
     ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName, Uri? subscriptionUrl = null);
 
+    /// <summary>Записать измеренную задержку: null — сервер не ответил.</summary>
+    void SetLatency(IReadOnlyDictionary<string, int?> latency);
+
     /// <summary>Свой ли это сервер (добавлен ссылкой или подпиской), не читая ключа из хранилища ОС.</summary>
     bool Contains(string serverId);
 

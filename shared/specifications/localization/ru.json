@@ -91,6 +91,7 @@
   "server.switch": "Сменить",
   "server.refresh": "Обновить серверы",
   "server.refreshed": "Серверы обновлены · пинг проверен",
+  "server.refreshed.noPing": "Список обновлен · пинг меряет служба, а она не запущена",
   "server.quick": "Быстрая смена · вручную",
   "server.all": "Все серверы ›",
   "server.port": "порт {0}",

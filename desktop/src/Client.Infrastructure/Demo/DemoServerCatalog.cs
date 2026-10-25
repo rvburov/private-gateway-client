@@ -146,7 +146,7 @@ public sealed class DemoServerCatalog : IServerCatalog
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    public async Task RefreshAsync(CancellationToken cancellationToken = default)
+    public async Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
     {
         await Task.Delay(RefreshDelay, _time, cancellationToken).ConfigureAwait(false);
         lock (_gate)
@@ -156,6 +156,7 @@ public sealed class DemoServerCatalog : IServerCatalog
         }
 
         Changed?.Invoke(this, EventArgs.Empty);
+        return true;
     }
 
     private static ServerProfile Demo(

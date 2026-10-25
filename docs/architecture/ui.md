@@ -83,8 +83,11 @@ shared/specifications/design-tokens.json ──dotnet run scripts/gen-tokens.cs�
 
 - Интерфейс узнает о защите только от службы: `IGatewayClient` (Application) — состояние и просьбы
   подключиться, отключиться, проверить. Переходы состояний — `ConnectionStateMachine`.
-- Пока службы нет (этап 1), подключена имитация `Infrastructure/Demo/SimulatedGatewayClient` и
-  серверы `DemoServerCatalog` (адреса из диапазонов документации). В шапке — значок «демо».
+- Служба нашлась при запуске — `Infrastructure/Service/ServiceGatewayClient` по IPC
+  ([service.md](service.md), «Интерфейс и служба»). Нет — имитация
+  `Infrastructure/Demo/SimulatedGatewayClient` и, пока своих серверов нет, серверы
+  `DemoServerCatalog` (адреса из диапазонов документации); в шапке — значок «демо». С настоящей
+  службой демо-серверов нет. Тесты окна всегда на имитации, даже если служба на машине запущена.
 - Кнопка-щит: `ConnectionController.ToggleAsync` — «Выключено» и «Ошибка» включают, остальные
   состояния выключают; нажатие доступно и во время подключения (прерывает его). В «Блокировке»
   сначала диалог «Снять защиту?»: снять — значит открыть сайтам реальный IP.

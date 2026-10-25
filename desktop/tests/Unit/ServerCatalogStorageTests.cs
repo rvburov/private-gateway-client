@@ -1,3 +1,4 @@
+using PrivateGateway.Client.Application.Connection;
 using System.Text;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Import;
@@ -152,7 +153,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
     public void Demo_servers_show_until_the_first_import()
     {
         var user = Catalog();
-        var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time));
+        var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
         var changes = 0;
         catalog.Changed += (_, _) => changes++;
 
@@ -168,7 +169,74 @@ public sealed class ServerCatalogStorageTests : IDisposable
         catalog.Selected!.Name.ShouldBe("Мой");
     }
 
+    [Fact]
+    public void With_the_real_service_there_are_no_demo_servers()
+    {
+        var catalog = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new LatencyGateway(new Dictionary<string, LatencyResult>()));
+
+        catalog.IsDemo.ShouldBeFalse("к демо-серверам служба не подключится");
+        catalog.Servers.ShouldBeEmpty();
+        catalog.Selected.ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task Ping_of_own_servers_comes_from_the_service_and_is_kept()
+    {
+        var user = Catalog();
+        user.Add(Parse("trojan://pw-a@198.51.100.1:443#A", "trojan://pw-b@198.51.100.2:443#B", "trojan://pw-c@198.51.100.3:443#C"), null);
+        var ids = user.Servers.ToDictionary(s => s.Name, s => s.Id);
+        var gateway = new LatencyGateway(new Dictionary<string, LatencyResult>
+        {
+            [ids["A"]] = new(42, null),
+            [ids["B"]] = LatencyResult.Failed(LatencyFailure.NoResponse),
+        });
+        var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), gateway);
+
+        (await catalog.RefreshAsync(TestContext.Current.CancellationToken)).ShouldBeTrue();
+
+        gateway.Asked.ShouldBe([ids["A"], ids["B"], ids["C"]], ignoreOrder: true);
+        Catalog().Servers.ToDictionary(s => s.Name, s => s.LatencyMs).ShouldBe(
+            new Dictionary<string, int?> { ["A"] = 42, ["B"] = null, ["C"] = null }, "после перезапуска — тоже");
+
+        var silent = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
+        (await silent.RefreshAsync(TestContext.Current.CancellationToken)).ShouldBeFalse("службы нет — пинг не мерился");
+        silent.Servers.Single(s => s.Name == "A").LatencyMs.ShouldBe(42, "прежнее значение не стирается");
+    }
+
     private SqliteServerCatalog Catalog() => new(new SqliteDatabase(_paths), _secrets, _time);
+
+    /// <summary>Служба, которая меряет пинг заданными значениями и запоминает, кого спросили.</summary>
+    private sealed class LatencyGateway(IReadOnlyDictionary<string, LatencyResult> results) : IGatewayClient
+    {
+        public List<string> Asked { get; } = [];
+
+        public ConnectionStatus Status { get; } = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch);
+
+        public bool IsSimulated => false;
+
+        public IReadOnlyList<JournalEntry> Journal => [];
+
+        public event EventHandler<ConnectionStatus>? StatusChanged { add { } remove { } }
+
+        public event EventHandler<JournalEntry>? JournalAdded { add { } remove { } }
+
+        public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default)
+        {
+            Asked.AddRange(serverIds);
+            return Task.FromResult(results);
+        }
+
+        public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task DisconnectAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+
+        public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult(new DiagnosticReport([], DateTimeOffset.UnixEpoch));
+    }
 
     private static List<ServerDefinition> Parse(params string[] links) =>
         [.. links.Select(l => LinkParser.Parse(l).Server.ShouldNotBeNull(l))];
