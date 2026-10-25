@@ -185,6 +185,22 @@ public sealed class GatewayHostTests
     }
 
     [Fact]
+    public async Task Checks_add_the_system_proxy_of_another_program_the_service_cannot_see()
+    {
+        UserProxy? proxy = new("127.0.0.1:7890");
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            userProxy: new UserProxySettings(() => proxy));
+
+        (await host.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn].ShouldBe(new DiagnosticResult(DiagnosticCheck.OtherVpn, CheckState.Warning, "system_proxy"),
+            "служба от SYSTEM настроек пользователя не видит — прокси добавляет окно");
+
+        proxy = null;
+
+        (await host.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn].ShouldBeNull("прокси нет — отчет службы как есть");
+        new UserProxySettings(() => throw new IOException("gsettings")).Read().ShouldBeNull("настройки не прочитать — прокси не выдумывается");
+    }
+
+    [Fact]
     public async Task Ping_in_proxy_mode_starts_the_user_service()
     {
         using var host = Host();

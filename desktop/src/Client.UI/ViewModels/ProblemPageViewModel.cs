@@ -31,10 +31,12 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
     private readonly IServiceInstaller _installer;
+    private readonly IUserProxySettings _userProxy;
 
     public ProblemPageViewModel(IGatewayClient gateway, SettingsService settings, IServerCatalog catalog, INavigator navigator, ToastViewModel toast,
-        IServiceInstaller installer)
+        IServiceInstaller installer, IUserProxySettings userProxy)
     {
+        _userProxy = userProxy;
         _gateway = gateway;
         _installer = installer;
         _settings = settings;
@@ -50,7 +52,13 @@ public sealed partial class ProblemPageViewModel : ObservableObject
             }
         });
         Loc.Instance.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
+        _ = ReadProxyAsync();
     }
+
+    /// <summary>Системный прокси другой программы — строка на «Работает другой VPN»; нет его — null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Facts))]
+    public partial UserProxy? ForeignProxy { get; private set; }
 
     /// <summary>Код ошибки, которую показывает экран; меняется вместе с новой ошибкой службы.</summary>
     [ObservableProperty]
@@ -77,11 +85,16 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// <summary>
     /// Факты по макету. У «Работает другой VPN» — адаптер и маршрут: служба считает чужим VPN туннель,
     /// который держит маршрут ко всему интернету, — оба факта всегда верны; имя адаптера — в журнале.
+    /// Между ними — системный прокси, если его поставила другая программа (читает окно: настройки пользователя).
     /// </summary>
     public IReadOnlyList<ProblemFact> Facts => IsConflict
         ?
         [
             new(Loc.Instance["problem.fact.adapter"], Loc.Instance["problem.fact.adapter.active"], IsWarning: true),
+            .. ForeignProxy is { } proxy
+                ? [new ProblemFact(Loc.Instance["problem.fact.system_proxy"], proxy.IsScript ? Loc.Instance["problem.fact.system_proxy.script"] : proxy.Address,
+                    IsWarning: true)]
+                : Array.Empty<ProblemFact>(),
             new(Loc.Instance["problem.fact.route"], Loc.Instance["problem.fact.route.taken"], IsWarning: true),
         ]
         : IsAdmin
@@ -227,6 +240,12 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     }
 
     private bool CanWork() => !IsWorking;
+
+    /// <summary>
+    /// Системный прокси пользователя — в фоне: на Linux и macOS его читает отдельная программа. «Работает другой
+    /// VPN» бывает только в режиме VPN, а там системный прокси служба не ставит — он всегда чужой.
+    /// </summary>
+    private async Task ReadProxyAsync() => ForeignProxy = await Task.Run(_userProxy.Read).ConfigureAwait(true);
 
     [RelayCommand]
     private void Cancel() => _navigator.Navigate(Pages.Home);

@@ -213,13 +213,16 @@ public sealed class ProblemPageTests : WindowHarness
         Installer.IsAvailable = true;
         _answering.Add(Installed);
         _otherVpn = true;
+        SystemProxy.Proxy = new UserProxy("127.0.0.1:7890");
         var (window, shell) = OpenWithServer();
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.CurrentKey == Pages.Problem);
 
         var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
         Text(window, "ProblemTitle").ShouldBe("Работает другой VPN");
-        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Чужой сетевой адаптер: активен", "Маршрут по умолчанию: занят"]);
+        WaitFor(() => page.Facts.Count == 3);
+        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Чужой сетевой адаптер: активен", "Системный прокси: 127.0.0.1:7890", "Маршрут по умолчанию: занят"],
+            "системный прокси другой программы — строка по макету; читает его окно: служба настроек пользователя не видит");
         (Find<Button>(window, "Retry").Content, Find<Button>(window, "Continue").Content)
             .ShouldBe(("Я отключил его — проверить снова", "Продолжить (не рекомендуется)"));
         (Find<Button>(window, "Install").IsVisible, Find<Button>(window, "UseProxy").IsVisible, Find<Button>(window, "Cancel").IsVisible)

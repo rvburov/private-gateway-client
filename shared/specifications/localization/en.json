@@ -28,6 +28,8 @@
   "problem.conflict.text": "Another app already controls the network. With both VPNs on, traffic may go around the tunnel.",
   "problem.fact.adapter": "Another app's network adapter",
   "problem.fact.adapter.active": "active",
+  "problem.fact.system_proxy": "System proxy",
+  "problem.fact.system_proxy.script": "auto-config (PAC)",
   "problem.fact.route": "Default route",
   "problem.fact.route.taken": "taken",
   "problem.conflict.retry": "I turned it off — check again",

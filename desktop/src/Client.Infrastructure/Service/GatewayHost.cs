@@ -22,6 +22,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     private readonly Lock _gate = new();
     private readonly List<JournalEntry> _journal = [];
     private readonly SemaphoreSlim _finding = new(1, 1);
+    private readonly IUserProxySettings? _userProxy;
     private IGatewayClient? _service;
     private ConnectionStatus _status;
 
@@ -30,13 +31,15 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// <param name="settings">Текущие настройки: режим решает, запускать ли службу пользователя.</param>
     /// <param name="time">Часы программы.</param>
     /// <param name="staleProxy">Остался ли снимок системного прокси после сбоя службы пользователя.</param>
+    /// <param name="userProxy">Системный прокси пользователя — для проверки «Другие VPN и прокси»; null — не смотреть.</param>
     public GatewayHost(ServiceLocator locator, Func<ServiceAddress, IGatewayClient> attach, Func<AppSettings> settings, TimeProvider time,
-        Func<bool>? staleProxy = null)
+        Func<bool>? staleProxy = null, IUserProxySettings? userProxy = null)
     {
         _locator = locator;
         _attach = attach;
         _settings = settings;
         _time = time;
+        _userProxy = userProxy;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
         if (locator.Find() is { } address)
         {
@@ -140,11 +143,19 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) =>
         Current?.ResumeProtectionAsync(cancellationToken) ?? Task.CompletedTask;
 
-    /// <summary>Проверки — у службы; ее нет — одна проверка «служба» с причиной «не найдена». Службу пользователя ради проверок не запускает.</summary>
-    public async Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
-        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+    /// <summary>
+    /// Проверки — у службы; ее нет — одна проверка «служба» с причиной «не найдена». Службу пользователя ради
+    /// проверок не запускает. Системный прокси пользователя служба не видит — его добавляет окно.
+    /// </summary>
+    public async Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default)
+    {
+        var report = await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
             ? await service.RunChecksAsync(cancellationToken).ConfigureAwait(false)
             : new DiagnosticReport([new DiagnosticResult(DiagnosticCheck.Service, CheckState.Stopped, "not_found")], _time.GetUtcNow());
+        return _userProxy is null
+            ? report
+            : UserProxy.WithUserProxy(report, await Task.Run(_userProxy.Read, cancellationToken).ConfigureAwait(false), _settings());
+    }
 
     /// <summary>Пинг меряет служба; в режиме прокси ради него запускается служба пользователя.</summary>
     public async Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>

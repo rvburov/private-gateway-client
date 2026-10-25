@@ -28,6 +28,8 @@
   "problem.conflict.text": "Другая программа уже управляет сетью. Если включить оба VPN сразу, трафик может пойти мимо туннеля.",
   "problem.fact.adapter": "Чужой сетевой адаптер",
   "problem.fact.adapter.active": "активен",
+  "problem.fact.system_proxy": "Системный прокси",
+  "problem.fact.system_proxy.script": "автонастройка (PAC)",
   "problem.fact.route": "Маршрут по умолчанию",
   "problem.fact.route.taken": "занят",
   "problem.conflict.retry": "Я отключил его — проверить снова",

@@ -52,6 +52,9 @@ public abstract class WindowHarness : IDisposable
     /// <summary>Установка службы: по умолчанию недоступна, как в демо-режиме.</summary>
     protected FakeInstaller Installer { get; } = new();
 
+    /// <summary>Системный прокси пользователя: по умолчанию выключен — тесты не читают настройки машины.</summary>
+    protected FakeUserProxy SystemProxy { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -81,6 +84,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<IUrlLauncher>(Urls);
             s.AddSingleton<IAutostart>(Autostart);
             s.AddSingleton<IServiceInstaller>(Installer);
+            s.AddSingleton<IUserProxySettings>(SystemProxy);
             if (gateway is not null)
             {
                 s.AddSingleton<IGatewayClient>(gateway);
@@ -229,6 +233,14 @@ public abstract class WindowHarness : IDisposable
 
             return Task.FromResult(Accept);
         }
+    }
+
+    /// <summary>Системный прокси, который задает тест.</summary>
+    protected sealed class FakeUserProxy : IUserProxySettings
+    {
+        public UserProxy? Proxy { get; set; }
+
+        public UserProxy? Read() => Proxy;
     }
 
     /// <summary>Установка службы без запроса прав: отдает заданный итог и выполняет <see cref="OnInstalled"/>.</summary>

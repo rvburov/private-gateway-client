@@ -40,6 +40,7 @@ public static class InfrastructureModule
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<ISettingsStore, SqliteSettingsStore>();
         services.AddSingleton(TimeProvider.System);
+        services.AddSingleton<IUserProxySettings>(_ => UserProxySettings.ForCurrentUser());
         services.AddSingleton<IGatewayClient>(sp => demo
             ? ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp)
             : new GatewayHost(ServiceLocator.ForThisWindow(sp.GetRequiredService<TimeProvider>()),
@@ -48,7 +49,7 @@ public static class InfrastructureModule
                     id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
-                () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))));
+                () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder)), sp.GetRequiredService<IUserProxySettings>()));
         services.AddSingleton<IServiceInstaller>(sp => demo
             ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));
