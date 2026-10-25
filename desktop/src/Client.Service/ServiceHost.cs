@@ -74,6 +74,12 @@ public static partial class ServiceHost
         : OperatingSystem.IsLinux() ? GnomeSystemProxy.ForThisSession()
         : null;
 
+    /// <summary>
+    /// Блок при обрыве этой ОС для установленной службы: Linux — nftables; Windows (WFP) и macOS — еще
+    /// нет, и режим VPN там отвечает «еще не готов».
+    /// </summary>
+    public static IKillSwitch? KillSwitch() => OperatingSystem.IsLinux() ? NftablesKillSwitch.ForThisMachine() : null;
+
     /// <summary>Сведения для GetServiceInfo: версии службы и контракта, ОС, ядра — какие есть и какой версии.</summary>
     public static V1.ServiceInfo Info(string? xray, string? singBox = null)
     {

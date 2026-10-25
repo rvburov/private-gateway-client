@@ -28,17 +28,15 @@ public sealed class VpnTunnel : IAsyncDisposable
     {
         _xray = xray;
         _singBox = singBox;
-        xray.Output += (_, line) => Output?.Invoke(this, ("xray", line));
-        singBox.Output += (_, line) => Output?.Invoke(this, ("sing-box", line));
         xray.Exited += (_, _) => OnExited();
         singBox.Exited += (_, _) => OnExited();
     }
 
-    /// <summary>Строка вывода ядра: источник («xray», «sing-box») и текст. Приходит из потока чтения.</summary>
-    public event EventHandler<(string Source, string Line)>? Output;
-
     /// <summary>Одно из ядер вышло само.</summary>
     public event EventHandler? Exited;
+
+    /// <summary>Одно из ядер уже не работает — и до подписки на <see cref="Exited"/>.</summary>
+    public bool HasExited => _xray.HasExited || _singBox.HasExited;
 
     /// <summary>
     /// Поднять туннель. <paramref name="serverAddresses"/> — адреса сервера, разрешенные заранее: к первому
@@ -51,9 +49,10 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <param name="timeout">Сколько ждать подъема.</param>
     /// <param name="time">Часы.</param>
     /// <param name="netns">Создать TUN в сетевом пространстве Linux (тесты); null — в системе.</param>
+    /// <param name="output">Строка вывода ядра — источник («xray», «sing-box») и текст, с самого запуска; приходит из потока чтения.</param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
-        TimeSpan timeout, TimeProvider time, string? netns = null, CancellationToken cancellationToken = default)
+        TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -71,6 +70,7 @@ public sealed class VpnTunnel : IAsyncDisposable
 
         var started = time.GetTimestamp();
         var xrayCore = CoreProcess.StartXray(xray, xrayConfig);
+        xrayCore.Output += (_, line) => output?.Invoke("xray", line);
         CoreProcess? singBoxCore = null;
         try
         {
@@ -78,6 +78,7 @@ public sealed class VpnTunnel : IAsyncDisposable
                 cancellationToken).ConfigureAwait(false);
             singBoxCore = CoreProcess.StartSingBox(singBox,
                 SingBoxConfigBuilder.BuildTun(new TunRequest(link, serverAddresses, request.Protection, request.Connection, netns)));
+            singBoxCore.Output += (_, line) => output?.Invoke("sing-box", line);
             var core = singBoxCore;
             var alive = time.GetTimestamp();
 

@@ -21,11 +21,17 @@ public static class ErrorCodes
     /// <summary>Ядро за сервер не возьмется: Hysteria2 и TUIC — до второго ядра, нет ключа, транспорт не тот.</summary>
     public const string UnsupportedServer = "PGC-SVC-005";
 
-    /// <summary>Режим VPN в этой сборке службы еще не готов (TUN и брандмауэр — этап 3).</summary>
+    /// <summary>Режим VPN на этой ОС еще не готов: нет блока при обрыве (Windows — до WFP) или сборки sing-box.</summary>
     public const string VpnNotReady = "PGC-SVC-006";
+
+    /// <summary>Блок при обрыве не включился: правила брандмауэра не поставить.</summary>
+    public const string KillSwitchFailed = "PGC-SVC-007";
 
     /// <summary>Сервер не отвечает.</summary>
     public const string ServerNotResponding = "PGC-NET-001";
+
+    /// <summary>Адрес сервера не найден: имя не разрешилось (или под блоком при обрыве без туннеля).</summary>
+    public const string ServerNotFound = "PGC-NET-002";
 
     /// <summary>Работает другой VPN или системный прокси.</summary>
     public const string OtherVpn = "PGC-NET-010";

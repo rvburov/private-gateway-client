@@ -47,7 +47,7 @@ public sealed class VpnTunnelTests
             ConnectionSettings.Default with { StrictRoutes = Directory.Exists("/proc/sys/net/ipv6") }, RoutingSettings.Default);
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [IPAddress.Loopback], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, Ct);
+            TimeProvider.System, netns.Path, cancellationToken: Ct);
         try
         {
             (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
@@ -82,7 +82,7 @@ public sealed class VpnTunnelTests
         // Вместо Xray — sing-box: аргументов Xray он не знает и сразу выходит.
         var error = await Should.ThrowAsync<TunnelException>(() =>
             VpnTunnel.StartAsync(XrayKit.SingBox!, XrayKit.SingBox!, request, [IPAddress.Loopback], TimeSpan.FromSeconds(20), TimeProvider.System, netns.Path,
-                Ct));
+                cancellationToken: Ct));
 
         error.Message.ShouldStartWith("Xray вышел при запуске", Case.Sensitive, "TUN без Xray не поднимается");
     }

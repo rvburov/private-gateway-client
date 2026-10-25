@@ -36,14 +36,17 @@ internal sealed class RunningService : IAsyncDisposable
     /// <param name="latencyTarget">Проверочный адрес задержки; null — настоящий.</param>
     /// <param name="endpoint">Адрес прежней службы — как служба, запущенная заново; null — новый.</param>
     /// <param name="systemProxy">Системный прокси (подделка) и файл его снимка; null — служба его не трогает.</param>
-    public static async Task<RunningService> StartAsync(Uri? latencyTarget = null, string? endpoint = null, (ISystemProxy Proxy, string Backup)? systemProxy = null)
+    /// <param name="options">Поправить возможности службы (режим VPN, блок при обрыве); null — служба без прав, только прокси.</param>
+    public static async Task<RunningService> StartAsync(Uri? latencyTarget = null, string? endpoint = null, (ISystemProxy Proxy, string Backup)? systemProxy = null,
+        Func<GatewayOptions, GatewayOptions>? options = null)
     {
         endpoint ??= OperatingSystem.IsWindows()
             ? "PrivateGateway.Test." + Guid.NewGuid().ToString("N")
             : Path.Combine(Path.GetTempPath(), "pg-ipc-" + Guid.NewGuid().ToString("N")[..8], "ipc.sock");
         var journal = new ServiceJournal(TimeProvider.System);
         var guard = systemProxy is var (proxy, backup) ? new SystemProxyGuard(proxy, backup, journal) : null;
-        var gateway = new Gateway(new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget), TimeProvider.System, journal, guard);
+        var defaults = new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget);
+        var gateway = new Gateway(options?.Invoke(defaults) ?? defaults, TimeProvider.System, journal, guard);
         var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox));
         await app.StartAsync(TestContext.Current.CancellationToken);
         return new RunningService(endpoint, app, gateway, IpcChannel.Create(endpoint, system: false), journal);
