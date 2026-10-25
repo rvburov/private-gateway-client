@@ -200,13 +200,15 @@ public sealed class ServiceGatewayClientTests
         var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
         using var server = await XrayKit.Start(serverConfig, serverPort);
         // «Окно» — отдельный процесс службы на своем адресе: его можно закрыть, не закрывая тест.
-        using var window = Process.Start(new ProcessStartInfo(ServiceExecutable) { ArgumentList = { "--user", "--ipc", MissingEndpoint() } })!;
+        // Своя папка состояния: служба пользователя не смотрит в снимок системного прокси этой машины.
+        var state = Path.GetDirectoryName(MissingEndpoint())!;
+        using var window = Process.Start(new ProcessStartInfo(ServiceExecutable) { ArgumentList = { "--user", "--ipc", MissingEndpoint(), "--state", state } })!;
         var user = new ServiceAddress(MissingEndpoint(), System: false);
         try
         {
             var settings = Settings(XrayKit.FreePort());
             var locator = new ServiceLocator([new(MissingEndpoint(), System: true), user], Answers,
-                new UserServiceLauncher(ServiceExecutable, window.Id, user.Endpoint), TimeProvider.System);
+                new UserServiceLauncher(ServiceExecutable, window.Id, user.Endpoint, state), TimeProvider.System);
             using var host = new GatewayHost(locator, a => Client(a.Endpoint, definition, settings), () => settings, TimeProvider.System);
 
             await host.ConnectAsync(Profile(definition), Ct);
@@ -227,11 +229,12 @@ public sealed class ServiceGatewayClientTests
     private static ServiceGatewayClient Client(string endpoint, ServerDefinition? definition, AppSettings settings) =>
         new(IpcChannel.Create(endpoint, system: false), ServiceKind.User, id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System);
 
+    // Системный прокси выключен: тесты не трогают настройки машины.
     private static AppSettings Settings(int proxyPort) => AppSettings.Default with
     {
         Mode = ConnectionMode.Proxy,
         Protection = ProtectionSettings.Default with { AllowLan = true },
-        Connection = ConnectionSettings.Default with { ProxyPort = proxyPort, ConnectTimeoutSeconds = 10 },
+        Connection = ConnectionSettings.Default with { ProxyPort = proxyPort, ConnectTimeoutSeconds = 10, SystemProxy = false },
     };
 
     private static ServerProfile Profile(ServerDefinition server) =>

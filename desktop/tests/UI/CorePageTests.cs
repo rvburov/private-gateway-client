@@ -1,3 +1,4 @@
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Settings;
@@ -27,6 +28,7 @@ public sealed class CorePageTests : WindowHarness
         Text(window, "ReconnectChoiceText").ShouldBe("Экспоненц. до 60 с");
         Text(window, "ProxyPort").ShouldBe("10808");
         (page.StrictRoutes, page.Sniffing, page.Mux, page.TlsFragment, page.ProxyAllowLan).ShouldBe((true, true, false, false, false));
+        Find<ToggleButton>(window, "SystemProxyToggle").IsChecked.ShouldBe(true, "системный прокси в режиме прокси — по умолчанию");
         Snapshot(window, "core");
     }
 
@@ -49,6 +51,7 @@ public sealed class CorePageTests : WindowHarness
         page.Mux = true;
         page.TlsFragment = true;
         page.StrictRoutes = false;
+        Find<ToggleButton>(window, "SystemProxyToggle").IsChecked = false;
         Dispatcher.UIThread.RunJobs();
 
         Text(window, "StackChoiceText").ShouldBe("gVisor");
@@ -63,6 +66,7 @@ public sealed class CorePageTests : WindowHarness
             Mux = true,
             TlsFragment = true,
             StrictRoutes = false,
+            SystemProxy = false,
         });
     }
 

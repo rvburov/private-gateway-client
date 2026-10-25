@@ -41,7 +41,8 @@ public enum ReconnectPolicy
 /// <summary>
 /// «Подключение и ядро» (доска 6): ядро, TUN, соединение, режим прокси. Значения по умолчанию —
 /// как в макете: строгие маршруты и определение домена включены, Mux и фрагментация выключены,
-/// прокси только для этого компьютера.
+/// прокси только для этого компьютера. <paramref name="SystemProxy"/> — в режиме прокси служба на
+/// время подключения включает системный прокси ОС.
 /// </summary>
 public sealed record ConnectionSettings(
     CoreLogLevel CoreLog = CoreLogLevel.Warning,
@@ -55,7 +56,8 @@ public sealed record ConnectionSettings(
     int ConnectTimeoutSeconds = 10,
     ReconnectPolicy Reconnect = ReconnectPolicy.Backoff60Seconds,
     int ProxyPort = ConnectionSettings.DefaultProxyPort,
-    bool ProxyAllowLan = false)
+    bool ProxyAllowLan = false,
+    bool SystemProxy = true)
 {
     /// <summary>Порт локального входа ядра HTTP + SOCKS5 (mixed).</summary>
     public const int DefaultProxyPort = 10808;

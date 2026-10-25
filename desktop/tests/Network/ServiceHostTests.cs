@@ -67,7 +67,7 @@ public sealed class ServiceHostTests : IDisposable
         var endpoint = OperatingSystem.IsWindows()
             ? "PrivateGateway.Test." + Guid.NewGuid().ToString("N")
             : Path.Combine(_root, "window", "ipc.sock");
-        using var window = Process.Start(new ProcessStartInfo(executable) { ArgumentList = { "--user", "--ipc", endpoint } })!;
+        using var window = Process.Start(new ProcessStartInfo(executable) { ArgumentList = { "--user", "--ipc", endpoint, "--state", _root } })!;
         try
         {
             var watching = ServiceHost.StopWithParentAsync(window.Id, Stop, Ct);

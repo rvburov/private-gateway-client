@@ -31,6 +31,7 @@ public sealed class Gateway : IAsyncDisposable
     private readonly GatewayOptions _options;
     private readonly TimeProvider _time;
     private readonly ServiceJournal _journal;
+    private readonly SystemProxyGuard? _systemProxy;
     private readonly SemaphoreSlim _switch = new(1, 1);
     private readonly Lock _gate = new();
     private ConnectionStatus _status;
@@ -40,11 +41,19 @@ public sealed class Gateway : IAsyncDisposable
     // Номер подключения: выход старого ядра и запоздалая готовность не трогают новое.
     private int _session;
 
-    public Gateway(GatewayOptions options, TimeProvider time, ServiceJournal journal)
+    // Что просили в текущем подключении: режим и системный прокси нужны, когда ядро готово.
+    private CoreRequest? _request;
+
+    /// <param name="options">Что умеет служба.</param>
+    /// <param name="time">Часы.</param>
+    /// <param name="journal">Журнал службы.</param>
+    /// <param name="systemProxy">Системный прокси ОС для режима прокси; null — служба его не трогает (установленная служба).</param>
+    public Gateway(GatewayOptions options, TimeProvider time, ServiceJournal journal, SystemProxyGuard? systemProxy = null)
     {
         _options = options;
         _time = time;
         _journal = journal;
+        _systemProxy = systemProxy;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
     }
 
@@ -130,6 +139,7 @@ public sealed class Gateway : IAsyncDisposable
         {
             // Сначала новый номер: выход старого ядра при остановке не должен стать ошибкой нового подключения.
             session = ++_session;
+            _request = core;
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
             _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey]);
@@ -164,6 +174,7 @@ public sealed class Gateway : IAsyncDisposable
         {
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
+            _systemProxy?.Release();
             _journal.Hide([]);
             if (Status.State != ConnectionState.Off)
             {
@@ -213,6 +224,7 @@ public sealed class Gateway : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         await StopCoreAsync().ConfigureAwait(false);
+        _systemProxy?.Release();
         _switch.Dispose();
     }
 
@@ -230,6 +242,7 @@ public sealed class Gateway : IAsyncDisposable
         {
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
+            _systemProxy?.Release();
             _journal.Hide([]);
             ConnectionStatus Requested(ConnectionStatus s) => s with
             {
@@ -264,7 +277,7 @@ public sealed class Gateway : IAsyncDisposable
             {
                 using var probe = new TcpClient();
                 await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
-                Advance(session, ConnectionState.Connected);
+                await ConnectedAsync(session).ConfigureAwait(false);
                 return;
             }
             catch (SocketException)
@@ -282,18 +295,53 @@ public sealed class Gateway : IAsyncDisposable
         Fail(session, ErrorCodes.CoreFailed, "Ядро остановилось, код " + code);
     }
 
-    private void Advance(int session, ConnectionState state)
+    /// <summary>
+    /// Ядро открыло вход — системный прокси и «Защищено». Под тем же замком, что смена подключения:
+    /// отключение посреди этого не оставит системный прокси включенным.
+    /// </summary>
+    private async Task ConnectedAsync(int session)
     {
-        lock (_gate)
+        await _switch.WaitAsync().ConfigureAwait(false);
+        try
         {
-            if (session != _session || _status.State != ConnectionState.Connecting)
+            lock (_gate)
             {
-                return;
+                if (session != _session || _status.State != ConnectionState.Connecting)
+                {
+                    return;
+                }
             }
-        }
 
-        Move(s => s, state);
-        _journal.Add(JournalLevel.Info, "service", "Подключено: прокси на 127.0.0.1 готов");
+            // Сначала системный прокси: «Защищено» в окне — когда браузеры уже идут через прокси.
+            ApplySystemProxy();
+            Move(s => s, ConnectionState.Connected);
+            _journal.Add(JournalLevel.Info, "service", "Подключено: прокси на 127.0.0.1 готов");
+        }
+        finally
+        {
+            _switch.Release();
+        }
+    }
+
+    /// <summary>
+    /// Ядро готово: в режиме прокси с системным прокси — включить его на вход ядра, иначе вернуть как был.
+    /// Установленная служба работает не от имени пользователя и его настройки не трогает.
+    /// </summary>
+    private void ApplySystemProxy()
+    {
+        if (_request is not { Mode: ConnectionMode.Proxy, Connection.SystemProxy: true } request)
+        {
+            _systemProxy?.Release();
+        }
+        else if (_systemProxy is null)
+        {
+            _journal.Add(JournalLevel.Warning, "service",
+                $"Системный прокси ставит только служба пользователя — направьте программы на 127.0.0.1:{request.Connection.ProxyPort}");
+        }
+        else
+        {
+            _systemProxy.Apply(request.Connection.ProxyPort);
+        }
     }
 
     /// <summary>Ошибка текущего подключения; ядро старого подключения в состояние не вмешивается.</summary>

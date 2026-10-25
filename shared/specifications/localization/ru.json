@@ -550,6 +550,8 @@
   "core.reconnect.never": "Не повторять",
   "core.port.title": "Локальный порт",
   "core.port.text": "HTTP + SOCKS5 (mixed)",
+  "core.systemProxy.title": "Системный прокси",
+  "core.systemProxy.text": "Браузеры и программы, которые берут прокси из настроек ОС, пойдут через него сами. Выключите, чтобы направлять программы вручную.",
   "core.lanProxy.title": "Разрешить подключения из локальной сети",
   "core.lanProxy.text": "Другие устройства смогут использовать прокси.",
   "core.mtuCustom.title": "Свой MTU",

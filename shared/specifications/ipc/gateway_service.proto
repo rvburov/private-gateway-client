@@ -178,6 +178,8 @@ message ConnectionSettings {
   // Локальный вход ядра HTTP + SOCKS5 (mixed) в режиме прокси.
   uint32 proxy_port = 11;
   bool proxy_allow_lan = 12;
+  // Режим прокси: на время подключения включить системный прокси ОС (служба пользователя).
+  bool system_proxy = 13;
 }
 
 enum CoreLogLevel {

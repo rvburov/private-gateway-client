@@ -314,6 +314,7 @@ public static partial class ContractMapping
             Reconnect = c.Reconnect.ToContract(),
             ProxyPort = (uint)c.ProxyPort,
             ProxyAllowLan = c.ProxyAllowLan,
+            SystemProxy = c.SystemProxy,
         };
     }
 

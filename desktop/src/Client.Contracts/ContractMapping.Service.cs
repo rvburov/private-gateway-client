@@ -283,7 +283,8 @@ public static partial class ContractMapping
             settings.Reconnect.ToCore(),
             settings.ProxyPort is > 0 and <= 65535 ? (int)settings.ProxyPort
                 : throw new ArgumentOutOfRangeException(nameof(settings), settings.ProxyPort, "Порт прокси вне 1–65535"),
-            settings.ProxyAllowLan);
+            settings.ProxyAllowLan,
+            settings.SystemProxy);
     }
 
     /// <summary>Маршрутизация из запроса: у программ в контракте только путь — он же и название.</summary>

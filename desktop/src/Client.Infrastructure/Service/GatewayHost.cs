@@ -9,7 +9,9 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// Служба для окна — та, что нашлась при запуске или позже. Окно просит подключиться, а службы нет —
 /// ищет снова; в режиме прокси запускает службу пользователя сама. Не нашлась — «Ошибка» с
 /// PGC-SVC-001 (экран «Служба не запущена»), запись в журнале, проверок и пинга нет. Служба пропала
-/// (та же ошибка от нее самой) — следующее подключение ищет заново: могла появиться другая.
+/// (та же ошибка от нее самой) — следующее подключение ищет заново: могла появиться другая. Остался
+/// снимок системного прокси после сбоя службы пользователя — окно сразу поднимает ее, чтобы она
+/// вернула настройки: иначе браузеры остались бы направлены на неработающий прокси.
 /// </summary>
 public sealed class GatewayHost : IGatewayClient, IDisposable
 {
@@ -27,7 +29,9 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// <param name="attach">Клиент службы по найденному адресу.</param>
     /// <param name="settings">Текущие настройки: режим решает, запускать ли службу пользователя.</param>
     /// <param name="time">Часы программы.</param>
-    public GatewayHost(ServiceLocator locator, Func<ServiceAddress, IGatewayClient> attach, Func<AppSettings> settings, TimeProvider time)
+    /// <param name="staleProxy">Остался ли снимок системного прокси после сбоя службы пользователя.</param>
+    public GatewayHost(ServiceLocator locator, Func<ServiceAddress, IGatewayClient> attach, Func<AppSettings> settings, TimeProvider time,
+        Func<bool>? staleProxy = null)
     {
         _locator = locator;
         _attach = attach;
@@ -37,6 +41,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         if (locator.Find() is { } address)
         {
             Attach(address);
+        }
+        else if (staleProxy?.Invoke() == true)
+        {
+            _ = RecoverProxyAsync();
         }
     }
 
@@ -180,6 +188,24 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
                 ? $"Служба пользователя не ответила за {ServiceLocator.UserServiceStart.TotalSeconds:0} с (PGC-SVC-001)"
                 : "Служба пользователя не запустилась: файла службы нет рядом с программой (PGC-SVC-001)");
             return Current;
+        }
+        finally
+        {
+            _finding.Release();
+        }
+    }
+
+    /// <summary>Служба пользователя возвращает системный прокси, оставшийся после ее сбоя, сразу при запуске.</summary>
+    private async Task RecoverProxyAsync()
+    {
+        await _finding.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            if (Current is null && (await _locator.StartUserServiceAsync().ConfigureAwait(false)).Address is { } user)
+            {
+                Log(JournalLevel.Warning, "Системный прокси остался после сбоя службы пользователя — она запущена, чтобы вернуть его");
+                Attach(user);
+            }
         }
         finally
         {

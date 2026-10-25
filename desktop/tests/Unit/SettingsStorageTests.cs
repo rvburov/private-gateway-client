@@ -49,7 +49,7 @@ public sealed class SettingsStorageTests : IDisposable
                 AllowLan: true, LanDiscovery: true),
             Connection = new ConnectionSettings(
                 CoreLogLevel.Debug, TunEngine.Gvisor, Mtu: 1420, StrictRoutes: false, Sniffing: false, TlsFingerprint.Firefox,
-                Mux: true, TlsFragment: true, ConnectTimeoutSeconds: 20, ReconnectPolicy.Never, ProxyPort: 2080, ProxyAllowLan: true),
+                Mux: true, TlsFragment: true, ConnectTimeoutSeconds: 20, ReconnectPolicy.Never, ProxyPort: 2080, ProxyAllowLan: true, SystemProxy: false),
             Routing = new RoutingSettings(
                 RoutingMode.Split,
                 [new BypassApp("/opt/game/game", "game"), new BypassApp("/opt/bank/bank", "bank", IsEnabled: false)],

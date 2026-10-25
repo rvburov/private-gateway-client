@@ -124,6 +124,13 @@ public sealed partial class CorePageViewModel : ObservableObject
 
     public string ProxyPort => C.ProxyPort.ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>Системный прокси ОС на время подключения в режиме прокси: браузеры пойдут через него сами.</summary>
+    public bool SystemProxy
+    {
+        get => C.SystemProxy;
+        set => Set(c => c with { SystemProxy = value });
+    }
+
     /// <summary>Открыть — только после «Открыть» в диалоге; закрыть — сразу.</summary>
     public bool ProxyAllowLan
     {

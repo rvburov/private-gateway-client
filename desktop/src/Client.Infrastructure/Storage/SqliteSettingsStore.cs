@@ -82,7 +82,8 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Int("connection.timeout", 1, 120) ?? c.ConnectTimeoutSeconds,
             Enum("connection.reconnect", c.Reconnect),
             Int("connection.proxy_port", 1024, 65535) ?? c.ProxyPort,
-            Bool("connection.proxy_allow_lan", c.ProxyAllowLan));
+            Bool("connection.proxy_allow_lan", c.ProxyAllowLan),
+            Bool("connection.system_proxy", c.SystemProxy));
         var routing = new RoutingSettings(
             Enum("routing.mode", d.Routing.Mode),
             Json<BypassApp>("routing.apps").Where(a => !string.IsNullOrWhiteSpace(a.Path)).ToList(),
@@ -187,6 +188,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["connection.reconnect"] = settings.Connection.Reconnect.ToString(),
             ["connection.proxy_port"] = settings.Connection.ProxyPort.ToString(CultureInfo.InvariantCulture),
             ["connection.proxy_allow_lan"] = Text(settings.Connection.ProxyAllowLan),
+            ["connection.system_proxy"] = Text(settings.Connection.SystemProxy),
             ["routing.mode"] = settings.Routing.Mode.ToString(),
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),

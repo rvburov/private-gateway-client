@@ -6,6 +6,7 @@ using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
+using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
@@ -46,7 +47,8 @@ public static class InfrastructureModule
                     address.System ? ServiceKind.Installed : ServiceKind.User,
                     id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()),
-                () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()));
+                () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
+                () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))));
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());

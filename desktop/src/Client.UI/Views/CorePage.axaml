@@ -300,6 +300,15 @@
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L core.systemProxy.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L core.systemProxy.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="SystemProxyToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding SystemProxy}" AutomationProperties.Name="{l:L core.systemProxy.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
                 <TextBlock Classes="strong" Text="{l:L core.lanProxy.title}" TextWrapping="Wrap" />
                 <TextBlock Classes="caption" Text="{l:L core.lanProxy.text}" TextWrapping="Wrap" />
               </StackPanel>

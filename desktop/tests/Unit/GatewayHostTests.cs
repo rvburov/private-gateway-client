@@ -155,6 +155,24 @@ public sealed class GatewayHostTests
     }
 
     [Fact]
+    public async Task System_proxy_left_after_a_crash_is_given_back_at_start()
+    {
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            staleProxy: () => true);
+
+        for (var i = 0; i < 200 && !_services.ContainsKey(User); i++)
+        {
+            await Task.Delay(10, Ct);
+        }
+
+        _launcher.Started.ShouldBe(1, "служба пользователя возвращает снимок при запуске — окно поднимает ее сразу, даже в режиме VPN");
+        _services.Keys.ShouldBe([User]);
+        host.Journal.ShouldHaveSingleItem().Message.ShouldStartWith("Системный прокси остался после сбоя");
+        using var clean = Host();
+        _launcher.Started.ShouldBe(1, "без снимка при запуске ничего не запускается");
+    }
+
+    [Fact]
     public async Task Checks_without_a_service_do_not_start_one()
     {
         _settings = _settings with { Mode = ConnectionMode.Proxy };

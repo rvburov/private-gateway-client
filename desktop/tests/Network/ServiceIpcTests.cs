@@ -240,13 +240,14 @@ public sealed class ServiceIpcTests
         PeerCredentials.UnixUid(accepted).ShouldBe(PeerCredentials.CurrentUid());
     }
 
-    private static V1.ConnectRequest Request(ServerDefinition server, int proxyPort)
+    /// <summary>Запрос в режиме прокси; системный прокси — только по просьбе теста, настройки машины не трогаются.</summary>
+    internal static V1.ConnectRequest Request(ServerDefinition server, int proxyPort, bool systemProxy = false)
     {
         var settings = AppSettings.Default with
         {
             Mode = ConnectionMode.Proxy,
             Protection = ProtectionSettings.Default with { AllowLan = true },
-            Connection = ConnectionSettings.Default with { ProxyPort = proxyPort, ConnectTimeoutSeconds = 10 },
+            Connection = ConnectionSettings.Default with { ProxyPort = proxyPort, ConnectTimeoutSeconds = 10, SystemProxy = systemProxy },
         };
         return new V1.ConnectRequest
         {
@@ -259,7 +260,7 @@ public sealed class ServiceIpcTests
     }
 
     /// <summary>Читать поток состояния, пока не придет нужное; не пришло за 20 с — ошибка теста.</summary>
-    private static async Task<List<V1.Status>> ReadUntilAsync(AsyncServerStreamingCall<V1.Status> watch, Func<V1.Status, bool> done)
+    internal static async Task<List<V1.Status>> ReadUntilAsync(AsyncServerStreamingCall<V1.Status> watch, Func<V1.Status, bool> done)
     {
         var seen = new List<V1.Status>();
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);

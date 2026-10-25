@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
+using PrivateGateway.Client.Contracts;
 
 namespace PrivateGateway.Client.Infrastructure.Service;
 
@@ -18,7 +19,8 @@ public interface IUserServiceLauncher
 /// <param name="executable">Файл службы; null — его нет.</param>
 /// <param name="parentId">Процесс окна.</param>
 /// <param name="endpoint">Свой адрес IPC (тесты); null — адрес службы пользователя этой ОС.</param>
-public sealed class UserServiceLauncher(string? executable, int parentId, string? endpoint = null) : IUserServiceLauncher
+/// <param name="state">Своя папка состояния (тесты); null — папка пользователя (<see cref="UserServiceFiles"/>).</param>
+public sealed class UserServiceLauncher(string? executable, int parentId, string? endpoint = null, string? state = null) : IUserServiceLauncher
 {
     /// <summary>Имя исполняемого файла службы на этой ОС.</summary>
     public static string FileName => OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe" : "PrivateGateway.Service";
@@ -65,6 +67,12 @@ public sealed class UserServiceLauncher(string? executable, int parentId, string
         {
             start.ArgumentList.Add("--ipc");
             start.ArgumentList.Add(endpoint);
+        }
+
+        if (state is not null)
+        {
+            start.ArgumentList.Add("--state");
+            start.ArgumentList.Add(state);
         }
 
         try

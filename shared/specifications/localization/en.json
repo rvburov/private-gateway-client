@@ -550,6 +550,8 @@
   "core.reconnect.never": "Don't retry",
   "core.port.title": "Local port",
   "core.port.text": "HTTP + SOCKS5 (mixed)",
+  "core.systemProxy.title": "System proxy",
+  "core.systemProxy.text": "Browsers and apps that take the proxy from the OS settings go through it by themselves. Turn off to point apps manually.",
   "core.lanProxy.title": "Allow connections from the local network",
   "core.lanProxy.text": "Other devices will be able to use the proxy.",
   "core.mtuCustom.title": "Custom MTU",

@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Text.RegularExpressions;
 using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core.Platform;
+using PrivateGateway.Client.Platform.Linux;
+using PrivateGateway.Client.Platform.Windows;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Service;
@@ -55,6 +58,15 @@ public static partial class ServiceHost
 
         await stop().ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Системный прокси этой ОС для службы пользователя: Windows — параметры Интернета, Linux — GNOME;
+    /// нет такого (macOS — нужны права, другой рабочий стол) — null, и программы направляются вручную.
+    /// </summary>
+    public static ISystemProxy? SystemProxy() =>
+        OperatingSystem.IsWindows() ? new WindowsSystemProxy()
+        : OperatingSystem.IsLinux() ? GnomeSystemProxy.ForThisSession()
+        : null;
 
     public static V1.ServiceInfo Info(string? xray)
     {
