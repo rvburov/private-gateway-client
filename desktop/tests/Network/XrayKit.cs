@@ -22,6 +22,12 @@ internal static class XrayKit
     /// <summary>Сборка ядра: PG_XRAY или artifacts/cores/xray; null — тесты с ядром пропускаются.</summary>
     public static string? Xray { get; } = FindXray();
 
+    /// <summary>sing-box (TUN режима VPN): artifacts/cores/sing-box — scripts/get-singbox.sh; null — тесты пропускаются.</summary>
+    public static string? SingBox { get; } =
+        Path.Combine(Root, "artifacts", "cores", "sing-box", OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box") is var path && File.Exists(path)
+            ? path
+            : null;
+
     /// <summary>
     /// Описание сервера для клиента и конфиг того же сервера в Xray. Без шифрования транспорта — только
     /// для теста на localhost; у Trojan — TLS с самоподписанным сертификатом на example.com.
@@ -84,10 +90,10 @@ internal static class XrayKit
         static JsonArray Lines(string pem) => new([.. pem.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => JsonValue.Create(l.TrimEnd('\r')))]);
     }
 
-    public static async Task<XrayProcess> Start(JsonObject config, int port)
+    public static async Task<CoreProcess> Start(JsonObject config, int port)
     {
         var output = new List<string>();
-        var xray = XrayProcess.Start(Xray!, config);
+        var xray = CoreProcess.StartXray(Xray!, config);
         xray.Output += (_, line) =>
         {
             lock (output)

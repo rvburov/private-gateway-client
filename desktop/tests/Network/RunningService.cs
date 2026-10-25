@@ -44,7 +44,7 @@ internal sealed class RunningService : IAsyncDisposable
         var journal = new ServiceJournal(TimeProvider.System);
         var guard = systemProxy is var (proxy, backup) ? new SystemProxyGuard(proxy, backup, journal) : null;
         var gateway = new Gateway(new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget), TimeProvider.System, journal, guard);
-        var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray));
+        var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox));
         await app.StartAsync(TestContext.Current.CancellationToken);
         return new RunningService(endpoint, app, gateway, IpcChannel.Create(endpoint, system: false), journal);
     }

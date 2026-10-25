@@ -8,6 +8,7 @@ namespace PrivateGateway.Client.Tests.Network;
 public sealed class ServiceHostTests : IDisposable
 {
     private static readonly string Xray = OperatingSystem.IsWindows() ? "xray.exe" : "xray";
+    private static readonly string SingBox = OperatingSystem.IsWindows() ? "sing-box.exe" : "sing-box";
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pg-host-" + Guid.NewGuid().ToString("N")[..8]);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -25,9 +26,11 @@ public sealed class ServiceHostTests : IDisposable
     {
         var service = Folder("Program");
         var core = Touch(Path.Combine(service, "cores", "xray", Xray));
+        var tun = Touch(Path.Combine(service, "cores", "sing-box", SingBox));
         Touch(Path.Combine(_root, "artifacts", "cores", "xray", Xray));
 
         ServiceHost.DefaultXray(service).ShouldBe(core);
+        ServiceHost.DefaultSingBox(service).ShouldBe(tun);
     }
 
     [Fact]
@@ -35,8 +38,10 @@ public sealed class ServiceHostTests : IDisposable
     {
         var service = Folder("artifacts", "bin", "Client.Service", "debug");
         var core = Touch(Path.Combine(_root, "artifacts", "cores", "xray", Xray));
+        var tun = Touch(Path.Combine(_root, "artifacts", "cores", "sing-box", SingBox));
 
         ServiceHost.DefaultXray(service + Path.DirectorySeparatorChar).ShouldBe(core);
+        ServiceHost.DefaultSingBox(service).ShouldBe(tun);
     }
 
     [Theory]
@@ -47,8 +52,9 @@ public sealed class ServiceHostTests : IDisposable
     {
         var service = Folder(a, b, c, "debug");
         Touch(Path.Combine(_root, a, "cores", "xray", Xray));
+        Touch(Path.Combine(_root, a, "cores", "sing-box", SingBox));
 
-        ServiceHost.DefaultXray(service).ShouldBeNull();
+        (ServiceHost.DefaultXray(service), ServiceHost.DefaultSingBox(service)).ShouldBe((null, null));
     }
 
     [Fact]

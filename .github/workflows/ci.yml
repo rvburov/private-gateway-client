@@ -34,6 +34,11 @@ jobs:
         shell: bash
         run: scripts/get-xray.sh
 
+      # sing-box — TUN режима VPN (отдельный процесс, GPL-3.0): версия и SHA-256 — в shared/cores.
+      - name: TUN sing-box
+        shell: bash
+        run: scripts/get-singbox.sh
+
       - name: Тесты
         run: dotnet test --solution PrivateGateway.slnx -c Release --no-build
 

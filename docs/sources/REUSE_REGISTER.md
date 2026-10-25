@@ -43,7 +43,7 @@
 | Компонент | Лицензия | Как используется |
 | --- | --- | --- |
 | Xray-core | MPL-2.0 | готовые сборки, отдельный процесс (десктоп); libXray на мобильных. Конфиг (`XrayConfigBuilder`) написан заново по документированному формату конфигурации Xray (xtls.github.io), код ядра не переносится |
-| sing-box | GPL-3.0 | кандидат для Hysteria2/TUIC, только отдельным процессом |
+| sing-box | GPL-3.0 | TUN режима VPN (и кандидат для Hysteria2/TUIC): готовые сборки выпуска `SagerNet/sing-box` тега из `shared/cores/sing-box.version` (v1.14.3), SHA-256 закреплены в `shared/cores/sing-box.sha256`; только отдельным процессом службы, конфиг — через stdin. Конфиг (`SingBoxConfigBuilder`) написан заново по документированному формату (sing-box.sagernet.org), код sing-box не переносится и не встраивается. Сборка распространяется с `LICENSE`; в выпуск программы — ссылка на исходники того же тега (GPL-3.0, раздел 6) |
 | Avalonia | MIT | интерфейс десктопа |
 | Inter, JetBrains Mono | OFL-1.1 | шрифты десктопа, встроены |
 | CommunityToolkit.Mvvm | MIT | MVVM |

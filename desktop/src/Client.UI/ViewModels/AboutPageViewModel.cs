@@ -41,10 +41,15 @@ public sealed partial class AboutPageViewModel : ObservableObject
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
     }
 
-    /// <summary>Что программа приносит с собой; Xray-core и второе ядро добавятся вместе со службой.</summary>
+    /// <summary>
+    /// Что программа приносит с собой. Ядра — отдельные процессы службы, без пакетов: Xray-core (прокси и
+    /// основное ядро VPN) и sing-box (TUN режима VPN; GPL-3.0 — только отдельным процессом).
+    /// </summary>
     public static IReadOnlyList<OpenComponent> Components { get; } =
     [
         new(".NET", "MIT"),
+        new("Xray-core", "MPL-2.0"),
+        new("sing-box", "GPL-3.0"),
         new("Avalonia", "MIT", "Avalonia", "Avalonia.Desktop", "Avalonia.Themes.Fluent"),
         new("Inter", "OFL-1.1", "Avalonia.Fonts.Inter"),
         new("CommunityToolkit.Mvvm", "MIT", "CommunityToolkit.Mvvm"),

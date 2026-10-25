@@ -85,6 +85,18 @@ public sealed class AboutPageTests : WindowHarness
         listed.Except(shipped).ShouldBeEmpty("на экране — пакет, которого в программе нет");
     }
 
+    [Fact]
+    public void License_list_covers_every_core_the_service_runs()
+    {
+        // Ядро — то, у чего в shared/cores закреплена версия: xray.version, sing-box.version.
+        var cores = Directory.GetFiles(Path.Combine(Repo.Root, "shared", "cores"), "*.version").Select(f => Path.GetFileNameWithoutExtension(f)).ToList();
+
+        cores.ShouldNotBeEmpty();
+        cores.ShouldAllBe(core => AboutPageViewModel.Components.Any(c => c.Name.StartsWith(core, StringComparison.OrdinalIgnoreCase) && c.Packages.Length == 0),
+            "ядро в службе есть, а его лицензии на экране нет");
+        AboutPageViewModel.Components.Single(c => c.Name == "sing-box").License.ShouldBe("GPL-3.0");
+    }
+
     private (MainWindow Window, ShellViewModel Shell, AboutPageViewModel Page) OpenAbout()
     {
         var (window, shell) = Open();

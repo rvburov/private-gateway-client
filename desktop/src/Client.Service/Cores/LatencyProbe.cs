@@ -44,7 +44,7 @@ public static class LatencyProbe
         }
 
         var checkedIndexes = Enumerable.Range(0, servers.Count).Where(i => results[i] is null).ToList();
-        using var core = XrayProcess.Start(xray, config);
+        using var core = CoreProcess.StartXray(xray, config);
         try
         {
             if (!await WaitForPortsAsync(core, [.. checkedIndexes.Select(i => ports[i])], time, cancellationToken).ConfigureAwait(false))
@@ -66,7 +66,7 @@ public static class LatencyProbe
         }
         finally
         {
-            await core.StopAsync(CancellationToken.None).ConfigureAwait(false);
+            await core.StopAsync(cancellationToken: CancellationToken.None).ConfigureAwait(false);
         }
     }
 
@@ -99,7 +99,7 @@ public static class LatencyProbe
     private static LatencyResult[] Done(LatencyResult?[] results) => [.. results.Select(r => r!)];
 
     /// <summary>Ждать, пока ядро откроет все входы; false — ядро вышло или не успело.</summary>
-    private static async Task<bool> WaitForPortsAsync(XrayProcess core, IReadOnlyList<int> ports, TimeProvider time, CancellationToken cancellationToken)
+    private static async Task<bool> WaitForPortsAsync(CoreProcess core, IReadOnlyList<int> ports, TimeProvider time, CancellationToken cancellationToken)
     {
         var started = time.GetTimestamp();
         var pending = new Queue<int>(ports);

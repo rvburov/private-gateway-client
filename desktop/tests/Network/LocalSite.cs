@@ -4,16 +4,19 @@ using System.Text;
 
 namespace PrivateGateway.Client.Tests.Network;
 
-/// <summary>Сайт на 127.0.0.1: на любой запрос отвечает одной страницей и считает запросы.</summary>
+/// <summary>Сайт на 127.0.0.1 (или своем адресе): на любой запрос отвечает одной страницей и считает запросы.</summary>
 internal sealed class LocalSite : IDisposable
 {
-    private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
+    private readonly TcpListener _listener;
     private readonly byte[] _response;
     private readonly CancellationTokenSource _stop = new();
     private int _requests;
 
-    public LocalSite(string page)
+    /// <param name="page">Текст страницы.</param>
+    /// <param name="address">Где слушать; null — 127.0.0.1.</param>
+    public LocalSite(string page, IPAddress? address = null)
     {
+        _listener = new TcpListener(address ?? IPAddress.Loopback, 0);
         var body = Encoding.UTF8.GetBytes(page);
         _response = [.. Encoding.ASCII.GetBytes(
             $"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), .. body];
@@ -21,7 +24,7 @@ internal sealed class LocalSite : IDisposable
         _ = Task.Run(ServeAsync);
     }
 
-    public Uri Url => new($"http://127.0.0.1:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
+    public Uri Url => new($"http://{((IPEndPoint)_listener.LocalEndpoint).Address}:{((IPEndPoint)_listener.LocalEndpoint).Port}/");
 
     public int Requests => Volatile.Read(ref _requests);
 

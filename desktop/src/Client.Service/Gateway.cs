@@ -38,7 +38,7 @@ public sealed class Gateway : IAsyncDisposable
     private readonly SemaphoreSlim _switch = new(1, 1);
     private readonly Lock _gate = new();
     private ConnectionStatus _status;
-    private XrayProcess? _core;
+    private CoreProcess? _core;
     private readonly List<ChannelWriter<ConnectionStatus>> _watchers = [];
 
     // Номер подключения: выход старого ядра и запоздалая готовность не трогают новое.
@@ -153,7 +153,7 @@ public sealed class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Info, "service", $"Подключение в режиме прокси: {core.Server.Protocol}, порт {core.Connection.ProxyPort}");
             try
             {
-                var process = XrayProcess.Start(xray, config);
+                var process = CoreProcess.StartXray(xray, config);
                 process.Output += (_, line) => _journal.Add(JournalLevel.Info, "xray", line);
                 process.Exited += (_, _) => OnCoreExited(session, process);
                 _core = process;
@@ -343,7 +343,7 @@ public sealed class Gateway : IAsyncDisposable
         Fail(session, ErrorCodes.CoreFailed, "Ядро не открыло вход прокси за " + timeout.TotalSeconds + " с");
     }
 
-    private void OnCoreExited(int session, XrayProcess process)
+    private void OnCoreExited(int session, CoreProcess process)
     {
         var code = process.HasExited ? process.ExitCode : 0;
         Fail(session, ErrorCodes.CoreFailed, "Ядро остановилось, код " + code);

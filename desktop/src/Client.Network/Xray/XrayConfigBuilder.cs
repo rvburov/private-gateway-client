@@ -32,6 +32,14 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
     public bool IsOk => Config is not null;
 }
 
+/// <summary>
+/// Связь Xray с TUN в режиме VPN: вход SOCKS5 на 127.0.0.1:<paramref name="Port"/> с паролем на это
+/// подключение — другие программы машины в него не войдут; выход — к <paramref name="ServerAddress"/>,
+/// адресу сервера, который служба разрешила заранее и вывела из маршрутов TUN (иначе соединение с
+/// сервером ушло бы в сам туннель). Имя сервера для TLS и заголовков остается прежним.
+/// </summary>
+public sealed record TunLink(int Port, string User, string Password, string ServerAddress);
+
 /// <summary>Конфиг проверки задержки и причина отказа для каждого сервера (null — сервер проверяется).</summary>
 public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejection?> Rejections);
 
@@ -49,16 +57,26 @@ public static class XrayConfigBuilder
     public const string BlockTag = "block";
     public const string FragmentTag = "fragment";
 
+    /// <summary>Выход DNS режима VPN: отвечает на запросы из TUN по настройкам DNS этого конфига.</summary>
+    public const string DnsTag = "dns-out";
+
     /// <summary>DNS по умолчанию, если в профиле своего нет: DoH через туннель.</summary>
     public const string DefaultDns = "https://1.1.1.1/dns-query";
 
-    public static XrayConfigResult Build(CoreRequest request)
+    /// <param name="request">Сервер и настройки.</param>
+    /// <param name="tun">Режим VPN: вход только для своего TUN и адрес сервера; null — вход прокси из настроек.</param>
+    public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         var outbound = Outbound(request.Server, request.Connection, out var rejection);
         if (outbound is null)
         {
             return new XrayConfigResult(null, rejection);
+        }
+
+        if (tun is not null)
+        {
+            Dial(outbound, tun.ServerAddress);
         }
 
         var outbounds = new JsonArray
@@ -80,6 +98,11 @@ public static class XrayConfigBuilder
             outbounds.Add(Fragment());
         }
 
+        if (tun is not null)
+        {
+            outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns" });
+        }
+
         return new XrayConfigResult(new JsonObject
         {
             ["log"] = new JsonObject
@@ -94,9 +117,9 @@ public static class XrayConfigBuilder
                 ["dnsLog"] = false,
             },
             ["dns"] = Dns(request.Protection),
-            ["inbounds"] = new JsonArray { Inbound(request) },
+            ["inbounds"] = new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun) },
             ["outbounds"] = outbounds,
-            ["routing"] = Routing(request),
+            ["routing"] = Routing(request, tunDns: tun is not null),
         }, null);
     }
 
@@ -200,6 +223,46 @@ public static class XrayConfigBuilder
         },
     };
 
+    private static JsonObject TunInbound(CoreRequest request, TunLink tun) => new()
+    {
+        ["tag"] = InboundTag,
+        ["listen"] = "127.0.0.1",
+        ["port"] = tun.Port,
+        ["protocol"] = "socks",
+        ["settings"] = new JsonObject
+        {
+            ["auth"] = "password",
+            ["accounts"] = new JsonArray(new JsonObject { ["user"] = tun.User, ["pass"] = tun.Password }),
+            ["udp"] = true,
+        },
+        ["sniffing"] = new JsonObject
+        {
+            ["enabled"] = request.Connection.Sniffing,
+            ["destOverride"] = new JsonArray("http", "tls", "quic"),
+            ["routeOnly"] = true,
+        },
+    };
+
+    /// <summary>Выход соединяется с уже разрешенным адресом сервера: в vnext, servers и у WireGuard — в endpoint.</summary>
+    private static void Dial(JsonObject outbound, string address)
+    {
+        var settings = outbound["settings"]!.AsObject();
+        foreach (var list in new[] { "vnext", "servers" })
+        {
+            foreach (var server in settings[list]?.AsArray() ?? [])
+            {
+                server!["address"] = address;
+            }
+        }
+
+        foreach (var peer in settings["peers"]?.AsArray() ?? [])
+        {
+            var endpoint = peer!["endpoint"]!.GetValue<string>();
+            var port = endpoint[(endpoint.LastIndexOf(':') + 1)..];
+            peer["endpoint"] = address.Contains(':', StringComparison.Ordinal) ? $"[{address}]:{port}" : $"{address}:{port}";
+        }
+    }
+
     private static JsonObject Dns(ProtectionSettings protection) => new()
     {
         ["servers"] = new JsonArray(protection.Dns switch
@@ -212,18 +275,29 @@ public static class XrayConfigBuilder
         ["queryStrategy"] = protection.Addresses == AddressPreference.Ipv4Only ? "UseIPv4" : "UseIP",
     };
 
-    private static JsonObject Routing(CoreRequest request)
+    private static JsonObject Routing(CoreRequest request, bool tunDns)
     {
-        var rules = new JsonArray
+        var rules = new JsonArray();
+        if (tunDns)
         {
-            // Локальная сеть: разрешена — напрямую, иначе — блок (по умолчанию запрещена, модель угроз).
-            new JsonObject
+            // DNS из TUN — к любому адресу, хоть к роутеру в локальной сети: отвечает выход DNS по
+            // настройкам этого конфига. Только с входа TUN: собственные запросы DNS Xray идут через сервер.
+            rules.Add(new JsonObject
             {
                 ["type"] = "field",
-                ["ip"] = new JsonArray("geoip:private"),
-                ["outboundTag"] = request.Protection.AllowLan ? DirectTag : BlockTag,
-            },
-        };
+                ["inboundTag"] = new JsonArray(InboundTag),
+                ["port"] = "53",
+                ["outboundTag"] = DnsTag,
+            });
+        }
+
+        // Локальная сеть: разрешена — напрямую, иначе — блок (по умолчанию запрещена, модель угроз).
+        rules.Add(new JsonObject
+        {
+            ["type"] = "field",
+            ["ip"] = new JsonArray("geoip:private"),
+            ["outboundTag"] = request.Protection.AllowLan ? DirectTag : BlockTag,
+        });
         if (request.Protection.BlockIpv6)
         {
             rules.Add(new JsonObject { ["type"] = "field", ["ip"] = new JsonArray("::/0"), ["outboundTag"] = BlockTag });

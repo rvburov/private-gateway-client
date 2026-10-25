@@ -19,10 +19,19 @@ public static partial class ServiceHost
     public static string? DefaultXray() => DefaultXray(AppContext.BaseDirectory);
 
     /// <param name="serviceFolder">Папка исполняемого файла службы.</param>
-    public static string? DefaultXray(string serviceFolder)
+    public static string? DefaultXray(string serviceFolder) => Core(serviceFolder, "xray");
+
+    /// <summary>
+    /// sing-box (TUN режима VPN) — там же, где Xray: cores/sing-box рядом со службой, из папки сборки —
+    /// artifacts/cores/sing-box (scripts/get-singbox.sh). Нет — null: режим VPN недоступен.
+    /// </summary>
+    /// <param name="serviceFolder">Папка исполняемого файла службы.</param>
+    public static string? DefaultSingBox(string serviceFolder) => Core(serviceFolder, "sing-box");
+
+    private static string? Core(string serviceFolder, string core)
     {
-        var name = OperatingSystem.IsWindows() ? "xray.exe" : "xray";
-        var installed = Path.Combine(serviceFolder, "cores", "xray", name);
+        var name = OperatingSystem.IsWindows() ? core + ".exe" : core;
+        var installed = Path.Combine(serviceFolder, "cores", core, name);
         if (File.Exists(installed))
         {
             return installed;
@@ -30,13 +39,10 @@ public static partial class ServiceHost
 
         // Только точное расположение папки сборки, без поиска вверх: чужой файл выше по дереву ядром не станет.
         var build = new DirectoryInfo(serviceFolder);
-        if (build.Parent is { Name: "Client.Service" } project && project.Parent is { Name: "bin" } bin && bin.Parent is { Name: "artifacts" } artifacts
-            && Path.Combine(artifacts.FullName, "cores", "xray", name) is var built && File.Exists(built))
-        {
-            return built;
-        }
-
-        return null;
+        return build.Parent is { Name: "Client.Service" } project && project.Parent is { Name: "bin" } bin && bin.Parent is { Name: "artifacts" } artifacts
+            && Path.Combine(artifacts.FullName, "cores", core, name) is var built && File.Exists(built)
+            ? built
+            : null;
     }
 
     /// <summary>
@@ -68,7 +74,8 @@ public static partial class ServiceHost
         : OperatingSystem.IsLinux() ? GnomeSystemProxy.ForThisSession()
         : null;
 
-    public static V1.ServiceInfo Info(string? xray)
+    /// <summary>Сведения для GetServiceInfo: версии службы и контракта, ОС, ядра — какие есть и какой версии.</summary>
+    public static V1.ServiceInfo Info(string? xray, string? singBox = null)
     {
         var info = new V1.ServiceInfo
         {
@@ -76,17 +83,21 @@ public static partial class ServiceHost
             ApiVersion = ContractMapping.ApiVersion,
             Os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
         };
-        var version = xray is not null && File.Exists(xray) ? XrayVersion(xray) : null;
-        info.Cores.Add(new V1.CoreInfo { Name = "xray", Version = version ?? string.Empty, Available = version is not null });
+        foreach (var (name, path, pattern) in new[] { ("xray", xray, XrayVersion()), ("sing-box", singBox, SingBoxVersion()) })
+        {
+            var version = path is not null && File.Exists(path) ? CoreVersion(path, pattern) : null;
+            info.Cores.Add(new V1.CoreInfo { Name = name, Version = version ?? string.Empty, Available = version is not null });
+        }
+
         return info;
     }
 
-    /// <summary>«Xray 25.8.3 (…)» → «25.8.3»; не запустилось — null.</summary>
-    private static string? XrayVersion(string xray)
+    /// <summary>Версия из вывода «<c>&lt;ядро&gt; version</c>»: «Xray 25.8.3 (…)» → «25.8.3»; не запустилось — null.</summary>
+    private static string? CoreVersion(string executable, Regex pattern)
     {
         try
         {
-            using var process = Process.Start(new ProcessStartInfo(xray)
+            using var process = Process.Start(new ProcessStartInfo(executable)
             {
                 ArgumentList = { "version" },
                 RedirectStandardOutput = true,
@@ -100,7 +111,7 @@ public static partial class ServiceHost
 
             var output = process.StandardOutput.ReadToEnd();
             process.WaitForExit(5000);
-            return Version().Match(output) is { Success: true } match ? match.Groups[1].Value : null;
+            return pattern.Match(output) is { Success: true } match ? match.Groups[1].Value : null;
         }
         catch (System.ComponentModel.Win32Exception)
         {
@@ -109,5 +120,8 @@ public static partial class ServiceHost
     }
 
     [GeneratedRegex(@"Xray (\d+\.\d+\.\d+)")]
-    private static partial Regex Version();
+    private static partial Regex XrayVersion();
+
+    [GeneratedRegex(@"sing-box version (\d+\.\d+\.\d+)")]
+    private static partial Regex SingBoxVersion();
 }

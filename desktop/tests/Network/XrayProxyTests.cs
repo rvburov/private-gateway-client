@@ -64,7 +64,7 @@ public sealed class XrayProxyTests
     {
         var missing = Path.Combine(Path.GetTempPath(), "pg-no-xray-" + Guid.NewGuid().ToString("N"), "xray");
 
-        Should.Throw<System.ComponentModel.Win32Exception>(() => XrayProcess.Start(missing, new JsonObject()));
+        Should.Throw<System.ComponentModel.Win32Exception>(() => CoreProcess.StartXray(missing, new JsonObject()));
     }
 
     private static JsonObject ClientConfig(ServerDefinition server, int proxyPort)

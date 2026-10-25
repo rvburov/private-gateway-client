@@ -226,6 +226,41 @@ public sealed class XrayConfigTests
         XrayConfigBuilder.DomainCondition(pattern).ShouldBe(condition);
     }
 
+    [Fact]
+    public void Tun_link_takes_only_its_own_tun_and_dials_the_resolved_address()
+    {
+        var tun = new TunLink(31000, "user-1", "pass-1", "198.51.100.20");
+        var server = Link("vless/reality-vision");
+
+        var config = XrayConfigBuilder.Build(Request(server), tun).Config.ShouldNotBeNull();
+
+        var inbound = config["inbounds"]!.AsArray().ShouldHaveSingleItem()!;
+        (inbound["listen"]!.GetValue<string>(), inbound["port"]!.GetValue<int>(), inbound["settings"]!["auth"]!.GetValue<string>())
+            .ShouldBe(("127.0.0.1", 31000, "password"), "вход только для своего TUN: на 127.0.0.1 и с паролем на подключение");
+        var account = inbound["settings"]!["accounts"]![0]!;
+        (account["user"]!.GetValue<string>(), account["pass"]!.GetValue<string>()).ShouldBe(("user-1", "pass-1"));
+        var proxy = Outbound(config, XrayConfigBuilder.ProxyTag);
+        proxy["settings"]!["vnext"]![0]!["address"]!.GetValue<string>().ShouldBe("198.51.100.20");
+        proxy["streamSettings"]!["realitySettings"]!["serverName"]!.GetValue<string>()
+            .ShouldBe(server.Security.Sni, "имя для TLS — прежнее, меняется только адрес соединения");
+        Outbound(config, XrayConfigBuilder.DnsTag)["protocol"]!.GetValue<string>().ShouldBe("dns");
+        var dns = config["routing"]!["rules"]![0]!;
+        (dns["port"]!.GetValue<string>(), dns["outboundTag"]!.GetValue<string>(), dns["inboundTag"]![0]!.GetValue<string>())
+            .ShouldBe(("53", XrayConfigBuilder.DnsTag, XrayConfigBuilder.InboundTag),
+                "DNS из TUN — первым правилом, раньше блока локальной сети: запрос к роутеру тоже отвечает Xray");
+        Build(server)["outbounds"]!.AsArray().ShouldNotContain(o => o!["tag"]!.GetValue<string>() == XrayConfigBuilder.DnsTag, "в режиме прокси DNS спрашивают программы сами");
+
+        var trojan = Outbound(XrayConfigBuilder.Build(Request(Link("trojan/ws")), tun).Config!, XrayConfigBuilder.ProxyTag);
+        trojan["settings"]!["servers"]![0]!["address"]!.GetValue<string>().ShouldBe("198.51.100.20");
+
+        var wireguard = Outbound(XrayConfigBuilder.Build(Request(Link("wireguard/preshared-key")), tun with { ServerAddress = "2001:db8::20" }).Config!,
+            XrayConfigBuilder.ProxyTag);
+        wireguard["settings"]!["peers"]![0]!["endpoint"]!.GetValue<string>().ShouldEndWith("]:" + Link("wireguard/preshared-key").Port);
+        wireguard["settings"]!["peers"]![0]!["endpoint"]!.GetValue<string>().ShouldStartWith("[2001:db8::20]");
+        Outbound(XrayConfigBuilder.Build(Request(Link("wireguard/preshared-key")), tun).Config!, XrayConfigBuilder.ProxyTag)["settings"]!["peers"]![0]!["endpoint"]!
+            .GetValue<string>().ShouldBe("198.51.100.20:" + Link("wireguard/preshared-key").Port);
+    }
+
     private static JsonObject Build(
         ServerDefinition server,
         ConnectionMode mode = ConnectionMode.Vpn,

@@ -121,7 +121,8 @@ VPN-клиент меняет состояние всей машины, поэт
 Private Gateway Client — самостоятельный прокси/VPN-клиент с ручным выбором сервера, полной
 системной маршрутизацией и защитой от утечек (блок при обрыве, DNS, IPv6). Десктоп — C# · .NET 10 ·
 Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (Swift). Ядро — Xray-core
-(готовые сборки, своего кода на Go нет), для Hysteria2/TUIC — вероятно sing-box.
+(готовые сборки, своего кода на Go нет); TUN режима VPN — sing-box отдельным процессом (GPL-3.0), он
+же вероятно для Hysteria2/TUIC.
 
 Где что лежит:
 
@@ -129,8 +130,9 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `desktop/src/` — проекты десктопа, слои — в разделе «Правила кода»;
 - `desktop/tests/` — тесты: `Unit` (быстрый гейт), `Architecture` (границы модулей), `UI`
   (интерфейс без экрана, снимки в `artifacts/ui-snapshots`), `Network` (настоящее ядро Xray на
-  127.0.0.1: сборку кладет `scripts/get-xray.sh`, в облаке — `scripts/get-xray.sh --build`; без
-  нее эти тесты пропускаются), дальше
+  127.0.0.1: сборку кладет `scripts/get-xray.sh`, в облаке — `scripts/get-xray.sh --build`; тесту
+  туннеля нужны еще sing-box — `scripts/get-singbox.sh` — и root на Linux с `ip`, `curl` и `python3`;
+  без сборок эти тесты пропускаются), дальше
   `Integration`, `Security` — по мере появления кода;
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);

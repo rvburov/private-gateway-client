@@ -31,7 +31,11 @@ public sealed class ServiceIpcTests
         var info = await service.Client.GetServiceInfoAsync(new V1.GetServiceInfoRequest(), cancellationToken: Ct);
 
         (info.ApiVersion, info.ServiceVersion).ShouldBe((ContractMapping.ApiVersion, ServiceVersion.Current));
-        info.Cores.ShouldHaveSingleItem().Available.ShouldBe(XrayKit.Xray is not null);
+        info.Cores.Select(c => (c.Name, c.Available)).ShouldBe([("xray", XrayKit.Xray is not null), ("sing-box", XrayKit.SingBox is not null)]);
+        if (XrayKit.SingBox is not null)
+        {
+            info.Cores[1].Version.ShouldBe(File.ReadAllText(Path.Combine(XrayKit.Root, "shared", "cores", "sing-box.version")).Trim().TrimStart('v'));
+        }
     }
 
     [Fact]
