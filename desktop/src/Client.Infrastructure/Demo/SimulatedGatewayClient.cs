@@ -1,4 +1,5 @@
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 
@@ -7,10 +8,14 @@ namespace PrivateGateway.Client.Infrastructure.Demo;
 /// <summary>
 /// Имитация службы для этапа 1, пока службы нет: подключение идет через те же состояния и
 /// переходы, что и настоящее, с задержкой, а данные — заведомо ненастоящие (адреса из диапазонов
-/// документации). Интерфейс показывает, что работает на имитации (значок «демо»).
+/// документации). Интерфейс показывает, что работает на имитации (значок «демо»). Режим (VPN или
+/// только прокси) берет из настроек при подключении — как настоящая служба из запроса Connect.
 /// </summary>
-public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, IDisposable
+public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? settings = null) : IGatewayClient, IDisposable
 {
+    /// <summary>Код ошибки «сервер не отвечает» в режиме прокси: блока при обрыве там нет.</summary>
+    public const string ProxyServerNotResponding = "PGC-NET-001";
+
     /// <summary>Сколько длится «подключение» в имитации.</summary>
     public static readonly TimeSpan ConnectDelay = TimeSpan.FromMilliseconds(1200);
 
@@ -68,6 +73,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
     public async Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(server);
+        var mode = settings?.Current.Mode ?? ConnectionMode.Vpn;
         CancellationToken token;
         lock (_gate)
         {
@@ -75,11 +81,11 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
             _pending?.Dispose();
             _pending = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             token = _pending.Token;
-            _status = _status.MoveTo(ConnectionState.Connecting, time.GetUtcNow()) with { ServerId = server.Id };
+            _status = (_status with { Mode = mode }).MoveTo(ConnectionState.Connecting, time.GetUtcNow()) with { ServerId = server.Id };
         }
 
         Raise();
-        Log(JournalLevel.Info, "service", $"connect  server «{server.Name}»");
+        Log(JournalLevel.Info, "service", $"connect  server «{server.Name}»  mode={mode.ToString().ToLowerInvariant()}");
         try
         {
             await Task.Delay(ConnectDelay, time, token).ConfigureAwait(false);
@@ -103,10 +109,19 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
             {
                 _status = _status.MoveTo(ConnectionState.Connected, now) with
                 {
-                    Protection = ProtectionChecks.For(ConnectionState.Connected) with { CheckedAt = now },
+                    Protection = ProtectionChecks.For(ConnectionState.Connected, mode) with { CheckedAt = now },
                     Traffic = new TrafficStats(latency, 18.9, 4.0),
                     // Выход — сам сервер: в демо-данных адреса серверов — IP из диапазонов документации.
                     Exit = new ExitInfo(server.Host, server.City, "дата-центр", "AS64500", _status.Exit.DirectIp),
+                };
+            }
+            else if (mode == ConnectionMode.Proxy)
+            {
+                // В режиме прокси блока при обрыве нет: перекрывать интернет нечем — это ошибка подключения.
+                _status = (_status with { ErrorCode = ProxyServerNotResponding }).MoveTo(ConnectionState.Error, now) with
+                {
+                    Traffic = TrafficStats.Empty,
+                    Exit = new ExitInfo(null, null, null, null, _status.Exit.DirectIp),
                 };
             }
             else
@@ -124,7 +139,13 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
 
         if (blocked)
         {
-            Log(JournalLevel.Warning, "service", $"server «{server.Name}» not responding  traffic blocked, waiting for user");
+            Log(JournalLevel.Warning, "service", mode == ConnectionMode.Proxy
+                ? $"server «{server.Name}» not responding  proxy stopped"
+                : $"server «{server.Name}» not responding  traffic blocked, waiting for user");
+        }
+        else if (mode == ConnectionMode.Proxy)
+        {
+            Log(JournalLevel.Info, "service", "proxy up  127.0.0.1  system proxy set  killswitch unavailable");
         }
         else
         {
@@ -245,7 +266,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time) : IGatewayClient, 
             _status = _status with
             {
                 CaptivePauseUntil = null,
-                Protection = ProtectionChecks.For(_status.State) with { CheckedAt = connected ? time.GetUtcNow() : null },
+                Protection = ProtectionChecks.For(_status.State, _status.Mode) with { CheckedAt = connected ? time.GetUtcNow() : null },
             };
         }
 

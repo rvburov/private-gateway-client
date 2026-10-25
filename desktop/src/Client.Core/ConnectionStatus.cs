@@ -60,6 +60,16 @@ public sealed record ProtectionChecks(
             new(CheckState.Stopped, CheckState.Ok, CheckState.Ok, CheckState.Ok, null),
         _ => new(CheckState.Off, CheckState.Off, CheckState.Off, CheckState.Off, null),
     };
+
+    /// <summary>
+    /// Проверки с учетом режима: в режиме «Только прокси» защита неполная — через прокси идут только
+    /// программы, которые его используют, DNS — частично, IPv6 не контролируется, блока при обрыве нет.
+    /// </summary>
+    public static ProtectionChecks For(ConnectionState state, ConnectionMode mode) =>
+        mode == ConnectionMode.Proxy && state != ConnectionState.Off
+            ? new(state == ConnectionState.Connected ? CheckState.Warning : CheckState.Waiting,
+                CheckState.Warning, CheckState.Warning, CheckState.Warning, null)
+            : For(state);
 }
 
 /// <summary>Скорость и задержка туннеля.</summary>
@@ -94,6 +104,9 @@ public sealed record ConnectionStatus(
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;
 
+    /// <summary>Подключено в режиме «Только прокси»: защищен не весь трафик (доска 17).</summary>
+    public bool IsProxy => Mode == ConnectionMode.Proxy && State == ConnectionState.Connected;
+
     /// <summary>Начальное состояние: защита выключена.</summary>
     public static ConnectionStatus Initial(DateTimeOffset now) => new(
         ConnectionState.Off, ConnectionMode.Vpn, null, now, 0, ProtectionChecks.For(ConnectionState.Off),
@@ -104,7 +117,7 @@ public sealed record ConnectionStatus(
     {
         State = ConnectionStateMachine.Move(State, state),
         Since = now,
-        Protection = ProtectionChecks.For(state),
+        Protection = ProtectionChecks.For(state, Mode),
         Attempt = state == ConnectionState.Reconnecting ? Attempt + 1 : 0,
         ErrorCode = state == ConnectionState.Error ? ErrorCode : null,
     };

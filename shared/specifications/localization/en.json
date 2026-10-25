@@ -632,5 +632,10 @@
   "about.licenses.text": "The app is built on open-source components; their licenses allow this use.",
   "about.privacy": "Privacy policy",
   "about.privacy.text": "Private Gateway Client collects no telemetry and sends the developer nothing about you or your connections.\n\nThe app talks only to the servers you added, to your subscription addresses (by default only through the VPN) and, when checking for leaks, to address-checking services.\n\nServer keys and subscription addresses live in the OS store, logs stay on this computer without secrets. The support report is anonymized, and you send it yourself.",
-  "about.report": "Report a problem"
+  "about.report": "Report a problem",
+  "status.proxy.title": "Proxy on",
+  "status.proxy.sub": "Not all traffic is protected",
+  "checked.proxy": "Kill switch is unavailable in proxy mode",
+  "ip.meta.proxy": "only for apps using the proxy",
+  "power.label.proxy": "Proxy"
 }

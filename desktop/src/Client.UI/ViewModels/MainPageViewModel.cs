@@ -101,7 +101,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string StatusTitle => Loc.Instance[$"status.{StateKey}.title"];
 
-    public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"] : Status.State switch
+    public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"]
+        : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
+        : Status.State switch
     {
         ConnectionState.Connected => _catalog.Selected is { } server && !ServerFacts.IsEncrypted(server)
             ? Loc.Instance["status.connected.subPlain"]
@@ -220,6 +222,12 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 return Loc.Instance["checked.running"];
             }
 
+            // В режиме прокси главное, что надо знать, — блока при обрыве нет (доска 17).
+            if (Status.IsProxy)
+            {
+                return Loc.Instance["checked.proxy"];
+            }
+
             var at = Status.Protection.CheckedAt;
             if (at is null)
             {
@@ -273,6 +281,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string WebIpMeta => Status.IsPaused ? Loc.Instance["ip.meta.paused"] : Status.State switch
     {
+        ConnectionState.Connected when Status.IsProxy => string.Join(" · ",
+            new[] { Status.Exit.City, Loc.Instance["ip.meta.proxy"] }.Where(s => !string.IsNullOrEmpty(s))),
         ConnectionState.Connected => string.Join(" · ",
             new[] { Status.Exit.City, Status.Exit.NetworkType, Status.Exit.Asn }.Where(s => !string.IsNullOrEmpty(s))),
         ConnectionState.Off => Loc.Instance["ip.meta.off"],
@@ -402,7 +412,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public void Dispose() => _clock.Stop();
 
-    private string StateKey => Status.IsPaused ? "paused" : Status.State.ToString().ToLowerInvariant();
+    private string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.State.ToString().ToLowerInvariant();
 
     private void Refresh()
     {

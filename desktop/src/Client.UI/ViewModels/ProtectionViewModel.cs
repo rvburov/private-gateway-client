@@ -47,11 +47,12 @@ public sealed partial class ProtectionViewModel : ObservableObject
 
     /// <summary>Подпись под кнопкой.</summary>
     public string Label => Status.IsPaused ? Loc.Instance["power.label.paused"]
+        : Status.IsProxy ? Loc.Instance["power.label.proxy"]
         : !HasServer && Status.State == ConnectionState.Off ? Loc.Instance["power.label.noServer"]
         : Loc.Instance["power.label." + Status.State.ToString().ToLowerInvariant()];
 
     /// <summary>Знак внутри щита: ключ иконки Icon.Mark.*.</summary>
-    public string Mark => Status.IsPaused ? "Icon.Mark.Alert" : Status.State switch
+    public string Mark => Status.IsPaused || Status.IsProxy ? "Icon.Mark.Alert" : Status.State switch
     {
         ConnectionState.Connected => "Icon.Mark.Ok",
         ConnectionState.Connecting or ConnectionState.Reconnecting => "Icon.Mark.Wait",

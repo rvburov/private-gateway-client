@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Infrastructure.Demo;
 
@@ -49,6 +51,39 @@ public class SimulatedGatewayClientTests
         status.ServerId.ShouldBe("tr", "другой сервер сам не выбирается");
         status.Exit.Ip.ShouldBeNull();
         status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Blocked));
+    }
+
+    [Fact]
+    public async Task Proxy_mode_comes_from_settings_with_partial_checks_and_no_block()
+    {
+        var time = new FakeTimeProvider();
+        var settings = new SettingsService(new MemorySettings());
+        settings.Update(s => s with { Mode = ConnectionMode.Proxy });
+        using var gateway = new SimulatedGatewayClient(time, settings);
+
+        var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        (gateway.Status.Mode, gateway.Status.Protection.AllTraffic).ShouldBe((ConnectionMode.Proxy, CheckState.Waiting));
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+
+        var status = gateway.Status;
+        (status.State, status.IsProxy).ShouldBe((ConnectionState.Connected, true));
+        status.Protection.ShouldBe(new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, time.GetUtcNow()));
+        gateway.Journal.ShouldContain(e => e.Message.Contains("killswitch unavailable", StringComparison.Ordinal));
+
+        connect = gateway.ConnectAsync(Server with { Id = "tr", LatencyMs = null }, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+
+        status = gateway.Status;
+        (status.State, status.ErrorCode).ShouldBe((ConnectionState.Error, SimulatedGatewayClient.ProxyServerNotResponding), "перекрывать интернет нечем");
+        status.IsProxy.ShouldBeFalse();
+        await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn });
+        connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+        (gateway.Status.Mode, gateway.Status.IsProxy).ShouldBe((ConnectionMode.Vpn, false));
     }
 
     [Fact]
@@ -152,7 +187,7 @@ public class SimulatedGatewayClientTests
 
         added.Select(e => e.Message).ShouldBe(
         [
-            "connect  server «Нидерланды 01»",
+            "connect  server «Нидерланды 01»  mode=vpn",
             "route v4/v6 default -> tun",
             "killswitch on  allow=203.0.113.24",
             "tunnel up  server «Нидерланды 01»",
@@ -249,5 +284,14 @@ public class SimulatedGatewayClientTests
         await connect;
         gateway.Status.State.ShouldBe(ConnectionState.Connected);
         return gateway;
+    }
+
+    private sealed class MemorySettings : ISettingsStore
+    {
+        private AppSettings _saved = AppSettings.Default;
+
+        public AppSettings Load() => _saved;
+
+        public void Save(AppSettings settings) => _saved = settings;
     }
 }

@@ -258,6 +258,29 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Proxy_mode_is_amber_and_says_what_is_not_protected()
+    {
+        var (window, shell) = Open();
+        Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
+        await Connect(shell);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        Text(window, "StatusTitle").ShouldBe("Прокси включен");
+        main.StatusSubtitle.ShouldBe("Защищен не весь трафик");
+        main.Chips.Select(c => c.Value).ShouldBe(["только прокси", "частично", "не контролируется", "недоступен"]);
+        main.CheckedText.ShouldBe("Блок при обрыве в режиме прокси недоступен");
+        main.HasCheckAction.ShouldBeTrue();
+        main.WebIpMeta.ShouldEndWith("только для программ через прокси");
+        (shell.Protection.Tone, shell.Protection.Label, shell.Protection.Mark).ShouldBe((Tone.Partial, "Прокси", "Icon.Mark.Alert"));
+        main.HasBypass.ShouldBeFalse();
+        Snapshot(window, "main-proxy");
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
+        Text(window, "StatusTitle").ShouldNotBe("Прокси включен");
+    }
+
+    [AvaloniaFact]
     public async Task Shield_during_the_pause_brings_protection_back_instead_of_turning_it_off()
     {
         var (_, shell) = Open();
