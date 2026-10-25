@@ -7,7 +7,7 @@
              x:DataType="vm:ProblemPageViewModel">
   <!-- Ошибки службы — docs/design, доска 16. Окно работает: островок виден, уйти можно на любой экран. -->
   <UserControl.Styles>
-    <!-- Знак ошибки: красный щит («Служба не запущена») или оранжевый замок («Нужны права») -->
+    <!-- Знак ошибки: красный щит («Служба не запущена»), оранжевый замок («Нужны права») или треугольник («Другой VPN») -->
     <Style Selector="Border.mark">
       <Setter Property="Width" Value="72" />
       <Setter Property="Height" Value="72" />
@@ -19,10 +19,10 @@
       <Setter Property="StrokeThickness" Value="1.9" />
       <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
     </Style>
-    <Style Selector="Border.mark.admin">
+    <Style Selector="Border.mark.caution">
       <Setter Property="Background" Value="{StaticResource PgBrush.Status.Caution.Tint}" />
     </Style>
-    <Style Selector="Border.mark.admin c|Icon">
+    <Style Selector="Border.mark.caution c|Icon">
       <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Caution.Text}" />
     </Style>
     <!-- Строка факта: кружок, что проверено, моноширинный итог справа -->
@@ -60,10 +60,11 @@
       </Grid>
 
       <StackPanel Margin="24,20,24,0" Spacing="12">
-        <Border Classes="mark" Classes.admin="{Binding IsAdmin}">
+        <Border Classes="mark" Classes.caution="{Binding IsCaution}">
           <Panel>
-            <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Off}" Width="34" Height="34" IsVisible="{Binding !IsAdmin}" />
+            <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Off}" Width="34" Height="34" IsVisible="{Binding IsService}" />
             <c:Icon Data="{StaticResource Icon.Lock}" Width="34" Height="34" IsVisible="{Binding IsAdmin}" />
+            <c:Icon Data="{StaticResource Icon.Warning}" Width="34" Height="34" IsVisible="{Binding IsConflict}" />
           </Panel>
         </Border>
         <TextBlock x:Name="ProblemTitle" Text="{Binding Title}" FontSize="{StaticResource PgFontSize.Display}" FontWeight="Bold"
@@ -85,8 +86,13 @@
           </ItemsControl>
         </Border>
 
-        <!-- По макету: главная — «Установить службу» («Запросить еще раз»); без установки главная — режим прокси -->
+        <!-- По макету: главная — «Установить службу» («Запросить еще раз»); без установки главная — режим прокси;
+             у «Другого VPN» — «проверить снова» и «Продолжить (не рекомендуется)» -->
         <StackPanel Spacing="12" Margin="0,16,0,0">
+          <Button x:Name="Retry" Classes="primary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding IsConflict}"
+                  Command="{Binding RetryCommand}" Content="{l:L problem.conflict.retry}" />
+          <Button x:Name="Continue" Classes="secondary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding IsConflict}"
+                  Command="{Binding ContinueCommand}" Content="{l:L problem.conflict.continue}" />
           <Button x:Name="Install" Classes="primary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding CanInstall}"
                   Command="{Binding InstallCommand}" Content="{Binding InstallText}" />
           <Button x:Name="UseProxy" Classes.primary="{Binding !CanInstall}" Classes.secondary="{Binding CanInstall}" Height="50"

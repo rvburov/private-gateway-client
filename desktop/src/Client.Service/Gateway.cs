@@ -17,7 +17,8 @@ namespace PrivateGateway.Client.Service;
 /// Что умеет эта служба. <paramref name="CanVpn"/> — запущена с правами администратора;
 /// <paramref name="LatencyTarget"/> — проверочный адрес задержки (в тестах — свой сайт);
 /// <paramref name="SingBoxPath"/> — TUN режима VPN; <paramref name="KillSwitch"/> — блок при обрыве
-/// этой ОС, без него режима VPN нет; <paramref name="TunnelNetns"/> — TUN в сетевом пространстве Linux (тесты).
+/// этой ОС, без него режима VPN нет; <paramref name="TunnelNetns"/> — TUN в сетевом пространстве Linux (тесты);
+/// <paramref name="Routes"/> — маршруты машины, чтобы найти чужой VPN; null — проверки нет.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -25,7 +26,8 @@ public sealed record GatewayOptions(
     Uri LatencyTarget,
     string? SingBoxPath = null,
     IKillSwitch? KillSwitch = null,
-    string? TunnelNetns = null);
+    string? TunnelNetns = null,
+    IRouteTable? Routes = null);
 
 /// <summary>
 /// Защита на стороне службы: запрос Connect — конфиг ядра собирается здесь же из описания сервера
@@ -175,6 +177,18 @@ public sealed class Gateway : IAsyncDisposable
             return await RejectAsync(serverId, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", cancellationToken).ConfigureAwait(false);
         }
 
+        // Чужой туннель с маршрутом ко всему интернету: два VPN сразу — трафик может пойти мимо нашего.
+        if (vpn && OtherVpnAdapters() is { Count: > 0 } other)
+        {
+            if (!request.AllowOtherVpn)
+            {
+                return await RejectAsync(serverId, core.Mode, ErrorCodes.OtherVpn,
+                    $"Работает другой VPN: маршрут ко всему интернету через {string.Join(", ", other)}", cancellationToken).ConfigureAwait(false);
+            }
+
+            _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({string.Join(", ", other)}) — подключение по выбору пользователя");
+        }
+
         IReadOnlyList<IPAddress> addresses = [];
         if (vpn && (addresses = await ResolveAsync(core, cancellationToken).ConfigureAwait(false)).Count == 0)
         {
@@ -240,6 +254,28 @@ public sealed class Gateway : IAsyncDisposable
 
         _ = WaitReadyAsync(session, core.Connection.ProxyPort, TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds));
         return new V1.ConnectReply { Accepted = true };
+    }
+
+    /// <summary>
+    /// Адаптеры чужих туннелей с маршрутом ко всему интернету — свой туннель не в счет; пусто — чужого
+    /// VPN нет. Маршрутов служба не читает или прочитать не вышло — null: проверки нет (это в журнале).
+    /// </summary>
+    public IReadOnlyList<string>? OtherVpnAdapters()
+    {
+        if (_options.Routes is not { } routes)
+        {
+            return null;
+        }
+
+        try
+        {
+            return OtherVpn.Find(routes.DefaultRoutes(), SingBoxConfigBuilder.InterfaceName);
+        }
+        catch (IOException e)
+        {
+            _journal.Add(JournalLevel.Warning, "service", "Маршруты не прочитаны, другой VPN не проверен: " + e.Message);
+            return null;
+        }
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)

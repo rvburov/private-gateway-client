@@ -83,6 +83,15 @@ public static partial class ServiceHost
         : OperatingSystem.IsLinux() ? NftablesKillSwitch.ForThisMachine()
         : null;
 
+    /// <summary>
+    /// Маршруты этой ОС — найти чужой VPN: Windows — таблица маршрутов, Linux — <c>ip</c>; macOS — еще
+    /// нет, проверки там нет. Читать маршруты можно и без прав: проверка есть и у службы пользователя.
+    /// </summary>
+    public static IRouteTable? Routes() =>
+        OperatingSystem.IsWindows() ? new WindowsRouteTable()
+        : OperatingSystem.IsLinux() ? IpRouteTable.ForThisMachine()
+        : null;
+
     /// <summary>Сведения для GetServiceInfo: версии службы и контракта, ОС, ядра — какие есть и какой версии.</summary>
     public static V1.ServiceInfo Info(string? xray, string? singBox = null)
     {

@@ -158,6 +158,8 @@ message ConnectRequest {
   ProtectionSettings protection = 3;
   RoutingSettings routing = 4;
   ConnectionSettings connection = 5;
+  // Режим VPN: подключиться, хотя работает другой VPN (PGC-NET-010), — «Продолжить (не рекомендуется)».
+  bool allow_other_vpn = 6;
 }
 
 // «Подключение и ядро» (доска 6): ядро, TUN, соединение, режим прокси.

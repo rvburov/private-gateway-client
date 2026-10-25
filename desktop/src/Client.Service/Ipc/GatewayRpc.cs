@@ -95,6 +95,17 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
             State = status.Protection.AllTraffic.ToContract(),
             Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy" : string.Empty,
         });
+        if (gateway.OtherVpnAdapters() is { } other)
+        {
+            report.Results.Add(new V1.CheckResult
+            {
+                Id = DiagnosticCheck.OtherVpn.ToContractId(),
+                State = other.Count == 0 ? V1.CheckState.Ok : V1.CheckState.Warning,
+                Reason = other.Count == 0 ? string.Empty : "vpn_adapter",
+                Details = string.Join(", ", other),
+            });
+        }
+
         return Task.FromResult(report);
     }
 

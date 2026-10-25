@@ -165,6 +165,9 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Прислать то же состояние еще раз — как служба после переподключения потока.</summary>
         public void Resend() => StatusChanged?.Invoke(this, Status);
 
+        /// <summary>Выбрано «Продолжить (не рекомендуется)» на «Работает другой VPN»; отключение выбор снимает.</summary>
+        public bool OtherVpnAllowed { get; private set; }
+
         public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default)
         {
             var connecting = (Status with { Mode = settings().Mode, ServerId = server.Id }).MoveTo(ConnectionState.Connecting, time.GetUtcNow());
@@ -173,8 +176,15 @@ public abstract class WindowHarness : IDisposable
             return Task.CompletedTask;
         }
 
+        public Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default)
+        {
+            OtherVpnAllowed = true;
+            return ConnectAsync(server, cancellationToken);
+        }
+
         public Task DisconnectAsync(CancellationToken cancellationToken = default)
         {
+            OtherVpnAllowed = false;
             Raise(Status.MoveTo(ConnectionState.Off, time.GetUtcNow()));
             return Task.CompletedTask;
         }

@@ -36,6 +36,9 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     private readonly List<JournalEntry> _journal = [];
     private ConnectionStatus _status;
 
+    // «Продолжить (не рекомендуется)» на «Работает другой VPN»: до отключения другой VPN не мешает подключаться.
+    private volatile bool _allowOtherVpn;
+
     /// <param name="channel">Канал до службы (<see cref="IpcChannel"/>); клиент его закрывает.</param>
     /// <param name="service">Какая это служба: установленная или пользователя.</param>
     /// <param name="definitions">Описание сервера с ключами по id — из хранилища (ключи — из хранилища ОС).</param>
@@ -96,11 +99,17 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             Protection = settings.ToContract(),
             Connection = settings.ToConnection(),
             Routing = settings.ToRouting(),
+            AllowOtherVpn = _allowOtherVpn,
         };
         try
         {
-            // Отказ службы приходит ее же состоянием «Ошибка» в WatchStatus — ответ здесь не нужен.
-            await _client.ConnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
+            // Отказ — состояние службы «Ошибка». Поток WatchStatus принесет его позже ответа, а окно решает
+            // сразу после подключения: состояние берется у службы здесь же.
+            var reply = await _client.ConnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!reply.Accepted)
+            {
+                Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
+            }
         }
         catch (RpcException)
         {
@@ -108,8 +117,15 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    public Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default)
+    {
+        _allowOtherVpn = true;
+        return ConnectAsync(server, cancellationToken);
+    }
+
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
+        _allowOtherVpn = false;
         try
         {
             await _client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -231,13 +247,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                 using var call = _client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: _stopping);
                 while (await call.ResponseStream.MoveNext(_stopping).ConfigureAwait(false))
                 {
-                    var status = call.ResponseStream.Current.ToCore();
-                    lock (_gate)
-                    {
-                        _status = status;
-                    }
-
-                    StatusChanged?.Invoke(this, status);
+                    Apply(call.ResponseStream.Current.ToCore());
                 }
             }
             catch (RpcException)
@@ -252,6 +262,16 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             Lost();
             await Pause().ConfigureAwait(false);
         }
+    }
+
+    private void Apply(ConnectionStatus status)
+    {
+        lock (_gate)
+        {
+            _status = status;
+        }
+
+        StatusChanged?.Invoke(this, status);
     }
 
     /// <summary>

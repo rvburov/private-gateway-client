@@ -17,8 +17,8 @@ using PrivateGateway.Client.UI.Views;
 namespace PrivateGateway.Client.Tests.UI;
 
 /// <summary>
-/// Ошибки службы (доска 16): «Служба не запущена» и «Нужны права администратора», выход через режим
-/// прокси со службой пользователя. Служба — подделка за настоящим <see cref="GatewayHost"/>; снимки —
+/// Ошибки службы (доска 16): «Служба не запущена», «Нужны права администратора» и «Работает другой
+/// VPN»; выход через установку службы, режим прокси со службой пользователя, проверку заново. Служба — подделка за настоящим <see cref="GatewayHost"/>; снимки —
 /// для сверки с docs/design/screens/16-errors.png.
 /// </summary>
 public sealed class ProblemPageTests : WindowHarness
@@ -29,6 +29,10 @@ public sealed class ProblemPageTests : WindowHarness
     private readonly HashSet<ServiceAddress> _answering = [];
     private readonly FakeLauncher _launcher;
     private ScriptedService? _service;
+    private ScriptedService? _installed;
+
+    // Установленная служба находит чужой VPN, пока его не выключат или не выберут «Продолжить».
+    private bool _otherVpn;
 
     public ProblemPageTests() => _launcher = new FakeLauncher(() => _answering.Add(User));
 
@@ -204,6 +208,51 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Other_vpn_screen_checks_again_and_goes_on_only_by_choice()
+    {
+        Installer.IsAvailable = true;
+        _answering.Add(Installed);
+        _otherVpn = true;
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Problem);
+
+        var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
+        Text(window, "ProblemTitle").ShouldBe("Работает другой VPN");
+        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Чужой сетевой адаптер: активен", "Маршрут по умолчанию: занят"]);
+        (Find<Button>(window, "Retry").Content, Find<Button>(window, "Continue").Content)
+            .ShouldBe(("Я отключил его — проверить снова", "Продолжить (не рекомендуется)"));
+        (Find<Button>(window, "Install").IsVisible, Find<Button>(window, "UseProxy").IsVisible, Find<Button>(window, "Cancel").IsVisible)
+            .ShouldBe((false, false, false), "ни установка, ни режим прокси другой VPN не уберут");
+        Find<Button>(window, "Details").Content.ShouldBe("Подробнее в журнале · код PGC-NET-010");
+        Snapshot(window, "problem-other-vpn");
+
+        Press(window, "Retry");
+        WaitFor(() => shell.Toast.IsVisible);
+
+        shell.Toast.Text.ShouldBe("Другой VPN все еще работает — отключите его или продолжите на свой риск");
+        shell.CurrentKey.ShouldBe(Pages.Problem);
+
+        _otherVpn = false;
+        Press(window, "Retry");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+
+        Service<IGatewayClient>().Status.State.ShouldBe(ConnectionState.Connected);
+        _installed!.OtherVpnAllowed.ShouldBeFalse("проверили снова — подключение без исключений");
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        _otherVpn = true;
+        Time.Advance(TimeSpan.FromSeconds(1));
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Problem);
+
+        Press(window, "Continue");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+
+        (Service<IGatewayClient>().Status.State, _installed.OtherVpnAllowed).ShouldBe((ConnectionState.Connected, true), "подключение — по выбору пользователя");
+    }
+
+    [AvaloniaFact]
     public void Proxy_without_servers_goes_to_adding_one()
     {
         var (window, shell) = Open(gateway: sp => new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, Time),
@@ -227,7 +276,15 @@ public sealed class ProblemPageTests : WindowHarness
             // Служба пользователя, как настоящая: прокси подключает сразу, VPN — отказ «нужны права»; установленная подключает все.
             return new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, Time),
                 address => address.System
-                    ? new ScriptedService(Time, Settings, ServiceKind.Installed) { Outcome = c => c.MoveTo(ConnectionState.Connected, Time.GetUtcNow()) }
+                    ? _installed = new ScriptedService(Time, Settings, ServiceKind.Installed)
+                    {
+                        Outcome = connecting => _otherVpn && !_installed!.OtherVpnAllowed
+                            ? (connecting with { ErrorCode = ErrorCodes.OtherVpn }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+                            {
+                                Protection = ProtectionChecks.For(ConnectionState.Off),
+                            }
+                            : connecting.MoveTo(ConnectionState.Connected, Time.GetUtcNow()),
+                    }
                     : _service = new ScriptedService(Time, Settings, ServiceKind.User)
                 {
                     Outcome = connecting => connecting.Mode == ConnectionMode.Vpn

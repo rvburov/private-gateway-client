@@ -20,6 +20,14 @@ public interface IGatewayClient
 
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// «Продолжить (не рекомендуется)» на «Работает другой VPN»: подключиться, хотя служба нашла чужой
+    /// туннель. Выбор действует до отключения — переподключения и смена настроек на ходу его не спрашивают
+    /// снова. Где чужой VPN не проверяется (имитация), — обычное подключение.
+    /// </summary>
+    Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default) =>
+        ConnectAsync(server, cancellationToken);
+
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
     /// <summary>

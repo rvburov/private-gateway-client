@@ -100,6 +100,18 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         Missing(server.Id, _settings().Mode);
     }
 
+    public async Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)
+        {
+            await service.ConnectDespiteOtherVpnAsync(server, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        Missing(server.Id, _settings().Mode);
+    }
+
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
         if (Current is { } service)

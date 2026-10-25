@@ -138,7 +138,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     /// <summary>Новая ошибка службы — экран ошибки, на каком бы экране ни был.</summary>
     private void ShowProblem(ConnectionStatus status)
     {
-        if (status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired }
+        if (status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn }
             || status.Since == _problemSince)
         {
             return;

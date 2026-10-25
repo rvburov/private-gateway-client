@@ -2,9 +2,11 @@ using System.Diagnostics;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Service;
+using PrivateGateway.Client.Network.SingBox;
 
 namespace PrivateGateway.Client.Tests.Network;
 
@@ -54,6 +56,48 @@ public sealed class ServiceGatewayClientTests
 
         await WaitFor(() => client.Status.State == ConnectionState.Error);
         client.Status.ErrorCode.ShouldBe(code, known ? "служба без прав — VPN не будет" : "сервер удален — служба отказывает");
+    }
+
+    [Fact]
+    public async Task Other_vpn_stops_vpn_mode_until_the_user_goes_on_and_the_choice_ends_with_disconnect()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        var routes = new FakeRoutes { Routes = [new DefaultRoute("eth0", IsTunnel: false), new DefaultRoute("wg0", IsTunnel: true)] };
+
+        // Блок и туннель — подделки и не нужны: имя сервера не найдется, подключение остановится на поиске адреса.
+        await using var service = await RunningService.StartAsync(options: o => o with
+        {
+            CanVpn = true, SingBoxPath = XrayKit.Xray, KillSwitch = new NoKillSwitch(), Routes = routes,
+        });
+        var (definition, _) = XrayKit.Pair("vless", 443);
+        definition = definition with { Host = "server.invalid" };
+        using var client = Client(service.Endpoint, definition, Settings(XrayKit.FreePort()) with { Mode = ConnectionMode.Vpn });
+
+        await client.ConnectAsync(Profile(definition), Ct);
+
+        (client.Status.State, client.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.OtherVpn), "отказ виден сразу: окно решает по нему");
+        (await client.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn]
+            .ShouldBe(new DiagnosticResult(DiagnosticCheck.OtherVpn, CheckState.Warning, "vpn_adapter"));
+
+        await client.ConnectDespiteOtherVpnAsync(Profile(definition), Ct);
+
+        client.Status.ErrorCode.ShouldBe(ErrorCodes.ServerNotFound, "другой VPN пропущен — подключение дошло до адреса сервера");
+        service.Journal.Tail(50).ShouldContain(e => e.Message == "Работает другой VPN (wg0) — подключение по выбору пользователя");
+
+        await client.ConnectAsync(Profile(definition), Ct);
+
+        client.Status.ErrorCode.ShouldBe(ErrorCodes.ServerNotFound, "выбор держится и при переподключении");
+
+        await client.DisconnectAsync(Ct);
+        await client.ConnectAsync(Profile(definition), Ct);
+
+        client.Status.ErrorCode.ShouldBe(ErrorCodes.OtherVpn, "защиту выключили — другой VPN проверяется снова");
+
+        if (SingBoxConfigBuilder.InterfaceName is { Length: > 0 } own)
+        {
+            routes.Routes = [new DefaultRoute("eth0", IsTunnel: false), new DefaultRoute(own, IsTunnel: true)];
+            (await client.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn]!.State.ShouldBe(CheckState.Ok, "свой туннель — не чужой VPN");
+        }
     }
 
     [Fact]
@@ -252,6 +296,29 @@ public sealed class ServiceGatewayClientTests
     private static string MissingEndpoint() => OperatingSystem.IsWindows()
         ? "PrivateGateway.Missing." + Guid.NewGuid().ToString("N")
         : Path.Combine(Path.GetTempPath(), "pg-missing-" + Guid.NewGuid().ToString("N")[..8], "ipc.sock");
+
+    private sealed class FakeRoutes : IRouteTable
+    {
+        public IReadOnlyList<DefaultRoute> Routes { get; set; } = [];
+
+        public IReadOnlyList<DefaultRoute> DefaultRoutes() => Routes;
+    }
+
+    /// <summary>Блок при обрыве, который ничего не ставит: тест не трогает брандмауэр машины.</summary>
+    private sealed class NoKillSwitch : IKillSwitch
+    {
+        public string Name => "подделка";
+
+        public bool IsEnabled => false;
+
+        public void Enable(KillSwitchPolicy policy)
+        {
+        }
+
+        public void Disable()
+        {
+        }
+    }
 
     /// <summary>Ждать условия до 20 с: состояние приходит из потока службы.</summary>
     private static async Task WaitFor(Func<bool> condition)

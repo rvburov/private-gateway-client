@@ -5,6 +5,7 @@ using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -15,10 +16,12 @@ namespace PrivateGateway.Client.UI.ViewModels;
 public sealed record ProblemFact(string Label, string Value, bool IsBad = false, bool IsWarning = false);
 
 /// <summary>
-/// Ошибки службы по макету (доска 16): «Служба не запущена» (PGC-SVC-001) и «Нужны права
-/// администратора» (PGC-SVC-004 — работает служба пользователя, а просили VPN). Выход — установить
-/// службу (окно просит у ОС права: «Установить службу», «Запросить еще раз») или режим прокси через
-/// службу пользователя: окно запускает ее само. Окно при этом работает: островок виден.
+/// Ошибки службы по макету (доска 16): «Служба не запущена» (PGC-SVC-001), «Нужны права
+/// администратора» (PGC-SVC-004 — работает служба пользователя, а просили VPN) и «Работает другой VPN»
+/// (PGC-NET-010 — служба нашла чужой туннель с маршрутом ко всему интернету). Выход из первых двух —
+/// установить службу (окно просит у ОС права: «Установить службу», «Запросить еще раз») или режим прокси
+/// через службу пользователя: окно запускает ее само. Из третьего — проверить снова, когда чужой VPN
+/// выключен, или подключиться вопреки ему. Окно при этом работает: островок виден.
 /// </summary>
 public sealed partial class ProblemPageViewModel : ObservableObject
 {
@@ -38,10 +41,10 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         _catalog = catalog;
         _navigator = navigator;
         _toast = toast;
-        Code = gateway.Status.ErrorCode is ErrorCodes.AdminRequired ? ErrorCodes.AdminRequired : ErrorCodes.ServiceNotRunning;
+        Code = gateway.Status.ErrorCode is ErrorCodes.AdminRequired or ErrorCodes.OtherVpn ? gateway.Status.ErrorCode : ErrorCodes.ServiceNotRunning;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() =>
         {
-            if (status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired })
+            if (status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn })
             {
                 Code = status.ErrorCode;
             }
@@ -51,18 +54,37 @@ public sealed partial class ProblemPageViewModel : ObservableObject
 
     /// <summary>Код ошибки, которую показывает экран; меняется вместе с новой ошибкой службы.</summary>
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(IsAdmin), nameof(Title), nameof(Text), nameof(Facts), nameof(HasCancel), nameof(DetailsText), nameof(InstallText),
-        nameof(HasProxy))]
+    [NotifyPropertyChangedFor(nameof(IsAdmin), nameof(IsConflict), nameof(IsCaution), nameof(IsService), nameof(Title), nameof(Text), nameof(Facts),
+        nameof(HasCancel), nameof(DetailsText), nameof(InstallText), nameof(CanInstall), nameof(HasProxy))]
     public partial string Code { get; private set; }
 
-    /// <summary>«Нужны права администратора» — оранжевый замок; иначе «Служба не запущена» — красный щит.</summary>
+    /// <summary>«Нужны права администратора» — оранжевый замок.</summary>
     public bool IsAdmin => Code == ErrorCodes.AdminRequired;
 
-    public string Title => Loc.Instance[IsAdmin ? "problem.admin.title" : "problem.service.title"];
+    /// <summary>«Работает другой VPN» — оранжевый треугольник.</summary>
+    public bool IsConflict => Code == ErrorCodes.OtherVpn;
 
-    public string Text => Loc.Instance[IsAdmin ? "problem.admin.text" : "problem.service.text"];
+    /// <summary>Знак оранжевый: беда не в службе, а в правах или другой программе.</summary>
+    public bool IsCaution => IsAdmin || IsConflict;
 
-    public IReadOnlyList<ProblemFact> Facts => IsAdmin
+    /// <summary>«Служба не запущена» — красный щит.</summary>
+    public bool IsService => !IsCaution;
+
+    public string Title => Loc.Instance[IsConflict ? "problem.conflict.title" : IsAdmin ? "problem.admin.title" : "problem.service.title"];
+
+    public string Text => Loc.Instance[IsConflict ? "problem.conflict.text" : IsAdmin ? "problem.admin.text" : "problem.service.text"];
+
+    /// <summary>
+    /// Факты по макету. У «Работает другой VPN» — адаптер и маршрут: служба считает чужим VPN туннель,
+    /// который держит маршрут ко всему интернету, — оба факта всегда верны; имя адаптера — в журнале.
+    /// </summary>
+    public IReadOnlyList<ProblemFact> Facts => IsConflict
+        ?
+        [
+            new(Loc.Instance["problem.fact.adapter"], Loc.Instance["problem.fact.adapter.active"], IsWarning: true),
+            new(Loc.Instance["problem.fact.route"], Loc.Instance["problem.fact.route.taken"], IsWarning: true),
+        ]
+        : IsAdmin
         ?
         [
             new(Loc.Instance["problem.fact.service"], Loc.Instance["problem.fact.service.user"], IsWarning: true),
@@ -79,21 +101,24 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// <summary>«Отмена» — только у «Нужны права администратора»: там уже есть рабочая служба.</summary>
     public bool HasCancel => IsAdmin;
 
-    /// <summary>Установить службу можно: Windows или Linux, файл службы рядом с программой. Нельзя — главная кнопка «режим прокси».</summary>
-    public bool CanInstall => _installer.IsAvailable;
+    /// <summary>
+    /// Установить службу можно: Windows или Linux, файл службы рядом с программой. Нельзя — главная кнопка
+    /// «режим прокси». Другому VPN установка не поможет.
+    /// </summary>
+    public bool CanInstall => _installer.IsAvailable && !IsConflict;
 
     /// <summary>«Установить службу» или, когда уже работает служба пользователя, «Запросить еще раз» (макет).</summary>
     public string InstallText => Loc.Instance[IsAdmin ? "problem.admin.retry" : "problem.install"];
 
     /// <summary>«Работать в режиме прокси»: на «Нужны права» с установкой его нет — по макету «Запросить еще раз» и «Отмена».</summary>
-    public bool HasProxy => !IsAdmin || !CanInstall;
+    public bool HasProxy => !IsConflict && (!IsAdmin || !CanInstall);
 
     /// <summary>«Подробнее в журнале · код PGC-SVC-001».</summary>
     public string DetailsText => Loc.Instance.Format("problem.details", Code);
 
     /// <summary>Идет запуск службы пользователя и подключение.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(UseProxyCommand), nameof(InstallCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UseProxyCommand), nameof(InstallCommand), nameof(RetryCommand), nameof(ContinueCommand))]
     public partial bool IsWorking { get; private set; }
 
     /// <summary>
@@ -157,6 +182,44 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         if (_gateway.Status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning })
         {
             _toast.Show(Loc.Instance["problem.proxy.failed"], ToastViewModel.LongDuration);
+            return;
+        }
+
+        _navigator.Navigate(Pages.Home);
+    }
+
+    /// <summary>
+    /// «Я отключил его — проверить снова»: подключение к выбранному серверу заново — служба проверяет
+    /// маршруты еще раз. Чужой VPN на месте — подсказка, экран остается; нет — главная.
+    /// </summary>
+    [RelayCommand(CanExecute = nameof(CanWork))]
+    private Task RetryAsync() => ConnectAndGoHomeAsync(_gateway.ConnectAsync);
+
+    /// <summary>«Продолжить (не рекомендуется)»: подключиться вопреки чужому VPN — до отключения защиты.</summary>
+    [RelayCommand(CanExecute = nameof(CanWork))]
+    private Task ContinueAsync() => ConnectAndGoHomeAsync(_gateway.ConnectDespiteOtherVpnAsync);
+
+    private async Task ConnectAndGoHomeAsync(Func<ServerProfile, CancellationToken, Task> connect)
+    {
+        if (_catalog.Selected is not { } server)
+        {
+            _navigator.Navigate(Pages.Add);
+            return;
+        }
+
+        IsWorking = true;
+        try
+        {
+            await connect(server, CancellationToken.None).ConfigureAwait(true);
+        }
+        finally
+        {
+            IsWorking = false;
+        }
+
+        if (_gateway.Status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.OtherVpn })
+        {
+            _toast.Show(Loc.Instance["problem.conflict.still"], ToastViewModel.LongDuration);
             return;
         }
 
