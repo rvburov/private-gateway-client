@@ -22,9 +22,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - uses: actions/setup-dotnet@v5
+      # Новейший SDK 10.0 по global.json. Свежий выпуск бывает уже объявлен, а файлы у Microsoft еще не готовы
+      # (ответ 409 на всех ОС, 2026-10-25), — тогда предыдущий выпуск: global.json берет любой 10.0.
+      - id: dotnet
+        uses: actions/setup-dotnet@v5
+        continue-on-error: true
         with:
           global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
 
       - name: Сборка
         run: dotnet build PrivateGateway.slnx -c Release
