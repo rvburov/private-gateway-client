@@ -138,8 +138,9 @@ public sealed partial class VpnModeTests
             .ShouldBe((SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name ? name : null, false, false, true));
         policy.Servers.ShouldBe([new KillSwitchEndpoint(IPAddress.Loopback, 8443)], "мимо туннеля — только адрес и порт сервера");
         var journal = service.Journal.Tail(ServiceJournal.Capacity).Select(e => e.Message).ToList();
+        // Ядро вышло раньше, чем прочитало конфиг (macOS), — «Broken pipe» вместо «вышел при запуске»: сверять по коду ошибки.
         journal.FindIndex(m => m.StartsWith("Блок при обрыве включен", StringComparison.Ordinal))
-            .ShouldBeLessThan(journal.FindIndex(m => m.Contains("вышел при запуске", StringComparison.Ordinal)), "блок — до запуска ядер");
+            .ShouldBeLessThan(journal.FindIndex(m => m.StartsWith(ErrorCodes.CoreFailed + ":", StringComparison.Ordinal)), "блок — до запуска ядер");
 
         await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
 
