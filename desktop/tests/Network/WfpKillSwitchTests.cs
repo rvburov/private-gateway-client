@@ -10,6 +10,8 @@ namespace PrivateGateway.Client.Tests.Network;
 /// <summary>
 /// Блок при обрыве на Windows: правила WFP — точным списком на любой ОС, сами фильтры — на Windows с
 /// правами администратора (в CI) только для одной программы, curl: машина CI остается в сети.
+/// Локальную сеть и DNS роутера проверяет только список правил: другой машины в частной сети у
+/// машины CI нет, а соединение со своим адресом Windows считает петлей.
 /// </summary>
 public sealed class WfpKillSwitchTests
 {
@@ -78,42 +80,41 @@ public sealed class WfpKillSwitchTests
 
         var curl = Path.Combine(Environment.SystemDirectory, "curl.exe");
         Assert.SkipUnless(File.Exists(curl), "нет curl.exe");
-        var (host, adapter) = PrivateAddress();
-        Assert.SkipWhen(host is null, "у машины нет адреса в частной сети");
-        using var server = new LocalSite("сервер", host);
-        using var lan = new LocalSite("локальная сеть", host);
-        using var dns = new LocalSite("dns", host, 53);
+        // Свой адрес Windows считает петлей — поэтому «внешний» сервер настоящий: github.com, доступный с машин CI.
+        // Имя разрешает тест, curl идет по адресу (--resolve): DNS ему не нужен.
+        var github = (await Dns.GetHostAddressesAsync("github.com", AddressFamily.InterNetwork, TestContext.Current.CancellationToken)).FirstOrDefault();
+        Assert.SkipWhen(github is null, "github.com не разрешился");
+        var adapter = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.OperationalStatus == OperationalStatus.Up
+            && n.NetworkInterfaceType != NetworkInterfaceType.Loopback && n.GetIPProperties().GatewayAddresses.Count > 0)?.Name;
         using var loopback = new LocalSite("петля");
         var killSwitch = new WfpKillSwitch(onlyProgram: curl);
         try
         {
-            (await Curl(curl, lan.Url)).ShouldBe("локальная сеть", "без блока сеть открыта");
+            (await Reaches(curl, github, 443)).ShouldBeTrue("без блока сеть открыта");
 
-            killSwitch.Enable(new KillSwitchPolicy(null, [new(host, server.Url.Port)]));
+            killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
 
             killSwitch.IsEnabled.ShouldBeTrue();
-            (await Curl(curl, server.Url)).ShouldBe("сервер", "к серверу — мимо туннеля");
-            (await Curl(curl, loopback.Url)).ShouldBe("петля");
-            (await Curl(curl, lan.Url)).ShouldBeNull("другой порт того же адреса — не сервер");
+            (await Reaches(curl, github, 443)).ShouldBeTrue("к серверу — мимо туннеля");
+            (await Reaches(curl, github, 80)).ShouldBeFalse("другой порт того же адреса — не сервер");
+            (await Run(curl, "-sS", "-m", "5", loopback.Url.ToString())).ShouldBe("петля");
 
-            killSwitch.Enable(new KillSwitchPolicy(null, [], AllowLan: true));
+            killSwitch.Enable(new KillSwitchPolicy(null, []));
 
-            (await Curl(curl, lan.Url)).ShouldBe("локальная сеть", "локальная сеть разрешена");
-            (await Curl(curl, dns.Url)).ShouldBeNull("DNS роутера мимо туннеля закрыт и при разрешенной локальной сети");
+            (await Reaches(curl, github, 443)).ShouldBeFalse("сервера в правилах больше нет — закрыто все");
 
-            killSwitch.Enable(new KillSwitchPolicy(null, [], AllowLan: true, BlockOutsideDns: false));
+            if (adapter is not null)
+            {
+                killSwitch.Enable(new KillSwitchPolicy(adapter, []));
 
-            (await Curl(curl, dns.Url)).ShouldBe("dns");
-
-            killSwitch.Enable(new KillSwitchPolicy(adapter, []));
-
-            (await Curl(curl, lan.Url)).ShouldBe("локальная сеть", "через адаптер туннеля — все");
+                (await Reaches(curl, github, 443)).ShouldBeTrue("через адаптер «туннеля» — все");
+            }
 
             killSwitch.Disable();
             killSwitch.Disable();
 
             killSwitch.IsEnabled.ShouldBeFalse();
-            (await Curl(curl, lan.Url)).ShouldBe("локальная сеть");
+            (await Reaches(curl, github, 80)).ShouldBeTrue("блок снят — сеть открыта");
         }
         finally
         {
@@ -121,30 +122,16 @@ public sealed class WfpKillSwitchTests
         }
     }
 
-    /// <summary>Адрес машины в частной сети IPv4 и имя его адаптера.</summary>
-    private static (IPAddress? Address, string? Adapter) PrivateAddress()
-    {
-        foreach (var adapter in NetworkInterface.GetAllNetworkInterfaces().Where(n => n.OperationalStatus == OperationalStatus.Up))
-        {
-            foreach (var unicast in adapter.GetIPProperties().UnicastAddresses)
-            {
-                var bytes = unicast.Address.GetAddressBytes();
-                if (unicast.Address.AddressFamily == AddressFamily.InterNetwork
-                    && (bytes[0] == 10 || (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) || (bytes[0] == 192 && bytes[1] == 168)))
-                {
-                    return (unicast.Address, adapter.Name);
-                }
-            }
-        }
+    /// <summary>Соединяется ли curl с github.com по адресу и порту (ответ HTTP любой).</summary>
+    private static async Task<bool> Reaches(string curl, IPAddress address, int port) =>
+        await Run(curl, "-sS", "-o", "NUL", "--connect-timeout", "5", "-m", "10", "--resolve", $"github.com:{port}:{address}",
+            $"{(port == 443 ? "https" : "http")}://github.com:{port}/") is not null;
 
-        return (null, null);
-    }
-
-    /// <summary>Страница через curl.exe; соединение не вышло (блок) — null.</summary>
-    private static async Task<string?> Curl(string curl, Uri url)
+    /// <summary>Вывод curl.exe; не соединился (блок) — null.</summary>
+    private static async Task<string?> Run(string curl, params string[] arguments)
     {
         var start = new ProcessStartInfo(curl) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
-        foreach (var argument in new[] { "-sS", "-m", "5", url.ToString() })
+        foreach (var argument in arguments)
         {
             start.ArgumentList.Add(argument);
         }
