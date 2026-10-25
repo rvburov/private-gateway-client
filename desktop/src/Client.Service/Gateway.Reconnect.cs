@@ -70,6 +70,11 @@ public sealed partial class Gateway
                 continue;
             }
 
+            if (OtherVpnStarted(session))
+            {
+                return;
+            }
+
             // Одна неудача бывает и у живого сервера — вторая проба сразу.
             if (await ProbeAsync().ConfigureAwait(false) || await ProbeAsync().ConfigureAwait(false))
             {
@@ -108,6 +113,11 @@ public sealed partial class Gateway
     {
         var status = Status;
         var session = Volatile.Read(ref _session);
+        if (status.State is ConnectionState.Connected or ConnectionState.Reconnecting && OtherVpnStarted(session))
+        {
+            return;
+        }
+
         if (status is { State: ConnectionState.Connected, IsPaused: false } && Timing.Every is not null)
         {
             _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — проверка связи с сервером");
@@ -127,6 +137,55 @@ public sealed partial class Gateway
             if (!await ProbeAsync().ConfigureAwait(false) && !await ProbeAsync().ConfigureAwait(false) && watch == Volatile.Read(ref _watch))
             {
                 await LostAsync(session, ErrorCodes.ServerNotResponding, "Сеть сменилась, сервер не отвечает").ConfigureAwait(false);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Служба остановилась.
+        }
+    }
+
+    /// <summary>
+    /// Во время подключения включился чужой VPN с маршрутом ко всему интернету: трафик может пойти мимо
+    /// туннеля, а окно говорило бы «Защищено». Пользователь его не разрешал — подключение останавливается
+    /// с PGC-NET-010, как при подключении. Проверка — при смене сети и с каждой пробой: выход через VPN,
+    /// у которого адаптер уже был (Tailscale), включается одними маршрутами, без смены адресов.
+    /// </summary>
+    private bool OtherVpnStarted(int session)
+    {
+        if (Status is not { Mode: ConnectionMode.Vpn, IsPaused: false } || _allowOtherVpn || OtherVpnAdapters() is not { Count: > 0 } other)
+        {
+            return false;
+        }
+
+        _ = StopForOtherVpnAsync(session, other);
+        return true;
+    }
+
+    /// <summary>Ядра останавливаются, блок при обрыве остается: трафик стоит, пока пользователь не решит.</summary>
+    private async Task StopForOtherVpnAsync(int session, IReadOnlyList<string> other)
+    {
+        try
+        {
+            await _switch.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                lock (_gate)
+                {
+                    if (session != _session || _status.State is not (ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Reconnecting))
+                    {
+                        return;
+                    }
+                }
+
+                _journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.OtherVpn}: включился другой VPN ({string.Join(", ", other)}) — подключение остановлено"
+                    + (_blocking ? ", блок при обрыве держит трафик" : string.Empty));
+                Move(s => s with { ErrorCode = ErrorCodes.OtherVpn }, ConnectionState.Error);
+                await StopCoreAsync().ConfigureAwait(false);
+            }
+            finally
+            {
+                _switch.Release();
             }
         }
         catch (ObjectDisposedException)

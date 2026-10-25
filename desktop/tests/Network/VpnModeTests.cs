@@ -365,6 +365,76 @@ public sealed class VpnModeTests
         (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля");
     }
 
+    [Fact]
+    public async Task Other_vpn_switched_on_with_a_network_change_stops_the_connection_and_keeps_the_block()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var network = new FakeNetwork();
+
+        // Пробы раз в час: чужой VPN успевает заметить только смена сети.
+        var hour = TimeSpan.FromHours(1);
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
+        {
+            Routes = rig.Routes, Network = network, Probe = rig.ProbeAsync, Reconnect = new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        // Чужой VPN — как WireGuard: свой адаптер и маршрут ко всему интернету в своей таблице.
+        rig.StartOtherVpn();
+        network.Raise();
+
+        var stopped = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Error or V1.ConnectionState.Off))[^1];
+        (stopped.State, stopped.Error.Code).ShouldBe((V1.ConnectionState.Error, ErrorCodes.OtherVpn), "окно откроет «Работает другой VPN»");
+        rig.KillSwitch.IsEnabled.ShouldBeTrue("трафик стоит, пока пользователь не решит");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2));
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2), "ядра остановлены");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e =>
+            e.Message == "PGC-NET-010: включился другой VPN (pgother0) — подключение остановлено, блок при обрыве держит трафик");
+
+        // «Продолжить (не рекомендуется)»: выбор держится и на ходу.
+        var despite = VpnRequest(rig.Definition);
+        despite.AllowOtherVpn = true;
+        await service.Client.ConnectAsync(despite, cancellationToken: Ct);
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+        connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+        network.Raise();
+        await Task.Delay(TimeSpan.FromSeconds(2), Ct);
+
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State
+            .ShouldBe(V1.ConnectionState.Connected, "пользователь разрешил другой VPN — до отключения");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сеть машины сменилась — проверка связи с сервером",
+            "смена сети дошла до службы — другой VPN пропущен по выбору, сервер проверен");
+    }
+
+    [Fact]
+    public async Task Other_vpn_that_only_adds_routes_is_found_by_the_regular_check()
+    {
+        await using var rig = await Rig.CreateAsync();
+
+        // Адаптер чужого VPN уже есть (как tailscale0), выход через него включается одним маршрутом — адреса
+        // не меняются, и смены сети нет: находит проба раз в секунду.
+        rig.Netns.Run(null, "ip", "tuntap", "add", "dev", "pgother0", "mode", "tun");
+        rig.Netns.Run(null, "ip", "link", "set", "pgother0", "up");
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
+        {
+            Routes = rig.Routes, Probe = rig.ProbeAsync,
+            Reconnect = new ReconnectTiming(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromHours(1), TimeSpan.FromHours(1), TimeSpan.FromHours(1)),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
+        connected.State.ShouldBe(V1.ConnectionState.Connected, "адаптер без маршрута ко всему интернету — не VPN");
+        await Task.Delay(TimeSpan.FromSeconds(2), Ct);
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Connected);
+
+        rig.StartOtherVpn();
+
+        var stopped = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Error or V1.ConnectionState.Off))[^1];
+        (stopped.State, stopped.Error.Code).ShouldBe((V1.ConnectionState.Error, ErrorCodes.OtherVpn));
+    }
+
     /// <summary>
     /// Стенд режима VPN в своем сетевом пространстве: пара veth к «локальной сети» машины, на адресе
     /// машины — свой сервер Xray с выходом на свой сайт и сайт «мимо туннеля»; ядра работают в
@@ -394,6 +464,24 @@ public sealed class VpnModeTests
         public ServerDefinition Definition { get; }
 
         public CountingKillSwitch KillSwitch { get; }
+
+        /// <summary>Маршруты пространства — для поиска чужого VPN.</summary>
+        public IRouteTable Routes => new IpRouteTable(arguments => Netns.Run(null, ["ip", .. arguments]));
+
+        /// <summary>
+        /// Включить «чужой VPN»: адаптер TUN (если его еще нет) и маршрут ко всему интернету через него в своей
+        /// таблице, как у WireGuard. На трафик пространства не влияет — правила на таблицу не ведут.
+        /// </summary>
+        public void StartOtherVpn()
+        {
+            if (!Netns.Run(null, "ip", "-o", "link", "show").Contains("pgother0", StringComparison.Ordinal))
+            {
+                Netns.Run(null, "ip", "tuntap", "add", "dev", "pgother0", "mode", "tun");
+                Netns.Run(null, "ip", "link", "set", "pgother0", "up");
+            }
+
+            Netns.Run(null, "ip", "route", "add", "default", "dev", "pgother0", "table", "51820");
+        }
 
         public GatewayOptions Vpn(GatewayOptions options) =>
             options with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = KillSwitch, TunnelNetns = Netns.Path };

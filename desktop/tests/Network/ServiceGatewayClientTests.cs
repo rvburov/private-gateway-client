@@ -297,13 +297,6 @@ public sealed class ServiceGatewayClientTests
         ? "PrivateGateway.Missing." + Guid.NewGuid().ToString("N")
         : Path.Combine(Path.GetTempPath(), "pg-missing-" + Guid.NewGuid().ToString("N")[..8], "ipc.sock");
 
-    private sealed class FakeRoutes : IRouteTable
-    {
-        public IReadOnlyList<DefaultRoute> Routes { get; set; } = [];
-
-        public IReadOnlyList<DefaultRoute> DefaultRoutes() => Routes;
-    }
-
     /// <summary>Блок при обрыве, который ничего не ставит: тест не трогает брандмауэр машины.</summary>
     private sealed class NoKillSwitch : IKillSwitch
     {

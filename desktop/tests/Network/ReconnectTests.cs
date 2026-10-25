@@ -2,9 +2,10 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
-using PrivateGateway.Client.Contracts;
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Service;
 using PrivateGateway.Client.Service.Cores;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -95,10 +96,11 @@ public sealed class ReconnectTests
     [Fact]
     public async Task Network_change_checks_the_server_at_once_and_skips_the_rest_of_the_pause()
     {
-        // Пробы раз в час и паузы по часу: успеть может только смена сети.
+        // Пробы раз в час и паузы по часу: успеть может только смена сети. Другой VPN режиму прокси не помеха.
         var hour = TimeSpan.FromHours(1);
         var network = new FakeNetwork();
-        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network);
+        var routes = new FakeRoutes { Routes = [new DefaultRoute("wg0", IsTunnel: true)] };
+        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network, routes);
         using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
@@ -180,14 +182,6 @@ public sealed class ReconnectTests
         return int.Parse(line[prefix.Length..], CultureInfo.InvariantCulture);
     }
 
-    /// <summary>Смена сети по команде теста.</summary>
-    private sealed class FakeNetwork : INetworkEvents
-    {
-        public event EventHandler? Changed;
-
-        public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
-    }
-
     /// <summary>Свой сервер Xray с выходом на свой сайт и служба с быстрыми пробами; проверочный адрес — тот же сайт.</summary>
     private sealed class ProxyRig : IAsyncDisposable
     {
@@ -206,7 +200,7 @@ public sealed class ReconnectTests
 
         public RunningService Service { get; }
 
-        public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null)
+        public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null, IRouteTable? routes = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var site = new LocalSite("проверка");
@@ -215,7 +209,7 @@ public sealed class ReconnectTests
             serverConfig["outbounds"] = new JsonArray(
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
-            var service = await RunningService.StartAsync(site.Url, options: o => o with { Reconnect = timing ?? Fast, Network = network });
+            var service = await RunningService.StartAsync(site.Url, options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes });
             return new ProxyRig(site, serverConfig, serverPort, definition, server, service);
         }
 

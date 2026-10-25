@@ -87,6 +87,9 @@ public sealed partial class Gateway : IAsyncDisposable
     // Вход проверки связи с сервером в ядре этого подключения.
     private ProbeLink? _probe;
 
+    // Пользователь выбрал подключение, хотя работает другой VPN: на ходу чужой VPN тоже не проверять.
+    private volatile bool _allowOtherVpn;
+
     // Режим VPN: адреса сервера и блок при обрыве — чтобы поднять туннель снова после паузы.
     private IReadOnlyList<IPAddress> _addresses = [];
     private bool _killSwitchOn;
@@ -234,6 +237,7 @@ public sealed partial class Gateway : IAsyncDisposable
             session = ++_session;
             _request = core;
             _probe = probe;
+            _allowOtherVpn = request.AllowOtherVpn;
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
             _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey]);
