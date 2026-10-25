@@ -47,6 +47,8 @@
 | --- | --- | --- | --- | --- |
 | Блок при обрыве на Windows (WFP) | `tunnel/firewall/types_windows.go`, `types_windows_64.go`, `rules.go` | сверены GUID слоев и условий WFP, коды действий и типов значений, смещения FWPM_FILTER0 и FWPM_FILTER_CONDITION0 на 64-битной Windows — это факты API Windows (fwpmu.h, fwpmtypes.h); `WfpRules` и `WfpKillSwitch` написаны заново: своя политика, не динамическая сессия, ключи фильтров по порядку; код не переносится | `WfpKillSwitchTests` (правила на всех ОС, фильтры — в CI на Windows) | изучен как справочник |
 
+| Пересылка на Windows (IPFORWARD) | microsoft/windows-rs `metadata/win32/fwpmu.rdl`@85d27ee4 (MIT/Apache-2.0); simplewall `src/wfp.c`@bfdc14de (GPL-3.0); Mullvad `docs/known-issues.md` (GPL-3.0) — прочитаны при разборе пункта | сверены GUID слоев FWPM_LAYER_IPFORWARD_V4/V6 и условия IP_DESTINATION_ADDRESS, флаги pass-through (fwptypes); у simplewall взята идея пропускать pass-through на слое пересылки, у Mullvad — что WSL за NAT может идти мимо слоев IP. Код не переносится, `WfpRules` и `WfpKillSwitch` дописаны сами | точный список правил на всех ОС; настоящие фильтры на Windows в CI; проба с контейнером за WinNAT | идеи и факты API, код свой |
+
 ## Ядра и библиотеки
 
 | Компонент | Лицензия | Как используется |

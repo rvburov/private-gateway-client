@@ -32,13 +32,39 @@ public sealed class WfpKillSwitchTests
             "15 permit V4 server: RemoteAddress 198.51.100.20, RemotePort 443, Protocol 6, Protocol 17",
             "15 permit V6 server: RemoteAddress 2001:db8::20, RemotePort 8443, Protocol 6, Protocol 17",
             "15 permit V4 dhcp: Protocol 17, LocalPort 68, RemotePort 67",
+            "15 permit V4 dhcp-server: Protocol 17, LocalPort 67, RemotePort 68, RemoteAddress 0.0.0.0/32, RemoteAddress 255.255.255.255/32, " +
+                "RemoteAddress 10.0.0.0/8, RemoteAddress 172.16.0.0/12, RemoteAddress 192.168.0.0/16, RemoteAddress 169.254.0.0/16",
             "15 permit V6 dhcp: Protocol 17, LocalPort 546, RemotePort 547",
             "15 permit V6 neighbors: Protocol 58, IcmpType 133, IcmpType 134, IcmpType 135, IcmpType 136",
             "10 block V4 dns: RemotePort 53, RemotePort 853, Protocol 6, Protocol 17",
             "0 block V4 block: ",
             "10 block V6 dns: RemotePort 53, RemotePort 853, Protocol 6, Protocol 17",
             "0 block V6 block: ",
-        ], "решает подошедший фильтр с наибольшим весом; локальная сеть по умолчанию закрыта");
+        ], "решает подошедший фильтр с наибольшим весом; локальная сеть по умолчанию закрыта; адаптер туннеля есть — " +
+            "пересылку ведут маршруты в туннель, фильтров пересылки нет");
+    }
+
+    [Fact]
+    public void Forwarding_without_the_tunnel_is_closed_but_the_allowed_local_network()
+    {
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", [new(Server, 443)]), tunnelLuid: null)
+            .Where(r => r.Hook == WfpHook.Forward).Select(r => r.ToString()).ShouldBe([
+                "15 permit V4 forward pass-through: Flags 262144, Flags 524288",
+                "0 block V4 forward block: ",
+                "15 permit V6 forward pass-through: Flags 262144, Flags 524288",
+                "0 block V6 forward block: ",
+            ], "туннеля нет — пересылка (хот-спот, ВМ, контейнеры с NAT) закрыта; пакеты самой машины решают слои соединений");
+
+        var lan = WfpRules.For(new KillSwitchPolicy("Private Gateway", [new(Server, 443)], AllowLan: true, LanDiscovery: true,
+            Direct: new DirectExit(@"C:\pg\sing-box.exe", 0x5047)), tunnelLuid: null).Where(r => r.Hook == WfpHook.Forward).ToList();
+        lan.Select(r => r.ToString()).ShouldContain(
+            "5 permit V4 forward lan: DestinationAddress 10.0.0.0/8, DestinationAddress 172.16.0.0/12, DestinationAddress 192.168.0.0/16, " +
+            "DestinationAddress 169.254.0.0/16", "локальная сеть разрешена — по адресу назначения в обе стороны: и ответ клиенту хот-спота");
+        lan.Select(r => r.ToString()).ShouldContain("5 permit V6 forward lan: DestinationAddress fc00::/7, DestinationAddress fe80::/10");
+        lan.Select(r => r.ToString()).ShouldContain("5 permit V4 forward discovery: DestinationAddress 224.0.0.0/4, DestinationAddress 255.255.255.255/32");
+        lan.ShouldNotContain(r => r.Name == "server" || r.Name == "dns" || r.Name == "direct",
+            "на слое пересылки нет портов и программ: сервер нужен только службе, DNS и обход — программам машины");
+        WfpRules.For(new KillSwitchPolicy(null, [], AllowLan: true), tunnelLuid: 42).ShouldNotContain(r => r.Hook == WfpHook.Forward);
     }
 
     [Fact]
@@ -143,6 +169,100 @@ public sealed class WfpKillSwitchTests
         {
             killSwitch.Disable();
         }
+    }
+
+    /// <summary>
+    /// Проба: закрывают ли фильтры пересылки контейнер Windows за NAT (WinNAT — как у Docker, WSL и ВМ на «Default Switch»).
+    /// Источники расходятся: по Mullvad, трафик WSL за NAT мимо слоев IP WFP. Только в CI (PG_FORWARD_PROBE=1): тянет образ
+    /// nanoserver. Фильтры соединений — только для копии curl, машина CI остается в сети; пересылка закрывается на всю
+    /// машину, ее у машины CI нет. Итог — в artifacts/forward-probe.txt, CI выводит его в журнал.
+    /// </summary>
+    [Fact]
+    public async Task Probe_container_behind_nat_and_the_forward_filters()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("PG_FORWARD_PROBE") == "1", "проба пересылки — только в CI (PG_FORWARD_PROBE=1)");
+        if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("фильтры WFP ставятся только на Windows с правами администратора (CI)");
+            return;
+        }
+
+        var tag = Environment.OSVersion.Version.Build switch
+        {
+            >= 26100 => "ltsc2025",
+            >= 20348 => "ltsc2022",
+            _ => null,
+        };
+        Assert.SkipWhen(tag is null, "нет образа nanoserver под эту сборку Windows");
+        var image = $"mcr.microsoft.com/windows/nanoserver:{tag}";
+        var github = (await Dns.GetHostAddressesAsync("github.com", AddressFamily.InterNetwork, TestContext.Current.CancellationToken)).FirstOrDefault();
+        Assert.SkipWhen(github is null, "github.com не разрешился");
+        var curl = Path.Combine(Path.GetTempPath(), "pg-probe-curl.exe");
+        File.Copy(Path.Combine(Environment.SystemDirectory, "curl.exe"), curl, overwrite: true);
+        var report = new List<string> { $"образ {image}, github.com {github}" };
+        var killSwitch = new WfpKillSwitch(onlyProgram: curl);
+        try
+        {
+            var open = await Container();
+            report.Add("без блока: " + (open ? "контейнер проходит" : "контейнер не проходит"));
+            Assert.SkipUnless(open, "контейнер не выходит в сеть и без блока — проверять нечего");
+
+            killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
+            report.Add("блок без туннеля (пересылка закрыта): " + (await Container() ? "контейнер ПРОХОДИТ — пересылку WinNAT фильтры не видят" : "контейнер закрыт"));
+            report.Add("машина (копия curl, сервер в правилах): " + (await Reaches(curl, github, 443) ? "проходит" : "не проходит"));
+
+            killSwitch.Disable();
+            (await Container()).ShouldBeTrue("блок снят — контейнер снова в сети: фильтры пересылки не остаются");
+            report.Add("после снятия: контейнер проходит");
+        }
+        finally
+        {
+            killSwitch.Disable();
+            File.WriteAllLines(Path.Combine(RepositoryRoot(), "artifacts", "forward-probe.txt"), report);
+        }
+
+        async Task<bool> Container() => await Docker("run", "--rm", "--isolation=process", image, "curl.exe", "-sS", "-o", "NUL",
+            "--connect-timeout", "5", "-m", "10", "--resolve", $"github.com:443:{github}", "https://github.com/") is not null;
+    }
+
+    /// <summary>docker с аргументами; не вышел успешно за 3 минуты — null.</summary>
+    private static async Task<string?> Docker(params string[] arguments)
+    {
+        var start = new ProcessStartInfo("docker") { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)!;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        _ = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            return null;
+        }
+
+        return process.ExitCode == 0 ? await output : null;
+    }
+
+    private static string RepositoryRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "PrivateGateway.slnx")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("Не найден корень репозитория (PrivateGateway.slnx)");
     }
 
     /// <summary>Соединяется ли curl с github.com по адресу и порту (ответ HTTP любой).</summary>

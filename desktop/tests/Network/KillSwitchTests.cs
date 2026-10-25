@@ -30,6 +30,7 @@ public sealed class KillSwitchTests
             "ip daddr 198.51.100.20 meta l4proto { tcp, udp } th dport 443 accept",
             "ip6 daddr 2001:db8::20 meta l4proto { tcp, udp } th dport 8443 accept",
             "udp sport 68 udp dport 67 accept",
+            "ip daddr { 255.255.255.255, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } udp sport 67 udp dport 68 accept",
             "udp sport 546 udp dport 547 accept",
             "icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept",
             "meta l4proto { tcp, udp } th dport { 53, 853 } drop",
@@ -163,6 +164,32 @@ public sealed class KillSwitchTests
         killSwitch.IsEnabled.ShouldBeFalse();
         (await netns.ResolveAsync("example.com", host)).ShouldBe("1.1.1.1");
         dns.Queries.Count.ShouldBe(2, "закрытые запросы до DNS не дошли");
+    }
+
+    [Fact]
+    public async Task Machine_answers_as_a_dhcp_server_only_into_the_local_network()
+    {
+        NetworkNamespace.SkipUnlessAvailable("nft", "ip", "python3");
+        using var netns = NetworkNamespace.Create();
+        var (host, _, @public) = netns.LinkAsMachine();
+        var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
+
+        killSwitch.Enable(new KillSwitchPolicy("pgtun0", []));
+
+        (await ReplyAsync(host)).ShouldBe("sent", "ответ DHCP клиенту ВМ или хот-спота — в локальную сеть, без него у них нет адреса");
+        (await ReplyAsync(@public)).ShouldBe("blocked", "с порта 67 наружу — нет");
+
+        // Ответ DHCP-сервера: с порта 67 на порт 68 адреса; отброшенный пакет python видит сразу ошибкой EPERM.
+        Task<string> ReplyAsync(IPAddress to) => netns.RunAsync("python3", "-c", """
+            import socket, sys
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.bind(("0.0.0.0", 67))
+            try:
+                s.sendto(b"offer", (sys.argv[1], 68))
+                print("sent", end="")
+            except PermissionError:
+                print("blocked", end="")
+            """, to.ToString());
     }
 
     [Fact]

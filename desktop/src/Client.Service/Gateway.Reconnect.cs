@@ -229,6 +229,12 @@ public sealed partial class Gateway
                 }
             }
 
+            if (!BlockWithoutTunnel())
+            {
+                Fail(session, ErrorCodes.KillSwitchFailed, "Блок при обрыве не обновился");
+                return;
+            }
+
             if (_request is not { Connection.Reconnect: not ReconnectPolicy.Never })
             {
                 Fail(session, code, why + " — переподключение выключено");
@@ -316,6 +322,11 @@ public sealed partial class Gateway
 
             request = current;
             await StopCoreAsync().ConfigureAwait(false);
+            if (!BlockWithoutTunnel())
+            {
+                return (false, ErrorCodes.KillSwitchFailed);
+            }
+
             if (request.Mode == ConnectionMode.Proxy)
             {
                 try
@@ -444,6 +455,7 @@ public sealed partial class Gateway
             }
 
             await StopCoreAsync().ConfigureAwait(false);
+            BlockWithoutTunnel();
             if (_request is { Mode: ConnectionMode.Vpn } && _blocking)
             {
                 Move(s => s, ConnectionState.Blocked);

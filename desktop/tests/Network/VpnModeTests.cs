@@ -134,10 +134,11 @@ public sealed partial class VpnModeTests
             "ядро не поднялось — трафик остановлен блоком");
         killSwitch.IsEnabled.ShouldBeTrue();
         var policy = killSwitch.Policy.ShouldNotBeNull();
-        (policy.TunnelInterface, policy.AllowLan, policy.LanDiscovery, policy.BlockOutsideDns)
-            .ShouldBe((SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name ? name : null, false, false, true));
+        (policy.TunnelInterface, policy.AllowLan, policy.LanDiscovery, policy.BlockOutsideDns).ShouldBe(((string?)null, false, false, true),
+            "туннеля нет — блок заново, без разрешения его адаптеру: на Windows так закрыта и пересылка (хот-спот, ВМ)");
         policy.Servers.ShouldBe([new KillSwitchEndpoint(IPAddress.Loopback, 8443)], "мимо туннеля — только адрес и порт сервера");
         var journal = service.Journal.Tail(ServiceJournal.Capacity).Select(e => e.Message).ToList();
+        journal.ShouldContain(m => m.StartsWith("Блок при обрыве обновлен: туннеля нет", StringComparison.Ordinal));
         // Ядро вышло раньше, чем прочитало конфиг (macOS), — «Broken pipe» вместо «вышел при запуске»: сверять по коду ошибки.
         journal.FindIndex(m => m.StartsWith("Блок при обрыве включен", StringComparison.Ordinal))
             .ShouldBeLessThan(journal.FindIndex(m => m.StartsWith(ErrorCodes.CoreFailed + ":", StringComparison.Ordinal)), "блок — до запуска ядер");
@@ -362,20 +363,27 @@ public sealed partial class VpnModeTests
         var reconnecting = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting))[^1].ToCore();
         (reconnecting.ServerId, reconnecting.Protection.AllTraffic).ShouldBe(("srv-1", CheckState.Waiting), "к тому же серверу, трафик на паузе");
         killSwitch.IsEnabled.ShouldBeTrue("пока служба ищет связь, блок держит трафик");
+        killSwitch.Tunnels.Skip(2).FirstOrDefault().ShouldBeNull(
+            "туннель пропал — блок заново, уже без разрешения адаптеру: на Windows так закрыта и пересылка (хот-спот, ВМ)");
+        var lost = service.Journal.Tail(ServiceJournal.Capacity).Select(e => e.Message).ToList();
+        lost.FindIndex(m => m.StartsWith("Блок при обрыве обновлен: туннеля нет", StringComparison.Ordinal))
+            .ShouldBeInRange(0, lost.FindIndex(m => m == "Переподключение, попытка 1") is var first and >= 0 ? first : int.MaxValue,
+                "сразу при обрыве, а не с первой попыткой");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 2), "мимо туннеля — ничего");
 
-        var enables = killSwitch.Enables;
         await rig.StartServerAsync();
 
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
         (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель", "связь вернулась — снова через туннель");
-        killSwitch.Enables.ShouldBeGreaterThan(enables, "новый адаптер туннеля — блок обновлен (на Windows разрешение по LUID)");
+        killSwitch.Last!.TunnelInterface.ShouldBe(SingBoxConfigBuilder.InterfaceName,
+            "новый адаптер туннеля — блок обновлен с разрешением ему (на Windows — по LUID)");
 
         rig.StopServer();
 
         var blocked = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Blocked or V1.ConnectionState.Error))[^1];
         blocked.State.ShouldBe(V1.ConnectionState.Blocked, "попытки кончились — «Блокировка», другой сервер сам не выбирается");
         killSwitch.IsEnabled.ShouldBeTrue();
+        killSwitch.Last!.TunnelInterface.ShouldBeNull();
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 2));
 
         await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
@@ -741,6 +749,7 @@ public sealed partial class VpnModeTests
         var strict = await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct);
         (strict.State, strict.StrictBlock).ShouldBe((V1.ConnectionState.Blocked, true), "защита выключена вручную, а сеть закрыта");
         rig.KillSwitch.IsEnabled.ShouldBeTrue();
+        rig.KillSwitch.Last!.TunnelInterface.ShouldBeNull("туннеля нет — и разрешения ему нет: на Windows закрыта и пересылка");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2), "туннеля тоже нет");
         service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Строгий режим: защита выключена вручную, сеть закрыта до подключения");
@@ -1078,9 +1087,23 @@ public sealed partial class VpnModeTests
     /// <summary>Настоящий блок при обрыве, который считает, сколько раз его ставили, и помнит последнюю политику.</summary>
     private sealed class CountingKillSwitch(IKillSwitch inner) : IKillSwitch
     {
+        private readonly List<KillSwitchPolicy> _policies = [];
+
         public int Enables { get; private set; }
 
         public KillSwitchPolicy? Last { get; private set; }
+
+        /// <summary>Адаптер туннеля в каждом поставленном блоке, по порядку.</summary>
+        public IReadOnlyList<string?> Tunnels
+        {
+            get
+            {
+                lock (_policies)
+                {
+                    return [.. _policies.Select(p => p.TunnelInterface)];
+                }
+            }
+        }
 
         public string Name => inner.Name;
 
@@ -1090,6 +1113,11 @@ public sealed partial class VpnModeTests
         {
             Enables++;
             Last = policy;
+            lock (_policies)
+            {
+                _policies.Add(policy);
+            }
+
             inner.Enable(policy);
         }
 

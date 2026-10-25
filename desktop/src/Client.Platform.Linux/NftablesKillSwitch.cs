@@ -77,6 +77,8 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
 
         // Адрес от DHCP и соседи IPv6: без них машина теряет сеть, данные через них наружу не уходят.
         rules.Add("udp sport 68 udp dport 67 accept");
+        // Машина как DHCP-сервер ВМ и хот-спота (libvirt, NetworkManager): адрес клиенту — только в локальной сети.
+        rules.Add("ip daddr { 255.255.255.255, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } udp sport 67 udp dport 68 accept");
         rules.Add("udp sport 546 udp dport 547 accept");
         rules.Add("icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept");
         var shared = new List<string>();

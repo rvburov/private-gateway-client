@@ -847,7 +847,10 @@ public sealed partial class Gateway : IAsyncDisposable
         _ = StopFailedAsync(session);
     }
 
-    /// <summary>Ядро, не открывшее вход вовремя, может еще работать — его останавливает служба.</summary>
+    /// <summary>
+    /// Ядро, не открывшее вход вовремя, может еще работать — его останавливает служба. Блок при обрыве остается, уже без
+    /// туннеля.
+    /// </summary>
     private async Task StopFailedAsync(int session)
     {
         await _switch.WaitAsync().ConfigureAwait(false);
@@ -856,6 +859,7 @@ public sealed partial class Gateway : IAsyncDisposable
             if (session == _session)
             {
                 await StopCoreAsync().ConfigureAwait(false);
+                BlockWithoutTunnel();
             }
         }
         finally
@@ -1115,16 +1119,17 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>
     /// Поставить (или заменить) блок при обрыве под это подключение и запомнить его в файле блока; <paramref name="strict"/> —
-    /// блок строгого режима. Не вышло — false.
+    /// блок строгого режима; <paramref name="tunnel"/> — с разрешением адаптеру туннеля, false — туннеля нет (обрыв, ошибка,
+    /// строгий режим): на Windows закрыта и пересылка (хот-спот, ВМ). Не вышло — false.
     /// </summary>
-    private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses, string done = "включен", bool strict = false)
+    private bool Block(CoreRequest core, IReadOnlyList<IPAddress> addresses, string done = "включен", bool strict = false, bool tunnel = true)
     {
         var killSwitch = _options.KillSwitch!;
 
         // Мимо туннеля — еще прямой выход sing-box: программы раздельного режима и прямой выход Xray.
         var direct = VpnTunnel.DirectPrograms(core, _options.XrayPath!).Count > 0;
         var policy = new KillSwitchPolicy(
-            SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name ? name : null,
+            tunnel && SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name ? name : null,
             [.. addresses.Select(a => new KillSwitchEndpoint(a, core.Server.Port))],
             core.Protection.AllowLan,
             core.Protection.LanDiscovery,
@@ -1143,6 +1148,15 @@ public sealed partial class Gateway : IAsyncDisposable
             $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}");
         return true;
     }
+
+    /// <summary>
+    /// Туннеля нет (обрыв, попытка переподключения, сбой) — блок при обрыве без разрешения его адаптеру, если оно было:
+    /// разрешение — только пока туннель поднят. На Windows так закрыта и пересылка (хот-спот, ВМ). Блока нет, он не
+    /// режима VPN или уже без туннеля — ничего. Не встал — false: прежний блок остается.
+    /// </summary>
+    private bool BlockWithoutTunnel() =>
+        !_blocking || !_killSwitchOn || _request is not { Mode: ConnectionMode.Vpn } request || _held?.Policy.TunnelInterface is null
+        || Block(request, _addresses, "обновлен: туннеля нет", tunnel: false);
 
     /// <summary>Вернуть блок, который служба держит (после паузы, при остановке, в строгом режиме); не встал — false.</summary>
     private bool Restore(HeldBlock held, string done)
@@ -1167,10 +1181,11 @@ public sealed partial class Gateway : IAsyncDisposable
     {
         if (_request is { Mode: ConnectionMode.Vpn } request)
         {
-            return _killSwitchOn && Block(request, _addresses, "оставлен: строгий режим", strict: true);
+            return _killSwitchOn && Block(request, _addresses, "оставлен: строгий режим", strict: true, tunnel: false);
         }
 
-        return _request is null && _held is { } held && Restore(held with { Strict = true }, "оставлен: строгий режим");
+        return _request is null && _held is { } held
+            && Restore(held with { Strict = true, Policy = held.Policy with { TunnelInterface = null } }, "оставлен: строгий режим");
     }
 
     /// <summary>

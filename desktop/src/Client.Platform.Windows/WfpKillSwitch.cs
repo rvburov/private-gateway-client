@@ -9,7 +9,8 @@ namespace PrivateGateway.Client.Platform.Windows;
 
 /// <summary>
 /// Блок при обрыве на Windows — фильтры Windows Filtering Platform своего провайдера и подслоя на
-/// слоях установки соединения (ALE connect и accept, IPv4 и IPv6), по правилам <see cref="WfpRules"/>.
+/// слоях установки соединения (ALE connect и accept, IPv4 и IPv6) и пересылки (IPFORWARD: хот-спот, общий
+/// доступ, ВМ и контейнеры с NAT), по правилам <see cref="WfpRules"/>.
 /// Сессия не динамическая: фильтры переживают службу (fail-closed) и уходят при снятии, а без «Защиты при
 /// загрузке» — и при перезагрузке; с ней фильтры постоянные (<see cref="KillSwitchPolicy.Persistent"/>):
 /// служба фильтрации Windows ставит их при загрузке, еще до старта нашей службы. Провайдер и подслой —
@@ -20,8 +21,9 @@ namespace PrivateGateway.Client.Platform.Windows;
 /// Структуры WFP пишутся по смещениям 64-битной Windows (fwpmtypes.h).
 /// </summary>
 /// <param name="onlyProgram">
-/// Только для тестов: фильтры касаются одной программы (полный путь), а не всей машины — так
-/// правила проверяются на машине CI, не отрезая ее от сети. null — вся машина.
+/// Только для тестов: фильтры установки соединения касаются одной программы (полный путь), а не всей машины — так
+/// правила проверяются на машине CI, не отрезая ее от сети. Фильтры пересылки программы не знают и встают на всю
+/// машину: саму машину они не трогают. null — вся машина.
 /// </param>
 [SupportedOSPlatform("windows")]
 public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
@@ -55,6 +57,8 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     private static readonly Guid AcceptV4 = new("e1cd9fe7-f4b5-4273-96c0-592e487b8650");
     private static readonly Guid ConnectV6 = new("4a72393b-319f-44bc-84c3-ba54dcb3b6b4");
     private static readonly Guid AcceptV6 = new("a3b42c97-9f04-4672-b87e-cee9c483257f");
+    private static readonly Guid ForwardV4 = new("a82acc24-4ee1-4ee1-b465-fd1d25cb10a4");
+    private static readonly Guid ForwardV6 = new("7b964818-19c7-493a-b71f-832c3684d28c");
 
     // Раньше словаря полей: статические поля заполняются по порядку текста.
     private static readonly Guid AppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971");
@@ -69,6 +73,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         [WfpField.Protocol] = new("3971ef2b-623e-4f9a-8cb1-6e79b806b9a7"),
         [WfpField.IcmpType] = new("0c1ba1af-5765-453f-af22-a8f791ac775b"),
         [WfpField.App] = AppId,
+        [WfpField.DestinationAddress] = new("2d79133b-b390-45c6-8699-acaceaafed33"),
     };
 
     public string Name => "WFP";
@@ -92,14 +97,25 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
             var index = 0;
             foreach (var rule in rules)
             {
-                foreach (var layer in rule.Family == WfpFamily.V4 ? new[] { ConnectV4, AcceptV4 } : [ConnectV6, AcceptV6])
+                foreach (var layer in Layers(rule))
                 {
-                    Check(FwpmFilterAdd0(engine, Filter(memory, WfpRules.FilterKey(index++), layer, rule, app, policy.Persistent), IntPtr.Zero, out _),
+                    // У пересылки нет программы: тестовое условие ALE_APP_ID там не ставится.
+                    var only = rule.Hook == WfpHook.Forward ? IntPtr.Zero : app;
+                    Check(FwpmFilterAdd0(engine, Filter(memory, WfpRules.FilterKey(index++), layer, rule, only, policy.Persistent), IntPtr.Zero, out _),
                         "фильтр " + rule.Name);
                 }
             }
         }));
     }
+
+    /// <summary>Слои фильтра: установка соединения — исходящие и входящие, пересылка — один слой семейства.</summary>
+    private static Guid[] Layers(WfpRule rule) => (rule.Hook, rule.Family) switch
+    {
+        (WfpHook.Forward, WfpFamily.V4) => [ForwardV4],
+        (WfpHook.Forward, _) => [ForwardV6],
+        (_, WfpFamily.V4) => [ConnectV4, AcceptV4],
+        _ => [ConnectV6, AcceptV6],
+    };
 
     public void Disable() => WithEngine(engine => Transaction(engine, () =>
     {
