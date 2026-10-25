@@ -9,6 +9,7 @@
   <ItemGroup>
     <ProjectReference Include="../../src/Client.Core/Client.Core.csproj" />
     <ProjectReference Include="../../src/Client.Application/Client.Application.csproj" />
+    <ProjectReference Include="../../src/Client.Infrastructure/Client.Infrastructure.csproj" />
     <ProjectReference Include="../../src/Client.Network/Client.Network.csproj" />
     <ProjectReference Include="../../src/Client.Service/Client.Service.csproj" />
   </ItemGroup>

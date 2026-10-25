@@ -14,7 +14,7 @@ namespace PrivateGateway.Client.Infrastructure.Demo;
 public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? settings = null) : IGatewayClient, IDisposable
 {
     /// <summary>Код ошибки «сервер не отвечает» в режиме прокси: блока при обрыве там нет.</summary>
-    public const string ProxyServerNotResponding = "PGC-NET-001";
+    public const string ProxyServerNotResponding = ErrorCodes.ServerNotResponding;
 
     /// <summary>Сколько длится «подключение» в имитации.</summary>
     public static readonly TimeSpan ConnectDelay = TimeSpan.FromMilliseconds(1200);

@@ -1,0 +1,119 @@
+using System.Threading.Channels;
+using Google.Protobuf.WellKnownTypes;
+using Grpc.Core;
+using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core;
+using V1 = PrivateGateway.Client.Contracts.V1;
+
+namespace PrivateGateway.Client.Service.Ipc;
+
+/// <summary>
+/// gRPC-обертка над <see cref="Gateway"/> и <see cref="ServiceJournal"/>: перевод контракта, потоки
+/// WatchStatus и WatchLog. Сама ничего не решает — решает служба.
+/// </summary>
+public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.ServiceInfo info) : V1.GatewayService.GatewayServiceBase
+{
+    public override Task<V1.ServiceInfo> GetServiceInfo(V1.GetServiceInfoRequest request, ServerCallContext context) => Task.FromResult(info);
+
+    public override Task<V1.Status> GetStatus(V1.GetStatusRequest request, ServerCallContext context) =>
+        Task.FromResult(gateway.Status.ToContract());
+
+    /// <summary>Сначала текущее состояние, потом каждое новое — пока интерфейс слушает.</summary>
+    public override async Task WatchStatus(V1.WatchStatusRequest request, IServerStreamWriter<V1.Status> responseStream, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(responseStream);
+        ArgumentNullException.ThrowIfNull(context);
+        var (current, updates) = gateway.Watch(context.CancellationToken);
+        try
+        {
+            await responseStream.WriteAsync(current.ToContract(), context.CancellationToken).ConfigureAwait(false);
+            await foreach (var status in updates.ReadAllAsync(context.CancellationToken).ConfigureAwait(false))
+            {
+                await responseStream.WriteAsync(status.ToContract(), context.CancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Интерфейс закрылся.
+        }
+    }
+
+    public override Task<V1.ConnectReply> Connect(V1.ConnectRequest request, ServerCallContext context) =>
+        gateway.ConnectAsync(request, context?.CancellationToken ?? default);
+
+    public override async Task<V1.DisconnectReply> Disconnect(V1.DisconnectRequest request, ServerCallContext context)
+    {
+        await gateway.DisconnectAsync(context?.CancellationToken ?? default).ConfigureAwait(false);
+        return new V1.DisconnectReply();
+    }
+
+    public override Task<V1.MeasureLatencyReply> MeasureLatency(V1.MeasureLatencyRequest request, ServerCallContext context) =>
+        gateway.MeasureLatencyAsync(request, context?.CancellationToken ?? default);
+
+    /// <summary>Защиту служба применит при следующем подключении: в режиме прокси менять на ходу нечего.</summary>
+    public override Task<V1.ApplyProtectionReply> ApplyProtection(V1.ProtectionSettings request, ServerCallContext context) =>
+        Task.FromResult(new V1.ApplyProtectionReply());
+
+    /// <summary>В режиме прокси блока нет — паузе нечего снимать.</summary>
+    public override Task<V1.CaptivePauseReply> PauseForCaptivePortal(V1.CaptivePauseRequest request, ServerCallContext context) =>
+        Task.FromResult(new V1.CaptivePauseReply());
+
+    public override Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
+    {
+        var status = gateway.Status;
+        var report = new V1.CheckReport { FinishedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
+        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Service.ToContractId(), State = V1.CheckState.Ok });
+        report.Results.Add(new V1.CheckResult
+        {
+            Id = DiagnosticCheck.Core.ToContractId(),
+            State = status.State == ConnectionState.Connected ? V1.CheckState.Ok
+                : status.State == ConnectionState.Error ? V1.CheckState.Stopped : V1.CheckState.Off,
+        });
+        report.Results.Add(new V1.CheckResult
+        {
+            Id = DiagnosticCheck.AllTraffic.ToContractId(),
+            State = status.Protection.AllTraffic.ToContract(),
+            Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy" : string.Empty,
+        });
+        return Task.FromResult(report);
+    }
+
+    /// <summary>Последние записи и новые по мере появления; секреты уже скрыты журналом.</summary>
+    public override async Task WatchLog(V1.WatchLogRequest request, IServerStreamWriter<V1.LogEntry> responseStream, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(responseStream);
+        ArgumentNullException.ThrowIfNull(context);
+        var updates = Channel.CreateUnbounded<JournalEntry>(new UnboundedChannelOptions { SingleReader = true });
+        void OnAdded(object? sender, JournalEntry entry) => updates.Writer.TryWrite(entry);
+        journal.Added += OnAdded;
+        try
+        {
+            foreach (var entry in journal.Tail(request.Tail))
+            {
+                await responseStream.WriteAsync(Entry(entry), context.CancellationToken).ConfigureAwait(false);
+            }
+
+            await foreach (var entry in updates.Reader.ReadAllAsync(context.CancellationToken).ConfigureAwait(false))
+            {
+                await responseStream.WriteAsync(Entry(entry), context.CancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Интерфейс закрылся.
+        }
+        finally
+        {
+            journal.Added -= OnAdded;
+        }
+    }
+
+    private static V1.LogEntry Entry(JournalEntry entry) => new()
+    {
+        Time = Timestamp.FromDateTimeOffset(entry.Time),
+        Level = entry.Level.ToContract(),
+        Source = entry.Source,
+        Message = entry.Message,
+    };
+}
