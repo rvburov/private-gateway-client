@@ -1154,6 +1154,18 @@ public sealed partial class VpnModeTests
 
         public LocalSite Lan { get; }
 
+        /// <summary>Сайт за сервером: туда сервер ведет соединения TCP.</summary>
+        public LocalSite Site { get; private init; } = null!;
+
+        /// <summary>DNS за сервером (запросы на порт 53) — со <c>services</c>, иначе null.</summary>
+        public TestDns? Dns { get; private init; }
+
+        /// <summary>
+        /// Эхо UDP на <see cref="Public"/>:443, как QUIC сайта, — со <c>services</c>, иначе null. Сервер шлет UDP по адресу
+        /// назначения, без переадресации: ответ должен прийти с того же адреса, иначе TUN его не примет.
+        /// </summary>
+        public UdpEcho? Udp { get; private init; }
+
         public ServerDefinition Definition { get; }
 
         public CountingKillSwitch KillSwitch { get; }
@@ -1256,7 +1268,8 @@ public sealed partial class VpnModeTests
         /// <param name="page">Страница сайта сервера.</param>
         /// <param name="page6">Страница сайта сервера для адресов IPv6; null — тот же сайт.</param>
         /// <param name="serverIpv6">Сервер открывает IPv6; false — соединения с адресами IPv6 он закрывает.</param>
-        public static async Task<Rig> CreateAsync(string page = "через туннель", string? page6 = null, bool serverIpv6 = true)
+        /// <param name="services">За сервером еще DNS (порт 53, ответ — 1.1.1.1) и эхо UDP на <see cref="Public"/>:443.</param>
+        public static async Task<Rig> CreateAsync(string page = "через туннель", string? page6 = null, bool serverIpv6 = true, bool services = false)
         {
             NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
             Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
@@ -1290,12 +1303,30 @@ public sealed partial class VpnModeTests
                     };
                 }
 
+                TestDns? dns = null;
+                UdpEcho? udp = null;
+                if (services)
+                {
+                    dns = new TestDns(IPAddress.Parse("1.1.1.1"));
+                    owned.Add(dns);
+                    udp = new UdpEcho();
+                    owned.Add(udp);
+                    serverConfig["outbounds"]!.AsArray().Add(
+                        new JsonObject { ["tag"] = "dns", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{dns.Port}" } });
+                    serverConfig["outbounds"]!.AsArray().Add(
+                        new JsonObject { ["tag"] = "udp", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{udp.Port}" } });
+                    var routing = serverConfig["routing"] as JsonObject ?? new JsonObject { ["rules"] = new JsonArray() };
+                    serverConfig["routing"] = routing;
+                    routing["rules"]!.AsArray().Insert(0, new JsonObject { ["type"] = "field", ["port"] = "53", ["outboundTag"] = "dns" });
+                    routing["rules"]!.AsArray().Insert(1, new JsonObject { ["type"] = "field", ["network"] = "udp", ["outboundTag"] = "udp" });
+                }
+
                 var server = await XrayKit.Start(serverConfig, serverPort);
                 var killSwitch = new CountingKillSwitch(new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments])));
 
                 // Убирать — в обратном порядке: сайты, потом пространство; сервер — раньше всего.
                 owned.Reverse();
-                return new Rig(netns, lan, @public, definition, killSwitch, (serverConfig, serverPort, server), [.. owned]);
+                return new Rig(netns, lan, @public, definition, killSwitch, (serverConfig, serverPort, server), [.. owned]) { Site = site, Dns = dns, Udp = udp };
             }
             catch
             {

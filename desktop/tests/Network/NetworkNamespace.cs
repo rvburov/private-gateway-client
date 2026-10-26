@@ -31,7 +31,9 @@ internal sealed class NetworkNamespace : IDisposable
 
     /// <summary>
     /// Номер сети пространства (1–249) для адресов его пар veth (10.252–10.254.N.x, 203.0.113.N): у живых
-    /// пространств процесса не повторяется, освобождается вместе с пространством.
+    /// пространств процесса не повторяется, освобождается вместе с пространством. Занятые на машине номера тоже
+    /// пропускаются: пару veth прерванного прогона держит живой оставшееся ядро, и ответы с тем же адресом машина
+    /// отправила бы в нее — запрос теста висел до тайм-аута.
     /// </summary>
     public int Octet
     {
@@ -41,7 +43,8 @@ internal sealed class NetworkNamespace : IDisposable
             {
                 if (_octet == 0)
                 {
-                    var free = Enumerable.Range(1, 249).Where(o => !Taken.Contains(o)).ToList();
+                    var machine = MachineOctets();
+                    var free = Enumerable.Range(1, 249).Where(o => !Taken.Contains(o) && !machine.Contains(o)).ToList();
                     _octet = free[Random.Shared.Next(free.Count)];
                     Taken.Add(_octet);
                 }
@@ -52,6 +55,16 @@ internal sealed class NetworkNamespace : IDisposable
     }
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    /// <summary>Номера сетей, адреса которых (10.252–10.254.N.x, 203.0.113.N) уже есть в сети машины.</summary>
+    public static HashSet<int> MachineOctets() => Octets(Host("ip", "-o", "-4", "addr", "show"));
+
+    /// <summary>Номера сетей из вывода <c>ip -o -4 addr show</c>.</summary>
+    public static HashSet<int> Octets(string addresses) =>
+    [
+        .. System.Text.RegularExpressions.Regex.Matches(addresses, @"inet (?:10\.25[234]\.(\d+)\.\d+|203\.0\.113\.(\d+))/")
+            .Select(m => int.Parse(m.Groups[1].Success ? m.Groups[1].Value : m.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture)),
+    ];
 
     /// <summary>Пропустить тест, если пространства не создать: не Linux, не root или нет нужных программ.</summary>
     public static void SkipUnlessAvailable(params string[] tools)
@@ -188,6 +201,55 @@ internal sealed class NetworkNamespace : IDisposable
         s.sendto(b"pg", (sys.argv[1], int(sys.argv[2])))
         print("sent", end="")
         """, address.ToString(), port.ToString(System.Globalization.CultureInfo.InvariantCulture), source.ToString());
+
+    /// <summary>
+    /// Датаграмма UDP к <paramref name="address"/> и ответ на нее — эхо; ответа нет за <paramref name="seconds"/> с или
+    /// датаграмма отброшена — исключение.
+    /// </summary>
+    public Task<string> UdpEchoAsync(IPAddress address, int port, int seconds = 10) => RunAsync("python3", "-c", """
+        import socket, sys
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(float(sys.argv[3]))
+        s.sendto(b"echo", (sys.argv[1], int(sys.argv[2])))
+        print(s.recvfrom(100)[0].decode(), end="")
+        """, address.ToString(), port.ToString(System.Globalization.CultureInfo.InvariantCulture), seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+
+    /// <summary>Эхо-запрос ICMP (как ping): «reply» — ответ пришел, «none» — нет за 2 с или отброшен.</summary>
+    public Task<string> PingAsync(IPAddress address) => RunAsync("python3", "-c", """
+        import socket, struct, sys
+        s = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+        s.settimeout(2)
+        body = struct.pack("!BBHHH", 8, 0, 0, 1, 1) + b"pg"
+        total = sum(int.from_bytes(body[i:i + 2], "big") for i in range(0, len(body), 2))
+        total = (total >> 16) + (total & 0xFFFF)
+        body = body[:2] + struct.pack("!H", ~(total + (total >> 16)) & 0xFFFF) + body[4:]
+        try:
+            s.sendto(body, (sys.argv[1], 0))
+            s.recv(100)
+            print("reply", end="")
+        except OSError:
+            print("none", end="")
+        """, address.ToString());
+
+    /// <summary>
+    /// Адрес имени через разрешитель ОС (getaddrinfo, <c>getent ahostsv4</c>), как у любой программы: свой resolv.conf с
+    /// DNS <paramref name="nameserver"/> (роутер сети) — через <c>ip netns exec</c>, в своем пространстве монтирования.
+    /// </summary>
+    public async Task<string> ResolveWithSystemAsync(string name, IPAddress nameserver)
+    {
+        var etc = "/etc/netns/" + Name;
+        Directory.CreateDirectory(etc);
+        try
+        {
+            await File.WriteAllTextAsync(System.IO.Path.Combine(etc, "resolv.conf"), $"nameserver {nameserver}\noptions timeout:5 attempts:1\n", Ct);
+            await File.WriteAllTextAsync(System.IO.Path.Combine(etc, "nsswitch.conf"), "hosts: files dns\n", Ct);
+            return Execute(null, "ip", ["netns", "exec", Name, "getent", "ahostsv4", name]);
+        }
+        finally
+        {
+            Directory.Delete(etc, recursive: true);
+        }
+    }
 
     /// <summary>Команда изнутри пространства; не вышла успешно — исключение с ее выводом.</summary>
     public async Task<string> RunAsync(params string[] command)
