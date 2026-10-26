@@ -79,6 +79,11 @@
     "why": "системный прокси macOS ставит установленная служба; на macOS CI проверяется шагом от root снимком и возвратом без изменений"
   },
   {
+    "reason": "системная Связка ключей — только на macOS от root (CI)",
+    "os": ["Linux", "Windows"],
+    "why": "секрет подключения при загрузке на macOS; на macOS CI проверяется шагом от root на своем имени секрета"
+  },
+  {
     "reason": "pf — только на macOS от root",
     "os": ["Linux", "Windows"],
     "why": "блок при обрыве macOS; на macOS CI грузит правила в свой якорь шагом от root"
@@ -99,11 +104,6 @@
     "reason": "нужны Linux, root и systemd-creds",
     "os": ["Windows", "macOS"],
     "why": "секрет постоянной защиты на Linux; на Windows — DPAPI своим тестом"
-  },
-  {
-    "reason": "systemd-creds шифрует ключом машины — нужен root на Linux",
-    "os": ["macOS"],
-    "why": "служба и постоянная защита на macOS — этап 6"
   },
 
   // Только Linux и macOS.

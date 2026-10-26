@@ -3,6 +3,7 @@ using System.Text;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Linux;
+using PrivateGateway.Client.Platform.MacOS;
 using PrivateGateway.Client.Platform.Windows;
 using PrivateGateway.Client.Service;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -11,7 +12,7 @@ namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
 /// Последнее подключение для «Защиты при загрузке»: ключи сервера — только зашифрованными хранилищем ОС
-/// (Windows — DPAPI, Linux — systemd-creds), испорченный или чужой файл — нет подключения.
+/// (Windows — DPAPI, Linux — systemd-creds, macOS — ключ в системной Связке ключей), испорченный или чужой файл — нет подключения.
 /// </summary>
 public sealed class BootConnectionTests : IDisposable
 {
@@ -68,6 +69,12 @@ public sealed class BootConnectionTests : IDisposable
         if (OperatingSystem.IsWindows())
         {
             return new DpapiSealer();
+        }
+
+        if (OperatingSystem.IsMacOS())
+        {
+            Assert.SkipUnless(Environment.IsPrivilegedProcess, "системная Связка ключей — только на macOS от root (CI)");
+            return KeychainSealer.ForThisMachine("pg-test-boot") ?? throw new InvalidOperationException("нет security");
         }
 
         Assert.SkipUnless(OperatingSystem.IsLinux() && Environment.IsPrivilegedProcess, "systemd-creds шифрует ключом машины — нужен root на Linux");

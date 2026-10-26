@@ -32,6 +32,14 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
             }
 
             ServiceSetup.Uninstall(name, folder, stateDir, ServiceHost.KillSwitch(), ServiceSetup.ForThisMachine());
+
+            // Ключ подключения при загрузке в системной Связке ключей (macOS) — вместе с зашифрованным им файлом, когда
+            // служба уже остановлена и нового не зашифрует.
+            if (ServiceHost.Sealer() is PrivateGateway.Client.Platform.MacOS.KeychainSealer keychain)
+            {
+                keychain.Forget();
+            }
+
             Console.WriteLine($"Служба {name} удалена");
             return 0;
         }
