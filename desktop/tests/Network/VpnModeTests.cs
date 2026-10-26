@@ -78,21 +78,43 @@ public sealed partial class VpnModeTests
         killSwitch.IsEnabled.ShouldBeFalse("ядро прокси соединяется с сервером мимо туннеля — блок VPN ему мешает");
     }
 
-    [Fact]
-    public async Task Server_name_that_is_not_found_is_refused_and_lifts_the_block()
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task Refusal_keeps_a_standing_block_only_when_a_vpn_with_the_kill_switch_is_asked_for(bool killSwitchOn, bool vpn)
     {
         Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
         var killSwitch = new FakeKillSwitch(enabled: true);
         await using var service = await RunningService.StartAsync(options: o => o with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = killSwitch });
         var (definition, _) = XrayKit.Pair("vless", 443);
 
-        // .invalid не разрешается никогда (RFC 2606).
-        var reply = await service.Client.ConnectAsync(VpnRequest(definition with { Host = "server.invalid" }), cancellationToken: Ct);
+        // .invalid не разрешается никогда (RFC 2606); за Hysteria2 ядро прокси не возьмется.
+        var request = vpn
+            ? VpnRequest(definition with { Host = "server.invalid" }, killSwitch: killSwitchOn)
+            : ServiceIpcTests.Request(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
+                with { Transport = TransportOptions.Quic }, XrayKit.FreePort());
+        var reply = await service.Client.ConnectAsync(request, cancellationToken: Ct);
 
-        (reply.Accepted, reply.Error.Code).ShouldBe((false, ErrorCodes.ServerNotFound));
-        killSwitch.IsEnabled.ShouldBeFalse("отказ снимает блок: под ним имя сервера не найти, а следующее подключение найдет");
-        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).ToCore().Protection
-            .ShouldBe(ProtectionChecks.For(ConnectionState.Off));
+        (reply.Accepted, reply.Error.Code).ShouldBe((false, vpn ? ErrorCodes.ServerNotFound : ErrorCodes.UnsupportedServer));
+        var status = (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).ToCore();
+        if (killSwitchOn && vpn)
+        {
+            (status.State, status.StrictBlock, status.ErrorCode, killSwitch.IsEnabled).ShouldBe(
+                (ConnectionState.Blocked, false, ErrorCodes.ServerNotFound, true), "блок при обрыве стоит — отказ сеть не открывает");
+            status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Blocked));
+            service.Journal.Tail(ServiceJournal.Capacity)
+                .ShouldContain(e => e.Message == "Блок при обрыве: подключиться не удалось — трафик заблокирован до подключения или отключения");
+
+            await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+            killSwitch.IsEnabled.ShouldBeFalse("отключение снимает блок — следующее подключение найдет адрес");
+        }
+        else
+        {
+            (status.State, killSwitch.IsEnabled).ShouldBe((ConnectionState.Error, false),
+                vpn ? "блок при обрыве выключен — сеть открыта, как выбрал пользователь" : "режиму прокси блок VPN не нужен");
+            status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off));
+        }
     }
 
     [Fact]
@@ -301,6 +323,38 @@ public sealed partial class VpnModeTests
         var reply = await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "b.example.com" }), cancellationToken: Ct);
 
         (reply.Accepted, reply.Error?.Code).ShouldBe((false, ErrorCodes.ServerNotFound), "адреса прежнего подключения VPN — сервера a, а не b");
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Refusal_while_protected_keeps_the_block_without_the_tunnel(bool byName)
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Resolve = (name, _) => name == "b.example.com" ? throw new SocketException(11001) : Task.FromResult<IPAddress[]>([IPAddress.Parse(rig.Definition.Host)]),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        // Имя не нашлось (туннель остановлен еще при поиске) или за сервер ядро не возьмется (туннель стоит до отказа).
+        var code = byName ? ErrorCodes.ServerNotFound : ErrorCodes.UnsupportedServer;
+        var reply = await service.Client.ConnectAsync(byName ? VpnRequest(rig.Definition with { Host = "b.example.com" }) : Hysteria(), cancellationToken: Ct);
+
+        reply.Error.Code.ShouldBe(code);
+        var refused = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Blocked, service.Journal))[^1];
+        (refused.StrictBlock, refused.Error?.Code).ShouldBe((false, code));
+        (rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.TunnelInterface).ShouldBe((true, null), "туннель остановлен — блок без разрешения ему");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2),
+            "смена сервера не удалась — сеть закрыта, а не открыта напрямую");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(rig.Lan.Url, seconds: 2, device: "pgnet0"));
+
+        // Из этой «Блокировки» — снова к рабочему серверу.
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        (await rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
     }
 
     [Fact]
@@ -568,6 +622,12 @@ public sealed partial class VpnModeTests
         back.ToCore().Protection.KillSwitch.ShouldBe(CheckState.Off);
         rig.KillSwitch.IsEnabled.ShouldBeTrue("туннель вернулся — и правила «только туннель»");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(rig.Lan.Url, seconds: 3, device: "pgnet0"));
+
+        // Отказ при поднятом туннеле: правила «только туннель» — не блок, отказ их снимает и «Блокировкой» не прикидывается.
+        (await service.Client.ConnectAsync(Hysteria(), cancellationToken: Ct)).Error.Code.ShouldBe(ErrorCodes.UnsupportedServer);
+        var refused = (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).ToCore();
+        (refused.State, rig.KillSwitch.IsEnabled).ShouldBe((ConnectionState.Error, false));
+        (await rig.Netns.FetchAsync(rig.Lan.Url, seconds: 3, device: "pgnet0")).ShouldBe("мимо туннеля");
     }
 
     [Fact]
@@ -1252,6 +1312,10 @@ public sealed partial class VpnModeTests
     /// Подключение в режиме VPN; локальная сеть закрыта, если не сказано иначе. Строгие маршруты служба ставит, только если в
     /// ядре ОС есть IPv6.
     /// </summary>
+    /// <summary>Режим VPN с блоком к серверу, за который ядро Xray не возьмется (Hysteria2).</summary>
+    private static V1.ConnectRequest Hysteria() =>
+        VpnRequest(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password)) with { Transport = TransportOptions.Quic });
+
     private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false,
         bool strictRoutes = true, bool blockIpv6 = true, bool fakeDns = false)
     {

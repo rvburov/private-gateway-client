@@ -115,7 +115,10 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             ? Loc.Instance["status.connected.subPlain"]
             : Loc.Instance["status.connected.sub"],
         ConnectionState.Reconnecting => Loc.Instance.Format("status.reconnecting.sub", Status.Attempt),
-        // Подключение не состоялось, а блок остался (строгий режим, загрузка): причина — рядом с «сеть закрыта».
+        // Подключение не состоялось, а блок остался (строгий режим, загрузка, блок при обрыве): причина — рядом с «сеть закрыта».
+        // Имени сервера под блоком не найти — что делать: отключить защиту, и следующее подключение его найдет.
+        ConnectionState.Blocked when Status is { ErrorCode: ErrorCodes.ServerNotFound, StrictBlock: false } =>
+            Loc.Instance.Format("status.blocked.sub.notFound", ErrorCodes.ServerNotFound),
         ConnectionState.Blocked when Status.ErrorCode is { } code =>
             Loc.Instance.Format(Status.StrictBlock ? "status.strict.subError" : "status.error.sub", code),
         // Ошибка — не всегда блокировка: без службы и после отказа защиты нет, в режиме прокси блокировать нечем.

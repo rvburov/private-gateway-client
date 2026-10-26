@@ -367,7 +367,8 @@ public sealed partial class Gateway : IAsyncDisposable
 
         if (vpn && addresses.Count == 0)
         {
-            // Отказ снимает блок (в строгом режиме — нет), повторное подключение найдет адрес.
+            // Под блоком при обрыве отказ его не снимает: адрес найдется после отключения. Без блока повторное подключение
+            // найдет адрес само.
             return await RejectAsync(request, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", cancellationToken).ConfigureAwait(false);
         }
 
@@ -691,8 +692,8 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>
     /// Отказ: запрошенное подключение не состоится, а прежнее не остается работать молча — ядро
     /// останавливается, состояние «Ошибка» с кодом, его видят все подписчики. Из «Выключено» и
-    /// «Ошибки» — через «Подключение», как любая попытка. Блок при загрузке и строгий режим сеть не открывают:
-    /// «Блокировка» с кодом причины.
+    /// «Ошибки» — через «Подключение», как любая попытка. Сеть не открывают блок при загрузке, строгий режим и стоящий
+    /// блок при обрыве, если снова просят режим VPN с блоком: «Блокировка» с кодом причины.
     /// </summary>
     private async Task<V1.ConnectReply> RejectAsync(V1.ConnectRequest request, ConnectionMode? mode, string code, string message,
         CancellationToken cancellationToken)
@@ -717,7 +718,14 @@ public sealed partial class Gateway : IAsyncDisposable
             var status = Status;
             var held = status.State == ConnectionState.Blocked && (_holdBlock || status.StrictBlock)
                 && (_blocking || (_held is { } block && Restore(block, "возвращен: подключение не состоялось")));
-            if (held || (strict && status.State != ConnectionState.Off && HoldStrictBlock()))
+            var strictHeld = !held && strict && status.State != ConnectionState.Off && HoldStrictBlock();
+
+            // Блок при обрыве стоит («Ошибка», «Блокировка», смена сервера в «Защищено»), а просят снова режим VPN с блоком:
+            // отказ его не снимает — туннеля нет, блок без разрешения ему. Правила «только туннель» (блок выключен) и
+            // отказ режима прокси или без блока сеть открывают, как выбрал пользователь.
+            var guarded = !held && !strictHeld && mode == ConnectionMode.Vpn && request.Protection?.KillSwitch == true
+                && status.State != ConnectionState.Off && _blocking && _held is not { Open: true } && BlockWithoutTunnel();
+            if (held || strictHeld || guarded)
             {
                 // Новое время — окно видит новый отказ (и экран «Работает другой VPN»), даже если «Блокировка» та же.
                 var now = _time.GetUtcNow();
@@ -727,12 +735,12 @@ public sealed partial class Gateway : IAsyncDisposable
                     Update(s => Requested(s) with
                     {
                         ErrorCode = code, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Blocked), Since = now,
-                        StrictBlock = s.StrictBlock || !held,
+                        StrictBlock = s.StrictBlock || strictHeld,
                     });
                 }
                 else
                 {
-                    Move(Requested, ConnectionState.Blocked, after: s => s with { ErrorCode = code, StrictBlock = true });
+                    Move(Requested, ConnectionState.Blocked, after: s => s with { ErrorCode = code, StrictBlock = strictHeld });
                 }
 
                 if (Status.StrictBlock)
@@ -743,7 +751,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
                 _journal.Add(JournalLevel.Warning, "service", Status.StrictBlock
                     ? "Строгий режим: подключиться не удалось — сеть закрыта до подключения или выключения строгого режима"
-                    : "Защита при загрузке: подключиться не удалось — трафик заблокирован до подключения или выключения защиты");
+                    : held
+                    ? "Защита при загрузке: подключиться не удалось — трафик заблокирован до подключения или выключения защиты"
+                    : "Блок при обрыве: подключиться не удалось — трафик заблокирован до подключения или отключения");
                 return new V1.ConnectReply { Accepted = false, Error = new V1.ErrorInfo { Code = code, Message = message } };
             }
 

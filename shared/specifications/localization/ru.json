@@ -58,6 +58,7 @@
   "status.reconnecting.sub": "К тому же серверу · попытка {0}",
   "status.blocked.title": "Интернет заблокирован",
   "status.blocked.sub": "Сервер не отвечает",
+  "status.blocked.sub.notFound": "{0} · под блоком адрес не найти: отключите защиту",
   "status.strict.title": "Интернет заблокирован",
   "status.strict.sub": "Строгий режим: без VPN сеть закрыта",
   "status.strict.subError": "{0} · строгий режим: без VPN сеть закрыта",

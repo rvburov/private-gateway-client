@@ -207,7 +207,7 @@ public sealed partial class VpnModeTests
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
-    public async Task Error_under_the_block_pauses_and_a_refusal_in_strict_mode_keeps_the_network_closed(bool strict)
+    public async Task Error_under_the_block_pauses_and_a_refusal_keeps_the_network_closed(bool strict)
     {
         using var held = new HeldFile(StrictHeld);
         File.Delete(held.Path);
@@ -249,7 +249,9 @@ public sealed partial class VpnModeTests
         }
         else
         {
-            (status.State, killSwitch.IsEnabled).ShouldBe((ConnectionState.Error, false), "без строгого режима отказ, как прежде, снимает блок");
+            (status.State, status.StrictBlock, status.ErrorCode, killSwitch.IsEnabled).ShouldBe((ConnectionState.Blocked, false, ErrorCodes.ServerNotFound, true),
+                "и без строгого режима отказ под блоком при обрыве сеть не открывает");
+            killSwitch.Policy!.TunnelInterface.ShouldBeNull();
         }
     }
 

@@ -58,6 +58,7 @@
   "status.reconnecting.sub": "Same server · attempt {0}",
   "status.blocked.title": "Internet blocked",
   "status.blocked.sub": "Server not responding",
+  "status.blocked.sub.notFound": "{0} · server not found under the block: turn protection off",
   "status.strict.title": "Internet blocked",
   "status.strict.sub": "Strict mode: no network without VPN",
   "status.strict.subError": "{0} · strict mode: no network without VPN",

@@ -464,11 +464,12 @@ public sealed class MainWindowTests : WindowHarness
 
     [AvaloniaTheory]
     [InlineData(true, ErrorCodes.ServerNotFound, "PGC-NET-002 · строгий режим: без VPN сеть закрыта", Pages.Home)]
-    [InlineData(false, ErrorCodes.ServerNotFound, "PGC-NET-002 · трафик заблокирован", Pages.Home)]
+    [InlineData(false, ErrorCodes.ServerNotFound, "PGC-NET-002 · под блоком адрес не найти: отключите защиту", Pages.Home)]
+    [InlineData(false, ErrorCodes.UnsupportedServer, "PGC-SVC-005 · трафик заблокирован", Pages.Home)]
     [InlineData(true, ErrorCodes.OtherVpn, "PGC-NET-010 · строгий режим: без VPN сеть закрыта", Pages.Problem)]
     public async Task Refusal_that_keeps_the_block_is_shown_with_its_reason(bool strict, string code, string subtitle, string page)
     {
-        // Строгий режим и загрузка: отказ в подключении сеть не открывает — «Блокировка» с причиной.
+        // Строгий режим, загрузка и блок при обрыве: отказ в подключении сеть не открывает — «Блокировка» с причиной.
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
         {
             Outcome = connecting => connecting.MoveTo(ConnectionState.Blocked, Time.GetUtcNow()) with { StrictBlock = strict, ErrorCode = code },
