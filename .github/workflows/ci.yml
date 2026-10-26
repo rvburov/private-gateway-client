@@ -157,8 +157,10 @@ jobs:
 
       # Ядро — libXray из исходников закрепленного коммита (android/libxray.version) через gomobile; NDK — с машины CI.
       # Готовый .aar кешируется по коммиту и скрипту: сборка всех четырех ABI идет минуты.
+      # Сохраняется сразу после сборки, а не в конце задания: упавшая дальше сборка приложения не заставит собирать ядро
+      # заново.
       - id: libxray
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: android/app/libs/libXray.aar
           key: libxray-${{ hashFiles('android/libxray.version', 'scripts/get-libxray.sh') }}
@@ -172,6 +174,12 @@ jobs:
       - name: Ядро libXray (gomobile)
         if: steps.libxray.outputs.cache-hit != 'true'
         run: scripts/get-libxray.sh
+
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: android/app/libs/libXray.aar
+          key: ${{ steps.libxray.outputs.cache-primary-key }}
 
       # Приложение: сборка APK (подпись отладочным ключом), тесты без устройства (Robolectric: хранилище, тексты RU/EN,
       # экраны Compose) и Android Lint — его ошибки роняют проверку.
