@@ -175,7 +175,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <param name="options">Что умеет служба.</param>
     /// <param name="time">Часы.</param>
     /// <param name="journal">Журнал службы.</param>
-    /// <param name="systemProxy">Системный прокси ОС для режима прокси; null — служба его не трогает (установленная служба).</param>
+    /// <param name="systemProxy">Системный прокси ОС для режима прокси; null — служба его не трогает (установленная служба Windows и Linux, служба пользователя macOS).</param>
     public Gateway(GatewayOptions options, TimeProvider time, ServiceJournal journal, SystemProxyGuard? systemProxy = null)
     {
         _options = options;
@@ -1054,7 +1054,8 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>
     /// Ядро готово: в режиме прокси с системным прокси — включить его на вход ядра, иначе вернуть как был.
-    /// Установленная служба работает не от имени пользователя и его настройки не трогает.
+    /// Установленная служба работает не от имени пользователя и его настройки не трогает; на macOS прокси — настройка
+    /// машины, и ставит его как раз установленная служба.
     /// </summary>
     private void ApplySystemProxy()
     {
@@ -1064,8 +1065,9 @@ public sealed partial class Gateway : IAsyncDisposable
         }
         else if (_systemProxy is null)
         {
-            _journal.Add(JournalLevel.Warning, "service",
-                $"Системный прокси ставит только служба пользователя — направьте программы на 127.0.0.1:{request.Connection.ProxyPort}");
+            _journal.Add(JournalLevel.Warning, "service", (OperatingSystem.IsMacOS()
+                ? "Системный прокси macOS ставит только установленная служба"
+                : "Системный прокси ставит только служба пользователя") + $" — направьте программы на 127.0.0.1:{request.Connection.ProxyPort}");
         }
         else
         {

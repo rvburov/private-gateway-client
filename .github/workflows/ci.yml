@@ -107,10 +107,11 @@ jobs:
 
       # Служба launchd на macOS — от root: ставится по-настоящему и удаляется (машина CI одноразовая); pf — правила разных
       # политик грузятся в свой якорь, который основные правила не вызывают (сеть машины CI не закрывается); DNS — на своей
-      # записи сети, которой нет в порядке служб (DNS машины CI не меняется). Служба из папки
+      # записи сети, которой нет в порядке служб (DNS машины CI не меняется); системный прокси — снимок и возврат его же
+      # (прокси машины CI не включается). Служба из папки
       # сборки — на общей среде .NET, а launchd запускает ее без DOTNET_ROOT: путь к среде — в /etc/dotnet/install_location,
       # как у установщика .NET (выпуск самодостаточный, ему это не нужно).
-      - name: Служба и pf macOS (root)
+      - name: Служба, pf, DNS и прокси macOS (root)
         if: runner.os == 'macOS'
         run: |
           dotnet_root=${DOTNET_ROOT:-$(dirname "$(readlink -f "$(command -v dotnet)")")}
@@ -118,7 +119,7 @@ jobs:
           echo "$dotnet_root" | sudo tee /etc/dotnet/install_location > /dev/null
           sudo env "PATH=$PATH" "DOTNET_ROOT=$dotnet_root" "HOME=$HOME" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
             dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
-            --filter-class '*.ServiceSetupTests' --filter-class '*.PfKillSwitchTests' --filter-class '*.ScutilDnsTests'
+            --filter-class '*.ServiceSetupTests' --filter-class '*.PfKillSwitchTests' --filter-class '*.ScutilDnsTests' --filter-class '*.NetworksetupSystemProxyTests'
 
       # Итог всех запусков в сводку задания: упавшие и пропущенные — каждый с причиной. Пропуск, не разрешенный для этой ОС в
       # desktop/tests/allowed-skips.json, роняет проверку: тест не может тихо перестать идти в CI.

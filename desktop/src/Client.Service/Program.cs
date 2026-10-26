@@ -23,8 +23,14 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
     {
         if (args.Contains("--uninstall"))
         {
-            // DNS ОС, направленный на туннель (macOS), — вернуть до удаления копии прежнего вместе с состоянием.
+            // DNS ОС, направленный на туннель, и системный прокси машины (macOS), оставленные упавшей службой, — вернуть до
+            // удаления их копий вместе с состоянием.
             ServiceHost.SystemDns(stateDir)?.Restore();
+            if (ServiceHost.SystemProxy(user: false) is { } machineProxy)
+            {
+                new SystemProxyGuard(machineProxy, UserServiceFiles.ProxyBackup(stateDir), new ServiceJournal(TimeProvider.System)).RestoreStale();
+            }
+
             ServiceSetup.Uninstall(name, folder, stateDir, ServiceHost.KillSwitch(), ServiceSetup.ForThisMachine());
             Console.WriteLine($"Служба {name} удалена");
             return 0;
@@ -89,8 +95,9 @@ foreach (var pid in leftovers)
 
 CoreProcess.Ledger = ledger;
 
-// Системный прокси — настройки пользователя: их меняет только служба пользователя. Снимок остался после сбоя — вернуть сразу.
-var systemProxy = user && ServiceHost.SystemProxy() is { } proxy
+// Системный прокси меняет та служба, что вправе (Windows и Linux — служба пользователя, macOS — установленная). Снимок
+// остался после сбоя — вернуть сразу.
+var systemProxy = ServiceHost.SystemProxy(user) is { } proxy
     ? new SystemProxyGuard(proxy, UserServiceFiles.ProxyBackup(state), journal)
     : null;
 var proxyRestored = systemProxy?.RestoreStale() == true;

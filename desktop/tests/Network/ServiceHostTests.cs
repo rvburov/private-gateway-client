@@ -5,7 +5,7 @@ using PrivateGateway.Client.Service.Cores;
 
 namespace PrivateGateway.Client.Tests.Network;
 
-/// <summary>Служба сама по себе: где она берет ядро и как служба пользователя уходит вместе с окном.</summary>
+/// <summary>Служба сама по себе: где она берет ядро, чей системный прокси меняет и как служба пользователя уходит вместе с окном.</summary>
 public sealed class ServiceHostTests : IDisposable
 {
     private static readonly string Xray = OperatingSystem.IsWindows() ? "xray.exe" : "xray";
@@ -46,6 +46,27 @@ public sealed class ServiceHostTests : IDisposable
         finally
         {
             Environment.CurrentDirectory = previous;
+        }
+    }
+
+    [Fact]
+    public void System_proxy_belongs_to_the_service_that_may_change_it()
+    {
+        // Windows и Linux — настройки пользователя: их меняет служба пользователя, установленная (SYSTEM, root) не трогает.
+        // macOS — настройка машины: служба пользователя без прав ее не меняет, установленная от root — меняет.
+        if (OperatingSystem.IsMacOS())
+        {
+            ServiceHost.SystemProxy(user: true).ShouldBeNull();
+            (ServiceHost.SystemProxy(user: false) is not null).ShouldBe(Environment.IsPrivilegedProcess);
+        }
+        else
+        {
+            ServiceHost.SystemProxy(user: false).ShouldBeNull();
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            ServiceHost.SystemProxy(user: true).ShouldNotBeNull();
         }
     }
 

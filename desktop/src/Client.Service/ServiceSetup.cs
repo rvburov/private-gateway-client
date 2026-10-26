@@ -67,7 +67,7 @@ public static class ServiceSetup
     /// </summary>
     public static readonly IReadOnlyList<string> StateFiles =
         ["journal.jsonl", "journal.1.jsonl", "running", "service.lock", "cores.json", "boot-block.json", "boot-connect.sealed", "update-bucket", ServiceReady.FileName,
-        Updates.VersionHistory.CurrentFile, Updates.VersionHistory.PreviousFile, Updates.VersionHistory.LeftFile, "dns-backup.json"];
+        Updates.VersionHistory.CurrentFile, Updates.VersionHistory.PreviousFile, Updates.VersionHistory.LeftFile, "dns-backup.json", "system-proxy.json"];
 
     /// <summary>Имя службы: служба Windows — PrivateGateway, юнит systemd — private-gateway, метка launchd — обратным доменом.</summary>
     public static string DefaultName => OperatingSystem.IsWindows() ? "PrivateGateway"

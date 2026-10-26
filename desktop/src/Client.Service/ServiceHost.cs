@@ -66,13 +66,15 @@ public static partial class ServiceHost
     }
 
     /// <summary>
-    /// Системный прокси этой ОС для службы пользователя: Windows — параметры Интернета, Linux — KDE в сеансе
-    /// Plasma, иначе GNOME; нет такого (macOS — нужны права, другой рабочий стол) — null, и программы
-    /// направляются вручную.
+    /// Системный прокси этой ОС — у той службы, что вправе его менять: Windows и Linux — настройки пользователя у службы
+    /// пользователя (<paramref name="user"/>): параметры Интернета, KDE в сеансе Plasma, иначе GNOME; macOS — настройка
+    /// машины у каждой сети, ее меняет установленная служба от root (<c>networksetup</c>). Нет такого (другой рабочий
+    /// стол, не та служба) — null, и программы направляются вручную.
     /// </summary>
-    public static ISystemProxy? SystemProxy() =>
-        OperatingSystem.IsWindows() ? new WindowsSystemProxy()
-        : OperatingSystem.IsLinux() ? (ISystemProxy?)KdeSystemProxy.ForThisSession() ?? GnomeSystemProxy.ForThisSession()
+    public static ISystemProxy? SystemProxy(bool user) =>
+        OperatingSystem.IsWindows() ? (user ? new WindowsSystemProxy() : null)
+        : OperatingSystem.IsLinux() ? (user ? (ISystemProxy?)KdeSystemProxy.ForThisSession() ?? GnomeSystemProxy.ForThisSession() : null)
+        : OperatingSystem.IsMacOS() && !user && Environment.IsPrivilegedProcess ? Platform.MacOS.NetworksetupSystemProxy.ForThisMachine()
         : null;
 
     /// <summary>Блок при обрыве этой ОС для установленной службы: Windows — WFP, Linux — nftables, macOS — pf.</summary>
