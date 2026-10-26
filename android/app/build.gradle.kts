@@ -95,6 +95,11 @@ androidComponents {
     }
 }
 
+// Схемы базы (Room) — в app/schemas, в git: по ним MigrationTestHelper проверяет миграции версий 2 и дальше.
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
+}
+
 dependencies {
     implementation("com.privategateway:core")
     implementation(files("libs/libXray.aar"))

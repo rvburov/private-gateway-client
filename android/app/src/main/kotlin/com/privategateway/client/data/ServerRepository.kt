@@ -100,7 +100,7 @@ class ServerRepository @Inject constructor(private val dao: ServerDao, private v
     private fun item(entity: ServerEntity): ServerItem? = try {
         ServerItem(
             id = entity.id,
-            name = entity.name,
+            name = entity.customName ?: entity.name,
             countryCode = entity.countryCode,
             protocol = ProxyProtocol.valueOf(entity.protocol),
             security = TransportSecurity.valueOf(entity.security),

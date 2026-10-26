@@ -194,6 +194,7 @@ jobs:
           path: |
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/reports/
+            android/app/schemas/
           if-no-files-found: ignore
 
   worktree:

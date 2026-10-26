@@ -109,6 +109,25 @@ class ServerRepositoryTest {
     }
 
     @Test
+    fun `own name is shown in the list while the link keeps its name`() = runBlocking {
+        val server = Fixtures.servers().first()
+        repository.add(listOf(server))
+        val stored = database.servers().all().single()
+        // Свое название — только для списка; подписка узнает сервер по названию из ссылки, «Поделиться» отдает его же.
+        database.servers().delete(stored.id)
+        database.servers().insertAll(
+            listOf(
+                ServerEntity(
+                    stored.id, stored.name, stored.countryCode, stored.protocol, stored.security, stored.transport, stored.port,
+                    stored.position, stored.addedAt, stored.sealed, customName = "Мой сервер",
+                ),
+            ),
+        )
+        assertEquals("Мой сервер", repository.servers.first().single().name)
+        assertEquals(server.name, assertNotNull(repository.load(stored.id)).name)
+    }
+
+    @Test
     fun `new servers go after the old ones`() = runBlocking {
         val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }
         repository.add(servers.take(2))

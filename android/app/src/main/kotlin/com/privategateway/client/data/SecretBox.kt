@@ -22,6 +22,9 @@ interface SecretBox {
  * память приложения), в базе — только шифротекст. Формат: версия (1 байт), IV (12 байт), шифротекст с тегом.
  */
 class KeystoreSecretBox @Inject constructor() : SecretBox {
+    /** Ключ (ссылка на него в Keystore) — один раз на процесс: загрузка хранилища на каждый сервер замедляла бы списки. */
+    private var cached: SecretKey? = null
+
     override fun seal(plain: ByteArray): ByteArray {
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
@@ -38,7 +41,9 @@ class KeystoreSecretBox @Inject constructor() : SecretBox {
     }
 
     @Synchronized
-    private fun key(): SecretKey {
+    private fun key(): SecretKey = cached ?: load().also { cached = it }
+
+    private fun load(): SecretKey {
         val store = KeyStore.getInstance(PROVIDER).apply { load(null) }
         (store.getKey(ALIAS, null) as? SecretKey)?.let { return it }
         val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, PROVIDER)
