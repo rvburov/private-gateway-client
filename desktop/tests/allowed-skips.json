@@ -64,6 +64,11 @@
     "why": "служба launchd; на macOS CI ставит ее шагом от root"
   },
   {
+    "reason": "таблица маршрутов macOS",
+    "os": ["Linux", "Windows"],
+    "why": "маршруты macOS через netstat"
+  },
+  {
     "reason": "pf — только на macOS от root",
     "os": ["Linux", "Windows"],
     "why": "блок при обрыве macOS; на macOS CI грузит правила в свой якорь шагом от root"

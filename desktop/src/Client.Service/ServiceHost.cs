@@ -93,12 +93,13 @@ public static partial class ServiceHost
         : null;
 
     /// <summary>
-    /// Маршруты этой ОС — найти чужой VPN: Windows — таблица маршрутов, Linux — <c>ip</c>; macOS — еще
-    /// нет, проверки там нет. Читать маршруты можно и без прав: проверка есть и у службы пользователя.
+    /// Маршруты этой ОС — найти чужой VPN: Windows — таблица маршрутов, Linux — <c>ip</c>, macOS — <c>netstat</c>.
+    /// Читать маршруты можно и без прав: проверка есть и у службы пользователя.
     /// </summary>
     public static IRouteTable? Routes() =>
         OperatingSystem.IsWindows() ? new WindowsRouteTable()
         : OperatingSystem.IsLinux() ? IpRouteTable.ForThisMachine()
+        : OperatingSystem.IsMacOS() ? Platform.MacOS.NetstatRouteTable.ForThisMachine()
         : null;
 
     /// <summary>Часы сна этой ОС (<see cref="ISuspendClock"/>): по ним служба узнает, что машина спала.</summary>

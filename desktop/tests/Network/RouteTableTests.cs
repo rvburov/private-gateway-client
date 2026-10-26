@@ -2,6 +2,7 @@ using System.Net.NetworkInformation;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Platform.Linux;
+using PrivateGateway.Client.Platform.MacOS;
 using PrivateGateway.Client.Platform.Windows;
 
 namespace PrivateGateway.Client.Tests.Network;
@@ -90,6 +91,55 @@ public sealed class RouteTableTests
         }
 
         var routes = new WindowsRouteTable().DefaultRoutes();
+
+        routes.ShouldContain(r => !r.IsTunnel, "у машины CI маршрут ко всему интернету — через сетевую карту");
+        TestContext.Current.TestOutputHelper?.WriteLine(string.Join('\n', routes));
+    }
+
+    [Fact]
+    public void Netstat_routes_take_whole_internet_routes_and_skip_scoped_ones()
+    {
+        var inet = NetstatRouteTable.Parse("""
+            Routing tables
+
+            Internet:
+            Destination        Gateway            Flags               Netif Expire
+            default            192.168.1.1        UGScg                 en0
+            default            192.168.1.1        UGScIg                en7
+            0/1                10.8.0.1           UGSc                utun4
+            127                127.0.0.1          UCS                   lo0
+            128.0/1            10.8.0.1           UGSc                utun4
+            192.168.1          link#6             UCS                   en0      !
+            """).ToList();
+        inet.ShouldBe([new DefaultRoute("en0", false), new DefaultRoute("utun4", true), new DefaultRoute("utun4", true)],
+            "привязанный к адаптеру default (флаг I) трафик машины не забирает");
+
+        var inet6 = NetstatRouteTable.Parse("""
+            Internet6:
+            Destination                             Gateway                                 Flags               Netif Expire
+            default                                 fe80::%utun0                            UGcIg               utun0
+            default                                 fe80::%utun1                            UGcIg               utun1
+            ::/1                                    fd00::1                                 UGSc                ppp0
+            ::1                                     ::1                                     UHL                   lo0
+            8000::/1                                fd00::1                                 UGSc                ipsec0
+            """).ToList();
+        inet6.ShouldBe([new DefaultRoute("ppp0", true), new DefaultRoute("ipsec0", true)], "штатные utun0–utun3 с привязанным default — не чужой VPN");
+        OtherVpn.Find(inet.Concat(inet6), "utun225").ShouldBe(["ipsec0", "ppp0", "utun4"]);
+        NetstatRouteTable.Parse("default 192.168.1.1 UGSc en0").Single().IsTunnel.ShouldBeFalse();
+        NetstatRouteTable.Parse("default 10.0.0.1 UGSc utunnel").Single().IsTunnel.ShouldBeFalse("туннель — utun с номером");
+        NetstatRouteTable.Parse("default 192.168.1.1 GSc en0").ShouldBeEmpty("маршрут не поднят (нет U)");
+    }
+
+    [Fact]
+    public void Macos_route_table_has_the_default_route_of_the_machine()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            Assert.Skip("таблица маршрутов macOS");
+            return;
+        }
+
+        var routes = NetstatRouteTable.ForThisMachine()!.DefaultRoutes();
 
         routes.ShouldContain(r => !r.IsTunnel, "у машины CI маршрут ко всему интернету — через сетевую карту");
         TestContext.Current.TestOutputHelper?.WriteLine(string.Join('\n', routes));
