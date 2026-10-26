@@ -921,7 +921,7 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 using var probe = new TcpClient();
                 await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
-                await ConnectedAsync(session).ConfigureAwait(false);
+                await ConfirmAsync(session, "Подключено: прокси на 127.0.0.1 готов").ConfigureAwait(false);
                 return;
             }
             catch (SocketException)
@@ -955,11 +955,18 @@ public sealed partial class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Ядро открыло вход — системный прокси и «Защищено». Под тем же замком, что смена подключения:
-    /// отключение посреди этого не оставит системный прокси включенным.
+    /// Ядра поднялись — «Защищено» только после ответа сервера: проба через вход проверки ядра, прямо в выход сервера, не дольше
+    /// таймаута подключения (одна неудача бывает и у живого сервера — вторая сразу). Ответил — системный прокси (режим прокси) и
+    /// «Защищено»; нет — как обрыв: «Переподключение» к тому же серверу (первая попытка ставит блок без туннеля), а с «Не
+    /// повторять» — «Ошибка».
+    /// Пробы выключены (<see cref="ReconnectTiming.Every"/> не задан) — «Защищено» сразу. Подключение сменилось — ничего.
+    /// Системный прокси и «Защищено» — под тем же замком, что смена подключения: отключение посреди этого не оставит системный
+    /// прокси включенным.
     /// </summary>
-    private async Task ConnectedAsync(int session)
+    private async Task ConfirmAsync(int session, string connected)
     {
+        var timeout = TimeSpan.FromSeconds(_request?.Connection.ConnectTimeoutSeconds ?? 10);
+        var answered = Timing.Every is null || await ProbeAsync(timeout).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false);
         await _switch.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -971,16 +978,32 @@ public sealed partial class Gateway : IAsyncDisposable
                 }
             }
 
-            // Сначала системный прокси: «Защищено» в окне — когда браузеры уже идут через прокси.
-            ApplySystemProxy();
-            Move(s => s, ConnectionState.Connected);
-            _journal.Add(JournalLevel.Info, "service", "Подключено: прокси на 127.0.0.1 готов");
-            AfterConnected(session);
+            if (answered)
+            {
+                // Сначала системный прокси: «Защищено» в окне — когда браузеры уже идут через прокси.
+                ApplySystemProxy();
+                Move(s => s, ConnectionState.Connected);
+                _journal.Add(JournalLevel.Info, "service", connected);
+                AfterConnected(session);
+                return;
+            }
+
+            if (_request is not { Connection.Reconnect: not ReconnectPolicy.Never })
+            {
+                Fail(session, ErrorCodes.ServerNotResponding, "Сервер не ответил при подключении — переподключение выключено");
+                return;
+            }
+
+            _lostAt = _time.GetUtcNow();
+            _journal.Add(JournalLevel.Warning, "service", "Сервер не ответил при подключении — переподключение к тому же серверу");
+            Move(s => s, ConnectionState.Reconnecting);
         }
         finally
         {
             _switch.Release();
         }
+
+        _ = ReconnectAsync(session, ErrorCodes.ServerNotResponding);
     }
 
     /// <summary>
@@ -1265,16 +1288,15 @@ public sealed partial class Gateway : IAsyncDisposable
                 return;
             }
 
-            Move(s => s, ConnectionState.Connected);
-            _journal.Add(JournalLevel.Info, "service", core.Routing.HasBypassApps || core.Routing.HasBypassSites
-                ? "Подключено: трафик через туннель, обход раздельного режима — напрямую"
-                : "Подключено: весь трафик через туннель");
-            AfterConnected(session);
         }
         finally
         {
             _switch.Release();
         }
+
+        await ConfirmAsync(session, core.Routing.HasBypassApps || core.Routing.HasBypassSites
+            ? "Подключено: трафик через туннель, обход раздельного режима — напрямую"
+            : "Подключено: весь трафик через туннель").ConfigureAwait(false);
     }
 
     /// <summary>

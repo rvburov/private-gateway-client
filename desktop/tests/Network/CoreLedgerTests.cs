@@ -139,7 +139,11 @@ public sealed class CoreLedgerTests : IDisposable
     {
         var executable = Path.Combine(XrayKit.Root, "artifacts", "bin", "Client.Service", new DirectoryInfo(AppContext.BaseDirectory).Name,
             UserServiceLauncher.FileName);
-        return Started(new ProcessStartInfo(executable) { ArgumentList = { "--user", "--ipc", endpoint, "--state", _root, "--xray", XrayKit.Xray! } });
+        // Проверочный адрес — по HTTP: сервер теста отдает любой адрес своему сайту, и «Защищено» приходит после ответа сервера.
+        return Started(new ProcessStartInfo(executable)
+        {
+            ArgumentList = { "--user", "--ipc", endpoint, "--state", _root, "--xray", XrayKit.Xray!, "--latency-target", "http://example.com/" },
+        });
     }
 
     /// <summary>Запустить с выводом в тест, а не в прогон, и запомнить — <see cref="Dispose"/> снимет.</summary>

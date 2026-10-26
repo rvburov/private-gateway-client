@@ -256,7 +256,9 @@ public sealed class ServiceGatewayClientTests
             using var host = new GatewayHost(locator, a => Client(a.Endpoint, definition, settings), () => settings, TimeProvider.System);
 
             await host.ConnectAsync(Profile(definition), Ct);
-            await WaitFor(() => host.Status.State == ConnectionState.Connected);
+            // Служба подключает: «Защищено» — когда сервер теста ответит проверочным адресом из интернета; без интернета у машины
+            // теста — «Переподключение». Здесь проверяется запуск и остановка службы пользователя, а не сервер.
+            await WaitFor(() => host.Status.State is ConnectionState.Connected or ConnectionState.Reconnecting);
 
             host.Status.Mode.ShouldBe(ConnectionMode.Proxy);
             host.Journal.ShouldContain(e => e.Source == "app" && e.Message.StartsWith("Запущена служба пользователя", StringComparison.Ordinal));

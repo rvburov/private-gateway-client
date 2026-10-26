@@ -92,16 +92,16 @@ public sealed partial class Gateway
 
     /// <summary>
     /// Отвечает ли сервер: запрос к проверочному адресу через вход проверки ядра — прямо в выход сервера,
-    /// мимо правил маршрутизации.
+    /// мимо правил маршрутизации; ждать не дольше <paramref name="timeout"/> (по умолчанию — <see cref="ReconnectTiming.ProbeTimeout"/>).
     /// </summary>
-    private async Task<bool> ProbeAsync()
+    private async Task<bool> ProbeAsync(TimeSpan? timeout = null)
     {
         if (_probe is not { } link)
         {
             return false;
         }
 
-        var probe = new ServerProbe(link.Port, new NetworkCredential(link.User, link.Password), _options.LatencyTarget, Timing.ProbeTimeout);
+        var probe = new ServerProbe(link.Port, new NetworkCredential(link.User, link.Password), _options.LatencyTarget, timeout ?? Timing.ProbeTimeout);
         return await (_options.Probe ?? LatencyProbe.ReachesAsync)(probe, CancellationToken.None).ConfigureAwait(false);
     }
 
@@ -435,6 +435,8 @@ public sealed partial class Gateway
                 return;
             }
 
+            // Переподключение после подключения, на которое сервер не ответил, системного прокси еще не ставило.
+            ApplySystemProxy();
             Move(s => s, ConnectionState.Connected);
             _journal.Add(JournalLevel.Info, "service", $"Связь с сервером восстановлена (попытка {attempt})");
             AfterConnected(session);

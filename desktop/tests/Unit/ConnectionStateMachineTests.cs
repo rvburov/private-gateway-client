@@ -8,6 +8,7 @@ public class ConnectionStateMachineTests
     {
         { ConnectionState.Off, ConnectionState.Connecting },
         { ConnectionState.Connecting, ConnectionState.Connected },
+        { ConnectionState.Connecting, ConnectionState.Reconnecting },
         { ConnectionState.Connecting, ConnectionState.Blocked },
         { ConnectionState.Connecting, ConnectionState.Error },
         { ConnectionState.Connecting, ConnectionState.Off },

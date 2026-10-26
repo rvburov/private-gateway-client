@@ -10,8 +10,9 @@ public static class ConnectionStateMachine
     private static readonly Dictionary<ConnectionState, ConnectionState[]> Allowed = new()
     {
         [ConnectionState.Off] = [ConnectionState.Connecting],
+        // «Подключение → Переподключение» — ядра поднялись, а сервер не ответил на пробу: те же паузы и политика, что при обрыве.
         [ConnectionState.Connecting] =
-            [ConnectionState.Connected, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
+            [ConnectionState.Connected, ConnectionState.Reconnecting, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],
         // «Защищено → Блокировка» и «Ошибка → Блокировка» — ручное отключение в строгом режиме: сеть остается закрытой.
         [ConnectionState.Connected] =
             [ConnectionState.Reconnecting, ConnectionState.Connecting, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],

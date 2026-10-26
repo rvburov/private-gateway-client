@@ -810,6 +810,35 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Server_that_does_not_answer_at_connect_keeps_the_block_and_is_retried()
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
+        {
+            Reconnect = ReconnectTests.Fast with { GiveUpAfter = TimeSpan.FromHours(1) },
+            Probe = rig.ProbeAsync,
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        rig.StopServer();
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+
+        // Туннель поднялся, а сервер не ответил на пробу: не «Защищено», а «Переподключение» под блоком.
+        var states = await ServiceIpcTests.ReadUntilAsync(watch, s => s is { State: V1.ConnectionState.Reconnecting, Attempt: >= 2 } or { State: V1.ConnectionState.Error },
+            service.Journal);
+        states.ShouldNotContain(s => s.State == V1.ConnectionState.Connected, "сервер не ответил — «Защищено» не показано ни разу");
+        states[^1].State.ShouldBe(V1.ConnectionState.Reconnecting, states[^1].Error?.Message);
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сервер не ответил при подключении — переподключение к тому же серверу");
+        rig.KillSwitch.IsEnabled.ShouldBeTrue("блок держит трафик, пока служба пробует снова");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
+
+        await rig.StartServerAsync();
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        (await rig.Netns.CurlAsync(Rig.Trace)).ShouldBe("через туннель");
+    }
+
+    [Fact]
     public async Task Block_taken_away_by_another_program_comes_back_by_itself()
     {
         await using var rig = await Rig.CreateAsync();

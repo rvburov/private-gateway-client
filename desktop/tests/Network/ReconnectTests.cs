@@ -180,6 +180,45 @@ public sealed class ReconnectTests
         }
     }
 
+    [Theory]
+    [InlineData(V1.ReconnectPolicy.Backoff60S)]
+    [InlineData(V1.ReconnectPolicy.Never)]
+    public async Task Server_that_does_not_answer_at_connect_is_not_shown_as_protected(V1.ReconnectPolicy policy)
+    {
+        var proxy = new FakeSystemProxy();
+        var backup = Path.Combine(Path.GetTempPath(), "pg-proxy-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+        try
+        {
+            await using var rig = await ProxyRig.CreateAsync(systemProxy: (proxy, backup));
+            using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+            rig.StopServer();
+            var port = XrayKit.FreePort();
+            var request = ServiceIpcTests.Request(rig.Definition, port, systemProxy: true);
+            request.Connection.Reconnect = policy;
+
+            await rig.Service.Client.ConnectAsync(request, cancellationToken: Ct);
+
+            // Ядро открыло вход, а сервер не ответил: «Защищено» не было, браузеры на мертвое ядро не направлены.
+            var states = await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Reconnecting or V1.ConnectionState.Error);
+            states.ShouldNotContain(s => s.State == V1.ConnectionState.Connected, "сервер не ответил — и «Защищено» не показано ни разу");
+            proxy.Port.ShouldBeNull("системный прокси не ставится на ядро без связи с сервером");
+            if (policy == V1.ReconnectPolicy.Never)
+            {
+                (states[^1].State, states[^1].Error.Code).ShouldBe((V1.ConnectionState.Error, ErrorCodes.ServerNotResponding));
+                return;
+            }
+
+            await rig.StartServerAsync();
+
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+            proxy.Port.ShouldBe(port, "связь вернулась — системный прокси на ядре");
+        }
+        finally
+        {
+            File.Delete(backup);
+        }
+    }
+
     [Fact]
     public void Network_fingerprint_ignores_the_own_tunnel_the_loopback_and_the_order()
     {

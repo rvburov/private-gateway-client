@@ -40,7 +40,8 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
 
 // --user — служба пользователя без прав (только режим прокси), адрес IPC — в папке пользователя;
 // --parent <pid> — окно, которое ее запустило: закроется окно — остановится и служба;
-// --ipc <адрес>, --xray <путь>, --sing-box <путь>, --state <папка> — для разработки и тестов;
+// --ipc <адрес>, --xray <путь>, --sing-box <путь>, --state <папка>, --latency-target <адрес> (проверочный адрес задержки и
+// проб сервера) — для разработки и тестов;
 // --owner <uid или SID> — кого пускать, --service-name — имя службы Windows (их ставит установка).
 var user = args.Contains("--user");
 var endpoint = Option("--ipc") ?? (user ? IpcEndpoints.User : IpcEndpoints.System);
@@ -75,7 +76,7 @@ var bootFolder = Option("--state") ?? AppContext.BaseDirectory;
 var bootBlock = canVpn ? Path.Combine(bootFolder, "boot-block.json") : null;
 var bootConnect = canVpn && ServiceHost.Sealer() is { } sealer ? new BootConnection(Path.Combine(bootFolder, "boot-connect.sealed"), sealer) : null;
 await using var gateway = new Gateway(
-    new GatewayOptions(xray, canVpn, LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
+    new GatewayOptions(xray, canVpn, Uri.TryCreate(Option("--latency-target"), UriKind.Absolute, out var target) ? target : LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
         Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver),
     time, journal, systemProxy);
