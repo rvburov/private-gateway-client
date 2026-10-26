@@ -71,7 +71,8 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, MainPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<MainPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ServersPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ServersPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ImportPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ImportPageViewModel>(sp, navigator));
-        services.AddSingleton<Func<CheckPageViewModel>>(sp => () => ActivatorUtilities.CreateInstance<CheckPageViewModel>(sp));
+        services.AddSingleton<Func<INavigator, CheckPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<CheckPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, NetworkPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<NetworkPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SubscriptionsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SubscriptionsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ProtectionPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProtectionPageViewModel>(sp, navigator));

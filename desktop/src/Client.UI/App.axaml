@@ -64,6 +64,9 @@
     <DataTemplate DataType="vm:SiteRuleEditViewModel">
       <views:SiteRuleEditView />
     </DataTemplate>
+    <DataTemplate DataType="vm:NetworkPageViewModel">
+      <views:NetworkPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:BackupPageViewModel">
       <views:BackupPage />
     </DataTemplate>

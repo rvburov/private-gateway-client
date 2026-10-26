@@ -32,6 +32,9 @@ public static class Pages
     /// <summary>«О программе» — подстраница настроек (доска 15).</summary>
     public const string About = "about";
 
+    /// <summary>«Сеть машины» — сетевой инспектор, подстраница «Проверки» (этап 7).</summary>
+    public const string Network = "network";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

@@ -30,6 +30,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
     private readonly IFileSaveService _files;
     private readonly ToastViewModel _toast;
     private readonly TimeProvider _time;
+    private readonly INavigator _navigator;
     private DiagnosticReport? _report;
     private ConnectionState? _reportState;
     private bool _rerun;
@@ -40,10 +41,12 @@ public sealed partial class CheckPageViewModel : ObservableObject
         IServerCatalog catalog,
         IFileSaveService files,
         ToastViewModel toast,
-        TimeProvider time)
+        TimeProvider time,
+        INavigator navigator)
     {
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(gateway);
+        _navigator = navigator;
         Protection = protection;
         _gateway = gateway;
         _catalog = catalog;
@@ -76,6 +79,10 @@ public sealed partial class CheckPageViewModel : ObservableObject
     }
 
     public ProtectionViewModel Protection { get; }
+
+    /// <summary>«Сеть машины» — сетевой инспектор.</summary>
+    [RelayCommand]
+    private void OpenNetwork() => _navigator.Navigate(Pages.Network);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RunText))]

@@ -1,0 +1,152 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.NetworkPage"
+             x:DataType="vm:NetworkPageViewModel">
+  <!-- Сеть машины — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе, как «Проверка»). Подстраница
+       «Проверки»: островок виден, «назад» — к проверке. -->
+  <UserControl.Styles>
+    <!-- Строки разделены линией, у последней ее нет -->
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.routeRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="LineHeight" Value="{StaticResource PgLineHeight.Body}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Выключенный адаптер — приглушен, состояние все равно словом -->
+    <Style Selector="Border.adapter.down">
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
+    <!-- Чип состояния: включен — зеленым, выключен — серым (не ошибка) -->
+    <Style Selector="Border.state">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+    </Style>
+    <Style Selector="Border.state TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Border.state.on">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.state.on TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Text}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.network.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock Classes="caption" Text="{l:L network.note}" TextWrapping="Wrap" Margin="6,0,0,0" VerticalAlignment="Center"
+                     LineHeight="{StaticResource PgLineHeight.Body}" />
+          <Button x:Name="RefreshButton" Grid.Column="1" Classes="secondary" Height="44" Padding="16,0"
+                  CornerRadius="{StaticResource PgRadius.Button}" Command="{Binding RefreshCommand}"
+                  AutomationProperties.Name="{Binding RefreshText}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <c:Icon Classes.spin="{Binding IsLoading}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16" StrokeThickness="2.2" />
+              <TextBlock Text="{Binding RefreshText}" VerticalAlignment="Center" FontWeight="Medium" />
+            </StackPanel>
+          </Button>
+        </Grid>
+
+        <!-- Служба не ответила — снимка нет -->
+        <Border x:Name="Unavailable" Classes="card" Padding="16,14" IsVisible="{Binding IsUnavailable}">
+          <Grid ColumnDefinitions="Auto,*">
+            <c:Icon Data="{StaticResource Icon.Warning}" Width="20" Height="20" StrokeThickness="2"
+                    Foreground="{StaticResource PgBrush.Status.Warning.Text}" VerticalAlignment="Top" />
+            <TextBlock Grid.Column="1" Margin="12,0,0,0" Text="{l:L network.unavailable}" TextWrapping="Wrap"
+                       Foreground="{StaticResource PgBrush.Text.Primary}" />
+          </Grid>
+        </Border>
+
+        <!-- Адаптеры -->
+        <Grid ColumnDefinitions="*,Auto" Margin="6,4,6,0">
+          <TextBlock Classes="overline" Text="{l:L network.adapters, Upper=True}" VerticalAlignment="Bottom" />
+          <TextBlock x:Name="TakenAt" Grid.Column="1" Classes="caption" Text="{Binding TakenText}" VerticalAlignment="Bottom" />
+        </Grid>
+        <ItemsControl x:Name="AdapterList" ItemsSource="{Binding Adapters}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="10" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+          <ItemsControl.ItemTemplate>
+            <DataTemplate x:DataType="vm:AdapterCardViewModel">
+              <Border Classes="card adapter" Classes.down="{Binding !IsUp}" Padding="16,12"
+                      AutomationProperties.Name="{Binding Name}">
+                <StackPanel Spacing="10">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                            Background="{StaticResource PgBrush.Accent.Tint}">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="20" Height="20"
+                              StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding Subtitle}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="state" Classes.on="{Binding IsUp}" Padding="9,3" CornerRadius="10"
+                            VerticalAlignment="Center">
+                      <TextBlock Text="{Binding StatusText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold" />
+                    </Border>
+                  </Grid>
+                  <ItemsControl ItemsSource="{Binding Rows}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="vm:DetailRowViewModel">
+                        <Grid ColumnDefinitions="88,*" Margin="0,3">
+                          <TextBlock Classes="caption" Text="{Binding Label}" />
+                          <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                </StackPanel>
+              </Border>
+            </DataTemplate>
+          </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <!-- Маршруты -->
+        <TextBlock Classes="overline" Text="{l:L network.routes, Upper=True}" Margin="6,8,6,0" />
+        <Border Classes="card" Padding="16,4">
+          <StackPanel>
+            <TextBlock Classes="caption" Margin="0,11" IsVisible="{Binding !HasRoutes}" Text="{l:L network.routes.empty}" />
+            <ItemsControl x:Name="RouteList" ItemsSource="{Binding Routes}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:RouteRowViewModel">
+                  <Border Classes="routeRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,9">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="2">
+                        <SelectableTextBlock Classes="value" FontWeight="SemiBold" Text="{Binding Destination}" />
+                        <TextBlock Classes="caption" Text="{Binding Via}" TextTrimming="CharacterEllipsis" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" Classes="caption" Text="{Binding Metric}" IsVisible="{Binding HasMetric}"
+                                 VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>
