@@ -73,10 +73,13 @@ public sealed class ServiceSetupTests : IDisposable
         var build = Touch("build", Exe, "PrivateGateway.Service.dll", "PrivateGateway.Service.deps.json", "PrivateGateway.Service.runtimeconfig.json",
             "Grpc.Core.Api.dll", "libSystem.Native.so", "PrivateGateway.dll", "Avalonia.Base.dll", "libSkiaSharp.so");
         Touch(Path.Combine("build", "ru"), "Grpc.Core.Api.resources.dll");
+        Touch(Path.Combine("build", "runtimes", "win", "lib", "net10.0"), "System.ServiceProcess.ServiceController.dll");
         File.WriteAllText(Path.Combine(build, "PrivateGateway.Service.deps.json"), """
             { "targets": { ".NETCoreApp,Version=v10.0/linux-x64": {
                 "Grpc.Core.Api/2.71.0": { "runtime": { "lib/net8.0/Grpc.Core.Api.dll": {} },
                                           "resources": { "lib/net8.0/ru/Grpc.Core.Api.resources.dll": { "locale": "ru" } } },
+                "System.ServiceProcess.ServiceController/10.0.0": { "runtimeTargets": {
+                    "runtimes/win/lib/net10.0/System.ServiceProcess.ServiceController.dll": { "rid": "win", "assetType": "runtime" } } },
                 "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64/10.0.0": { "native": { "libSystem.Native.so": {} } },
                 "Grpc.Tools/2.71.0": { "runtime": { "lib/net8.0/Missing.In.Folder.dll": {} } } } } }
             """);
@@ -87,7 +90,8 @@ public sealed class ServiceSetupTests : IDisposable
         {
             Exe, "Grpc.Core.Api.dll", "PrivateGateway.Service.deps.json", "PrivateGateway.Service.dll", "PrivateGateway.Service.runtimeconfig.json",
             "libSystem.Native.so", Path.Combine("ru", "Grpc.Core.Api.resources.dll"),
-        }.Order(StringComparer.Ordinal).ToList(), customMessage: "окно (PrivateGateway.dll, Avalonia, Skia) служба не возит");
+            Path.Combine("runtimes", "win", "lib", "net10.0", "System.ServiceProcess.ServiceController.dll"),
+        }.Order(StringComparer.Ordinal).ToList(), customMessage: "окно (PrivateGateway.dll, Avalonia, Skia) служба не возит, а библиотеки ОС сборки без RID — на своих местах");
     }
 
     [Fact]
@@ -170,6 +174,10 @@ public sealed class ServiceSetupTests : IDisposable
 
         os.Calls[^1].ShouldBe("remove");
         Directory.Exists(options.Folder).ShouldBeFalse();
+
+        os.StartError = new System.ComponentModel.Win32Exception(1067, "процесс завершился неожиданно");
+        Should.Throw<IOException>(() => ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(1)))
+            .Message.ShouldContain("процесс завершился неожиданно", customMessage: "отказ ОС при запуске — в тексте ошибки, а не «ready не появился»");
     }
 
     [Fact]
@@ -439,6 +447,9 @@ public sealed class ServiceSetupTests : IDisposable
 
         public IReadOnlyList<string>? Command { get; private set; }
 
+        /// <summary>Чем ОС отказывает в запуске (служба падает сразу); null — запускает.</summary>
+        public Exception? StartError { get; set; }
+
         public bool IsInstalled(string name) => Installed;
 
         public void Register(string name, IReadOnlyList<string> command)
@@ -451,6 +462,11 @@ public sealed class ServiceSetupTests : IDisposable
         public void Start(string name)
         {
             Calls.Add("start");
+            if (StartError is not null)
+            {
+                throw StartError;
+            }
+
             if (works(Command![0]))
             {
                 ServiceReady.Mark(state, ServiceVersion.Current);

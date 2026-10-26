@@ -148,6 +148,13 @@ public static class ServiceSetup
                     }
                 }
 
+                // Сборка без RID (тесты, отладка) кладет библиотеки отдельных ОС в runtimes/<rid>/… и ищет их там же:
+                // служба Windows без runtimes/win/lib/…/System.ServiceProcess.ServiceController.dll не запускается.
+                if (library.Value.TryGetProperty("runtimeTargets", out var targets))
+                {
+                    files.UnionWith(targets.EnumerateObject().Select(a => a.Name.Replace('/', Path.DirectorySeparatorChar)));
+                }
+
                 if (library.Value.TryGetProperty("resources", out var resources))
                 {
                     files.UnionWith(resources.EnumerateObject().Select(r => Path.Combine(r.Value.GetProperty("locale").GetString()!, Path.GetFileName(r.Name))));
@@ -214,7 +221,7 @@ public static class ServiceSetup
         }
 
         Move(staged, folder);
-        if (Started(options, os, readyTimeout ?? ReadyTimeout))
+        if (Started(options, os, readyTimeout ?? ReadyTimeout, out var failure))
         {
             DeleteServiceFolder(previous);
             return;
@@ -235,8 +242,7 @@ public static class ServiceSetup
         if (hadService && Directory.Exists(previous))
         {
             Move(previous, folder);
-            var failure = Ready(options.StateFolder);
-            if (Started(options, os, readyTimeout ?? ReadyTimeout))
+            if (Started(options, os, readyTimeout ?? ReadyTimeout, out _))
             {
                 throw new IOException("новая служба не запустилась — работает прежняя" + failure);
             }
@@ -245,7 +251,7 @@ public static class ServiceSetup
         }
 
         os.Remove(options.Name);
-        throw new IOException("служба не запустилась" + Ready(options.StateFolder));
+        throw new IOException("служба не запустилась" + failure);
     }
 
     /// <summary>Остановить и удалить службу, снять блок при обрыве, удалить ее папку и состояние.</summary>
@@ -306,8 +312,11 @@ public static class ServiceSetup
         }
     }
 
-    /// <summary>Зарегистрировать и запустить; готова — true, нет за <paramref name="timeout"/> — false.</summary>
-    private static bool Started(SetupOptions options, IOsService os, TimeSpan timeout)
+    /// <summary>
+    /// Зарегистрировать и запустить; готова — true, нет за <paramref name="timeout"/> — false и в
+    /// <paramref name="failure"/> — почему: отказ ОС при запуске или что служба успела сказать о готовности.
+    /// </summary>
+    private static bool Started(SetupOptions options, IOsService os, TimeSpan timeout, out string failure)
     {
         ServiceReady.Clear(options.StateFolder);
         os.Register(options.Name, Command(options));
@@ -317,10 +326,18 @@ public static class ServiceSetup
         }
         catch (Exception e) when (e is IOException or System.ComponentModel.Win32Exception)
         {
+            failure = $" (ОС не запустила ее: {e.Message})";
             return false;
         }
 
-        return ServiceReady.Wait(options.StateFolder, ServiceVersion.Current, timeout);
+        if (ServiceReady.Wait(options.StateFolder, ServiceVersion.Current, timeout))
+        {
+            failure = string.Empty;
+            return true;
+        }
+
+        failure = Ready(options.StateFolder);
+        return false;
     }
 
     // Что служба успела сказать о готовности — в текст ошибки: «готова» другой версии или ничего.

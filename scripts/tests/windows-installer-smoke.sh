@@ -96,7 +96,12 @@ sc qc PrivateGateway | grep -q -- "$owner" || fail "после отката у �
 
 # Новая копия службы не запускается (нет нужной библиотеки) — установка возвращает прежнюю и отвечает ошибкой.
 broken=$(mktemp -d)
-cp -r "$program/." "$broken/"
+for item in "$program"/*; do
+  case "${item##*/}" in
+    Service | ServiceState) ;; # копия службы и ее состояние (service.lock занят работающей службой) — не из сборки
+    *) cp -r "$item" "$broken/" ;;
+  esac
+done
 rm -f "$broken/Grpc.AspNetCore.Server.dll"
 if "$broken/PrivateGateway.Service.exe" --install ${owner}; then
   fail "установка службы, которая не запускается, прошла"
