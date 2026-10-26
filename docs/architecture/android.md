@@ -18,7 +18,7 @@ android/
 
 | Модуль | Что внутри | Сборка |
 | --- | --- | --- |
-| `core` | разбор ссылок и подписок (`LinkParser`, `ImportParser`: ссылки, base64, sing-box JSON, Clash YAML), ссылка из сервера (`LinkWriter`), конфиг Xray (`XrayConfig`), план карты туннеля (`TunPlan`), DNS ядра до туннеля и за сменой сети (`CoreDns`, `CoreDnsFollower`), подписи сервера (`ServerFacts`), список серверов — поиск, вкладки, группы, порядок (`ServerList`), быстрая смена (`QuickSwitch`), свое название (`ServerNames`), задержка (`Latency`, замер через libXray — `PingBatch`), подписки (`SubscriptionMerge`, `SubscriptionDownloader`), настройки туннеля (`TunnelSettings`), QR-код (`QrCode`, ZXing), `SecretMasker`, формы чисел (`Plural`) | `android/gradlew -p android/core test` — нужен только JDK 17+, без SDK Android и репозитория Google |
+| `core` | разбор ссылок и подписок (`LinkParser`, `ImportParser`: ссылки, base64, sing-box JSON, Clash YAML), ссылка из сервера (`LinkWriter`), конфиг Xray (`XrayConfig`), план карты туннеля (`TunPlan`), DNS ядра до туннеля и за сменой сети (`CoreDns`, `CoreDnsFollower`), подписи сервера (`ServerFacts`), список серверов — поиск, вкладки, группы, порядок (`ServerList`), быстрая смена (`QuickSwitch`), свое название (`ServerNames`), задержка (`Latency`, замер через libXray — `PingBatch`), подписки (`SubscriptionMerge`, `SubscriptionDownloader`), настройки туннеля (`TunnelSettings`: свой DNS — только IP или DoH по IP, `IpAddress`; DNS в локальной сети идет мимо туннеля — `lanDns`, `PrivateNetwork`; что требует переподключения — `needsReconnect`), QR-код (`QrCode` — картинка, `QrScanner` — кадр камеры, `QrImageSize` — большие фото до 8 Мп, ZXing), `SecretMasker`, формы чисел (`Plural`) | `android/gradlew -p android/core test` — нужен только JDK 17+, без SDK Android и репозитория Google |
 | `build-logic` | плагин `privategateway.shared-resources`: задачи `generatePgTheme` и `generatePgResources` | `android/gradlew -p android/build-logic test` — так же без SDK |
 | `app` | окно, служба VPN, хранилище, тесты Robolectric | `android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` — нужны SDK Android, NDK для ядра и `scripts/get-libxray.sh` |
 
@@ -106,6 +106,13 @@ IPv4» — IPv6 через сервер), «Разрешить локальну�
   428); «⋯» — карточка.
 - Нажатие на строку выбирает сервер: тот же — ничего не меняется; другой под защитой (подключение, защищено, ошибка) —
   сразу переподключение без окна утечки (решения 410, 426); без защиты — только выбор. Выбор записывается для «Недавних».
+- Задержка — по кнопке «Обновить» («Серверы», быстрая смена на главной) и только без защиты (решение 430): `LatencyMeter`
+  берет серверы из запечатанных ссылок, `PingBatch` собирает порции по 5 (тот же выход, что у туннеля, с текущими
+  настройками), `CoreEngine.ping` — `pingBatch` libXray с DNS сети и контроллером сокетов, пропускающим каждый (туннеля
+  нет). Итоги пишутся порцией; защита включилась во время порции — порция отбрасывается. Запуск ядра туннеля, остановка и
+  замер идут по одному, а замер не трогает контроллер работающего туннеля. Hysteria2 и TUIC в libXray не уходят — «нет».
+- Быстрая смена на главной — раскрывается в карточке сервера по «Сменить ▾» (решение 431): сервер в работе и два самых
+  быстрых измеренных (`QuickSwitch`), «Обновить», «Все серверы ›»; нажатие — как в списке.
 - Карточка (доска 11) — своя страница с «Назад» (решение 427): откуда сервер, избранное, состояние, задержка, сведения
   (адрес открывается из запечатанной ссылки только в открытой карточке, IPv6 — в скобках; протокол, транспорт, защита,
   ядро — Xray-core, у Hysteria2 и TUIC ядра на телефоне нет, решение 423), «Подключиться» (выбор записывается до

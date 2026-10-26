@@ -35,6 +35,7 @@ data class XrayConfigResult(val json: String?, val rejection: CoreRejection?) {
  * @property sniffing распознавание имени сайта в TLS, HTTP и QUIC — только для правил.
  * @property mtu MTU туннеля.
  * @property debugLog подробный журнал ядра (без адресов сайтов: журнал соединений всегда выключен).
+ * @property lanDns свой DNS в частной сети (`TunnelSettings.lanDns`): запросы самого Xray к нему идут напрямую.
  */
 data class CoreSettings(
     val dns: String = XrayConfig.DEFAULT_DNS,
@@ -45,6 +46,7 @@ data class CoreSettings(
     val sniffing: Boolean = true,
     val mtu: Int = 1500,
     val debugLog: Boolean = false,
+    val lanDns: String? = null,
 )
 
 /**
@@ -121,9 +123,15 @@ object XrayConfig {
         val rules = mutableListOf<Map<String, Any?>>(
             // DNS из туннеля — к любому адресу: отвечает выход DNS по настройкам этого конфига, через сервер.
             linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "port" to "53", "outboundTag" to DNS_TAG),
-            // Локальная сеть: разрешена — напрямую, иначе — блок (по умолчанию запрещена, модель угроз).
-            linkedMapOf("type" to "field", "ip" to localNetworks, "outboundTag" to if (settings.allowLan) DIRECT_TAG else BLOCK_TAG),
         )
+        // Свой DNS в частной сети (Pi-hole): запросы самого Xray к нему — напрямую, и при закрытой локальной сети: через
+        // сервер частный адрес не достать. Раньше блока локальной сети, иначе DNS ядра уходит в блок целиком.
+        settings.lanDns?.takeIf { it.isNotEmpty() }?.let {
+            rules.add(linkedMapOf("type" to "field", "ip" to listOf(it), "port" to "53", "outboundTag" to DIRECT_TAG))
+        }
+
+        // Локальная сеть: разрешена — напрямую, иначе — блок (по умолчанию запрещена, модель угроз).
+        rules.add(linkedMapOf("type" to "field", "ip" to localNetworks, "outboundTag" to if (settings.allowLan) DIRECT_TAG else BLOCK_TAG))
         if (!settings.ipv6) {
             // «Только IPv4»: адреса IPv6 из туннеля — в блок: мимо сервера им не уйти, а через сервер — не просили.
             rules.add(linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "ip" to listOf("::/0"), "outboundTag" to BLOCK_TAG))

@@ -228,6 +228,7 @@ artifacts/    # ignored
 
 ## 15. Этап 11 — стабилизация и выпуск
 - [ ] Регрессия всех платформ/протоколов, chaos/network tests, утечки, обновления.
+- [ ] Десктоп: QR из картинки не читает наши же коды части ссылок (`hysteria2/hy2-short-scheme`, `vmess/empty-alter-id`; маски 4 и 6) — ZXing.Net останавливает поиск угловых меток на похожем узоре в данных. Нужен проход `QRCodeMultiReader` после обычного и обратного и тест «туда и обратно» по всем `shared/testdata/links`, как в `QrCode` Android (решение 433); найдено 2026-10-26.
 - [ ] Тест `ReconnectTests.Network_change_checks_the_server_at_once…` один раз (2026-10-26, Windows CI, коммит fca915d) не дождался состояния — остался в «Переподключении»; следующий прогон прошел. Тест теперь печатает журнал службы — при повторе разобрать по нему.
 - [ ] Android: экран «Лицензии открытых компонентов» (libXray и Xray-core, AndroidX, Compose, Room, Dagger, snakeyaml-engine, ZXing) и уведомления в APK — как `shared/licenses/components.json` десктопа.
 - [ ] Performance, CPU/RAM/battery, доступность UI, локализация.

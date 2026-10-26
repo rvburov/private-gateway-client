@@ -1,6 +1,8 @@
 package com.privategateway.client.core.xray
 
 import com.privategateway.client.core.links.LinkParser
+import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.TunnelSettings
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -11,6 +13,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.params.ParameterizedTest
+import org.junit.jupiter.params.provider.CsvSource
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -60,6 +64,35 @@ class XrayConfigTest {
         assertEquals(2, rules(open).size)
         assertEquals("UseIP", open["dns"]!!.jsonObject["queryStrategy"]!!.jsonPrimitive.content)
         assertEquals("UseIPv4", build(reality, CoreSettings(), 3)["dns"]!!.jsonObject["queryStrategy"]!!.jsonPrimitive.content)
+    }
+
+    @ParameterizedTest
+    @CsvSource("192.168.1.53, true", "fd00::53, true", "9.9.9.9, false", "https://192.168.1.53/dns-query, false")
+    fun `own dns in a private network is asked directly even with the lan closed`(custom: String, direct: Boolean) {
+        val settings = TunnelSettings(dns = DnsChoice.Custom, customDns = custom)
+        val rules = rules(build(reality, settings.core(), 3))
+        val localBlock = rules.indexOfFirst { it["ip"] == JsonArray(XrayConfig.localNetworks.map(::JsonPrimitive)) }
+        assertEquals("block", rules[localBlock]["outboundTag"]!!.jsonPrimitive.content)
+
+        val own = rules.indexOfFirst { it["ip"] == JsonArray(listOf(JsonPrimitive(custom))) }
+        if (direct) {
+            assertEquals(localBlock - 1, own, "раньше закрытия локальной сети")
+            assertEquals("direct", rules[own]["outboundTag"]!!.jsonPrimitive.content)
+            assertEquals("53", rules[own]["port"]!!.jsonPrimitive.content)
+            assertNull(rules[own]["inboundTag"], "это запросы самого Xray, не программ из туннеля")
+            assertEquals(0, rules.indexOfFirst { it["outboundTag"]!!.jsonPrimitive.content == "dns-out" }, "DNS программ — по-прежнему выходом DNS")
+            assertEquals(custom, build(reality, settings.core(), 3)["dns"]!!.jsonObject["servers"]!!.jsonArray.single().jsonPrimitive.content)
+        } else {
+            assertEquals(-1, own)
+            assertTrue(rules.none { it["outboundTag"]!!.jsonPrimitive.content == "direct" })
+        }
+    }
+
+    @Test
+    fun `empty lan dns adds no rule`() {
+        val plain = rules(build(reality, CoreSettings(), 3))
+        assertEquals(plain, rules(build(reality, CoreSettings(lanDns = ""), 3)))
+        assertEquals(plain.size + 1, rules(build(reality, CoreSettings(lanDns = "192.168.1.53"), 3)).size, "правило добавляется одно")
     }
 
     @Test
