@@ -31,7 +31,7 @@ public sealed class NetstatRouteTable(Func<IReadOnlyList<string>, string> netsta
         ArgumentNullException.ThrowIfNull(output);
         foreach (var line in output.Split('\n'))
         {
-            var columns = line.Split([' ', '\t'], StringSplitOptions.RemoveEmptyEntries);
+            var columns = line.Split([' ', '\t', '\r'], StringSplitOptions.RemoveEmptyEntries);
             if (columns.Length < 4 || !Destinations.Contains(columns[0]) || !columns[2].Contains('U', StringComparison.Ordinal)
                 || columns[2].Contains('I', StringComparison.Ordinal))
             {

@@ -126,6 +126,7 @@ public sealed class RouteTableTests
         inet6.ShouldBe([new DefaultRoute("ppp0", true), new DefaultRoute("ipsec0", true)], "штатные utun0–utun3 с привязанным default — не чужой VPN");
         OtherVpn.Find(inet.Concat(inet6), "utun225").ShouldBe(["ipsec0", "ppp0", "utun4"]);
         NetstatRouteTable.Parse("default 192.168.1.1 UGSc en0").Single().IsTunnel.ShouldBeFalse();
+        NetstatRouteTable.Parse("default 192.168.1.1 UGSc en0\r\n").Single().Adapter.ShouldBe("en0", "конец строки CRLF — не часть имени адаптера");
         NetstatRouteTable.Parse("default 10.0.0.1 UGSc utunnel").Single().IsTunnel.ShouldBeFalse("туннель — utun с номером");
         NetstatRouteTable.Parse("default 192.168.1.1 GSc en0").ShouldBeEmpty("маршрут не поднят (нет U)");
     }
