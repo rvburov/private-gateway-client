@@ -1,13 +1,13 @@
 name: Сборка выпуска
 
 # Выпуск для трех ОС (scripts/publish.sh): окно и служба с .NET в комплекте, ядра с закрепленными суммами, SBOM
-# (CycloneDX) и SHA256SUMS; scripts/tests/release-smoke.sh проверяет его из архива. На тег v* — сборка с версией тега,
-# по кнопке — с любой; на ветках — когда меняется сама сборка. Подпись артефактов — «Отложено» (README).
+# (CycloneDX) и SHA256SUMS, пакеты Linux и MSI; смоуки проверяют архив и ставят и удаляют пакеты. Из release.yml (тег v*)
+# — с версией тега, по кнопке — с любой; на ветках — когда меняется сама сборка. Подпись артефактов — «Отложено».
 on:
+  # Выпуск по тегу v* собирает release.yml — он вызывает этот workflow и публикует его сборки.
+  workflow_call:
   push:
     branches: ['**']
-    tags: ['v*']
-    # Для тегов пути не проверяются: тег собирается всегда.
     paths:
       - scripts/publish.sh
       - scripts/package.cs
@@ -17,6 +17,7 @@ on:
       - scripts/package-linux.sh
       - scripts/package-windows.sh
       - scripts/tests/windows-installer-smoke.sh
+      - .github/workflows/release.yml
       - scripts/tests/linux-package-smoke.sh
       - desktop/packaging/**
       - shared/specifications/icons/**

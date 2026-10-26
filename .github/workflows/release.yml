@@ -1,0 +1,65 @@
+name: Выпуск на GitHub
+
+# Тег v<SemVer> → сборки трех ОС (publish.yml со всеми проверками и установкой пакетов) → выпуск на GitHub
+# (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json и заметки из коммитов с прошлого
+# тега. Версия с «-» — бета: выпуск помечен prerelease, канал beta, раскатка 100 %. Стабильный выпуск раскатывается
+# поэтапно: сначала 20 %, дальше — release-rollout.yml.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Сборки
+    uses: ./.github/workflows/publish.yml
+
+  release:
+    name: Выпуск
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - id: dotnet
+        uses: actions/setup-dotnet@v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: artifacts/builds
+
+      - name: Файлы, суммы, манифест и заметки
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег $GITHUB_REF_NAME — не v<SemVer>" >&2; exit 1; }
+          rollout=20
+          [[ "$version" != *-* ]] || rollout=100
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) dotnet run scripts/release.cs assemble "$version" artifacts/builds artifacts/release "$rollout"
+
+      - name: Выпуск на GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          prerelease=()
+          [[ "$version" != *-* ]] || prerelease=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" artifacts/release/* --verify-tag --title "Private Gateway $version" \
+            --notes-file artifacts/notes.md "${prerelease[@]}"

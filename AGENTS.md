@@ -156,6 +156,7 @@ dotnet run scripts/gen-tokens.cs                       # тема Avalonia из 
 scripts/publish.sh [версия]                            # выпуск для ОС этой машины: архив, SBOM, SHA256SUMS
 scripts/package-linux.sh <версия>                      # .deb и .rpm из сборки выпуска (нужен nfpm)
 scripts/package-windows.sh <версия>                    # MSI из сборки выпуска (Git Bash, нужен wix 5.0.2)
+git tag v1.2.3 && git push origin v1.2.3                # выпуск на GitHub (release.yml); 1.3.0-beta.1 — бета
 dotnet run scripts/gen-icons.cs                        # значок программы (SVG, ICO) из Icons.axaml и токенов
 ```
 

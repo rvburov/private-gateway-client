@@ -37,6 +37,9 @@ jobs:
       - name: Отчет о тестах на собранных отчетах
         run: scripts/tests/test-report-smoke.sh
 
+      - name: Сборка выпуска на собранных сборках
+        run: scripts/tests/release-assembly-smoke.sh
+
   build-test:
     name: Сборка и тесты (${{ matrix.os }})
     strategy:
