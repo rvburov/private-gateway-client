@@ -17,4 +17,7 @@ regexes = [
   '''tokens-sha256: [0-9a-f]{64}''',
   # Имя системной библиотеки Secret Service в LibsecretSecretStore: «Secret» в имени константы.
   '''const string LibSecret = "libsecret-1\.so\.0";''',
+  # Заведомо ненастоящий токен подписки в тестах Android (GroupRepositoryTest): тест проверяет, что токен из адреса
+  # подписки не лежит открыто ни в одной колонке базы.
+  '''"0123456789abcdef0123456789abcdef"''',
 ]
