@@ -1360,5 +1360,7 @@
   "android.settings.vpn.open": "Open VPN settings",
   "android.import.hint": "Links one per line, a base64 subscription, a sing-box or Clash config",
   "android.server.choose": "Choose a server in the list",
-  "android.settings.language": "as in the system — change it in Android settings"
+  "android.settings.language": "as in the system — change it in Android settings",
+  "android.dnsCustom.placeholder": "192.0.2.53 or https://192.0.2.53/dns-query",
+  "android.dnsCustom.note": "An IP address or DoH by IP (https://IP/…). Lookups go through the tunnel."
 }

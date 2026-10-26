@@ -41,6 +41,7 @@ import com.privategateway.client.R
 import com.privategateway.client.ui.ImportUi
 import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.theme.Overline
+import com.privategateway.client.ui.theme.PgButton
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
 import com.privategateway.client.ui.theme.PgIcon
@@ -147,7 +148,7 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> 
             Spacer(Modifier.size(PgSpace.S))
             Text(stringResource(R.string.android_import_hint), color = PgColor.Text.Muted, style = PgType.Caption)
             Spacer(Modifier.size(PgSpace.M))
-            Button(stringResource(R.string.import_link_check), enabled = text.isNotBlank(), tag = "import.check") { onPreview(text) }
+            PgButton(stringResource(R.string.import_link_check), enabled = text.isNotBlank(), tag = "import.check") { onPreview(text) }
         }
 
         val batch = state.batch
@@ -190,29 +191,11 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> 
                         modifier = Modifier.testTag("import.done"),
                     )
 
-                    else -> Button(stringResource(Texts.importAdd(good, language), good.toString()), enabled = !state.adding, tag = "import.add", onClick = onAdd)
+                    else -> PgButton(stringResource(Texts.importAdd(good, language), good.toString()), enabled = !state.adding, tag = "import.add", onClick = onAdd)
                 }
             }
         }
 
         Spacer(Modifier.size(PgSpace.L))
-    }
-}
-
-/** Кнопка макета: акцентная заливка, скругление radius.button, высота не меньше layout.touchTarget. */
-@Composable
-private fun Button(label: String, enabled: Boolean, tag: String, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(PgRadius.Button)
-    Box(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = PgLayout.TouchTarget)
-            .clip(shape)
-            .background(if (enabled) PgColor.Accent.Base else PgColor.Control.TrackOff)
-            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .testTag(tag),
-        contentAlignment = Alignment.Center,
-    ) {
-        Text(label, color = PgColor.Surface.Solid, style = PgType.BodyStrong)
     }
 }

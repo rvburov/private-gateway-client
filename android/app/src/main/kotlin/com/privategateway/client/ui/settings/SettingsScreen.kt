@@ -1,11 +1,14 @@
 package com.privategateway.client.ui.settings
 
 import android.os.Build
+import androidx.activity.compose.BackHandler
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,34 +16,62 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
+import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgIcon
+import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
 import com.privategateway.client.ui.theme.PgRadius
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 
+/** Страницы «Настроек»: список разделов и вложенные страницы (на телефоне — по одной на экран, доска 25). */
+enum class SettingsPage {
+    Main,
+    Protection,
+}
+
 /**
- * «Настройки»: VPN в настройках Android (Постоянная VPN и блок без VPN включает только пользователь) и «О программе».
- * Язык — системный или выбранный для приложения в настройках Android 13+; DNS, протокол IP и уведомления — пункт 9.2.
+ * «Настройки»: разделы («Защита и утечки»), VPN в настройках Android (Постоянная VPN и блок без VPN включает только
+ * пользователь) и «О программе». Язык — системный или выбранный для приложения в настройках Android 13+.
  */
 @Composable
-fun SettingsScreen(core: String?, loadCore: () -> Unit, openVpnSettings: () -> Unit) {
+fun SettingsScreen(core: String?, loadCore: () -> Unit, openVpnSettings: () -> Unit, tunnel: TunnelSettings, onTunnel: (TunnelSettings) -> Unit) {
+    var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
+    when (page) {
+        SettingsPage.Protection -> {
+            BackHandler { page = SettingsPage.Main }
+            ProtectionScreen(tunnel, onTunnel) { page = SettingsPage.Main }
+        }
+
+        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings) { page = it }
+    }
+}
+
+@Composable
+private fun MainSettings(core: String?, loadCore: () -> Unit, openVpnSettings: () -> Unit, onPage: (SettingsPage) -> Unit) {
     LaunchedEffect(Unit) { loadCore() }
     Column(
         Modifier
@@ -53,6 +84,12 @@ fun SettingsScreen(core: String?, loadCore: () -> Unit, openVpnSettings: () -> U
         verticalArrangement = Arrangement.spacedBy(PgSpace.L),
     ) {
         Text(stringResource(R.string.nav_settings), style = PgType.H1, modifier = Modifier.padding(top = PgSpace.L))
+        PgCard(Modifier.fillMaxWidth()) {
+            SectionRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection") {
+                onPage(SettingsPage.Protection)
+            }
+        }
+
         PgCard(Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.android_settings_vpn_title), style = PgType.Title)
             Spacer(Modifier.size(PgSpace.Xs))
@@ -86,5 +123,29 @@ fun SettingsScreen(core: String?, loadCore: () -> Unit, openVpnSettings: () -> U
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(stringResource(R.string.settings_language_title) + ": " + stringResource(R.string.android_settings_language), color = PgColor.Text.Muted, style = PgType.Caption)
         }
+    }
+}
+
+/** Раздел настроек: иконка, название, что внутри и стрелка — как список разделов десктопа (доска 4). */
+@Composable
+private fun SectionRow(icon: String, @StringRes title: Int, @StringRes text: Int, tag: String, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = PgLayout.TouchTarget)
+            .clip(RoundedCornerShape(PgRadius.Button))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = PgSpace.Xs)
+            .testTag(tag),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        PgIcon(icon, null, color = PgColor.Accent.Base, size = 22.dp)
+        Spacer(Modifier.width(PgSpace.M))
+        Column(Modifier.weight(1f)) {
+            Text(stringResource(title), style = PgType.BodyStrong)
+            Text(stringResource(text), color = PgColor.Text.Secondary, style = PgType.Caption)
+        }
+
+        PgIcon(PgIcons.ChevronRight, null, color = PgColor.Text.Muted, size = 20.dp)
     }
 }

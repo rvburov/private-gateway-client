@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import com.privategateway.client.MainActivity
 import com.privategateway.client.PrivateGatewayApp
 import com.privategateway.client.R
+import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CoreDnsFollower
 import com.privategateway.client.core.vpn.TunPlan
@@ -40,6 +41,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -81,6 +86,23 @@ class GatewayVpnService : VpnService() {
     /** Служба уничтожена: подключение, которое шло в это время, снимает за собой туннель и ядро само. */
     @Volatile
     private var destroyed = false
+
+    /** Настройки туннеля, с которыми он поднят; null — туннеля нет. */
+    private val applied = MutableStateFlow<TunnelSettings?>(null)
+
+    override fun onCreate() {
+        super.onCreate()
+        // Настройки сменились под защитой — переподключение без окна утечки (как ProtectionSync десктопа): после тишины,
+        // чтобы несколько нажатий подряд дали одно переподключение; то, что ядра не меняет, переподключения не требует.
+        scope.launch {
+            settings.tunnel.combine(applied) { wanted, running -> wanted to running }.collectLatest { (wanted, running) ->
+                if (running != null && running.core() != wanted.core()) {
+                    delay(SETTINGS_QUIET_MS)
+                    connect(lastStart)
+                }
+            }
+        }
+    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         lastStart = startId
@@ -154,7 +176,8 @@ class GatewayVpnService : VpnService() {
         val id = settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
         monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
         val server = servers.load(id) ?: return TunnelErrors.NO_SERVER
-        val core = settings.tunnel.first().core()
+        val tunnel = settings.tunnel.first()
+        val core = tunnel.core()
         val plan = TunPlan.of(core)
 
         // DNS сети — до туннеля: потом сеть по умолчанию — уже он сам. Дальше DNS ведет слежение за сетью.
@@ -190,6 +213,7 @@ class GatewayVpnService : VpnService() {
         }
 
         dns = follower
+        applied.value = tunnel
         watchNetwork()
         if (destroyed) {
             return null
@@ -238,6 +262,7 @@ class GatewayVpnService : VpnService() {
     private fun stopCore() {
         underlying?.let { callback -> runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback) } }
         underlying = null
+        applied.value = null
         dns = null
         networkDns = null
         if (coreRunning) {
@@ -346,6 +371,7 @@ class GatewayVpnService : VpnService() {
         private const val TAG = "PrivateGateway"
         private const val NOTIFICATION_ID = 1
         private const val FAILURE_NOTIFICATION_ID = 2
+        private const val SETTINGS_QUIET_MS = 700L
         const val ACTION_CONNECT = "com.privategateway.client.CONNECT"
         const val ACTION_DISCONNECT = "com.privategateway.client.DISCONNECT"
 

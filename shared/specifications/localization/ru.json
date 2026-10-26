@@ -1360,5 +1360,7 @@
   "android.settings.vpn.open": "Открыть настройки VPN",
   "android.import.hint": "Ссылки по строкам, подписка в base64, конфиг sing-box или Clash",
   "android.server.choose": "Выберите сервер в списке",
-  "android.settings.language": "как в системе — меняется в настройках Android"
+  "android.settings.language": "как в системе — меняется в настройках Android",
+  "android.dnsCustom.placeholder": "192.0.2.53 или https://192.0.2.53/dns-query",
+  "android.dnsCustom.note": "IP-адрес или DoH по IP (https://IP/…). Запросы идут через туннель."
 }

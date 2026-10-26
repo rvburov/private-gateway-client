@@ -52,6 +52,7 @@ import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.servers.ImportScreen
 import com.privategateway.client.ui.servers.ServersScreen
 import com.privategateway.client.ui.settings.SettingsScreen
+import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.theme.PgBackground
 import com.privategateway.client.ui.theme.PgColor
 import com.privategateway.client.ui.theme.PgIcon
@@ -80,7 +81,7 @@ class AppActions(
 )
 
 @Composable
-fun AppScreen(viewModel: MainViewModel, actions: AppActions) {
+fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, actions: AppActions) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val core by viewModel.core.collectAsStateWithLifecycle()
@@ -114,7 +115,11 @@ fun AppScreen(viewModel: MainViewModel, actions: AppActions) {
                 )
 
                 Tab.Check -> CheckScreen(ui, core, viewModel::loadCoreVersion)
-                Tab.Settings -> SettingsScreen(core, viewModel::loadCoreVersion, actions.openVpnSettings)
+                Tab.Settings -> {
+                    val tunnel by settings.tunnel.collectAsStateWithLifecycle()
+                    SettingsScreen(core, viewModel::loadCoreVersion, actions.openVpnSettings, tunnel, settings::setTunnel)
+                }
+
             }
 
             val power: () -> Unit = {
