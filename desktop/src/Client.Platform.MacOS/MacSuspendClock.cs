@@ -5,8 +5,8 @@ using PrivateGateway.Client.Core.Platform;
 namespace PrivateGateway.Client.Platform.MacOS;
 
 /// <summary>
-/// Сон на macOS: часы Mach со сном (mach_continuous_time) минус без сна (mach_absolute_time), в наносекундах по
-/// mach_timebase_info.
+/// Сон на macOS: часы Mach со сном (mach_continuous_time) минус без сна (mach_absolute_time, читается первым), в
+/// наносекундах по mach_timebase_info.
 /// </summary>
 [SupportedOSPlatform("macos")]
 public sealed class MacSuspendClock : ISuspendClock
@@ -17,8 +17,8 @@ public sealed class MacSuspendClock : ISuspendClock
     {
         get
         {
-            var ticks = mach_continuous_time() - mach_absolute_time();
-            return TimeSpan.FromTicks((long)(ticks * _timebase.Numer / _timebase.Denom / 100));
+            var awake = mach_absolute_time();
+            return SuspendTime.Between(awake, mach_continuous_time(), _timebase.Numer, _timebase.Denom);
         }
     }
 

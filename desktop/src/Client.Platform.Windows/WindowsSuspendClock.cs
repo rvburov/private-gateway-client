@@ -4,7 +4,10 @@ using PrivateGateway.Client.Core.Platform;
 
 namespace PrivateGateway.Client.Platform.Windows;
 
-/// <summary>Сон на Windows: время прерываний со сном (QueryInterruptTime) минус без сна (QueryUnbiasedInterruptTime), по 100 нс.</summary>
+/// <summary>
+/// Сон на Windows: время прерываний со сном (QueryInterruptTime) минус без сна (QueryUnbiasedInterruptTime, читается
+/// первым), по 100 нс.
+/// </summary>
 [SupportedOSPlatform("windows")]
 public sealed class WindowsSuspendClock : ISuspendClock
 {
@@ -12,9 +15,9 @@ public sealed class WindowsSuspendClock : ISuspendClock
     {
         get
         {
-            QueryInterruptTime(out var biased);
             QueryUnbiasedInterruptTime(out var unbiased);
-            return TimeSpan.FromTicks((long)(biased - unbiased));
+            QueryInterruptTime(out var biased);
+            return SuspendTime.Between(unbiased, biased, numerator: 100, denominator: 1);
         }
     }
 
