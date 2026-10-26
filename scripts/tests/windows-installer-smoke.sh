@@ -69,7 +69,8 @@ sc qc PrivateGateway | grep -q -- '--state "C:\\Program Files\\Private Gateway\\
 [ ! -e "$program/Service/PrivateGateway.exe" ] && [ ! -e "$program/Service/libSkiaSharp.dll" ] || fail "служба возит с собой окно"
 for _ in $(seq 1 50); do [ -f "$program/ServiceState/journal.jsonl" ] && break; sleep 0.2; done
 [ -f "$program/ServiceState/journal.jsonl" ] || fail "служба не пишет журнал в папку состояния"
-echo keep > "$program/ServiceState/update-bucket"
+# Номер раскатки — состояние службы, которое должно пережить обновление (служба заменила бы только неверный номер).
+echo 42 > "$program/ServiceState/update-bucket"
 owner=$(sc qc PrivateGateway | grep -o -- '--owner S-1-5-[0-9-]*')
 msi_version=$(installed_version)
 [ "$msi_version" = "${version%%-*}" ] || fail "в «Установленных приложениях» версия «$msi_version»"
@@ -80,7 +81,7 @@ newer=$(scripts/package-windows.sh "$version" "$major.$minor.$((patch + 1))" | t
 msi_run i "$newer"
 [ "$(installed_version)" = "$major.$minor.$((patch + 1))" ] || fail "после обновления версия $(installed_version)"
 running || fail "после обновления служба не работает: $(sc query PrivateGateway)"
-[ "$(cat "$program/ServiceState/update-bucket")" = keep ] || fail "обновление потеряло состояние службы"
+[ "$(cat "$program/ServiceState/update-bucket")" = 42 ] || fail "обновление потеряло состояние службы"
 [ ! -e "$program/Service.old" ] && [ ! -e "$program/Service.new" ] || fail "после обновления остались папки Service.old/.new"
 
 # Неудачное обновление: служба не ставится (владелец — не SID) — MSI откатывается, прежняя версия и служба на месте.
