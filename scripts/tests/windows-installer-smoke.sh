@@ -12,9 +12,10 @@ export MSYS_NO_PATHCONV=1
 version=${1:?версия выпуска}
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 msi=$(ls artifacts/release/PrivateGateway-"$version"-win-x64.msi)
-program="$(cygpath -u "$PROGRAMFILES")/Private Gateway"
-shortcut="$(cygpath -u "$PROGRAMDATA")/Microsoft/Windows/Start Menu/Programs/Private Gateway.lnk"
-data="$(cygpath -u "$LOCALAPPDATA")/PrivateGateway"
+# Переменные Windows в Git Bash — то в верхнем регистре, то как в Windows.
+program="$(cygpath -u "${PROGRAMFILES:-${ProgramFiles:-C:\Program Files}}")/Private Gateway"
+shortcut="$(cygpath -u "${PROGRAMDATA:-${ProgramData:-C:\ProgramData}}")/Microsoft/Windows/Start Menu/Programs/Private Gateway.lnk"
+data="$(cygpath -u "${LOCALAPPDATA:-${LocalAppData:-$USERPROFILE\AppData\Local}}")/PrivateGateway"
 
 fail() {
   echo "НЕ ТАК: $*" >&2

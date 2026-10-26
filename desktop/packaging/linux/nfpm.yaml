@@ -37,7 +37,8 @@ overrides:
   deb:
     depends:
       - libc6
-      - libicu74 | libicu72 | libicu71 | libicu70 | libicu67 | libicu66
+      # ICU — по версии в имени пакета у каждого выпуска Debian и Ubuntu: ряд с запасом на новые, как у пакетов .NET.
+      - libicu80 | libicu79 | libicu78 | libicu77 | libicu76 | libicu75 | libicu74 | libicu73 | libicu72 | libicu71 | libicu70 | libicu67 | libicu66 | libicu63
       - libfontconfig1
       - libx11-6
       - libice6

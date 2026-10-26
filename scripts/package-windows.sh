@@ -14,8 +14,10 @@ build="artifacts/publish/PrivateGateway-$version-win-x64"
 [ -d "$build" ] || { echo "Нет сборки $build — сначала scripts/publish.sh $version" >&2; exit 1; }
 command -v wix > /dev/null || { echo "Нет wix: dotnet tool install --global wix --version 5.0.2" >&2; exit 1; }
 
-wix build desktop/packaging/windows/Product.wxs -arch x64 -ext WixToolset.Util.wixext \
-  -d "Version=${version%%-*}" -d "Icon=shared/specifications/icons/app.ico" -bindpath "App=$build" \
+# Пути — полные: относительные WiX считает от папки .wxs. -wx: предупреждение (например, «нечего собирать» у Files) — ошибка,
+# иначе пустой установщик собрался бы молча.
+wix build desktop/packaging/windows/Product.wxs -arch x64 -wx -ext WixToolset.Util.wixext \
+  -d "Version=${version%%-*}" -d "Icon=$(cygpath -m "$PWD")/shared/specifications/icons/app.ico" -bindpath "App=$(cygpath -m "$PWD")/$build" \
   -o "artifacts/release/PrivateGateway-$version-win-x64.msi"
 rm -f artifacts/release/*.wixpdb
 
