@@ -151,6 +151,21 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         var held = options.BootBlock is { } path ? Service.BootBlock.Read(path) : null;
+        if (options.KillSwitch is { } open && held is { Open: true } && Try(() => open.IsEnabled, "Не прочитать правила блока при обрыве"))
+        {
+            // Служба упала в «Защищено» без блока при обрыве: правила «только туннель» остались, а туннеля нет — снять их.
+            if (Try(() => { open.Disable(); return true; }, "Правила «только туннель» с прошлого запуска не сняты"))
+            {
+                RememberBlock(null);
+                journal.Add(JournalLevel.Warning, "service", "Правила «только туннель» с прошлого запуска сняты: блок при обрыве был выключен");
+            }
+        }
+
+        if (held is { Open: true })
+        {
+            held = null;
+        }
+
         if (options.KillSwitch is { } killSwitch && Try(() => killSwitch.IsEnabled, "Не прочитать правила блока при обрыве"))
         {
             // Служба упала или остановилась с включенной защитой: трафик заблокирован — так и показывать. Какой это
@@ -337,10 +352,11 @@ public sealed partial class Gateway : IAsyncDisposable
             : Task.FromResult<string?>(null);
         IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
         _directIp = await direct.ConfigureAwait(false) ?? _directIp;
-        if (vpn && addresses.Count == 0 && SameServer(core) && _addresses.Count > 0)
+        if (vpn && addresses.Count == 0 && SameServer(core) && PickAddresses(_addresses, core.Protection) is { Count: > 0 } current)
         {
             // Тот же сервер, а имя не нашлось (с FakeDNS DNS ОС в туннеле дает только адреса пула) — по нынешним адресам.
-            addresses = _addresses;
+            addresses = current;
+            _journal.Add(JournalLevel.Info, "service", "Адрес сервера не найден — взят адрес нынешнего подключения");
         }
         else if (vpn && addresses.Count == 0 && HeldAddresses(core) is { Count: > 0 } held)
         {
@@ -1088,10 +1104,11 @@ public sealed partial class Gateway : IAsyncDisposable
                 return;
             }
 
-            // Адаптер туннеля появился только сейчас: на Windows разрешение для него — по его LUID.
-            if (killSwitchOn && !Block(core, addresses, "обновлен: адаптер туннеля открыт"))
+            // Адаптер туннеля появился только сейчас: на Windows разрешение для него — по его LUID. Блок при обрыве выключен —
+            // правила «только туннель» все равно ставятся, пока туннель поднят (BlockWithoutTunnel снимет их при обрыве).
+            if (!Block(core, addresses, killSwitchOn ? "обновлен: адаптер туннеля открыт" : "включены"))
             {
-                Fail(session, ErrorCodes.KillSwitchFailed, "Блок при обрыве не обновился");
+                Fail(session, ErrorCodes.KillSwitchFailed, killSwitchOn ? "Блок при обрыве не обновился" : "Правила «только туннель» не встали");
                 return;
             }
 
@@ -1119,14 +1136,16 @@ public sealed partial class Gateway : IAsyncDisposable
         var ipv6 = protection.Ipv6Allowed;
         return [.. found
             .Where(a => a.AddressFamily == AddressFamily.InterNetwork || (ipv6 && a.AddressFamily == AddressFamily.InterNetworkV6))
-            .Where(a => !FakeDnsPool.Contains(a))
             .OrderBy(a => a.AddressFamily == AddressFamily.InterNetworkV6)
             .Take(KillSwitchPolicy.MaxServers)];
     }
 
     /// <summary>
-    /// Адреса сервера для туннеля и блока: адрес в описании — как есть, имя — через систему. Пока туннель поднят, DNS ОС идет
-    /// в Xray, и с FakeDNS его ответ — адрес из пула: имя сначала ищется DoH через вход проверки, через сервер. Не нашлось — пусто.
+    /// Адреса сервера для туннеля и блока: адрес в описании — как есть, имя — через систему (файл hosts, DNS ОС). Пока туннель
+    /// поднят, DNS ОС идет в Xray, и с FakeDNS его ответ — адрес из пула (A подменен, AAAA настоящий — верить нельзя ни
+    /// одному): тогда имя ищется DoH через вход проверки, через сервер. Новый сервер так не нашелся (прежний не отвечает) —
+    /// прежнее подключение все равно сменится: ядра останавливаются сейчас, и имя ищется через систему, без туннеля.
+    /// Не нашлось — пусто.
     /// </summary>
     private async Task<IReadOnlyList<IPAddress>> ResolveAsync(CoreRequest core, CancellationToken cancellationToken)
     {
@@ -1136,7 +1155,19 @@ public sealed partial class Gateway : IAsyncDisposable
             return PickAddresses([literal], core.Protection);
         }
 
-        if (Volatile.Read(ref _tunnel) is not null && _probe is { } link && _options.Doh is { } doh)
+        if (Volatile.Read(ref _tunnel) is null)
+        {
+            return PickAddresses(await LookupAsync(host, cancellationToken).ConfigureAwait(false), core.Protection);
+        }
+
+        var found = await LookupAsync(host, cancellationToken).ConfigureAwait(false);
+        var fake = _request is { Protection.FakeDns: true } && found.Any(FakeDnsPool.Contains);
+        if (found.Length > 0 && !fake)
+        {
+            return PickAddresses(found, core.Protection);
+        }
+
+        if (fake && _probe is { } link && _options.Doh is { } doh)
         {
             var probe = new ServerProbe(link.Port, new NetworkCredential(link.User, link.Password), doh, Timing.ProbeTimeout);
             var tunneled = PickAddresses(await (_options.Lookup ?? LatencyProbe.LookupAsync)(probe, host, cancellationToken).ConfigureAwait(false),
@@ -1147,18 +1178,44 @@ public sealed partial class Gateway : IAsyncDisposable
             }
         }
 
+        if (SameServer(core))
+        {
+            // Тот же сервер — по нынешним адресам (ConnectAsync), туннель не трогать.
+            return [];
+        }
+
+        _journal.Add(JournalLevel.Warning, "service", "Адрес нового сервера через прежнее подключение не найден — оно остановлено, адрес ищется без туннеля");
+        await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            return PickAddresses(await (_options.Resolve ?? Dns.GetHostAddressesAsync)(host, cancellationToken).ConfigureAwait(false), core.Protection);
+            _session++;
+            await StopCoreAsync().ConfigureAwait(false);
+            BlockWithoutTunnel();
         }
-        catch (SocketException)
+        finally
+        {
+            _switch.Release();
+        }
+
+        return PickAddresses(await LookupAsync(host, cancellationToken).ConfigureAwait(false), core.Protection);
+    }
+
+    /// <summary>Адреса имени через систему, не дольше времени пробы; не нашлось — пусто.</summary>
+    private async Task<IPAddress[]> LookupAsync(string host, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await (_options.Resolve ?? Dns.GetHostAddressesAsync)(host, cancellationToken).WaitAsync(Timing.ProbeTimeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is SocketException or TimeoutException)
         {
             return [];
         }
     }
 
-    /// <summary>Тот же сервер, что у нынешнего подключения (имя и порт).</summary>
-    private bool SameServer(CoreRequest core) => _request is { } current
+    /// <summary>Тот же сервер, что у нынешнего подключения режима VPN (имя и порт): его адреса — в <see cref="_addresses"/>.</summary>
+    private bool SameServer(CoreRequest core) => _request is { Mode: ConnectionMode.Vpn } current
         && string.Equals(current.Server.Host, core.Server.Host, StringComparison.OrdinalIgnoreCase) && current.Server.Port == core.Server.Port;
 
     /// <summary>
@@ -1179,19 +1236,23 @@ public sealed partial class Gateway : IAsyncDisposable
             core.Protection.LanDiscovery,
             core.Protection.BlockOutsideDns,
             direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
-            core.Protection.BootProtection,
+            core.Protection.BootProtection && _killSwitchOn,
             tunnel ? TunnelDns : null);
-        if (!Try(() => { killSwitch.Enable(policy); return true; }, "Блок при обрыве не включился"))
+        if (!Try(() => { killSwitch.Enable(policy); return true; }, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))
         {
             return false;
         }
 
-        _held = new HeldBlock(policy, core.Server.Host, core.Protection.BootProtection, strict);
+        // Блок при обрыве выключен — те же правила, пока туннель поднят (DNS, IPv6 и программы с привязкой к карте мимо
+        // туннеля закрыты), но «открытые»: при обрыве, сбое и остановке снимаются, после перезагрузки их нет.
+        _held = new HeldBlock(policy, core.Server.Host, policy.Persistent, strict, Open: !_killSwitchOn);
         RememberBlock(_held);
         _blocking = true;
         Warn(killSwitch);
-        _journal.Add(JournalLevel.Info, "service",
-            $"Блок при обрыве {done} ({killSwitch.Name}): мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}");
+        var exits = $"мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}";
+        _journal.Add(JournalLevel.Info, "service", _killSwitchOn
+            ? $"Блок при обрыве {done} ({killSwitch.Name}): {exits}"
+            : $"Правила «только туннель» {done} ({killSwitch.Name}): {exits}; блок при обрыве выключен — при обрыве они снимаются");
         return true;
     }
 
@@ -1200,9 +1261,23 @@ public sealed partial class Gateway : IAsyncDisposable
     /// разрешение — только пока туннель поднят. На Windows так закрыта и пересылка (хот-спот, ВМ). Блока нет, он не
     /// режима VPN или уже без туннеля — ничего. Не встал — false: прежний блок остается.
     /// </summary>
-    private bool BlockWithoutTunnel() =>
-        !_blocking || !_killSwitchOn || _request is not { Mode: ConnectionMode.Vpn } request || _held?.Policy.TunnelInterface is null
-        || Block(request, _addresses, "обновлен: туннеля нет", tunnel: false);
+    private bool BlockWithoutTunnel()
+    {
+        if (!_blocking || _request is not { Mode: ConnectionMode.Vpn } request)
+        {
+            return true;
+        }
+
+        if (_held is { Open: true })
+        {
+            // Блок при обрыве выключен: туннеля нет — и правил нет, сеть открыта, как выбрал пользователь.
+            ReleaseBlock();
+            _journal.Add(JournalLevel.Warning, "service", "Туннеля нет, блок при обрыве выключен — правила «только туннель» сняты, сеть открыта");
+            return true;
+        }
+
+        return !_killSwitchOn || _held?.Policy.TunnelInterface is null || Block(request, _addresses, "обновлен: туннеля нет", tunnel: false);
+    }
 
     /// <summary>Вернуть блок, который служба держит (после паузы, при остановке, в строгом режиме); не встал — false.</summary>
     private bool Restore(HeldBlock held, string done)
@@ -1394,7 +1469,8 @@ public sealed partial class Gateway : IAsyncDisposable
             status = status with { Protection = status.Protection with { Ipv6 = CheckState.Warning } };
         }
 
-        return status.Mode != ConnectionMode.Vpn || status.State == ConnectionState.Off || _blocking
+        // Открытые правила (блок при обрыве выключен) держат утечки, пока туннель поднят, но блоком при обрыве не считаются.
+        return status.Mode != ConnectionMode.Vpn || status.State == ConnectionState.Off || (_blocking && _held is not { Open: true })
             ? status
             : status.State is ConnectionState.Error or ConnectionState.Blocked
                 ? status with { Protection = ProtectionChecks.For(ConnectionState.Off) }

@@ -51,7 +51,9 @@ public sealed class SingBoxConfigTests
         var route = config["route"]!.AsObject();
         route["final"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag);
         route["auto_detect_interface"]!.GetValue<bool>().ShouldBeTrue();
-        route.ContainsKey("rules").ShouldBeFalse("и DNS — в Xray: его отвечает выход DNS Xray, а не sing-box и не провайдер");
+        var dns = route["rules"]!.AsArray().ShouldHaveSingleItem("и DNS — в Xray: его отвечает выход DNS Xray, а не sing-box и не провайдер")!;
+        (string.Join(',', Strings(dns["ip_cidr"])), dns["port"]!.GetValue<int>(), dns["outbound"]!.GetValue<string>())
+            .ShouldBe(("172.19.0.2/32", 53, SingBoxConfigBuilder.XrayTag), "DNS к адресу туннеля — в Xray от любой программы, и мимо туннеля тоже");
         config.ContainsKey("dns").ShouldBeFalse("своего DNS у sing-box нет — имен он не ищет");
         config["log"]!["level"]!.GetValue<string>().ShouldBe("info", "строка «sing-box started» — признак готовности; адреса соединений в журнал не пускает служба");
     }
@@ -155,7 +157,9 @@ public sealed class SingBoxConfigTests
             direct.AsObject().ContainsKey("routing_mark").ShouldBeFalse("метка — только в Linux; WFP узнает выход по программе sing-box");
         }
 
-        var rule = config["route"]!["rules"]!.AsArray().ShouldHaveSingleItem()!;
+        var rules = config["route"]!["rules"]!.AsArray();
+        rules[0]!["port"]!.GetValue<int>().ShouldBe(53, "DNS к адресу туннеля — первым: напрямую через карту на него ответа нет");
+        var rule = rules.Skip(1).ShouldHaveSingleItem()!;
         Strings(rule["process_path"]).ShouldBe(["/opt/game/game", "/usr/bin/xray"]);
         rule["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
         config["route"]!["final"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag, "остальное — через Xray и сервер");
@@ -177,7 +181,7 @@ public sealed class SingBoxConfigTests
             .ShouldBe(["/x/xray"], "прямой выход Xray для сайтов «Напрямую» не должен вернуться в TUN");
         SingBoxConfigBuilder.DirectPrograms(RoutingSettings.Default, closed with { AllowLan = true }, "/x/xray")
             .ShouldBe(["/x/xray"], "и для локальной сети: не все, что Xray считает локальным, есть в исключениях TUN");
-        Build([IPAddress.Parse("198.51.100.20")])["route"]!.AsObject().ContainsKey("rules").ShouldBeFalse();
+        Build([IPAddress.Parse("198.51.100.20")])["route"]!["rules"]!.AsArray().Count.ShouldBe(1, "только DNS к адресу туннеля");
     }
 
     [Fact]
@@ -198,17 +202,17 @@ public sealed class SingBoxConfigTests
             ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"], ["/opt/game/game"]));
 
         var rules = config["route"]!["rules"]!.AsArray();
-        rules.Count.ShouldBe(2);
-        (string.Join(',', Strings(rules[0]!["process_path"])), string.Join(',', Strings(rules[0]!["ip_cidr"])), rules[0]!["outbound"]!.GetValue<string>())
+        rules.Count.ShouldBe(3);
+        (string.Join(',', Strings(rules[1]!["process_path"])), string.Join(',', Strings(rules[1]!["ip_cidr"])), rules[1]!["outbound"]!.GetValue<string>())
             .ShouldBe(("/opt/game/game", XrayConfigBuilder.FakeDnsPool, SingBoxConfigBuilder.BypassTag),
                 "адрес FakeDNS у программы мимо туннеля — во вход обхода Xray, раньше правила «напрямую»");
-        rules[1]!["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
+        rules[2]!["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
         var bypass = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.BypassTag)!;
         (bypass["server"]!.GetValue<string>(), bypass["server_port"]!.GetValue<int>(), bypass["username"]!.GetValue<string>(), bypass["password"]!.GetValue<string>())
             .ShouldBe(("127.0.0.1", 31001, "user-1", "pass-1"));
 
         SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"],
-            ["/opt/game/game"]))["route"]!["rules"]!.AsArray().ShouldHaveSingleItem("нет входа обхода — нет и правила");
+            ["/opt/game/game"]))["route"]!["rules"]!.AsArray().Count.ShouldBe(2, "нет входа обхода — нет и правила");
     }
 
     [Theory]

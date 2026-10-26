@@ -325,6 +325,8 @@ public sealed class XrayConfigTests
 
         var config = XrayConfigBuilder.Build(Request(server, protection: fake), tun).Config.ShouldNotBeNull();
 
+        Outbound(config, XrayConfigBuilder.DnsTag)["settings"]!["nonIPQuery"]!.GetValue<string>()
+            .ShouldBe("reject", "PTR, SRV, MX, TXT — сразу отказ, а не тайм-аут DNS ОС на каждый");
         var pool = config["fakedns"]!.AsArray().ShouldHaveSingleItem()!;
         (pool["ipPool"]!.GetValue<string>(), pool["poolSize"]!.GetValue<int>()).ShouldBe(("198.18.0.0/15", 65535));
         Servers(config).ShouldBe([NcsiNames(server), "fakedns", XrayConfigBuilder.DefaultDns],

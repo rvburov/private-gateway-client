@@ -181,7 +181,14 @@ public static class SingBoxConfigBuilder
             ["final"] = XrayTag,
             ["auto_detect_interface"] = true,
         };
-        var rules = new JsonArray();
+        // DNS к адресу DNS туннеля — всегда в Xray, и от программ мимо туннеля: адрес есть только внутри TUN, напрямую
+        // через карту на него ответа нет (программа со своим DNS-клиентом берет DNS адаптера, как Chromium на Windows).
+        var rules = new JsonArray(new JsonObject
+        {
+            ["ip_cidr"] = Ipv6Tunneled(request) ? new JsonArray(TunDns + "/32", TunDns6 + "/128") : new JsonArray(TunDns + "/32"),
+            ["port"] = 53,
+            ["outbound"] = XrayTag,
+        });
 
         // Программа мимо туннеля пришла на адрес FakeDNS (DNS за нее спросила служба ОС через туннель):
         // имя знает только Xray — он и соединит напрямую. Раньше правила «программа — напрямую».
@@ -221,10 +228,7 @@ public static class SingBoxConfigBuilder
             });
         }
 
-        if (rules.Count > 0)
-        {
-            route["rules"] = rules;
-        }
+        route["rules"] = rules;
 
         return new JsonObject
         {

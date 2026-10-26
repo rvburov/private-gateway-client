@@ -381,7 +381,7 @@ public sealed partial class Gateway
                 return (false, ErrorCodes.CoreFailed);
             }
 
-            return _killSwitchOn && !Block(request, _addresses, "обновлен: адаптер туннеля открыт")
+            return !Block(request, _addresses, _killSwitchOn ? "обновлен: адаптер туннеля открыт" : "включены")
                 ? (false, ErrorCodes.KillSwitchFailed)
                 : (true, string.Empty);
         }

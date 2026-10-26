@@ -107,6 +107,30 @@ public sealed class VpnTunnelTests
     }
 
     [Fact]
+    public async Task Program_around_the_tunnel_gets_answers_from_the_tunnel_dns_address()
+    {
+        SkipWithoutNamespaces();
+        using var netns = NetworkNamespace.Create();
+        var (host, _, _) = netns.LinkAsMachine();
+        using var site = new LocalSite("через туннель по имени");
+        using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
+        var (definition, server) = await NameOnlyServerAsync(host, site, dns);
+        using var _ = server;
+        // Мимо туннеля — python3: он и спрашивает DNS туннеля сам, как программа со своим DNS-клиентом (Chromium на Windows).
+        var python = VpnTunnel.RealPath((Environment.GetEnvironmentVariable("PATH") ?? string.Empty).Split(':')
+            .Select(dir => Path.Combine(dir, "python3")).First(File.Exists));
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
+            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, new RoutingSettings(RoutingMode.Split, [new BypassApp(python, "python3")], []));
+        var output = new CoreOutput();
+
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+
+        (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), seconds: 5)))
+            .ShouldBe("203.0.113.7", "адрес DNS туннеля есть только в TUN — запрос к нему идет в Xray и от программы мимо туннеля");
+    }
+
+    [Fact]
     public async Task Dns_to_the_router_in_an_allowed_local_network_goes_into_the_tunnel()
     {
         SkipWithoutNamespaces();

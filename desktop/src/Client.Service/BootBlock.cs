@@ -9,11 +9,12 @@ namespace PrivateGateway.Client.Service;
 
 /// <summary>
 /// Блок при обрыве, который держит служба: политика, имя сервера, «Защита при загрузке» (<paramref name="Boot"/>)
-/// и строгий режим (<paramref name="Strict"/>); <paramref name="Paused"/> — блок снят на паузу для входа в Wi-Fi. По нему
-/// служба возвращает тот же блок после паузы, узнает строгий режим после своего перезапуска и подключается к тому же
-/// серверу, когда имя под блоком не найти.
+/// и строгий режим (<paramref name="Strict"/>); <paramref name="Paused"/> — блок снят на паузу для входа в Wi-Fi;
+/// <paramref name="Open"/> — «Блок при обрыве» выключен: правила «только туннель» стоят, пока туннель поднят, а при обрыве,
+/// сбое и остановке снимаются. По нему служба возвращает тот же блок после паузы, узнает строгий режим после своего
+/// перезапуска (а открытые правила снимает) и подключается к тому же серверу, когда имя под блоком не найти.
 /// </summary>
-public sealed record HeldBlock(KillSwitchPolicy Policy, string Host, bool Boot, bool Strict, bool Paused = false);
+public sealed record HeldBlock(KillSwitchPolicy Policy, string Host, bool Boot, bool Strict, bool Paused = false, bool Open = false);
 
 /// <summary>
 /// Файл блока, который держит служба (<see cref="HeldBlock"/>): пишется при каждом блоке, стирается, когда блок
@@ -39,6 +40,7 @@ public static class BootBlock
             ["boot"] = block.Boot,
             ["strict"] = block.Strict,
             ["paused"] = block.Paused,
+            ["open"] = block.Open,
         };
         var temporary = path + ".tmp";
         var text = System.Text.Encoding.UTF8.GetBytes(json.ToJsonString());
@@ -95,7 +97,7 @@ public static class BootBlock
             var policy = new KillSwitchPolicy(null, servers, json["allowLan"]!.GetValue<bool>(), json["lanDiscovery"]!.GetValue<bool>(),
                 json["blockOutsideDns"]!.GetValue<bool>(), Persistent: boot);
             return new HeldBlock(policy, json["host"]?.GetValue<string>() ?? string.Empty, boot, json["strict"]?.GetValue<bool>() ?? false,
-                json["paused"]?.GetValue<bool>() ?? false);
+                json["paused"]?.GetValue<bool>() ?? false, json["open"]?.GetValue<bool>() ?? false);
         }
         catch (Exception e) when (e is JsonException or FormatException or InvalidOperationException or NullReferenceException or IOException)
         {

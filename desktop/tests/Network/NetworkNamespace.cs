@@ -141,14 +141,17 @@ internal sealed class NetworkNamespace : IDisposable
 
     /// <summary>
     /// Страница с сайта теста из python3, а не curl (другая программа для правил по процессу); с меткой
-    /// <paramref name="mark"/> (SO_MARK) — как пакеты выхода sing-box мимо туннеля, 0 — без метки. Не
-    /// соединилось — исключение.
+    /// <paramref name="mark"/> (SO_MARK) — как пакеты выхода sing-box мимо туннеля, 0 — без метки; с привязкой к
+    /// интерфейсу <paramref name="device"/> (SO_BINDTODEVICE) — как проверка связи NetworkManager и DNS systemd-resolved
+    /// для карты: маршруты TUN такой сокет обходит. Не соединилось — исключение.
     /// </summary>
-    public Task<string> FetchAsync(Uri url, uint mark = 0, int seconds = 10) => RunAsync("python3", "-c", """
+    public Task<string> FetchAsync(Uri url, uint mark = 0, int seconds = 10, string? device = null) => RunAsync("python3", "-c", """
         import socket, sys
         s = socket.socket()
         if int(sys.argv[3]):
             s.setsockopt(socket.SOL_SOCKET, 36, int(sys.argv[3]))
+        if sys.argv[5]:
+            s.setsockopt(socket.SOL_SOCKET, 25, sys.argv[5].encode())
         s.settimeout(float(sys.argv[4]))
         s.connect((sys.argv[1], int(sys.argv[2])))
         s.sendall(b"GET / HTTP/1.0\r\n\r\n")
@@ -157,7 +160,7 @@ internal sealed class NetworkNamespace : IDisposable
             reply += chunk
         print(reply.decode().split("\r\n\r\n", 1)[1], end="")
         """, url.Host, url.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), mark.ToString(System.Globalization.CultureInfo.InvariantCulture),
-        seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), device ?? string.Empty);
 
     /// <summary>
     /// Страница с сайта теста из сокета, привязанного к адресу <paramref name="source"/>, — как кандидаты WebRTC и

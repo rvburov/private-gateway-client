@@ -157,6 +157,21 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Tunnel_only_rules_left_without_the_kill_switch_are_lifted_at_start()
+    {
+        // Служба упала в «Защищено» с выключенным блоком при обрыве: правила «только туннель» остались, туннеля нет.
+        using var held = new HeldFile(StrictHeld with { Boot = false, Strict = false, Open = true });
+        var killSwitch = new FakeKillSwitch(enabled: true);
+
+        await using var service = await RunningService.StartAsync(options: o => o with { CanVpn = true, KillSwitch = killSwitch, BootBlock = held.Path });
+
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State.ShouldBe(V1.ConnectionState.Off,
+            "блок при обрыве был выключен — сеть открыта, а не «Блокировка»");
+        (killSwitch.IsEnabled, killSwitch.Disabled, File.Exists(held.Path)).ShouldBe((false, 1, false));
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Правила «только туннель» с прошлого запуска сняты: блок при обрыве был выключен");
+    }
+
+    [Fact]
     public async Task Block_left_from_a_protected_connection_is_set_again_without_the_tunnel_at_start()
     {
         // Служба упала в «Защищено»: фильтры стоят с разрешением адаптеру туннеля (на Windows — без фильтров пересылки),

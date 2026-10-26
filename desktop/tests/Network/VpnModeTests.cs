@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using Google.Protobuf.WellKnownTypes;
 using PrivateGateway.Client.Contracts;
@@ -215,8 +216,8 @@ public sealed partial class VpnModeTests
         var picked = Gateway.PickAddresses(many, ProtectionSettings.Default);
         picked.Count.ShouldBe(KillSwitchPolicy.MaxServers, "больше блок при обрыве не держит — подключение не должно падать из-за длинного списка");
         picked.Take(12).ShouldAllBe(a => a.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork, "IPv4 — первыми");
-        Gateway.PickAddresses([IPAddress.Parse("198.18.0.7"), IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default)
-            .ShouldBe([IPAddress.Parse("198.51.100.20")], "адрес из пула FakeDNS — ответ Xray в туннеле, сервера там нет");
+        Gateway.PickAddresses([IPAddress.Parse("198.18.0.7")], ProtectionSettings.Default).ShouldBe([IPAddress.Parse("198.18.0.7")],
+            "сервер в 198.18.0.0/15 (сеть лаборатории, fake-ip роутера) не отбрасывается: адрес пула FakeDNS — только в ответе DNS ОС через наш туннель");
     }
 
     [Fact]
@@ -228,8 +229,9 @@ public sealed partial class VpnModeTests
         var lookups = new List<string>();
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
         {
-            // DNS ОС: до туннеля — настоящий адрес, в туннеле с FakeDNS — адрес из пула (его дает Xray).
-            Resolve = (_, _) => Task.FromResult<IPAddress[]>([Interlocked.Increment(ref resolved) == 1 ? real : IPAddress.Parse("198.18.0.7")]),
+            // DNS ОС: до туннеля — настоящий адрес, в туннеле с FakeDNS — адрес из пула для A и настоящий AAAA (так отвечает Xray).
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>(Interlocked.Increment(ref resolved) == 1
+                ? [real] : [IPAddress.Parse("198.18.0.7"), IPAddress.Parse("2001:db8::7")]),
             Doh = new Uri("https://1.1.1.1/dns-query"),
             Lookup = (_, name, _) =>
             {
@@ -254,6 +256,51 @@ public sealed partial class VpnModeTests
         rig.KillSwitch.Last!.Servers.ShouldBe([new KillSwitchEndpoint(real, rig.Definition.Port)], "настоящий адрес, не из пула");
         lookups.ShouldBe(["vpn.example.com", "other.example.com"],
             "пока туннель поднят, имя ищется DoH через сервер; тот же сервер, не найденный так, — по нынешним адресам");
+    }
+
+    [Fact]
+    public async Task New_server_by_name_is_found_without_the_tunnel_when_the_current_server_is_dead()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var real = IPAddress.Parse(rig.Definition.Host);
+        var resolved = 0;
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            // Прежний сервер не отвечает: DoH через него пуст, DNS ОС в туннеле — адрес пула; без туннеля — настоящий адрес.
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>(Interlocked.Increment(ref resolved) == 2 ? [IPAddress.Parse("198.18.0.9")] : [real]),
+            Doh = new Uri("https://1.1.1.1/dns-query"),
+            Lookup = (_, _, _) => Task.FromResult<IReadOnlyList<IPAddress>>([]),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "vpn.example.com" }, killSwitch: false, fakeDns: true), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "other.example.com" }, killSwitch: false, fakeDns: true), cancellationToken: Ct);
+
+        var end = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error, service.Journal))[^1];
+        end.State.ShouldBe(V1.ConnectionState.Connected, end.Error?.Message);
+        resolved.ShouldBe(3, "в туннеле — адрес пула, DoH пуст, туннель остановлен — и снова через систему");
+        service.Journal.Tail(ServiceJournal.Capacity)
+            .ShouldContain(e => e.Message == "Адрес нового сервера через прежнее подключение не найден — оно остановлено, адрес ищется без туннеля");
+    }
+
+    [Fact]
+    public async Task Addresses_of_a_vpn_server_are_not_taken_for_another_server_after_proxy_mode()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var real = IPAddress.Parse(rig.Definition.Host);
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Resolve = (name, _) => name == "a.example.com" ? Task.FromResult<IPAddress[]>([real]) : throw new SocketException(11001),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "a.example.com" }), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        await service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition with { Host = "b.example.com" }, XrayKit.FreePort()), cancellationToken: Ct);
+
+        var reply = await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "b.example.com" }), cancellationToken: Ct);
+
+        (reply.Accepted, reply.Error?.Code).ShouldBe((false, ErrorCodes.ServerNotFound), "адреса прежнего подключения VPN — сервера a, а не b");
     }
 
     [Fact]
@@ -322,14 +369,21 @@ public sealed partial class VpnModeTests
             killSwitch.IsEnabled.ShouldBeFalse("отключение снимает блок");
             (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля");
 
-            await service.Client.ConnectAsync(VpnRequest(definition, killSwitch: false), cancellationToken: Ct);
+            var open = VpnRequest(definition, killSwitch: false);
+            open.Protection.BootProtection = true;
+            await service.Client.ConnectAsync(open, cancellationToken: Ct);
 
             var unguarded = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
             unguarded.State.ShouldBe(V1.ConnectionState.Connected, unguarded.Error?.Message);
             unguarded.ToCore().Protection.KillSwitch.ShouldBe(CheckState.Off, "блок выключен в настройках — проверка не делает вид, что он есть");
-            killSwitch.IsEnabled.ShouldBeFalse();
+            (killSwitch.IsEnabled, killSwitch.Last!.TunnelInterface, killSwitch.Last.Persistent).ShouldBe((true, SingBoxConfigBuilder.InterfaceName, false),
+                "блок при обрыве выключен, а правила «только туннель» стоят, пока туннель поднят; после перезагрузки их нет — и с «Защитой при загрузке»");
             (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
+            await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, seconds: 3, device: "pgnet0"),
+                "программа с привязкой к карте мимо маршрутов TUN — закрыта правилами");
             await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+            killSwitch.IsEnabled.ShouldBeFalse("отключение снимает и правила «только туннель»");
+            (await netns.FetchAsync(lan.Url, seconds: 3, device: "pgnet0")).ShouldBe("мимо туннеля");
         }
 
         // Вместо Xray — sing-box: аргументов Xray он не знает и сразу выходит, туннель не поднимается.
@@ -484,6 +538,35 @@ public sealed partial class VpnModeTests
             "попытки кончились, а блок с разрешением исчезнувшему адаптеру остался — не «Блокировка»");
         rig.KillSwitch.IsEnabled.ShouldBeTrue("прежний блок не снят");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
+    }
+
+    [Fact]
+    public async Task Without_the_kill_switch_tunnel_only_rules_go_away_with_the_tunnel_and_come_back_with_it()
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"),
+            options: o => rig.Vpn(o) with { Reconnect = ReconnectTests.Fast with { GiveUpAfter = TimeSpan.FromSeconds(30) }, Probe = rig.ProbeAsync });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        var request = VpnRequest(rig.Definition, killSwitch: false);
+        request.Connection.Reconnect = V1.ReconnectPolicy.UpTo5Minutes;
+        await service.Client.ConnectAsync(request, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        rig.KillSwitch.Tunnels.ShouldBe([SingBoxConfigBuilder.InterfaceName], "до туннеля правил нет — блок при обрыве выключен; с туннелем — «только туннель»");
+
+        rig.StopServer();
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting, service.Journal);
+        rig.KillSwitch.IsEnabled.ShouldBeFalse("связь пропала, блок при обрыве выключен — сеть открыта, как выбрал пользователь");
+        (await rig.Netns.FetchAsync(rig.Lan.Url, seconds: 3, device: "pgnet0")).ShouldBe("мимо туннеля");
+        service.Journal.Tail(ServiceJournal.Capacity)
+            .ShouldContain(e => e.Message == "Туннеля нет, блок при обрыве выключен — правила «только туннель» сняты, сеть открыта");
+
+        await rig.StartServerAsync();
+
+        var back = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal))[^1];
+        back.ToCore().Protection.KillSwitch.ShouldBe(CheckState.Off);
+        rig.KillSwitch.IsEnabled.ShouldBeTrue("туннель вернулся — и правила «только туннель»");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(rig.Lan.Url, seconds: 3, device: "pgnet0"));
     }
 
     [Fact]

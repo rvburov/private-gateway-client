@@ -134,7 +134,9 @@ public static class XrayConfigBuilder
 
         if (tun is not null)
         {
-            outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns" });
+            // Запросы не A и AAAA (PTR, SRV, MX, TXT, HTTPS) — сразу отказ (REFUSED): по умолчанию Xray их молча бросает, и
+            // программа ждет тайм-аут DNS ОС на каждый.
+            outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns", ["settings"] = new JsonObject { ["nonIPQuery"] = "reject" } });
         }
 
         var inbounds = new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun, InboundTag, tun.Port) };
