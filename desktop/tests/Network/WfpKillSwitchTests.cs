@@ -16,7 +16,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// Локальную сеть и DNS роутера проверяет только список правил: другой машины в частной сети у
 /// машины CI нет, а соединение со своим адресом Windows считает петлей.
 /// </summary>
-[Collection(WfpSerial.Name)]
+[Collection(FirewallSerial.Name)]
 public sealed class WfpKillSwitchTests
 {
     private static readonly IPAddress Server = IPAddress.Parse("198.51.100.20");

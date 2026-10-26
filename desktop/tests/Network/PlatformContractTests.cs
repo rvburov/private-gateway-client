@@ -15,6 +15,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// своем сетевом пространстве, macOS — pf в своем якоре, который основные правила не вызывают. Что блок пропускает и
 /// закрывает трафик, проверяют тесты каждой ОС (KillSwitchTests, WfpKillSwitchTests, PfKillSwitchTests).
 /// </summary>
+[Collection(FirewallSerial.Name)]
 public sealed class PlatformContractTests
 {
     private static readonly IPAddress Server = IPAddress.Parse("198.51.100.20");

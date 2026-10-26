@@ -16,7 +16,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// удаление со снятием блока и состояния. На Windows с правами администратора (CI) — настоящая служба Windows с тестовым
 /// именем и своим адресом IPC: ставится, ставится поверх, отвечает окну и удаляется.
 /// </summary>
-[Collection(WfpSerial.Name)]
+[Collection(FirewallSerial.Name)]
 public sealed class ServiceSetupTests : IDisposable
 {
     private static readonly string Exe = OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe" : "PrivateGateway.Service";
@@ -646,9 +646,12 @@ public sealed class ServiceSetupTests : IDisposable
     }
 }
 
-/// <summary>Тесты, которые трогают фильтры WFP своего провайдера, — по одному: удаление службы снимает и блок.</summary>
+/// <summary>
+/// Тесты, которые трогают брандмауэр ОС (фильтры WFP своего провайдера, якоря pf), — по одному: удаление службы снимает и
+/// блок, а pf отвечает «занято», пока грузится чужой якорь.
+/// </summary>
 [CollectionDefinition(Name, DisableParallelization = true)]
-public sealed class WfpSerial
+public sealed class FirewallSerial
 {
-    public const string Name = "WFP";
+    public const string Name = "Брандмауэр ОС";
 }

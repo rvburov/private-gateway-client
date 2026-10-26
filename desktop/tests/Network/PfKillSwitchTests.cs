@@ -10,6 +10,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// macOS от root — правила разных политик загружаются в свой якорь, на который основные правила машины не ссылаются:
 /// синтаксис и загрузку проверяет pf, а сеть машины CI не закрывается.
 /// </summary>
+[Collection(FirewallSerial.Name)]
 public sealed class PfKillSwitchTests : IDisposable
 {
     private static readonly IPAddress Server = IPAddress.Parse("198.51.100.20");
@@ -140,11 +141,31 @@ public sealed class PfKillSwitchTests : IDisposable
     [Fact]
     public void Refusal_of_pfctl_is_an_error_and_not_a_silent_open_network()
     {
-        var pf = new PfKillSwitch((arguments, _) => arguments.Contains("-f") ? (1, string.Empty, "syntax error") : (0, string.Empty, string.Empty),
+        var loads = 0;
+        var pf = new PfKillSwitch((arguments, _) => arguments.Contains("-f") && ++loads > 0 ? (1, string.Empty, "syntax error") : (0, string.Empty, string.Empty),
             Path.Combine(_root, "pf.token"));
 
         Should.Throw<IOException>(() => pf.Enable(new KillSwitchPolicy(null, []))).Message.ShouldContain("syntax error");
         File.Exists(Path.Combine(_root, "pf.token")).ShouldBeFalse("правила не встали — pf не включается");
+        loads.ShouldBe(1, "ошибку правил повтор не исправит — не повторять");
+    }
+
+    [Fact]
+    public void Busy_pf_is_asked_again_and_stays_an_error_when_it_does_not_let_go()
+    {
+        var busy = 2;
+        var loads = 0;
+        var pf = new PfKillSwitch((arguments, _) => arguments.Contains("-f")
+                ? ++loads <= busy ? (1, string.Empty, "pfctl: DIOCADDRULE: Resource busy") : (0, string.Empty, string.Empty)
+                : (0, "Token : 42", string.Empty),
+            Path.Combine(_root, "pf.token"));
+
+        pf.Enable(new KillSwitchPolicy(null, []));
+        loads.ShouldBe(3, "дважды занят — третья загрузка прошла");
+
+        (busy, loads) = (int.MaxValue, 0);
+        Should.Throw<IOException>(() => pf.Enable(new KillSwitchPolicy(null, []))).Message.ShouldContain("Resource busy");
+        loads.ShouldBe(PfKillSwitch.BusyAttempts, "не бесконечно");
     }
 
     [Fact]

@@ -162,12 +162,26 @@ public sealed partial class PfKillSwitch(
 
     private static string Family(System.Net.IPAddress address) => address.AddressFamily == AddressFamily.InterNetworkV6 ? "inet6" : "inet";
 
+    /// <summary>Сколько раз повторить команду, которую ядро отклонило как «занято».</summary>
+    public const int BusyAttempts = 5;
+
+    // pf занят другой загрузкой правил (своей программы или чужой) — ядро отвечает EBUSY; через миг загрузка пройдет.
     private void Check(IReadOnlyList<string> arguments, string? input)
     {
-        var (code, _, error) = pfctl(arguments, input);
-        if (code != 0)
+        for (var attempt = 1; ; attempt++)
         {
-            throw new IOException($"pfctl {string.Join(' ', arguments)}: {code} {error}".Trim());
+            var (code, _, error) = pfctl(arguments, input);
+            if (code == 0)
+            {
+                return;
+            }
+
+            if (attempt == BusyAttempts || !error.Contains("Resource busy", StringComparison.Ordinal))
+            {
+                throw new IOException($"pfctl {string.Join(' ', arguments)}: {code} {error}".Trim());
+            }
+
+            Thread.Sleep(TimeSpan.FromMilliseconds(100 * attempt));
         }
     }
 
