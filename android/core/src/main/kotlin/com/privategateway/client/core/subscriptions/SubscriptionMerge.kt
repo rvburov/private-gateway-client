@@ -15,8 +15,14 @@ enum class SelectedChange {
     Changed,
 }
 
-/** Сервер подписки в списке: свой номер и описание. */
+/** Сервер подписки в списке: свой номер и описание; название в описании — из ссылки, не свое название пользователя. */
 data class StoredServer(val id: String, val server: ServerDefinition)
+
+/**
+ * Сервер подписки, чье описание не открылось (запечатанное не расшифровать — ключ Keystore потерян): номер и название из
+ * ссылки — оно хранится открыто.
+ */
+data class UnreadableServer(val id: String, val name: String)
 
 /**
  * Итог слияния: оставленные (номер → новое описание), новые, удаленные номера, выбранный, который пропал из подписки, и
@@ -34,9 +40,17 @@ data class SubscriptionMergeResult(
  * Обновление подписки — как `ApplyUpdate` десктопа: свой сервер узнается сначала точно ([ServerKeys.key]), потом по выходу
  * ([ServerKeys.exit]) — у него остаются номер, избранное и задержка; сервер, который уже есть в другой группе, второй раз
  * не добавляется; пропавшие удаляются, кроме выбранного: он остается, пока выбран, — другой сервер сам не выбирается.
+ * Нечитаемые серверы группы ([unreadable]) не узнать ни по ключам, ни по выходу — для подписки они пропали, как у
+ * десктопа сервер без секрета в хранилище ОС. Пропал ли выбранный или изменился — по названию из ссылки.
  */
 object SubscriptionMerge {
-    fun merge(own: List<StoredServer>, incoming: List<ServerDefinition>, elsewhere: Set<String>, selectedId: String?): SubscriptionMergeResult {
+    fun merge(
+        own: List<StoredServer>,
+        incoming: List<ServerDefinition>,
+        elsewhere: Set<String>,
+        selectedId: String?,
+        unreadable: List<UnreadableServer> = emptyList(),
+    ): SubscriptionMergeResult {
         require(incoming.isNotEmpty()) { "Пустой список не заменяет подписку — прошлый остается" }
         val byKey = LinkedHashMap<String, StoredServer>()
         val byExit = LinkedHashMap<String, StoredServer>()
@@ -73,14 +87,15 @@ object SubscriptionMerge {
             }
         }
 
-        val gone = own.filter { it.id !in keptIds }
-        val selectedGone = gone.firstOrNull { it.id == selectedId }
+        // Пропавшие — номер и название из ссылки.
+        val gone = own.filter { it.id !in keptIds }.map { it.id to it.server.name } + unreadable.map { it.id to it.name }
+        val selectedGone = gone.firstOrNull { it.first == selectedId }
         val change = when {
             selectedGone == null -> SelectedChange.None
-            incoming.any { it.name == selectedGone.server.name } -> SelectedChange.Changed
+            incoming.any { it.name == selectedGone.second } -> SelectedChange.Changed
             else -> SelectedChange.Missing
         }
 
-        return SubscriptionMergeResult(kept, added, gone.filter { it !== selectedGone }.map { it.id }, selectedGone?.id, change)
+        return SubscriptionMergeResult(kept, added, gone.filter { it !== selectedGone }.map { it.first }, selectedGone?.first, change)
     }
 }

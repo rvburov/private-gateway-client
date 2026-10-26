@@ -63,6 +63,14 @@ class SubscriptionDownloaderTest {
     }
 
     @Test
+    fun `update through the downloader gets the reason not an exception`() {
+        serve("/sub/gone", status = 403)
+        serve("/sub/ok", body = "trojan://pw-a@198.51.100.1:443#A".toByteArray())
+        assertEquals(FetchResult.Failed(DownloadFailure.Status, 403), SubscriptionFetch.fetch(URI("$base/sub/gone"), SubscriptionDownloader()))
+        assertEquals(listOf("A"), (SubscriptionFetch.fetch(URI("$base/sub/ok"), SubscriptionDownloader()) as FetchResult.Fetched).servers.map { it.name })
+    }
+
+    @Test
     fun `closed port is a connection failure`() {
         val port = ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
         val failure = assertFailsWith<SubscriptionDownloadException> { SubscriptionDownloader().download(URI("http://127.0.0.1:$port/sub")) }

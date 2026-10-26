@@ -18,6 +18,12 @@ data class SubscriptionContent(val text: String, val title: String?)
 /** Подписка не загрузилась: причина и код ответа сервера (для [DownloadFailure.Status]). Адреса в тексте нет. */
 class SubscriptionDownloadException(val failure: DownloadFailure, val status: Int? = null) : IOException(failure.name)
 
+/** Откуда загружается подписка: по сети — [SubscriptionDownloader], в тестах — подделка. */
+fun interface SubscriptionSource {
+    /** Текст и название подписки; не загрузилась — [SubscriptionDownloadException] с причиной. */
+    fun download(url: URI): SubscriptionContent
+}
+
 /**
  * Загрузка подписки по http(s) — как `HttpSubscriptionDownloader` десктопа: не дольше 20 секунд, не больше 5 МБ после
  * распаковки, перенаправления — только внутри той же схемы (https не уходит на http). Адрес подписки — секрет: в ошибках
@@ -26,8 +32,8 @@ class SubscriptionDownloadException(val failure: DownloadFailure, val status: In
 class SubscriptionDownloader(
     private val timeoutMs: Int = DownloadLimits.TIMEOUT_MS,
     private val maxBytes: Int = DownloadLimits.MAX_BYTES,
-) {
-    fun download(url: URI): SubscriptionContent {
+) : SubscriptionSource {
+    override fun download(url: URI): SubscriptionContent {
         require(SubscriptionAddress.parse(url.toString()) != null) { "Подписка загружается только по http(s)" }
         val started = System.nanoTime()
         val connection = try {

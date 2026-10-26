@@ -59,6 +59,62 @@ class SubscriptionMergeTest {
     }
 
     @Test
+    fun `server that came back is no longer missing`() {
+        val own = stored("trojan://pw-a@198.51.100.1:443#A", "trojan://pw-b@198.51.100.2:443#B")
+        val result = SubscriptionMerge.merge(
+            own,
+            listOf(server("trojan://pw-a@198.51.100.1:443#A"), server("trojan://pw-b@198.51.100.2:443#B")),
+            emptySet(),
+            selectedId = "s0",
+        )
+        assertEquals(listOf("s0", "s1"), result.kept.map { it.first })
+        assertNull(result.missing)
+        assertEquals(SelectedChange.None, result.selected)
+    }
+
+    @Test
+    fun `changed or missing is decided by the link name`() {
+        val own = stored("trojan://pw-a@198.51.100.1:443#A")
+        // Тот же адрес, но новые ключи и другое название — для пользователя это другой сервер.
+        val renamed = SubscriptionMerge.merge(own, listOf(server("trojan://pw-new@198.51.100.1:443#A2")), emptySet(), selectedId = "s0")
+        assertEquals(SelectedChange.Missing, renamed.selected)
+        // Другой адрес и ключи, но то же название — та же точка у поставщика, ее новая версия.
+        val moved = SubscriptionMerge.merge(own, listOf(server("trojan://pw-new@203.0.113.7:8443#A")), emptySet(), selectedId = "s0")
+        assertEquals(SelectedChange.Changed, moved.selected)
+    }
+
+    @Test
+    fun `unreadable servers count as gone`() {
+        val result = SubscriptionMerge.merge(
+            stored("trojan://pw-a@198.51.100.1:443#A"),
+            listOf(server("trojan://pw-a@198.51.100.1:443#A"), server("trojan://pw-u@198.51.100.5:443#U")),
+            emptySet(),
+            selectedId = "s0",
+            unreadable = listOf(UnreadableServer("u1", "U"), UnreadableServer("u2", "V")),
+        )
+        assertEquals(listOf("s0"), result.kept.map { it.first })
+        assertEquals(listOf("U"), result.added.map { it.name }, "нечитаемый не узнать — его версия из подписки добавляется заново")
+        assertEquals(listOf("u1", "u2"), result.removed)
+        assertNull(result.missing)
+        assertEquals(SelectedChange.None, result.selected)
+    }
+
+    @Test
+    fun `selected unreadable server stays until another is chosen`() {
+        val own = stored("trojan://pw-a@198.51.100.1:443#A")
+        val unreadable = listOf(UnreadableServer("u1", "U"), UnreadableServer("u2", "V"))
+        val missing = SubscriptionMerge.merge(own, listOf(server("trojan://pw-a@198.51.100.1:443#A")), emptySet(), "u1", unreadable)
+        assertEquals(listOf("u2"), missing.removed, "выбранный не удаляется")
+        assertEquals("u1", missing.missing)
+        assertEquals(SelectedChange.Missing, missing.selected)
+
+        val changed = SubscriptionMerge.merge(own, listOf(server("trojan://pw-u@198.51.100.5:443#U")), emptySet(), "u1", unreadable)
+        assertEquals(listOf("s0", "u2"), changed.removed)
+        assertEquals("u1", changed.missing)
+        assertEquals(SelectedChange.Changed, changed.selected, "в подписке есть сервер с тем же названием — его новая версия")
+    }
+
+    @Test
     fun `servers already in another group are not duplicated`() {
         val elsewhere = setOf(ServerKeys.key(server("trojan://pw-x@198.51.100.9:443#X")))
         val result = SubscriptionMerge.merge(
