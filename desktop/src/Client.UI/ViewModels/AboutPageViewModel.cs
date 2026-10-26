@@ -3,9 +3,11 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
@@ -47,9 +49,37 @@ public sealed record OpenComponent(string Name, string License)
         : string.Equals(p, package, StringComparison.OrdinalIgnoreCase));
 }
 
+/// <summary>Что показывает блок «Обновления».</summary>
+public enum UpdateView
+{
+    /// <summary>Демо-режим: служба — имитация, обновления не проверяются.</summary>
+    Demo,
+
+    /// <summary>Еще не спрашивали, а «Проверять сами» выключено — только по кнопке.</summary>
+    Manual,
+
+    Checking,
+
+    /// <summary>В программе нет ключа подписи: обновления — с первого подписанного выпуска.</summary>
+    NotSigned,
+
+    UpToDate,
+
+    /// <summary>Есть новее — карточка: версия, главное, подпись проверена, кнопки.</summary>
+    Available,
+
+    /// <summary>Есть новее, но «Позже»: одна строка с версией.</summary>
+    Postponed,
+
+    /// <summary>Службы нет — проверять обновления некому.</summary>
+    NoService,
+
+    Failed,
+}
+
 /// <summary>
-/// «О программе» по макету (доска 15): версия и ОС, обновления и их канал, компоненты, приватность,
-/// лицензии, политика и «Сообщить о проблеме». Обновлений пока нет — экран так и говорит.
+/// «О программе» по макету (доска 15): версия и ОС, обновления (ищет служба, <see cref="UpdateWatcher"/>) и их канал,
+/// компоненты, приватность, лицензии, политика и «Сообщить о проблеме».
 /// </summary>
 public sealed partial class AboutPageViewModel : ObservableObject
 {
@@ -65,16 +95,32 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private readonly OverlayViewModel _overlay;
     private readonly INavigator _navigator;
     private readonly IServiceInstaller _installer;
+    private readonly UpdateWatcher _updates;
+    private readonly IUrlLauncher _launcher;
+    private readonly TimeProvider _time;
     private ServiceDetails? _details;
 
-    public AboutPageViewModel(SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator, IServiceInstaller installer)
+    public AboutPageViewModel(
+        SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator, IServiceInstaller installer, UpdateWatcher updates,
+        IUrlLauncher launcher, TimeProvider time)
     {
         _settings = settings;
         _gateway = gateway;
         _overlay = overlay;
         _navigator = navigator;
         _installer = installer;
+        _updates = updates;
+        _launcher = launcher;
+        _time = time;
         _ = LoadDetailsAsync();
+
+        // Открыли «О программе», а давно не спрашивали — спросить сейчас (служба помнит ответ час, GitHub не дергается).
+        if (settings.Current.CheckUpdates && gateway.Service != ServiceKind.Simulated
+            && (updates.Attempted is not { } attempted || time.GetUtcNow() - attempted >= TimeSpan.FromHours(1)))
+        {
+            _ = updates.CheckAsync(force: false);
+        }
+
         ChannelOptions = [.. Enum.GetValues<UpdateChannel>().Select(v => new ChoiceOptionViewModel(
             () => ChannelLabel(v), () => _settings.Current.UpdateChannel == v, () =>
             {
@@ -82,6 +128,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
                 _settings.Update(s => s with { UpdateChannel = v });
             }))];
         settings.Changed += (_, _) => Refresh();
+        updates.Changed += (_, _) => Refresh();
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
     }
 
@@ -100,6 +147,67 @@ public sealed partial class AboutPageViewModel : ObservableObject
     public partial bool IsChannelOpen { get; set; }
 
     public string ChannelText => ChannelLabel(_settings.Current.UpdateChannel);
+
+    // ── Обновления ───────────────────────────────────────────────────────────
+
+    public UpdateView Update
+    {
+        get
+        {
+            if (_gateway.Service == ServiceKind.Simulated)
+            {
+                return UpdateView.Demo;
+            }
+
+            if (_updates.IsChecking)
+            {
+                return UpdateView.Checking;
+            }
+
+            return _updates.Offer?.State switch
+            {
+                UpdateState.NotSigned => UpdateView.NotSigned,
+                UpdateState.UpToDate => UpdateView.UpToDate,
+                UpdateState.Available => _updates.Postponed == _updates.Offer.Version ? UpdateView.Postponed : UpdateView.Available,
+                UpdateState.Failed => UpdateView.Failed,
+                _ when _updates.Attempted is null => _settings.Current.CheckUpdates ? UpdateView.Checking : UpdateView.Manual,
+                _ => _gateway.Service == ServiceKind.None ? UpdateView.NoService : UpdateView.Failed,
+            };
+        }
+    }
+
+    public bool IsUpdateAvailable => Update == UpdateView.Available;
+
+    /// <summary>Заголовок блока: «Доступно обновление 0.2.0» на карточке, иначе «Обновления».</summary>
+    public string UpdatesTitle => IsUpdateAvailable ? Loc.Instance.Format("about.update.available", _updates.Offer!.Version) : Loc.Instance["about.updates.title"];
+
+    /// <summary>Строка под заголовком — у всех состояний, кроме карточки.</summary>
+    public string UpdateText => Update switch
+    {
+        UpdateView.Demo => Loc.Instance["about.updates.demo"],
+        UpdateView.Manual => Loc.Instance["about.updates.manual"],
+        UpdateView.Checking => Loc.Instance["about.updates.checking"],
+        UpdateView.NotSigned => Loc.Instance["about.updates.text"],
+        UpdateView.UpToDate => Loc.Instance.Format("about.updates.upToDate", TimeText.Day(_updates.Offer!.Checked, _time)),
+        UpdateView.Postponed => Loc.Instance.Format("about.updates.later", _updates.Offer!.Version),
+        UpdateView.NoService => Loc.Instance["about.updates.noService"],
+        UpdateView.Failed => Loc.Instance["about.updates.failed"],
+        _ => string.Empty,
+    };
+
+    /// <summary>Главное из заметок к выпуску — точками на карточке.</summary>
+    public IReadOnlyList<string> UpdateHighlights => IsUpdateAvailable ? _updates.Offer!.Highlights ?? [] : [];
+
+    public bool CanCheckUpdates => Update is UpdateView.Manual or UpdateView.UpToDate or UpdateView.Failed or UpdateView.NoService;
+
+    public bool IsUpdatePostponed => Update == UpdateView.Postponed;
+
+    /// <summary>«Проверять сами»: после запуска и раз в 12 часов окно просит службу проверить.</summary>
+    public bool CheckUpdates
+    {
+        get => _settings.Current.CheckUpdates;
+        set => _settings.Update(s => s with { CheckUpdates = value });
+    }
 
     // ── Компоненты ───────────────────────────────────────────────────────────
 
@@ -172,6 +280,27 @@ public sealed partial class AboutPageViewModel : ObservableObject
     /// <summary>Проблема — на экран «Проверка»: там обезличенный отчет для поддержки.</summary>
     [RelayCommand]
     private void ReportProblem() => _navigator.Navigate(Pages.Check);
+
+    /// <summary>«Проверить»: сейчас и мимо памяти службы.</summary>
+    [RelayCommand]
+    private Task CheckUpdatesNowAsync() => _updates.CheckAsync(force: true);
+
+    /// <summary>Страница выпуска на GitHub: заметки и файлы.</summary>
+    [RelayCommand]
+    private async Task OpenReleaseAsync()
+    {
+        if (_updates.Offer?.Notes is { } notes)
+        {
+            await _launcher.OpenAsync(notes).ConfigureAwait(true);
+        }
+    }
+
+    /// <summary>«Позже»: карточка сворачивается в строку до следующей версии или запуска окна.</summary>
+    [RelayCommand]
+    private void PostponeUpdate() => _updates.Postpone(_updates.Offer?.Version);
+
+    [RelayCommand]
+    private void ShowUpdate() => _updates.Postpone(null);
 
     [RelayCommand]
     private async Task UpdateServiceAsync()

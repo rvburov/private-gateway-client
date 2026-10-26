@@ -55,6 +55,7 @@ public sealed class SettingsStorageTests : IDisposable
                 [new BypassApp("/opt/game/game", "game"), new BypassApp("/opt/bank/bank", "bank", IsEnabled: false)],
                 [new DomainRule("example.com", RuleAction.Direct), new DomainRule("*.local", RuleAction.Direct), new DomainRule("ads.example.net", RuleAction.Block)]),
             UpdateChannel = UpdateChannel.Beta,
+            CheckUpdates = false,
             OnboardingDone = true,
         };
         Store().Save(changed);

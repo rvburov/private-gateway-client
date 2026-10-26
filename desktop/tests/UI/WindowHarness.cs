@@ -14,6 +14,7 @@ using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI;
@@ -166,6 +167,18 @@ public abstract class WindowHarness : IDisposable
         public ServiceDetails? Details { get; set; }
 
         public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Details);
+
+        /// <summary>Что служба ответит на CheckForUpdate; null — не ответила.</summary>
+        public UpdateOffer? Update { get; set; }
+
+        /// <summary>Вопросы об обновлении: канал и «мимо памяти службы».</summary>
+        public List<(UpdateChannel Channel, bool Force)> UpdateChecks { get; } = [];
+
+        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+        {
+            UpdateChecks.Add((channel, force));
+            return Task.FromResult(Update);
+        }
 
         /// <summary>Что служба сделает из «Подключения».</summary>
         public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());

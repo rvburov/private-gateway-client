@@ -1,7 +1,8 @@
 name: Раскатка выпуска
 
-# Поэтапное обновление: новая доля раскатки опубликованного выпуска (update.json и его строка в SHA256SUMS). Клиент
-# берет выпуск, только если его номер из 0–99 меньше доли. Обычный путь стабильного выпуска: 20 % → 50 % → 100 %.
+# Поэтапное обновление: новая доля раскатки опубликованного выпуска (update.json, его новая подпись — ключ из секрета
+# UPDATE_SIGNING_KEY — и их строки в SHA256SUMS). Клиент берет выпуск, только если его номер из 0–99 меньше доли.
+# Обычный путь стабильного выпуска: 20 % → 50 % → 100 %.
 on:
   workflow_dispatch:
     inputs:
@@ -40,11 +41,12 @@ jobs:
       - name: Новая доля
         env:
           GH_TOKEN: ${{ github.token }}
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
           TAG: ${{ inputs.tag }}
           ROLLOUT: ${{ inputs.rollout }}
         run: |
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег $TAG — не v<SemVer>" >&2; exit 1; }
           mkdir -p artifacts/published
-          gh release download "$TAG" --pattern update.json --pattern SHA256SUMS --dir artifacts/published
+          gh release download "$TAG" --pattern 'update.json*' --pattern SHA256SUMS --dir artifacts/published
           dotnet run scripts/release.cs rollout artifacts/published "$ROLLOUT"
-          gh release upload "$TAG" artifacts/published/update.json artifacts/published/SHA256SUMS --clobber
+          gh release upload "$TAG" artifacts/published/* --clobber

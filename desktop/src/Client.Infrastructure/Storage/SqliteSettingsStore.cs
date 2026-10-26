@@ -105,6 +105,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Connection = core,
             Routing = routing,
             UpdateChannel = Enum("update_channel", d.UpdateChannel),
+            CheckUpdates = Bool("check_updates", d.CheckUpdates),
             OnboardingDone = Bool("onboarding_done", d.OnboardingDone),
         };
 
@@ -194,6 +195,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),
             ["update_channel"] = settings.UpdateChannel.ToString(),
+            ["check_updates"] = Text(settings.CheckUpdates),
             ["onboarding_done"] = Text(settings.OnboardingDone),
         };
     }

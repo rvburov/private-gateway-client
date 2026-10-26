@@ -20,6 +20,33 @@
       <Setter Property="TextWrapping" Value="Wrap" />
       <Setter Property="Margin" Value="12,0,0,0" />
     </Style>
+    <!-- Предупреждение (служба другой версии) — как на других экранах -->
+    <Style Selector="Border.notice">
+      <Setter Property="CornerRadius" Value="12" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <Style Selector="Border.notice TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Badge}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Caption}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Карточка «Доступно обновление»: рамка акцента и метка «Новое» (доска 15) -->
+    <Style Selector="Border.card.offer">
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+    </Style>
+    <Style Selector="Border.badge">
+      <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Chip}" />
+      <Setter Property="Padding" Value="8,2" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.badge TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+    </Style>
     <!-- Приватность: зеленый кружок с галочкой -->
     <Style Selector="Border.yes">
       <Setter Property="Width" Value="20" />
@@ -57,12 +84,52 @@
           </Grid>
         </Border>
 
-        <!-- Обновления -->
-        <Border Classes="card" Padding="16,14,16,4">
+        <!-- Обновления: ищет служба; есть новее — карточка с главным из заметок, подписью и кнопками -->
+        <Border x:Name="UpdatesCard" Classes="card" Classes.offer="{Binding IsUpdateAvailable}" Padding="16,14,16,4">
           <StackPanel Spacing="8">
-            <TextBlock Classes="title" Text="{l:L about.updates.title}" />
-            <TextBlock x:Name="UpdatesText" Classes="caption" Text="{l:L about.updates.text}" TextWrapping="Wrap" />
+            <Grid ColumnDefinitions="*,Auto">
+              <TextBlock x:Name="UpdatesTitle" Classes="title" Text="{Binding UpdatesTitle}" TextWrapping="Wrap" VerticalAlignment="Center" />
+              <Border Grid.Column="1" Classes="badge" Margin="8,0,0,0" VerticalAlignment="Center" IsVisible="{Binding IsUpdateAvailable}">
+                <TextBlock Text="{l:L about.update.new}" />
+              </Border>
+            </Grid>
+            <TextBlock x:Name="UpdatesText" Classes="caption" Text="{Binding UpdateText}" TextWrapping="Wrap" IsVisible="{Binding !IsUpdateAvailable}" />
+            <ItemsControl x:Name="UpdateHighlights" ItemsSource="{Binding UpdateHighlights}" IsVisible="{Binding IsUpdateAvailable}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="x:String">
+                  <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                    <TextBlock Text="•" Margin="2,0,8,0" />
+                    <TextBlock Grid.Column="1" Text="{Binding}" TextWrapping="Wrap" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsUpdateAvailable}">
+              <c:Icon Data="{StaticResource Icon.Mark.Ok}" Width="14" Height="14" StrokeThickness="2.6"
+                      Foreground="{StaticResource PgBrush.Status.Success.Text}" VerticalAlignment="Center" />
+              <TextBlock x:Name="UpdateSigned" Classes="small" Text="{l:L about.update.signed}" Foreground="{StaticResource PgBrush.Status.Success.Text}"
+                         VerticalAlignment="Center" />
+            </StackPanel>
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0" IsVisible="{Binding IsUpdateAvailable}">
+              <Button x:Name="OpenRelease" Classes="primary" Height="44" HorizontalAlignment="Stretch"
+                      Command="{Binding OpenReleaseCommand}" Content="{l:L about.update.open}" />
+              <Button x:Name="PostponeUpdate" Grid.Column="1" Classes="secondary" Height="44" Margin="10,0,0,0"
+                      Command="{Binding PostponeUpdateCommand}" Content="{l:L about.update.later}" />
+            </Grid>
+            <Button x:Name="CheckUpdatesNow" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding CanCheckUpdates}"
+                    Command="{Binding CheckUpdatesNowCommand}" Content="{l:L about.updates.check}" />
+            <Button x:Name="ShowUpdate" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding IsUpdatePostponed}"
+                    Command="{Binding ShowUpdateCommand}" Content="{l:L about.update.show}" />
             <Border Classes="divider" Margin="0,4,0,0" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,4">
+              <StackPanel Spacing="3" Margin="0,0,16,0">
+                <TextBlock Classes="strong" Text="{l:L about.updates.auto}" />
+                <TextBlock Classes="caption" Text="{l:L about.updates.auto.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <ToggleButton x:Name="CheckUpdatesToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                            IsChecked="{Binding CheckUpdates}" AutomationProperties.Name="{l:L about.updates.auto}" />
+            </Grid>
+            <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,8">
               <TextBlock Classes="strong" Text="{l:L about.channel}" VerticalAlignment="Center" />
               <Button x:Name="ChannelChoice" Grid.Column="1" Classes="select" Command="{Binding ToggleChannelCommand}"

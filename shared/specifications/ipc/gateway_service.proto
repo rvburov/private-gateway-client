@@ -50,6 +50,11 @@ service GatewayService {
 
   // Пинг серверов меряет служба: в интерфейсе сеть запрещена.
   rpc MeasureLatency(MeasureLatencyRequest) returns (MeasureLatencyReply);
+
+  // Обновление программы ищет служба (в интерфейсе сеть запрещена): выпуски на GitHub канала окна, подпись
+  // манифеста — ключом программы, доля раскатки — номером этой установки. Ответ служба помнит час; force — искать
+  // заново (кнопка «Проверить»).
+  rpc CheckForUpdate(CheckForUpdateRequest) returns (UpdateOffer);
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -528,4 +533,38 @@ message ServiceInfo {
   string api_version = 2;
   string os = 3;
   repeated CoreInfo cores = 4;
+}
+
+// ── Обновление ──────────────────────────────────────────────────────────────
+
+enum UpdateChannel {
+  UPDATE_CHANNEL_UNSPECIFIED = 0;
+  UPDATE_CHANNEL_STABLE = 1;
+  // Предварительные выпуски (с «-» в версии) и стабильные.
+  UPDATE_CHANNEL_BETA = 2;
+}
+
+enum UpdateState {
+  UPDATE_STATE_UNSPECIFIED = 0;
+  // В программе нет ключа подписи обновлений: проверить выпуск нечем, обновления — с первого подписанного.
+  UPDATE_STATE_NOT_SIGNED = 1;
+  UPDATE_STATE_UP_TO_DATE = 2;
+  UPDATE_STATE_AVAILABLE = 3;
+  // Нет связи с GitHub или он не ответил; подробности — в журнале службы.
+  UPDATE_STATE_FAILED = 4;
+}
+
+message CheckForUpdateRequest {
+  UpdateChannel channel = 1;
+  bool force = 2;
+}
+
+message UpdateOffer {
+  UpdateState state = 1;
+  // AVAILABLE: версия выпуска, главное из его заметок, страница выпуска на GitHub.
+  string version = 2;
+  repeated string highlights = 3;
+  string notes_url = 4;
+  // Когда служба проверяла (ответ мог быть из памяти).
+  google.protobuf.Timestamp checked_at = 5;
 }

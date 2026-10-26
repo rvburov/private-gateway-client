@@ -8,6 +8,7 @@ using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Infrastructure;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI.Localization;
@@ -48,6 +49,7 @@ public partial class App : Avalonia.Application
         Services.GetRequiredService<SubscriptionUpdater>().Start();
         Services.GetRequiredService<AutostartSync>().Start();
         Services.GetRequiredService<ProtectionSync>().Start();
+        Services.GetRequiredService<UpdateWatcher>().Start();
         _ = Services.GetRequiredService<LaunchConnect>().RunAsync();
 
         base.OnFrameworkInitializationCompleted();

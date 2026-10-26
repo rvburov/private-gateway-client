@@ -1,9 +1,9 @@
 name: Выпуск на GitHub
 
 # Тег v<SemVer> → сборки трех ОС (publish.yml со всеми проверками и установкой пакетов) → выпуск на GitHub
-# (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json и заметки из коммитов с прошлого
-# тега. Версия с «-» — бета: выпуск помечен prerelease, канал beta, раскатка 100 %. Стабильный выпуск раскатывается
-# поэтапно: сначала 20 %, дальше — release-rollout.yml.
+# (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
+# секрет UPDATE_SIGNING_KEY) и заметки из коммитов с прошлого тега. Версия с «-» — бета: выпуск помечен prerelease,
+# канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
 on:
   push:
     tags: ['v*']
@@ -46,7 +46,9 @@ jobs:
           pattern: release-*
           path: artifacts/builds
 
-      - name: Файлы, суммы, манифест и заметки
+      - name: Файлы, суммы, манифест, подпись и заметки
+        env:
+          UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           version=${GITHUB_REF_NAME#v}
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег $GITHUB_REF_NAME — не v<SemVer>" >&2; exit 1; }

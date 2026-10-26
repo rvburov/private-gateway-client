@@ -4,16 +4,17 @@ using Grpc.Core;
 using Microsoft.Extensions.Hosting;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Service.Updates;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Service.Ipc;
 
 /// <summary>
-/// gRPC-обертка над <see cref="Gateway"/> и <see cref="ServiceJournal"/>: перевод контракта, потоки
-/// WatchStatus и WatchLog. Сама ничего не решает — решает служба. Служба останавливается — потоки
+/// gRPC-обертка над <see cref="Gateway"/>, <see cref="ServiceJournal"/> и <see cref="UpdateChecker"/>: перевод контракта,
+/// потоки WatchStatus и WatchLog. Сама ничего не решает — решает служба. Служба останавливается — потоки
 /// закрываются сразу: интерфейс узнает об этом без ожидания и остановка не ждет окон.
 /// </summary>
-public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, IHostApplicationLifetime lifetime)
+public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker updates, IHostApplicationLifetime lifetime)
     : V1.GatewayService.GatewayServiceBase
 {
     public override Task<V1.ServiceInfo> GetServiceInfo(V1.GetServiceInfoRequest request, ServerCallContext context) => Task.FromResult(info);
@@ -58,6 +59,19 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
 
     public override Task<V1.MeasureLatencyReply> MeasureLatency(V1.MeasureLatencyRequest request, ServerCallContext context) =>
         gateway.MeasureLatencyAsync(request, context?.CancellationToken ?? default);
+
+    /// <summary>Канал не задан — ошибка окна: служба не угадывает, какие выпуски ему нужны.</summary>
+    public override async Task<V1.UpdateOffer> CheckForUpdate(V1.CheckForUpdateRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Channel == V1.UpdateChannel.Unspecified)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Канал обновлений не задан"));
+        }
+
+        var offer = await updates.CheckAsync(request.Channel.ToCore(), request.Force, context?.CancellationToken ?? default).ConfigureAwait(false);
+        return offer.ToContract();
+    }
 
     /// <summary>Защиту служба применит при следующем подключении: в режиме прокси менять на ходу нечего.</summary>
     public override Task<V1.ApplyProtectionReply> ApplyProtection(V1.ProtectionSettings request, ServerCallContext context) =>

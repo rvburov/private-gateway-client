@@ -14,6 +14,9 @@ using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
 using CoreSettings = PrivateGateway.Client.Core.Settings.AppSettings;
 using CoreState = PrivateGateway.Client.Core.ConnectionState;
 using CoreTun = PrivateGateway.Client.Core.Settings.TunEngine;
+using CoreUpdateChannel = PrivateGateway.Client.Core.Settings.UpdateChannel;
+using CoreUpdateOffer = PrivateGateway.Client.Core.Updates.UpdateOffer;
+using CoreUpdateState = PrivateGateway.Client.Core.Updates.UpdateState;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Contracts;
@@ -79,6 +82,68 @@ public static partial class ContractMapping
     {
         ArgumentNullException.ThrowIfNull(result);
         return result.Reachable ? new CoreLatency(result.LatencyMs, null) : CoreLatency.Failed(result.Failure.ToCore());
+    }
+
+    public static V1.UpdateChannel ToContract(this CoreUpdateChannel channel) => channel switch
+    {
+        CoreUpdateChannel.Stable => V1.UpdateChannel.Stable,
+        CoreUpdateChannel.Beta => V1.UpdateChannel.Beta,
+        _ => throw new ArgumentOutOfRangeException(nameof(channel), channel, null),
+    };
+
+    public static CoreUpdateChannel ToCore(this V1.UpdateChannel channel) => channel switch
+    {
+        V1.UpdateChannel.Stable => CoreUpdateChannel.Stable,
+        V1.UpdateChannel.Beta => CoreUpdateChannel.Beta,
+        _ => throw new ArgumentOutOfRangeException(nameof(channel), channel, "Канал не задан"),
+    };
+
+    public static V1.UpdateState ToContract(this CoreUpdateState state) => state switch
+    {
+        CoreUpdateState.NotSigned => V1.UpdateState.NotSigned,
+        CoreUpdateState.UpToDate => V1.UpdateState.UpToDate,
+        CoreUpdateState.Available => V1.UpdateState.Available,
+        CoreUpdateState.Failed => V1.UpdateState.Failed,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+    };
+
+    public static CoreUpdateState ToCore(this V1.UpdateState state) => state switch
+    {
+        V1.UpdateState.NotSigned => CoreUpdateState.NotSigned,
+        V1.UpdateState.UpToDate => CoreUpdateState.UpToDate,
+        V1.UpdateState.Available => CoreUpdateState.Available,
+        V1.UpdateState.Failed => CoreUpdateState.Failed,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Состояние обновления не задано"),
+    };
+
+    /// <summary>Ответ CheckForUpdate.</summary>
+    public static V1.UpdateOffer ToContract(this CoreUpdateOffer offer)
+    {
+        ArgumentNullException.ThrowIfNull(offer);
+        var contract = new V1.UpdateOffer
+        {
+            State = offer.State.ToContract(),
+            Version = offer.Version ?? string.Empty,
+            NotesUrl = offer.Notes?.AbsoluteUri ?? string.Empty,
+            CheckedAt = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(offer.Checked),
+        };
+        contract.Highlights.AddRange(offer.Highlights ?? []);
+        return contract;
+    }
+
+    /// <summary>Ответ службы; «есть обновление» без версии — ошибка отправителя.</summary>
+    public static CoreUpdateOffer ToCore(this V1.UpdateOffer offer)
+    {
+        ArgumentNullException.ThrowIfNull(offer);
+        var state = offer.State.ToCore();
+        if (state == CoreUpdateState.Available && !PrivateGateway.Client.Core.SemVer.IsValid(offer.Version))
+        {
+            throw new ArgumentException("Обновление без версии: " + offer.Version, nameof(offer));
+        }
+
+        return new CoreUpdateOffer(state, offer.CheckedAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
+            state == CoreUpdateState.Available ? offer.Version : null, [.. offer.Highlights],
+            Uri.TryCreate(offer.NotesUrl, UriKind.Absolute, out var notes) && notes.Scheme == Uri.UriSchemeHttps ? notes : null);
     }
 
     /// <summary>Что служба говорит о себе — для «О программе» и сверки версий с окном.</summary>

@@ -1,5 +1,6 @@
 using System.Xml.Linq;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -8,6 +9,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -33,7 +35,89 @@ public sealed class AboutPageTests : WindowHarness
         Text(window, "AboutSecondCore").ShouldBe("не выбрано");
         Text(window, "TunDriver").ShouldBe(OperatingSystem.IsWindows() ? "не установлен" : "встроен в ОС");
         Text(window, "ChannelText").ShouldBe("Стабильный");
+        Text(window, "UpdatesText").ShouldBe("В демо-режиме обновления не проверяются.", "имитация в сеть не ходит — так и сказано");
+        Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeFalse();
         Snapshot(window, "about");
+    }
+
+    [AvaloniaFact]
+    public void Signed_update_shows_its_highlights_opens_the_release_and_waits_for_later()
+    {
+        var notes = new Uri("https://github.com/rvburov/private-gateway-client/releases/tag/v0.2.0");
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0",
+            ["Быстрее переподключение после сна", "Новые правила маршрутизации по сайтам", "Исправления в проверке утечек DNS"], notes));
+
+        service.UpdateChecks.ShouldBe([(UpdateChannel.Stable, false)], "открыли «О программе» — спросили службу, ее память не обходя");
+        Text(window, "UpdatesTitle").ShouldBe("Доступно обновление 0.2.0");
+        page.UpdateHighlights.Count.ShouldBe(3);
+        Find<TextBlock>(window, "UpdateSigned").IsEffectivelyVisible.ShouldBeTrue("подпись манифеста проверила служба");
+        Find<TextBlock>(window, "UpdatesText").IsEffectivelyVisible.ShouldBeFalse();
+        Snapshot(window, "about-update");
+
+        Press(window, "OpenRelease");
+        Dispatcher.UIThread.RunJobs();
+        Urls.Opened.ShouldBe([notes]);
+
+        Press(window, "PostponeUpdate");
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "UpdatesTitle").ShouldBe("Обновления");
+        Text(window, "UpdatesText").ShouldBe("Доступна версия 0.2.0", "«Позже» сворачивает, но не прячет");
+        Press(window, "ShowUpdate");
+        Dispatcher.UIThread.RunJobs();
+        page.IsUpdateAvailable.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
+    public void Latest_version_unsigned_and_failed_checks_say_so_and_check_again_past_the_cache()
+    {
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.UpToDate, Time.GetUtcNow()));
+
+        Text(window, "UpdatesText").ShouldBe("Установлена последняя версия · проверено в 15:42");
+        Press(window, "CheckUpdatesNow");
+        Dispatcher.UIThread.RunJobs();
+        service.UpdateChecks.Last().ShouldBe((UpdateChannel.Stable, true), "кнопка «Проверить» — мимо памяти службы");
+
+        service.Update = new UpdateOffer(UpdateState.NotSigned, Time.GetUtcNow());
+        page.CheckUpdatesNowCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "UpdatesText").ShouldStartWith("Проверять и ставить обновления программа начнет с первого подписанного выпуска");
+        Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeFalse("без ключа подписи проверять нечего");
+
+        service.Update = new UpdateOffer(UpdateState.Failed, Time.GetUtcNow());
+        page.CheckUpdatesNowCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "UpdatesText").ShouldStartWith("Проверить обновления не удалось");
+        Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeTrue();
+
+        service.Update = null;
+        page.CheckUpdatesNowCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "UpdatesText").ShouldStartWith("Проверить обновления не удалось", customMessage: "служба без CheckForUpdate (старая) — тоже неудача");
+    }
+
+    [AvaloniaFact]
+    public void Without_automatic_checks_the_window_asks_only_by_the_button()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Update = new UpdateOffer(UpdateState.UpToDate, Time.GetUtcNow()),
+        });
+        Service<SettingsService>().Update(s => s with { CheckUpdates = false });
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+
+        service!.UpdateChecks.ShouldBeEmpty("«Проверять сами» выключено — окно за обновлениями в сеть не ходит");
+        Text(window, "UpdatesText").ShouldStartWith("Сама программа обновления не проверяет");
+        Find<ToggleButton>(window, "CheckUpdatesToggle").IsChecked.ShouldBe(false);
+
+        Press(window, "CheckUpdatesNow");
+        Dispatcher.UIThread.RunJobs();
+        service.UpdateChecks.ShouldBe([(UpdateChannel.Stable, true)]);
+
+        Find<ToggleButton>(window, "CheckUpdatesToggle").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.CheckUpdates.ShouldBeTrue();
     }
 
     [AvaloniaFact]
@@ -175,6 +259,19 @@ public sealed class AboutPageTests : WindowHarness
 
     private static bool Matches(string pattern, string path) =>
         pattern.EndsWith('*') ? path.StartsWith(pattern[..^1], StringComparison.Ordinal) : path == pattern;
+
+    /// <summary>«О программе» с установленной службой, которая на вопрос об обновлении отвечает <paramref name="offer"/>.</summary>
+    private (MainWindow Window, AboutPageViewModel Page, ScriptedService Service) OpenAboutWith(UpdateOffer? offer)
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Update = offer,
+        });
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        return (window, shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>(), service!);
+    }
 
     private (MainWindow Window, ShellViewModel Shell, AboutPageViewModel Page) OpenAbout()
     {

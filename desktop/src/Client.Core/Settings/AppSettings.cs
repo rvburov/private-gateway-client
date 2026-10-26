@@ -68,8 +68,11 @@ public sealed record AppSettings(
     /// <summary>«Маршрутизация» (доска 13).</summary>
     public RoutingSettings Routing { get; init; } = RoutingSettings.Default;
 
-    /// <summary>Канал обновлений («О программе», доска 15); действует, когда появятся подписанные выпуски.</summary>
+    /// <summary>Канал обновлений («О программе», доска 15).</summary>
     public UpdateChannel UpdateChannel { get; init; } = UpdateChannel.Stable;
+
+    /// <summary>«Проверять обновления сами»: окно спрашивает службу после запуска и раз в 12 часов (<c>UpdateWatcher</c>).</summary>
+    public bool CheckUpdates { get; init; } = true;
 
     /// <summary>Первый запуск пройден (доска 10): приветствие больше не показывается.</summary>
     public bool OnboardingDone { get; init; }

@@ -3,6 +3,7 @@ using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Service;
 using PrivateGateway.Client.Service.Cores;
 using PrivateGateway.Client.Service.Ipc;
+using PrivateGateway.Client.Service.Updates;
 
 if (args.Contains("--version"))
 {
@@ -102,7 +103,11 @@ await using var gateway = new Gateway(
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
         TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null),
     time, journal, systemProxy);
-await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
+// Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки — в папке состояния.
+using var updateHttp = GitHubReleaseFeed.CreateHttp();
+using var updates = new UpdateChecker(new GitHubReleaseFeed(updateHttp, GitHubReleaseFeed.DefaultReleases, GitHubReleaseFeed.DefaultDownloads),
+    UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal);
+await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox), updates);
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
 if (crashed)
 {

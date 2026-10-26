@@ -4,6 +4,7 @@ using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
+using PrivateGateway.Client.Application.Updates;
 
 namespace PrivateGateway.Client.Application;
 
@@ -23,6 +24,7 @@ public static class ApplicationModule
         services.AddSingleton<ProtectionSync>();
         services.AddSingleton<LaunchConnect>();
         services.AddSingleton<NotificationCenter>();
+        services.AddSingleton<UpdateWatcher>();
         return services;
     }
 }

@@ -1,5 +1,7 @@
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 
 namespace PrivateGateway.Client.Application.Connection;
 
@@ -22,6 +24,13 @@ public interface IGatewayClient
 
     /// <summary>Что служба говорит о себе: версия, контракт, ядра; службы нет или она не ответила — null.</summary>
     Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(null);
+
+    /// <summary>
+    /// Есть ли обновление программы в канале <paramref name="channel"/> — ищет служба (выпуски на GitHub, подпись,
+    /// раскатка); <paramref name="force"/> — мимо ее памяти. Службы нет, она старая или не ответила — null.
+    /// </summary>
+    Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default) =>
+        Task.FromResult<UpdateOffer?>(null);
 
     /// <summary>
     /// «Продолжить (не рекомендуется)» на «Работает другой VPN»: подключиться, хотя служба нашла чужой

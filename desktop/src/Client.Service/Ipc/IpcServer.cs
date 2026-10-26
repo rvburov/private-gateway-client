@@ -11,6 +11,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Service.Updates;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Service.Ipc;
@@ -32,7 +33,7 @@ public sealed record IpcOptions(string Endpoint, uint? OwnerUid = null, string? 
 /// </summary>
 public static class IpcServer
 {
-    public static WebApplication Build(IpcOptions options, Gateway gateway, ServiceJournal journal, V1.ServiceInfo info)
+    public static WebApplication Build(IpcOptions options, Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker? updates = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         var builder = WebApplication.CreateSlimBuilder();
@@ -76,6 +77,8 @@ public static class IpcServer
         builder.Services.AddSingleton(gateway);
         builder.Services.AddSingleton(journal);
         builder.Services.AddSingleton(info);
+        // Проверки обновлений нет (тесты) — служба без ключей подписи: «нет подписанных выпусков», в сеть не ходит.
+        builder.Services.AddSingleton(updates ?? UpdateChecker.WithoutKeys(journal));
         var app = builder.Build();
         app.MapGrpcService<GatewayRpc>();
         if (!pipe)

@@ -6,6 +6,7 @@ using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Infrastructure.Service;
@@ -125,6 +126,26 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
         catch (RpcException)
         {
+            return null;
+        }
+    }
+
+    /// <summary>Служба без CheckForUpdate (старая) или без связи — null: окно скажет, что проверить не удалось.</summary>
+    public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var reply = await _client.CheckForUpdateAsync(new V1.CheckForUpdateRequest { Channel = channel.ToContract(), Force = force },
+                cancellationToken: cancellationToken).ConfigureAwait(false);
+            return reply.ToCore();
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // Ответ не по контракту.
             return null;
         }
     }

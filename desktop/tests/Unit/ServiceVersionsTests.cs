@@ -5,7 +5,7 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Tests.Unit;
 
-/// <summary>Совместимость окна и службы (<see cref="ServiceVersions"/>) и сведения службы из контракта.</summary>
+/// <summary>Порядок версий (<see cref="SemVer"/>), совместимость окна и службы (<see cref="ServiceVersions"/>) и сведения службы из контракта.</summary>
 public class ServiceVersionsTests
 {
     [Theory]
@@ -22,8 +22,8 @@ public class ServiceVersionsTests
     [InlineData("1.2.3-beta", "1.2.3-beta.1", -1)]
     public void Versions_are_ordered_by_semver(string left, string right, int order)
     {
-        ServiceVersions.CompareSemVer(left, right).ShouldBe(order, $"{left} и {right}");
-        ServiceVersions.CompareSemVer(right, left).ShouldBe(-order, "порядок в обе стороны");
+        SemVer.Compare(left, right).ShouldBe(order, $"{left} и {right}");
+        SemVer.Compare(right, left).ShouldBe(-order, "порядок в обе стороны");
     }
 
     [Theory]
@@ -33,6 +33,17 @@ public class ServiceVersionsTests
     [InlineData("0.2.0", "2", ServiceMatch.Incompatible)]
     public void Service_is_compared_with_the_window(string service, string api, ServiceMatch match) =>
         ServiceVersions.Compare("0.2.0", new ServiceDetails(service, api, []), "1").ShouldBe(match);
+
+    [Theory]
+    [InlineData("1.2.3", true)]
+    [InlineData("0.4.0-beta.1", true)]
+    [InlineData("1.2.3+git-abc", true)]
+    [InlineData("v1.2.3", false)]
+    [InlineData("1.2", false)]
+    [InlineData("1.2.3 ", false)]
+    [InlineData("1.2.3-", false)]
+    [InlineData("../1.2.3", false)]
+    public void Only_semver_is_a_version(string version, bool valid) => SemVer.IsValid(version).ShouldBe(valid);
 
     [Fact]
     public void Service_info_comes_from_the_contract_with_working_cores_only()
