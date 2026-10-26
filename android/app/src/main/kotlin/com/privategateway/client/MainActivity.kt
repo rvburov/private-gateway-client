@@ -22,6 +22,7 @@ import com.privategateway.client.ui.AppActions
 import com.privategateway.client.ui.AppScreen
 import com.privategateway.client.ui.MainViewModel
 import com.privategateway.client.ui.Tab
+import com.privategateway.client.ui.servers.ServersViewModel
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.GatewayVpnService
@@ -36,6 +37,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: MainViewModel by viewModels()
     private val settings: SettingsViewModel by viewModels()
+    private val servers: ServersViewModel by viewModels()
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -63,7 +65,7 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             PgTheme {
-                AppScreen(viewModel, settings, actions)
+                AppScreen(viewModel, settings, servers, actions)
             }
         }
 

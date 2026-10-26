@@ -1362,5 +1362,8 @@
   "android.server.choose": "Выберите сервер в списке",
   "android.settings.language": "как в системе — меняется в настройках Android",
   "android.dnsCustom.placeholder": "192.0.2.53 или https://192.0.2.53/dns-query",
-  "android.dnsCustom.note": "IP-адрес или DoH по IP (https://IP/…). Запросы идут через туннель."
+  "android.dnsCustom.note": "IP-адрес или DoH по IP (https://IP/…). Запросы идут через туннель.",
+  "android.servers.search.placeholder": "Название, страна, протокол",
+  "android.servers.latency.never": "Задержку еще не мерили",
+  "android.card.core.none": "нет: Hysteria2 и TUIC телефон не подключает"
 }

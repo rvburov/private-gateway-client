@@ -4,16 +4,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.privategateway.client.core.links.ImportBatch
 import com.privategateway.client.core.links.ImportParser
+import com.privategateway.client.core.servers.ServerItem
+import com.privategateway.client.core.servers.ServerNames
+import com.privategateway.client.core.servers.SubscriptionRef
 import com.privategateway.client.core.subscriptions.DownloadFailure
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SubscriptionAddress
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionFetch
 import com.privategateway.client.core.subscriptions.SubscriptionSource
-import com.privategateway.client.data.ServerItem
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.vpn.CoreEngine
+import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
 import com.privategateway.client.vpn.TunnelState
 import com.privategateway.client.vpn.TunnelStatus
@@ -33,14 +36,18 @@ import java.net.URI
 import javax.inject.Inject
 
 /**
- * Состояние окна: туннель, список серверов, выбранный и рабочий сервер. Рабочий — тот, через который идет защита (его
- * назвала служба); защита выключена — выбранный (как ServerFacts.InUse у десктопа).
+ * Состояние окна: туннель, список серверов и их группы (подписки и профили), выбранный и рабочий сервер. Рабочий — тот,
+ * через который идет защита (его назвала служба); защита выключена — выбранный (как ServerFacts.InUse у десктопа).
  */
 data class MainUi(
     val status: TunnelStatus = TunnelStatus(),
     val servers: List<ServerItem> = emptyList(),
     val selectedId: String? = null,
+    val subscriptions: List<SubscriptionRef> = emptyList(),
 ) {
+    /** Защита идет или поднимается через этот сервер (строка «активен», «Используется сейчас» в карточке). */
+    fun active(id: String): Boolean = status.state != TunnelState.Off && status.state != TunnelState.Error && status.serverId == id
+
     val inUse: ServerItem?
         get() = status.serverId?.takeIf { status.state != TunnelState.Off }?.let { id -> servers.firstOrNull { it.id == id } }
             ?: servers.firstOrNull { it.id == selectedId }
@@ -88,14 +95,15 @@ data class ImportUi(
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
-    monitor: TunnelMonitor,
+    private val monitor: TunnelMonitor,
     private val servers: ServerRepository,
     private val settings: SettingsRepository,
     private val engine: CoreEngine,
     private val source: SubscriptionSource,
+    private val control: TunnelControl,
 ) : ViewModel() {
-    val ui: StateFlow<MainUi> = combine(monitor.status, servers.servers, settings.selectedServerId) { status, list, selected ->
-        MainUi(status, list, selected)
+    val ui: StateFlow<MainUi> = combine(monitor.status, servers.servers, settings.selectedServerId, servers.subscriptionRefs) { status, list, selected, groups ->
+        MainUi(status, list, selected, groups)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MainUi())
 
     private val importState = MutableStateFlow(ImportUi())
@@ -117,12 +125,53 @@ class MainViewModel @Inject constructor(
         tabRequest.value = null
     }
 
-    /** Выбор сервера — только нажатием пользователя; работающая защита переходит на него при следующем подключении. */
+    /**
+     * Выбор сервера — только нажатием пользователя. Тот же сервер — ничего не меняется; другой — запоминается для
+     * «Недавних», и работающая защита сразу переходит на него, как SwitchServerAsync десктопа (путь без окна утечки,
+     * решение 410).
+     */
     fun select(id: String) {
-        viewModelScope.launch { settings.select(id) }
+        viewModelScope.launch {
+            val state = monitor.status.value.state
+            if (choose(id) && state != TunnelState.Off && state != TunnelState.Stopping) {
+                control.connect()
+            }
+        }
     }
 
+    /**
+     * «Подключиться» в карточке: выбрать сервер и включить защиту через него. Защита выключена или с ошибкой — [start]
+     * (разрешение на VPN спрашивает окно) после того, как выбор записан: служба читает выбранный сервер сама.
+     */
+    fun connectTo(id: String, start: () -> Unit) {
+        viewModelScope.launch {
+            val changed = choose(id)
+            when (monitor.status.value.state) {
+                TunnelState.Off, TunnelState.Error -> start()
+                TunnelState.Connecting, TunnelState.Connected -> if (changed) control.connect()
+                TunnelState.Stopping -> Unit
+            }
+        }
+    }
+
+    /** Записать выбор; тот же сервер — false, ничего не меняется (и «Недавние» тоже). */
+    private suspend fun choose(id: String): Boolean {
+        if (settings.selectedServerId.first() == id) {
+            return false
+        }
+
+        servers.markUsed(id)
+        settings.select(id)
+        return true
+    }
+
+    /** Удалить сервер; защита идет через него — VPN отключается, другой сервер пользователь выберет сам (доска 18). */
     fun delete(id: String) {
+        val status = monitor.status.value
+        if (status.state != TunnelState.Off && status.serverId == id) {
+            control.disconnect()
+        }
+
         viewModelScope.launch {
             servers.delete(id)
             if (settings.selectedServerId.first() == id) {
@@ -130,6 +179,23 @@ class MainViewModel @Inject constructor(
             }
         }
     }
+
+    fun setFavorite(id: String, favorite: Boolean) {
+        viewModelScope.launch { servers.setFavorite(id, favorite) }
+    }
+
+    /**
+     * Свое название сервера: без пробелов по краям, 1–64 знака (иначе не сохраняется). Совпало с названием из ссылки —
+     * своего нет: обновление подписки снова сможет его поменять.
+     */
+    fun rename(id: String, name: String) {
+        val valid = ServerNames.validate(name) ?: return
+        val server = ui.value.servers.firstOrNull { it.id == id } ?: return
+        viewModelScope.launch { servers.rename(id, valid.takeIf { it != server.linkName }) }
+    }
+
+    /** Адрес сервера для карточки («адрес:порт»): открывается из запечатанной ссылки только по просьбе карточки. */
+    suspend fun address(id: String): String? = servers.address(id)
 
     fun edit(text: String) {
         importState.update { it.copy(text = text) }

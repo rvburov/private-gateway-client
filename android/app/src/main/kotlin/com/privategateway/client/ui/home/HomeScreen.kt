@@ -179,7 +179,7 @@ private fun subtitle(ui: MainUi): String {
     val server = ui.inUse
     return when (ui.status.state) {
         TunnelState.Connected -> stringResource(if (server?.encrypted == false) R.string.status_connected_subPlain else R.string.status_connected_sub)
-        TunnelState.Connecting, TunnelState.Stopping -> server?.name ?: ""
+        TunnelState.Connecting, TunnelState.Stopping -> server?.displayName ?: ""
         TunnelState.Error -> stringResource(R.string.status_error_sub_direct, ui.status.error ?: "")
         TunnelState.Off -> stringResource(R.string.status_off_sub)
     }
@@ -250,7 +250,7 @@ private fun ServerCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit) {
                 CountryBadge(server.countryCode)
                 Spacer(Modifier.width(PgSpace.L))
                 Column(Modifier.weight(1f)) {
-                    Text(server.name, style = PgType.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(server.displayName, style = PgType.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(server.summary + " · " + stringResource(R.string.server_port, server.port.toString()), color = PgColor.Text.Secondary, style = PgType.Caption)
                 }
 

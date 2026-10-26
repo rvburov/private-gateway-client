@@ -35,7 +35,7 @@ class GroupRepositoryTest {
     fun close() = database.close()
 
     @Test
-    fun `subscription keeps its address only sealed`() = runBlocking {
+    fun `subscription keeps its address only sealed`() = runBlocking<Unit> {
         assertEquals(AddResult(3, 0), repository.add(servers.take(3), " Провайдер ", url))
         val group = repository.groups.first().single()
         assertEquals("Провайдер", group.name)
@@ -61,7 +61,7 @@ class GroupRepositoryTest {
     }
 
     @Test
-    fun `profile without an address does not update and servers without a group are mine`() = runBlocking {
+    fun `profile without an address does not update and servers without a group are mine`() = runBlocking<Unit> {
         repository.add(servers.take(2), "Профиль", null)
         repository.add(servers.drop(2).take(1), "   ", url)
         val group = repository.groups.first().single()
@@ -72,7 +72,7 @@ class GroupRepositoryTest {
     }
 
     @Test
-    fun `update keeps own name favorite latency and choice and leaves the selected server marked missing`() = runBlocking {
+    fun `update keeps own name favorite latency and choice and leaves the selected server marked missing`() = runBlocking<Unit> {
         val (a, b, c, d) = servers.take(4).mapIndexed { index, server -> server.copy(name = "S$index") }
         repository.add(listOf(a, b, c), "Подписка", url)
         val group = repository.groups.first().single().id
@@ -104,7 +104,7 @@ class GroupRepositoryTest {
     }
 
     @Test
-    fun `selected server whose name came back with other keys is changed`() = runBlocking {
+    fun `selected server whose name came back with other keys is changed`() = runBlocking<Unit> {
         val (a, b, c) = servers.take(3).mapIndexed { index, server -> server.copy(name = "S$index") }
         repository.add(listOf(a, b), "Подписка", url)
         val group = repository.groups.first().single().id
@@ -116,7 +116,7 @@ class GroupRepositoryTest {
     }
 
     @Test
-    fun `server that does not open counts as gone`() = runBlocking {
+    fun `server that does not open counts as gone`() = runBlocking<Unit> {
         repository.add(servers.take(2), "Подписка", url)
         val group = repository.groups.first().single().id
         val broken = database.servers().inGroup(group)[1]
@@ -127,7 +127,7 @@ class GroupRepositoryTest {
     }
 
     @Test
-    fun `failure is remembered and a new address clears it`() = runBlocking {
+    fun `failure is remembered and a new address clears it`() = runBlocking<Unit> {
         repository.add(servers.take(1), "Подписка", url)
         val group = repository.groups.first().single().id
         repository.markFailed(group, DownloadFailure.Status, 403)
@@ -150,7 +150,7 @@ class GroupRepositoryTest {
     }
 
     @Test
-    fun `removing a group takes its servers and returns them`() = runBlocking {
+    fun `removing a group takes its servers and returns them`() = runBlocking<Unit> {
         repository.add(servers.take(2), "Подписка", url)
         repository.add(servers.drop(2).take(1))
         val group = repository.groups.first().single().id

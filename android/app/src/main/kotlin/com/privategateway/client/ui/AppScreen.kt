@@ -50,8 +50,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.R
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.home.HomeScreen
+import com.privategateway.client.ui.servers.CardActions
 import com.privategateway.client.ui.servers.ImportScreen
+import com.privategateway.client.ui.servers.ServerCardScreen
+import com.privategateway.client.ui.servers.ServersActions
 import com.privategateway.client.ui.servers.ServersScreen
+import com.privategateway.client.ui.servers.ServersViewModel
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.theme.PgBackground
@@ -82,17 +86,21 @@ class AppActions(
 )
 
 @Composable
-fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, actions: AppActions) {
+fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, servers: ServersViewModel, actions: AppActions) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val core by viewModel.core.collectAsStateWithLifecycle()
+    val query by servers.query.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var adding by rememberSaveable { mutableStateOf(false) }
+    // Открытая карточка сервера (доска 11) — страница поверх списка серверов.
+    var card by rememberSaveable { mutableStateOf<String?>(null) }
     val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
     LaunchedEffect(requested) {
         requested?.let {
             tab = it
             adding = false
+            card = null
             viewModel.tabShown()
         }
     }
@@ -106,22 +114,49 @@ fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, actions: Ap
             BackHandler(onBack = closeImport)
             ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::name, viewModel::add, closeImport)
         } else {
-            BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
+            BackHandler(enabled = tab != Tab.Home) {
+                if (tab == Tab.Servers && card != null) {
+                    card = null
+                } else {
+                    tab = Tab.Home
+                }
+            }
+
+            val open = card
             when (tab) {
                 Tab.Home -> HomeScreen(ui, onServers = { tab = Tab.Servers }, onCheck = { tab = Tab.Check }, onAdd = { adding = true })
-                Tab.Servers -> ServersScreen(
-                    ui,
-                    onSelect = viewModel::select,
-                    onDelete = { id ->
-                        // Защита идет через удаляемый сервер — VPN отключается, другой сервер пользователь выберет сам.
-                        if (ui.status.state != TunnelState.Off && ui.status.serverId == id) {
-                            actions.disconnect()
-                        }
-
-                        viewModel.delete(id)
-                    },
-                    onAdd = { adding = true },
-                )
+                Tab.Servers -> if (open != null) {
+                    ServerCardScreen(
+                        ui,
+                        open,
+                        CardActions(
+                            back = { card = null },
+                            connect = { id -> viewModel.connectTo(id, actions.power) },
+                            favorite = viewModel::setFavorite,
+                            rename = viewModel::rename,
+                            delete = { id ->
+                                card = null
+                                viewModel.delete(id)
+                            },
+                            address = viewModel::address,
+                        ),
+                    )
+                } else {
+                    ServersScreen(
+                        ui,
+                        query,
+                        ServersActions(
+                            select = viewModel::select,
+                            open = { card = it },
+                            add = { adding = true },
+                            search = servers::search,
+                            tab = servers::tab,
+                            toggleProtocol = servers::toggleProtocol,
+                            sort = servers::sort,
+                            reset = servers::reset,
+                        ),
+                    )
+                }
 
                 Tab.Check -> CheckScreen(ui, core, viewModel::loadCoreVersion)
                 Tab.Settings -> {

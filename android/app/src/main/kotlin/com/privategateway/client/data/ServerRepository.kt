@@ -3,10 +3,14 @@ package com.privategateway.client.data
 import androidx.room.withTransaction
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.links.LinkWriter
+import com.privategateway.client.core.servers.Latency
+import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.ServerFacts
+import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.ServerKeys
+import com.privategateway.client.core.servers.SubscriptionRef
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
 import com.privategateway.client.core.subscriptions.DownloadFailure
@@ -25,22 +29,6 @@ import java.net.URI
 import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
-
-/** Сервер для списка и главной — без адреса и ключа: их знает только запечатанная ссылка. */
-data class ServerItem(
-    val id: String,
-    val name: String,
-    val countryCode: String,
-    val protocol: ProxyProtocol,
-    val security: TransportSecurity,
-    val transport: TransportKind,
-    val port: Int,
-) {
-    /** «VLESS · REALITY». */
-    val summary: String get() = ServerFacts.summary(protocol, security, transport)
-
-    val encrypted: Boolean get() = ServerFacts.isEncrypted(protocol, security)
-}
 
 /** Итог добавления: новых и уже бывших в списке. */
 data class AddResult(val added: Int, val duplicates: Int)
@@ -80,6 +68,10 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     val servers: Flow<List<ServerItem>> = dao.observeAll().map { list -> list.mapNotNull { item(it) } }
 
     val groups: Flow<List<GroupItem>> = subscriptions.observeWithCounts().map { list -> list.map { group(it) } }
+
+    /** Подписки и профили в их порядке — заголовки групп списка серверов. */
+    val subscriptionRefs: Flow<List<SubscriptionRef>> =
+        subscriptions.observeAll().map { list -> list.map { SubscriptionRef(it.id, it.name, it.updatedAt) } }
 
     /** Сколько серверов в «Моих серверах» (без группы). */
     val manualCount: Flow<Int> = dao.observeManualCount()
@@ -259,6 +251,18 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     /** Сервер выбран пользователем — для «Недавних». */
     suspend fun markUsed(id: String, at: Long = System.currentTimeMillis()) = withContext(Dispatchers.IO) { dao.markUsed(id, at) }
 
+    /** Итоги замера задержки — одной транзакцией: список обновляется порцией, а не по строке. */
+    suspend fun setLatency(results: Map<String, Latency>) = withContext(Dispatchers.IO) {
+        database.withTransaction {
+            for ((id, latency) in results) {
+                dao.setLatency(id, latency.ms, latency.failure?.name)
+            }
+        }
+    }
+
+    /** Адрес сервера для карточки — «адрес:порт», IPv6 в скобках; ссылка не открылась — null. */
+    suspend fun address(id: String): String? = load(id)?.let { ServerFacts.address(it.host, it.port) }
+
     private fun entity(server: ServerDefinition, position: Int, now: Long, group: String?) = ServerEntity(
         id = UUID.randomUUID().toString(),
         name = server.name,
@@ -289,15 +293,29 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     private fun item(entity: ServerEntity): ServerItem? = try {
         ServerItem(
             id = entity.id,
-            name = entity.customName ?: entity.name,
+            linkName = entity.name,
             countryCode = entity.countryCode,
             protocol = ProxyProtocol.valueOf(entity.protocol),
             security = TransportSecurity.valueOf(entity.security),
             transport = TransportKind.valueOf(entity.transport),
             port = entity.port,
+            subscriptionId = entity.subscriptionId,
+            favorite = entity.favorite,
+            latency = latency(entity),
+            lastUsedAt = entity.lastUsedAt,
+            missingSince = entity.missingSince,
+            customName = entity.customName,
         )
     } catch (_: IllegalArgumentException) {
         null
+    }
+
+    /** Замер: миллисекунды, причина без них (неизвестная — «нет ответа») или null — ни разу не мерили. */
+    private fun latency(entity: ServerEntity): Latency? = when {
+        entity.latencyMs != null -> Latency.of(entity.latencyMs)
+        entity.latencyFailure != null ->
+            Latency.failed(LatencyFailure.entries.firstOrNull { it.name == entity.latencyFailure } ?: LatencyFailure.NoResponse)
+        else -> null
     }
 
     private fun group(row: SubscriptionWithCount) = GroupItem(

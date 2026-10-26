@@ -6,6 +6,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
+import com.privategateway.client.core.servers.Latency
+import com.privategateway.client.core.servers.LatencyFailure
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -31,7 +33,7 @@ class ServerRepositoryTest {
     fun close() = database.close()
 
     @Test
-    fun `every fixture server comes back as it went in`() = runBlocking {
+    fun `every fixture server comes back as it went in`() = runBlocking<Unit> {
         val servers = Fixtures.servers()
         assertTrue(servers.size >= 15, "эталонов слишком мало: ${servers.size}")
         // Дубль не добавляется — остается первый с этим отпечатком.
@@ -44,15 +46,15 @@ class ServerRepositoryTest {
         val items = repository.servers.first()
         assertEquals(unique.size, items.size)
         for (item in items) {
-            val loaded = assertNotNull(repository.load(item.id), item.name)
-            assertEquals(unique[Fixtures.identity(loaded)], loaded, item.name)
+            val loaded = assertNotNull(repository.load(item.id), item.displayName)
+            assertEquals(unique[Fixtures.identity(loaded)], loaded, item.displayName)
             assertEquals(loaded.port, item.port)
             assertEquals(loaded.protocol, item.protocol)
         }
     }
 
     @Test
-    fun `address and keys are stored only sealed`() = runBlocking {
+    fun `address and keys are stored only sealed`() = runBlocking<Unit> {
         val servers = Fixtures.servers()
         repository.add(servers)
         val entities = database.servers().all()
@@ -77,7 +79,7 @@ class ServerRepositoryTest {
     }
 
     @Test
-    fun `the same server under another name is a duplicate`() = runBlocking {
+    fun `the same server under another name is a duplicate`() = runBlocking<Unit> {
         val server = Fixtures.servers().first()
         assertEquals(AddResult(1, 0), repository.add(listOf(server)))
         assertEquals(AddResult(0, 1), repository.add(listOf(server.copy(name = "Другое название"))))
@@ -85,7 +87,7 @@ class ServerRepositoryTest {
     }
 
     @Test
-    fun `a server that does not open is listed but not loaded`() = runBlocking {
+    fun `a server that does not open is listed but not loaded`() = runBlocking<Unit> {
         // Ключ Keystore утерян (сброс устройства, восстановление чужой базы): сервер виден, удалить его можно, подключиться — нет.
         database.servers().insertAll(
             listOf(ServerEntity("broken", "Сломанный", "NL", "Vless", "Reality", "Tcp", 443, 0, 0L, byteArrayOf(1, 2, 3))),
@@ -97,7 +99,7 @@ class ServerRepositoryTest {
     }
 
     @Test
-    fun `adds at the same time do not add the same servers twice`() = runBlocking {
+    fun `adds at the same time do not add the same servers twice`() = runBlocking<Unit> {
         val slow = ServerRepository(database, FakeBox(delayMillis = 20))
         val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(5)
         val results = (1..3).map { async(Dispatchers.Default) { slow.add(servers) } }.awaitAll()
@@ -109,7 +111,7 @@ class ServerRepositoryTest {
     }
 
     @Test
-    fun `own name is shown in the list while the link keeps its name`() = runBlocking {
+    fun `own name is shown in the list while the link keeps its name`() = runBlocking<Unit> {
         val server = Fixtures.servers().first()
         repository.add(listOf(server))
         val stored = database.servers().all().single()
@@ -123,15 +125,52 @@ class ServerRepositoryTest {
                 ),
             ),
         )
-        assertEquals("Мой сервер", repository.servers.first().single().name)
+        assertEquals("Мой сервер", repository.servers.first().single().displayName)
+        assertEquals(server.name, repository.servers.first().single().linkName)
         assertEquals(server.name, assertNotNull(repository.load(stored.id)).name)
     }
 
     @Test
-    fun `new servers go after the old ones`() = runBlocking {
+    fun `new servers go after the old ones`() = runBlocking<Unit> {
         val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }
         repository.add(servers.take(2))
         repository.add(servers.drop(2).take(2))
-        assertEquals(servers.take(4).map { it.name }, repository.servers.first().map { it.name })
+        assertEquals(servers.take(4).map { it.name }, repository.servers.first().map { it.linkName })
+    }
+
+    @Test
+    fun `latency is stored per server and never measured stays null`() = runBlocking<Unit> {
+        val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
+        repository.add(servers)
+        val (fast, silent, never) = repository.servers.first().map { it.id }
+
+        repository.setLatency(mapOf(fast to Latency.of(42), silent to Latency.failed(LatencyFailure.NoResponse)))
+        val items = repository.servers.first().associateBy { it.id }
+        assertEquals(Latency.of(42), items.getValue(fast).latency)
+        assertEquals(Latency.failed(LatencyFailure.NoResponse), items.getValue(silent).latency)
+        assertNull(items.getValue(never).latency, "не мерили — не «нет ответа»")
+
+        repository.setLatency(mapOf(silent to Latency.of(7)))
+        assertEquals(Latency.of(7), repository.servers.first().single { it.id == silent }.latency, "новый замер снимает причину")
+    }
+
+    @Test
+    fun `groups and their servers come out for the list`() = runBlocking<Unit> {
+        val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }
+        repository.add(servers.take(2), "Провайдер")
+        repository.add(servers.drop(2).take(1))
+        val group = repository.subscriptionRefs.first().single()
+        assertEquals("Провайдер", group.name)
+        assertNull(group.updatedAt, "профиль без адреса не обновлялся")
+        assertEquals(listOf(group.id, group.id, null), repository.servers.first().map { it.subscriptionId })
+    }
+
+    @Test
+    fun `card address comes from the sealed link with ipv6 in brackets`() = runBlocking<Unit> {
+        val ipv6 = Fixtures.servers().first { ':' in it.host }
+        repository.add(listOf(ipv6))
+        val id = repository.servers.first().single().id
+        assertEquals("[${ipv6.host}]:${ipv6.port}", repository.address(id))
+        assertNull(repository.address("gone"))
     }
 }

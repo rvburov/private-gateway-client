@@ -1,5 +1,6 @@
 package com.privategateway.client.vpn
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.graphics.drawable.Icon
@@ -103,6 +104,8 @@ class GatewayTileService : TileService() {
         tile.updateTile()
     }
 
+    // Intent-вариант — только до Android 14, где другого нет; с 14 — PendingIntent (lint не видит развилку по версии).
+    @SuppressLint("StartActivityAndCollapseDeprecated")
     private fun openApp() {
         val intent = Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {

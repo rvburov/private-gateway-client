@@ -29,7 +29,7 @@ class SettingsRepositoryTest {
     fun stop() = scope.cancel()
 
     @Test
-    fun `selected server survives a restart and can be cleared`() = runBlocking {
+    fun `selected server survives a restart and can be cleared`() = runBlocking<Unit> {
         val file = folder.root.resolve("settings.preferences_pb")
         val first = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { file })
         assertNull(first.selectedServerId.first())
@@ -51,7 +51,7 @@ class SettingsRepositoryTest {
     }
 
     @Test
-    fun `tunnel settings default to the protected choice and come back as saved`() = runBlocking {
+    fun `tunnel settings default to the protected choice and come back as saved`() = runBlocking<Unit> {
         val file = folder.root.resolve("settings.preferences_pb")
         val store = PreferenceDataStoreFactory.create(scope = scope) { file }
         val settings = SettingsRepository(store)

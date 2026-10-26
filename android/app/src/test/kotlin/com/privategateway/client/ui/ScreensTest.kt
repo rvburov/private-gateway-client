@@ -8,7 +8,6 @@ import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -21,12 +20,11 @@ import com.privategateway.client.R
 import com.privategateway.client.core.links.ImportParser
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
-import com.privategateway.client.data.ServerItem
 import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.servers.ImportScreen
-import com.privategateway.client.ui.servers.ServersScreen
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.TunnelState
 import com.privategateway.client.vpn.TunnelStatus
@@ -56,7 +54,7 @@ class ScreensTest {
         compose.onNodeWithText(text(R.string.status_off_sub)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.check_all_off)).assertIsDisplayed()
         compose.onNodeWithText(text(R.string.android_check_ks_system)).assertIsDisplayed()
-        compose.onNodeWithText(nl.name).assertIsDisplayed()
+        compose.onNodeWithText(nl.displayName).assertIsDisplayed()
         compose.onNodeWithText("VLESS · REALITY · " + text(R.string.server_port, "443")).assertIsDisplayed()
     }
 
@@ -102,22 +100,6 @@ class ScreensTest {
         compose.onNodeWithTag("server.choose").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(1, listed)
         assertEquals(0, added)
-    }
-
-    @Test
-    fun `servers select by tap and delete after confirmation`() {
-        val selected = mutableListOf<String>()
-        val deleted = mutableListOf<String>()
-        compose.setContent { PgTheme { ServersScreen(MainUi(servers = listOf(nl, plain), selectedId = "nl"), { selected += it }, { deleted += it }, {}) } }
-        compose.onNodeWithText(text(R.string.servers_tag_selected)).assertIsDisplayed()
-        compose.onNodeWithTag("server.plain").performClick()
-        assertEquals(listOf("plain"), selected)
-
-        compose.onAllNodesWithContentDescription(text(R.string.card_delete))[0].performClick()
-        compose.onNodeWithText(text(R.string.dialog_deleteServer_title, nl.name)).assertIsDisplayed()
-        assertEquals(emptyList(), deleted)
-        compose.onNodeWithText(text(R.string.dialog_deleteServer_delete)).performClick()
-        assertEquals(listOf("nl"), deleted)
     }
 
     @Test

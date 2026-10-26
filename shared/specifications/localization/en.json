@@ -1362,5 +1362,8 @@
   "android.server.choose": "Choose a server in the list",
   "android.settings.language": "as in the system — change it in Android settings",
   "android.dnsCustom.placeholder": "192.0.2.53 or https://192.0.2.53/dns-query",
-  "android.dnsCustom.note": "An IP address or DoH by IP (https://IP/…). Lookups go through the tunnel."
+  "android.dnsCustom.note": "An IP address or DoH by IP (https://IP/…). Lookups go through the tunnel.",
+  "android.servers.search.placeholder": "Name, country, protocol",
+  "android.servers.latency.never": "Latency not measured yet",
+  "android.card.core.none": "none: the phone does not connect Hysteria2 or TUIC"
 }

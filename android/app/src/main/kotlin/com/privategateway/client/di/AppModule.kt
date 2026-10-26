@@ -14,6 +14,8 @@ import com.privategateway.client.data.ServerDao
 import com.privategateway.client.data.SubscriptionDao
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.LibXrayEngine
+import com.privategateway.client.vpn.ServiceTunnelControl
+import com.privategateway.client.vpn.TunnelControl
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -55,4 +57,8 @@ abstract class BindingsModule {
     @Binds
     @Singleton
     abstract fun coreEngine(engine: LibXrayEngine): CoreEngine
+
+    @Binds
+    @Singleton
+    abstract fun tunnelControl(control: ServiceTunnelControl): TunnelControl
 }

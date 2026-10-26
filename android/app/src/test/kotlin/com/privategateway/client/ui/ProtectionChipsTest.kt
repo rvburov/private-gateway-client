@@ -1,8 +1,8 @@
 package com.privategateway.client.ui
 
 import com.privategateway.client.R
-import com.privategateway.client.data.ServerItem
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
 import com.privategateway.client.vpn.TunnelState

@@ -16,12 +16,16 @@ import com.privategateway.client.core.subscriptions.SubscriptionContent
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.vpn.CoreEngine
+import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
+import com.privategateway.client.vpn.TunnelState
+import com.privategateway.client.vpn.TunnelStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -35,6 +39,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.net.URI
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -51,6 +56,23 @@ class MainViewModelTest {
     private lateinit var model: MainViewModel
     private val servers by lazy { ServerRepository(database, FakeBox()) }
     private val source = FakeSource()
+    private val monitor = TunnelMonitor()
+    private val control = FakeControl()
+
+    /** Команды службе туннеля — только счет. */
+    private class FakeControl : TunnelControl {
+        @Volatile var connects = 0
+
+        @Volatile var disconnects = 0
+
+        override fun connect() {
+            connects++
+        }
+
+        override fun disconnect() {
+            disconnects++
+        }
+    }
 
     /** Подписка «по сети» без сети: ответ или неудача, которые задал тест. */
     private class FakeSource : SubscriptionSource {
@@ -74,7 +96,7 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(TunnelMonitor(), servers, settings, FakeEngine(), source)
+        model = MainViewModel(monitor, servers, settings, FakeEngine(), source, control)
     }
 
     @After
@@ -85,6 +107,12 @@ class MainViewModelTest {
     }
 
     private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
+
+    private fun waitUntil(condition: () -> Boolean) = wait {
+        while (!condition()) {
+            delay(10)
+        }
+    }
 
     @Test
     fun `first import selects the first new server and a later one keeps the choice`() {
@@ -99,7 +127,7 @@ class MainViewModelTest {
         assertEquals(3, model.importing.value.added)
         val ui = wait { model.ui.first { it.servers.size == 3 && it.selectedId != null } }
         assertEquals(ui.servers.first().id, ui.selectedId)
-        assertEquals(links.first().name, ui.inUse?.name)
+        assertEquals(links.first().name, ui.inUse?.displayName)
 
         // Второй импорт: выбор не меняется — сервер меняется только нажатием пользователя.
         model.closeImport()
@@ -222,5 +250,86 @@ class MainViewModelTest {
         assertEquals("nl", wait { settings.selectedServerId.first { it == "nl" } })
         model.loadCoreVersion()
         assertEquals("26.10.21", wait { model.core.first { it != null } })
+    }
+
+    /** Два сервера в списке, первый выбран; номера — в порядке списка. */
+    private fun twoServers(): List<String> {
+        wait { servers.add(Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(2)) }
+        val ids = wait { servers.servers.first { it.size == 2 } }.map { it.id }
+        wait { settings.select(ids[0]) }
+        return ids
+    }
+
+    @Test
+    fun `another server under protection reconnects at once and goes to recent`() {
+        val (first, second) = twoServers()
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = first))
+
+        model.select(second)
+        assertEquals(second, wait { settings.selectedServerId.first { it == second } })
+        wait { servers.servers.first { list -> list.single { it.id == second }.lastUsedAt != null } }
+        waitUntil { control.connects == 1 }
+        assertEquals(0, control.disconnects)
+    }
+
+    @Test
+    fun `the same server changes nothing`() {
+        val (first, _) = twoServers()
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = first))
+
+        model.select(first)
+        wait { delay(100) }
+        assertEquals(0, control.connects, "тот же сервер — без переподключения")
+        assertNull(wait { servers.servers.first() }.single { it.id == first }.lastUsedAt, "и «Недавние» не меняются")
+    }
+
+    @Test
+    fun `without protection a tap only selects`() {
+        val (_, second) = twoServers()
+        model.select(second)
+        wait { settings.selectedServerId.first { it == second } }
+        wait { delay(100) }
+        assertEquals(0, control.connects)
+    }
+
+    @Test
+    fun `connect from the card starts protection after the choice is stored`() {
+        val (_, second) = twoServers()
+        val startedWith = AtomicReference<String?>()
+        model.connectTo(second) { startedWith.set(runBlocking { settings.selectedServerId.first() }) }
+        waitUntil { startedWith.get() != null }
+        assertEquals(second, startedWith.get(), "служба читает выбранный сервер сама — выбор записан до запуска")
+        assertEquals(0, control.connects)
+    }
+
+    @Test
+    fun `deleting the server in use disconnects first`() {
+        val (first, second) = twoServers()
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = first))
+        model.delete(second)
+        assertEquals(0, control.disconnects, "защита идет через другой сервер")
+
+        model.delete(first)
+        assertEquals(1, control.disconnects)
+        assertNull(wait { settings.selectedServerId.first { it == null } })
+        assertEquals(listOf(second), wait { servers.servers.first { it.size == 1 } }.map { it.id })
+    }
+
+    @Test
+    fun `rename keeps a valid own name and the link name clears it`() {
+        val (first, _) = twoServers()
+        wait { model.ui.first { it.servers.size == 2 } }
+        model.rename(first, "  Мой сервер  ")
+        assertEquals("Мой сервер", wait { servers.servers.first { list -> list.single { it.id == first }.customName != null } }.single { it.id == first }.displayName)
+
+        model.rename(first, " ".repeat(3))
+        model.rename(first, "x".repeat(65))
+        wait { delay(100) }
+        assertEquals("Мой сервер", wait { servers.servers.first() }.single { it.id == first }.customName, "пустое и длиннее 64 — не сохраняются")
+
+        wait { model.ui.first { ui -> ui.servers.single { it.id == first }.customName == "Мой сервер" } }
+        val link = wait { servers.servers.first() }.single { it.id == first }.linkName
+        model.rename(first, link)
+        assertNull(wait { servers.servers.first { list -> list.single { it.id == first }.customName == null } }.single { it.id == first }.customName)
     }
 }

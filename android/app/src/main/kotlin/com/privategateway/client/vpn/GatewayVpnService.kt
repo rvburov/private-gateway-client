@@ -179,7 +179,7 @@ class GatewayVpnService : VpnService() {
         val server = servers.load(id) ?: return TunnelErrors.NO_SERVER
         // Название для уведомления — свое, если есть. Читается до карты и ядра: после них точек ожидания нет — отмена не
         // оставит туннель без хозяина.
-        val name = servers.servers.first().firstOrNull { it.id == id }?.name ?: server.name
+        val name = servers.servers.first().firstOrNull { it.id == id }?.displayName ?: server.name
         val tunnel = settings.tunnel.first()
         val core = tunnel.core()
         val plan = TunPlan.of(core)
