@@ -112,7 +112,10 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             // Раньше локальной сети: DNS роутера мимо туннеля — утечка, даже если локальная сеть разрешена. И запросы имен
             // LLMNR (5355) и NetBIOS (137, 138): ими Windows и Samba спрашивают имя, не найденное через DNS, всю сеть —
             // имена уходят в чужой Wi-Fi (Responder). mDNS (5353) — у «Обнаружения устройств».
-            shared.Add("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop");
+            // TCP — отказом (сброс): программа узнает сразу, а не через повторы SYN; UDP отброшенным программа получает ошибкой
+            // сразу и так (EPERM).
+            shared.Add("tcp dport { 53, 137, 138, 853, 5355 } reject with tcp reset");
+            shared.Add("udp dport { 53, 137, 138, 853, 5355 } drop");
         }
 
         // «Блокировать IPv6 вне туннеля» выключено при выключенном блоке: IPv6 мимо туннеля — как выбрал пользователь.
@@ -136,6 +139,11 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
 
         rules.AddRange(shared);
         forward.AddRange(shared);
+
+        // Остальное закрыто. TCP — отказом (сброс): иначе соединение мимо туннеля ждало бы повторов SYN до двух минут (программы
+        // без Happy Eyeballs, IPv6 при закрытом только блоком); прочее — политикой цепочки.
+        rules.Add("meta l4proto tcp reject with tcp reset");
+        forward.Add("meta l4proto tcp reject with tcp reset");
 
         var text = new StringBuilder()
             .Append(CultureInfo.InvariantCulture, $"table inet {Table}\n")

@@ -60,6 +60,11 @@ public sealed partial class VpnModeTests
             (await rig.Netns.UdpEchoAsync(IPAddress.Parse("1.1.1.1"), 443)).ShouldBe("echo");
             rig.Udp!.Datagrams.ShouldBe(1);
 
+            // Сокет с привязкой к адресу карты (кандидаты WebRTC, curl --interface): маршруты TUN по адресу источника его не отпускают.
+            var card = IPAddress.Parse(rig.Definition.Host).GetAddressBytes();
+            card[3] = 2;
+            (await rig.Netns.FetchFromAsync(Rig.Trace, new IPAddress(card))).ShouldBe("через туннель", "сокет с адресом карты — тоже через туннель");
+
             // ICMP и программа с привязкой к карте мимо маршрутов TUN: вышли ли они на провод, решает провод, а не их ответ.
             await rig.Netns.PingAsync(rig.Public);
             try
@@ -78,7 +83,7 @@ public sealed partial class VpnModeTests
         }
 
         git.ShouldBeGreaterThan(0, "запросы git дошли через туннель до сайта за сервером");
-        (rig.Site.Requests - sites).ShouldBeGreaterThanOrEqualTo(2 + git);
+        (rig.Site.Requests - sites).ShouldBeGreaterThanOrEqualTo(3 + git);
         rig.Lan.Requests.ShouldBe(0, "мимо туннеля в сеть — ничего");
     }
 

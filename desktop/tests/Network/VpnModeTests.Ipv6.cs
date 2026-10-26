@@ -24,7 +24,7 @@ public sealed partial class VpnModeTests
         await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n", page6: $"fl=1\nip={TunnelIp6}\n");
         // У машины своя сеть IPv6 (глобальный адрес на линии) и маршрут уже маршрута по умолчанию — как от объявления роутера
         // в чужом Wi-Fi.
-        var (host6, _) = rig.Netns.LinkIpv6();
+        var (host6, inside6) = rig.Netns.LinkIpv6();
         rig.Netns.Run(null, "ip", "-6", "route", "add", "2606:4700::/32", "dev", "pgnet0");
         using var lan6 = new LocalSite("своя сеть IPv6", host6);
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
@@ -44,6 +44,8 @@ public sealed partial class VpnModeTests
             "IPv6 машины — через TUN, Xray и сервер, даже с более узким маршрутом мимо туннеля");
         (await rig.Netns.CurlAsync(lan6.Url)).ShouldBe($"fl=1\nip={TunnelIp6}\n",
             "своя сеть IPv6 с глобальным адресом (как от провайдера) — тоже через туннель и сервер, а не напрямую");
+        (await rig.Netns.FetchFromAsync(Rig.Trace6, inside6)).ShouldBe($"fl=1\nip={TunnelIp6}\n",
+            "сокет с адресом IPv6 карты (кандидаты WebRTC) — тоже через туннель, правила по адресу источника его не отпускают");
         lan6.Requests.ShouldBe(0);
         var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
             .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());

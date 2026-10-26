@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Linux;
@@ -33,17 +34,22 @@ public sealed class KillSwitchTests
             "ip daddr { 255.255.255.255, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } udp sport 67 udp dport 68 accept",
             "udp sport 546 udp dport 547 accept",
             "icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept",
-            "meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop",
+            "tcp dport { 53, 137, 138, 853, 5355 } reject with tcp reset",
+            "udp dport { 53, 137, 138, 853, 5355 } drop",
+            "meta l4proto tcp reject with tcp reset",
             "}",
             "chain forward {",
             "type filter hook forward priority 0; policy drop;",
             "iifname \"pgtun0\" accept",
             "oifname \"pgtun0\" accept",
-            "meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop",
+            "tcp dport { 53, 137, 138, 853, 5355 } reject with tcp reset",
+            "udp dport { 53, 137, 138, 853, 5355 } drop",
+            "meta l4proto tcp reject with tcp reset",
             "}",
             "}",
         ], "прежняя таблица удаляется и новая ставится одной транзакцией; локальная сеть по умолчанию закрыта; " +
-            "пересланное (контейнеры, виртуальные машины) — только через туннель, к серверу мимо него ходит одна служба");
+            "пересланное (контейнеры, виртуальные машины) — только через туннель, к серверу мимо него ходит одна служба; " +
+            "закрытый TCP — отказом сразу, а не повторами SYN");
     }
 
     [Fact]
@@ -63,7 +69,7 @@ public sealed class KillSwitchTests
         var lan = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [], AllowLan: true)));
         lan.ShouldContain("ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept");
         lan.ShouldContain("ip6 daddr { fc00::/7, fe80::/10 } accept");
-        lan.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop").ShouldBeLessThan(lan.FindIndex(l => l.StartsWith("ip daddr { 10.", StringComparison.Ordinal)),
+        lan.IndexOf("udp dport { 53, 137, 138, 853, 5355 } drop").ShouldBeLessThan(lan.FindIndex(l => l.StartsWith("ip daddr { 10.", StringComparison.Ordinal)),
             "DNS роутера закрыт раньше, чем открыта локальная сеть");
         lan.ShouldNotContain(l => l.Contains("224.0.0.0/4", StringComparison.Ordinal), "обнаружение устройств — отдельной настройкой");
         lan.ShouldNotContain(l => l.StartsWith("oifname", StringComparison.Ordinal) && !l.Contains("\"lo\"", StringComparison.Ordinal), "туннеля еще нет");
@@ -97,7 +103,7 @@ public sealed class KillSwitchTests
         ], "DNS роутера (resolv.conf без systemd-resolved) — в туннель, выход sing-box мимо туннеля и свой адрес машины — как есть; "
             + "перенаправленное, что после маршрутизации ушло не в туннель (сокет с привязкой к карте), — закрыто");
         lines.IndexOf("ip daddr 172.19.0.2 meta l4proto { tcp, udp } th dport 53 accept")
-            .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"),
+            .ShouldBeLessThan(lines.IndexOf("udp dport { 53, 137, 138, 853, 5355 } drop"),
                 "фильтр после nat видит прежний интерфейс — перенаправленное разрешено раньше закрытия DNS");
 
         foreach (var policy in new KillSwitchPolicy[]
@@ -118,7 +124,7 @@ public sealed class KillSwitchTests
     {
         var open = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [], Ipv6Outside: true)));
 
-        open.IndexOf("meta nfproto ipv6 accept").ShouldBeGreaterThan(open.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"),
+        open.IndexOf("meta nfproto ipv6 accept").ShouldBeGreaterThan(open.IndexOf("udp dport { 53, 137, 138, 853, 5355 } drop"),
             "«Блокировать IPv6 вне туннеля» выключено при выключенном блоке — IPv6 мимо туннеля открыт, но запросы имен и по IPv6 закрыты");
         Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", []))).ShouldNotContain("meta nfproto ipv6 accept");
     }
@@ -130,7 +136,7 @@ public sealed class KillSwitchTests
             TunnelDns: IPAddress.Parse("172.19.0.2"), LanDns: IPAddress.Parse("192.168.1.53"))));
 
         lines.IndexOf("ip daddr 192.168.1.53 meta l4proto { tcp, udp } th dport 53 accept")
-            .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"), "раньше закрытия DNS");
+            .ShouldBeLessThan(lines.IndexOf("udp dport { 53, 137, 138, 853, 5355 } drop"), "раньше закрытия DNS");
         lines.ShouldContain("oifname != \"pgtun0\" oifname != \"lo\" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } ip daddr != 192.168.1.53 "
             + "meta l4proto { tcp, udp } th dport 53 dnat ip to 172.19.0.2", "запрос самого Xray к своему DNS в туннель не возвращается");
         Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [], LanDns: IPAddress.Parse("fd00::53"))))
@@ -209,6 +215,12 @@ public sealed class KillSwitchTests
         (await netns.CurlAsync(tunnel.Url)).ShouldBe("туннель", "через адаптер туннеля — все");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(lan.Url, seconds: 3), "другой порт того же адреса — не сервер");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.ResolveAsync("example.com", host, seconds: 3));
+        var started = Stopwatch.GetTimestamp();
+        (await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, seconds: 10))).Message.ShouldContain("ConnectionRefusedError",
+            customMessage: "закрытый TCP — отказ сразу, а не повторы SYN до тайм-аута");
+        Stopwatch.GetElapsedTime(started).ShouldBeLessThan(TimeSpan.FromSeconds(5));
+        (await Should.ThrowAsync<InvalidOperationException>(() => netns.ResolveAsync("example.com", host, seconds: 10, tcp: true))).Message
+            .ShouldContain("ConnectionRefusedError", customMessage: "и DNS по TCP мимо туннеля");
 
         await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, 0x5047, seconds: 3), "без раздельного режима метка не помогает");
 
