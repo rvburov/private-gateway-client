@@ -3,85 +3,12 @@
              xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
              xmlns:c="using:PrivateGateway.Client.UI.Controls"
              xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             xmlns:views="using:PrivateGateway.Client.UI.Views"
              x:Class="PrivateGateway.Client.UI.Views.PathPage"
              x:DataType="vm:PathPageViewModel">
   <!-- Путь до сайта — сетевая лаборатория (этап 8, экрана в макете нет — по дизайн-системе, как «Сеть машины»). Подстраница
        «Проверки»: островок виден, «назад» — к проверке. Звено — значок в круге, участок — линия: сплошная — измерено,
        пунктир — условно; участки в туннеле — цветом защиты. -->
-  <UserControl.Styles>
-    <Style Selector=":is(TextBlock).value">
-      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
-      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
-      <Setter Property="TextWrapping" Value="Wrap" />
-    </Style>
-    <!-- Звено: измерено — цветом акцента, условно — серым -->
-    <Style Selector="Border.node">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
-    </Style>
-    <Style Selector="Border.node c|Icon">
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
-    </Style>
-    <Style Selector="Border.node.measured">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
-    </Style>
-    <Style Selector="Border.node.measured c|Icon">
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
-    </Style>
-    <Style Selector="Border.evidence">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
-    </Style>
-    <Style Selector="Border.evidence TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
-    </Style>
-    <Style Selector="Border.evidence.measured">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
-    </Style>
-    <Style Selector="Border.evidence.measured TextBlock">
-      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
-    </Style>
-    <!-- Участок: сплошная линия — измерен, пунктир — условно; в туннеле — цветом защиты -->
-    <Style Selector="Line.link">
-      <Setter Property="Stroke" Value="{StaticResource PgBrush.Line.Divider}" />
-      <Setter Property="StrokeThickness" Value="2" />
-    </Style>
-    <Style Selector="Line.link.measured">
-      <Setter Property="Stroke" Value="{StaticResource PgBrush.Text.Muted}" />
-    </Style>
-    <Style Selector="Line.link.conditional">
-      <Setter Property="StrokeDashArray" Value="2,2" />
-    </Style>
-    <Style Selector="Line.link.tunnel">
-      <Setter Property="Stroke" Value="{StaticResource PgBrush.Status.Success.Badge}" />
-    </Style>
-    <!-- Пакет в пути: пока идет проверка сайта, по каждому участку бежит точка — сверху вниз, к сайту -->
-    <Style Selector="Ellipse.packet">
-      <Setter Property="IsVisible" Value="False" />
-      <Setter Property="Fill" Value="{StaticResource PgBrush.Accent.Text}" />
-    </Style>
-    <Style Selector="Ellipse.packet.moving">
-      <Setter Property="IsVisible" Value="True" />
-      <Style.Animations>
-        <Animation Duration="0:0:0.9" IterationCount="Infinite">
-          <KeyFrame Cue="0%">
-            <Setter Property="Canvas.Top" Value="-4" />
-            <Setter Property="Opacity" Value="0" />
-          </KeyFrame>
-          <KeyFrame Cue="20%">
-            <Setter Property="Opacity" Value="1" />
-          </KeyFrame>
-          <KeyFrame Cue="80%">
-            <Setter Property="Opacity" Value="1" />
-          </KeyFrame>
-          <KeyFrame Cue="100%">
-            <Setter Property="Canvas.Top" Value="30" />
-            <Setter Property="Opacity" Value="0" />
-          </KeyFrame>
-        </Animation>
-      </Style.Animations>
-    </Style>
-  </UserControl.Styles>
-
   <Grid RowDefinitions="Auto,*">
     <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
       <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
@@ -152,46 +79,7 @@
         <Border Classes="card" Padding="16,14">
           <StackPanel Spacing="8">
             <TextBlock x:Name="Summary" Classes="strong" Text="{Binding Summary}" TextWrapping="Wrap" />
-            <ItemsControl x:Name="PathList" ItemsSource="{Binding Steps}">
-              <ItemsControl.DataTemplates>
-                <DataTemplate DataType="vm:PathNodeViewModel">
-                  <Grid ColumnDefinitions="Auto,*,Auto" AutomationProperties.Name="{Binding Title}">
-                    <Border Classes="node" Classes.measured="{Binding IsMeasured}" Width="36" Height="36" CornerRadius="18">
-                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="20" Height="20" StrokeThickness="1.9" />
-                    </Border>
-                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Classes="strong" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
-                      <SelectableTextBlock Classes="value" Text="{Binding Subtitle}" />
-                      <SelectableTextBlock Classes="value" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" />
-                    </StackPanel>
-                    <Border Grid.Column="2" Classes="evidence" Classes.measured="{Binding IsMeasured}" Padding="9,3" CornerRadius="10"
-                            VerticalAlignment="Center">
-                      <TextBlock Text="{Binding EvidenceText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold" />
-                    </Border>
-                  </Grid>
-                </DataTemplate>
-                <DataTemplate DataType="vm:PathLinkViewModel">
-                  <Grid ColumnDefinitions="36,*" MinHeight="34">
-                    <!-- Линия на всю высоту участка: холст в разметке места не просит, лишнее обрезается -->
-                    <Canvas ClipToBounds="True">
-                      <Line Classes="link" Classes.measured="{Binding IsMeasured}" Classes.conditional="{Binding IsConditional}"
-                            Classes.tunnel="{Binding IsTunnel}" StartPoint="18,0" EndPoint="18,400" />
-                      <Ellipse Classes="packet" Classes.moving="{Binding $parent[ItemsControl].((vm:PathPageViewModel)DataContext).IsChecking}"
-                               Width="8" Height="8" Canvas.Left="14" AutomationProperties.Name="{l:L path.packet}" />
-                    </Canvas>
-                    <StackPanel Grid.Column="1" Margin="12,4" Spacing="2" VerticalAlignment="Center">
-                      <TextBlock Classes="caption" Text="{Binding Text}" TextWrapping="Wrap" />
-                      <SelectableTextBlock Classes="value" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" />
-                      <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsTunnel}">
-                        <c:Icon Data="{StaticResource Icon.Lock}" Width="12" Height="12" StrokeThickness="2.2"
-                                Foreground="{StaticResource PgBrush.Status.Success.Text}" />
-                        <TextBlock Classes="caption" Text="{Binding TunnelText}" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
-                      </StackPanel>
-                    </StackPanel>
-                  </Grid>
-                </DataTemplate>
-              </ItemsControl.DataTemplates>
-            </ItemsControl>
+            <views:PathMap x:Name="PathMap" DataContext="{Binding Map}" />
           </StackPanel>
         </Border>
 

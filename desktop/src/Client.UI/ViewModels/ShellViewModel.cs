@@ -34,6 +34,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, PathPageViewModel> pathPage,
         Func<INavigator, LayersPageViewModel> layersPage,
         Func<INavigator, EventsPageViewModel> eventsPage,
+        Func<INavigator, TroublePageViewModel> troublePage,
+        Func<INavigator, VpnPathPageViewModel> vpnPathPage,
         Func<INavigator, ImportPageViewModel> importPage,
         Func<INavigator, SettingsPageViewModel> settingsPage,
         Func<INavigator, SubscriptionsPageViewModel> subscriptionsPage,
@@ -67,6 +69,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Path] = () => pathPage(this),
             [Pages.Layers] = () => layersPage(this),
             [Pages.Events] = () => eventsPage(this),
+            [Pages.Trouble] = () => troublePage(this),
+            [Pages.VpnPath] = () => vpnPathPage(this),
             [Pages.Settings] = () => settingsPage(this),
             [Pages.Add] = () => importPage(this),
             [Pages.Protection] = () => protectionPage(this),
@@ -108,7 +112,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
 
     public bool IsServers => CurrentKey == Pages.Servers;
 
-    public bool IsCheck => CurrentKey is Pages.Check or Pages.Network or Pages.Probe or Pages.Connections or Pages.Compare or Pages.Path or Pages.Layers or Pages.Events;
+    public bool IsCheck => CurrentKey is Pages.Check or Pages.Network or Pages.Probe or Pages.Connections or Pages.Compare or Pages.Path or Pages.Layers or Pages.Events or Pages.Trouble or Pages.VpnPath;
 
     /// <summary>Подстраницы настроек подсвечивают в островке «Настройки».</summary>
     public bool IsSettings => CurrentKey is Pages.Settings or Pages.Protection or Pages.Core or Pages.Routing or Pages.Profiles or Pages.Backup or Pages.About;

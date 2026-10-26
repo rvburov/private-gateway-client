@@ -108,7 +108,7 @@ public sealed partial class ReconnectTests
         rig.StopServer();
         network.Raise();
 
-        var lost = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting))[^1];
+        var lost = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting, rig.Service.Journal))[^1];
         lost.ServerId.ShouldBe("srv-1");
         lost.NetworkChangedAt.ShouldNotBeNull("окно видит, что попытки идут сразу после смены сети");
         rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сеть сменилась, сервер не отвечает — переподключение к тому же серверу");
@@ -116,7 +116,8 @@ public sealed partial class ReconnectTests
         await rig.StartServerAsync();
         network.Raise();
 
-        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        // Журнал службы — в ошибке теста: на медленной машине CI видно, где встало переподключение.
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, rig.Service.Journal);
         rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сеть машины сменилась — попытка переподключения сразу");
 
         network.Raise();

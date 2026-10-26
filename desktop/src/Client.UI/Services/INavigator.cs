@@ -53,6 +53,12 @@ public static class Pages
     /// <summary>«События сети» — сетевая лаборатория: что произошло с защитой и сетью и почему (этап 8).</summary>
     public const string Events = "events";
 
+    /// <summary>«Почему сайт не открывается» — сценарий лаборатории: разбор по шагам запроса (этап 8).</summary>
+    public const string Trouble = "trouble";
+
+    /// <summary>«Как меняется путь при VPN» — сценарий лаборатории: путь без защиты и под ней (этап 8).</summary>
+    public const string VpnPath = "vpnpath";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

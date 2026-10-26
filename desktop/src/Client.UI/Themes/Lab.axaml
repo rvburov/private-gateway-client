@@ -1,0 +1,74 @@
+<!--
+  Стили сетевой лаборатории (этап 8, в макете нет — по дизайн-системе): звенья и участки карты пути — измерено цветом
+  акцента, условно серым и пунктиром, туннель цветом защиты — и пакет, бегущий по участкам во время замера. Значения —
+  только ресурсы из Tokens.axaml.
+-->
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:c="using:PrivateGateway.Client.UI.Controls">
+  <!-- Звено: измерено — цветом акцента, условно — серым -->
+  <Style Selector="Border.node">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+  </Style>
+  <Style Selector="Border.node c|Icon">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+  </Style>
+  <Style Selector="Border.node.measured">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+  </Style>
+  <Style Selector="Border.node.measured c|Icon">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+  </Style>
+  <Style Selector="Border.evidence">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+  </Style>
+  <Style Selector="Border.evidence TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+  </Style>
+  <Style Selector="Border.evidence.measured">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+  </Style>
+  <Style Selector="Border.evidence.measured TextBlock">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+  </Style>
+  <!-- Участок: сплошная линия — измерен, пунктир — условно; в туннеле — цветом защиты -->
+  <Style Selector="Line.link">
+    <Setter Property="Stroke" Value="{StaticResource PgBrush.Line.Divider}" />
+    <Setter Property="StrokeThickness" Value="2" />
+  </Style>
+  <Style Selector="Line.link.measured">
+    <Setter Property="Stroke" Value="{StaticResource PgBrush.Text.Muted}" />
+  </Style>
+  <Style Selector="Line.link.conditional">
+    <Setter Property="StrokeDashArray" Value="2,2" />
+  </Style>
+  <Style Selector="Line.link.tunnel">
+    <Setter Property="Stroke" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+  </Style>
+  <!-- Пакет в пути: пока идет проверка сайта, по каждому участку бежит точка — сверху вниз, к сайту -->
+  <Style Selector="Ellipse.packet">
+    <Setter Property="IsVisible" Value="False" />
+    <Setter Property="Fill" Value="{StaticResource PgBrush.Accent.Text}" />
+  </Style>
+  <Style Selector="Ellipse.packet.moving">
+    <Setter Property="IsVisible" Value="True" />
+    <Style.Animations>
+      <Animation Duration="0:0:0.9" IterationCount="Infinite">
+        <KeyFrame Cue="0%">
+          <Setter Property="Canvas.Top" Value="-4" />
+          <Setter Property="Opacity" Value="0" />
+        </KeyFrame>
+        <KeyFrame Cue="20%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+        <KeyFrame Cue="80%">
+          <Setter Property="Opacity" Value="1" />
+        </KeyFrame>
+        <KeyFrame Cue="100%">
+          <Setter Property="Canvas.Top" Value="30" />
+          <Setter Property="Opacity" Value="0" />
+        </KeyFrame>
+      </Animation>
+    </Style.Animations>
+  </Style>
+</Styles>

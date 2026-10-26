@@ -85,6 +85,12 @@
     <DataTemplate DataType="vm:EventsPageViewModel">
       <views:EventsPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:TroublePageViewModel">
+      <views:TroublePage />
+    </DataTemplate>
+    <DataTemplate DataType="vm:VpnPathPageViewModel">
+      <views:VpnPathPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:BackupPageViewModel">
       <views:BackupPage />
     </DataTemplate>
@@ -108,5 +114,6 @@
   <Application.Styles>
     <FluentTheme />
     <StyleInclude Source="avares://PrivateGateway/Themes/Styles.axaml" />
+    <StyleInclude Source="avares://PrivateGateway/Themes/Lab.axaml" />
   </Application.Styles>
 </Application>

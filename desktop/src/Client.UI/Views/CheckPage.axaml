@@ -211,6 +211,40 @@
                           StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
                 </Grid>
               </Button>
+              <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+              <Button x:Name="TroubleButton" Classes="plain" Padding="8,10" Command="{Binding OpenTroubleCommand}"
+                      AutomationProperties.Name="{l:L diag.trouble.title}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                          Background="{StaticResource PgBrush.Accent.Tint}">
+                    <c:Icon Data="{StaticResource Icon.Search}" Width="20" Height="20"
+                            StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                  </Border>
+                  <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Classes="strong" Text="{l:L diag.trouble.title}" />
+                    <TextBlock Classes="caption" Text="{l:L diag.trouble.text}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                </Grid>
+              </Button>
+              <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+              <Button x:Name="VpnPathButton" Classes="plain" Padding="8,10" Command="{Binding OpenVpnPathCommand}"
+                      AutomationProperties.Name="{l:L diag.vpnpath.title}">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                  <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                          Background="{StaticResource PgBrush.Accent.Tint}">
+                    <c:Icon Data="{StaticResource Icon.Adv.Routing}" Width="20" Height="20"
+                            StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                  </Border>
+                  <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                    <TextBlock Classes="strong" Text="{l:L diag.vpnpath.title}" />
+                    <TextBlock Classes="caption" Text="{l:L diag.vpnpath.text}" TextTrimming="CharacterEllipsis" />
+                  </StackPanel>
+                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                </Grid>
+              </Button>
             </StackPanel>
           </Border>
         </StackPanel>

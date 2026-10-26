@@ -1,0 +1,122 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.TroublePage"
+             x:DataType="vm:TroublePageViewModel">
+  <!-- Почему сайт не открывается — сценарий лаборатории (этап 8, экрана в макете нет — по дизайн-системе, как «Проверка»):
+       сайт и «Разобраться», вывод с «что делать», ниже шаги строками «Проверки». Подстраница «Проверки». -->
+  <UserControl.Styles>
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.stepRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.trouble.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <TextBlock Classes="caption" Text="{l:L trouble.note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <Border Classes="segments" AutomationProperties.Name="{l:L lab.mode}">
+          <UniformGrid Rows="1">
+            <RadioButton x:Name="BeginnerMode" Classes="segment" GroupName="troubleMode" IsChecked="{Binding IsBeginner}"
+                         Content="{l:L lab.mode.beginner}" AutomationProperties.Name="{l:L lab.mode.beginner}" />
+            <RadioButton x:Name="ExpertMode" Classes="segment" GroupName="troubleMode" IsChecked="{Binding IsExpert}"
+                         Content="{l:L lab.mode.expert}" AutomationProperties.Name="{l:L lab.mode.expert}" />
+          </UniformGrid>
+        </Border>
+
+        <!-- Сайт и разбор -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="12">
+            <StackPanel Spacing="6">
+              <TextBlock Classes="small" Text="{l:L trouble.site}" FontWeight="SemiBold"
+                         Foreground="{StaticResource PgBrush.Text.Secondary}" />
+              <TextBox x:Name="SiteBox" Classes="input" Text="{Binding Site}" PlaceholderText="{l:L probe.target.placeholder}"
+                       FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                       AutomationProperties.Name="{l:L trouble.site}">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding RunCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+            </StackPanel>
+            <TextBlock x:Name="TroubleError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                       TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+            <Button x:Name="RunButton" Classes="primary" Height="46" HorizontalAlignment="Stretch"
+                    Command="{Binding RunCommand}" AutomationProperties.Name="{Binding RunText}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Classes.spin="{Binding IsRunning}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16" StrokeThickness="2.2"
+                        IsVisible="{Binding IsRunning}" />
+                <TextBlock Text="{Binding RunText}" VerticalAlignment="Center" FontWeight="SemiBold" />
+              </StackPanel>
+            </Button>
+            <TextBlock x:Name="Via" Classes="caption" Text="{Binding Via}" TextWrapping="Wrap"
+                       LineHeight="{StaticResource PgLineHeight.Body}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Вывод -->
+        <Border x:Name="VerdictCard" Classes="card" Padding="16,14" IsVisible="{Binding HasResult}"
+                Background="{Binding VerdictState, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}">
+          <StackPanel Spacing="8">
+            <TextBlock Classes="title" Text="{Binding VerdictTitle}" TextWrapping="Wrap"
+                       Foreground="{Binding VerdictState, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+            <TextBlock Text="{Binding VerdictText}" TextWrapping="Wrap" LineHeight="{StaticResource PgLineHeight.Body}"
+                       Foreground="{StaticResource PgBrush.Text.Primary}" />
+            <TextBlock Classes="strong" Text="{l:L trouble.todo}" Margin="0,4,0,0" />
+            <TextBlock Text="{Binding VerdictTodo}" TextWrapping="Wrap" LineHeight="{StaticResource PgLineHeight.Body}"
+                       Foreground="{StaticResource PgBrush.Text.Primary}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Шаги -->
+        <TextBlock Classes="overline" Text="{l:L trouble.steps, Upper=True}" Margin="6,8,6,0" IsVisible="{Binding HasResult}" />
+        <Border Classes="card" Padding="16,4" IsVisible="{Binding HasResult}">
+          <ItemsControl x:Name="StepList" ItemsSource="{Binding Steps}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:TroubleStepViewModel">
+                <Border Classes="stepRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,11"
+                        AutomationProperties.Name="{Binding Title}">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Top"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="12" Height="12"
+                              StrokeThickness="3.2" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2">
+                      <TextBlock Classes="strong" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                      <TextBlock Classes="caption" Text="{Binding Text}" TextWrapping="Wrap" />
+                      <SelectableTextBlock Classes="caption" Text="{Binding Detail}" IsVisible="{Binding HasDetail}" TextWrapping="Wrap"
+                                           FontFamily="{StaticResource PgFont.Mono}" Foreground="{StaticResource PgBrush.Text.Primary}" />
+                      <TextBlock Classes="caption" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" TextWrapping="Wrap"
+                                 LineHeight="{StaticResource PgLineHeight.Body}" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Padding="9,3" CornerRadius="10" VerticalAlignment="Top"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}">
+                      <TextBlock Text="{Binding ResultText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold"
+                                 Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+                    </Border>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

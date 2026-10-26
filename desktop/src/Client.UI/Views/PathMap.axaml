@@ -1,0 +1,59 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.PathMap"
+             x:DataType="vm:PathMapViewModel">
+  <!-- Карта пути (лаборатория, этап 8): звено, участок, звено… сверху вниз. Звено — значок в круге и метка, участок — линия на
+       всю высоту: сплошная — измерено, пунктир — условно, цветом защиты — в туннеле (стили — Themes/Lab.axaml). -->
+  <UserControl.Styles>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </UserControl.Styles>
+
+  <ItemsControl x:Name="PathList" ItemsSource="{Binding Steps}">
+    <ItemsControl.DataTemplates>
+      <DataTemplate DataType="vm:PathNodeViewModel">
+        <Grid ColumnDefinitions="Auto,*,Auto" AutomationProperties.Name="{Binding Title}">
+          <Border Classes="node" Classes.measured="{Binding IsMeasured}" Width="36" Height="36" CornerRadius="18">
+            <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="20" Height="20" StrokeThickness="1.9" />
+          </Border>
+          <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+            <TextBlock Classes="strong" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+            <SelectableTextBlock Classes="value" Text="{Binding Subtitle}" />
+            <SelectableTextBlock Classes="value" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" />
+          </StackPanel>
+          <Border Grid.Column="2" Classes="evidence" Classes.measured="{Binding IsMeasured}" Padding="9,3" CornerRadius="10"
+                  VerticalAlignment="Center">
+            <TextBlock Text="{Binding EvidenceText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold" />
+          </Border>
+        </Grid>
+      </DataTemplate>
+      <DataTemplate DataType="vm:PathLinkViewModel">
+        <Grid ColumnDefinitions="36,*" MinHeight="34">
+          <!-- Линия на всю высоту участка: холст в разметке места не просит, лишнее обрезается -->
+          <Canvas ClipToBounds="True">
+            <Line Classes="link" Classes.measured="{Binding IsMeasured}" Classes.conditional="{Binding IsConditional}"
+                  Classes.tunnel="{Binding IsTunnel}" StartPoint="18,0" EndPoint="18,400" />
+            <Ellipse Classes="packet" Classes.moving="{Binding $parent[ItemsControl].((vm:PathMapViewModel)DataContext).IsMoving}"
+                     Width="8" Height="8" Canvas.Left="14" AutomationProperties.Name="{l:L path.packet}" />
+          </Canvas>
+          <StackPanel Grid.Column="1" Margin="12,4" Spacing="2" VerticalAlignment="Center">
+            <TextBlock Classes="caption" Text="{Binding Text}" TextWrapping="Wrap" />
+            <SelectableTextBlock Classes="value" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" />
+            <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsTunnel}">
+              <c:Icon Data="{StaticResource Icon.Lock}" Width="12" Height="12" StrokeThickness="2.2"
+                      Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+              <TextBlock Classes="caption" Text="{Binding TunnelText}" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+            </StackPanel>
+          </StackPanel>
+        </Grid>
+      </DataTemplate>
+    </ItemsControl.DataTemplates>
+  </ItemsControl>
+</UserControl>

@@ -65,8 +65,11 @@ public sealed partial class PathPageViewModel : ObservableObject
         Show();
     }
 
+    /// <summary>Карта: звенья и участки, пакет в пути — пока идет проверка.</summary>
+    public PathMapViewModel Map { get; } = new();
+
     /// <summary>Звенья и участки по порядку: звено, участок, звено…</summary>
-    public ObservableCollection<object> Steps { get; } = [];
+    public ObservableCollection<object> Steps => Map.Steps;
 
     /// <summary>Подробности для эксперта: сети провайдеров, узлы трассировки, канал адаптера, TLS сайта — общий режим лаборатории.</summary>
     public bool IsExpert
@@ -209,17 +212,13 @@ public sealed partial class PathPageViewModel : ObservableObject
         var checkedNow = site is not null && site == _checkedSite;
         var path = PathBuilder.Build(new PathFacts(_snapshot, _protection.Status, _provider, _exit, site,
             checkedNow ? _siteCheck : null, checkedNow ? _trace : null));
-        var expert = IsExpert;
-        Steps.Clear();
-        for (var i = 0; i < path.Nodes.Count; i++)
+        if (IsExpert)
         {
-            var node = path.Nodes[i];
-            Steps.Add(new PathNodeViewModel(node, expert ? NodeExpert(node, checkedNow) : null));
-            if (i < path.Links.Count)
-            {
-                var link = path.Links[i];
-                Steps.Add(new PathLinkViewModel(link, node, path.Tunneled, expert ? LinkExpert(link, checkedNow) : null));
-            }
+            Map.Show(path, node => NodeExpert(node, checkedNow), link => LinkExpert(link, checkedNow));
+        }
+        else
+        {
+            Map.Show(path);
         }
 
         var measured = path.Nodes.Count(n => n.Evidence == Evidence.Measured) + path.Links.Count(l => l.Evidence == Evidence.Measured);
@@ -227,6 +226,8 @@ public sealed partial class PathPageViewModel : ObservableObject
     }
 
     partial void OnSiteChanged(string value) => Show();
+
+    partial void OnIsCheckingChanged(bool value) => Map.IsMoving = value;
 
     // Эксперту — измеренное о звене: канал адаптера, сеть адреса провайдера и выхода, TLS сайта.
     private string? NodeExpert(PathNode node, bool checkedNow)
@@ -252,6 +253,34 @@ public sealed partial class PathPageViewModel : ObservableObject
 
         var hops = _trace.Where(s => s.Index > 1).Select(s => s.Address?.ToString() ?? "*");
         return Loc.Instance.Format("path.expert.hops", string.Join(" → ", hops));
+    }
+}
+
+/// <summary>Карта пути для экрана (<c>PathMap</c>): звено, участок, звено… и бежит ли по участкам пакет.</summary>
+public sealed partial class PathMapViewModel : ObservableObject
+{
+    /// <summary>Звенья (<see cref="PathNodeViewModel"/>) и участки (<see cref="PathLinkViewModel"/>) по порядку.</summary>
+    public ObservableCollection<object> Steps { get; } = [];
+
+    /// <summary>Идет замер: по каждому участку бежит пакет.</summary>
+    [ObservableProperty]
+    public partial bool IsMoving { get; set; }
+
+    /// <summary>Карта из пути: подробности эксперта для звена и участка — по желанию.</summary>
+    public void Show(NetworkPath path, Func<PathNode, string?>? nodeExpert = null, Func<PathLink, string?>? linkExpert = null)
+    {
+        ArgumentNullException.ThrowIfNull(path);
+        Steps.Clear();
+        for (var i = 0; i < path.Nodes.Count; i++)
+        {
+            var node = path.Nodes[i];
+            Steps.Add(new PathNodeViewModel(node, nodeExpert?.Invoke(node)));
+            if (i < path.Links.Count)
+            {
+                var link = path.Links[i];
+                Steps.Add(new PathLinkViewModel(link, node, path.Tunneled, linkExpert?.Invoke(link)));
+            }
+        }
     }
 }
 

@@ -80,6 +80,8 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, PathPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<PathPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, LayersPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<LayersPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, EventsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<EventsPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, TroublePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<TroublePageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, VpnPathPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<VpnPathPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SubscriptionsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SubscriptionsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ProtectionPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProtectionPageViewModel>(sp, navigator));

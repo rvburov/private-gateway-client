@@ -1,0 +1,85 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             xmlns:views="using:PrivateGateway.Client.UI.Views"
+             x:Class="PrivateGateway.Client.UI.Views.VpnPathPage"
+             x:DataType="vm:VpnPathPageViewModel">
+  <!-- Как меняется путь при VPN — сценарий лаборатории (этап 8, экрана в макете нет — по дизайн-системе): две карты пути одна
+       под другой (узкое окно) и строки «было → стало» с меткой «измерено» или «условно». Подстраница «Проверки». -->
+  <UserControl.Styles>
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.changeRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="LineHeight" Value="{StaticResource PgLineHeight.Body}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.vpnpath.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <TextBlock Classes="caption" Text="{l:L vpnpath.note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <TextBlock Classes="overline" Text="{l:L vpnpath.before, Upper=True}" Margin="6,8,6,0" />
+        <Border Classes="card" Padding="16,14">
+          <views:PathMap x:Name="BeforeMap" DataContext="{Binding Before}" />
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L vpnpath.after, Upper=True}" Margin="6,8,6,0" />
+        <TextBlock x:Name="AfterNote" Classes="caption" Text="{Binding AfterNote}" IsVisible="{Binding HasAfterNote}" TextWrapping="Wrap"
+                   Margin="6,0" LineHeight="{StaticResource PgLineHeight.Body}" Foreground="{StaticResource PgBrush.Status.Warning.Text}" />
+        <Border Classes="card" Padding="16,14">
+          <views:PathMap x:Name="AfterMap" DataContext="{Binding After}" />
+        </Border>
+
+        <TextBlock Classes="overline" Text="{l:L vpnpath.changes, Upper=True}" Margin="6,8,6,0" />
+        <Border Classes="card" Padding="16,4">
+          <ItemsControl x:Name="ChangeList" ItemsSource="{Binding Changes}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:VpnChangeViewModel">
+                <Border Classes="changeRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,10">
+                  <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Classes="strong" Text="{Binding Label}" VerticalAlignment="Center" />
+                      <Border Grid.Column="1" Classes="evidence" Classes.measured="{Binding IsMeasured}" Padding="9,3" CornerRadius="10"
+                              VerticalAlignment="Center">
+                        <TextBlock Text="{Binding EvidenceText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold" />
+                      </Border>
+                    </Grid>
+                    <Grid ColumnDefinitions="64,*">
+                      <TextBlock Classes="caption" Text="{l:L compare.before}" />
+                      <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Before}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="64,*">
+                      <TextBlock Classes="caption" Text="{l:L vpnpath.after}" TextWrapping="Wrap" />
+                      <SelectableTextBlock Grid.Column="1" Classes="value" FontWeight="SemiBold" Text="{Binding After}" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

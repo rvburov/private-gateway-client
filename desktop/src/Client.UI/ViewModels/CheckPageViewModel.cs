@@ -102,6 +102,12 @@ public sealed partial class CheckPageViewModel : ObservableObject
     [RelayCommand]
     private void OpenEvents() => _navigator.Navigate(Pages.Events);
 
+    [RelayCommand]
+    private void OpenTrouble() => _navigator.Navigate(Pages.Trouble);
+
+    [RelayCommand]
+    private void OpenVpnPath() => _navigator.Navigate(Pages.VpnPath);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RunText))]
     public partial bool IsRunning { get; private set; }
