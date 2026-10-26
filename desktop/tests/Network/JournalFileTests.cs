@@ -41,7 +41,12 @@ public sealed class JournalFileTests : IDisposable
         tail.Select(e => e.Message[..Math.Min(10, e.Message.Length)]).ShouldBe(["запись 149", "запись 149", "после авар"]);
         tail[^1].ShouldBe(new JournalEntry(at.AddHours(1), JournalLevel.Warning, "service", "после аварии"));
         again.Tail(10_000).Count.ShouldBeGreaterThan(1000, "хвост читается и из прежнего файла");
-        File.ReadLines(again.Current).Last().ShouldContain("\"message\":\"после аварии\"", Case.Sensitive, "русский текст в файле — как есть");
+        // Служба держит файл открытым на запись: читать его, как и любой другой программе, — с общим доступом на запись.
+        using (var reader = new StreamReader(new FileStream(again.Current, FileMode.Open, FileAccess.Read, FileShare.ReadWrite)))
+        {
+            reader.ReadToEnd().TrimEnd().Split('\n')[^1].ShouldContain("\"message\":\"после аварии\"", Case.Sensitive, "русский текст в файле — как есть");
+        }
+
         if (!OperatingSystem.IsWindows())
         {
             File.GetUnixFileMode(again.Current).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite, "журнал читает только владелец");
