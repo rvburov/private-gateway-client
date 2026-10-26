@@ -28,6 +28,7 @@ builds() {
   echo tar > "$dir/release-Linux/PrivateGateway-$v-linux-x64.tar.gz"
   echo msi > "$dir/release-Windows/PrivateGateway-$v-win-x64.msi"
   echo mac > "$dir/release-macOS/PrivateGateway-$v-osx-arm64.tar.gz"
+  echo dmg > "$dir/release-macOS/PrivateGateway-$v-osx-arm64.dmg"
   [ -z "${3:-}" ] || rm -rf "$dir/release-$3"
   for os in "$dir"/release-*; do (cd "$os" && sha256sum * > SHA256SUMS); done
 }
@@ -49,7 +50,8 @@ check "общий SHA256SUMS сходится" "(cd '$TMP/stable-out' && sha256s
 check "канал stable и доля 20" "grep -q '\"channel\": \"stable\"' '$TMP/stable-out/update.json' && grep -q '\"rollout\": 20' '$TMP/stable-out/update.json'"
 check "в манифесте главное из заметок" "grep -q '\"highlights\": \\[' '$TMP/stable-out/update.json'"
 check "без ключей — без подписи" "[ ! -e '$TMP/stable-out/update.json.sig' ]"
-check "в манифесте MSI, deb и macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-tar '$TMP/stable-out/update.json'"
+check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-dmg '$TMP/stable-out/update.json'"
+check "в заметках — как поставить на macOS без подписи" "grep -q 'Все равно открыть' '$TMP/notes.md'"
 check "заметки рядом, а не в файлах выпуска" "[ -f '$TMP/notes.md' ] && [ ! -e '$TMP/stable-out/notes.md' ]"
 check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
 check "доля 0 — ошибка" "! run rollout '$TMP/stable-out' 0"

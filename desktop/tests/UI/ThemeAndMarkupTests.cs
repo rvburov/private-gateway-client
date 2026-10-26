@@ -43,6 +43,20 @@ public partial class ThemeAndMarkupTests
         Enumerable.Range(0, 9).Select(i => ico[6 + (16 * i)] == 0 ? 256 : ico[6 + (16 * i)]).ShouldBe([16, 20, 24, 32, 40, 48, 64, 128, 256]);
         XDocument.Load(Path.Combine(Repo.UiSource, "Client.UI.csproj")).Descendants("ApplicationIcon").Single().Value
             .ShouldEndWith("shared/specifications/icons/app.ico", customMessage: "у файла окна — тот же значок");
+
+        // ICNS macOS: «icns», длина файла (big-endian), записи PNG до 1024 px (ic10 — 512@2x, для Retina).
+        var icns = File.ReadAllBytes(Path.Combine(folder, "app.icns"));
+        static int BigEndian(byte[] data, int at) => (data[at] << 24) | (data[at + 1] << 16) | (data[at + 2] << 8) | data[at + 3];
+        Encoding.ASCII.GetString(icns, 0, 4).ShouldBe("icns");
+        BigEndian(icns, 4).ShouldBe(icns.Length);
+        var types = new List<string>();
+        for (var at = 8; at < icns.Length; at += BigEndian(icns, at + 4))
+        {
+            types.Add(Encoding.ASCII.GetString(icns, at, 4));
+            icns.AsSpan(at + 8, 4).ToArray().ShouldBe(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, "записи — PNG");
+        }
+
+        types.ShouldBe(["icp4", "icp5", "icp6", "ic07", "ic08", "ic09", "ic10", "ic11", "ic12", "ic13", "ic14"]);
     }
 
     [Fact]

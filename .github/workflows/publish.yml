@@ -1,8 +1,9 @@
 name: Сборка выпуска
 
 # Выпуск для трех ОС (scripts/publish.sh): окно и служба с .NET в комплекте, ядра с закрепленными суммами, SBOM
-# (CycloneDX) и SHA256SUMS, пакеты Linux и MSI; смоуки проверяют архив и ставят и удаляют пакеты. Из release.yml (тег v*)
-# — с версией тега, по кнопке — с любой; на ветках — когда меняется сама сборка. Подпись артефактов — «Отложено».
+# (CycloneDX) и SHA256SUMS, пакеты Linux, MSI и образ диска macOS; смоуки проверяют архив и ставят и удаляют пакеты. Из
+# release.yml (тег v*) — с версией тега, по кнопке — с любой; на ветках — когда меняется сама сборка. Подпись артефактов
+# — «Отложено».
 on:
   # Выпуск по тегу v* собирает release.yml — он вызывает этот workflow и публикует его сборки.
   workflow_call:
@@ -18,6 +19,8 @@ on:
       - scripts/package-linux.sh
       - scripts/package-windows.sh
       - scripts/tests/windows-installer-smoke.sh
+      - scripts/package-macos.sh
+      - scripts/tests/macos-package-smoke.sh
       - .github/workflows/release.yml
       - scripts/tests/linux-package-smoke.sh
       - desktop/packaging/**
@@ -120,6 +123,16 @@ jobs:
       - name: Установка и удаление MSI
         if: runner.os == 'Windows'
         run: scripts/tests/windows-installer-smoke.sh "${{ steps.version.outputs.version }}"
+
+      # Программа macOS — Private Gateway.app в образе диска, подпись ad-hoc (Developer ID и нотаризация — «Отложено»), затем
+      # настоящая установка службы из пакета и удаление на этой машине (одноразовой).
+      - name: Образ диска macOS (.dmg)
+        if: runner.os == 'macOS'
+        run: scripts/package-macos.sh "${{ steps.version.outputs.version }}"
+
+      - name: Служба из пакета macOS
+        if: runner.os == 'macOS'
+        run: scripts/tests/macos-package-smoke.sh "${{ steps.version.outputs.version }}"
 
       - uses: actions/upload-artifact@v4
         with:

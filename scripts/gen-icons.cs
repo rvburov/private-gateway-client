@@ -1,7 +1,8 @@
 // Значок программы — щит цвета «Защищено» с белой галочкой, тот же, что в трее (TrayIconRenderer):
 //   desktop/src/Client.UI/Themes/Icons.axaml (Icon.Shield, Icon.Mark.Ok) + design-tokens.json (state.connected.ring)
 //     → shared/specifications/icons/app.svg — Linux: значок записи .desktop (hicolor/scalable/apps);
-//     → shared/specifications/icons/app.ico — Windows: файл окна, ярлыки, «Установленные приложения» (MSI).
+//     → shared/specifications/icons/app.ico — Windows: файл окна, ярлыки, «Установленные приложения» (MSI);
+//     → shared/specifications/icons/app.icns — macOS: значок программы (Private Gateway.app, scripts/package-macos.sh).
 //
 // Запуск из корня репозитория (файловое приложение .NET 10, отдельного проекта нет):
 //   dotnet run scripts/gen-icons.cs
@@ -65,7 +66,25 @@ using (var ico = new BinaryWriter(File.Create(Path.Combine(output, "app.ico"))))
     images.ForEach(ico.Write);
 }
 
-Console.WriteLine(string.Create(CultureInfo.InvariantCulture, $"Значок: {output}/app.svg и app.ico ({string.Join(", ", sizes)} px), icon-sha256 {hash}"));
+// ICNS с картинками PNG (macOS 10.7 и новее): тип записи → размер в точках; длины — big-endian, как в формате.
+(string Type, int Size)[] icns = [("icp4", 16), ("icp5", 32), ("icp6", 64), ("ic07", 128), ("ic08", 256), ("ic09", 512), ("ic10", 1024),
+    ("ic11", 32), ("ic12", 64), ("ic13", 256), ("ic14", 512)];
+var entries = icns.Select(e => (e.Type, Png: Render(e.Size, shield, mark, SKColor.Parse(color)))).ToList();
+using (var file = new BinaryWriter(File.Create(Path.Combine(output, "app.icns"))))
+{
+    static byte[] BigEndian(int value) => [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
+    file.Write("icns"u8);
+    file.Write(BigEndian(8 + entries.Sum(e => 8 + e.Png.Length)));
+    foreach (var (type, png) in entries)
+    {
+        file.Write(Encoding.ASCII.GetBytes(type));
+        file.Write(BigEndian(8 + png.Length));
+        file.Write(png);
+    }
+}
+
+Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
+    $"Значок: {output}/app.svg, app.ico ({string.Join(", ", sizes)} px) и app.icns ({string.Join(", ", icns.Select(e => e.Size).Distinct())} px), icon-sha256 {hash}"));
 
 // Щит и галочка в квадрате size×size: геометрии — в сетке 24×24, как у значков окна.
 static byte[] Render(int size, string shield, string mark, SKColor color)

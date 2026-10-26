@@ -103,6 +103,7 @@ var kinds = new (string Key, string Suffix)[]
     ("win-x64-msi", $"-{version}-win-x64.msi"), ("win-x64-zip", $"-{version}-win-x64.zip"),
     ("linux-x64-deb", $"_{version.Replace('-', '~')}_amd64.deb"), ("linux-x64-rpm", ".x86_64.rpm"),
     ("linux-x64-tar", $"-{version}-linux-x64.tar.gz"), ("osx-arm64-tar", $"-{version}-osx-arm64.tar.gz"),
+    ("osx-arm64-dmg", $"-{version}-osx-arm64.dmg"),
 };
 var assets = new JsonObject();
 foreach (var (key, suffix) in kinds)
@@ -113,7 +114,7 @@ foreach (var (key, suffix) in kinds)
     }
 }
 
-foreach (var required in new[] { "win-x64-msi", "linux-x64-deb", "osx-arm64-tar" })
+foreach (var required in new[] { "win-x64-msi", "linux-x64-deb", "osx-arm64-dmg" })
 {
     if (!assets.ContainsKey(required))
     {
@@ -181,6 +182,12 @@ string Notes()
 
     lines.AddRange(
     [
+        string.Empty, "## Как поставить", string.Empty,
+        "- Windows — `PrivateGateway-" + version + "-win-x64.msi`.",
+        "- Linux — `.deb` (Debian, Ubuntu) или `.rpm` (Fedora, openSUSE).",
+        "- macOS (Apple Silicon) — `PrivateGateway-" + version + "-osx-arm64.dmg`: откройте образ и перетащите Private Gateway в "
+            + "«Программы». Программа пока не подписана сертификатом Apple: при первом запуске macOS ее не откроет — тогда "
+            + "«Системные настройки» → «Конфиденциальность и безопасность» → «Все равно открыть».",
         string.Empty, "## Как сверить загрузку", string.Empty,
         "Скачайте `SHA256SUMS` рядом с файлом и выполните `sha256sum -c SHA256SUMS --ignore-missing` (Linux, Git Bash на Windows) или "
             + "`shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS). Состав каждого выпуска — `*.cdx.json` (SBOM), лицензии открытых "
