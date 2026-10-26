@@ -67,10 +67,10 @@ cat > "$app/Contents/Info.plist" << EOF
 EOF
 plutil -lint "$app/Contents/Info.plist"
 
-# Сначала каждый файл Contents/MacOS: codesign считает их вложенным кодом и требует подписи у всех, не только у Mach-O
-# (у сборок .NET и данных она ложится в расширенные атрибуты файла). Потом пакет целиком: его подпись запечатывает все
-# файлы, и измененный файл macOS заметит.
-find "$app/Contents/MacOS" -type f -print0 | xargs -0 codesign --force --sign -
+# Сначала каждый файл Contents/MacOS, кроме главного исполняемого: codesign считает их вложенным кодом и требует подписи у
+# всех, не только у Mach-O (у сборок .NET и данных она ложится в расширенные атрибуты файла). Главный исполняемый
+# подписывается вместе с пакетом: его подпись запечатывает все файлы, и измененный файл macOS заметит.
+find "$app/Contents/MacOS" -type f ! -path "$app/Contents/MacOS/PrivateGateway" -print0 | xargs -0 codesign --force --sign -
 codesign --force --sign - "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
