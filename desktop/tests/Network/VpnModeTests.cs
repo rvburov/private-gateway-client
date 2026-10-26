@@ -376,7 +376,8 @@ public sealed partial class VpnModeTests
             var unguarded = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
             unguarded.State.ShouldBe(V1.ConnectionState.Connected, unguarded.Error?.Message);
             unguarded.ToCore().Protection.KillSwitch.ShouldBe(CheckState.Off, "блок выключен в настройках — проверка не делает вид, что он есть");
-            (killSwitch.IsEnabled, killSwitch.Last!.TunnelInterface, killSwitch.Last.Persistent).ShouldBe((true, SingBoxConfigBuilder.InterfaceName, false),
+            (killSwitch.IsEnabled, killSwitch.Last!.TunnelInterface, killSwitch.Last.Persistent, killSwitch.Last.Ipv6Outside)
+                .ShouldBe((true, SingBoxConfigBuilder.InterfaceName, false, false),
                 "блок при обрыве выключен, а правила «только туннель» стоят, пока туннель поднят; после перезагрузки их нет — и с «Защитой при загрузке»");
             (await netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
             await Should.ThrowAsync<InvalidOperationException>(() => netns.FetchAsync(lan.Url, seconds: 3, device: "pgnet0"),
@@ -547,7 +548,7 @@ public sealed partial class VpnModeTests
         await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"),
             options: o => rig.Vpn(o) with { Reconnect = ReconnectTests.Fast with { GiveUpAfter = TimeSpan.FromSeconds(30) }, Probe = rig.ProbeAsync });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
-        var request = VpnRequest(rig.Definition, killSwitch: false);
+        var request = VpnRequest(rig.Definition, killSwitch: false, blockIpv6: false);
         request.Connection.Reconnect = V1.ReconnectPolicy.UpTo5Minutes;
         await service.Client.ConnectAsync(request, cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);

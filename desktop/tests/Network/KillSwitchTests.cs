@@ -108,6 +108,16 @@ public sealed class KillSwitchTests
         }
     }
 
+    [Fact]
+    public void Ipv6_outside_the_tunnel_is_open_only_when_the_policy_says_so()
+    {
+        var open = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [], Ipv6Outside: true)));
+
+        open.IndexOf("meta nfproto ipv6 accept").ShouldBeGreaterThan(open.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"),
+            "«Блокировать IPv6 вне туннеля» выключено при выключенном блоке — IPv6 мимо туннеля открыт, но запросы имен и по IPv6 закрыты");
+        Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", []))).ShouldNotContain("meta nfproto ipv6 accept");
+    }
+
     [Theory]
     [InlineData("pg tun")]
     [InlineData("pgtun0\" accept; flush ruleset; #")]

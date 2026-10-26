@@ -85,6 +85,9 @@ public sealed class WfpKillSwitchTests
 
         WfpRules.For(new KillSwitchPolicy(null, [], LanDiscovery: true), null)
             .ShouldNotContain(r => r.Name == "discovery", "без локальной сети нет и обнаружения устройств");
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", [], Ipv6Outside: true), 7).Select(r => r.ToString())
+            .ShouldContain("5 permit V6 ipv6: ", "«Блокировать IPv6 вне туннеля» выключено при выключенном блоке — IPv6 мимо туннеля открыт, ниже закрытия DNS");
+        lan.ShouldNotContain(r => r.Contains(" ipv6:", StringComparison.Ordinal));
         WfpRules.For(new KillSwitchPolicy(null, [], AllowLan: true), null)
             .ShouldNotContain(r => r.Name == "discovery", "обнаружение устройств — отдельной настройкой");
         Should.Throw<ArgumentException>(() => WfpRules.For(new KillSwitchPolicy(null, [new(Server, 0)]), null));

@@ -78,6 +78,7 @@ public sealed partial class VpnModeTests
         var closed = await ConnectAsync(blockIpv6: true);
 
         (closed.Protection.Ipv6Tunnel, closed.Protection.Ipv6).ShouldBe((false, V1.CheckState.Ok));
+        (rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.Ipv6Outside).ShouldBe((true, false), "правила «только туннель» держат и IPv6");
         service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сервер не открывает IPv6 — IPv6 закрыт, мимо туннеля он не уйдет");
         (await rig.Netns.RunAsync("ip", "-6", "addr", "show", "dev", "pgtun0")).ShouldNotContain("inet6 fdfe", Case.Sensitive, "у TUN нет IPv6");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(site6.Url, seconds: 3), "IPv6 мимо туннеля закрыт");
@@ -91,6 +92,7 @@ public sealed partial class VpnModeTests
         var open = await ConnectAsync(blockIpv6: false);
 
         (open.Protection.Ipv6Tunnel, open.Protection.Ipv6).ShouldBe((false, V1.CheckState.Warning), "IPv6 мимо туннеля — не скрыт, и это видно");
+        (rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.Ipv6Outside).ShouldBe((true, true), "правила «только туннель» IPv6 мимо туннеля не закрывают");
         service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сервер не открывает IPv6 — «Блокировать IPv6 вне туннеля» выключено");
         (await rig.Netns.CurlAsync(site6.Url)).ShouldBe("IPv6 мимо туннеля", "IPv6 вне туннеля разрешен — идет напрямую");
         var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
@@ -103,6 +105,7 @@ public sealed partial class VpnModeTests
         var blocked = await ConnectAsync(blockIpv6: false, killSwitch: true);
 
         (blocked.Protection.Ipv6Tunnel, blocked.Protection.Ipv6).ShouldBe((false, V1.CheckState.Ok), "блок при обрыве держит IPv6 мимо туннеля");
+        rig.KillSwitch.Last!.Ipv6Outside.ShouldBeFalse();
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(site6.Url, seconds: 3));
 
         async Task<V1.Status> ConnectAsync(bool blockIpv6, bool killSwitch = false)

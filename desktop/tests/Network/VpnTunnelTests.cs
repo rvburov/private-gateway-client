@@ -51,7 +51,7 @@ public sealed class VpnTunnelTests
             // ядре есть IPv6 (в контейнере облака его нет): служба смотрит сама.
             ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" }, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             RoutingSettings.Default);
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
@@ -95,7 +95,7 @@ public sealed class VpnTunnelTests
         using var _ = server;
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
             ConnectionSettings.Default with { Stack = stack, CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
@@ -121,7 +121,7 @@ public sealed class VpnTunnelTests
             .Select(dir => Path.Combine(dir, "python3")).First(File.Exists));
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
             ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, new RoutingSettings(RoutingMode.Split, [new BypassApp(python, "python3")], []));
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
@@ -146,7 +146,7 @@ public sealed class VpnTunnelTests
         var protection = ProtectionSettings.Default with { AllowLan = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" };
         var request = new CoreRequest(definition, ConnectionMode.Vpn, protection, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             RoutingSettings.Default);
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
         var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
@@ -176,7 +176,7 @@ public sealed class VpnTunnelTests
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
             ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
@@ -208,7 +208,7 @@ public sealed class VpnTunnelTests
             ProtectionSettings.Default with { FakeDns = true, Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
             ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             new RoutingSettings(RoutingMode.Split, [new BypassApp(curl, "curl")], []));
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
@@ -376,7 +376,7 @@ public sealed class VpnTunnelTests
         // Новые адаптеры в пространстве — без IPv6, как Windows с выключенным IPv6: адрес IPv6 sing-box не поставит и выйдет.
         netns.Run(null, "sysctl", "-qw", "net.ipv6.conf.default.disable_ipv6=1");
         var lines = new System.Collections.Concurrent.ConcurrentQueue<(string Source, string Line)>();
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             RoutingSettings.Default);
 
@@ -409,7 +409,7 @@ public sealed class VpnTunnelTests
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             RoutingSettings.Default);
         var asked = 0;
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host6], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, probe: VpnTunnel.NewProbe(), serverIpv6: (_, _) =>
@@ -439,7 +439,7 @@ public sealed class VpnTunnelTests
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug },
             RoutingSettings.Default);
         var lines = new System.Collections.Concurrent.ConcurrentQueue<(string Source, string Line)>();
-        var output = new CoreOutput();
+        var output = new CoreOutput(netns);
 
         // Сервер молчит по IPv6 дольше всего времени подключения: проверка берет не больше половины, остальное — sing-box.
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(12),

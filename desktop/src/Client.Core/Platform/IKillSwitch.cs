@@ -33,6 +33,11 @@ public sealed record DirectExit(string Program, uint Mark);
 /// (роутер из resolv.conf без systemd-resolved) перенаправляются сюда — в туннель (nftables). На Windows ОС и так
 /// спрашивает DNS адаптера туннеля. null — не перенаправлять.
 /// </param>
+/// <param name="Ipv6Outside">
+/// IPv6 мимо туннеля открыт: «Блок при обрыве» выключен, а туннель сам пропускает IPv6 мимо себя («Блокировать IPv6 вне
+/// туннеля» выключено, у сервера IPv6 нет) — правила «только туннель» его не закрывают, и это видно на главной. С блоком при
+/// обрыве IPv6 мимо туннеля закрыт всегда.
+/// </param>
 public sealed record KillSwitchPolicy(
     string? TunnelInterface,
     IReadOnlyList<KillSwitchEndpoint> Servers,
@@ -41,7 +46,8 @@ public sealed record KillSwitchPolicy(
     bool BlockOutsideDns = true,
     DirectExit? Direct = null,
     bool Persistent = false,
-    IPAddress? TunnelDns = null)
+    IPAddress? TunnelDns = null,
+    bool Ipv6Outside = false)
 {
     /// <summary>Сколько адресов сервера держит блок: у ключей фильтров WFP есть предел.</summary>
     public const int MaxServers = 16;

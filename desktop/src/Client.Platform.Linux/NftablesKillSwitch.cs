@@ -97,6 +97,12 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             shared.Add("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop");
         }
 
+        // «Блокировать IPv6 вне туннеля» выключено при выключенном блоке: IPv6 мимо туннеля — как выбрал пользователь.
+        if (policy.Ipv6Outside)
+        {
+            shared.Add("meta nfproto ipv6 accept");
+        }
+
         // Для перенаправленного — по адресу назначения в обе стороны: и контейнер в локальную сеть, и ответ
         // ему (адрес контейнера частный). Наружу мимо туннеля адрес назначения не частный — закрыто.
         if (policy.AllowLan)

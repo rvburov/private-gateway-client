@@ -1237,7 +1237,8 @@ public sealed partial class Gateway : IAsyncDisposable
             core.Protection.BlockOutsideDns,
             direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
             core.Protection.BootProtection && _killSwitchOn,
-            tunnel ? TunnelDns : null);
+            tunnel ? TunnelDns : null,
+            !_killSwitchOn && Volatile.Read(ref _tunnel) is { Ipv6Outside: true });
         if (!Try(() => { killSwitch.Enable(policy); return true; }, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))
         {
             return false;
@@ -1464,7 +1465,7 @@ public sealed partial class Gateway : IAsyncDisposable
             status = status with { Protection = status.Protection with { Ipv6Tunnel = tunnel is { Ipv6: true } } };
         }
 
-        if (tunnel is { Ipv6Outside: true } && !_blocking)
+        if (tunnel is { Ipv6Outside: true } && (!_blocking || _held is { Policy.Ipv6Outside: true }))
         {
             status = status with { Protection = status.Protection with { Ipv6 = CheckState.Warning } };
         }

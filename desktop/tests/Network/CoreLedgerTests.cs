@@ -28,7 +28,9 @@ public sealed class CoreLedgerTests : IDisposable
         {
             if (!process.HasExited)
             {
+                // Снятие асинхронное: на Windows файл конфига свободен, только когда процесс вышел.
                 process.Kill(entireProcessTree: true);
+                process.WaitForExit(TimeSpan.FromSeconds(10));
             }
 
             process.Dispose();

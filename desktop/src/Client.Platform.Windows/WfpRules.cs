@@ -154,6 +154,12 @@ public static class WfpRules
                 rules.Add(new("dns", family, false, 10, [.. NamePorts.Select(port => new WfpCondition(WfpField.RemotePort, port)), .. TcpOrUdp()]));
             }
 
+            if (family == WfpFamily.V6 && policy.Ipv6Outside)
+            {
+                // «Блокировать IPv6 вне туннеля» выключено при выключенном блоке: IPv6 мимо туннеля — как выбрал пользователь.
+                rules.Add(new("ipv6", family, true, 5, []));
+            }
+
             if (policy.AllowLan)
             {
                 rules.Add(new("lan", family, true, 5, family == WfpFamily.V4 ? PrivateV4 : PrivateV6));
