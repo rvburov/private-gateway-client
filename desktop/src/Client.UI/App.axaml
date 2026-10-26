@@ -73,6 +73,9 @@
     <DataTemplate DataType="vm:ConnectionsPageViewModel">
       <views:ConnectionsPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:ComparePageViewModel">
+      <views:ComparePage />
+    </DataTemplate>
     <DataTemplate DataType="vm:BackupPageViewModel">
       <views:BackupPage />
     </DataTemplate>

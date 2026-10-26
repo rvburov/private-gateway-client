@@ -136,6 +136,23 @@
                         StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
               </Grid>
             </Button>
+            <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+            <Button x:Name="CompareButton" Classes="plain" Padding="8,10" Command="{Binding OpenCompareCommand}"
+                    AutomationProperties.Name="{l:L diag.compare.title}">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                        Background="{StaticResource PgBrush.Accent.Tint}">
+                  <c:Icon Data="{StaticResource Icon.Shield}" Width="20" Height="20"
+                          StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Classes="strong" Text="{l:L diag.compare.title}" />
+                  <TextBlock Classes="caption" Text="{l:L diag.compare.text}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+              </Grid>
+            </Button>
           </StackPanel>
         </Border>
 

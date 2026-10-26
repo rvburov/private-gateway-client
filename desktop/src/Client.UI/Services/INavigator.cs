@@ -41,6 +41,9 @@ public static class Pages
     /// <summary>«Соединения и трафик» — сокеты с процессами и скорость адаптеров, подстраница «Проверки» (этап 7).</summary>
     public const string Connections = "connections";
 
+    /// <summary>«До и после VPN» — что видят сайты и ОС до защиты и сейчас, подстраница «Проверки» (этап 7).</summary>
+    public const string Compare = "compare";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

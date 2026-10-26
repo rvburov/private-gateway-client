@@ -65,6 +65,31 @@ public sealed class LeakCheckTests
     }
 
     [Fact]
+    public async Task Comparison_keeps_the_network_before_the_connect_and_shows_webrtc_past_the_proxy()
+    {
+        // В режиме прокси UDP служба шлет напрямую — как WebRTC браузера: сервер STUN видит реальный адрес.
+        await using var stand = await Stand.CreateAsync(real: RealIp, more: o => o with
+        {
+            NetworkDetails = ServiceHost.NetworkDetails(),
+            Webrtc = _ => Task.FromResult<IPEndPoint?>(new IPEndPoint(IPAddress.Parse(RealIp), 50000)),
+        });
+        using var watch = stand.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await stand.Service.Client.MeasureIpAsync(new V1.MeasureIpRequest(), cancellationToken: Ct);
+
+        await stand.Service.Client.ConnectAsync(ServiceIpcTests.Request(stand.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.Exit?.Ip == ServerIp);
+        var comparison = (await stand.Service.Client.CompareNetworkAsync(new V1.CompareNetworkRequest(), cancellationToken: Ct)).ToCore();
+
+        var before = comparison.Before.ShouldNotBeNull("защиту включили — «до» снято при подключении");
+        before.Ipv4.ShouldBe(RealIp, "реальный адрес, измеренный до подключения");
+        before.TakenAt.ShouldBeLessThanOrEqualTo(comparison.Now.TakenAt);
+        comparison.Now.Ipv4.ShouldBe(ServerIp, "сайты через прокси видят сервер");
+        comparison.Now.Webrtc.ShouldBe(new IPEndPoint(IPAddress.Parse(RealIp), 50000));
+        comparison.Now.Route.ShouldNotBeNull();
+        comparison.Now.Route.ShouldBe(before.Route, "режим прокси маршруты не меняет");
+    }
+
+    [Fact]
     public async Task After_connect_sites_see_the_server_ip_and_not_the_real_one()
     {
         await using var stand = await Stand.CreateAsync(real: RealIp);
@@ -195,7 +220,8 @@ public sealed class LeakCheckTests
         /// <param name="real">Какой IP проверочный адрес называет напрямую.</param>
         /// <param name="trace">Проверочный адрес; null — сайт «реальный IP».</param>
         /// <param name="exitPage">Ответ через сервер; null — «ip=» адреса сервера.</param>
-        public static async Task<Stand> CreateAsync(string real, Uri? trace = null, string? exitPage = null)
+        /// <param name="more">Еще настройки службы.</param>
+        public static async Task<Stand> CreateAsync(string real, Uri? trace = null, string? exitPage = null, Func<GatewayOptions, GatewayOptions>? more = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var exit = new LocalSite(exitPage ?? $"fl=1\nip={ServerIp}\nts=1\n");
@@ -205,7 +231,7 @@ public sealed class LeakCheckTests
             serverConfig["outbounds"] = new JsonArray(
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{exit.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
-            var service = await RunningService.StartAsync(exit.Url, options: o => o with { Trace = trace ?? direct.Url });
+            var service = await RunningService.StartAsync(exit.Url, options: o => (more ?? (x => x))(o with { Trace = trace ?? direct.Url }));
             return new Stand(exit, direct, definition, server, service);
         }
 

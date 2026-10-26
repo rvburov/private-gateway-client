@@ -224,6 +224,12 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>Сравнение делает служба; в режиме прокси ради инспектора запускается служба пользователя.</summary>
+    public async Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.CompareNetworkAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
     public async Task MeasureIpAsync(CancellationToken cancellationToken = default)
     {
         if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)

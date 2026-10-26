@@ -211,6 +211,9 @@ public sealed class GatewayRpc(
         }
     }
 
+    public override async Task<V1.NetworkComparison> CompareNetwork(V1.CompareNetworkRequest request, ServerCallContext context) =>
+        (await gateway.CompareNetworkAsync(context?.CancellationToken ?? default).ConfigureAwait(false)).ToContract();
+
     public override async Task<V1.MeasureIpReply> MeasureIp(V1.MeasureIpRequest request, ServerCallContext context)
     {
         await gateway.MeasureIpAsync().ConfigureAwait(false);

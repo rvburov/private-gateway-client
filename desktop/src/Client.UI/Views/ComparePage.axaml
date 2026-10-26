@@ -1,0 +1,125 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ComparePage"
+             x:DataType="vm:ComparePageViewModel">
+  <!-- До и после VPN — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе, как «Сеть машины»). Подстраница
+       «Проверки»: островок виден, «назад» — к проверке. -->
+  <UserControl.Styles>
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.compareRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="LineHeight" Value="{StaticResource PgLineHeight.Body}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Вывод: сменилось — зеленым, утечка — предупреждением, остальное — серым -->
+    <Style Selector="Border.verdict">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+    </Style>
+    <Style Selector="Border.verdict TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Border.verdict.good">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.verdict.good TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Text}" />
+    </Style>
+    <Style Selector="Border.verdict.leak">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+    </Style>
+    <Style Selector="Border.verdict.leak TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.compare.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
+          <TextBlock x:Name="BeforeText" Classes="caption" Text="{Binding BeforeText}" TextWrapping="Wrap" Margin="6,0,0,0"
+                     VerticalAlignment="Center" LineHeight="{StaticResource PgLineHeight.Body}" />
+          <Button x:Name="CompareButton" Grid.Column="1" Classes="secondary" Height="44" Padding="16,0"
+                  CornerRadius="{StaticResource PgRadius.Button}" Command="{Binding RunCommand}"
+                  AutomationProperties.Name="{Binding RunText}">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+              <c:Icon Classes.spin="{Binding IsLoading}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16" StrokeThickness="2.2" />
+              <TextBlock Text="{Binding RunText}" VerticalAlignment="Center" FontWeight="Medium" />
+            </StackPanel>
+          </Button>
+        </Grid>
+
+        <Border x:Name="Unavailable" Classes="card" Padding="16,14" IsVisible="{Binding IsUnavailable}">
+          <TextBlock Text="{l:L compare.unavailable}" TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Text.Primary}" />
+        </Border>
+
+        <!-- Строки сравнения: что, до, сейчас и вывод -->
+        <Border x:Name="CompareCard" Classes="card" Padding="16,4" IsVisible="{Binding HasRows}">
+          <ItemsControl x:Name="CompareList" ItemsSource="{Binding Rows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:CompareRowViewModel">
+                <Border Classes="compareRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,10">
+                  <StackPanel Spacing="4">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <TextBlock Classes="strong" Text="{Binding Label}" VerticalAlignment="Center" />
+                      <Border Grid.Column="1" Classes="verdict" Classes.good="{Binding IsGood}" Classes.leak="{Binding IsLeak}"
+                              Padding="9,3" CornerRadius="10" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding VerdictText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold" />
+                      </Border>
+                    </Grid>
+                    <Grid ColumnDefinitions="64,*">
+                      <TextBlock Classes="caption" Text="{l:L compare.before}" />
+                      <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Before}" />
+                    </Grid>
+                    <Grid ColumnDefinitions="64,*">
+                      <TextBlock Classes="caption" Text="{l:L compare.now}" />
+                      <SelectableTextBlock Grid.Column="1" Classes="value" FontWeight="SemiBold" Text="{Binding Now}" />
+                    </Grid>
+                  </StackPanel>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <!-- Как измерено и чего замер не покажет -->
+        <TextBlock Classes="overline" Text="{l:L compare.methods, Upper=True}" Margin="6,8,6,0" />
+        <Border Classes="card" Padding="16,12">
+          <ItemsControl x:Name="MethodList" ItemsSource="{Binding Methods}">
+            <ItemsControl.ItemsPanel>
+              <ItemsPanelTemplate>
+                <StackPanel Spacing="10" />
+              </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:DetailRowViewModel">
+                <StackPanel Spacing="2">
+                  <TextBlock Classes="strong" Text="{Binding Label}" />
+                  <TextBlock Classes="caption" Text="{Binding Value}" TextWrapping="Wrap" LineHeight="{StaticResource PgLineHeight.Body}" />
+                </StackPanel>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

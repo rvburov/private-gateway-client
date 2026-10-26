@@ -42,7 +42,8 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять;
 /// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box;
 /// <paramref name="NetworkDetails"/> — маршруты и DHCP этой ОС для сетевого инспектора; null — без них;
-/// <paramref name="AddressFetch"/> — запрос к RIPEstat о провайдере адреса (тесты); null — <see cref="AddressLookup.FetchAsync"/>.
+/// <paramref name="AddressFetch"/> — запрос к RIPEstat о провайдере адреса (тесты); null — <see cref="AddressLookup.FetchAsync"/>;
+/// <paramref name="Webrtc"/> — замер STUN обычным путем службы (<see cref="StunProbe"/>): какой адрес видит WebRTC; null — не мерить.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -70,7 +71,8 @@ public sealed record GatewayOptions(
     string? TunDevice = null,
     ISystemDns? SystemDns = null,
     INetworkDetails? NetworkDetails = null,
-    Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null);
+    Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null,
+    Func<CancellationToken, Task<IPEndPoint?>>? Webrtc = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -461,12 +463,23 @@ public sealed partial class Gateway : IAsyncDisposable
 
         // Реальный IP — до блока и туннеля, пока прямой путь открыт: один раз на сеть, вместе с поиском адреса сервера,
         // чтобы не ждать дважды. Под блоком и в туннеле прежнего подключения прямого пути нет.
-        var direct = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect
-            ? DirectIpsAsync()
-            : Task.FromResult<(string?, string?)>((null, null));
+        var measure = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect;
+        var direct = measure ? DirectIpsAsync() : Task.FromResult<(string?, string?)>((null, null));
+        var directWebrtc = measure ? WebrtcAsync(CancellationToken.None) : Task.FromResult<IPEndPoint?>(null);
+
+        // Сеть «до VPN» для сравнения — только пока защиты нет: ни туннеля, ни блока.
+        var before = Volatile.Read(ref _tunnel) is null && !_blocking
+            ? Task.Run(() => (InspectNetwork(), EgressAddress(Probe4)), CancellationToken.None)
+            : null;
         IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
         var (ip, ip6) = await direct.ConfigureAwait(false);
         (_directIp, _directIp6) = (ip ?? _directIp, ip6 ?? _directIp6);
+        _directWebrtc = await directWebrtc.ConfigureAwait(false) ?? _directWebrtc;
+        if (before is not null)
+        {
+            var (snapshot, egress) = await before.ConfigureAwait(false);
+            RememberBefore(snapshot, egress);
+        }
 
         // Дальше подключение доводится до конца и при отмене вызова: поиск адреса мог остановить прежнее подключение, и
         // состояние не должно остаться «Подключением» без ядер. Все шаги ниже ограничены по времени.

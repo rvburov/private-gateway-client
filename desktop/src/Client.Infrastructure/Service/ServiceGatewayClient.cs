@@ -190,6 +190,24 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
+    public async Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return (await _client.CompareNetworkAsync(new V1.CompareNetworkRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // Ответ не по контракту.
+            return null;
+        }
+    }
+
     /// <summary>Служба без этого вызова (старая) или без связи — null; строки не по контракту пропускаются.</summary>
     public async Task<IReadOnlyList<NetworkConnection>?> ListConnectionsAsync(CancellationToken cancellationToken = default)
     {

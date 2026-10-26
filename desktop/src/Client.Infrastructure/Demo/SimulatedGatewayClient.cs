@@ -206,6 +206,28 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         }
     }
 
+    /// <summary>
+    /// До и после VPN в демо: «до» — домашний Wi-Fi с реальным адресом, «сейчас» — по состоянию имитации (под защитой —
+    /// туннель и адрес сервера); адреса — из диапазонов документации.
+    /// </summary>
+    public Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default)
+    {
+        var router = IPAddress.Parse("192.0.2.1");
+        var at = time.GetUtcNow();
+        var real = new NetworkFacts(at.AddMinutes(-12), "198.51.100.7", "2001:db8:1::7", new IPEndPoint(IPAddress.Parse("198.51.100.7"), 51820),
+            "Wi-Fi", router, [router]);
+        ConnectionStatus status;
+        lock (_gate)
+        {
+            status = _status;
+        }
+
+        var now = status is { State: ConnectionState.Connected, IsPaused: false, Exit.Ip: { } exit }
+            ? new NetworkFacts(at, exit, null, new IPEndPoint(IPAddress.Parse(exit), 40112), "Private Gateway", null, [IPAddress.Parse("172.19.0.2")])
+            : real with { TakenAt = at };
+        return Task.FromResult<NetworkComparison?>(new NetworkComparison(status.State == ConnectionState.Off ? null : real, now));
+    }
+
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
     public IReadOnlyList<JournalEntry> Journal

@@ -74,6 +74,12 @@ public interface IGatewayClient
     /// <summary>Счетчики трафика адаптеров раз в секунду, пока окно слушает; службы нет или связь оборвалась — поток кончается.</summary>
     IAsyncEnumerable<TrafficSample> WatchTrafficAsync(CancellationToken cancellationToken = default) => AsyncEnumerable.Empty<TrafficSample>();
 
+    /// <summary>
+    /// До и после VPN: «до» служба сняла при включении защиты, «сейчас» мерит по этой просьбе (адреса для сайтов, WebRTC,
+    /// маршрут, DNS). Службы нет, она старая или не ответила — null.
+    /// </summary>
+    Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default) => Task.FromResult<NetworkComparison?>(null);
+
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
 

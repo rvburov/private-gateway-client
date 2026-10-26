@@ -320,6 +320,51 @@ public static partial class ContractMapping
             [.. sample.Adapters.Select(a => new AdapterCounters(a.Name, a.Received, a.Sent))]);
     }
 
+    public static V1.NetworkComparison ToContract(this NetworkComparison comparison)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        return new V1.NetworkComparison { Before = comparison.Before?.ToContract(), Now = comparison.Now.ToContract() };
+    }
+
+    /// <summary>Сравнение от службы; «сейчас» нет — <see cref="ArgumentException"/> (ответ не по контракту).</summary>
+    public static NetworkComparison ToCore(this V1.NetworkComparison comparison)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        return new NetworkComparison(comparison.Before?.ToCore(),
+            comparison.Now?.ToCore() ?? throw new ArgumentException("Нет снимка «сейчас»", nameof(comparison)));
+    }
+
+    public static V1.NetworkFacts ToContract(this NetworkFacts facts)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        var contract = new V1.NetworkFacts
+        {
+            TakenAt = Timestamp.FromDateTimeOffset(facts.TakenAt),
+            Ipv4 = facts.Ipv4 ?? string.Empty,
+            Ipv6 = facts.Ipv6 ?? string.Empty,
+            WebrtcAddress = facts.Webrtc?.Address.ToString() ?? string.Empty,
+            WebrtcPort = facts.Webrtc?.Port ?? 0,
+            Route = facts.Route ?? string.Empty,
+            Gateway = facts.Gateway?.ToString() ?? string.Empty,
+        };
+        contract.Dns.AddRange(facts.Dns.Select(d => d.ToString()));
+        return contract;
+    }
+
+    public static NetworkFacts ToCore(this V1.NetworkFacts facts)
+    {
+        ArgumentNullException.ThrowIfNull(facts);
+        static string? Text(string value) => value.Length > 0 ? value : null;
+        return new NetworkFacts(
+            facts.TakenAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
+            Text(facts.Ipv4),
+            Text(facts.Ipv6),
+            IPAddress.TryParse(facts.WebrtcAddress, out var webrtc) && facts.WebrtcPort is >= 0 and <= IPEndPoint.MaxPort ? new IPEndPoint(webrtc, facts.WebrtcPort) : null,
+            Text(facts.Route),
+            IPAddress.TryParse(facts.Gateway, out var gateway) ? gateway : null,
+            Addresses(facts.Dns));
+    }
+
     private static List<IPAddress> Addresses(IEnumerable<string> values) =>
         [.. values.Select(v => IPAddress.TryParse(v, out var address) ? address : null).OfType<IPAddress>()];
 }
