@@ -3,6 +3,7 @@ using System.Security.Principal;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Platform.Linux;
+using PrivateGateway.Client.Platform.MacOS;
 using PrivateGateway.Client.Platform.Windows;
 using PrivateGateway.Client.Service;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -311,6 +312,95 @@ public sealed class ServiceSetupTests : IDisposable
     }
 
     [Fact]
+    public void Launchd_plist_runs_the_service_at_boot_and_restarts_it_after_a_failure()
+    {
+        LaunchdService.Plist("io.example.pg", ["/Library/Application Support/Private Gateway/Service/svc", "--owner", "501", "<&>"]).ShouldBe("""
+            <?xml version="1.0" encoding="UTF-8"?>
+            <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+            <plist version="1.0">
+            <dict>
+              <key>Label</key>
+              <string>io.example.pg</string>
+              <key>ProgramArguments</key>
+              <array>
+                <string>/Library/Application Support/Private Gateway/Service/svc</string>
+                <string>--owner</string>
+                <string>501</string>
+                <string>&lt;&amp;&gt;</string>
+              </array>
+              <key>RunAtLoad</key>
+              <true/>
+              <key>KeepAlive</key>
+              <dict>
+                <key>SuccessfulExit</key>
+                <false/>
+              </dict>
+              <key>ThrottleInterval</key>
+              <integer>5</integer>
+            </dict>
+            </plist>
+
+            """.Replace("\r\n", "\n", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Launchd_service_is_registered_loaded_reloaded_and_removed()
+    {
+        var daemons = Directory.CreateDirectory(Path.Combine(_root, "daemons")).FullName;
+        var calls = new List<string>();
+        var loaded = false;
+        var launchd = new LaunchdService(arguments =>
+        {
+            calls.Add(string.Join(' ', arguments));
+            switch (arguments[0])
+            {
+                case "print":
+                    return (loaded ? 0 : 113, loaded ? string.Empty : "Could not find service");
+                case "bootstrap":
+                    loaded = true;
+                    return (0, string.Empty);
+                case "bootout":
+                    loaded = false;
+                    return (0, string.Empty);
+                default:
+                    return (1, "?");
+            }
+        }, daemons);
+        var plist = Path.Combine(daemons, "io.example.pg.plist");
+
+        launchd.Stop("io.example.pg");
+        calls.ShouldBeEmpty("описания нет — останавливать нечего");
+        launchd.Register("io.example.pg", ["/opt/pg/svc", "--owner", "501"]);
+        calls.ShouldBeEmpty("регистрация только пишет описание");
+        launchd.Start("io.example.pg");
+        launchd.Start("io.example.pg");
+        launchd.Stop("io.example.pg");
+        launchd.Stop("io.example.pg");
+
+        calls.ShouldBe([
+            "print system/io.example.pg", $"bootstrap system {plist}",
+            "print system/io.example.pg", "bootout system/io.example.pg", $"bootstrap system {plist}",
+            "print system/io.example.pg", "bootout system/io.example.pg",
+            "print system/io.example.pg",
+        ], "загруженная — перезагружается с новым описанием; выгруженная второй раз не выгружается");
+        File.ReadAllText(plist).ShouldContain("<string>/opt/pg/svc</string>");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.GetUnixFileMode(plist).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        }
+
+        launchd.Start("io.example.pg");
+        calls.Clear();
+        launchd.Uninstall("io.example.pg");
+        calls.ShouldBe(["print system/io.example.pg", "bootout system/io.example.pg"]);
+        File.Exists(plist).ShouldBeFalse();
+
+        var failing = new LaunchdService(_ => (5, "Bootstrap failed: 5: Input/output error"), daemons);
+        failing.Register("io.example.pg", ["/opt/pg/svc"]);
+        Should.Throw<IOException>(() => failing.Start("io.example.pg")).Message.ShouldContain("Input/output error");
+    }
+
+    [Fact]
     public void Finish_deletes_only_a_service_folder()
     {
         var other = Touch("other", "notes.txt");
@@ -366,6 +456,64 @@ public sealed class ServiceSetupTests : IDisposable
         finally
         {
             WindowsServices.Uninstall(name, TimeSpan.FromSeconds(20));
+        }
+    }
+
+    [Fact]
+    public async Task Macos_service_installs_under_launchd_answers_the_window_and_uninstalls()
+    {
+        if (!OperatingSystem.IsMacOS() || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("служба macOS ставится только от root (CI)");
+            return;
+        }
+
+        var service = Path.Combine(XrayKit.Root, "artifacts", "bin", "Client.Service",
+            AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase) ? "release" : "debug",
+            Exe);
+        Assert.SkipUnless(File.Exists(service), "нет сборки службы");
+        var id = Guid.NewGuid().ToString("N")[..8];
+        var name = "io.github.rvburov.pg-test-" + id;
+        var plist = $"/Library/LaunchDaemons/{name}.plist";
+
+        // Путь сокета на macOS — не длиннее 104 байт: временная папка для него длинна.
+        var socket = $"/var/run/pg-test-{id}.sock";
+        var folder = Path.Combine(_root, "service");
+        var state = Path.Combine(_root, "service state");
+        try
+        {
+            (await Run(service, "--install", "--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", socket, "--owner", "0")).ShouldBe(0);
+
+            File.Exists(plist).ShouldBeTrue("описание службы — в /Library/LaunchDaemons");
+            File.ReadAllText(plist).ShouldContain($"<string>{state}</string>", customMessage: "папка состояния с пробелом — одним параметром");
+            File.Exists(Path.Combine(folder, Exe)).ShouldBeTrue();
+            File.Exists(Path.Combine(state, "journal.jsonl")).ShouldBeTrue("служба, которую запустил launchd, пишет журнал в папку состояния");
+            using var channel = IpcChannel.Create(socket, system: true);
+            var info = await RetryAsync(() => new V1.GatewayService.GatewayServiceClient(channel).GetServiceInfoAsync(new V1.GetServiceInfoRequest(),
+                cancellationToken: Ct).ResponseAsync);
+            info.ServiceVersion.ShouldBe(ServiceVersion.Current, "окно говорит со службой, которую запустил launchd от root");
+
+            // Поверх работающей: копия собирается рядом, работающая выгружается, новая загружается и говорит «готова».
+            (await Run(service, "--install", "--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", socket, "--owner", "0")).ShouldBe(0);
+            Directory.Exists(folder + ".old").ShouldBeFalse();
+            (await RetryAsync(() => new V1.GatewayService.GatewayServiceClient(channel).GetServiceInfoAsync(new V1.GetServiceInfoRequest(),
+                cancellationToken: Ct).ResponseAsync)).ServiceVersion.ShouldBe(ServiceVersion.Current);
+
+            (await Run(service, "--uninstall", "--service-name", name, "--install-dir", folder, "--state-dir", state)).ShouldBe(0);
+
+            File.Exists(plist).ShouldBeFalse();
+            Directory.Exists(folder).ShouldBeFalse();
+            Directory.Exists(state).ShouldBeFalse();
+        }
+        finally
+        {
+            // Упал посередине — убрать службу с машины CI.
+            if (File.Exists(plist))
+            {
+                using var bootout = Process.Start("/bin/launchctl", ["bootout", "system/" + name]);
+                await bootout.WaitForExitAsync(Ct);
+                File.Delete(plist);
+            }
         }
     }
 

@@ -9,7 +9,8 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 
 /// <summary>
 /// «Установить службу»: файл службы рядом с программой запускается с правами — на Windows через запрос
-/// UAC, на Linux через pkexec — с <c>--install --owner &lt;пользователь окна&gt;</c>. Владельца передает
+/// UAC, на Linux через pkexec, на macOS через запрос пароля администратора (osascript) — с
+/// <c>--install --owner &lt;пользователь окна&gt;</c>. Владельца передает
 /// окно: права может дать и другой администратор, а пускать служба должна того, кто ею пользуется.
 /// Потом окно ждет, пока установленная служба ответит.
 /// </summary>
@@ -27,13 +28,28 @@ public sealed class ServiceInstaller(
     public static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
 
     private const int Cancelled = 1223;
+    private const string Osascript = "/usr/bin/osascript";
     private static readonly string[] PkexecPrograms = ["/usr/bin/pkexec", "/bin/pkexec"];
+
+    // Команда собирается внутри AppleScript из argv, каждый параметр — quoted form: путь и значения в текст скрипта не
+    // подставляются, кавычки и пробелы в них ничего не ломают.
+    private static readonly string[] MacScript =
+    [
+        "on run argv",
+        "set command to \"\"",
+        "repeat with argument in argv",
+        "set command to command & quoted form of (argument as text) & \" \"",
+        "end repeat",
+        "do shell script command with administrator privileges",
+        "end run",
+    ];
 
     public bool IsAvailable => executable is not null && File.Exists(executable);
 
-    /// <summary>Установка для этого окна: Windows и Linux с pkexec, файл службы рядом с программой.</summary>
+    /// <summary>Установка для этого окна: Windows, Linux с pkexec и macOS, файл службы рядом с программой.</summary>
     public static ServiceInstaller ForThisWindow(TimeProvider time) => new(
-        OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && PkexecPrograms.Any(File.Exists)) ? UserServiceLauncher.Find(AppContext.BaseDirectory) : null,
+        OperatingSystem.IsWindows() || (OperatingSystem.IsLinux() && PkexecPrograms.Any(File.Exists)) || (OperatingSystem.IsMacOS() && File.Exists(Osascript))
+            ? UserServiceLauncher.Find(AppContext.BaseDirectory) : null,
         ElevateAsync,
         () => IpcChannel.Answers(IpcEndpoints.System, system: true, ServiceLocator.ProbeTimeout),
         time);
@@ -72,10 +88,22 @@ public sealed class ServiceInstaller(
         return ServiceInstallResult.Installed;
     }
 
+    /// <summary>Параметры osascript для запуска <paramref name="executable"/> от администратора на macOS.</summary>
+    public static IReadOnlyList<string> MacArguments(string executable, IReadOnlyList<string> arguments) =>
+        [.. MacScript.SelectMany(line => new[] { "-e", line }), executable, .. arguments];
+
     private static async Task<int?> ElevateAsync(string executable, IReadOnlyList<string> arguments)
     {
         ProcessStartInfo start;
-        if (OperatingSystem.IsWindows())
+        if (OperatingSystem.IsMacOS())
+        {
+            start = new ProcessStartInfo(Osascript) { UseShellExecute = false, RedirectStandardError = true };
+            foreach (var argument in MacArguments(executable, arguments))
+            {
+                start.ArgumentList.Add(argument);
+            }
+        }
+        else if (OperatingSystem.IsWindows())
         {
             // Запрос UAC возможен только через оболочку; аргументы — SID и ключи, без пробелов.
             start = new ProcessStartInfo(executable)
@@ -104,10 +132,12 @@ public sealed class ServiceInstaller(
                 return 1;
             }
 
+            var error = start.RedirectStandardError ? await process.StandardError.ReadToEndAsync().ConfigureAwait(false) : string.Empty;
             await process.WaitForExitAsync().ConfigureAwait(false);
 
-            // pkexec: 126 — запрос закрыт, 127 — не дали прав.
-            return !OperatingSystem.IsWindows() && process.ExitCode is 126 or 127 ? null : process.ExitCode;
+            // osascript: запрос пароля закрыт — «User canceled. (-128)»; pkexec: 126 — запрос закрыт, 127 — не дали прав.
+            return OperatingSystem.IsMacOS() ? error.Contains("(-128)", StringComparison.Ordinal) ? null : process.ExitCode
+                : !OperatingSystem.IsWindows() && process.ExitCode is 126 or 127 ? null : process.ExitCode;
         }
         catch (Win32Exception e) when (e.NativeErrorCode == Cancelled)
         {

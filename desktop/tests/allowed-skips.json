@@ -57,6 +57,13 @@
     "why": "установка службы Windows; на Windows CI идет от администратора"
   },
 
+  // Только macOS.
+  {
+    "reason": "служба macOS ставится только от root",
+    "os": ["Linux", "Windows"],
+    "why": "служба launchd; на macOS CI ставит ее шагом от root"
+  },
+
   // Только Linux: на Windows и macOS этих частей ОС нет.
   {
     "reason": "сетевые пространства есть только в Linux",

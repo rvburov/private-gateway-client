@@ -3,6 +3,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Linux;
+using PrivateGateway.Client.Platform.MacOS;
 using PrivateGateway.Client.Platform.Windows;
 
 namespace PrivateGateway.Client.Service;
@@ -67,17 +68,24 @@ public static class ServiceSetup
         ["journal.jsonl", "journal.1.jsonl", "running", "service.lock", "cores.json", "boot-block.json", "boot-connect.sealed", "update-bucket", ServiceReady.FileName,
         Updates.VersionHistory.CurrentFile, Updates.VersionHistory.PreviousFile, Updates.VersionHistory.LeftFile];
 
-    /// <summary>Имя службы: служба Windows — PrivateGateway, юнит systemd — private-gateway.</summary>
-    public static string DefaultName => OperatingSystem.IsWindows() ? "PrivateGateway" : "private-gateway";
+    /// <summary>Имя службы: служба Windows — PrivateGateway, юнит systemd — private-gateway, метка launchd — обратным доменом.</summary>
+    public static string DefaultName => OperatingSystem.IsWindows() ? "PrivateGateway"
+        : OperatingSystem.IsMacOS() ? MacLabel
+        : "private-gateway";
+
+    /// <summary>Метка службы launchd на macOS.</summary>
+    public const string MacLabel = "io.github.rvburov.private-gateway";
 
     /// <summary>Защищенная папка службы: на запись — только администраторам или root.</summary>
     public static string DefaultFolder => OperatingSystem.IsWindows()
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Private Gateway", "Service")
+        : OperatingSystem.IsMacOS() ? "/Library/Application Support/Private Gateway/Service"
         : "/opt/private-gateway/service";
 
     /// <summary>Папка состояния установленной службы: тоже только для администраторов или root, отдельно от копии службы.</summary>
     public static string DefaultStateFolder => OperatingSystem.IsWindows()
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Private Gateway", "ServiceState")
+        : OperatingSystem.IsMacOS() ? "/Library/Application Support/Private Gateway/ServiceState"
         : "/var/lib/private-gateway";
 
     private static string Executable => OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe" : "PrivateGateway.Service";
@@ -181,10 +189,11 @@ public static class ServiceSetup
         return command;
     }
 
-    /// <summary>Служба этой ОС: Windows — диспетчер служб, Linux — systemd.</summary>
+    /// <summary>Служба этой ОС: Windows — диспетчер служб, Linux — systemd, macOS — launchd.</summary>
     public static IOsService ForThisMachine() =>
         OperatingSystem.IsWindows() ? new WindowsOsService()
         : OperatingSystem.IsLinux() ? new SystemdOsService(SystemdService.ForThisMachine() ?? throw new PlatformNotSupportedException("Нет systemd"))
+        : OperatingSystem.IsMacOS() ? new LaunchdOsService(LaunchdService.ForThisMachine() ?? throw new PlatformNotSupportedException("Нет launchctl"))
         : throw new PlatformNotSupportedException("Установка службы на этой ОС еще не готова");
 
     /// <summary>Поставить службу или заменить работающую атомарно (см. описание класса).</summary>
@@ -441,6 +450,20 @@ public static class ServiceSetup
         public void StopAndWait(string name) => systemd.Stop(name);
 
         public void Remove(string name) => systemd.Uninstall(name);
+    }
+
+    /// <summary>launchd: описание в /Library/LaunchDaemons.</summary>
+    private sealed class LaunchdOsService(LaunchdService launchd) : IOsService
+    {
+        public bool IsInstalled(string name) => launchd.IsInstalled(name);
+
+        public void Register(string name, IReadOnlyList<string> command) => launchd.Register(name, command);
+
+        public void Start(string name) => launchd.Start(name);
+
+        public void StopAndWait(string name) => launchd.Stop(name);
+
+        public void Remove(string name) => launchd.Uninstall(name);
     }
 
     /// <summary>Диспетчер служб Windows.</summary>

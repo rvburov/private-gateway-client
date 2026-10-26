@@ -30,19 +30,26 @@ IPC. Упавшая служба замок не держит — его отп�
   дать и другой администратор. Другого вида владелец, имя службы или адрес IPC с пробелами в команду
   службы не попадают.
 - Служба и ядра копируются в защищенную папку — `%ProgramFiles%\Private Gateway\Service` на Windows,
-  `/opt/private-gateway/service` на Linux: только файлы службы по ее `PrivateGateway.Service.deps.json` (свои
+  `/opt/private-gateway/service` на Linux, `/Library/Application Support/Private Gateway/Service` на macOS: только файлы службы по ее `PrivateGateway.Service.deps.json` (свои
   пакеты, а у самодостаточной сборки — среда .NET и ASP.NET Core; окно с Avalonia и Skia — нет, ~108 МБ вместо 155),
   ядра — в `cores/xray` и `cores/sing-box` со всем, что рядом (геобазы, LICENSE). Служба работает от SYSTEM или
   root: из папки, куда может писать пользователь, ее не запускают никогда.
 - Состояние установленной службы (журнал, замок одной копии, блок и подключение при загрузке, номер раскатки,
   признак готовности, история версий для отката — `ServiceSetup.StateFiles`) — отдельно от копии: `%ProgramFiles%\Private Gateway\ServiceState`,
-  `/var/lib/private-gateway` (0700); команда службы получает `--state`. Состояние из прежней папки службы
+  `/var/lib/private-gateway` (0700), `/Library/Application Support/Private Gateway/ServiceState` (0700); команда
+  службы получает `--state`. Состояние из прежней папки службы
   установка переносит туда сама.
 - Windows: служба `PrivateGateway` через диспетчер служб (advapi32): запуск с ОС, от LocalSystem,
   при сбое — перезапуск через 5 с. Под диспетчером служба живет по его командам
   (`UseWindowsService`). Pipe пускает владельца по SID, SYSTEM и администраторов.
 - Linux: юнит systemd `/etc/systemd/system/private-gateway.service` (`Restart=on-failure`), включен и
   запущен.
+- macOS: служба launchd `/Library/LaunchDaemons/io.github.rvburov.private-gateway.plist` (`LaunchdService`):
+  от root, с загрузкой ОС (`RunAtLoad`), после сбоя — перезапуск не чаще раза в 5 с (`KeepAlive` с
+  `SuccessfulExit = false`, `ThrottleInterval`); `launchctl bootstrap` загружает и запускает, `bootout` —
+  останавливает и выгружает, загруженная перезагружается с новым описанием. Параметры команды — отдельными строками
+  plist, кавычки не нужны. Окно просит права через запрос пароля администратора (`osascript … with administrator
+  privileges`): путь и владелец передаются параметрами скрипта, а не текстом в нем. Сокет — `/var/run/private-gateway/ipc.sock`.
 - Установка атомарна: новая копия собирается рядом (`Service.new`), пока прежняя работает; прежняя
   останавливается и откладывается (`Service.old`), новая встает на ее место, регистрируется и запускается и
   должна сказать «готова» — служба пишет `ready` («версия номер-процесса») в папку состояния, как только IPC
