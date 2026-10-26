@@ -8,7 +8,7 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ServerFactsTest {
-    // Те же случаи, что у десктопа (ServerListTests.Summary_names_what_distinguishes_the_server).
+    // Случаи десктопа (ServerListTests.Summary_names_what_distinguishes_the_server) и VMess с TLS.
     @ParameterizedTest
     @CsvSource(
         "Vless, Reality, Tcp, VLESS · REALITY",
@@ -23,6 +23,8 @@ class ServerFactsTest {
         "Tuic, Tls, Quic, TUIC v5",
         "WireGuard, None, Udp, WireGuard",
         "Vmess, None, HttpUpgrade, VMess · HTTPUpgrade",
+        // TLS пишется у протоколов, которые бывают и без него: VLESS и VMess, но не Trojan.
+        "Vmess, Tls, Tcp, VMess · TLS",
     )
     fun `summary names what distinguishes the server`(protocol: ProxyProtocol, security: TransportSecurity, transport: TransportKind, expected: String) {
         assertEquals(expected, ServerFacts.summary(protocol, security, transport))

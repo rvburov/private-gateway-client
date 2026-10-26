@@ -67,3 +67,7 @@
 | YamlDotNet | MIT | разбор YAML Clash/Mihomo — только события разборщика (`YamlTree`) |
 | ZXing.Net | Apache-2.0 | QR-код: распознавание картинки при импорте и рисование для «Поделиться» |
 | Tmds.DBus.Protocol | MIT | уведомления Linux по D-Bus (`FreedesktopNotifier`); пакет и так приходит с Avalonia.FreeDesktop — та же версия 0.94.1, код не переносится |
+| libXray (XTLS) | MIT | ядро Android: `XTLS/libXray`, коммит `756ef80f41903eaf7bbeeb38a0a1f802ec204464` (23.10.2026, `android/libxray.version`), .aar собирает `scripts/get-libxray.sh` (gomobile) в CI; код не переносится — вызываются `LibXray.invoke` (apiVersion 3), `registerDialerController`, `setDNS`/`resetDNS` по README и `android_wrapper.go` этого коммита; внутри — Xray-core (MPL-2.0) версии из его go.mod |
+| snakeyaml-engine | Apache-2.0 | разбор YAML Clash/Mihomo на Android (`YamlTree` общего модуля) — только события разборщика, с пределами глубины и числа узлов, как у десктопа |
+| AndroidX, Jetpack Compose, Room, DataStore, Hilt (Dagger), Kotlin, kotlinx.coroutines | Apache-2.0 | приложение Android: библиотеки из Google Maven и Maven Central, версии — `android/gradle/libs.versions.toml`; код не переносится |
+| Robolectric, JUnit | MIT, EPL-1.0/EPL-2.0 | тесты Android без устройства — только в тестах, в приложение не входят |

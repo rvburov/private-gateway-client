@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # Ядро Xray для Android: libXray (XTLS, MIT) — Xray-core в .aar через gomobile. Коммит libXray — из
-# shared/cores/libxray.version, версия Xray-core и всех модулей Go — из go.mod и go.sum этого коммита (go сверяет суммы
+# android/libxray.version, версия Xray-core и всех модулей Go — из go.mod и go.sum этого коммита (go сверяет суммы
 # при загрузке). Нужны git, go и Android NDK: ANDROID_NDK_HOME или ANDROID_NDK_LATEST_HOME (GitHub Actions).
 # Результат — android/app/libs/libXray.aar (в git не хранится). Запуск: scripts/get-libxray.sh
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
-commit=$(tr -d '[:space:]' < "$root/shared/cores/libxray.version")
+commit=$(tr -d '[:space:]' < "$root/android/libxray.version")
 dest="$root/android/app/libs"
 
 command -v go > /dev/null || { echo "Нет go — libXray не собрать" >&2; exit 1; }

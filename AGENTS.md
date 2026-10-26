@@ -135,6 +135,9 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
   тесту блока при обрыве — еще `nft`, тесту покрытия — `git`, `getent` и `setpriv`; правила и TUN ставятся только в своем сетевом пространстве;
   без сборок и прав эти тесты пропускаются), дальше
   `Integration`, `Security` — по мере появления кода;
+- `android/` — приложение Android ([docs/architecture/android.md](docs/architecture/android.md)): `core` — общий
+  модуль на чистом Kotlin (разбор, конфиг ядра), `build-logic` — тема и тексты из `shared/specifications` при сборке,
+  `app` — Compose, VpnService, хранилище; ядро libXray собирает `scripts/get-libxray.sh` (нужны go и NDK);
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
@@ -177,6 +180,12 @@ scripts/soak.sh 30                                     # долгий прого
 dotnet format PrivateGateway.slnx                      # стиль и формат по .editorconfig (CI — с --verify-no-changes)
 dotnet test --solution PrivateGateway.slnx --results-directory artifacts/test-results --report-ctrf
 dotnet run scripts/test-report.cs artifacts/test-results   # итог и пропуски по причинам, как в CI
+```
+
+```bash
+android/gradlew -p android/core test                   # общий модуль Android — нужен только JDK 17+
+android/gradlew -p android/build-logic test            # генераторы темы и текстов
+android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug   # приложение: SDK Android и libXray
 ```
 
 - **Тесты гонять всегда.** По ходу работы — `Unit`, перед коммитом — все. В отчете — числа

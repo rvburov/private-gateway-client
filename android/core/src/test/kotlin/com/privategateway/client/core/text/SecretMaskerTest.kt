@@ -54,6 +54,8 @@ class SecretMaskerTest {
             "/home/user/private-gateway-client/artifacts/bin/service",
             "служба запущена, ядро xray 25.10.15 готово",
             "0123456789abcdef0123456789abcdef0123456789abcdef",
+            // Путь с цифрами и заглавными буквами похож на ключ, но начинается с «/».
+            "журнал /Volumes/Backup2024/PrivateGatewayClient записан",
         ],
     )
     fun `ordinary text paths and hashes are not touched`(text: String) {

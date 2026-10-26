@@ -212,7 +212,7 @@ artifacts/    # ignored
 трассировка, RIPEstat и TLS через туннель на вашей машине — проверка вручную на этапе 11.
 
 ## 13. Этап 9 — Android
-- [ ] Kotlin/Compose, Android VpnService, совместимое сетевое ядро.
+- [ ] Kotlin/Compose, Android VpnService, совместимое сетевое ядро. — 2026-10-26: проект `android/` ([docs/architecture/android.md](docs/architecture/android.md), решения 392–402): общий модуль на чистом Kotlin (разбор ссылок и подписок на эталонах `shared/testdata`, конфиг Xray с входом TUN по дескриптору карты, план туннеля, подписи, маскирование — те же правила и случаи, что у десктопа); тема, иконки и тексты RU/EN — из `shared/specifications` плагином сборки; Compose по доске 25 (главная, островок с кнопкой-щитом, серверы, добавление из буфера и текста, проверка, настройки); туннель — `VpnService` с ядром libXray (`scripts/get-libxray.sh`, коммит в `android/libxray.version`), серверы в Room, ссылка с ключом — запечатана ключом Android Keystore; задание CI «Android» — APK, тесты Robolectric и Lint. Осталось: туннель на эмуляторе или телефоне — пункт «Тесты на эмуляторах»; переход на AGP 9 и Kotlin 2.4 (решение 392).
 - [ ] Подписки, QR, серверы, ручной выбор, DNS, уведомления, фоновая работа.
 - [ ] Always-on VPN и Block connections without VPN где поддерживается.
 - [ ] Тесты на эмуляторах и устройствах, смена сети/сон/энергосбережение.
@@ -228,6 +228,8 @@ artifacts/    # ignored
 
 ## 15. Этап 11 — стабилизация и выпуск
 - [ ] Регрессия всех платформ/протоколов, chaos/network tests, утечки, обновления.
+- [ ] Тест `ReconnectTests.Network_change_checks_the_server_at_once…` один раз (2026-10-26, Windows CI, коммит fca915d) не дождался состояния — остался в «Переподключении»; следующий прогон прошел. Тест теперь печатает журнал службы — при повторе разобрать по нему.
+- [ ] Android: экран «Лицензии открытых компонентов» (libXray и Xray-core, AndroidX, Compose, Room, Dagger, snakeyaml-engine) и уведомления в APK — как `shared/licenses/components.json` десктопа.
 - [ ] Performance, CPU/RAM/battery, доступность UI, локализация.
 - [ ] Security review, лицензии, SBOM, privacy, документация, инструкции, changelog; подписи — по разделу «Отложено», если к выпуску решено.
 - [ ] Релизный чеклист и план поддержки/реагирования на инциденты.

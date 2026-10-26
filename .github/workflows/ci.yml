@@ -155,13 +155,13 @@ jobs:
           android/gradlew -p android/core test
           android/gradlew -p android/build-logic test
 
-      # Ядро — libXray из исходников закрепленного коммита (shared/cores/libxray.version) через gomobile; NDK — с машины CI.
+      # Ядро — libXray из исходников закрепленного коммита (android/libxray.version) через gomobile; NDK — с машины CI.
       # Готовый .aar кешируется по коммиту и скрипту: сборка всех четырех ABI идет минуты.
       - id: libxray
         uses: actions/cache@v4
         with:
           path: android/app/libs/libXray.aar
-          key: libxray-${{ hashFiles('shared/cores/libxray.version', 'scripts/get-libxray.sh') }}
+          key: libxray-${{ hashFiles('android/libxray.version', 'scripts/get-libxray.sh') }}
 
       - if: steps.libxray.outputs.cache-hit != 'true'
         uses: actions/setup-go@v5
