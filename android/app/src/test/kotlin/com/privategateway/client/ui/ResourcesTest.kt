@@ -58,11 +58,11 @@ class ResourcesTest {
 
     /** Текст ресурса в записи общих файлов: «%1$s» → «{0}», «%%» → «%» (у строк с подстановками). */
     private fun shared(text: String): String {
-        val placeholder = Regex("""%(\d+)\$s""")
+        val placeholder = Regex("""%(\d+)\${'$'}s""")
         if (!placeholder.containsMatchIn(text)) {
             return text
         }
 
-        return Regex("""%(\d+)\$s|%%""").replace(text) { if (it.value == "%%") "%" else "{${it.groupValues[1].toInt() - 1}}" }
+        return Regex("""%(\d+)\${'$'}s|%%""").replace(text) { if (it.value == "%%") "%" else "{${it.groupValues[1].toInt() - 1}}" }
     }
 }
