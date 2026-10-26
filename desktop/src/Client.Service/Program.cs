@@ -11,23 +11,26 @@ if (args.Contains("--version"))
     return 0;
 }
 
-// --install --owner <SID или uid> — поставить службу (от администратора или root): копия в защищенную папку и запуск с ОС;
-// --uninstall — удалить ее и снять блок при обрыве. --service-name, --install-dir — для тестов.
+// --install --owner <SID или uid> — поставить службу (от администратора или root): копия в защищенную папку и запуск с ОС,
+// поверх работающей — атомарно, с возвратом прежней, если новая не запустилась; --uninstall — удалить ее, ее состояние и
+// снять блок при обрыве. --service-name, --install-dir, --state-dir — для тестов.
 if (args.Contains("--install") || args.Contains("--uninstall"))
 {
     var name = Option("--service-name") ?? ServiceSetup.DefaultName;
     var folder = Option("--install-dir") ?? ServiceSetup.DefaultFolder;
+    var stateDir = Option("--state-dir") ?? ServiceSetup.DefaultStateFolder;
     try
     {
         if (args.Contains("--uninstall"))
         {
-            ServiceSetup.Uninstall(name, folder, ServiceHost.KillSwitch());
+            ServiceSetup.Uninstall(name, folder, stateDir, ServiceHost.KillSwitch(), ServiceSetup.ForThisMachine());
             Console.WriteLine($"Служба {name} удалена");
             return 0;
         }
 
-        ServiceSetup.Install(new SetupOptions(name, folder, Option("--owner") ?? string.Empty, Option("--ipc")), AppContext.BaseDirectory,
-            Option("--xray") ?? ServiceHost.DefaultXray(), Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory));
+        ServiceSetup.Install(new SetupOptions(name, folder, Option("--owner") ?? string.Empty, Option("--ipc"), stateDir), AppContext.BaseDirectory,
+            Option("--xray") ?? ServiceHost.DefaultXray(), Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory),
+            ServiceSetup.ForThisMachine());
         Console.WriteLine($"Служба {name} установлена в {folder} и запущена");
         return 0;
     }
@@ -124,6 +127,10 @@ if (int.TryParse(Option("--parent"), out var parent))
         return app.StopAsync();
     });
 }
+
+// Готовность — для установки, которая ждет новую копию (ServiceReady): IPC слушает.
+app.Lifetime.ApplicationStarted.Register(() => ServiceReady.Mark(state, ServiceVersion.Current));
+app.Lifetime.ApplicationStopping.Register(() => ServiceReady.Clear(state));
 
 // Защита была включена, когда машина выключилась: подключиться самой, не дожидаясь входа пользователя.
 _ = gateway.ConnectAtBootAsync();

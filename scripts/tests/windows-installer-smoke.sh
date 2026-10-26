@@ -1,9 +1,12 @@
 #!/bin/bash
 #
-# Установка и удаление MSI на машине (CI, Windows, Git Bash от администратора): программа в Program Files, ярлык в меню
-# «Пуск», запись в «Установленных приложениях», служба поставлена для того, кто ставил, и работает; удаление убирает
-# службу, ее папку, файлы программы и ярлык, а чужой файл в папке программы и данные пользователя не трогает. На
-# компьютере пользователя не запускать — ставит службу:
+# Установка, обновление, откат и удаление MSI на машине (CI, Windows, Git Bash от администратора): программа в Program
+# Files, ярлык в меню «Пуск», запись в «Установленных приложениях», служба поставлена для того, кто ставил, без файлов
+# окна, с состоянием в своей папке, и работает. Обновление (тот же выпуск в MSI с версией выше) заменяет службу и
+# сохраняет ее состояние; неудачное обновление (неверный владелец) откатывается к прежней версии с работающей службой;
+# новая копия службы, которая не запускается, сменяется прежней. Удаление убирает службу, ее папки, файлы программы и
+# ярлык, а чужой файл в папке программы и данные пользователя не трогает. На компьютере пользователя не запускать —
+# ставит службу:
 #
 #   scripts/tests/windows-installer-smoke.sh <версия>
 set -euo pipefail
@@ -22,13 +25,26 @@ fail() {
   exit 1
 }
 
-# msiexec: bash ждет конца установки; при ошибке — хвост журнала установщика.
+# msiexec: bash ждет конца установки; при ошибке — хвост журнала установщика. msi_run <i|x> [файл] [свойства…]
 msi_run() {
-  local log="artifacts/msi-$1.log"
-  msiexec "/$1" "$(cygpath -w "$msi")" /qn /norestart /l*v "$(cygpath -w "$log")" || {
+  local action=$1 file=${2:-$msi} log="artifacts/msi-$1-$RANDOM.log"
+  shift $(( $# < 2 ? $# : 2 ))
+  msiexec "/$action" "$(cygpath -w "$file")" /qn /norestart /l*v "$(cygpath -w "$log")" "$@" || {
     iconv -f UTF-16LE -t UTF-8 "$log" 2> /dev/null | tail -60 || tail -60 "$log"
-    fail "msiexec /$1 закончился с ошибкой"
+    fail "msiexec /$action $file закончился с ошибкой"
   }
+}
+
+running() {
+  for _ in $(seq 1 100); do
+    sc query PrivateGateway | grep -q RUNNING && return 0
+    sleep 0.2
+  done
+  return 1
+}
+
+installed_version() {
+  reg query 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' /s /f 'Private Gateway' /d | sed -n 's/.*DisplayVersion *REG_SZ *//p' | tr -d '\r'
 }
 
 mkdir -p "$data"
@@ -43,22 +59,57 @@ done
 reg query 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' /s /f 'Private Gateway' /d | grep -q DisplayName \
   || fail "нет записи в «Установленных приложениях»"
 [ "$("$program/Service/PrivateGateway.Service.exe" --version)" = "Private Gateway Service $version (IPC v1)" ] || fail "служба — не $version"
-for _ in $(seq 1 50); do
-  sc query PrivateGateway | grep -q RUNNING && break
-  sleep 0.2
-done
-sc query PrivateGateway | grep -q RUNNING || fail "служба PrivateGateway не работает: $(sc query PrivateGateway)"
+running || fail "служба PrivateGateway не работает: $(sc query PrivateGateway)"
 sc qc PrivateGateway | grep -q 'Private Gateway\\Service\\PrivateGateway.Service.exe" --service-name PrivateGateway --owner S-1-5-' \
   || fail "служба запускается не из папки службы или без владельца: $(sc qc PrivateGateway)"
+sc qc PrivateGateway | grep -q -- '--state "C:\\Program Files\\Private Gateway\\ServiceState"' || fail "у службы нет папки состояния: $(sc qc PrivateGateway)"
+[ ! -e "$program/Service/PrivateGateway.exe" ] && [ ! -e "$program/Service/libSkiaSharp.dll" ] || fail "служба возит с собой окно"
+for _ in $(seq 1 50); do [ -f "$program/ServiceState/journal.jsonl" ] && break; sleep 0.2; done
+[ -f "$program/ServiceState/journal.jsonl" ] || fail "служба не пишет журнал в папку состояния"
+echo keep > "$program/ServiceState/update-bucket"
+owner=$(sc qc PrivateGateway | grep -o -- '--owner S-1-5-[0-9-]*')
+msi_version=$(installed_version)
+
+# Обновление: та же сборка в MSI с версией выше — служба заменяется и снова работает, ее состояние на месте.
+IFS=. read -r major minor patch <<< "${version%%-*}"
+newer=$(scripts/package-windows.sh "$version" "$major.$minor.$((patch + 1))" | tail -n 1)
+msi_run i "$newer"
+[ "$(installed_version)" = "$major.$minor.$((patch + 1))" ] || fail "после обновления версия $(installed_version)"
+running || fail "после обновления служба не работает: $(sc query PrivateGateway)"
+[ "$(cat "$program/ServiceState/update-bucket")" = keep ] || fail "обновление потеряло состояние службы"
+[ ! -e "$program/Service.old" ] && [ ! -e "$program/Service.new" ] || fail "после обновления остались папки Service.old/.new"
+
+# Неудачное обновление: служба не ставится (владелец — не SID) — MSI откатывается, прежняя версия и служба на месте.
+newest=$(scripts/package-windows.sh "$version" "$major.$minor.$((patch + 2))" | tail -n 1)
+if msiexec /i "$(cygpath -w "$newest")" /qn /norestart OWNER=1000 /l*v "$(cygpath -w artifacts/msi-failed.log)"; then
+  fail "обновление с неверным владельцем прошло"
+fi
+[ "$(installed_version)" = "$major.$minor.$((patch + 1))" ] || fail "после отката версия $(installed_version), а не прежняя"
+running || fail "после отката служба не работает: $(sc query PrivateGateway)"
+sc qc PrivateGateway | grep -q -- "$owner" || fail "после отката у службы другой владелец"
+[ -f "$program/PrivateGateway.exe" ] || fail "после отката нет окна"
+
+# Новая копия службы не запускается (нет нужной библиотеки) — установка возвращает прежнюю и отвечает ошибкой.
+broken=$(mktemp -d)
+cp -r "$program/." "$broken/"
+rm -f "$broken/Grpc.AspNetCore.Server.dll"
+if "$broken/PrivateGateway.Service.exe" --install ${owner}; then
+  fail "установка службы, которая не запускается, прошла"
+fi
+rm -rf "$broken"
+running || fail "после неудачной замены служба не работает"
+[ -f "$program/Service/Grpc.AspNetCore.Server.dll" ] || fail "после неудачной замены на месте не прежняя копия"
+[ ! -e "$program/Service.old" ] && [ ! -e "$program/Service.new" ] || fail "после отката остались папки Service.old/.new"
 
 echo mine > "$program/user-notes.txt"
-msi_run x
+msi_run x "$newer"
 ! sc query PrivateGateway > /dev/null 2>&1 || fail "после удаления осталась служба"
 [ ! -e "$program/Service" ] || fail "после удаления осталась папка службы"
+[ ! -e "$program/ServiceState" ] || fail "после удаления осталось состояние службы"
 [ ! -e "$program/PrivateGateway.exe" ] || fail "после удаления осталось окно"
 [ ! -e "$shortcut" ] || fail "после удаления остался ярлык"
 [ "$(cat "$program/user-notes.txt")" = mine ] || fail "удаление тронуло чужой файл в папке программы"
 [ "$(cat "$data/marker")" = keep ] || fail "удаление тронуло данные пользователя"
 rm -f "$program/user-notes.txt"
 rmdir "$program"
-echo "Установщик $msi ставит и удаляет начисто"
+echo "Установщик $msi ставит, обновляет, откатывается и удаляет начисто (была версия $msi_version)"

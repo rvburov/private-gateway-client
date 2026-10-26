@@ -26,6 +26,7 @@ public static class WindowsServices
     private const int ServiceDoesNotExist = 1060;
     private const int ServiceNotActive = 1062;
     private const int ServiceAlreadyRunning = 1056;
+    private const int CannotAcceptControl = 1061;
 
     public static bool IsInstalled(string name)
     {
@@ -66,7 +67,10 @@ public static class WindowsServices
         }
     }
 
-    /// <summary>Остановить и дождаться остановки (не дольше <paramref name="timeout"/>); не работает — ничего.</summary>
+    /// <summary>
+    /// Остановить и дождаться остановки (не дольше <paramref name="timeout"/>); не работает — ничего. Служба, которая
+    /// как раз запускается (диспетчер перезапускает упавшую), команду остановки не примет — попытки до срока.
+    /// </summary>
     public static void Stop(string name, TimeSpan timeout)
     {
         using var manager = Manager();
@@ -76,12 +80,17 @@ public static class WindowsServices
             return;
         }
 
-        if (!ControlService(service, ControlStop, out _) && Marshal.GetLastWin32Error() != ServiceNotActive)
+        var deadline = DateTime.UtcNow + timeout;
+        while (!ControlService(service, ControlStop, out _) && Marshal.GetLastWin32Error() is var error && error != ServiceNotActive)
         {
-            throw new Win32Exception();
+            if (error != CannotAcceptControl || DateTime.UtcNow >= deadline)
+            {
+                throw new Win32Exception(error);
+            }
+
+            Thread.Sleep(200);
         }
 
-        var deadline = DateTime.UtcNow + timeout;
         while (QueryServiceStatus(service, out var status) && status.CurrentState != Stopped && DateTime.UtcNow < deadline)
         {
             Thread.Sleep(200);

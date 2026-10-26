@@ -64,11 +64,6 @@
     "why": "туннель, nftables и блок при обрыве Linux проверяются в своих сетевых пространствах"
   },
   {
-    "reason": "systemd — только Linux",
-    "os": ["Windows", "macOS"],
-    "why": "установка службы Linux"
-  },
-  {
     "reason": "нужен dbus-daemon (Linux)",
     "os": ["Windows", "macOS"],
     "why": "уведомления Linux по D-Bus"

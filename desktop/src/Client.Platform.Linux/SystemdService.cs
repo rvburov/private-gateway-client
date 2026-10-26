@@ -51,8 +51,8 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
 
     public bool IsInstalled(string name) => File.Exists(UnitPath(name));
 
-    /// <summary>Записать юнит (права 0644), перечитать, включить и запустить; уже был — перезапустить с новым.</summary>
-    public void Install(string name, string description, IReadOnlyList<string> command)
+    /// <summary>Записать юнит (права 0644), перечитать и включить запуск с ОС; не запускает.</summary>
+    public void Register(string name, string description, IReadOnlyList<string> command)
     {
         var path = UnitPath(name);
         File.WriteAllText(path, Unit(description, command));
@@ -63,7 +63,17 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
 
         systemctl(["daemon-reload"]);
         systemctl(["enable", name + ".service"]);
-        systemctl(["restart", name + ".service"]);
+    }
+
+    public void Start(string name) => systemctl(["start", name + ".service"]);
+
+    /// <summary>Остановить (systemctl ждет конца остановки); юнита нет — ничего.</summary>
+    public void Stop(string name)
+    {
+        if (File.Exists(UnitPath(name)))
+        {
+            systemctl(["stop", name + ".service"]);
+        }
     }
 
     /// <summary>Остановить, выключить и удалить юнит; его нет — ничего.</summary>

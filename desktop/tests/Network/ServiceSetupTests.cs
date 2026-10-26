@@ -10,9 +10,10 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
-/// Установка службы: копия в защищенную папку, команда запуска с владельцем, юнит systemd (с подделкой
-/// systemctl), удаление со снятием блока. На Windows с правами администратора (CI) — настоящая служба
-/// Windows с тестовым именем и своим адресом IPC: ставится, отвечает окну и удаляется.
+/// Установка службы: копия в защищенную папку (только файлы службы), команда запуска с владельцем и папкой состояния,
+/// атомарная замена работающей службы с возвратом прежней (служба ОС — подделка), юнит systemd (с подделкой systemctl),
+/// удаление со снятием блока и состояния. На Windows с правами администратора (CI) — настоящая служба Windows с тестовым
+/// именем и своим адресом IPC: ставится, ставится поверх, отвечает окну и удаляется.
 /// </summary>
 [Collection(WfpSerial.Name)]
 public sealed class ServiceSetupTests : IDisposable
@@ -66,13 +67,167 @@ public sealed class ServiceSetupTests : IDisposable
     }
 
     [Fact]
-    public void Command_runs_the_installed_copy_for_its_owner()
+    public void Copy_takes_only_the_service_files_named_in_its_deps_json()
+    {
+        // Как самодостаточная сборка выпуска: окно и служба в одной папке, у службы свой deps.json.
+        var build = Touch("build", Exe, "PrivateGateway.Service.dll", "PrivateGateway.Service.deps.json", "PrivateGateway.Service.runtimeconfig.json",
+            "Grpc.Core.Api.dll", "libSystem.Native.so", "PrivateGateway.dll", "Avalonia.Base.dll", "libSkiaSharp.so");
+        Touch(Path.Combine("build", "ru"), "Grpc.Core.Api.resources.dll");
+        File.WriteAllText(Path.Combine(build, "PrivateGateway.Service.deps.json"), """
+            { "targets": { ".NETCoreApp,Version=v10.0/linux-x64": {
+                "Grpc.Core.Api/2.71.0": { "runtime": { "lib/net8.0/Grpc.Core.Api.dll": {} },
+                                          "resources": { "lib/net8.0/ru/Grpc.Core.Api.resources.dll": { "locale": "ru" } } },
+                "runtimepack.Microsoft.NETCore.App.Runtime.linux-x64/10.0.0": { "native": { "libSystem.Native.so": {} } },
+                "Grpc.Tools/2.71.0": { "runtime": { "lib/net8.0/Missing.In.Folder.dll": {} } } } } }
+            """);
+
+        ServiceSetup.Copy(build, null, null, Path.Combine(_root, "installed"));
+
+        Files(Path.Combine(_root, "installed")).ShouldBe(new[]
+        {
+            Exe, "Grpc.Core.Api.dll", "PrivateGateway.Service.deps.json", "PrivateGateway.Service.dll", "PrivateGateway.Service.runtimeconfig.json",
+            "libSystem.Native.so", Path.Combine("ru", "Grpc.Core.Api.resources.dll"),
+        }.Order(StringComparer.Ordinal).ToList(), customMessage: "окно (PrivateGateway.dll, Avalonia, Skia) служба не возит");
+    }
+
+    [Fact]
+    public void Command_runs_the_installed_copy_for_its_owner_with_its_state_folder()
     {
         var folder = Path.Combine(_root, "svc");
+        var state = Path.Combine(_root, "state");
 
-        ServiceSetup.Command(new SetupOptions("pg-test", folder, "1000")).ShouldBe([Path.Combine(folder, Exe), "--service-name", "pg-test", "--owner", "1000"]);
-        ServiceSetup.Command(new SetupOptions("pg-test", folder, "1000", "pg.sock"))
-            .ShouldBe([Path.Combine(folder, Exe), "--service-name", "pg-test", "--owner", "1000", "--ipc", "pg.sock"]);
+        ServiceSetup.Command(new SetupOptions("pg-test", folder, "1000", State: state))
+            .ShouldBe([Path.Combine(folder, Exe), "--service-name", "pg-test", "--owner", "1000", "--state", state]);
+        ServiceSetup.Command(new SetupOptions("pg-test", folder, "1000", "pg.sock", state))
+            .ShouldBe([Path.Combine(folder, Exe), "--service-name", "pg-test", "--owner", "1000", "--state", state, "--ipc", "pg.sock"]);
+        new SetupOptions("pg-test", folder, "1000").StateFolder.ShouldBe(ServiceSetup.DefaultStateFolder);
+    }
+
+    [Fact]
+    public void First_install_copies_registers_and_waits_until_the_service_is_ready()
+    {
+        var options = Options();
+        var os = new FakeOs(options.StateFolder, works: _ => true);
+
+        ServiceSetup.Install(options, Touch("build", Exe), null, null, os, TimeSpan.FromSeconds(5));
+
+        os.Calls.ShouldBe(["stop", "register", "start"]);
+        os.Command!.TakeLast(2).ShouldBe(["--state", options.StateFolder]);
+        File.Exists(Path.Combine(options.Folder, Exe)).ShouldBeTrue();
+        Directory.Exists(options.Folder + ".new").ShouldBeFalse();
+        Directory.Exists(options.Folder + ".old").ShouldBeFalse();
+        if (!OperatingSystem.IsWindows())
+        {
+            File.GetUnixFileMode(options.StateFolder).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute, "состояние — только для root");
+            File.GetUnixFileMode(Path.Combine(options.Folder, Exe)).HasFlag(UnixFileMode.UserExecute).ShouldBeTrue();
+        }
+    }
+
+    [Fact]
+    public void Update_replaces_the_running_copy_and_moves_its_state_out_of_it()
+    {
+        var options = Options();
+        var old = Old(options, "journal.jsonl", "boot-block.json");
+        var os = new FakeOs(options.StateFolder, works: _ => true) { Installed = true };
+
+        ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(5));
+
+        File.ReadAllText(Path.Combine(options.Folder, Exe)).ShouldBe("новая");
+        os.Calls.ShouldBe(["stop", "register", "start"], "прежняя служба работала, пока собиралась новая копия, и остановлена только перед заменой");
+        File.ReadAllText(Path.Combine(options.StateFolder, "boot-block.json")).ShouldBe("boot-block.json", "блок при загрузке пережил обновление");
+        File.Exists(Path.Combine(options.StateFolder, "journal.jsonl")).ShouldBeTrue();
+        Directory.Exists(old + ".old").ShouldBeFalse("прежняя копия убрана после того, как новая сказала «готова»");
+    }
+
+    [Fact]
+    public void Update_that_does_not_start_brings_the_previous_service_back()
+    {
+        var options = Options();
+        Old(options, "boot-block.json");
+        Directory.CreateDirectory(options.StateFolder);
+        ServiceReady.Mark(options.StateFolder, ServiceVersion.Current);
+        var os = new FakeOs(options.StateFolder, works: exe => File.ReadAllText(exe) == "прежняя") { Installed = true };
+
+        var failure = Should.Throw<IOException>(() => ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(1)));
+
+        failure.Message.ShouldContain("работает прежняя", customMessage: "готовность прежней службы той же версии — не готовность новой");
+        File.ReadAllText(Path.Combine(options.Folder, Exe)).ShouldBe("прежняя", "на месте прежняя копия");
+        os.Calls.ShouldBe(["stop", "register", "start", "stop", "register", "start"]);
+        File.ReadAllText(Path.Combine(options.StateFolder, ServiceReady.FileName)).ShouldStartWith(ServiceVersion.Current + " ", customMessage: "прежняя запущена и готова");
+        Directory.Exists(options.Folder + ".old").ShouldBeFalse();
+        Directory.Exists(options.Folder + ".new").ShouldBeFalse();
+        File.Exists(Path.Combine(options.StateFolder, "boot-block.json")).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void First_install_that_does_not_start_leaves_nothing_registered()
+    {
+        var options = Options();
+        var os = new FakeOs(options.StateFolder, works: _ => false);
+
+        Should.Throw<IOException>(() => ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(1)))
+            .Message.ShouldBe("служба не запустилась");
+
+        os.Calls[^1].ShouldBe("remove");
+        Directory.Exists(options.Folder).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Leftovers_of_an_interrupted_install_are_cleared_but_foreign_folders_are_not()
+    {
+        var options = Options();
+        Old(options);
+        Touch("opt.new", Exe);
+        var foreign = Touch("opt.old", "notes.txt");
+        var os = new FakeOs(options.StateFolder, works: _ => true) { Installed = true };
+
+        Should.Throw<IOException>(() => ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(5)),
+            "чужая папка на месте .old — установка не удаляет и не затирает ее");
+        File.Exists(Path.Combine(foreign, "notes.txt")).ShouldBeTrue();
+        os.Calls.ShouldBeEmpty("работающая служба не остановлена");
+        File.ReadAllText(Path.Combine(options.Folder, Exe)).ShouldBe("прежняя");
+
+        Directory.Delete(foreign, recursive: true);
+        ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(5));
+        File.ReadAllText(Path.Combine(options.Folder, Exe)).ShouldBe("новая");
+    }
+
+    [Fact]
+    public void Uninstall_takes_the_service_its_copy_its_state_and_the_block_away()
+    {
+        var options = Options();
+        Old(options);
+        Directory.CreateDirectory(options.StateFolder);
+        foreach (var file in new[] { "journal.jsonl", "boot-connect.sealed", "update-bucket", "notes.txt" })
+        {
+            File.WriteAllText(Path.Combine(options.StateFolder, file), file);
+        }
+
+        var os = new FakeOs(options.StateFolder, works: _ => true) { Installed = true };
+        var killSwitch = new FakeKillSwitch();
+
+        ServiceSetup.Uninstall(options.Name, options.Folder, options.StateFolder, killSwitch, os);
+
+        os.Calls.ShouldBe(["remove"]);
+        (Directory.Exists(options.Folder), killSwitch.Disabled).ShouldBe((false, true));
+        Directory.GetFiles(options.StateFolder).Select(Path.GetFileName).ShouldBe(["notes.txt"], "свое состояние удалено (и запечатанное подключение), чужой файл — нет");
+        File.Delete(Path.Combine(options.StateFolder, "notes.txt"));
+        ServiceSetup.DeleteState(options.StateFolder);
+        Directory.Exists(options.StateFolder).ShouldBeFalse("пустая папка состояния — тоже");
+    }
+
+    [Fact]
+    public void Ready_mark_tells_the_version_and_is_cleared()
+    {
+        var state = Directory.CreateDirectory(Path.Combine(_root, "ready")).FullName;
+
+        ServiceReady.Wait(state, "0.2.0", TimeSpan.Zero).ShouldBeFalse();
+        ServiceReady.Mark(state, "0.1.0");
+        ServiceReady.Wait(state, "0.2.0", TimeSpan.FromMilliseconds(300)).ShouldBeFalse("готова прежняя, а ждут новую");
+        ServiceReady.Mark(state, "0.2.0");
+        ServiceReady.Wait(state, "0.2.0", TimeSpan.Zero).ShouldBeTrue();
+        ServiceReady.Clear(state);
+        ServiceReady.Wait(state, "0.2.0", TimeSpan.Zero).ShouldBeFalse();
     }
 
     [Fact]
@@ -91,8 +246,13 @@ public sealed class ServiceSetupTests : IDisposable
 
         ServiceSetup.IsValidOwner("1000 --xray /tmp/evil").ShouldBeFalse("в команду службы чужие параметры не попадут");
         ServiceSetup.IsValidOwner(string.Empty).ShouldBeFalse();
-        Should.Throw<ArgumentException>(() => ServiceSetup.Install(new SetupOptions("pg test", _root, "1000"), _root, null, null,
-            new SystemdService(_ => { }, _root)), "имя службы с пробелом");
+        var owner = OperatingSystem.IsWindows() ? WindowsIdentity.GetCurrent().User!.Value : "1000";
+        var os = new FakeOs(_root, works: _ => true);
+        Should.Throw<ArgumentException>(() => ServiceSetup.Install(new SetupOptions("pg test", _root, owner, State: _root), _root, null, null, os),
+            "имя службы с пробелом");
+        Should.Throw<ArgumentException>(() => ServiceSetup.Install(new SetupOptions("pg-test", _root, owner, State: "state"), _root, null, null, os),
+            "папка состояния — только полный путь");
+        os.Calls.ShouldBeEmpty();
     }
 
     [Fact]
@@ -117,39 +277,29 @@ public sealed class ServiceSetupTests : IDisposable
     }
 
     [Fact]
-    public void Linux_install_writes_the_unit_starts_it_and_uninstall_takes_everything_away()
+    public void Systemd_unit_is_registered_started_stopped_and_removed()
     {
-        if (OperatingSystem.IsWindows())
-        {
-            Assert.Skip("systemd — только Linux");
-            return;
-        }
-
         var units = Directory.CreateDirectory(Path.Combine(_root, "units")).FullName;
         var calls = new List<string>();
         var systemd = new SystemdService(arguments => calls.Add(string.Join(' ', arguments)), units);
-        var build = Touch("build", Exe);
-        var options = new SetupOptions("pg-test", Path.Combine(_root, "opt"), "1000");
 
-        ServiceSetup.Install(options, build, null, null, systemd);
+        systemd.Stop("pg-test");
+        calls.ShouldBeEmpty("юнита нет — останавливать нечего");
+        systemd.Register("pg-test", "Private Gateway", ["/opt/pg/svc", "--owner", "1000"]);
+        systemd.Start("pg-test");
+        systemd.Stop("pg-test");
 
-        calls.ShouldBe(["daemon-reload", "enable pg-test.service", "restart pg-test.service"]);
-        File.ReadAllText(Path.Combine(units, "pg-test.service")).ShouldContain($"ExecStart=\"{Path.Combine(options.Folder, Exe)}\" \"--service-name\" \"pg-test\" \"--owner\" \"1000\"");
-        File.GetUnixFileMode(Path.Combine(options.Folder, Exe)).HasFlag(UnixFileMode.UserExecute).ShouldBeTrue();
-
-        calls.Clear();
-        ServiceSetup.Install(options, build, null, null, systemd);
-
-        calls[0].ShouldBe("disable --now pg-test.service", "работающий файл не перезаписать — служба сначала останавливается");
+        calls.ShouldBe(["daemon-reload", "enable pg-test.service", "start pg-test.service", "stop pg-test.service"]);
+        File.ReadAllText(Path.Combine(units, "pg-test.service")).ShouldContain("ExecStart=\"/opt/pg/svc\" \"--owner\" \"1000\"");
+        if (!OperatingSystem.IsWindows())
+        {
+            File.GetUnixFileMode(Path.Combine(units, "pg-test.service")).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+        }
 
         calls.Clear();
         systemd.Uninstall("pg-test");
-        var killSwitch = new FakeKillSwitch();
-        ServiceSetup.Finish(options.Folder, killSwitch);
-
         calls.ShouldBe(["disable --now pg-test.service", "daemon-reload"]);
-        (File.Exists(Path.Combine(units, "pg-test.service")), Directory.Exists(options.Folder), killSwitch.Disabled).ShouldBe((false, false, true),
-            "удаленная служба не оставляет ни юнита, ни папки, ни блока при обрыве");
+        File.Exists(Path.Combine(units, "pg-test.service")).ShouldBeFalse();
     }
 
     [Fact]
@@ -178,22 +328,32 @@ public sealed class ServiceSetupTests : IDisposable
         var name = "PrivateGatewayTest" + Guid.NewGuid().ToString("N")[..8];
         var pipe = "PrivateGateway.Test." + Guid.NewGuid().ToString("N");
         var folder = Path.Combine(_root, "service");
+        var state = Path.Combine(_root, "service state");
         try
         {
-            (await Run(service, "--install", "--service-name", name, "--install-dir", folder, "--ipc", pipe,
+            (await Run(service, "--install", "--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", pipe,
                 "--owner", WindowsIdentity.GetCurrent().User!.Value)).ShouldBe(0);
 
             WindowsServices.IsInstalled(name).ShouldBeTrue();
             File.Exists(Path.Combine(folder, Exe)).ShouldBeTrue();
+            File.Exists(Path.Combine(state, "journal.jsonl")).ShouldBeTrue("состояние — в своей папке, путь с пробелом дошел до службы целиком");
             using var channel = IpcChannel.Create(pipe, system: true);
             var info = await RetryAsync(() => new V1.GatewayService.GatewayServiceClient(channel).GetServiceInfoAsync(new V1.GetServiceInfoRequest(),
                 cancellationToken: Ct).ResponseAsync);
             info.ServiceVersion.ShouldBe(ServiceVersion.Current, "окно говорит со службой, которую запустил диспетчер служб от SYSTEM");
 
-            (await Run(service, "--uninstall", "--service-name", name, "--install-dir", folder)).ShouldBe(0);
+            // Поверх работающей: копия собирается рядом, работающая останавливается, новая встает на место и говорит «готова».
+            (await Run(service, "--install", "--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", pipe,
+                "--owner", WindowsIdentity.GetCurrent().User!.Value)).ShouldBe(0);
+            Directory.Exists(folder + ".old").ShouldBeFalse();
+            (await RetryAsync(() => new V1.GatewayService.GatewayServiceClient(channel).GetServiceInfoAsync(new V1.GetServiceInfoRequest(),
+                cancellationToken: Ct).ResponseAsync)).ServiceVersion.ShouldBe(ServiceVersion.Current);
+
+            (await Run(service, "--uninstall", "--service-name", name, "--install-dir", folder, "--state-dir", state)).ShouldBe(0);
 
             WindowsServices.IsInstalled(name).ShouldBeFalse();
             Directory.Exists(folder).ShouldBeFalse();
+            Directory.Exists(state).ShouldBeFalse();
         }
         finally
         {
@@ -245,6 +405,66 @@ public sealed class ServiceSetupTests : IDisposable
 
     private static List<string> Files(string folder) =>
         [.. Directory.EnumerateFiles(folder, "*", SearchOption.AllDirectories).Select(f => Path.GetRelativePath(folder, f)).Order(StringComparer.Ordinal)];
+
+    private SetupOptions Options() => new("pg-test", Path.Combine(_root, "opt"),
+        OperatingSystem.IsWindows() ? WindowsIdentity.GetCurrent().User!.Value : "1000", State: Path.Combine(_root, "state"));
+
+    /// <summary>Работающая прежняя служба: копия с файлом «прежняя» и, как у служб до отдельной папки состояния, ее файлы рядом.</summary>
+    private static string Old(SetupOptions options, params string[] stateFiles)
+    {
+        var folder = Directory.CreateDirectory(options.Folder).FullName;
+        File.WriteAllText(Path.Combine(folder, Exe), "прежняя");
+        foreach (var file in stateFiles)
+        {
+            File.WriteAllText(Path.Combine(folder, file), file);
+        }
+
+        return folder;
+    }
+
+    /// <summary>Сборка новой версии: файл службы «новая».</summary>
+    private string New()
+    {
+        var build = Touch("build", Exe);
+        File.WriteAllText(Path.Combine(build, Exe), "новая");
+        return build;
+    }
+
+    /// <summary>Служба ОС в памяти: запуск «работает», если <paramref name="works"/> говорит так о файле службы из команды — тогда служба отмечает готовность.</summary>
+    private sealed class FakeOs(string state, Func<string, bool> works) : IOsService
+    {
+        public List<string> Calls { get; } = [];
+
+        public bool Installed { get; set; }
+
+        public IReadOnlyList<string>? Command { get; private set; }
+
+        public bool IsInstalled(string name) => Installed;
+
+        public void Register(string name, IReadOnlyList<string> command)
+        {
+            Calls.Add("register");
+            Installed = true;
+            Command = command;
+        }
+
+        public void Start(string name)
+        {
+            Calls.Add("start");
+            if (works(Command![0]))
+            {
+                ServiceReady.Mark(state, ServiceVersion.Current);
+            }
+        }
+
+        public void StopAndWait(string name) => Calls.Add("stop");
+
+        public void Remove(string name)
+        {
+            Calls.Add("remove");
+            Installed = false;
+        }
+    }
 
     private sealed class FakeKillSwitch : IKillSwitch
     {

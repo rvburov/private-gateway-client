@@ -3,11 +3,14 @@
   только цифры SemVer), значок (Icon).
   - Программа — в Program Files\Private Gateway (на всю машину), ярлык в меню «Пуск» с AUMID окна — уведомления
     приходят от имени программы.
-  - Служба ставится той же командой, что из окна: PrivateGateway.Service.exe install для пользователя, который ставит
-    программу (UserSID), — копия в Program Files\Private Gateway\Service и запуск с Windows. Не встала — установка
-    откатывается.
-  - Удаление (не обновление) сначала удаляет службу: uninstall снимает блок при обрыве и удаляет папку службы — машина
-    не остается без сети. Обновление службу не удаляет: install новой версии останавливает и заменяет ее.
+  - Служба ставится той же командой, что из окна: PrivateGateway.Service.exe install для владельца — свойство OWNER (SID,
+    его передает окно при обновлении), по умолчанию тот, кто ставит (UserSID), — копия в Program Files\Private
+    Gateway\Service, состояние в ServiceState, запуск с Windows. Не встала — установка откатывается.
+  - Обновление службу не удаляет: install новой версии заменяет ее атомарно (новая копия рядом, прежняя возвращается,
+    если новая не запустилась). Откат неудачной первой установки удаляет службу, а неудачного обновления — нет: прежняя
+    служба уже на месте, а MSI возвращает прежние файлы программы.
+  - Удаление (не обновление) сначала удаляет службу: uninstall снимает блок при обрыве и удаляет папки службы и ее
+    состояния — машина не остается без сети.
   Файлы пользователя (настройки окна в LocalAppData) и чужие файлы в папке программы установщик не трогает.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
@@ -44,8 +47,10 @@
       <ComponentRef Id="StartMenuShortcut" />
     </Feature>
 
-    <!-- Служба: команды самой службы без окна консоли (WixQuietExec), от SYSTEM. -->
-    <SetProperty Id="InstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --install --owner [UserSID]"
+    <!-- Служба: команды самой службы без окна консоли (WixQuietExec), от SYSTEM. Владелец — OWNER, иначе тот, кто ставит. -->
+    <Property Id="OWNER" Secure="yes" />
+    <SetProperty Id="OWNER" Value="[UserSID]" Before="SetInstallService" Sequence="execute" Condition="NOT OWNER" />
+    <SetProperty Id="InstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --install --owner [OWNER]"
                  Before="InstallService" Sequence="execute" />
     <CustomAction Id="InstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="check" />
 
@@ -58,7 +63,7 @@
     <CustomAction Id="UninstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="ignore" />
 
     <InstallExecuteSequence>
-      <Custom Action="RollbackInstallService" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="RollbackInstallService" After="InstallFiles" Condition="NOT REMOVE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="InstallService" After="RollbackInstallService" Condition="NOT REMOVE" />
       <Custom Action="UninstallService" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>

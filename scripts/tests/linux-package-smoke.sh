@@ -2,9 +2,10 @@
 #
 # Установка и удаление пакета .deb на машине (CI, Ubuntu, от root через sudo): пакет ставится со всеми зависимостями,
 # окно и служба на месте, запись меню проходит desktop-file-validate, служба из пакета ставится так же, как ее ставит
-# окно, и работает под systemd; обновление пакета переставляет службу тем же владельцем; удаление пакета без ошибок
-# убирает службу, юнит, таблицу блока при обрыве и все файлы пакета, а данные пользователя не трогает. На компьютере
-# пользователя не запускать — ставит службу:
+# окно (без файлов окна, состояние — в /var/lib/private-gateway), и работает под systemd; копия службы, которая не
+# запускается, сменяется прежней; обновление пакета переставляет службу тем же владельцем; удаление пакета без ошибок
+# убирает службу, юнит, таблицу блока при обрыве, ее состояние и все файлы пакета, а данные пользователя не трогает. На
+# компьютере пользователя не запускать — ставит службу:
 #
 #   scripts/tests/linux-package-smoke.sh <версия>
 set -euo pipefail
@@ -42,6 +43,22 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 systemctl is-active --quiet private-gateway || fail "служба не запустилась под systemd"
+[ ! -e /opt/private-gateway/service/PrivateGateway ] && [ ! -e /opt/private-gateway/service/libSkiaSharp.so ] || fail "служба возит с собой окно"
+[ "$(sudo stat -c %a /var/lib/private-gateway)" = 700 ] || fail "папка состояния службы открыта не только root"
+sudo test -f /var/lib/private-gateway/journal.jsonl || fail "служба не пишет журнал в /var/lib/private-gateway"
+grep -q '"--state" "/var/lib/private-gateway"' /etc/systemd/system/private-gateway.service || fail "у службы нет папки состояния"
+
+# Новая копия службы не запускается (нет нужной библиотеки) — установка возвращает прежнюю и отвечает ошибкой.
+broken=$(mktemp -d)
+sudo cp -a /opt/private-gateway/. "$broken/"
+sudo rm -rf "$broken/service" "$broken/Grpc.AspNetCore.Server.dll"
+if sudo "$broken/PrivateGateway.Service" --install --owner "$(id -u)"; then
+  fail "установка службы, которая не запускается, прошла"
+fi
+sudo rm -rf "$broken"
+systemctl is-active --quiet private-gateway || fail "после неудачной замены служба не работает"
+[ -f /opt/private-gateway/service/Grpc.AspNetCore.Server.dll ] || fail "после неудачной замены на месте не прежняя копия"
+[ ! -e /opt/private-gateway/service.old ] && [ ! -e /opt/private-gateway/service.new ] || fail "после отката остались service.old/.new"
 
 # Переустановка пакета — как обновление: прежняя служба не удаляется (prerm «upgrade»), а ставится заново из нового
 # пакета тем же владельцем (postinst) и снова работает.
@@ -65,6 +82,7 @@ sudo apt-get remove -y private-gateway 2>&1 | tee "$tmp_out"
 ! grep -Eq "не удалось|Unhandled exception" "$tmp_out" || fail "удаление пакета: служба удалилась с ошибкой"
 ! systemctl cat private-gateway > /dev/null 2>&1 || fail "после удаления пакета остался юнит службы"
 [ ! -e /opt/private-gateway ] || fail "после удаления пакета осталась /opt/private-gateway: $(ls -A /opt/private-gateway)"
+[ ! -e /var/lib/private-gateway ] || fail "после удаления пакета осталось состояние службы: $(sudo ls -A /var/lib/private-gateway)"
 [ ! -e /usr/bin/private-gateway ] || fail "осталась команда private-gateway"
 ! sudo nft list table inet private_gateway > /dev/null 2>&1 || fail "осталась таблица блока при обрыве"
 [ "$(cat "$HOME/.local/share/private-gateway/marker")" = keep ] || fail "удаление тронуло данные пользователя"
