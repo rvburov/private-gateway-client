@@ -116,8 +116,10 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
             {
                 foreach (var layer in Layers(rule))
                 {
-                    // У пересылки нет программы: тестовое условие ALE_APP_ID там не ставится.
-                    var only = rule.Hook == WfpHook.Forward ? IntPtr.Zero : app;
+                    // У пересылки нет программы: тестовое условие ALE_APP_ID там не ставится. Правило со своей программой (поиск
+                    // сервера службой, обход sing-box) и так касается одной программы: второе условие на то же поле WFP
+                    // объединил бы через «или» (а то же самое — отверг как повтор).
+                    var only = rule.Hook == WfpHook.Forward || rule.Conditions.Any(c => c.Field == WfpField.App) ? IntPtr.Zero : app;
                     Check(FwpmFilterAdd0(engine, Filter(memory, WfpRules.FilterKey(index++), layer, rule, only, policy.Persistent), IntPtr.Zero, out _),
                         "фильтр " + rule.Name);
                 }
