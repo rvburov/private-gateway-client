@@ -31,8 +31,6 @@ public sealed class ProbeRunner(TimeProvider time, Func<string, CancellationToke
     /// <summary>Сколько ждать поиск имени, соединение TCP и рукопожатие TLS.</summary>
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 
-    private static readonly byte[] Payload = new byte[32];
-
     /// <summary>
     /// Замер <paramref name="kind"/> до <paramref name="target"/> (уже проверенного <see cref="ProbeTarget.Normalize"/>):
     /// по строке на эхо, участок трассировки или адрес имени; у TCP и TLS — одна строка. Имя не нашлось — одна строка
@@ -198,7 +196,9 @@ public sealed class ProbeRunner(TimeProvider time, Func<string, CancellationToke
         var started = time.GetTimestamp();
         try
         {
-            var reply = await ping.SendPingAsync(address, EchoTimeout, Payload, ttl is { } hops ? new PingOptions(hops, dontFragment: true) : null, cancellationToken)
+            // Содержимое эхо — по умолчанию ОС: на Linux без прав .NET шлет эхо утилитой ping, а она своего содержимого не
+            // принимает.
+            var reply = await ping.SendPingAsync(address, EchoTimeout, null, ttl is { } hops ? new PingOptions { Ttl = hops } : null, cancellationToken)
                 .ConfigureAwait(false);
             var outcome = Outcome(reply.Status);
             var from = reply.Address is { } replied && !replied.Equals(IPAddress.Any) && !replied.Equals(IPAddress.IPv6Any) ? replied : null;
@@ -207,8 +207,9 @@ public sealed class ProbeRunner(TimeProvider time, Func<string, CancellationToke
                 : null;
             return new ProbeStep(index, outcome == ProbeOutcome.TimedOut ? null : from ?? (outcome == ProbeOutcome.Ok ? address : null), took, outcome);
         }
-        catch (PingException)
+        catch (Exception e) when (e is PingException or PlatformNotSupportedException)
         {
+            // ОС не дала отправить эхо: на Linux без прав и без утилиты ping эхо слать нечем.
             return new ProbeStep(index, null, null, ProbeOutcome.Failed);
         }
     }
