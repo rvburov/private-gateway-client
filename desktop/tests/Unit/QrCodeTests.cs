@@ -30,6 +30,26 @@ public sealed class QrCodeTests
         modules[8, size - 8].ShouldBeFalse("для этой ссылки бит формата здесь светлый — зеркало заметно");
     }
 
+    public static TheoryData<string> Links() => new(
+        Directory.EnumerateFiles(Path.Combine(FindRoot(), "shared", "testdata", "links"), "*.txt", SearchOption.AllDirectories)
+            .Select(path => Path.GetRelativePath(FindRoot(), path).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal));
+
+    [Theory]
+    [MemberData(nameof(Links))]
+    public void Every_shared_link_survives_encoding_and_reading_back(string fixture)
+    {
+        // Узор в данных части ссылок похож на угловую метку, и обычный поиск ZXing на нем обрывается
+        // (hysteria2/hy2-short-scheme, vmess/empty-alter-id — маски 4 и 6): нужен полный поиск меток.
+        var text = File.ReadAllText(Path.Combine(FindRoot(), fixture)).Trim();
+        var modules = QrCode.Encode(text);
+        foreach (var scale in new[] { 1, 3, 5 })
+        {
+            var canvas = modules.GetLength(0) * scale + 40;
+            QrCode.Decode(Render(modules, scale, canvas, offset: 11)).ShouldBe(text, $"{fixture}, {scale} пикс. на модуль");
+        }
+    }
+
     [Fact]
     public void Light_code_on_dark_background_is_read_too()
     {

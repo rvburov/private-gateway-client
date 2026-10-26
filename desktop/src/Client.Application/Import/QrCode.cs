@@ -1,5 +1,6 @@
 using ZXing;
 using ZXing.Common;
+using ZXing.Multi.QrCode;
 using ZXing.QrCode;
 using ZXing.QrCode.Internal;
 
@@ -59,9 +60,19 @@ public static class QrCode
             [DecodeHintType.CHARACTER_SET] = "UTF-8",
         };
         var reader = new QRCodeReader();
-        // Сначала как есть, потом инвертированно: QR в темной теме бывает светлым на темном.
-        var result = reader.decode(new BinaryBitmap(new HybridBinarizer(source)), hints)
-            ?? reader.decode(new BinaryBitmap(new HybridBinarizer(source.invert())), hints);
+        var inverted = source.invert();
+        // Сначала как есть, потом инвертированно: QR в темной теме бывает светлым на темном. Потом — поиск по всем
+        // тройкам угловых меток: узор в данных части ссылок похож на метку, и обычный поиск на нем обрывается
+        // (решение 433).
+        var result = reader.decode(Bitmap(source), hints)
+            ?? reader.decode(Bitmap(inverted), hints)
+            ?? FirstOfAll(Bitmap(source), hints)
+            ?? FirstOfAll(Bitmap(inverted), hints);
         return string.IsNullOrEmpty(result?.Text) ? null : result.Text;
     }
+
+    private static BinaryBitmap Bitmap(LuminanceSource source) => new(new HybridBinarizer(source));
+
+    private static Result? FirstOfAll(BinaryBitmap bitmap, IDictionary<DecodeHintType, object> hints) =>
+        new QRCodeMultiReader().decodeMultiple(bitmap, hints)?.FirstOrDefault(result => !string.IsNullOrEmpty(result.Text));
 }
