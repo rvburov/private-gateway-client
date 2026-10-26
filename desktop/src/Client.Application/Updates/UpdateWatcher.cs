@@ -59,6 +59,9 @@ public sealed class UpdateWatcher : IDisposable
     private ITimer? _timer;
     private UpdateChannel _channel;
 
+    // Версия, о которой окно уже знает (видели в «О программе» или сказали уведомлением): о ней второй раз не говорят.
+    private string? _known;
+
     public UpdateWatcher(IGatewayClient gateway, SettingsService settings, TimeProvider time, IAppRelauncher relauncher)
     {
         _gateway = gateway;
@@ -99,6 +102,12 @@ public sealed class UpdateWatcher : IDisposable
     /// <summary>Установщик запущен, перезапуск окна назначен — окну пора закрыться.</summary>
     public event EventHandler? RestartRequested;
 
+    /// <summary>
+    /// Проверка по расписанию или после смены канала нашла версию, о которой окно еще не знало, — уведомление «Доступно
+    /// обновление» (доски 19 и 22). Проверка кнопкой и при открытии «О программе» показывает ее на карточке и молчит.
+    /// </summary>
+    public event EventHandler<UpdateOffer>? Found;
+
     /// <summary>Проверять по расписанию; работа — в контексте вызова (окно).</summary>
     public void Start()
     {
@@ -122,7 +131,9 @@ public sealed class UpdateWatcher : IDisposable
     public bool IsDue => _settings.Current.CheckUpdates && (Attempted is not { } last || _time.GetUtcNow() - last >= Period);
 
     /// <summary>Спросить службу сейчас; уже спрашиваем — ничего.</summary>
-    public async Task CheckAsync(bool force, CancellationToken cancellationToken = default)
+    public Task CheckAsync(bool force, CancellationToken cancellationToken = default) => CheckAsync(force, announce: false, cancellationToken);
+
+    private async Task CheckAsync(bool force, bool announce, CancellationToken cancellationToken = default)
     {
         if (IsChecking)
         {
@@ -147,6 +158,15 @@ public sealed class UpdateWatcher : IDisposable
         {
             IsChecking = false;
             Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        if (Offer is { State: UpdateState.Available, Version: { } found } && found != _known)
+        {
+            _known = found;
+            if (announce && found != Postponed)
+            {
+                Found?.Invoke(this, Offer);
+            }
         }
     }
 
@@ -227,7 +247,7 @@ public sealed class UpdateWatcher : IDisposable
     {
         if (!due || IsDue)
         {
-            await CheckAsync(force: false).ConfigureAwait(true);
+            await CheckAsync(force: false, announce: true).ConfigureAwait(true);
         }
     }
 }

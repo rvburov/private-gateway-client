@@ -3,6 +3,7 @@ using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 
 namespace PrivateGateway.Client.Application.Notifications;
 
@@ -150,6 +151,20 @@ public sealed class NotificationCenter : IDisposable
         Post(() => Deliver(new Notice(NoticeKind.ServersNotUpdated, "notify.stale.text", [NoticeAction.OpenSubscriptions])
         {
             Subscription = failure.SubscriptionName, Failure = failure.Failure, StatusCode = failure.StatusCode,
+        }));
+    }
+
+    /// <summary>
+    /// Нашлась новая версия: служба ставит сама — «загрузится в фоне», нет — «обновляется вручную»; кнопки «Обновить» и
+    /// «Позже» (доска 22). Обычное: в ОС — только при уровне «Все».
+    /// </summary>
+    public void Announce(UpdateOffer offer)
+    {
+        ArgumentNullException.ThrowIfNull(offer);
+        Post(() => Deliver(new Notice(NoticeKind.UpdateAvailable, offer.Installable ? "notify.update.text" : "notify.update.manual",
+            [NoticeAction.Update, NoticeAction.Later])
+        {
+            Version = offer.Version,
         }));
     }
 

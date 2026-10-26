@@ -34,6 +34,9 @@ public enum NoticeKind
 
     /// <summary>Подписка не обновилась по расписанию — прошлый список оставлен.</summary>
     ServersNotUpdated,
+
+    /// <summary>Проверка по расписанию нашла новую версию программы.</summary>
+    UpdateAvailable,
 }
 
 /// <summary>Кнопки уведомления; надписи — <c>notify.action.*</c>.</summary>
@@ -68,12 +71,15 @@ public enum NoticeAction
 
     /// <summary>«Открыть» у подписок: окно, экран «Профили и подписки».</summary>
     OpenSubscriptions,
+
+    /// <summary>«Обновить»: окно, «О программе»; служба ставит сама — загрузка начинается сразу.</summary>
+    Update,
 }
 
 /// <summary>
 /// Что сказать: событие, ключ текста и кнопки (не больше двух — доска 22). Тексты окно берет из локализации:
-/// <c>{0}</c> — сервер, <c>{1}</c> — подписка, <c>{2}</c> — причина (код ошибки или неудача загрузки). IP-адресов и имен
-/// сетей Wi-Fi в уведомлениях нет.
+/// <c>{0}</c> — сервер, <c>{1}</c> — подписка, <c>{2}</c> — причина (код ошибки или неудача загрузки); в заголовке
+/// <c>{0}</c> — версия обновления. IP-адресов и имен сетей Wi-Fi в уведомлениях нет.
 /// </summary>
 public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<NoticeAction> Actions)
 {
@@ -89,6 +95,9 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
 
     public int? StatusCode { get; init; }
 
+    /// <summary>Найденная версия программы (<see cref="NoticeKind.UpdateAvailable"/>).</summary>
+    public string? Version { get; init; }
+
     /// <summary>Важное (обрыв, блокировка интернета, вход в Wi-Fi, сбой службы) — со звуком; остальные — обычные, без звука.</summary>
     public bool IsImportant => Kind is NoticeKind.ConnectionLost or NoticeKind.ServerDown or NoticeKind.WifiSignIn
         or NoticeKind.ServiceStopped or NoticeKind.ProtectionFailed;
@@ -99,11 +108,15 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
     public string Tag => Kind switch
     {
         NoticeKind.ServerGone or NoticeKind.ServerChanged or NoticeKind.ServersNotUpdated => "servers-" + (Subscription ?? string.Empty),
+        NoticeKind.UpdateAvailable => UpdateTag,
         _ => ProtectionTag,
     };
 
     /// <summary>Метка уведомлений о защите: обрыв, сервер, служба, подключение.</summary>
     public const string ProtectionTag = "protection";
+
+    /// <summary>Метка уведомления «Доступно обновление».</summary>
+    public const string UpdateTag = "update";
 }
 
 /// <summary>Готовый текст уведомления на языке пользователя.</summary>

@@ -6,8 +6,10 @@ using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
@@ -54,6 +56,36 @@ public sealed class NotificationTests : WindowHarness
         var down = Notifier.Shown[^1];
         (down.Title, down.Body).ShouldBe(("Server is not responding", "“Мой” is unreachable. Internet is blocked — no other server is chosen."));
         down.Buttons.Select(b => b.Label).ShouldBe(["Retry", "Choose server"]);
+    }
+
+    [AvaloniaFact]
+    public void Update_found_on_schedule_is_told_and_its_buttons_postpone_or_start_it_on_about()
+    {
+        var service = default(ScriptedService);
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        service!.Update = new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true };
+        service.Download = [new UpdateProgress(100, 100, Ready: true)];
+        Service<NoticeWindow>().Attach(window, window.Show);
+        Service<SettingsService>().Update(s => s with { Notifications = NotificationLevel.All });
+        Service<NoticeActions>().Start();
+        var updates = Service<UpdateWatcher>();
+        updates.Start();
+        window.Hide();
+
+        Time.Advance(UpdateWatcher.FirstCheck);
+        WaitFor(() => Notifier.Shown.Count > 0);
+
+        var notice = Notifier.Shown.ShouldHaveSingleItem();
+        (notice.Title, notice.Body).ShouldBe(("Доступно обновление 0.2.0", "Загрузится в фоне, VPN продолжает работать; установится при перезапуске клиента."));
+        notice.Buttons.Select(b => b.Label).ShouldBe(["Обновить", "Позже"]);
+
+        Notifier.Press(new NoticeReply(Notice.UpdateTag, NoticeAction.Later));
+        Dispatcher.UIThread.RunJobs();
+        (updates.Postponed, window.IsVisible).ShouldBe(("0.2.0", false), "«Позже» сворачивает карточку этой версии, окно не открывает");
+
+        Notifier.Press(new NoticeReply(Notice.UpdateTag, NoticeAction.Update));
+        WaitFor(() => updates.Step == UpdateStep.Ready);
+        (window.IsVisible, shell.CurrentKey, updates.Postponed).ShouldBe((true, Pages.About, null), "«Обновить» — окно на «О программе», загрузка идет");
     }
 
     [AvaloniaFact]

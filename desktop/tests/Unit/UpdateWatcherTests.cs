@@ -71,6 +71,36 @@ public sealed class UpdateWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task New_version_found_on_schedule_is_announced_once_and_not_after_the_button_or_later()
+    {
+        var found = new List<string?>();
+        _watcher.Found += (_, offer) => found.Add(offer.Version);
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0");
+        _watcher.Start();
+
+        _time.Advance(UpdateWatcher.FirstCheck);
+        found.ShouldBe(["0.3.0"], "проверка по расписанию нашла новую версию — уведомление");
+        _time.Advance(UpdateWatcher.Period);
+        found.Count.ShouldBe(1, "о той же версии второй раз не говорят");
+
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.1");
+        await _watcher.CheckAsync(force: true, TestContext.Current.CancellationToken);
+        _time.Advance(UpdateWatcher.Period);
+        found.Count.ShouldBe(1, "версию нашла кнопка — ее видно на карточке, уведомление не нужно");
+
+        _watcher.Postpone("0.3.2");
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.2");
+        _time.Advance(UpdateWatcher.Period);
+        found.Count.ShouldBe(1, "«Позже» для этой версии — молчать");
+
+        _gateway.Offer = new UpdateOffer(UpdateState.UpToDate, _time.GetUtcNow());
+        _time.Advance(UpdateWatcher.Period);
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.4.0");
+        _settings.Update(s => s with { UpdateChannel = UpdateChannel.Beta });
+        found.ShouldBe(["0.3.0", "0.4.0"], "новый канал — проверка сразу, и о новой версии сказано");
+    }
+
+    [Fact]
     public async Task Silent_service_leaves_no_offer_and_later_is_remembered_per_version()
     {
         _gateway.Offer = null;

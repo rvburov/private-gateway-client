@@ -6,6 +6,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using static PrivateGateway.Client.Tests.Unit.ConnectionControllerTests;
 
 namespace PrivateGateway.Client.Tests.Unit;
@@ -154,6 +155,26 @@ public sealed class NotificationCenterTests : IDisposable
     }
 
     [Fact]
+    public void Update_is_an_ordinary_notice_of_its_own_with_the_version()
+    {
+        var offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };
+        _center.Announce(offer);
+        _notifier.Shown.ShouldBeEmpty("обычное при «Только важные»");
+
+        _settings.Update(s => s with { Notifications = NotificationLevel.All });
+        Move(ConnectionState.Reconnecting);
+        _center.Announce(offer);
+        _notifier.Shown[^1].ShouldBe((Notice.UpdateTag, "notify.update.text|0.3.0", false), "своя метка — уведомление о защите не заменяет");
+        _notifier.Closed.ShouldBeEmpty();
+
+        _center.Announce(offer with { Version = "0.3.1", Installable = false });
+        _notifier.Shown.Count.ShouldBe(2, "повтор — не чаще раза в 10 минут");
+        _time.Advance(NotificationCenter.RepeatAfter);
+        _center.Announce(offer with { Version = "0.3.1", Installable = false });
+        _notifier.Shown[^1].ShouldBe((Notice.UpdateTag, "notify.update.manual|0.3.1", false), "служба сама не ставит — обновляется вручную");
+    }
+
+    [Fact]
     public void Os_without_notifications_gets_nothing()
     {
         _notifier.IsSupported = false;
@@ -199,7 +220,7 @@ public sealed class NotificationCenterTests : IDisposable
         public void ShowInWindow(Notice notice) => Toasts.Add(notice.Kind);
     }
 
-    /// <summary>Текст без локализации: заголовок — ключ события, текст — сервер.</summary>
+    /// <summary>Текст без локализации: заголовок — ключ события (у обновления — ключ текста), текст — сервер или версия.</summary>
     private sealed class PlainTexts : INoticeTexts
     {
         public NoticeText Text(Notice notice) => new(notice.Kind switch
@@ -208,8 +229,9 @@ public sealed class NotificationCenterTests : IDisposable
             NoticeKind.ServiceStopped => "notify.service.title",
             NoticeKind.Connected => "notify.on.title",
             NoticeKind.ServerGone => "notify.gone.title",
+            NoticeKind.UpdateAvailable => notice.TextKey,
             _ => notice.Kind.ToString(),
-        }, notice.Server ?? string.Empty, []);
+        }, notice.Server ?? notice.Version ?? string.Empty, []);
     }
 
     private sealed class MemorySettings : ISettingsStore

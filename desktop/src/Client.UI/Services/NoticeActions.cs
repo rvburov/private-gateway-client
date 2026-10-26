@@ -1,13 +1,15 @@
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.UI.ViewModels;
 
 namespace PrivateGateway.Client.UI.Services;
 
 /// <summary>
 /// Нажатия на уведомления ОС: «Повторить» и «Подключить» делают свое без окна; остальное показывает окно на нужном экране —
-/// серверы, подписки, пауза для входа в Wi-Fi, поиск службы заново. «Позже» только закрывает уведомление.
+/// серверы, подписки, пауза для входа в Wi-Fi, поиск службы заново, «О программе» с загрузкой обновления. «Позже» закрывает
+/// уведомление, у обновления — еще и сворачивает его карточку до следующей версии.
 /// </summary>
 public sealed class NoticeActions(
     NotificationCenter center,
@@ -18,12 +20,14 @@ public sealed class NoticeActions(
     ConnectionController controller,
     OverlayViewModel overlay,
     IUrlLauncher launcher,
-    ToastViewModel toast)
+    ToastViewModel toast,
+    UpdateWatcher updates)
 {
     /// <summary>Слушать нажатия и включить уведомления.</summary>
     public void Start()
     {
         center.Replied += (_, reply) => _ = HandleAsync(reply);
+        updates.Found += (_, offer) => center.Announce(offer);
         center.Start();
     }
 
@@ -32,6 +36,9 @@ public sealed class NoticeActions(
         ArgumentNullException.ThrowIfNull(reply);
         switch (reply.Action)
         {
+            case NoticeAction.Later when reply.Tag == Notice.UpdateTag:
+                updates.Postpone(updates.Offer?.Version);
+                return;
             case NoticeAction.Later:
                 return;
             case NoticeAction.Retry when catalog.Selected is { } server:
@@ -55,6 +62,13 @@ public sealed class NoticeActions(
                 break;
             case NoticeAction.OpenSubscriptions:
                 shell.Navigate(Pages.Profiles);
+                break;
+
+            // Карточка «О программе» покажет загрузку и «Перезапустить клиент»; служба не ставит — там же «Открыть выпуск».
+            case NoticeAction.Update:
+                updates.Postpone(null);
+                shell.Navigate(Pages.About);
+                await updates.DownloadAsync().ConfigureAwait(true);
                 break;
             case NoticeAction.SignIn:
                 await CaptivePortalFlow.RunAsync(gateway, controller, overlay, launcher, shell, toast).ConfigureAwait(true);
