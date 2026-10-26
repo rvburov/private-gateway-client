@@ -70,7 +70,8 @@
   SHA-256 архива сверяется с `.dgst` выпуска и с закрепленной суммой `shared/cores/xray.sha256`
   (Windows x64, macOS arm64, Linux x64; сборка без закрепленной суммы — с предупреждением). В облаке
   агента выпуски GitHub закрыты: `scripts/get-xray.sh --build` собирает ядро из исходников тега через
-  go, геобазы берет из ветки `release` Loyalsoldier/v2ray-rules-dat — только для тестов.
+  go, геобазы берет из ветки `release` Loyalsoldier/v2ray-rules-dat — только для тестов. Выпуск возит свою геобазу
+  сайтов из v2fly/domain-list-community (`scripts/get-geosite.sh`, release.md).
 - `desktop/tests/Network/XrayProxyTests` — контролируемый прокси-тест на 127.0.0.1: свое ядро-сервер,
   свое ядро-клиент с конфигом от `XrayConfigBuilder` и свой сайт. Протоколы и транспорты: VLESS
   (raw, WebSocket, gRPC, HTTPUpgrade), VMess, Trojan с TLS (самоподписанный сертификат), Shadowsocks

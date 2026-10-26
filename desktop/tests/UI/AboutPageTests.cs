@@ -341,11 +341,13 @@ public sealed class AboutPageTests : WindowHarness
     [Fact]
     public void License_list_covers_every_core_the_service_runs()
     {
-        // Ядро — то, у чего в shared/cores закреплена версия: xray.version, sing-box.version.
+        // Ядро или геобаза — то, у чего в shared/cores закреплена версия: xray.version, sing-box.version, geosite.version.
         var cores = Directory.GetFiles(Path.Combine(Repo.Root, "shared", "cores"), "*.version").Select(f => Path.GetFileNameWithoutExtension(f)).ToList();
 
         cores.ShouldNotBeEmpty();
-        cores.Where(core => !AboutPageViewModel.Components.Any(c => c.Core == core)).ShouldBeEmpty("ядро в службе есть, а его лицензии на экране нет");
+        cores.Where(core => !AboutPageViewModel.Components.Any(c => c.Core == core || c.Data == core + ".dat"))
+            .ShouldBeEmpty("ядро или геобаза в службе есть, а лицензии на экране нет");
+        AboutPageViewModel.Components.Single(c => c.Data == "geosite.dat").License.ShouldBe("MIT", "своя сборка из v2fly/domain-list-community");
         AboutPageViewModel.Components.Single(c => c.Core == "sing-box").License.ShouldBe("GPL-3.0-or-later");
     }
 

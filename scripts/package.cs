@@ -90,7 +90,7 @@ if (uncovered.Count > 0)
     throw new InvalidOperationException("Пакеты выпуска без строки в shared/licenses/components.json: " + string.Join(", ", uncovered));
 }
 
-// Ядра и геобазы (из архива выпуска Xray, рядом с ним): версия — из shared/cores, лицензия — из списка.
+// Ядра и геобаза сайтов (рядом с Xray, своя сборка — get-geosite.sh): версия — из shared/cores, лицензия — из списка.
 var exe = windows ? ".exe" : string.Empty;
 foreach (var core in open.Where(o => o.Core is not null))
 {
@@ -114,7 +114,7 @@ foreach (var data in open.Where(o => o.Data is not null))
         ["type"] = "data",
         ["bom-ref"] = "data:" + data.Data,
         ["name"] = data.Data,
-        ["version"] = Version("xray"),
+        ["version"] = Version(Path.GetFileNameWithoutExtension(data.Data!)),
         ["licenses"] = new JsonArray(new JsonObject { ["expression"] = data.License }),
         ["hashes"] = new JsonArray(Hash("SHA-256", Sha256(Existing(Path.Combine("cores", "xray", data.Data!))))),
     };
@@ -239,7 +239,7 @@ string Notices()
     {
         var shipped = nuget.Where(p => component.Covers(p.Id)).Select(p => $"{p.Id} {p.Version}").ToList();
         var componentVersion = component.Core is { } core ? Version(core)
-            : component.Data is not null ? Version("xray")
+            : component.Data is { } data ? Version(Path.GetFileNameWithoutExtension(data))
             : string.Join(", ", nuget.Where(p => component.Covers(p.Id)).Select(p => p.Version).Distinct());
         if (component.Packages.Count > 0 && shipped.Count == 0)
         {

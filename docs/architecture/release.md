@@ -35,7 +35,9 @@ PrivateGateway-<версия>-<rid>/
   - пакеты NuGet обоих приложений — из их `*.deps.json`, с SHA-512 пакета и лицензией из `.nuspec` в кеше пакетов;
   - среда .NET и ASP.NET Core (runtime pack);
   - Xray-core (MPL-2.0) и sing-box (GPL-3.0-or-later) — версия из `shared/cores/*.version`, SHA-256 файла;
-  - геобаза сайтов `geosite.dat` из архива выпуска Xray — SHA-256 файла. `geoip.dat` выпуск не возит: локальные сети
+  - геобаза сайтов `geosite.dat` (MIT) — своя сборка из v2fly/domain-list-community закрепленного коммита
+    (`shared/cores/geosite.version`, `scripts/get-geosite.sh`: генератор того же репозитория, go в CI), версия — коммит,
+    SHA-256 файла; геобаза из архива Xray (Loyalsoldier, GPL-3.0) остается для тестов. `geoip.dat` выпуск не возит: локальные сети
     служба пишет в конфиг списком (`XrayConfigBuilder.LocalNetworks`), а GeoIP в нем — данные MaxMind GeoLite2;
   - время — `SOURCE_DATE_EPOCH` (время коммита), чтобы две сборки одного коммита не расходились во времени.
 
@@ -241,7 +243,8 @@ Windows — MSI (ключ реестра его ярлыка), Linux — пак�
 - тесты `AboutPageTests` — каждый пакет проектов и каждый шрифт окна в списке, у каждого компонента есть авторство и
   ссылка, у каждой лицензии — текст, лишних текстов нет, каждое ядро из `shared/cores` в списке;
 - `release-smoke.sh` — в архиве есть уведомления с текстами GPL и MPL, ссылкой на исходники sing-box, JetBrains Mono и
-  геобазой сайтов.
+  геобазой сайтов со ссылкой на ее коммит domain-list-community; Xray из архива читает `geosite:category-ads-all`
+  (`xray run -test`).
 
 ## Проверка
 

@@ -2,7 +2,8 @@
 # Сборка Xray-core для тестов и разработки: версия — из shared/cores/xray.version, архив сверяется по
 # SHA-256 с закрепленной суммой из shared/cores/xray.sha256 (без нее — с предупреждением) и с .dgst
 # того же выпуска. Распаковка — в artifacts/cores/xray/. Запуск: scripts/get-xray.sh
-# Для выпуска (scripts/publish.sh) — scripts/get-xray.sh --pinned: без закрепленной суммы — ошибка, а не предупреждение.
+# Для выпуска (scripts/publish.sh) — scripts/get-xray.sh --pinned: без закрепленной суммы — ошибка, а не предупреждение;
+# геобаза сайтов — своя сборка (scripts/get-geosite.sh, нужны git и go) вместо той, что в архиве Xray.
 # В облаке без доступа к выпускам GitHub — scripts/get-xray.sh --build (сборка из исходников тега).
 set -euo pipefail
 
@@ -75,6 +76,12 @@ chmod +x "$dest/xray" 2> /dev/null || true
 # geoip.dat не нужен: локальные сети служба пишет в конфиг списком (XrayConfigBuilder.LocalNetworks), а GeoIP в нем
 # собран из данных MaxMind GeoLite2 со своими условиями. Без файла его не возит ни выпуск, ни тесты.
 rm -f "$dest/geoip.dat"
+# Геобаза сайтов в архиве Xray — сборка Loyalsoldier/v2ray-rules-dat (GPL-3.0, с данными других списков): для тестов и
+# разработки. Выпуск возит свою — из v2fly/domain-list-community (MIT, решение 361).
+if [ "${1:-}" = "--pinned" ]; then
+  rm -f "$dest/geosite.dat"
+  "$root/scripts/get-geosite.sh" "$dest"
+fi
 
 echo "Xray $version ($asset) → $dest"
 echo "SHA-256: $version $asset $actual ${pinned:+(закреплена)}"

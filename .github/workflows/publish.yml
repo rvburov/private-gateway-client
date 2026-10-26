@@ -12,6 +12,7 @@ on:
       - scripts/publish.sh
       - scripts/package.cs
       - scripts/get-xray.sh
+      - scripts/get-geosite.sh
       - scripts/get-singbox.sh
       - scripts/tests/release-smoke.sh
       - scripts/package-linux.sh
@@ -77,6 +78,12 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
+      # go — для геобазы сайтов из domain-list-community (scripts/get-geosite.sh) и nfpm на Linux.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
       - name: Сборка выпуска
         run: scripts/publish.sh "${{ steps.version.outputs.version }}"
 
@@ -85,12 +92,6 @@ jobs:
 
       # Пакеты Linux — nfpm закрепленной версии (модуль сверяется по sum.golang.org), затем настоящая установка и удаление
       # на этой машине: машина CI одноразовая, служба и таблица блока при обрыве с нее никуда не уходят.
-      - if: runner.os == 'Linux'
-        uses: actions/setup-go@v5
-        with:
-          go-version: stable
-          cache: false
-
       - name: Пакеты Linux (.deb, .rpm)
         if: runner.os == 'Linux'
         run: |

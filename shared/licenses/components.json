@@ -7,7 +7,7 @@
 //   packages — пакеты NuGet, «*» в конце — любой хвост имени: выпуск не собирается, если пакет из SBOM не покрыт;
 //   files — свои файлы в desktop/src (шрифты); тест сверяет их со списком;
 //   core — ядро из shared/cores/<core>.version (версия и source — ссылка на исходники этой версии);
-//   data — файл геобазы рядом с ядром, версия — версия ядра.
+//   data — файл геобазы рядом с ядром Xray, версия — shared/cores/<имя файла без .dat>.version.
 [
   {
     "name": ".NET",
@@ -34,10 +34,11 @@
   },
   {
     "name": "Геобаза сайтов (geosite.dat)",
-    "license": "GPL-3.0-only",
-    "copyright": "Loyalsoldier/v2ray-rules-dat contributors; domain-list-community: Copyright (c) 2018-2019 V2Ray (MIT)",
-    "url": "https://github.com/Loyalsoldier/v2ray-rules-dat",
-    "data": "geosite.dat"
+    "license": "MIT",
+    "copyright": "Copyright (c) 2018-2019 V2Ray (v2fly/domain-list-community contributors)",
+    "url": "https://github.com/v2fly/domain-list-community",
+    "data": "geosite.dat",
+    "source": "https://github.com/v2fly/domain-list-community/tree/{version}"
   },
   {
     "name": "Avalonia",
