@@ -121,9 +121,15 @@ public sealed class CheckPageTests : WindowHarness
         WaitFor(() => !page.IsRunning);
         Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "Не измерен: проверочный адрес не ответил", "Нет ответа"));
 
+        // Замер по IPv6: сайты видят адрес IPv6 мимо туннеля, хотя настройки его закрывают.
+        service.Checks = [new DiagnosticResult(DiagnosticCheck.Ipv6, CheckState.Warning, "leak")];
+        page.RunCommand.Execute(null);
+        WaitFor(() => !page.IsRunning);
+        Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Сайты видят ваш адрес IPv6: замер показал, что IPv6 идет мимо туннеля", "Виден"));
+
         Loc.Instance.SetLanguage("en");
         Dispatcher.UIThread.RunJobs();
-        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP seen by sites", "Not measured: the check address did not answer", "No answer"));
+        Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Sites see your IPv6 address: the measurement shows IPv6 going around the tunnel", "Visible"));
     }
 
     [AvaloniaFact]

@@ -1396,6 +1396,24 @@ public sealed partial class VpnModeTests
         }
 
         /// <summary>
+        /// Проверочный адрес по IPv6 напрямую — сайт на адресе машины <paramref name="host6"/>: правило nftables пространства ведет
+        /// туда запросы к <see cref="Trace6"/>, которые уходят в сеть машины.
+        /// </summary>
+        public LocalSite DirectTrace6(string page, IPAddress host6)
+        {
+            var site = new LocalSite(page, host6);
+            Netns.Run($$"""
+                table ip6 pgtest6 {
+                    chain output {
+                        type nat hook output priority -100; policy accept;
+                        oifname "pgnet0" ip6 daddr {{Trace6.Host.Trim('[', ']')}} tcp dport {{Trace6.Port}} dnat to [{{host6}}]:{{site.Url.Port}}
+                    }
+                }
+                """, "nft", "-f", "-");
+            return site;
+        }
+
+        /// <summary>
         /// Внешний IP — запросом изнутри пространства, как у службы: без прокси (порт 0) или через вход проверки. Ждать
         /// не меньше 5 с: запуск nsenter и curl на нагруженной машине (тесты окна рядом) съедал 2 с замера напрямую.
         /// </summary>

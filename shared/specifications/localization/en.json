@@ -350,6 +350,8 @@
   "diag.ipv6.tunnel.chip": "Tunneled",
   "diag.ipv6.outside": "Goes outside the tunnel: sites see your IPv6 address",
   "diag.ipv6.outside.chip": "Open",
+  "diag.ipv6.leak": "Sites see your IPv6 address: the measurement shows IPv6 going around the tunnel",
+  "diag.ipv6.leak.chip": "Visible",
   "diag.exit_ip.title": "IP seen by sites",
   "diag.exit_ip.ok.chip": "Hidden",
   "diag.exit_ip.waiting": "Known after the connection",

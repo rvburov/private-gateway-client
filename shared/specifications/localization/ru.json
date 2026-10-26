@@ -350,6 +350,8 @@
   "diag.ipv6.tunnel.chip": "В туннеле",
   "diag.ipv6.outside": "Идет мимо туннеля: сайты видят ваш адрес IPv6",
   "diag.ipv6.outside.chip": "Открыт",
+  "diag.ipv6.leak": "Сайты видят ваш адрес IPv6: замер показал, что IPv6 идет мимо туннеля",
+  "diag.ipv6.leak.chip": "Виден",
   "diag.exit_ip.title": "IP для сайтов",
   "diag.exit_ip.ok.chip": "Скрыт",
   "diag.exit_ip.waiting": "Станет известен после подключения",

@@ -61,6 +61,18 @@ public sealed partial class VpnModeTests
         resumed.Protection.Ipv6Tunnel.ShouldBeTrue();
         service.Journal.Tail(ServiceJournal.Capacity).Count(e => e.Message == "Сервер открывает IPv6 — IPv6 идет через туннель").ShouldBe(1);
         (await rig.Netns.CurlAsync(Rig.Trace6)).ShouldBe($"fl=1\nip={TunnelIp6}\n");
+
+        // Реальный адрес IPv6, измеренный до туннеля, — тот же, что сайты видят через туннель: так замер видит IPv6 мимо туннеля
+        // с IPv6 в туннеле. Реальный адрес мерится при подключении — переподключение.
+        using var trace6 = rig.DirectTrace6($"fl=1\nip={TunnelIp6}\n", host6);
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Off);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error);
+        var leak = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());
+        (leak.State, leak.Reason).ShouldBe((V1.CheckState.Warning, "leak"), "сайты видят реальный адрес IPv6, хотя IPv6 идет в туннель");
+        trace6.Requests.ShouldBe(1, "реальный адрес IPv6 измерен напрямую один раз — до туннеля");
     }
 
     [Fact]
@@ -71,6 +83,9 @@ public sealed partial class VpnModeTests
         var (host6, inside6) = rig.Netns.LinkIpv6();
         using var site6 = new LocalSite("IPv6 мимо туннеля", host6);
         (await rig.Netns.CurlAsync(site6.Url)).ShouldBe("IPv6 мимо туннеля", "без туннеля у машины есть IPv6");
+        // Проверочный адрес по IPv6 мимо туннеля — сайт на адресе машины, он называет адрес IPv6 пространства, как Cloudflare
+        // называет реальный адрес: замер IPv6 службы — настоящий.
+        using var trace6 = rig.DirectTrace6($"fl=1\nip={inside6}\n", host6);
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
         {
             Trace = Rig.Trace, Trace6 = Rig.Trace6, ExitIp = rig.ExitIpAsync,
@@ -89,6 +104,9 @@ public sealed partial class VpnModeTests
             "и для сокета, привязанного к адресу IPv6 машины, как у WebRTC");
         site6.Requests.ShouldBe(1, "до сайта дошел только запрос без туннеля");
         (await rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe($"fl=1\nip={TunnelIp}\n", "IPv4 — через туннель");
+        (await Ipv6RowAsync()).ShouldBe((V1.CheckState.Ok, string.Empty), "замер: проверочный адрес по IPv6 не ответил — IPv6 закрыт");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldNotContain(e => e.Message.Contains("ваш адрес IPv6", StringComparison.Ordinal),
+            "IPv6 закрыт — замер утечки не находит");
 
         await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Off);
@@ -98,9 +116,8 @@ public sealed partial class VpnModeTests
         (rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.Ipv6Outside).ShouldBe((true, true), "правила «только туннель» IPv6 мимо туннеля не закрывают");
         service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сервер не открывает IPv6 — «Блокировать IPv6 вне туннеля» выключено");
         (await rig.Netns.CurlAsync(site6.Url)).ShouldBe("IPv6 мимо туннеля", "IPv6 вне туннеля разрешен — идет напрямую");
-        var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
-            .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());
-        (row.State, row.Reason).ShouldBe((V1.CheckState.Warning, "outside"));
+        (await Ipv6RowAsync()).ShouldBe((V1.CheckState.Warning, "outside"), "замер видит реальный адрес IPv6, а причина — настройка, она и названа");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Проверка утечек: сайты видят ваш адрес IPv6 — IPv6 идет мимо туннеля");
 
         // С блоком при обрыве IPv6 мимо туннеля закрыт и так — предупреждения нет.
         await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
@@ -110,6 +127,15 @@ public sealed partial class VpnModeTests
         (blocked.Protection.Ipv6Tunnel, blocked.Protection.Ipv6).ShouldBe((false, V1.CheckState.Ok), "блок при обрыве держит IPv6 мимо туннеля");
         rig.KillSwitch.Last!.Ipv6Outside.ShouldBeFalse();
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(site6.Url, seconds: 3));
+        (await Ipv6RowAsync()).ShouldBe((V1.CheckState.Ok, string.Empty));
+        trace6.Requests.ShouldBeGreaterThan(0, "проверочный адрес мимо туннеля отвечал, пока IPv6 был открыт");
+
+        async Task<(V1.CheckState, string)> Ipv6RowAsync()
+        {
+            var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+                .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());
+            return (row.State, row.Reason);
+        }
 
         async Task<V1.Status> ConnectAsync(bool blockIpv6, bool killSwitch = false)
         {
@@ -119,6 +145,57 @@ public sealed partial class VpnModeTests
             return status;
         }
     }
+
+    [Fact]
+    public async Task Ipv6_seen_by_sites_outside_the_tunnel_is_a_leak_on_the_check()
+    {
+        // IPv6 в ядре не нужен: ответ проверочного адреса по IPv6 без прокси — подделка, как если бы IPv6 машины уходил мимо
+        // туннеля с реальным адресом, хотя «Блокировать IPv6 вне туннеля» включено.
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        string? seen6 = "2001:db8::7";
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Trace = Rig.Trace,
+            Trace6 = Rig.Trace6,
+            ExitIp = (probe, ct) => probe.Target == Rig.Trace6 && probe.Credentials is null ? Task.FromResult<string?>(Volatile.Read(ref seen6)) : rig.ExitIpAsync(probe, ct),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+
+        // Проверка утечек после подключения: реальный адрес IPv6 измерен до туннеля, и его же сайты видят после.
+        var leaked = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected && s.Protection.Ipv6 == V1.CheckState.Warning,
+            service.Journal))[^1];
+        leaked.Protection.Ipv6Tunnel.ShouldBeFalse("IPv6 идет мимо туннеля — и строка на главной так и говорит");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Проверка утечек: сайты видят ваш адрес IPv6 — IPv6 идет мимо туннеля");
+        (await Ipv6RowAsync()).ShouldBe((V1.CheckState.Warning, "leak"), "настройки IPv6 закрывают, а замер видит реальный адрес");
+
+        // IPv6 закрылся (проверочный адрес не отвечает) — строка снова по состоянию.
+        Volatile.Write(ref seen6, null);
+        var row = await Ipv6RowAsync();
+        row.Item1.ShouldBe(V1.CheckState.Ok);
+        row.Item2.ShouldNotBe("leak");
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Protection.Ipv6.ShouldBe(V1.CheckState.Ok);
+
+        async Task<(V1.CheckState, string)> Ipv6RowAsync()
+        {
+            var result = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+                .Single(r => r.Id == DiagnosticCheck.Ipv6.ToContractId());
+            return (result.State, result.Reason);
+        }
+    }
+
+    [Theory]
+    [InlineData("2001:db8::7", "2001:db8::7", true, true)]
+    [InlineData("2001:0db8:0:0::7", "2001:db8::7", true, true)]
+    [InlineData("2001:db8::7", TunnelIp6, true, false)]
+    [InlineData(null, TunnelIp6, true, false)]
+    [InlineData(null, "2001:db8::9", false, true)]
+    [InlineData("2001:db8::7", null, false, null)]
+    [InlineData("2001:db8::7", TunnelIp, false, null)]
+    public void Ipv6_leaks_when_sites_see_the_real_address_or_any_address_without_ipv6_in_the_tunnel(string? direct6, string? seen6, bool ipv6Tunnel, bool? leaks) =>
+        Gateway.Ipv6Leaks(direct6, seen6, ipv6Tunnel).ShouldBe(leaks,
+            "у туннеля без IPv6 любой ответ по IPv6 пришел мимо него; через туннель с IPv6 — утечка, только если виден реальный адрес");
 
     [Theory]
     [InlineData(false, false, true, true)]

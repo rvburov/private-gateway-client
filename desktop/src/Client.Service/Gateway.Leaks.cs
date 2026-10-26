@@ -10,7 +10,7 @@ namespace PrivateGateway.Client.Service;
 
 /// <summary>
 /// Проверка утечек: IP, который видят сайты, — запрос к проверочному адресу, — и сравнение с реальным IP,
-/// измеренным напрямую до туннеля. В режиме VPN запрос идет как у любой программы, без прокси: если трафик
+/// измеренным напрямую до туннеля; так же по IPv6 (<see cref="CheckIpv6Async"/>). В режиме VPN запрос идет как у любой программы, без прокси: если трафик
 /// уходит мимо туннеля, ответ покажет реальный IP. В режиме прокси — через вход проверки ядра (прямо в выход
 /// сервера): через туннель идут только программы с прокси. Совпали IP — трафик идет мимо туннеля. После
 /// «Защищено» — если включено «Проверять утечки после подключения», и по просьбе окна («Проверить», экран
@@ -158,6 +158,63 @@ public sealed partial class Gateway
         return (CheckState.Ok, null);
     }
 
+    /// <summary>
+    /// Вывод замера IPv6 как у любой программы (<see cref="CheckIpv6Async"/>): ответ адресом IPv6 — реальным (измеренным до
+    /// туннеля) или любым, когда у туннеля IPv6 нет (тогда IPv6 в туннель не попадает), — IPv6 идет мимо туннеля (true);
+    /// ответ другим адресом через туннель с IPv6 — через туннель (false); нет ответа — вывода нет (null).
+    /// </summary>
+    public static bool? Ipv6Leaks(string? direct6, string? seen6, bool ipv6Tunnel) =>
+        !IPAddress.TryParse(seen6, out var seen) || seen.AddressFamily != AddressFamily.InterNetworkV6 ? null
+        : !ipv6Tunnel || (IPAddress.TryParse(direct6, out var real) && real.Equals(seen));
+
+    /// <summary>
+    /// Строка IPv6 по состоянию защиты: <c>tunnel</c> — через туннель, <c>outside</c> — мимо туннеля открыт настройками
+    /// (режим VPN, «Защищено»), иначе без причины.
+    /// </summary>
+    public static (CheckState State, string? Reason) Ipv6Row(ConnectionStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return (status.Protection.Ipv6, status.Protection.Ipv6Tunnel ? "tunnel"
+            : status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Ipv6: CheckState.Warning } ? "outside"
+            : null);
+    }
+
+    /// <summary>
+    /// IPv6 для сайтов сейчас. В «Защищено» режима VPN — замер: проверочный адрес по IPv6 без прокси, как у любой программы, и
+    /// вывод <see cref="Ipv6Leaks"/>. IPv6 мимо туннеля, хотя настройки его закрывают или ведут в туннель, — «Внимание»
+    /// (<c>leak</c>), IPv6 мимо туннеля — в состоянии, ошибка — в журнале; открыт настройками — <c>outside</c>, как по
+    /// состоянию. Иначе (нет ответа, через туннель, другое состояние, нет проверочного адреса) — по состоянию.
+    /// </summary>
+    public async Task<(CheckState State, string? Reason)> CheckIpv6Async()
+    {
+        var status = Status;
+        if (status is not { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } || _options.Trace6 is not { } trace6)
+        {
+            return Ipv6Row(status);
+        }
+
+        // IPv6 по настройкам и туннелю, без вывода замера.
+        ConnectionStatus Policy(ConnectionStatus s) => Honest(s with { Protection = s.Protection with { Ipv6 = ProtectionChecks.For(s.State, s.Mode).Ipv6 } });
+
+        var session = Volatile.Read(ref _session);
+        var seen = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace6, Timing.ProbeTimeout), CancellationToken.None)
+            .ConfigureAwait(false);
+        var leaks = Ipv6Leaks(_directIp6, seen, Policy(status).Protection.Ipv6Tunnel) == true;
+
+        // Утечка — в состоянии, пока подключение то же; ее нет — IPv6 снова по состоянию (прошлый замер мог ее показать).
+        Update(s => session != _session || s.State != ConnectionState.Connected ? s
+            : leaks ? s with { Protection = s.Protection with { Ipv6 = CheckState.Warning, Ipv6Tunnel = false } }
+            : Policy(s));
+        var policy = Ipv6Row(Policy(Status));
+        if (!leaks)
+        {
+            return policy;
+        }
+
+        _journal.Add(JournalLevel.Error, "service", "Проверка утечек: сайты видят ваш адрес IPv6 — IPv6 идет мимо туннеля");
+        return policy.Reason == "outside" ? policy : (CheckState.Warning, "leak");
+    }
+
     /// <summary>«Защищено»: проверять связь с сервером и, если включено, проверить утечки.</summary>
     private void AfterConnected(int session)
     {
@@ -179,6 +236,8 @@ public sealed partial class Gateway
                 await Task.Delay(RetryPause, _time).ConfigureAwait(false);
                 await CheckExitAsync().ConfigureAwait(false);
             }
+
+            await CheckIpv6Async().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {
@@ -190,8 +249,18 @@ public sealed partial class Gateway
     /// Реальный IP — напрямую, мимо ядра, не дольше <paramref name="timeout"/> (по умолчанию — сколько подключение готово ждать);
     /// проверочного адреса нет или он не ответил — null.
     /// </summary>
-    private async Task<string?> DirectIpAsync(TimeSpan? timeout = null) => _options.Trace is { } trace
-        ? await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace, timeout ?? DirectTimeout), CancellationToken.None)
-            .ConfigureAwait(false)
+    private Task<string?> DirectIpAsync(TimeSpan? timeout = null) => DirectIpAsync(_options.Trace, timeout ?? DirectTimeout);
+
+    /// <summary>Реальные IP по IPv4 и по IPv6 — сразу, напрямую (<see cref="DirectIpAsync(TimeSpan?)"/>); адреса IPv6 нет — null.</summary>
+    private async Task<(string? Ip, string? Ip6)> DirectIpsAsync()
+    {
+        var ip = DirectIpAsync();
+        var ip6 = DirectIpAsync(_options.Trace6, DirectTimeout);
+        return (await ip.ConfigureAwait(false),
+            IPAddress.TryParse(await ip6.ConfigureAwait(false), out var address) && address.AddressFamily == AddressFamily.InterNetworkV6 ? address.ToString() : null);
+    }
+
+    private async Task<string?> DirectIpAsync(Uri? trace, TimeSpan timeout) => trace is not null
+        ? await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace, timeout), CancellationToken.None).ConfigureAwait(false)
         : null;
 }

@@ -112,7 +112,7 @@ public sealed partial class Gateway
     private void OnNetworkChanged(object? sender, EventArgs e)
     {
         // В другой сети и реальный IP другой: прежний замер не годится для проверки утечек.
-        _directIp = null;
+        (_directIp, _directIp6) = (null, null);
         if (Status.Exit.DirectIp is not null)
         {
             Update(s => s with { Exit = s.Exit with { DirectIp = null } });

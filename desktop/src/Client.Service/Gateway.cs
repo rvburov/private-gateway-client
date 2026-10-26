@@ -134,6 +134,9 @@ public sealed partial class Gateway : IAsyncDisposable
     // Реальный IP — измеренный напрямую, пока блока и туннеля нет; с ним сравнивается IP для сайтов. Сеть сменилась — забыт.
     private string? _directIp;
 
+    // Реальный адрес IPv6 — так же; у сети без IPv6 — null.
+    private string? _directIp6;
+
     // Подключение при загрузке (ConnectAtBootAsync): отказ не снимает блок, поставленный при запуске.
     private volatile bool _holdBlock;
 
@@ -393,10 +396,11 @@ public sealed partial class Gateway : IAsyncDisposable
         // Реальный IP — до блока и туннеля, пока прямой путь открыт: один раз на сеть, вместе с поиском адреса сервера,
         // чтобы не ждать дважды. Под блоком и в туннеле прежнего подключения прямого пути нет.
         var direct = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect
-            ? DirectIpAsync()
-            : Task.FromResult<string?>(null);
+            ? DirectIpsAsync()
+            : Task.FromResult<(string?, string?)>((null, null));
         IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
-        _directIp = await direct.ConfigureAwait(false) ?? _directIp;
+        var (ip, ip6) = await direct.ConfigureAwait(false);
+        (_directIp, _directIp6) = (ip ?? _directIp, ip6 ?? _directIp6);
 
         // Дальше подключение доводится до конца и при отмене вызова: поиск адреса мог остановить прежнее подключение, и
         // состояние не должно остаться «Подключением» без ядер. Все шаги ниже ограничены по времени.
