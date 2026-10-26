@@ -93,7 +93,11 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
             _pauseEnd?.Dispose();
             _pauseEnd = null;
             _server = server;
-            _status = (_status with { Mode = mode }).MoveTo(ConnectionState.Connecting, time.GetUtcNow()) with { ServerId = server.Id };
+            // Уже подключается (другой сервер, конец паузы в «Подключении») — то же «Подключение», без перехода в само себя.
+            var status = _status with { Mode = mode, ServerId = server.Id };
+            _status = status.State == ConnectionState.Connecting
+                ? status with { Since = time.GetUtcNow(), CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Connecting, mode) }
+                : status.MoveTo(ConnectionState.Connecting, time.GetUtcNow());
         }
 
         Raise();
@@ -219,10 +223,17 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
     {
         lock (_gate)
         {
-            // Как у службы: в «Защищено», «Блокировке» и «Ошибке», где сеть закрыта, — не дважды.
+            // Как у службы: в «Защищено», «Блокировке», «Подключении», «Переподключении» и «Ошибке», где сеть закрыта, — не
+            // дважды.
             if (!ConnectionController.CanPause(_status))
             {
                 return Task.FromResult(false);
+            }
+
+            // Попытки подключения встают до конца паузы: сервер за порталом не ответит.
+            if (_status.State is ConnectionState.Connecting or ConnectionState.Reconnecting)
+            {
+                _pending?.Cancel();
             }
 
             // Мимо туннеля: DNS у провайдера, IPv6 открыт, блок при обрыве на паузе.
@@ -285,7 +296,8 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
     /// <summary>
     /// Конец паузы — по времени или кнопкой «Вернуть защиту»: туннель и блок снова на месте; в «Блокировке» — тот же
-    /// блок, строгий режим остается; где попытки кончились — подключение к тому же серверу, как у службы.
+    /// блок, строгий режим остается; где попытки кончились или встали на паузу («Подключение», «Переподключение») —
+    /// подключение к тому же серверу, как у службы.
     /// </summary>
     private void EndPause(string reason)
     {
@@ -297,7 +309,9 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
                 return;
             }
 
-            again = _status is { State: ConnectionState.Blocked, StrictBlock: false } ? _server : null;
+            again = _status is { State: ConnectionState.Blocked, StrictBlock: false } or { State: ConnectionState.Connecting or ConnectionState.Reconnecting }
+                ? _server
+                : null;
 
             _pauseEnd?.Dispose();
             _pauseEnd = null;

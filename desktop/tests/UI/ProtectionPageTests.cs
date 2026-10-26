@@ -224,10 +224,14 @@ public sealed class ProtectionPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public async Task Wifi_sign_in_while_reconnecting_explains_without_asking()
+    public async Task Wifi_sign_in_while_reconnecting_asks_pauses_and_opens_the_page()
     {
+        // Отель: сервер за порталом не отвечает, служба переподключается без конца — пауза останавливает попытки до своего конца.
         var service = default(ScriptedService);
-        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User));
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User)
+        {
+            GrantsPause = true,
+        });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         service!.Push(s => s.MoveTo(ConnectionState.Reconnecting, Time.GetUtcNow()));
@@ -236,11 +240,13 @@ public sealed class ProtectionPageTests : WindowHarness
 
         var open = page.OpenCaptivePortalCommand.ExecuteAsync(null);
         Dispatcher.UIThread.RunJobs();
-        shell.Overlay.HasDialog.ShouldBeFalse("паузы сейчас не бывает — не спрашивать о ней");
+        shell.Overlay.Dialog.ShouldNotBeNull("в «Переподключении» пауза есть — вопрос, как в «Защищено»").SecondaryCommand.Execute(null);
         await open;
+        WaitFor(() => shell.Protection.Status.IsPaused);
 
-        (service.Pauses, Urls.Opened.Count).ShouldBe((0, 0), "служба не спрошена, страница под блоком не загрузится");
-        shell.Toast.Text.ShouldBe(Loc.Instance["pause.unavailable"]);
+        service.Pauses.ShouldBe(1);
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage]);
+        (shell.CurrentKey, shell.Toast.Text).ShouldBe((Pages.Home, Loc.Instance["pause.started"]));
     }
 
     [AvaloniaFact]

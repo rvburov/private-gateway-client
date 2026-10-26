@@ -122,14 +122,15 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
 
     /// <summary>
     /// Пауза для входа в Wi-Fi бывает в «Защищено», в «Блокировке» (строгий режим, блок с загрузки или с прошлого
-    /// запуска, попытки кончились) и в «Ошибке», где сеть закрыта (блок при обрыве, системный прокси на остановленном
-    /// ядре), и не идет уже. В «Подключении» и «Переподключении» ее нет.
+    /// запуска, попытки кончились), в «Подключении» и «Переподключении» (сервер за порталом не отвечает — попытки
+    /// встают до конца паузы) и в «Ошибке», где сеть закрыта (блок при обрыве, системный прокси на остановленном ядре),
+    /// и не идет уже.
     /// </summary>
     public static bool CanPause(ConnectionStatus status)
     {
         ArgumentNullException.ThrowIfNull(status);
-        return !status.IsPaused && (status.State is ConnectionState.Connected or ConnectionState.Blocked
-            || (status.State == ConnectionState.Error && !NetworkIsOpen(status)));
+        return !status.IsPaused && (status.State is ConnectionState.Connected or ConnectionState.Blocked or ConnectionState.Connecting
+            or ConnectionState.Reconnecting || (status.State == ConnectionState.Error && !NetworkIsOpen(status)));
     }
 
     /// <summary>

@@ -177,20 +177,56 @@ public class SimulatedGatewayClientTests
         (gateway.Status.State, gateway.Status.IsPaused).ShouldBe((ConnectionState.Connecting, false), "вошли в Wi-Fi — сервер снова пробуется");
     }
 
-    [Theory]
-    [InlineData(ConnectionState.Connecting)]
-    [InlineData(ConnectionState.Off)]
-    public async Task Pause_is_only_for_connected_or_blocked(ConnectionState state)
+    [Fact]
+    public async Task Pause_while_connecting_stops_the_attempt_and_connects_after_like_the_service()
     {
         var time = new FakeTimeProvider();
         using var gateway = new SimulatedGatewayClient(time);
-        if (state == ConnectionState.Connecting)
+        var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+
+        (await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken)).ShouldBeTrue();
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connect;
+
+        (gateway.Status.State, gateway.Status.IsPaused, gateway.Status.Protection).ShouldBe((ConnectionState.Connecting, true, ProtectionChecks.Paused),
+            "сервер за порталом не ответит — попытка встала до конца паузы");
+
+        var connected = new TaskCompletionSource();
+        gateway.StatusChanged += (_, s) =>
         {
-            _ = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
-        }
+            if (s.State == ConnectionState.Connected)
+            {
+                connected.TrySetResult();
+            }
+        };
+        await gateway.ResumeProtectionAsync(TestContext.Current.CancellationToken);
+        (gateway.Status.State, gateway.Status.IsPaused).ShouldBe((ConnectionState.Connecting, false), "вошли в Wi-Fi — подключение заново");
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await connected.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public async Task Connect_while_connecting_switches_the_server_without_a_jump_into_itself()
+    {
+        var time = new FakeTimeProvider();
+        using var gateway = new SimulatedGatewayClient(time);
+        var first = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
+
+        var second = gateway.ConnectAsync(Server with { Id = "de", Host = "203.0.113.25" }, TestContext.Current.CancellationToken);
+        await first;
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await second;
+
+        (gateway.Status.State, gateway.Status.ServerId).ShouldBe((ConnectionState.Connected, "de"));
+    }
+
+    [Fact]
+    public async Task Pause_is_not_for_off()
+    {
+        using var gateway = new SimulatedGatewayClient(new FakeTimeProvider());
 
         (await gateway.PauseForCaptivePortalAsync(TimeSpan.FromMinutes(5), TestContext.Current.CancellationToken)).ShouldBeFalse();
-        gateway.Status.State.ShouldBe(state);
+        gateway.Status.State.ShouldBe(ConnectionState.Off);
     }
 
     [Fact]

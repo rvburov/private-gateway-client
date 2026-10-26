@@ -262,11 +262,13 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Кнопка справа от строки проверки: «Проверить», «Повторить», «Вход в Wi-Fi» (строгий режим: подключает щит, а
-    /// сеть отеля без входа не пустит и VPN), «Перезапустить службу».
+    /// сеть отеля без входа не пустит и VPN; «Переподключение»: сервер за порталом отеля не ответит, пока не войти в сеть),
+    /// «Перезапустить службу».
     /// </summary>
     public string CheckActionText => Status.State switch
     {
         ConnectionState.Blocked when Status.StrictBlock => Loc.Instance["action.captive"],
+        ConnectionState.Reconnecting => Loc.Instance["action.captive"],
         ConnectionState.Blocked => Loc.Instance["action.retry"],
         ConnectionState.Error => Loc.Instance["action.restartService"],
         _ => Loc.Instance["action.check"],
@@ -275,7 +277,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     public bool HasCheckAction => !Status.IsPaused && Status.State switch
     {
         ConnectionState.Connected => !IsChecking,
-        ConnectionState.Blocked or ConnectionState.Error => true,
+        ConnectionState.Blocked or ConnectionState.Error or ConnectionState.Reconnecting => true,
         _ => false,
     };
 
@@ -431,6 +433,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 IsChecking = false;
                 break;
             case ConnectionState.Blocked when Status.StrictBlock:
+            case ConnectionState.Reconnecting:
                 await CaptivePortalFlow.RunAsync(_gateway, _controller, _overlay, _launcher, _navigator, _toast).ConfigureAwait(true);
                 break;
             case ConnectionState.Blocked or ConnectionState.Error when _catalog.Selected is { } server:

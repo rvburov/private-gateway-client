@@ -202,11 +202,19 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Сколько раз окно просило паузу для входа в Wi-Fi.</summary>
         public int Pauses { get; private set; }
 
-        /// <summary>Как служба в режиме прокси без системного прокси: паузе нечего менять.</summary>
+        /// <summary>Пауза начинается: состояние то же, с паузой. false — как служба в режиме прокси без системного прокси.</summary>
+        public bool GrantsPause { get; init; }
+
+        /// <summary>Как служба в режиме прокси без системного прокси: паузе нечего менять (если не <see cref="GrantsPause"/>).</summary>
         public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
         {
             Pauses++;
-            return Task.FromResult(false);
+            if (GrantsPause)
+            {
+                Raise(Status with { CaptivePauseUntil = time.GetUtcNow() + duration, Protection = ProtectionChecks.Paused });
+            }
+
+            return Task.FromResult(GrantsPause);
         }
 
         public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;

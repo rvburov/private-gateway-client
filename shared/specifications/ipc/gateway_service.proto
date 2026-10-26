@@ -38,8 +38,10 @@ service GatewayService {
   rpc ApplyProtection(ProtectionSettings) returns (ApplyProtectionReply);
 
   // Пауза защиты для входа в Wi-Fi отеля или кафе — только на время, с обратным отсчетом. Бывает в
-  // CONNECTED и в BLOCKED (строгий режим, блок с загрузки или с прошлого запуска); в BLOCKED без
-  // подключения по окончании возвращается тот же блок, без подключения. Паузы нет — ответ без срока.
+  // CONNECTED, в BLOCKED (строгий режим, блок с загрузки или с прошлого запуска), в CONNECTING и
+  // RECONNECTING (попытки стоят до конца паузы, потом подключение заново) и в ERROR, где сеть закрыта; в
+  // BLOCKED без подключения по окончании возвращается тот же блок, без подключения. Паузы нет — ответ без
+  // срока.
   rpc PauseForCaptivePortal(CaptivePauseRequest) returns (CaptivePauseReply);
 
   // Экран «Проверка»: проверки утечек и журнал службы (уже без секретов).
@@ -92,7 +94,7 @@ message Status {
   TrafficStats traffic = 7;
   ExitInfo exit = 8;
   ErrorInfo error = 9;
-  // Пауза для входа в Wi-Fi (в CONNECTED или BLOCKED); не задана — паузы нет.
+  // Пауза для входа в Wi-Fi (в CONNECTED, BLOCKED, CONNECTING, RECONNECTING или ERROR); не задана — паузы нет.
   google.protobuf.Timestamp captive_pause_until = 10;
   // Сеть машины — строка под заголовком на главном экране.
   NetworkInfo network = 11;

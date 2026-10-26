@@ -214,8 +214,8 @@ public class ConnectionControllerTests
     [InlineData(ConnectionState.Connected, true)]
     [InlineData(ConnectionState.Blocked, true)]
     [InlineData(ConnectionState.Off, false)]
-    [InlineData(ConnectionState.Connecting, false)]
-    [InlineData(ConnectionState.Reconnecting, false)]
+    [InlineData(ConnectionState.Connecting, true)]
+    [InlineData(ConnectionState.Reconnecting, true)]
     [InlineData(ConnectionState.Error, false)]
     public async Task Captive_pause_is_asked_only_while_protection_is_on(ConnectionState state, bool paused)
     {

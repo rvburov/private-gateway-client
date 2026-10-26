@@ -130,8 +130,9 @@ public sealed partial class Gateway
             _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — проверка связи с сервером");
             _ = CheckNowAsync(session, Volatile.Read(ref _watch));
         }
-        else if (status.State == ConnectionState.Reconnecting)
+        else if (status is { State: ConnectionState.Reconnecting, IsPaused: false })
         {
+            // На паузе для входа в Wi-Fi попыток нет — подгонять нечего.
             _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — попытка переподключения сразу");
             Volatile.Read(ref _nudge).TrySetResult();
         }
@@ -309,6 +310,7 @@ public sealed partial class Gateway
     private async Task<(bool Up, string Failure)> RestartAsync(int session)
     {
         CoreRequest request;
+        CancellationToken starting;
         await _switch.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -317,7 +319,8 @@ public sealed partial class Gateway
                 return (false, ErrorCodes.CoreFailed);
             }
 
-            request = current;
+            // Под замком: пауза меняет источник отмены под ним же.
+            (request, starting) = (current, _starting.Token);
             await StopCoreAsync().ConfigureAwait(false);
             if (!BlockWithoutTunnel())
             {
@@ -356,11 +359,16 @@ public sealed partial class Gateway
         try
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, request, _addresses, timeout, _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true)).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
             _journal.Add(JournalLevel.Error, "service", e.Message);
+            return (false, ErrorCodes.CoreFailed);
+        }
+        catch (OperationCanceledException) when (starting.IsCancellationRequested)
+        {
+            // Пауза для входа в Wi-Fi: попытки встали до ее конца.
             return (false, ErrorCodes.CoreFailed);
         }
 

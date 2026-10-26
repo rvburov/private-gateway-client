@@ -512,7 +512,6 @@
   "checked.pausedStrict": "The network closes again after the pause",
   "pause.dialog.textStrict": "This lets you sign in to hotel or cafe Wi-Fi. Strict mode keeps the network closed without VPN — during the pause it opens, and websites and the network see your real IP. The network closes again by itself in 5 minutes, or earlier with “Close network”.",
   "pause.running": "The pause is already on — the network sign-in page is open again",
-  "pause.unavailable": "The pause isn't available right now: the network is closed while protection is still connecting or not working. Turn protection off with the shield button and open Wi-Fi sign-in again",
   "pause.failed": "The pause did not start: the service could not open the network — see the log on the Check screen",
   "prot.group.ks": "Kill switch",
   "prot.group.dns": "DNS",

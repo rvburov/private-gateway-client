@@ -13,10 +13,10 @@ namespace PrivateGateway.Client.UI.ViewModels;
 /// <item>пауза бывает — вопрос, пауза на 5 минут, страница и главная;</item>
 /// <item>служба отказала в режиме прокси — системный прокси выключен, паузе нечего менять: страница откроется
 /// напрямую;</item>
-/// <item>служба отказала в режиме VPN (блок не снялся или служба его не знает) — «пауза не началась», без страницы;</item>
-/// <item>«Подключение» и «Переподключение» — объяснение без вопроса и без страницы: под блоком она не загрузится, а
-/// щит в них выключает защиту.</item>
+/// <item>служба отказала в режиме VPN (блок не снялся или служба его не знает) — «пауза не началась», без страницы.</item>
 /// </list>
+/// В «Подключении» и «Переподключении» пауза тоже есть: сервер за порталом не ответит, пока не войти в сеть, — служба
+/// останавливает попытки до конца паузы.
 /// </summary>
 internal static class CaptivePortalFlow
 {
@@ -40,12 +40,6 @@ internal static class CaptivePortalFlow
         {
             await launcher.OpenAsync(CaptivePortal.CheckPage).ConfigureAwait(true);
             toast.Show(Loc.Instance["pause.running"], ToastViewModel.LongDuration);
-            return;
-        }
-
-        if (!ConnectionController.CanPause(status))
-        {
-            toast.Show(Loc.Instance["pause.unavailable"], ToastViewModel.LongDuration);
             return;
         }
 

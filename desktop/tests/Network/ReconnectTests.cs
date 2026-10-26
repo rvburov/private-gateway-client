@@ -125,6 +125,61 @@ public sealed class ReconnectTests
             .ShouldBe(V1.ConnectionState.Connected, "сервер отвечает — смена сети ничего не ломает");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Pause_while_reconnecting_gives_the_system_proxy_back_and_connects_again_after(bool systemProxy)
+    {
+        // Отель в режиме прокси: системный прокси ведет браузер в ядро, а сервер за порталом не отвечает.
+        var proxy = new FakeSystemProxy();
+        var network = new FakeNetwork();
+        var backup = Path.Combine(Path.GetTempPath(), "pg-proxy-" + Guid.NewGuid().ToString("N")[..8] + ".json");
+        try
+        {
+            await using var rig = await ProxyRig.CreateAsync(network: network, systemProxy: (proxy, backup));
+            using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+            var port = XrayKit.FreePort();
+            await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, port, systemProxy), cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+            rig.StopServer();
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting && s.Attempt >= 2);
+
+            var hour = new V1.CaptivePauseRequest { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromHours(1)) };
+            var reply = await rig.Service.Client.PauseForCaptivePortalAsync(hour, cancellationToken: Ct);
+            var attempts = Attempts(rig.Service);
+            await Task.Delay(TimeSpan.FromSeconds(3), Ct);
+            if (!systemProxy)
+            {
+                reply.Until.ShouldBeNull("без системного прокси паузе нечего менять — браузер и так идет напрямую");
+                Attempts(rig.Service).ShouldBeGreaterThan(attempts, "попытки идут дальше");
+                return;
+            }
+
+            reply.Until.ShouldNotBeNull("в «Переподключении» пауза есть");
+            var paused = (await rig.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).ToCore();
+            (paused.State, paused.IsPaused, proxy.Port).ShouldBe((ConnectionState.Reconnecting, true, null), "страница входа в сеть — напрямую");
+            Attempts(rig.Service).ShouldBe(attempts, "на паузе попыток нет");
+
+            // Вошли в сеть отеля — сеть машины сменилась (новый адрес): попытки не подгоняются, пауза идет.
+            network.Raise();
+            await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+            Attempts(rig.Service).ShouldBe(attempts, "и смена сети на паузе попытку не начинает");
+            rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldNotContain(e => e.Message == "Сеть машины сменилась — попытка переподключения сразу");
+
+            await rig.StartServerAsync();
+            await rig.Service.Client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Cancel = true }, cancellationToken: Ct);
+
+            var states = await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error);
+            states.Select(s => s.State).ShouldContain(V1.ConnectionState.Connecting, "после паузы — ядро заново, через «Подключение»");
+            states[^1].State.ShouldBe(V1.ConnectionState.Connected, states[^1].Error?.Message);
+            (states[^1].CaptivePauseUntil, proxy.Port).ShouldBe((null, port), "системный прокси — снова на ядре");
+        }
+        finally
+        {
+            File.Delete(backup);
+        }
+    }
+
     [Fact]
     public void Network_fingerprint_ignores_the_own_tunnel_the_loopback_and_the_order()
     {
@@ -174,6 +229,10 @@ public sealed class ReconnectTests
         changes.ShouldBe(1, "та же новая сеть — уже не перемена");
     }
 
+    /// <summary>Сколько попыток переподключения служба начала.</summary>
+    private static int Attempts(RunningService service) =>
+        service.Journal.Tail(ServiceJournal.Capacity).Count(e => e.Message.StartsWith("Переподключение, попытка", StringComparison.Ordinal));
+
     /// <summary>Процесс ядра, которое служба запустила последним, — из ее журнала.</summary>
     private static int CoreProcessId(RunningService service)
     {
@@ -200,7 +259,8 @@ public sealed class ReconnectTests
 
         public RunningService Service { get; }
 
-        public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null, IRouteTable? routes = null)
+        public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null, IRouteTable? routes = null,
+            (ISystemProxy Proxy, string Backup)? systemProxy = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var site = new LocalSite("проверка");
@@ -209,7 +269,8 @@ public sealed class ReconnectTests
             serverConfig["outbounds"] = new JsonArray(
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
-            var service = await RunningService.StartAsync(site.Url, options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes });
+            var service = await RunningService.StartAsync(site.Url, systemProxy: systemProxy,
+                options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes });
             return new ProxyRig(site, serverConfig, serverPort, definition, server, service);
         }
 

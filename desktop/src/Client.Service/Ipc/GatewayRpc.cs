@@ -64,8 +64,8 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         Task.FromResult(new V1.ApplyProtectionReply());
 
     /// <summary>
-    /// Пауза для входа в Wi-Fi (в «Защищено» и «Блокировке») или «Вернуть защиту» / «Закрыть сеть» (<c>cancel</c>); паузы
-    /// не вышло — ответ без срока.
+    /// Пауза для входа в Wi-Fi (в «Защищено», «Блокировке», «Подключении», «Переподключении» и «Ошибке», где сеть закрыта) или
+    /// «Вернуть защиту» / «Закрыть сеть» (<c>cancel</c>); паузы не вышло — ответ без срока.
     /// </summary>
     public override async Task<V1.CaptivePauseReply> PauseForCaptivePortal(V1.CaptivePauseRequest request, ServerCallContext context)
     {

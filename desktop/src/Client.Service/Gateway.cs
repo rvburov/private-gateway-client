@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
@@ -149,6 +150,10 @@ public sealed partial class Gateway : IAsyncDisposable
 
     // Конец паузы для входа в Wi-Fi; любая смена состояния паузу заканчивает.
     private ITimer? _pauseEnd;
+
+    // Запуски туннеля, которые идут сейчас (подключение, попытка переподключения): пауза для входа в Wi-Fi их прерывает —
+    // TUN не встанет поверх страницы входа в сеть.
+    private CancellationTokenSource _starting = new();
 
     /// <param name="options">Что умеет служба.</param>
     /// <param name="time">Часы.</param>
@@ -468,34 +473,43 @@ public sealed partial class Gateway : IAsyncDisposable
             BeginConnecting(core.Mode, serverId);
             _journal.Add(JournalLevel.Info, "service", $"Подключение в режиме прокси: {core.Server.Protocol}, порт {core.Connection.ProxyPort}");
 
-            // Порт занят другой программой — ядро на нем не откроется, а проверка готовности приняла бы чужой вход за свой.
-            if (!PortIsFree(core.Connection.ProxyPort, core.Connection.ProxyAllowLan))
-            {
-                Fail(session, ErrorCodes.CoreFailed, $"Порт {core.Connection.ProxyPort} занят другой программой — выберите другой в «Подключении и ядре»");
-                return new V1.ConnectReply { Accepted = true };
-            }
-
-            try
-            {
-                var process = CoreProcess.StartXray(xray, config);
-                process.Output += (_, line) => _journal.Add(JournalLevel.Info, "xray", line);
-                process.Exited += (_, _) => OnCoreExited(session, process);
-                _core = process;
-                _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id);
-            }
-            catch (System.ComponentModel.Win32Exception e)
-            {
-                Fail(session, ErrorCodes.CoreFailed, "Ядро не запустилось: " + e.Message);
-                return new V1.ConnectReply { Accepted = true };
-            }
+            StartProxy(session, core, xray, config);
+            return new V1.ConnectReply { Accepted = true };
         }
         finally
         {
             _switch.Release();
         }
+    }
+
+    /// <summary>
+    /// Ядро режима прокси — и ждать, пока оно откроет вход (<see cref="WaitReadyAsync"/>): тогда системный прокси и
+    /// «Защищено». Порт занят или ядро не запустилось — «Ошибка». Под замком смены подключения.
+    /// </summary>
+    private void StartProxy(int session, CoreRequest core, string xray, JsonObject config)
+    {
+        // Порт занят другой программой — ядро на нем не откроется, а проверка готовности приняла бы чужой вход за свой.
+        if (!PortIsFree(core.Connection.ProxyPort, core.Connection.ProxyAllowLan))
+        {
+            Fail(session, ErrorCodes.CoreFailed, $"Порт {core.Connection.ProxyPort} занят другой программой — выберите другой в «Подключении и ядре»");
+            return;
+        }
+
+        try
+        {
+            var process = CoreProcess.StartXray(xray, config);
+            process.Output += (_, line) => _journal.Add(JournalLevel.Info, "xray", line);
+            process.Exited += (_, _) => OnCoreExited(session, process);
+            _core = process;
+            _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id);
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            Fail(session, ErrorCodes.CoreFailed, "Ядро не запустилось: " + e.Message);
+            return;
+        }
 
         _ = WaitReadyAsync(session, core.Connection.ProxyPort, TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds));
-        return new V1.ConnectReply { Accepted = true };
     }
 
     /// <summary>
@@ -575,9 +589,10 @@ public sealed partial class Gateway : IAsyncDisposable
     /// блок при обрыве снимается и туннель останавливается, режима прокси — системный прокси возвращается к
     /// прямому подключению; по истечении защита возвращается сама. В «Блокировке» (строгий режим, блок с
     /// загрузки или с прошлого запуска, попытки кончились) блок снимается на время, а по истечении — тот же
-    /// блок, если подключения нет (<see cref="ResumeAsync(int, string, CancellationToken)"/>). Паузы нет (null):
-    /// в остальных состояниях, на паузе, без системного прокси в режиме прокси, без известного блока и если
-    /// блок не снялся.
+    /// блок, если подключения нет (<see cref="ResumeAsync(int, string, CancellationToken)"/>). В «Подключении» и
+    /// «Переподключении» (сервер за порталом не отвечает) попытки и ядра останавливаются до конца паузы, а потом
+    /// подключение начинается заново. Паузы нет (null): в остальных состояниях, на паузе, без системного прокси в режиме
+    /// прокси, без известного блока и если блок не снялся.
     /// </summary>
     public async Task<DateTimeOffset?> PauseAsync(TimeSpan duration, CancellationToken cancellationToken = default)
     {
@@ -601,6 +616,25 @@ public sealed partial class Gateway : IAsyncDisposable
                 }
 
                 what = status.StrictBlock ? "строгий режим — сеть открыта без VPN" : "блок снят, трафик идет напрямую";
+            }
+            else if (status.State is ConnectionState.Connecting or ConnectionState.Reconnecting && _request is { } request
+                && (request.Mode == ConnectionMode.Vpn || _systemProxy is { IsActive: true }))
+            {
+                // Отель: сервер за порталом не ответит, пока не войти в сеть, а попытки держат туннель к нему (весь трафик — в
+                // него) или системный прокси на ядре без связи. Попытки останавливаются до конца паузы, потом подключение
+                // заново (ResumeAsync). Блок снимается раньше: не снялся — попытки идут дальше, паузы нет.
+                if (request.Mode == ConnectionMode.Vpn && !OpenBlock())
+                {
+                    return null;
+                }
+
+                _session++;
+                var starting = Interlocked.Exchange(ref _starting, new CancellationTokenSource());
+                await starting.CancelAsync().ConfigureAwait(false);
+                starting.Dispose();
+                await StopCoreAsync().ConfigureAwait(false);
+                _systemProxy?.Release();
+                what = "попытки подключения остановлены, трафик идет напрямую";
             }
             else if (status.State == ConnectionState.Connected && _request is { Mode: ConnectionMode.Vpn })
             {
@@ -714,8 +748,9 @@ public sealed partial class Gateway : IAsyncDisposable
             _pauseEnd?.Dispose();
         }
 
-        // Переподключение и проверка связи останавливаются: подключения больше нет.
+        // Переподключение, проверка связи и запуски туннеля останавливаются: подключения больше нет.
         Interlocked.Increment(ref _session);
+        await _starting.CancelAsync().ConfigureAwait(false);
         if (_options.Network is { } network)
         {
             network.Changed -= OnNetworkChanged;
@@ -743,6 +778,7 @@ public sealed partial class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Warning, "service", "Служба остановлена, блок при обрыве оставлен: трафик заблокирован до выключения защиты");
         }
 
+        _starting.Dispose();
         _switch.Dispose();
     }
 
@@ -988,7 +1024,8 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>
     /// Конец паузы: защита и системный прокси — обратно; в режиме VPN — блок и туннель заново, через
-    /// «Подключение»; в «Блокировке» без подключения — тот же блок. Подключение сменилось — ничего.
+    /// «Подключение»; в «Блокировке» без подключения — тот же блок; пауза из «Подключения» или «Переподключения» режима
+    /// прокси — ядро заново, через «Подключение». Подключение сменилось — ничего.
     /// </summary>
     private async Task ResumeAsync(int session, string why, CancellationToken cancellationToken = default)
     {
@@ -1030,18 +1067,30 @@ public sealed partial class Gateway : IAsyncDisposable
 
             if (_request is { Mode: ConnectionMode.Vpn } request)
             {
-                // Новый номер: туннель поднимается заново, как при подключении; переход в «Подключение» заканчивает паузу.
+                // Новый номер: туннель поднимается заново, как при подключении; переход в «Подключение» заканчивает паузу. Блок —
+                // раньше «Подключения», как при подключении: окно не увидит «Подключение» без блока. Туннеля еще нет — и
+                // разрешения ему нет.
                 var next = ++_session;
-                BeginConnecting(request.Mode, Status.ServerId ?? string.Empty);
                 _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): туннель поднимается снова");
-                // Туннеля еще нет — и разрешения ему нет (как при подключении).
-                if (_killSwitchOn && !Block(request, _addresses, tunnel: false))
+                var blocked = !_killSwitchOn || Block(request, _addresses, tunnel: false);
+                BeginConnecting(request.Mode, Status.ServerId ?? string.Empty);
+                if (!blocked)
                 {
                     Fail(next, ErrorCodes.KillSwitchFailed, "Блок при обрыве не включился");
                     return;
                 }
 
                 _ = StartTunnelAsync(next, request, _addresses, _killSwitchOn, reuseIpv6: true);
+                return;
+            }
+
+            if (_request is { Mode: ConnectionMode.Proxy } proxy && status.State is ConnectionState.Connecting or ConnectionState.Reconnecting)
+            {
+                // Пауза остановила попытки — ядро заново, как при подключении; системный прокси — когда ядро откроет вход.
+                var next = ++_session;
+                BeginConnecting(proxy.Mode, Status.ServerId ?? string.Empty);
+                _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): ядро запускается снова");
+                StartProxy(next, proxy, _options.XrayPath!, XrayConfigBuilder.Build(proxy, probe: _probe).Config!);
                 return;
             }
 
@@ -1111,7 +1160,12 @@ public sealed partial class Gateway : IAsyncDisposable
         ExitInfo Exit(ConnectionStatus s) => ExitInfo.Unknown with { DirectIp = direct ?? s.Exit.DirectIp };
         if (Status.State == ConnectionState.Connecting)
         {
-            Update(s => Honest(s with { Mode = mode, ServerId = serverId, Protection = ProtectionChecks.For(ConnectionState.Connecting, mode), Exit = Exit(s) }));
+            // Подключение с паузы, начатой в «Подключении» (конец паузы, новый сервер), паузу заканчивает, как переход.
+            EndPauseTimer();
+            Update(s => Honest(s with
+            {
+                Mode = mode, ServerId = serverId, Protection = ProtectionChecks.For(ConnectionState.Connecting, mode), Exit = Exit(s), CaptivePauseUntil = null,
+            }));
         }
         else
         {
@@ -1140,16 +1194,23 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private async Task StartTunnelAsync(int session, CoreRequest core, IReadOnlyList<IPAddress> addresses, bool killSwitchOn, bool reuseIpv6 = false)
     {
+        // Первая часть идет под замком вызвавшего (подключение, конец паузы) — как и смена источника отмены паузой.
+        var starting = _starting.Token;
         VpnTunnel tunnel;
         try
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6)).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
             Fail(session, ErrorCodes.CoreFailed, e.Message);
+            return;
+        }
+        catch (OperationCanceledException) when (starting.IsCancellationRequested)
+        {
+            // Пауза для входа в Wi-Fi: ядра остановлены, подключение — после паузы.
             return;
         }
 

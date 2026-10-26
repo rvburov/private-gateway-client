@@ -336,6 +336,36 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Reconnecting_offers_wifi_sign_in_on_the_main_page()
+    {
+        // Отель: сервер за порталом не отвечает, а служба переподключается без конца — вход в Wi-Fi прямо с главной.
+        var service = default(ScriptedService);
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User)
+        {
+            GrantsPause = true,
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        service!.Push(s => s.MoveTo(ConnectionState.Reconnecting, Time.GetUtcNow()));
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Reconnecting);
+        Dispatcher.UIThread.RunJobs();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        (main.HasCheckAction, main.CheckActionText).ShouldBe((true, "Вход в Wi-Fi"));
+        Snapshot(window, "main-reconnecting");
+
+        var open = main.CheckActionCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        await open;
+        WaitFor(() => shell.Protection.Status.IsPaused);
+
+        (service.Pauses, main.HasCheckAction).ShouldBe((1, false), "на паузе кнопки нет — есть «Вернуть защиту»");
+        Urls.Opened.ShouldBe([CaptivePortal.CheckPage]);
+        Text(window, "StatusTitle").ShouldBe("Защита на паузе");
+    }
+
+    [AvaloniaFact]
     public async Task Split_mode_shows_all_traffic_as_partial_on_main_and_in_checks()
     {
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
