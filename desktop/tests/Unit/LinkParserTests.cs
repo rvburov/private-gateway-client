@@ -159,11 +159,14 @@ public class LinkParserTests
         json["host"] = s.Host;
         json["port"] = s.Port;
 
-        var transport = new JsonObject { ["kind"] = s.Transport.Kind switch
+        var transport = new JsonObject
         {
-            TransportKind.WebSocket => "ws",
-            _ => s.Transport.Kind.ToString().ToLowerInvariant(),
-        } };
+            ["kind"] = s.Transport.Kind switch
+            {
+                TransportKind.WebSocket => "ws",
+                _ => s.Transport.Kind.ToString().ToLowerInvariant(),
+            }
+        };
         Put(transport, "path", s.Transport.Path);
         Put(transport, "host", s.Transport.Host);
         Put(transport, "serviceName", s.Transport.ServiceName);

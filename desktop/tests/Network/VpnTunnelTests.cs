@@ -3,12 +3,12 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
-using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Network.SingBox;
-using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Network.Xray;
+using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Service.Cores;
 
 namespace PrivateGateway.Client.Tests.Network;

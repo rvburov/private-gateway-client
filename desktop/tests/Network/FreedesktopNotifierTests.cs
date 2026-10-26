@@ -184,39 +184,39 @@ public sealed class FreedesktopNotifierTests
             switch (request.MemberAsString)
             {
                 case "GetCapabilities":
-                {
-                    using var writer = context.CreateReplyWriter("as");
-                    writer.WriteArray(_capabilities);
-                    context.Reply(writer.CreateMessage());
-                    break;
-                }
-
-                case "Notify":
-                {
-                    var reader = request.GetBodyReader();
-                    var (app, replaces, icon, summary, body) = (reader.ReadString(), reader.ReadUInt32(), reader.ReadString(), reader.ReadString(), reader.ReadString());
-                    var actions = reader.ReadArrayOfString();
-                    var hints = reader.ReadDictionaryOfStringToVariantValue();
-                    var id = replaces != 0 ? replaces : ++_next;
-                    lock (Calls)
                     {
-                        Calls.Add(new NotifyCall(id, app, replaces, icon, summary, body, actions, hints["urgency"].GetByte(),
-                            hints.TryGetValue("suppress-sound", out var quiet) && quiet.GetBool(), hints.ContainsKey("sound-name")));
+                        using var writer = context.CreateReplyWriter("as");
+                        writer.WriteArray(_capabilities);
+                        context.Reply(writer.CreateMessage());
+                        break;
                     }
 
-                    using var writer = context.CreateReplyWriter("u");
-                    writer.WriteUInt32(id);
-                    context.Reply(writer.CreateMessage());
-                    break;
-                }
+                case "Notify":
+                    {
+                        var reader = request.GetBodyReader();
+                        var (app, replaces, icon, summary, body) = (reader.ReadString(), reader.ReadUInt32(), reader.ReadString(), reader.ReadString(), reader.ReadString());
+                        var actions = reader.ReadArrayOfString();
+                        var hints = reader.ReadDictionaryOfStringToVariantValue();
+                        var id = replaces != 0 ? replaces : ++_next;
+                        lock (Calls)
+                        {
+                            Calls.Add(new NotifyCall(id, app, replaces, icon, summary, body, actions, hints["urgency"].GetByte(),
+                                hints.TryGetValue("suppress-sound", out var quiet) && quiet.GetBool(), hints.ContainsKey("sound-name")));
+                        }
+
+                        using var writer = context.CreateReplyWriter("u");
+                        writer.WriteUInt32(id);
+                        context.Reply(writer.CreateMessage());
+                        break;
+                    }
 
                 case "CloseNotification":
-                {
-                    Closed.Add(request.GetBodyReader().ReadUInt32());
-                    using var writer = context.CreateReplyWriter(null);
-                    context.Reply(writer.CreateMessage());
-                    break;
-                }
+                    {
+                        Closed.Add(request.GetBodyReader().ReadUInt32());
+                        using var writer = context.CreateReplyWriter(null);
+                        context.Reply(writer.CreateMessage());
+                        break;
+                    }
 
                 default:
                     context.ReplyUnknownMethodError();

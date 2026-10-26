@@ -1,11 +1,10 @@
+using CoreAddresses = PrivateGateway.Client.Core.Settings.AddressPreference;
 using CoreCheck = PrivateGateway.Client.Core.DiagnosticCheck;
 using CoreCheckState = PrivateGateway.Client.Core.CheckState;
-using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
+using CoreFingerprint = PrivateGateway.Client.Core.Settings.TlsFingerprint;
 using CoreLatency = PrivateGateway.Client.Core.Servers.LatencyResult;
 using CoreLatencyFailure = PrivateGateway.Client.Core.Servers.LatencyFailure;
-using CoreState = PrivateGateway.Client.Core.ConnectionState;
-using CoreAddresses = PrivateGateway.Client.Core.Settings.AddressPreference;
-using CoreFingerprint = PrivateGateway.Client.Core.Settings.TlsFingerprint;
+using CoreLevel = PrivateGateway.Client.Core.JournalLevel;
 using CoreLog = PrivateGateway.Client.Core.Settings.CoreLogLevel;
 using CoreProtocol = PrivateGateway.Client.Core.ProxyProtocol;
 using CoreReconnect = PrivateGateway.Client.Core.Settings.ReconnectPolicy;
@@ -13,6 +12,7 @@ using CoreRouting = PrivateGateway.Client.Core.Settings.RoutingMode;
 using CoreRuleAction = PrivateGateway.Client.Core.Settings.RuleAction;
 using CoreSecurity = PrivateGateway.Client.Core.TransportSecurity;
 using CoreSettings = PrivateGateway.Client.Core.Settings.AppSettings;
+using CoreState = PrivateGateway.Client.Core.ConnectionState;
 using CoreTun = PrivateGateway.Client.Core.Settings.TunEngine;
 using V1 = PrivateGateway.Client.Contracts.V1;
 

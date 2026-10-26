@@ -166,6 +166,9 @@ dotnet run scripts/gen-tokens.cs                       # тема Avalonia из 
 dotnet test --solution PrivateGateway.slnx            # все тесты (Microsoft.Testing.Platform)
 dotnet test --project desktop/tests/Unit               # быстрый гейт
 scripts/soak.sh 30                                     # долгий прогон (soak), минут на режим; VPN — Linux от root
+dotnet format PrivateGateway.slnx                      # стиль и формат по .editorconfig (CI — с --verify-no-changes)
+dotnet test --solution PrivateGateway.slnx --results-directory artifacts/test-results --report-ctrf
+dotnet run scripts/test-report.cs artifacts/test-results   # итог и пропуски по причинам, как в CI
 ```
 
 - **Тесты гонять всегда.** По ходу работы — `Unit`, перед коммитом — все. В отчете — числа
@@ -177,6 +180,12 @@ scripts/soak.sh 30                                     # долгий прого
 - **Новый тест проверять мутантами:** испортить код и убедиться, что тест падает; после возврата
   исходника — `touch` или прогон с `--no-incremental`.
 - Тесты разбора ссылок и подписок — на эталонах из `shared/testdata`, одних для всех платформ.
+- **Пропуск — только с причиной, и CI ее сверяет.** Тест без условий (ОС, права, сборки ядер) пропускается через
+  `Assert.Skip…` с причиной словами. Отчет CI (`scripts/test-report.cs`) пишет каждый пропуск с причиной в сводку
+  задания и падает на пропуске, которого нет для этой ОС в `desktop/tests/allowed-skips.json`. Законный пропуск —
+  строка туда с объяснением; тест, который должен идти в CI, — вернуть ему условия (шаг workflow, права, ядро).
+- **Стиль — `dotnet format`:** CI проверяет его с `--verify-no-changes`. Перед коммитом — `dotnet format
+  PrivateGateway.slnx`, если правились файлы `.cs`.
 
 ## Правила кода
 

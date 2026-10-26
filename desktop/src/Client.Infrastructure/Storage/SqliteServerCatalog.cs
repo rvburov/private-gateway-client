@@ -527,7 +527,10 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 _secrets.Save(SubscriptionKey(subscriptionId), newUrl.ToString());
                 subscription = subscription with
                 {
-                    Address = SubscriptionAddress.Mask(newUrl), LastAttemptAt = null, LastFailure = null, LastStatusCode = null,
+                    Address = SubscriptionAddress.Mask(newUrl),
+                    LastAttemptAt = null,
+                    LastFailure = null,
+                    LastStatusCode = null,
                 };
             }
 

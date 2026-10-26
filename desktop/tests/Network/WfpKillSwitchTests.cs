@@ -276,14 +276,14 @@ public sealed class WfpKillSwitchTests
 
     /// <summary>
     /// Проба: закрывают ли фильтры пересылки контейнер Windows за NAT (WinNAT — как у Docker, WSL и ВМ на «Default Switch»).
-    /// Источники расходятся: по Mullvad, трафик WSL за NAT мимо слоев IP WFP. Только в CI (PG_FORWARD_PROBE=1): тянет образ
-    /// nanoserver. Фильтры соединений — только для копии curl, машина CI остается в сети; пересылка закрывается на всю
-    /// машину, ее у машины CI нет. Итог — в artifacts/forward-probe.txt, CI выводит его в журнал.
+    /// Источники расходятся: по Mullvad, трафик WSL за NAT мимо слоев IP WFP. Только вручную (PG_FORWARD_PROBE=1), от
+    /// администратора: тянет образ nanoserver. Фильтры соединений — только для копии curl, машина остается в сети; пересылка
+    /// закрывается на всю машину. Итог — в artifacts/forward-probe.txt.
     /// </summary>
     [Fact]
     public async Task Probe_container_behind_nat_and_the_forward_filters()
     {
-        Assert.SkipUnless(Environment.GetEnvironmentVariable("PG_FORWARD_PROBE") == "1", "проба пересылки — только в CI (PG_FORWARD_PROBE=1)");
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("PG_FORWARD_PROBE") == "1", "проба пересылки — вручную (PG_FORWARD_PROBE=1, нужен docker)");
         if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
         {
             Assert.Skip("фильтры WFP ставятся только на Windows с правами администратора (CI)");

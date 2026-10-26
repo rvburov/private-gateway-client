@@ -290,7 +290,8 @@ public sealed class SystemProxyTests : IDisposable
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
 
         var hysteria = ServiceIpcTests.Request(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
-            with { Transport = TransportOptions.Quic }, proxyPort, systemProxy: true);
+            with
+        { Transport = TransportOptions.Quic }, proxyPort, systemProxy: true);
         await service.Client.ConnectAsync(hysteria, cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error);
 

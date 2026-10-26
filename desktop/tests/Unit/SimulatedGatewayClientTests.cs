@@ -1,8 +1,8 @@
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
-using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Demo;
 
 namespace PrivateGateway.Client.Tests.Unit;

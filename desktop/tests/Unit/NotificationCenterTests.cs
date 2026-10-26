@@ -24,7 +24,8 @@ public sealed class NotificationCenterTests : IDisposable
     public NotificationCenterTests()
     {
         var catalog = new FakeCatalog(new ServerProfile("srv-1", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Tls,
-            "203.0.113.10", 443, "tcp", null)) { SelectedId = "srv-1" };
+            "203.0.113.10", 443, "tcp", null))
+        { SelectedId = "srv-1" };
         _updater = new SubscriptionUpdater(null!, null!, _gateway, _settings, _time, NullLogger<SubscriptionUpdater>.Instance);
         _center = new NotificationCenter(_gateway, catalog, _updater, _settings, _notifier, _window, new PlainTexts(), _time);
 
@@ -45,7 +46,10 @@ public sealed class NotificationCenterTests : IDisposable
     {
         _gateway.Status = _gateway.Status with
         {
-            State = state, ErrorCode = code, Since = _time.GetUtcNow(), Protection = ProtectionChecks.For(state),
+            State = state,
+            ErrorCode = code,
+            Since = _time.GetUtcNow(),
+            Protection = ProtectionChecks.For(state),
         };
         _gateway.Announce();
     }

@@ -68,7 +68,10 @@ public sealed class ServiceGatewayClientTests
         // Блок и туннель — подделки и не нужны: имя сервера не найдется, подключение остановится на поиске адреса.
         await using var service = await RunningService.StartAsync(options: o => o with
         {
-            CanVpn = true, SingBoxPath = XrayKit.Xray, KillSwitch = new NoKillSwitch(), Routes = routes,
+            CanVpn = true,
+            SingBoxPath = XrayKit.Xray,
+            KillSwitch = new NoKillSwitch(),
+            Routes = routes,
         });
         var (definition, _) = XrayKit.Pair("vless", 443);
         definition = definition with { Host = "server.invalid" };
@@ -110,7 +113,9 @@ public sealed class ServiceGatewayClientTests
         // Имя ищется долго и не находится: окно все это время видит «Подключение», а не прежнее «IP открыт».
         await using var service = await RunningService.StartAsync(options: o => o with
         {
-            CanVpn = true, SingBoxPath = XrayKit.Xray, KillSwitch = new NoKillSwitch(),
+            CanVpn = true,
+            SingBoxPath = XrayKit.Xray,
+            KillSwitch = new NoKillSwitch(),
             Resolve = async (_, _) =>
             {
                 await lookup.Task;

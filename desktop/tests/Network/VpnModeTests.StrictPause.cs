@@ -68,7 +68,8 @@ public sealed partial class VpnModeTests
 
         // Строгий режим: другой сервер, за который ядро не возьмется, — подключение прежнее остановлено, а сеть закрыта.
         var hysteria = VpnRequest(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
-            with { Transport = TransportOptions.Quic });
+            with
+        { Transport = TransportOptions.Quic });
         hysteria.Protection.StrictMode = true;
         (await service.Client.ConnectAsync(hysteria, cancellationToken: Ct)).Error.Code.ShouldBe(ErrorCodes.UnsupportedServer);
 
@@ -97,7 +98,11 @@ public sealed partial class VpnModeTests
             var program = typeof(VpnModeTests).Assembly.Location;
             await using var service = await RunningService.StartAsync(options: o => o with
             {
-                XrayPath = program, CanVpn = true, SingBoxPath = program, KillSwitch = killSwitch, BootBlock = file,
+                XrayPath = program,
+                CanVpn = true,
+                SingBoxPath = program,
+                KillSwitch = killSwitch,
+                BootBlock = file,
                 BootConnect = new BootConnection(connect, new PlainSealer()),
             });
 
@@ -216,7 +221,11 @@ public sealed partial class VpnModeTests
         var program = typeof(VpnModeTests).Assembly.Location;
         await using var service = await RunningService.StartAsync(options: o => o with
         {
-            XrayPath = program, CanVpn = true, SingBoxPath = program, KillSwitch = killSwitch, BootBlock = held.Path,
+            XrayPath = program,
+            CanVpn = true,
+            SingBoxPath = program,
+            KillSwitch = killSwitch,
+            BootBlock = held.Path,
         });
         var request = VpnRequest(XrayKit.Pair("vless", 443).Server);
         request.Protection.StrictMode = strict;
@@ -310,7 +319,11 @@ public sealed partial class VpnModeTests
         var program = typeof(VpnModeTests).Assembly.Location;
         await using var service = await RunningService.StartAsync(options: o => o with
         {
-            XrayPath = program, CanVpn = true, SingBoxPath = program, KillSwitch = killSwitch, BootBlock = held.Path,
+            XrayPath = program,
+            CanVpn = true,
+            SingBoxPath = program,
+            KillSwitch = killSwitch,
+            BootBlock = held.Path,
         });
         (await service.Client.PauseForCaptivePortalAsync(FiveMinutes, cancellationToken: Ct)).Until.ShouldNotBeNull();
         var other = XrayKit.Pair("vless", 443).Server with { Host = "other.invalid" };

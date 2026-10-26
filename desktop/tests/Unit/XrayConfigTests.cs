@@ -167,7 +167,9 @@ public sealed class XrayConfigTests
             .ShouldBe(["https://9.9.9.9/dns-query"]);
         var custom = Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with
         {
-            Dns = DnsChoice.Custom, CustomDns = "192.0.2.53", Addresses = AddressPreference.Ipv4Only,
+            Dns = DnsChoice.Custom,
+            CustomDns = "192.0.2.53",
+            Addresses = AddressPreference.Ipv4Only,
         });
         Servers(custom).ShouldBe(["192.0.2.53"]);
         custom["dns"]!["queryStrategy"]!.GetValue<string>().ShouldBe("UseIPv4");

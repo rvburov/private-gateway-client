@@ -893,7 +893,10 @@ public sealed partial class Gateway : IAsyncDisposable
                 {
                     Update(s => Requested(s) with
                     {
-                        ErrorCode = code, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Blocked), Since = now,
+                        ErrorCode = code,
+                        CaptivePauseUntil = null,
+                        Protection = ProtectionChecks.For(ConnectionState.Blocked),
+                        Since = now,
                         StrictBlock = s.StrictBlock || strictHeld,
                     });
                 }
@@ -1247,7 +1250,11 @@ public sealed partial class Gateway : IAsyncDisposable
             EndPauseTimer();
             Update(s => Honest(s with
             {
-                Mode = mode, ServerId = serverId, Protection = ProtectionChecks.For(ConnectionState.Connecting, mode), Exit = Exit(s), CaptivePauseUntil = null,
+                Mode = mode,
+                ServerId = serverId,
+                Protection = ProtectionChecks.For(ConnectionState.Connecting, mode),
+                Exit = Exit(s),
+                CaptivePauseUntil = null,
             }));
         }
         else

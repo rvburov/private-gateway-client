@@ -1,0 +1,108 @@
+// Разрешенные пропуски тестов в CI (scripts/test-report.cs). Пропуск, которого здесь нет для ОС задания, роняет проверку:
+// тест, тихо переставший идти (нет ядра, нет прав, шаг выпал из workflow), не прячется в счетчике skipped.
+//
+// reason — начало причины из Assert.Skip; os — где пропуск законный (Linux, Windows, macOS); why — почему. Каждая причина
+// должна встречаться в коде тестов (тест AllowedSkipsTests): удаленный пропуск не оставляет здесь разрешения.
+[
+  {
+    "reason": "долгий прогон — по PG_SOAK_MINUTES",
+    "os": ["Linux", "Windows", "macOS"],
+    "why": "минуты на круг: идет ночью в soak.yml и по scripts/soak.sh"
+  },
+  {
+    "reason": "проба пересылки — вручную",
+    "os": ["Linux", "Windows", "macOS"],
+    "why": "проба контейнера за WinNAT ничего не утверждает, только пишет отчет; запуск вручную (решение 299)"
+  },
+
+  // Только Windows: на Linux и macOS этих частей ОС нет.
+  {
+    "reason": "реестр есть только на Windows",
+    "os": ["Linux", "macOS"],
+    "why": "автозапуск Windows — через реестр"
+  },
+  {
+    "reason": "параметры Интернета есть только на Windows",
+    "os": ["Linux", "macOS"],
+    "why": "системный прокси Windows"
+  },
+  {
+    "reason": "задания — только в Windows",
+    "os": ["Linux", "macOS"],
+    "why": "объекты заданий Windows для дочерних процессов"
+  },
+  {
+    "reason": "таблица маршрутов Windows",
+    "os": ["Linux", "macOS"],
+    "why": "маршруты Windows"
+  },
+  {
+    "reason": "уведомления Windows — на Windows 10 и новее",
+    "os": ["Linux", "macOS"],
+    "why": "уведомления Windows"
+  },
+  {
+    "reason": "фильтры WFP ставятся только на Windows",
+    "os": ["Linux", "macOS"],
+    "why": "блок при обрыве Windows; на Windows CI идет от администратора"
+  },
+  {
+    "reason": "брандмауэр Hyper-V — только на Windows",
+    "os": ["Linux", "macOS"],
+    "why": "правила виртуальных машин Windows"
+  },
+  {
+    "reason": "служба Windows ставится только с правами администратора",
+    "os": ["Linux", "macOS"],
+    "why": "установка службы Windows; на Windows CI идет от администратора"
+  },
+
+  // Только Linux: на Windows и macOS этих частей ОС нет.
+  {
+    "reason": "сетевые пространства есть только в Linux",
+    "os": ["Windows", "macOS"],
+    "why": "туннель, nftables и блок при обрыве Linux проверяются в своих сетевых пространствах"
+  },
+  {
+    "reason": "systemd — только Linux",
+    "os": ["Windows", "macOS"],
+    "why": "установка службы Linux"
+  },
+  {
+    "reason": "нужен dbus-daemon (Linux)",
+    "os": ["Windows", "macOS"],
+    "why": "уведомления Linux по D-Bus"
+  },
+  {
+    "reason": "нужны Linux, root и systemd-creds",
+    "os": ["Windows", "macOS"],
+    "why": "секрет постоянной защиты на Linux; на Windows — DPAPI своим тестом"
+  },
+  {
+    "reason": "systemd-creds шифрует ключом машины — нужен root на Linux",
+    "os": ["macOS"],
+    "why": "служба и постоянная защита на macOS — этап 6"
+  },
+
+  // Только Linux и macOS.
+  {
+    "reason": "символические ссылки в путях программ — на Linux и macOS",
+    "os": ["Windows"],
+    "why": "на Windows путь программы службы проверяется списком доступа"
+  },
+  {
+    "reason": "SIGTERM — на macOS и Linux",
+    "os": ["Windows"],
+    "why": "на Windows служба останавливается диспетчером служб"
+  },
+  {
+    "reason": "на Windows доступ к pipe держит список доступа, а не uid",
+    "os": ["Windows"],
+    "why": "проверка uid собеседника — для сокета Unix"
+  },
+  {
+    "reason": "на Windows владельца pipe проверяет CheckOwner",
+    "os": ["Windows"],
+    "why": "процесс CI на Windows — администратор, его pipe считается службой"
+  },
+]

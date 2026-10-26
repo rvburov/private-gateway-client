@@ -52,7 +52,10 @@ public sealed partial class VpnModeTests
         var missing = Path.Combine(Path.GetTempPath(), "pg-no-tun-" + Guid.NewGuid().ToString("N")[..8], "tun");
         await using var service = await RunningService.StartAsync(options: o => o with
         {
-            CanVpn = true, SingBoxPath = XrayKit.Xray, KillSwitch = killSwitch, TunDevice = missing,
+            CanVpn = true,
+            SingBoxPath = XrayKit.Xray,
+            KillSwitch = killSwitch,
+            TunDevice = missing,
         });
         var (definition, _) = XrayKit.Pair("vless", 443);
 
@@ -113,7 +116,8 @@ public sealed partial class VpnModeTests
         var request = vpn
             ? VpnRequest(definition with { Host = "server.invalid" }, killSwitch: killSwitchOn)
             : ServiceIpcTests.Request(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
-                with { Transport = TransportOptions.Quic }, XrayKit.FreePort());
+                with
+            { Transport = TransportOptions.Quic }, XrayKit.FreePort());
         var reply = await service.Client.ConnectAsync(request, cancellationToken: Ct);
 
         (reply.Accepted, reply.Error.Code).ShouldBe((false, vpn ? ErrorCodes.ServerNotFound : ErrorCodes.UnsupportedServer));
@@ -969,7 +973,10 @@ public sealed partial class VpnModeTests
         var hour = TimeSpan.FromHours(1);
         await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
         {
-            Routes = rig.Routes, Network = network, Probe = rig.ProbeAsync, Reconnect = new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour),
+            Routes = rig.Routes,
+            Network = network,
+            Probe = rig.ProbeAsync,
+            Reconnect = new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour),
         });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
@@ -1021,7 +1028,8 @@ public sealed partial class VpnModeTests
         rig.Netns.Run(null, "ip", "link", "set", "pgother0", "up");
         await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
         {
-            Routes = rig.Routes, Probe = rig.ProbeAsync,
+            Routes = rig.Routes,
+            Probe = rig.ProbeAsync,
             Reconnect = new ReconnectTiming(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(2), TimeSpan.FromHours(1), TimeSpan.FromHours(1), TimeSpan.FromHours(1)),
         });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
@@ -1263,7 +1271,9 @@ public sealed partial class VpnModeTests
             var killSwitch = new FakeKillSwitch();
             await using var service = await RunningService.StartAsync(options: o => o with
             {
-                CanVpn = true, KillSwitch = killSwitch, BootConnect = new BootConnection(connect, sealer),
+                CanVpn = true,
+                KillSwitch = killSwitch,
+                BootConnect = new BootConnection(connect, sealer),
             });
 
             (await service.Gateway.ConnectAtBootAsync(Ct)).ShouldBeFalse();
@@ -1353,7 +1363,9 @@ public sealed partial class VpnModeTests
         var network = new FakeNetwork();
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
         {
-            Trace = Rig.Trace, ExitIp = rig.ExitIpAsync, Network = network,
+            Trace = Rig.Trace,
+            ExitIp = rig.ExitIpAsync,
+            Network = network,
         });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
 

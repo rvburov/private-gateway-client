@@ -92,7 +92,8 @@ public sealed partial class ProtectionViewModel : ObservableObject
                 Loc.Instance["dialog.unprotect.title"],
                 Loc.Instance["dialog.unprotect.text"],
                 Loc.Instance["dialog.unprotect.keep"],
-                Loc.Instance["dialog.unprotect.drop"]) { IsSecondaryDanger = true };
+                Loc.Instance["dialog.unprotect.drop"])
+            { IsSecondaryDanger = true };
             if (await _overlay.AskAsync(dialog).ConfigureAwait(true) != DialogChoice.Secondary)
             {
                 return true;

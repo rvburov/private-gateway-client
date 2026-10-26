@@ -79,7 +79,9 @@ public class ConnectionStateMachineTests
     {
         var paused = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with
         {
-            State = ConnectionState.Blocked, StrictBlock = true, CaptivePauseUntil = DateTimeOffset.UnixEpoch.AddMinutes(5),
+            State = ConnectionState.Blocked,
+            StrictBlock = true,
+            CaptivePauseUntil = DateTimeOffset.UnixEpoch.AddMinutes(5),
         };
 
         foreach (var state in new[] { ConnectionState.Connecting, ConnectionState.Error, ConnectionState.Off })

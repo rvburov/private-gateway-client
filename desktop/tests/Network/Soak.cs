@@ -16,7 +16,7 @@ internal static class Soak
     {
         var value = Environment.GetEnvironmentVariable(Variable);
         Assert.SkipWhen(!double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var minutes) || minutes <= 0,
-            $"долгий прогон — по {Variable}=<минут> (scripts/soak.sh)");
+            "долгий прогон — по PG_SOAK_MINUTES=<минут> (scripts/soak.sh)");
         return TimeSpan.FromMinutes(minutes);
     }
 }

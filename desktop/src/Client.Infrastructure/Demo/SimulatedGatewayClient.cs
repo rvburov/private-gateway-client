@@ -194,7 +194,10 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
                 var blocked = _status.State == ConnectionState.Blocked ? _status : _status.MoveTo(ConnectionState.Blocked, time.GetUtcNow());
                 _status = blocked with
                 {
-                    StrictBlock = true, Traffic = TrafficStats.Empty, CaptivePauseUntil = null, Protection = ProtectionChecks.For(ConnectionState.Blocked),
+                    StrictBlock = true,
+                    Traffic = TrafficStats.Empty,
+                    CaptivePauseUntil = null,
+                    Protection = ProtectionChecks.For(ConnectionState.Blocked),
                 };
                 _pauseEnd?.Dispose();
                 _pauseEnd = null;

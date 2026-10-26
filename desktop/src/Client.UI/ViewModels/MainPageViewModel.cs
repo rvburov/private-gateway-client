@@ -110,25 +110,25 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"]
         : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
         : Status.State switch
-    {
-        ConnectionState.Connected => Server is { } server && !ServerFacts.IsEncrypted(server)
-            ? Loc.Instance["status.connected.subPlain"]
-            : Loc.Instance["status.connected.sub"],
-        ConnectionState.Reconnecting => Loc.Instance.Format("status.reconnecting.sub", Status.Attempt),
-        // Подключение не состоялось, а блок остался (строгий режим, загрузка, блок при обрыве): причина — рядом с «сеть закрыта».
-        // Имени сервера под блоком не найти — что делать: отключить защиту, и следующее подключение его найдет.
-        ConnectionState.Blocked when Status is { ErrorCode: ErrorCodes.ServerNotFound, StrictBlock: false } =>
-            Loc.Instance.Format("status.blocked.sub.notFound", ErrorCodes.ServerNotFound),
-        ConnectionState.Blocked when Status.ErrorCode is { } code =>
-            Loc.Instance.Format(Status.StrictBlock ? "status.strict.subError" : "status.error.sub", code),
-        // Ошибка — не всегда блокировка: без службы и после отказа защиты нет, в режиме прокси блокировать нечем.
-        ConnectionState.Error => Loc.Instance.Format(
-            Status.Protection.AllTraffic == CheckState.Off ? "status.error.sub.direct"
-                : Status.Mode == ConnectionMode.Proxy ? "status.error.sub.proxy"
-                : "status.error.sub",
-            Status.ErrorCode ?? "PGC-SVC"),
-        _ => Loc.Instance[$"status.{StateKey}.sub"],
-    };
+        {
+            ConnectionState.Connected => Server is { } server && !ServerFacts.IsEncrypted(server)
+                ? Loc.Instance["status.connected.subPlain"]
+                : Loc.Instance["status.connected.sub"],
+            ConnectionState.Reconnecting => Loc.Instance.Format("status.reconnecting.sub", Status.Attempt),
+            // Подключение не состоялось, а блок остался (строгий режим, загрузка, блок при обрыве): причина — рядом с «сеть закрыта».
+            // Имени сервера под блоком не найти — что делать: отключить защиту, и следующее подключение его найдет.
+            ConnectionState.Blocked when Status is { ErrorCode: ErrorCodes.ServerNotFound, StrictBlock: false } =>
+                Loc.Instance.Format("status.blocked.sub.notFound", ErrorCodes.ServerNotFound),
+            ConnectionState.Blocked when Status.ErrorCode is { } code =>
+                Loc.Instance.Format(Status.StrictBlock ? "status.strict.subError" : "status.error.sub", code),
+            // Ошибка — не всегда блокировка: без службы и после отказа защиты нет, в режиме прокси блокировать нечем.
+            ConnectionState.Error => Loc.Instance.Format(
+                Status.Protection.AllTraffic == CheckState.Off ? "status.error.sub.direct"
+                    : Status.Mode == ConnectionMode.Proxy ? "status.error.sub.proxy"
+                    : "status.error.sub",
+                Status.ErrorCode ?? "PGC-SVC"),
+            _ => Loc.Instance[$"status.{StateKey}.sub"],
+        };
 
     public string NetworkText => Status.Network switch
     {

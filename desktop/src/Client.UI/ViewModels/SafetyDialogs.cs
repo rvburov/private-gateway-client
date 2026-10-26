@@ -18,7 +18,8 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.ksOff.title"],
             Loc.Instance["dialog.ksOff.text"],
             Loc.Instance["dialog.ksOff.keep"],
-            Loc.Instance["dialog.ksOff.drop"]) { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+            Loc.Instance["dialog.ksOff.drop"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
     /// <param name="overlay">Слой диалогов.</param>
     /// <param name="strict">«Блокировка» строгого режима: после паузы сеть снова закроется, а не вернется VPN.</param>
@@ -31,7 +32,8 @@ internal static class SafetyDialogs
             Loc.Instance["pause.dialog.title"],
             Loc.Instance[strict ? "pause.dialog.textStrict" : "pause.dialog.text"],
             Loc.Instance["pause.dialog.keep"],
-            Loc.Instance["pause.dialog.open"]) { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+            Loc.Instance["pause.dialog.open"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
     /// <summary>Строгий режим делает сеть недоступной без VPN — включать только осознанно.</summary>
     /// <returns>true — пользователь выбрал «Включить».</returns>
@@ -55,5 +57,6 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.lanProxy.title"],
             Loc.Instance["dialog.lanProxy.text"],
             Loc.Instance["dialog.lanProxy.keep"],
-            Loc.Instance["dialog.lanProxy.open"]) { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+            Loc.Instance["dialog.lanProxy.open"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 }

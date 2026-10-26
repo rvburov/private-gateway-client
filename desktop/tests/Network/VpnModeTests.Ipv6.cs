@@ -29,7 +29,9 @@ public sealed partial class VpnModeTests
         using var lan6 = new LocalSite("своя сеть IPv6", host6);
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
         {
-            Trace = Rig.Trace, Trace6 = Rig.Trace6, ExitIp = rig.ExitIpAsync,
+            Trace = Rig.Trace,
+            Trace6 = Rig.Trace6,
+            ExitIp = rig.ExitIpAsync,
         });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
 
@@ -88,7 +90,9 @@ public sealed partial class VpnModeTests
         using var trace6 = rig.DirectTrace6($"fl=1\nip={inside6}\n", host6);
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
         {
-            Trace = Rig.Trace, Trace6 = Rig.Trace6, ExitIp = rig.ExitIpAsync,
+            Trace = Rig.Trace,
+            Trace6 = Rig.Trace6,
+            ExitIp = rig.ExitIpAsync,
         });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
 

@@ -25,6 +25,9 @@ csharp_using_directive_placement = outside_namespace:warning
 dotnet_sort_system_directives_first = true
 csharp_prefer_braces = when_multiline:suggestion
 dotnet_style_readonly_field = true:warning
+# Короткие инициализаторы объектов и анонимных типов — в одну строку, как пишется по всему коду.
+csharp_new_line_before_members_in_object_initializers = false
+csharp_new_line_before_members_in_anonymous_types = false
 
 # Имена: приватные поля — _camelCase, константы и статические readonly — PascalCase.
 dotnet_naming_rule.private_fields.symbols = private_fields
@@ -43,9 +46,16 @@ dotnet_naming_symbols.constants.applicable_kinds = field
 dotnet_naming_symbols.constants.required_modifiers = const
 dotnet_naming_style.pascal.capitalization = pascal_case
 
-# Порядок правил важен: константы проверяются раньше приватных полей.
+dotnet_naming_rule.static_readonly.symbols = static_readonly
+dotnet_naming_rule.static_readonly.style = pascal
+dotnet_naming_rule.static_readonly.severity = warning
+dotnet_naming_symbols.static_readonly.applicable_kinds = field
+dotnet_naming_symbols.static_readonly.required_modifiers = static, readonly
+
+# Порядок правил важен: константы и статические readonly проверяются раньше приватных полей.
 dotnet_naming_rule.constants.priority = 1
-dotnet_naming_rule.private_fields.priority = 2
+dotnet_naming_rule.static_readonly.priority = 2
+dotnet_naming_rule.private_fields.priority = 3
 
 [desktop/src/Client.UI/ViewModels/*.cs]
 # Свойства моделей представлений — цели привязок разметки; статические Avalonia не привязывает,

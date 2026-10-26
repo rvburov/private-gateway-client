@@ -99,7 +99,8 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             values.TryGetValue("language", out var language) && language is "ru" or "en" ? language : d.Language,
             Enum("subscription_refresh", d.SubscriptionRefresh),
             Bool("update_only_via_vpn", d.UpdateOnlyViaVpn),
-            Bool("notify_selected_server_change", d.NotifySelectedServerChange)) {
+            Bool("notify_selected_server_change", d.NotifySelectedServerChange))
+        {
             Protection = protection,
             Connection = core,
             Routing = routing,

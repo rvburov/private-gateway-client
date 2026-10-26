@@ -233,7 +233,8 @@ public sealed class ServiceIpcTests
         await ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
 
         var hysteria = Request(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
-            with { Transport = TransportOptions.Quic }, proxyPort);
+            with
+        { Transport = TransportOptions.Quic }, proxyPort);
         hysteria.Server.Id = "srv-2";
         (await service.Client.ConnectAsync(hysteria, cancellationToken: Ct)).Accepted.ShouldBeFalse();
 

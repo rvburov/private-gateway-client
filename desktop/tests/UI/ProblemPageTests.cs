@@ -289,14 +289,14 @@ public sealed class ProblemPageTests : WindowHarness
                             : connecting.MoveTo(ConnectionState.Connected, Time.GetUtcNow()),
                     }
                     : _service = new ScriptedService(Time, Settings, ServiceKind.User)
-                {
-                    Outcome = connecting => connecting.Mode == ConnectionMode.Vpn
-                        ? (connecting with { ErrorCode = ErrorCodes.AdminRequired }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
-                        {
-                            Protection = ProtectionChecks.For(ConnectionState.Off),
-                        }
-                        : connecting.MoveTo(ConnectionState.Connected, Time.GetUtcNow()),
-                },
+                    {
+                        Outcome = connecting => connecting.Mode == ConnectionMode.Vpn
+                            ? (connecting with { ErrorCode = ErrorCodes.AdminRequired }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+                            {
+                                Protection = ProtectionChecks.For(ConnectionState.Off),
+                            }
+                            : connecting.MoveTo(ConnectionState.Connected, Time.GetUtcNow()),
+                    },
                 Settings, Time);
         });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);

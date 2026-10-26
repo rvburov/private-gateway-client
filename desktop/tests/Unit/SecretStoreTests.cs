@@ -81,7 +81,7 @@ public sealed class SecretStoreTests : IDisposable
     {
         if (!_store.IsAvailable)
         {
-            Assert.Skip($"{_store.Name} недоступно на этой машине — проверяется в CI на Windows и macOS");
+            Assert.Skip($"{_store.Name} недоступно на этой машине — на Linux в CI его поднимает scripts/tests/secret-service.sh");
         }
     }
 }

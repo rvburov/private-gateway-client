@@ -9,6 +9,34 @@ permissions:
   contents: read
 
 jobs:
+  style:
+    name: Стиль и формат
+    runs-on: ubuntu-latest
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      - uses: actions/checkout@v5
+
+      # Как в сборке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
+      - id: dotnet
+        uses: actions/setup-dotnet@v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
+      # .editorconfig и анализаторы: пробелы, порядок using, имена, стиль. Исправить у себя — dotnet format PrivateGateway.slnx.
+      - name: dotnet format
+        run: dotnet format PrivateGateway.slnx --verify-no-changes
+
+      - name: Отчет о тестах на собранных отчетах
+        run: scripts/tests/test-report-smoke.sh
+
   build-test:
     name: Сборка и тесты (${{ matrix.os }})
     strategy:
@@ -36,6 +64,7 @@ jobs:
           dotnet-version: 10.0.402
 
       - name: Сборка
+        id: build
         run: dotnet build PrivateGateway.slnx -c Release
 
       # Ядро Xray для прокси-теста на localhost (desktop/tests/Network): версия и SHA-256 — в shared/cores.
@@ -48,8 +77,9 @@ jobs:
         shell: bash
         run: scripts/get-singbox.sh
 
+      # Каждый запуск тестов пишет отчет CTRF в artifacts/test-results: по ним последний шаг считает итог и пропуски.
       - name: Тесты
-        run: dotnet test --solution PrivateGateway.slnx -c Release --no-build
+        run: dotnet test --solution PrivateGateway.slnx -c Release --no-build --results-directory artifacts/test-results --report-ctrf
 
       # На Linux хранилища секретов без рабочего стола нет — поднимаем GNOME Keyring в своей сессии.
       - name: Хранилище секретов Linux (Secret Service)
@@ -57,20 +87,26 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gnome-keyring libsecret-1-0 dbus
-          dbus-run-session -- scripts/tests/secret-service.sh -c Release --no-build
+          dbus-run-session -- scripts/tests/secret-service.sh -c Release --no-build --results-directory artifacts/test-results --report-ctrf
 
       # Тесты в своих сетевых пространствах Linux (TUN sing-box, nftables, блок при обрыве, systemd-creds) — от root:
       # без него они пропускаются. Правила и TUN ставятся только внутри своих пространств, машина CI их не видит.
-      # Последним шагом: файлы результатов от root не мешают шагам без него.
+      # После остальных тестов: файлы результатов от root не мешают шагам без него.
       - name: Сетевые пространства Linux (root)
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nftables
           sudo env "PATH=$PATH" "DOTNET_ROOT=$DOTNET_ROOT" "HOME=$HOME" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-            dotnet test --project desktop/tests/Network -c Release --no-build -- \
+            dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
             --filter-class '*.VpnTunnelTests' --filter-class '*.VpnModeTests' --filter-class '*.KillSwitchTests' \
-            --filter-class '*.RouteTableTests' --filter-class '*.BootConnectionTests'
+            --filter-class '*.RouteTableTests' --filter-class '*.BootConnectionTests' --filter-class '*.NetworkNamespaceTests'
+
+      # Итог всех запусков в сводку задания: упавшие и пропущенные — каждый с причиной. Пропуск, не разрешенный для этой ОС в
+      # desktop/tests/allowed-skips.json, роняет проверку: тест не может тихо перестать идти в CI.
+      - name: Отчет о тестах и пропусках
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet run scripts/test-report.cs artifacts/test-results
 
   worktree:
     name: Рабочие папки агентов (${{ matrix.os }})
