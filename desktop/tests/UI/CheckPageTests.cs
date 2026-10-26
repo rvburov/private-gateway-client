@@ -154,6 +154,32 @@ public sealed class CheckPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Export_under_protection_adds_the_inspector_without_addresses_macs_or_sites()
+    {
+        var (_, shell) = Open();
+        await Connect(shell);
+        var page = OpenCheck(shell);
+        Finish(page);
+
+        page.ExportCommand.Execute(null);
+        WaitFor(() => Files.Text is not null);
+
+        var report = Files.Text!;
+        report.ShouldContain("Сеть машины");
+        report.ShouldContain("  Wi-Fi · Wi-Fi · Включен");
+        report.ShouldContain("MAC: [MAC]");
+        report.ShouldContain("Шлюз: [адрес-", customMessage: "адреса демо — из диапазонов документации, и для отчета они публичные");
+        report.ShouldContain("До и после VPN");
+        report.ShouldContain("[сменился] IP для сайтов: [адрес-");
+        report.ShouldContain("соединений: 5 · ждут входящих: 3 · TCP: 6 · UDP: 2");
+        report.ShouldContain("Отчет обезличен");
+        foreach (var leak in new[] { "203.0.113.24", "198.51.100.7", "2001:db8", "00:00:5e:00:53", "203.0.113.80", "198.51.100.200", "firefox", "telegram" })
+        {
+            report.ShouldNotContain(leak, customMessage: "в отчете нет " + leak);
+        }
+    }
+
+    [AvaloniaFact]
     public void Cancelled_export_says_nothing()
     {
         var (_, shell) = Open();

@@ -137,13 +137,22 @@ public sealed partial class CheckPageViewModel : ObservableObject
         }
     }
 
-    /// <summary>«Экспорт отчета»: те же строки, что на экране, и журнал — без секретов и реального IP.</summary>
+    /// <summary>
+    /// «Экспорт отчета»: те же строки, что на экране, сеть машины, до и после VPN, сокеты счетом и журнал — обезличенно
+    /// (<see cref="ReportAnonymizer"/>): публичные адреса — метками, MAC и секреты скрыты, реального IP нет.
+    /// </summary>
     [RelayCommand]
     private async Task ExportAsync()
     {
         var now = _time.GetLocalNow();
         var name = "private-gateway-report-" + now.ToString("yyyyMMdd-HHmm", CultureInfo.InvariantCulture) + ".txt";
-        if (await _files.SaveTextAsync(name, BuildReport()).ConfigureAwait(true))
+        var snapshot = await _gateway.InspectNetworkAsync().ConfigureAwait(true);
+        var comparison = await _gateway.CompareNetworkAsync().ConfigureAwait(true);
+        var connections = await _gateway.ListConnectionsAsync().ConfigureAwait(true);
+        var status = Protection.Status;
+        var inspector = InspectorReport.Lines(snapshot, comparison, connections,
+            status is { State: ConnectionState.Connected, IsPaused: false }, status.Exit.DirectIp);
+        if (await _files.SaveTextAsync(name, BuildReport(inspector)).ConfigureAwait(true))
         {
             _toast.Show(Loc.Instance["diag.exported"]);
         }
@@ -151,8 +160,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     // ── Отчет ────────────────────────────────────────────────────────────────
 
-    /// <summary>Текст отчета; каждая строка проходит через <see cref="SecretMasker"/>.</summary>
-    public string BuildReport()
+    /// <summary>
+    /// Текст отчета; каждая строка проходит через <see cref="ReportAnonymizer"/> (и <see cref="SecretMasker"/>): один
+    /// адрес — одна метка во всем отчете. <paramref name="inspector"/> — раздел инспектора, если он есть.
+    /// </summary>
+    public string BuildReport(IEnumerable<string>? inspector = null)
     {
         var loc = Loc.Instance;
         var lines = new List<string>
@@ -167,14 +179,23 @@ public sealed partial class CheckPageViewModel : ObservableObject
             loc["diag.report.checks"],
         };
         lines.AddRange(Rows.Select(r => $"  [{r.ChipText}] {r.Title} — {WithoutRealIp(r)}"));
+        if (inspector is not null)
+        {
+            lines.Add(string.Empty);
+            lines.AddRange(inspector);
+        }
+
         lines.Add(string.Empty);
         lines.Add(loc["diag.report.journal"]);
         lines.AddRange(Journal.Reverse().Select(j => $"  {j.Time} {j.Level} {j.Source}  {j.Message}"));
+        lines.Add(string.Empty);
+        lines.Add(loc["diag.report.anonymous"]);
 
+        var anonymizer = new ReportAnonymizer(loc["diag.report.addressLabel"]);
         var text = new StringBuilder();
         foreach (var line in lines)
         {
-            text.AppendLine(SecretMasker.Mask(line));
+            text.AppendLine(anonymizer.Clean(line));
         }
 
         return text.ToString();
