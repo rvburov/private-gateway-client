@@ -15,6 +15,16 @@ public sealed record KillSwitchEndpoint(IPAddress Address, int Port);
 public sealed record DirectExit(string Program, uint Mark);
 
 /// <summary>
+/// Поиск адреса сервера самой службой под блоком без туннеля: DoH к закрепленному адресу (TCP). Пропускается только
+/// программа службы (WFP) или ее сокет с меткой (nftables, ставит только root) и только к этим адресам и портам — на время
+/// поиска.
+/// </summary>
+/// <param name="Program">Полный путь к программе службы.</param>
+/// <param name="Mark">Метка сокета поиска (SO_MARK, Linux).</param>
+/// <param name="Endpoints">Адреса и порты DoH.</param>
+public sealed record ServiceLookup(string Program, uint Mark, IReadOnlyList<KillSwitchEndpoint> Endpoints);
+
+/// <summary>
 /// Что пропускает блок при обрыве — все остальное закрыто. Петля (loopback), DHCP и обнаружение
 /// соседей IPv6 открыты всегда: без них не работают ядро и сеть машины, наружу через них ничего не уходит.
 /// </summary>
@@ -37,6 +47,7 @@ public sealed record DirectExit(string Program, uint Mark);
 /// Свой DNS в частной сети («DNS» — свой адрес, как у Pi-hole): к нему DNS (53, TCP и UDP) мимо туннеля пропускается — его
 /// спрашивает Xray, через сервер частный адрес не достать. Остальное к этому адресу — по <paramref name="AllowLan"/>. null — нет.
 /// </param>
+/// <param name="Lookup">Поиск адреса сервера службой под блоком (DoH) — только на время поиска; null — нет.</param>
 /// <param name="Ipv6Outside">
 /// IPv6 мимо туннеля открыт: «Блок при обрыве» выключен, а туннель сам пропускает IPv6 мимо себя («Блокировать IPv6 вне
 /// туннеля» выключено, у сервера IPv6 нет) — правила «только туннель» его не закрывают, и это видно на главной. С блоком при
@@ -52,7 +63,8 @@ public sealed record KillSwitchPolicy(
     bool Persistent = false,
     IPAddress? TunnelDns = null,
     bool Ipv6Outside = false,
-    IPAddress? LanDns = null)
+    IPAddress? LanDns = null,
+    ServiceLookup? Lookup = null)
 {
     /// <summary>Сколько адресов сервера держит блок: у ключей фильтров WFP есть предел.</summary>
     public const int MaxServers = 16;

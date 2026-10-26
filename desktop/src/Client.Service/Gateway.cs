@@ -31,7 +31,9 @@ namespace PrivateGateway.Client.Service;
 /// null — не спрашивать, IPv6 через туннель не идет;
 /// <paramref name="Doh"/> — DoH для поиска адреса сервера по имени через поднятый туннель (<see cref="LatencyProbe.DefaultDoh"/>);
 /// null — только через систему; <paramref name="Lookup"/> — этот поиск (тесты); null — <see cref="LatencyProbe.LookupAsync"/>;
-/// <paramref name="Resolve"/> — поиск адреса через систему (тесты); null — DNS ОС.
+/// <paramref name="Resolve"/> — поиск адреса через систему (тесты); null — DNS ОС;
+/// <paramref name="LookupPastBlock"/> — поиск DoH самой службы под блоком без туннеля (тесты); null —
+/// <see cref="LatencyProbe.LookupDirectAsync"/>.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -51,7 +53,8 @@ public sealed record GatewayOptions(
     Uri? Trace6 = null,
     Uri? Doh = null,
     Func<ServerProbe, string, CancellationToken, Task<IReadOnlyList<IPAddress>>>? Lookup = null,
-    Func<string, CancellationToken, Task<IPAddress[]>>? Resolve = null);
+    Func<string, CancellationToken, Task<IPAddress[]>>? Resolve = null,
+    Func<Uri, string, uint, CancellationToken, Task<IReadOnlyList<IPAddress>>>? LookupPastBlock = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -84,6 +87,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>Адрес DNS туннеля: туда блок на Linux перенаправляет DNS к разрешенной локальной сети.</summary>
     private static readonly IPAddress TunnelDns = IPAddress.Parse(SingBoxConfigBuilder.TunDns);
+
+    /// <summary>Метка сокета поиска адреса службой под блоком (Linux): «PH».</summary>
+    public const uint LookupMark = 0x5048;
 
     /// <summary>Дольше пауза для входа в Wi-Fi не бывает: защита не должна забыться выключенной.</summary>
     public static readonly TimeSpan MaxCaptivePause = TimeSpan.FromMinutes(15);
@@ -378,6 +384,11 @@ public sealed partial class Gateway : IAsyncDisposable
             // Под блоком DNS мимо туннеля закрыт, имени не найти: тот же сервер — по адресам, найденным раньше.
             addresses = held;
             _journal.Add(JournalLevel.Info, "service", "Адрес сервера под блоком не найден — взят найденный при прежнем подключении");
+        }
+        else if (vpn && addresses.Count == 0)
+        {
+            // Другой сервер под блоком без туннеля: DoH самой службы с исключением в блоке только на время поиска.
+            addresses = await LookupPastBlockAsync(core, cancellationToken).ConfigureAwait(false);
         }
 
         if (vpn && addresses.Count == 0)
@@ -1237,6 +1248,59 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             return [];
         }
+    }
+
+    /// <summary>
+    /// Адрес сервера по имени под блоком при обрыве без туннеля — DoH самой службы (<see cref="GatewayOptions.Doh"/>, по адресу):
+    /// на время поиска блок пропускает только программу службы (WFP) или ее помеченный сокет (nftables) и только к DoH, потом
+    /// возвращается прежний. Блока нет, он открытый, туннель поднят или DoH не по адресу — пусто.
+    /// </summary>
+    private async Task<IReadOnlyList<IPAddress>> LookupPastBlockAsync(CoreRequest core, CancellationToken cancellationToken)
+    {
+        var host = core.Server.Host.Trim('[', ']');
+        if (_options is not { KillSwitch: { } killSwitch, Doh: { } doh } || !IPAddress.TryParse(doh.Host.Trim('[', ']'), out var dohAddress)
+            || IPAddress.TryParse(host, out _))
+        {
+            return [];
+        }
+
+        await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!_blocking || _held is not { Open: false } held || Volatile.Read(ref _tunnel) is not null)
+            {
+                return [];
+            }
+
+            var lookup = new ServiceLookup(Environment.ProcessPath ?? string.Empty, LookupMark, [new KillSwitchEndpoint(dohAddress, doh.Port)]);
+            if (!Try(() => { killSwitch.Enable(held.Policy with { Lookup = lookup }); return true; }, "Исключение для поиска адреса под блоком не встало"))
+            {
+                return [];
+            }
+
+            try
+            {
+                var found = PickAddresses(await (_options.LookupPastBlock ?? Lookup)(doh, host, LookupMark, cancellationToken).ConfigureAwait(false),
+                    core.Protection);
+                _journal.Add(found.Count > 0 ? JournalLevel.Info : JournalLevel.Warning, "service", found.Count > 0
+                    ? $"Адрес сервера под блоком найден через DoH службы ({dohAddress})"
+                    : $"Адрес сервера под блоком не найден и через DoH службы ({dohAddress})");
+                return found;
+            }
+            finally
+            {
+                // Прежний блок — без исключения; не вернулся — исключение к одному адресу DoH для программы службы остается,
+                // остальное закрыто, и это в журнале.
+                Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве после поиска адреса не вернулся");
+            }
+        }
+        finally
+        {
+            _switch.Release();
+        }
+
+        Task<IReadOnlyList<IPAddress>> Lookup(Uri doh, string host, uint mark, CancellationToken cancellationToken) =>
+            LatencyProbe.LookupDirectAsync(doh, host, mark, Timing.ProbeTimeout, cancellationToken);
     }
 
     /// <summary>Тот же сервер, что у нынешнего подключения режима VPN (имя и порт): его адреса — в <see cref="_addresses"/>.</summary>

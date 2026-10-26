@@ -418,6 +418,65 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task New_server_by_name_is_found_past_the_block_by_the_service_alone()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var server = rig.Definition.Host;
+        // DoH — сайт на адресе машины из диапазона документации, как 1.1.1.1 в интернете.
+        using var doh = new LocalSite($$"""{"Status":0,"Answer":[{"name":"srv.example.com.","type":1,"TTL":60,"data":"{{server}}"}]}""", rig.Public);
+        var dohUri = new Uri($"http://{rig.Public}:{doh.Url.Port}/dns-query");
+        var others = new List<bool>();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Doh = dohUri,
+            Resolve = (_, _) => throw new SocketException(11001),
+            LookupPastBlock = async (uri, host, mark, _) =>
+            {
+                // Пока исключение стоит, сокет без метки службы к DoH не проходит.
+                try
+                {
+                    await rig.Netns.DohAsync(uri, host, 0);
+                    others.Add(true);
+                }
+                catch (InvalidOperationException)
+                {
+                    others.Add(false);
+                }
+
+                return host == "srv.example.com" ? await rig.Netns.DohAsync(uri, host, mark) : [];
+            },
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        // Строгий режим: защиту выключили, а сеть закрыта — туннеля нет, DNS мимо него закрыт.
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest { KeepBlock = true }, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Blocked, service.Journal);
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.DohAsync(dohUri, "srv.example.com", 0), "без метки службы к DoH — закрыто");
+
+        // Имя не нашлось и через DoH службы — отказ, блок тот же, без исключения.
+        (await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "nosuch.example.com" }), cancellationToken: Ct)).Error.Code
+            .ShouldBe(ErrorCodes.ServerNotFound);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.Error?.Code == ErrorCodes.ServerNotFound, service.Journal);
+        (rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.Lookup).ShouldBe((true, null), "после поиска исключение снято");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.DohAsync(dohUri, "srv.example.com", Gateway.LookupMark));
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "srv.example.com" }), cancellationToken: Ct);
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        doh.Requests.ShouldBe(2, "A и AAAA — через исключение для службы");
+        others.ShouldBe([false, false], "исключение — только для сокета службы");
+        var lookups = rig.KillSwitch.Policies.Where(p => p.Lookup is not null).ToList();
+        lookups.Count.ShouldBe(2);
+        lookups.ShouldAllBe(p => p.Lookup!.Endpoints.Single() == new KillSwitchEndpoint(rig.Public, doh.Url.Port) && p.TunnelInterface == null,
+            "на время поиска — тот же блок без туннеля и одно исключение");
+        rig.KillSwitch.Last!.Lookup.ShouldBeNull("после поиска исключения нет");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == $"Адрес сервера под блоком найден через DoH службы ({rig.Public})");
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.DohAsync(dohUri, "srv.example.com", Gateway.LookupMark),
+            "в «Защищено» исключения нет и для метки службы");
+    }
+
+    [Fact]
     public async Task Pause_opens_the_network_without_the_tunnel_and_brings_the_tunnel_and_the_block_back()
     {
         await using var rig = await Rig.CreateAsync();
@@ -1445,6 +1504,18 @@ public sealed partial class VpnModeTests
                 lock (_policies)
                 {
                     return [.. _policies.Select(p => p.TunnelInterface)];
+                }
+            }
+        }
+
+        /// <summary>Все поставленные блоки, по порядку.</summary>
+        public IReadOnlyList<KillSwitchPolicy> Policies
+        {
+            get
+            {
+                lock (_policies)
+                {
+                    return [.. _policies];
                 }
             }
         }

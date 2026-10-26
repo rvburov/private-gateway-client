@@ -219,6 +219,29 @@ internal sealed class NetworkNamespace : IDisposable
         print(s.recvfrom(100)[0].decode(), end="")
         """, address.ToString(), port.ToString(System.Globalization.CultureInfo.InvariantCulture), seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
+    /// <summary>
+    /// Адреса имени — DoH (JSON, A и AAAA) изнутри пространства сокетом с меткой <paramref name="mark"/> (как поиск службы под
+    /// блоком). Не соединилось — исключение.
+    /// </summary>
+    public async Task<IReadOnlyList<IPAddress>> DohAsync(Uri doh, string name, uint mark)
+    {
+        var bodies = await RunAsync("python3", "-c", """
+            import socket, sys
+            for kind in ("A", "AAAA"):
+                s = socket.socket()
+                s.setsockopt(socket.SOL_SOCKET, 36, int(sys.argv[5]))
+                s.settimeout(3)
+                s.connect((sys.argv[1], int(sys.argv[2])))
+                s.sendall(f"GET {sys.argv[3]}?name={sys.argv[4]}&type={kind} HTTP/1.0\r\nAccept: application/dns-json\r\n\r\n".encode())
+                reply = b""
+                while chunk := s.recv(4096):
+                    reply += chunk
+                print(reply.decode().split("\r\n\r\n", 1)[1].replace("\n", " "))
+            """, doh.Host, doh.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), doh.AbsolutePath, name,
+            mark.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        return [.. bodies.Split('\n', StringSplitOptions.RemoveEmptyEntries).SelectMany(PrivateGateway.Client.Service.Cores.LatencyProbe.DohAnswers)];
+    }
+
     /// <summary>Эхо-запрос ICMP (как ping): «reply» — ответ пришел, «none» — нет за 2 с или отброшен.</summary>
     public Task<string> PingAsync(IPAddress address) => RunAsync("python3", "-c", """
         import socket, struct, sys

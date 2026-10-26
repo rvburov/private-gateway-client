@@ -117,6 +117,16 @@ public sealed class WfpKillSwitchTests
     }
 
     [Fact]
+    public void Lookup_of_the_service_permits_only_its_program_to_the_doh_address()
+    {
+        var lookup = new ServiceLookup(@"C:\Program Files\Private Gateway\PrivateGateway.Service.exe", 0x5048, [new(IPAddress.Parse("1.1.1.1"), 443)]);
+
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", [], Lookup: lookup), null).Select(r => r.ToString())
+            .ShouldContain(@"15 permit V4 lookup: App C:\Program Files\Private Gateway\PrivateGateway.Service.exe, RemoteAddress 1.1.1.1, RemotePort 443, Protocol 6");
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", []), null).ShouldNotContain(r => r.Name == "lookup");
+    }
+
+    [Fact]
     public void Filter_keys_go_in_order_from_one_base()
     {
         WfpRules.FilterKey(0).ShouldBe(new Guid("c9f98d15-2e6c-4db0-aa5c-48a623d10000"));

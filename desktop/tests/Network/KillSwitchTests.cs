@@ -134,6 +134,16 @@ public sealed class KillSwitchTests
             .ShouldNotContain(l => l.Contains("192.168.1.53", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void Lookup_of_the_service_passes_only_its_marked_socket_to_the_doh_address()
+    {
+        var lookup = new ServiceLookup("/usr/lib/private-gateway/PrivateGateway.Service", 0x5048, [new(IPAddress.Parse("1.1.1.1"), 443)]);
+        var lines = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [new(Server, 443)], Lookup: lookup)));
+
+        lines.ShouldContain("meta mark 20552 ip daddr 1.1.1.1 tcp dport 443 accept");
+        Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [new(Server, 443)]))).ShouldNotContain(l => l.Contains("20552", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("pg tun")]
     [InlineData("pgtun0\" accept; flush ruleset; #")]

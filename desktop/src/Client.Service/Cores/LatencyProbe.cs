@@ -142,9 +142,52 @@ public static class LatencyProbe
             UseCookies = false,
         };
         using var http = new HttpClient(handler) { Timeout = probe.Timeout };
+        return await QueryAsync(http, probe.Target, name, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Адреса имени — запросами DoH (JSON, A и AAAA) напрямую, мимо туннеля и DNS ОС: поиск самой службы под блоком при обрыве.
+    /// Сокет на Linux помечен <paramref name="mark"/> — по метке его пропускает блок (метку ставит только root). Нет ответа — пусто.
+    /// </summary>
+    public static async Task<IReadOnlyList<IPAddress>> LookupDirectAsync(Uri doh, string name, uint mark, TimeSpan timeout,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(doh);
+        using var handler = new SocketsHttpHandler
+        {
+            UseProxy = false,
+            AllowAutoRedirect = false,
+            UseCookies = false,
+            ConnectCallback = async (context, token) =>
+            {
+                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                try
+                {
+                    if (OperatingSystem.IsLinux() && mark != 0)
+                    {
+                        // SOL_SOCKET = 1, SO_MARK = 36.
+                        socket.SetRawSocketOption(1, 36, BitConverter.GetBytes(mark));
+                    }
+
+                    await socket.ConnectAsync(context.DnsEndPoint, token).ConfigureAwait(false);
+                    return new NetworkStream(socket, ownsSocket: true);
+                }
+                catch
+                {
+                    socket.Dispose();
+                    throw;
+                }
+            },
+        };
+        using var http = new HttpClient(handler) { Timeout = timeout };
+        return await QueryAsync(http, doh, name, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<IReadOnlyList<IPAddress>> QueryAsync(HttpClient http, Uri doh, string name, CancellationToken cancellationToken)
+    {
         var answers = await Task.WhenAll(DohTypes.Select(async type =>
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(probe.Target, $"?name={Uri.EscapeDataString(name)}&type={type}"));
+            using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(doh, $"?name={Uri.EscapeDataString(name)}&type={type}"));
             request.Headers.Accept.ParseAdd("application/dns-json");
             try
             {

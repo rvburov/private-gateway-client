@@ -75,6 +75,17 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             rules.Add($"{family} daddr {server.Address} meta l4proto {{ tcp, udp }} th dport {server.Port.ToString(CultureInfo.InvariantCulture)} accept");
         }
 
+        // Поиск адреса сервера службой под блоком: только ее сокет с меткой (ставит только root) и только к DoH.
+        if (policy.Lookup is { } lookup)
+        {
+            foreach (var endpoint in lookup.Endpoints)
+            {
+                var family = endpoint.Address.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip";
+                rules.Add($"meta mark {lookup.Mark.ToString(CultureInfo.InvariantCulture)} {family} daddr {endpoint.Address} tcp dport "
+                    + $"{endpoint.Port.ToString(CultureInfo.InvariantCulture)} accept");
+            }
+        }
+
         // Свой DNS в частной сети: его выбрал пользователь, и Xray спрашивает его напрямую — раньше закрытия DNS.
         if (policy.LanDns is { } lanDns)
         {

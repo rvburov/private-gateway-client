@@ -136,6 +136,14 @@ public static class WfpRules
                 [new(WfpField.RemoteAddress, Address: server.Address), new(WfpField.RemotePort, (ulong)server.Port), .. TcpOrUdp()]));
         }
 
+        // Поиск адреса сервера службой под блоком: только программа службы и только к DoH.
+        foreach (var endpoint in policy.Lookup?.Endpoints ?? [])
+        {
+            rules.Add(new("lookup", endpoint.Address.AddressFamily == AddressFamily.InterNetworkV6 ? WfpFamily.V6 : WfpFamily.V4, true, 15,
+                [new(WfpField.App, Program: policy.Lookup!.Program), new(WfpField.RemoteAddress, Address: endpoint.Address),
+                    new(WfpField.RemotePort, (ulong)endpoint.Port), new(WfpField.Protocol, Tcp)]));
+        }
+
         // Свой DNS в частной сети: его выбрал пользователь, и Xray спрашивает его напрямую — тяжелее закрытия DNS.
         if (policy.LanDns is { } lanDns)
         {
