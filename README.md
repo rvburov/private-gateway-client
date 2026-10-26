@@ -229,7 +229,7 @@ artifacts/    # ignored
 ## 15. Этап 11 — стабилизация и выпуск
 - [ ] Регрессия всех платформ/протоколов, chaos/network tests, утечки, обновления.
 - [ ] Тест `ReconnectTests.Network_change_checks_the_server_at_once…` один раз (2026-10-26, Windows CI, коммит fca915d) не дождался состояния — остался в «Переподключении»; следующий прогон прошел. Тест теперь печатает журнал службы — при повторе разобрать по нему.
-- [ ] Android: экран «Лицензии открытых компонентов» (libXray и Xray-core, AndroidX, Compose, Room, Dagger, snakeyaml-engine) и уведомления в APK — как `shared/licenses/components.json` десктопа.
+- [ ] Android: экран «Лицензии открытых компонентов» (libXray и Xray-core, AndroidX, Compose, Room, Dagger, snakeyaml-engine, ZXing) и уведомления в APK — как `shared/licenses/components.json` десктопа.
 - [ ] Performance, CPU/RAM/battery, доступность UI, локализация.
 - [ ] Security review, лицензии, SBOM, privacy, документация, инструкции, changelog; подписи — по разделу «Отложено», если к выпуску решено.
 - [ ] Релизный чеклист и план поддержки/реагирования на инциденты.

@@ -18,7 +18,7 @@ android/
 
 | Модуль | Что внутри | Сборка |
 | --- | --- | --- |
-| `core` | разбор ссылок и подписок (`LinkParser`, `ImportParser`: ссылки, base64, sing-box JSON, Clash YAML), ссылка из сервера (`LinkWriter`), конфиг Xray (`XrayConfig`), план карты туннеля (`TunPlan`), DNS ядра до туннеля (`CoreDns`), подписи сервера (`ServerFacts`), `SecretMasker`, формы чисел (`Plural`) | `android/gradlew -p android/core test` — нужен только JDK 17+, без SDK Android и репозитория Google |
+| `core` | разбор ссылок и подписок (`LinkParser`, `ImportParser`: ссылки, base64, sing-box JSON, Clash YAML), ссылка из сервера (`LinkWriter`), конфиг Xray (`XrayConfig`), план карты туннеля (`TunPlan`), DNS ядра до туннеля и за сменой сети (`CoreDns`, `CoreDnsFollower`), подписи сервера (`ServerFacts`), подписки (`SubscriptionMerge`, `SubscriptionDownloader`), настройки туннеля (`TunnelSettings`), QR-код (`QrCode`, ZXing), `SecretMasker`, формы чисел (`Plural`) | `android/gradlew -p android/core test` — нужен только JDK 17+, без SDK Android и репозитория Google |
 | `build-logic` | плагин `privategateway.shared-resources`: задачи `generatePgTheme` и `generatePgResources` | `android/gradlew -p android/build-logic test` — так же без SDK |
 | `app` | окно, служба VPN, хранилище, тесты Robolectric | `android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug` — нужны SDK Android, NDK для ядра и `scripts/get-libxray.sh` |
 
@@ -112,7 +112,8 @@ go.mod этого коммита libXray (вход `tun` по дескрипто
 ## Тесты
 
 - `core` — JUnit 5: разбор на всех эталонах `shared/testdata` и обратно через `LinkWriter`, импорт sing-box и Clash,
-  конфиг Xray, план туннеля и DNS ядра, подписи, маскирование, формы чисел.
+  конфиг Xray, план туннеля и DNS ядра, подписки, настройки туннеля, QR-код (те же случаи, что у десктопа, и кадр камеры),
+  подписи, маскирование, формы чисел.
 - `build-logic` — JUnit 5 на настоящих файлах репозитория: цвета совпадают с `Tokens.axaml`, все тексты RU и EN читаются
   обратно по правилам Android, экранирование, повтор имен.
 - `app` — Robolectric (без устройства, Android 15): хранилище (каждый эталон возвращается тем же, адрес и ключи только

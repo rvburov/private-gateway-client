@@ -22,6 +22,7 @@ kotlin {
 
 dependencies {
     implementation(libs.snakeyaml.engine)
+    implementation(libs.zxing.core)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.junit.params)
