@@ -1018,6 +1018,38 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task System_dns_points_at_the_tunnel_while_it_is_up_and_follows_a_network_change()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var network = new FakeNetwork();
+        var dns = new FakeSystemDns();
+        var hour = TimeSpan.FromHours(1);
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
+        {
+            Network = network,
+            SystemDns = dns,
+            Probe = rig.ProbeAsync,
+            Reconnect = new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        dns.Calls.ShouldBe(["apply 172.19.0.2"], "туннель поднят — DNS ОС спрашивает DNS туннеля");
+        network.Raise();
+        for (var i = 0; i < 50 && dns.Calls.Count < 2; i++)
+        {
+            await Task.Delay(100, Ct);
+        }
+
+        dns.Calls.ShouldBe(["apply 172.19.0.2", "apply 172.19.0.2"], "другая основная сеть — и ее DNS на туннель");
+
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Off);
+        dns.Calls[^1].ShouldBe("restore", "туннеля нет — DNS ОС как был");
+    }
+
+    [Fact]
     public async Task Other_vpn_that_only_adds_routes_is_found_by_the_regular_check()
     {
         await using var rig = await Rig.CreateAsync();

@@ -69,6 +69,11 @@
     "why": "маршруты macOS через netstat"
   },
   {
+    "reason": "scutil — только на macOS от root",
+    "os": ["Linux", "Windows"],
+    "why": "DNS macOS на время туннеля; на macOS CI проверяется шагом от root на своей записи сети"
+  },
+  {
     "reason": "pf — только на macOS от root",
     "os": ["Linux", "Windows"],
     "why": "блок при обрыве macOS; на macOS CI грузит правила в свой якорь шагом от root"

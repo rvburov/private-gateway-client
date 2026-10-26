@@ -38,7 +38,8 @@ namespace PrivateGateway.Client.Service;
 /// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
 /// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>);
 /// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>;
-/// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять.
+/// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять;
+/// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -63,7 +64,8 @@ public sealed record GatewayOptions(
     IPEndPoint? OutsideDns = null,
     Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null,
     TimeSpan? BlockWatch = null,
-    string? TunDevice = null);
+    string? TunDevice = null,
+    ISystemDns? SystemDns = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -1274,6 +1276,36 @@ public sealed partial class Gateway : IAsyncDisposable
         if (Interlocked.Exchange(ref _tunnel, null) is { } tunnel)
         {
             await tunnel.DisposeAsync().ConfigureAwait(false);
+            RestoreDns();
+        }
+    }
+
+    /// <summary>
+    /// Туннель поднят или сменилась сеть: DNS ОС — на DNS туннеля (macOS, <see cref="GatewayOptions.SystemDns"/>). Не вышло —
+    /// в журнал: туннель работает, а запросы к DNS роутера мимо него закрыты блоком или идут как есть.
+    /// </summary>
+    private void PointDnsAtTunnel()
+    {
+        try
+        {
+            _options.SystemDns?.Apply(TunnelDns);
+        }
+        catch (IOException e)
+        {
+            _journal.Add(JournalLevel.Warning, "service", "DNS ОС не направлен в туннель: " + e.Message);
+        }
+    }
+
+    /// <summary>Туннеля больше нет — DNS ОС как был.</summary>
+    private void RestoreDns()
+    {
+        try
+        {
+            _options.SystemDns?.Restore();
+        }
+        catch (IOException e)
+        {
+            _journal.Add(JournalLevel.Warning, "service", "DNS ОС не возвращен: " + e.Message);
         }
     }
 
@@ -1322,6 +1354,7 @@ public sealed partial class Gateway : IAsyncDisposable
             _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
             _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
+            PointDnsAtTunnel();
             if (tunnel.HasExited)
             {
                 Fail(session, ErrorCodes.CoreFailed, "Ядро туннеля остановилось");

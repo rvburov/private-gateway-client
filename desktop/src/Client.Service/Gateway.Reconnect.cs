@@ -117,6 +117,12 @@ public sealed partial class Gateway
         var now = _time.GetUtcNow();
         Update(s => s with { Exit = s.Exit with { DirectIp = null }, NetworkChangedAt = now });
 
+        // Другая основная сеть (macOS): ее DNS — тоже на туннель, прежней — свой.
+        if (Volatile.Read(ref _tunnel) is not null)
+        {
+            PointDnsAtTunnel();
+        }
+
         CheckAtOnce("Сеть машины сменилась");
     }
 
@@ -405,6 +411,7 @@ public sealed partial class Gateway
             _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
             _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
+            PointDnsAtTunnel();
             if (tunnel.HasExited)
             {
                 return (false, ErrorCodes.CoreFailed);

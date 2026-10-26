@@ -102,6 +102,13 @@ public static partial class ServiceHost
         : OperatingSystem.IsMacOS() ? Platform.MacOS.NetstatRouteTable.ForThisMachine()
         : null;
 
+    /// <summary>
+    /// DNS ОС на время туннеля, где sing-box его не прописывает: macOS — <c>scutil</c> (копия прежнего — в папке состояния
+    /// <paramref name="state"/>); Windows и Linux — null, там DNS прописывает sing-box.
+    /// </summary>
+    public static ISystemDns? SystemDns(string state) =>
+        OperatingSystem.IsMacOS() ? Platform.MacOS.ScutilDns.ForThisMachine(state) : null;
+
     /// <summary>Часы сна этой ОС (<see cref="ISuspendClock"/>): по ним служба узнает, что машина спала.</summary>
     public static ISuspendClock? SuspendClock() =>
         OperatingSystem.IsWindows() ? new WindowsSuspendClock()

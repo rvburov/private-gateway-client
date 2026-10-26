@@ -61,12 +61,13 @@ public static class ServiceSetup
 
     /// <summary>
     /// Файлы состояния, которые служба пишет в свою папку состояния: журнал, признак работы, замок одной копии, ядра
-    /// прошлого запуска, блок и подключение при загрузке, номер раскатки, признак готовности, история версий (откат). Их переносит установка из
+    /// прошлого запуска, блок и подключение при загрузке, номер раскатки, признак готовности, история версий (откат), прежний DNS
+    /// ОС на время туннеля (macOS). Их переносит установка из
     /// прежней папки службы и удаляет удаление; другие файлы в папке состояния не трогаются.
     /// </summary>
     public static readonly IReadOnlyList<string> StateFiles =
         ["journal.jsonl", "journal.1.jsonl", "running", "service.lock", "cores.json", "boot-block.json", "boot-connect.sealed", "update-bucket", ServiceReady.FileName,
-        Updates.VersionHistory.CurrentFile, Updates.VersionHistory.PreviousFile, Updates.VersionHistory.LeftFile];
+        Updates.VersionHistory.CurrentFile, Updates.VersionHistory.PreviousFile, Updates.VersionHistory.LeftFile, "dns-backup.json"];
 
     /// <summary>Имя службы: служба Windows — PrivateGateway, юнит systemd — private-gateway, метка launchd — обратным доменом.</summary>
     public static string DefaultName => OperatingSystem.IsWindows() ? "PrivateGateway"

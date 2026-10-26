@@ -23,6 +23,8 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
     {
         if (args.Contains("--uninstall"))
         {
+            // DNS ОС, направленный на туннель (macOS), — вернуть до удаления копии прежнего вместе с состоянием.
+            ServiceHost.SystemDns(stateDir)?.Restore();
             ServiceSetup.Uninstall(name, folder, stateDir, ServiceHost.KillSwitch(), ServiceSetup.ForThisMachine());
             Console.WriteLine($"Служба {name} удалена");
             return 0;
@@ -100,11 +102,23 @@ using var network = new SystemNetworkEvents(time, sleep: ServiceHost.SuspendCloc
 var bootFolder = state;
 var bootBlock = canVpn ? Path.Combine(bootFolder, "boot-block.json") : null;
 var bootConnect = canVpn && ServiceHost.Sealer() is { } sealer ? new BootConnection(Path.Combine(bootFolder, "boot-connect.sealed"), sealer) : null;
+
+// DNS ОС, направленный на прошлый туннель (macOS), — после аварии службы вернуть, как было: туннеля сейчас нет.
+var systemDns = canVpn ? ServiceHost.SystemDns(state) : null;
+try
+{
+    systemDns?.Restore();
+}
+catch (IOException e)
+{
+    journal.Add(JournalLevel.Warning, "service", "DNS ОС после прошлого туннеля не возвращен: " + e.Message);
+}
+
 await using var gateway = new Gateway(
     new GatewayOptions(xray, canVpn, Uri.TryCreate(Option("--latency-target"), UriKind.Absolute, out var target) ? target : LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
         Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
-        TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null),
+        TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null, SystemDns: systemDns),
     time, journal, systemProxy);
 // Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки и прежняя версия (для
 // отката) — в папке состояния. Ставит обновление только установленная служба (у нее есть --service-name) программы из

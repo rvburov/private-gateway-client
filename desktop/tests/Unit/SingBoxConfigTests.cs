@@ -25,15 +25,8 @@ public sealed class SingBoxConfigTests
         Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress], "сервер не открывает IPv6 — у TUN его нет");
         Strings(tun["route_exclude_address"]).ShouldBe(["198.51.100.20/32", "2001:db8::20/128"], "локальная сеть не разрешена — мимо туннеля только сервер");
         tun.ContainsKey("mtu").ShouldBeFalse("MTU подбирает sing-box");
-        if (OperatingSystem.IsMacOS())
-        {
-            tun.ContainsKey("interface_name").ShouldBeFalse("на macOS имя адаптера дает система");
-        }
-        else
-        {
-            tun["interface_name"]!.GetValue<string>().ShouldBe(OperatingSystem.IsWindows() ? "Private Gateway" : "pgtun0",
-                "по имени адаптера туннель узнают правила блока при обрыве");
-        }
+        tun["interface_name"]!.GetValue<string>().ShouldBe(OperatingSystem.IsWindows() ? "Private Gateway" : OperatingSystem.IsMacOS() ? "utun225" : "pgtun0",
+            "по имени адаптера туннель узнают правила блока при обрыве; на macOS — только utunN, номер свой");
 
         if (OperatingSystem.IsLinux())
         {

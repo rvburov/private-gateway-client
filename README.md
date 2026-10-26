@@ -168,7 +168,7 @@ artifacts/    # ignored
 ## 10. Этап 6 — Linux/macOS
 - [ ] Общие Core/Application/UI; платформенные адаптеры и службы.
 - [ ] Linux: systemd, TUN, nftables/iptables согласно дистрибутиву, DNS/systemd-resolved, пакеты. — 2026-10-25: TUN (sing-box) и блок при обрыве на nftables — своя таблица `inet private_gateway`, замена правил одной транзакцией ([docs/architecture/kill-switch.md](docs/architecture/kill-switch.md)); iptables без nft не поддерживается.
-- [ ] macOS: служба на C# под launchd, TUN — sing-box (utun), блок при обрыве — pf, системный прокси (решение 2026-10-25); Network Extension, entitlements, подпись и нотаризация — «Отложено».
+- [ ] macOS: служба на C# под launchd, TUN — sing-box (utun), блок при обрыве — pf, системный прокси (решение 2026-10-25); Network Extension, entitlements, подпись и нотаризация — «Отложено». — 2026-10-26: служба launchd с установкой из окна (пароль администратора), блок при обрыве — pf в своем якоре, туннель `utun225`, чужой VPN — по маршрутам `netstat`, DNS ОС на время туннеля — `scutil` с копией прежнего ([docs/architecture/service.md](docs/architecture/service.md), [kill-switch.md](docs/architecture/kill-switch.md), [core.md](docs/architecture/core.md)); осталось: системный прокси, подключение при загрузке (Keychain), пакет.
 - [ ] Одинаковые контрактные тесты: manual exit, kill switch, DNS/IPv6, reconnect, sleep/wake.
 **Готово когда:** реальные машины и VM проходят тесты без нарушения платформенных правил.
 
