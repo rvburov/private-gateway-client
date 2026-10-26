@@ -14,7 +14,7 @@ interface TunnelControl {
 }
 
 @Singleton
-class ServiceTunnelControl @Inject constructor(@ApplicationContext private val context: Context) : TunnelControl {
+class ServiceTunnelControl @Inject constructor(@param:ApplicationContext private val context: Context) : TunnelControl {
     override fun connect() = GatewayVpnService.connect(context)
 
     override fun disconnect() = GatewayVpnService.disconnect(context)
