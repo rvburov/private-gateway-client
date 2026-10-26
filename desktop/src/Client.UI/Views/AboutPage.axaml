@@ -106,7 +106,7 @@
           </Grid>
         </Border>
 
-        <!-- Обновления: ищет служба; есть новее — карточка с главным из заметок, подписью и кнопками -->
+        <!-- Обновления: ищет служба; есть новее — карточка с главным из заметок, подписью и кнопками; откат — там же -->
         <Border x:Name="UpdatesCard" Classes="card" Classes.offer="{Binding IsUpdateAvailable}" Classes.ready="{Binding IsUpdateReady}" Padding="16,14,16,4">
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="*,Auto">
@@ -116,7 +116,7 @@
                 <TextBlock x:Name="UpdateBadge" Text="{Binding UpdateBadge}" />
               </Border>
             </Grid>
-            <TextBlock x:Name="UpdatesText" Classes="caption" Text="{Binding UpdateText}" TextWrapping="Wrap" IsVisible="{Binding !IsUpdateAvailable}" />
+            <TextBlock x:Name="UpdatesText" Classes="caption" Text="{Binding UpdateText}" TextWrapping="Wrap" IsVisible="{Binding !ShowUpdateFlow}" />
             <ItemsControl x:Name="UpdateHighlights" ItemsSource="{Binding UpdateHighlights}" IsVisible="{Binding IsUpdateAvailable}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="x:String">
@@ -130,7 +130,7 @@
             <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsUpdateIdle}">
               <c:Icon Data="{StaticResource Icon.Mark.Ok}" Width="14" Height="14" StrokeThickness="2.6"
                       Foreground="{StaticResource PgBrush.Status.Success.Text}" VerticalAlignment="Center" />
-              <TextBlock x:Name="UpdateSigned" Classes="small" Text="{l:L about.update.signed}" Foreground="{StaticResource PgBrush.Status.Success.Text}"
+              <TextBlock x:Name="UpdateSigned" Classes="small" Text="{Binding UpdateSignedText}" TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Success.Text}"
                          VerticalAlignment="Center" />
             </StackPanel>
             <!-- Загрузка и готово: полоса и что дальше -->
@@ -144,7 +144,7 @@
               </Border>
               <TextBlock x:Name="UpdateProgress" Classes="caption" Text="{Binding UpdateProgressText}" TextWrapping="Wrap" />
             </StackPanel>
-            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0" IsVisible="{Binding IsUpdateAvailable}">
+            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0" IsVisible="{Binding ShowUpdateFlow}">
               <Button x:Name="UpdateNow" Classes="primary" Height="44" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUpdateAction}"
                       Command="{Binding UpdateNowCommand}" Content="{Binding UpdateAction}" />
               <Button x:Name="PostponeUpdate" Grid.Column="1" Classes="secondary" Height="44" Margin="10,0,0,0" IsVisible="{Binding IsUpdateIdle}"
@@ -156,6 +156,12 @@
                     Command="{Binding CheckUpdatesNowCommand}" Content="{l:L about.updates.check}" />
             <Button x:Name="ShowUpdate" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding IsUpdatePostponed}"
                     Command="{Binding ShowUpdateCommand}" Content="{l:L about.update.show}" />
+            <!-- Откат: прежняя версия, которую служба вернет сама -->
+            <StackPanel Spacing="6" Margin="0,4,0,0" IsVisible="{Binding CanRollBack}">
+              <TextBlock x:Name="RollbackText" Classes="caption" Text="{Binding RollbackText}" TextWrapping="Wrap" />
+              <Button x:Name="RollBack" Classes="secondary" Height="40" HorizontalAlignment="Left" Command="{Binding RollBackCommand}"
+                      Content="{Binding RollbackAction}" />
+            </StackPanel>
             <Border Classes="divider" Margin="0,4,0,0" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,4">
               <StackPanel Spacing="3" Margin="0,0,16,0">

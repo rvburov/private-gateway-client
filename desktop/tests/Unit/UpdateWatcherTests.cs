@@ -139,6 +139,46 @@ public sealed class UpdateWatcherTests : IDisposable
     }
 
     [Fact]
+    public async Task Rollback_downloads_and_installs_the_previous_version_the_same_way()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _gateway.Offer = new UpdateOffer(UpdateState.UpToDate, _time.GetUtcNow()) { Rollback = "0.1.0" };
+        _gateway.Progress = [new UpdateProgress(150, 300), new UpdateProgress(300, 300, Ready: true)];
+        await _watcher.CheckAsync(force: false, ct);
+
+        await _watcher.DownloadAsync(ct);
+        _gateway.Downloads.ShouldBeEmpty("обновления нет — качать нечего");
+        _watcher.IsRollingBack.ShouldBeFalse();
+
+        await _watcher.RollBackAsync(ct);
+        (_watcher.Target, _watcher.Step, _watcher.IsRollingBack).ShouldBe(("0.1.0", UpdateStep.Ready, true));
+        _gateway.Downloads.ShouldBe(["0.1.0"]);
+
+        await _watcher.CheckAsync(force: false, ct);
+        _watcher.Step.ShouldBe(UpdateStep.Ready, "служба по-прежнему предлагает откат — загрузка не пропадает");
+        await _watcher.InstallAsync(ct);
+        _gateway.Installs.ShouldBe(["0.1.0"]);
+        _relauncher.Pids.ShouldBe([4242]);
+    }
+
+    [Fact]
+    public async Task Download_the_service_no_longer_offers_is_dropped()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _gateway.Offer = new UpdateOffer(UpdateState.UpToDate, _time.GetUtcNow()) { Rollback = "0.1.0" };
+        _gateway.Progress = [new UpdateProgress(300, 300, Ready: true)];
+        await _watcher.CheckAsync(force: false, ct);
+        await _watcher.RollBackAsync(ct);
+
+        _gateway.Offer = new UpdateOffer(UpdateState.UpToDate, _time.GetUtcNow());
+        await _watcher.CheckAsync(force: true, ct);
+
+        (_watcher.Step, _watcher.Target, _watcher.IsRollingBack).ShouldBe((UpdateStep.None, null, false));
+        await _watcher.InstallAsync(ct);
+        _gateway.Installs.ShouldBeEmpty("ставить нечего");
+    }
+
+    [Fact]
     public async Task Failures_are_said_and_can_be_retried()
     {
         _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };

@@ -62,7 +62,8 @@ service GatewayService {
   rpc DownloadUpdate(DownloadUpdateRequest) returns (stream UpdateDownload);
 
   // Поставить скачанное обновление: служба сверяет файл еще раз и запускает установщик ОС отдельно от себя (он заменит
-  // и ее), ответ — номер процесса установщика: окно ждет его конца и открывается заново.
+  // и ее), ответ — номер процесса установщика: окно ждет его конца и открывается заново. Откат на прежнюю версию
+  // (UpdateOffer.rollback) — те же DownloadUpdate и InstallUpdate с ее номером.
   rpc InstallUpdate(InstallUpdateRequest) returns (InstallUpdateReply);
 }
 
@@ -578,6 +579,12 @@ message UpdateOffer {
   google.protobuf.Timestamp checked_at = 5;
   // Служба поставит его сама (MSI, .deb, .rpm установленной программы); нет — окно ведет на страницу выпуска.
   bool installable = 6;
+  // Прежняя версия, на которую служба откатит сама (стояла до этой, выпуск подписан, файл этой установки в нем есть):
+  // DownloadUpdate и InstallUpdate принимают и ее. Пусто — откатиться не на что.
+  string rollback = 7;
+  // AVAILABLE: после обновления можно будет вернуться на нынешнюю версию (ее выпуск подписан, файл этой установки
+  // есть) — «можно откатить на 0.1.0». Пусто — обещать нечего.
+  string return_to = 8;
 }
 
 message DownloadUpdateRequest {

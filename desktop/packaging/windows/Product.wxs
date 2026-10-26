@@ -8,7 +8,8 @@
     Gateway\Service, состояние в ServiceState, запуск с Windows. Не встала — установка откатывается.
   - Обновление службу не удаляет: install новой версии заменяет ее атомарно (новая копия рядом, прежняя возвращается,
     если новая не запустилась). Откат неудачной первой установки удаляет службу, а неудачного обновления — нет: прежняя
-    служба уже на месте, а MSI возвращает прежние файлы программы.
+    служба уже на месте, а MSI возвращает прежние файлы программы. MSI прежней версии ставится поверх новой (понижение
+    версии разрешено — откат на прежнюю версию) тем же путем: служба заменяется, ее состояние остается.
   - Удаление (не обновление) сначала удаляет службу: uninstall снимает блок при обрыве и удаляет папки службы и ее
     состояния — машина не остается без сети.
   Файлы пользователя (настройки окна в LocalAppData) и чужие файлы в папке программы установщик не трогает.
@@ -16,7 +17,8 @@
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
   <Package Name="Private Gateway" Manufacturer="Private Gateway" Version="$(Version)" UpgradeCode="b3f677bb-fd84-4ddd-b04c-8cf67f3ea5c3"
            Scope="perMachine" Compressed="yes" Language="1033">
-    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of Private Gateway is already installed." />
+    <!-- Понижение версии разрешено: откат на прежнюю версию из «О программе» ставит ее MSI поверх новой. -->
+    <MajorUpgrade Schedule="afterInstallInitialize" AllowDowngrades="yes" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="AppIcon" SourceFile="$(Icon)" />

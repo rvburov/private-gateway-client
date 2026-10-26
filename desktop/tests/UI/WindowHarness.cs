@@ -193,8 +193,14 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Пока не завершится, последний шаг загрузки не приходит — экран видно посреди загрузки.</summary>
         public Task? DownloadGate { get; set; }
 
+        /// <summary>Какие версии окно просило скачать и поставить.</summary>
+        public List<string> Downloads { get; } = [];
+
+        public List<string> Installs { get; } = [];
+
         public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            Downloads.Add(version);
             for (var i = 0; i < Download.Count; i++)
             {
                 if (i == Download.Count - 1 && DownloadGate is { } gate)
@@ -207,7 +213,11 @@ public abstract class WindowHarness : IDisposable
             }
         }
 
-        public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult(Installer);
+        public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default)
+        {
+            Installs.Add(version);
+            return Task.FromResult(Installer);
+        }
 
         /// <summary>Что служба сделает из «Подключения».</summary>
         public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());

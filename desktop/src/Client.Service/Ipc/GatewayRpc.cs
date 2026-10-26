@@ -74,13 +74,13 @@ public sealed class GatewayRpc(
         return (offer with { Installable = offer.State == Core.Updates.UpdateState.Available && installer.Kind is not null }).ToContract();
     }
 
-    /// <summary>Скачать то, что служба сама нашла последней проверкой; другая версия — отказ.</summary>
+    /// <summary>Скачать то, что служба сама нашла последней проверкой (обновление или откат); другая версия — отказ.</summary>
     public override async Task DownloadUpdate(V1.DownloadUpdateRequest request, IServerStreamWriter<V1.UpdateDownload> responseStream, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(responseStream);
         var cancellation = context?.CancellationToken ?? default;
-        if (updates.Found is not { } manifest || manifest.Version != request.Version)
+        if (Known(request.Version) is not { } manifest)
         {
             await responseStream.WriteAsync(new V1.UpdateDownload { Error = "сначала проверьте обновления: служба не находила " + request.Version }, cancellation)
                 .ConfigureAwait(false);
@@ -93,11 +93,11 @@ public sealed class GatewayRpc(
         }
     }
 
-    /// <summary>Поставить скачанное обновление той версии, что служба нашла; ответ — номер процесса установщика.</summary>
+    /// <summary>Поставить скачанное обновление (или откат) той версии, что служба нашла; ответ — номер процесса установщика.</summary>
     public override Task<V1.InstallUpdateReply> InstallUpdate(V1.InstallUpdateRequest request, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(request);
-        if (updates.Found is not { } manifest || manifest.Version != request.Version)
+        if (Known(request.Version) is not { } manifest)
         {
             return Task.FromResult(new V1.InstallUpdateReply { Error = "служба не находила " + request.Version });
         }
@@ -112,6 +112,12 @@ public sealed class GatewayRpc(
             return Task.FromResult(new V1.InstallUpdateReply { Error = e.Message });
         }
     }
+
+    // Найденное обновление или прежняя версия для отката — только то, что служба сама нашла и проверила.
+    private Core.Updates.UpdateManifest? Known(string version) =>
+        updates.Found is { } found && found.Version == version ? found
+        : updates.Rollback is { } rollback && rollback.Version == version ? rollback
+        : null;
 
     /// <summary>Защиту служба применит при следующем подключении: в режиме прокси менять на ходу нечего.</summary>
     public override Task<V1.ApplyProtectionReply> ApplyProtection(V1.ProtectionSettings request, ServerCallContext context) =>

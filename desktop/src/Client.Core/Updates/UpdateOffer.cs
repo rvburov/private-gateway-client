@@ -9,6 +9,18 @@ public sealed record UpdateOffer(UpdateState State, DateTimeOffset Checked, stri
     /// <summary>Служба поставит его сама (MSI, .deb, .rpm установленной программы); нет — только страница выпуска.</summary>
     public bool Installable { get; init; }
 
+    /// <summary>
+    /// Прежняя версия, на которую служба откатит сама (стояла до этой, ее выпуск подписан и в нем есть файл этой
+    /// установки); null — откатиться не на что.
+    /// </summary>
+    public string? Rollback { get; init; }
+
+    /// <summary>
+    /// После этого обновления можно будет вернуться на нынешнюю версию (ее выпуск подписан, файл этой установки в нем
+    /// есть) — «можно откатить на 0.1.0» на карточке; null — обещать нечего.
+    /// </summary>
+    public string? ReturnTo { get; init; }
+
     /// <summary>Найденный выпуск из подписанного манифеста.</summary>
     public static UpdateOffer Found(UpdateManifest manifest, DateTimeOffset checkedAt)
     {

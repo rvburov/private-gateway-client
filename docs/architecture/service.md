@@ -35,7 +35,7 @@ IPC. Упавшая служба замок не держит — его отп�
   ядра — в `cores/xray` и `cores/sing-box` со всем, что рядом (геобазы, LICENSE). Служба работает от SYSTEM или
   root: из папки, куда может писать пользователь, ее не запускают никогда.
 - Состояние установленной службы (журнал, замок одной копии, блок и подключение при загрузке, номер раскатки,
-  признак готовности — `ServiceSetup.StateFiles`) — отдельно от копии: `%ProgramFiles%\Private Gateway\ServiceState`,
+  признак готовности, история версий для отката — `ServiceSetup.StateFiles`) — отдельно от копии: `%ProgramFiles%\Private Gateway\ServiceState`,
   `/var/lib/private-gateway` (0700); команда службы получает `--state`. Состояние из прежней папки службы
   установка переносит туда сама.
 - Windows: служба `PrivateGateway` через диспетчер служб (advapi32): запуск с ОС, от LocalSystem,

@@ -39,6 +39,8 @@ public enum UpdateStep
 /// Найденное служба ставит сама, если может (<see cref="UpdateOffer.Installable"/>): <see cref="DownloadAsync"/> —
 /// загрузка с ходом (<see cref="Step"/>, <see cref="Received"/> из <see cref="Total"/>), <see cref="InstallAsync"/> —
 /// установщик ОС, перезапуск окна после него (<see cref="IAppRelauncher"/>) и <see cref="RestartRequested"/>: окно закрывается.
+/// Откат на прежнюю версию (<see cref="UpdateOffer.Rollback"/>) — тем же путем: <see cref="RollBackAsync"/>, потом
+/// <see cref="InstallAsync"/>; что качается и ставится — <see cref="Target"/>.
 /// </summary>
 public sealed class UpdateWatcher : IDisposable
 {
@@ -90,6 +92,12 @@ public sealed class UpdateWatcher : IDisposable
     }
 
     public UpdateStep Step { get; private set; }
+
+    /// <summary>Что качается и ставится: найденное обновление или прежняя версия (откат); null — ничего.</summary>
+    public string? Target { get; private set; }
+
+    /// <summary>Идет откат на прежнюю версию, а не обновление.</summary>
+    public bool IsRollingBack => Target is not null && Target == Offer?.Rollback && Step is not UpdateStep.None;
 
     /// <summary>Сколько байт скачано из скольких (<see cref="Total"/> — 0, пока служба не начала).</summary>
     public long Received { get; private set; }
@@ -146,10 +154,10 @@ public sealed class UpdateWatcher : IDisposable
         {
             Attempted = _time.GetUtcNow();
             var offer = await _gateway.CheckForUpdateAsync(_settings.Current.UpdateChannel, force, cancellationToken).ConfigureAwait(true);
-            if (offer?.Version != Offer?.Version && Step is not (UpdateStep.Downloading or UpdateStep.Installing))
+            if (Target is not null && Target != offer?.Version && Target != offer?.Rollback && Step is not (UpdateStep.Downloading or UpdateStep.Installing))
             {
-                // Другая версия — загрузка прежней ей не годится.
-                (Step, Received, Total) = (UpdateStep.None, 0, 0);
+                // Служба больше не предлагает то, что качали, — загрузка ни к чему.
+                (Step, Received, Total, Target) = (UpdateStep.None, 0, 0, null);
             }
 
             Offer = offer;
@@ -171,14 +179,21 @@ public sealed class UpdateWatcher : IDisposable
     }
 
     /// <summary>«Обновить сейчас»: служба скачивает найденное и сверяет с манифестом; ход — в <see cref="Received"/>.</summary>
-    public async Task DownloadAsync(CancellationToken cancellationToken = default)
+    public Task DownloadAsync(CancellationToken cancellationToken = default) =>
+        Offer is { State: UpdateState.Available, Installable: true, Version: { } version } ? FetchAsync(version, cancellationToken) : Task.CompletedTask;
+
+    /// <summary>«Откатить»: служба скачивает прежнюю версию так же, как обновление; дальше — <see cref="InstallAsync"/>.</summary>
+    public Task RollBackAsync(CancellationToken cancellationToken = default) =>
+        Offer?.Rollback is { } version ? FetchAsync(version, cancellationToken) : Task.CompletedTask;
+
+    private async Task FetchAsync(string version, CancellationToken cancellationToken)
     {
-        if (Offer is not { State: UpdateState.Available, Installable: true, Version: { } version } || Step is UpdateStep.Downloading or UpdateStep.Installing)
+        if (Step is UpdateStep.Downloading or UpdateStep.Installing)
         {
             return;
         }
 
-        (Step, Received, Total) = (UpdateStep.Downloading, 0, 0);
+        (Step, Received, Total, Target) = (UpdateStep.Downloading, 0, 0, version);
         Changed?.Invoke(this, EventArgs.Empty);
         await foreach (var progress in _gateway.DownloadUpdateAsync(version, cancellationToken).ConfigureAwait(true))
         {
@@ -200,7 +215,7 @@ public sealed class UpdateWatcher : IDisposable
     /// </summary>
     public async Task InstallAsync(CancellationToken cancellationToken = default)
     {
-        if (Step is not (UpdateStep.Ready or UpdateStep.InstallFailed) || Offer?.Version is not { } version)
+        if (Step is not (UpdateStep.Ready or UpdateStep.InstallFailed) || Target is not { } version)
         {
             return;
         }

@@ -228,6 +228,83 @@ public sealed class UpdateCheckerTests : IDisposable
         (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBe(4242);
     }
 
+    [Fact]
+    public void Version_history_remembers_the_older_previous_and_the_newer_one_left()
+    {
+        VersionHistory.Record(_state, "0.1.0").ShouldBe(new VersionHistory(null, null), "первый запуск — истории нет");
+        VersionHistory.Record(_state, "0.1.0").ShouldBe(new VersionHistory(null, null));
+        VersionHistory.Record(_state, "0.2.0").ShouldBe(new VersionHistory("0.1.0", null), "обновили — прежнюю можно вернуть");
+        VersionHistory.Record(_state, "0.2.0").ShouldBe(new VersionHistory("0.1.0", null), "та же версия — история та же");
+        VersionHistory.Record(_state, "0.1.0").ShouldBe(new VersionHistory(null, "0.2.0"), "откатились: 0.2.0 больше не предлагать, откатываться не на что");
+        VersionHistory.Record(_state, "0.3.0").ShouldBe(new VersionHistory("0.1.0", null), "новое обновление — снова можно вернуться");
+        File.WriteAllText(Path.Combine(_state, VersionHistory.CurrentFile), "мусор");
+        VersionHistory.Record(_state, "0.4.0").Previous.ShouldBe("0.1.0", "испорченная запись — история не меняется");
+        File.ReadAllText(Path.Combine(_state, VersionHistory.CurrentFile)).ShouldBe("0.4.0");
+    }
+
+    [Fact]
+    public async Task Previous_version_is_offered_for_rollback_only_with_a_signed_release_for_this_install()
+    {
+        var deb = RandomNumberGenerator.GetBytes(1000);
+        foreach (var version in new[] { "0.1.0", "0.2.0", "0.3.0" })
+        {
+            var manifest = ManifestWith(version, "linux-x64-deb", $"private-gateway_{version}_amd64.deb", deb);
+            _site.Release(version, manifest, Sign(manifest));
+        }
+
+        using var checker = Checker("0.2.0", new VersionHistory("0.1.0", null), "linux-x64-deb");
+        var offer = await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+
+        (offer.Version, offer.Rollback, offer.ReturnTo).ShouldBe(("0.3.0", "0.1.0", "0.2.0"), "можно откатиться на 0.1.0, а после обновления — на 0.2.0");
+        checker.Rollback!.Assets.ShouldContainKey("linux-x64-deb");
+        _site.Lists.ShouldBe(1, "список выпусков — один раз на проверку");
+
+        using var msi = Checker("0.2.0", new VersionHistory("0.1.0", null), "win-x64-msi");
+        var other = await msi.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+        (other.Rollback, other.ReturnTo).ShouldBe((null, null), "в выпусках нет файла этой установки — обещать нечего");
+        _journal.Tail(5).ShouldContain(e => e.Message == "Откатиться на 0.1.0 нельзя: в выпуске нет файла для этой установки");
+
+        using var archive = Checker("0.2.0", new VersionHistory("0.1.0", null), asset: null);
+        (await archive.CheckAsync(UpdateChannel.Stable, force: false, Ct)).Rollback.ShouldBeNull("служба не ставит — и не откатывает");
+
+        using var unsigned = Checker("0.2.0", new VersionHistory("0.0.9", null), "linux-x64-deb");
+        (await unsigned.CheckAsync(UpdateChannel.Stable, force: false, Ct)).Rollback.ShouldBeNull();
+        _journal.Tail(5).ShouldContain(e => e.Message == "Откатиться на 0.0.9 нельзя: выпуска нет на GitHub");
+
+        using var newer = Checker("0.2.0", new VersionHistory("0.3.0", null), "linux-x64-deb");
+        (await newer.CheckAsync(UpdateChannel.Stable, force: false, Ct)).Rollback.ShouldBeNull("«прежняя» новее нынешней — это не откат");
+
+        using var left = Checker("0.2.0", new VersionHistory(null, "0.3.0"), "linux-x64-deb");
+        var after = await left.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+        (after.State, after.Rollback, after.ReturnTo).ShouldBe((UpdateState.UpToDate, null, null), "с 0.3.0 откатились — она не предлагается");
+    }
+
+    [Fact]
+    public async Task Window_rolls_back_through_the_same_download_and_install()
+    {
+        var package = RandomNumberGenerator.GetBytes(40_000);
+        var old = ManifestWith("0.1.0", "linux-x64-deb", "private-gateway_0.1.0_amd64.deb", package);
+        _site.Release("0.1.0", old, Sign(old));
+        _site.Asset("0.1.0", "private-gateway_0.1.0_amd64.deb", package);
+        var launched = new List<string?>();
+        await using var service = await RunningService.StartAsync(
+            updates: journal => new UpdateChecker(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], "0.2.0", 0, _time, journal, new VersionHistory("0.1.0", null), "linux-x64-deb"),
+            installer: journal => new UpdateInstaller(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"),
+                new UpdateKind("linux-x64-deb", (file, _) =>
+                {
+                    launched.Add(Path.GetFileName(file));
+                    return 4242;
+                }), journal));
+        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
+
+        (await Collect(client.DownloadUpdateAsync("0.1.0", Ct)))[^1].Error.ShouldNotBeNull("служба еще не проверяла — откатывать не на что");
+        var offer = await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct);
+        (offer!.State, offer.Rollback).ShouldBe((UpdateState.UpToDate, "0.1.0"));
+        (await Collect(client.DownloadUpdateAsync("0.1.0", Ct)))[^1].Ready.ShouldBeTrue();
+        (await client.InstallUpdateAsync("0.1.0", Ct)).ShouldBe(4242);
+        launched.ShouldBe(["private-gateway_0.1.0_amd64.deb"]);
+    }
+
     private UpdateInstaller Installer(UpdateKind? kind) => new(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"), kind, _journal);
 
     private static async Task<List<UpdateProgress>> Collect(IAsyncEnumerable<UpdateProgress> progress)
@@ -247,7 +324,8 @@ public sealed class UpdateCheckerTests : IDisposable
          "assets":{"{{kind}}":{"file":"{{file}}","sha256":"{{Convert.ToHexStringLower(SHA256.HashData(content))}}","size":{{content.Length}}} } }
         """);
 
-    private UpdateChecker Checker(string current) => new(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], current, 0, _time, _journal);
+    private UpdateChecker Checker(string current, VersionHistory? history = null, string? asset = null) =>
+        new(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], current, 0, _time, _journal, history, asset);
 
     private GitHubReleaseFeed Feed() => new(_http, new Uri(_site.Url, "repos/releases"), new Uri(_site.Url, "download/"));
 
@@ -272,6 +350,7 @@ public sealed class UpdateCheckerTests : IDisposable
         private readonly Dictionary<string, (byte[] Body, bool Chunked)> _files = new(StringComparer.Ordinal);
         private int _requests;
         private int _redirects;
+        private int _lists;
 
         public ReleaseSite()
         {
@@ -286,6 +365,9 @@ public sealed class UpdateCheckerTests : IDisposable
         public int Requests => Volatile.Read(ref _requests);
 
         public int Redirects => Volatile.Read(ref _redirects);
+
+        /// <summary>Сколько раз спросили список выпусков.</summary>
+        public int Lists => Volatile.Read(ref _lists);
 
         public void Release(string version, byte[] manifest, string signature, bool prerelease = false, bool chunked = false)
         {
@@ -363,6 +445,7 @@ public sealed class UpdateCheckerTests : IDisposable
             {
                 if (path.StartsWith("/repos/releases", StringComparison.Ordinal))
                 {
+                    Interlocked.Increment(ref _lists);
                     if (ListStatus != HttpStatusCode.OK)
                     {
                         return Response($"{(int)ListStatus} Error", "{\"message\":\"API rate limit exceeded\"}"u8.ToArray());

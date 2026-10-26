@@ -103,6 +103,45 @@ public sealed class AboutPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Previous_version_is_rolled_back_to_through_the_same_card()
+    {
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.UpToDate, Time.GetUtcNow()) { Rollback = "0.1.0" });
+        service.Download = [new UpdateProgress(0, 30_093_312), new UpdateProgress(30_093_312, 30_093_312, Ready: true)];
+
+        Text(window, "UpdatesText").ShouldBe("Установлена последняя версия · проверено в 15:42");
+        Text(window, "RollbackText").ShouldBe("Прежняя версия 0.1.0 — служба вернет ее сама. После отката эту версию больше не предложим, только более новую.");
+        Find<Button>(window, "RollBack").Content.ShouldBe("Откатить на 0.1.0");
+        Find<Button>(window, "UpdateNow").IsEffectivelyVisible.ShouldBeFalse("обновления нет — главной кнопки нет");
+        Snapshot(window, "about-rollback");
+
+        Press(window, "RollBack");
+        WaitFor(() => page.IsUpdateReady);
+
+        service.Downloads.ShouldBe(["0.1.0"]);
+        Text(window, "UpdatesTitle").ShouldBe("Откат на 0.1.0 готов");
+        Text(window, "UpdateProgress").ShouldStartWith("Установится при перезапуске клиента");
+        Find<TextBlock>(window, "UpdatesText").IsEffectivelyVisible.ShouldBeFalse();
+        Find<Button>(window, "RollBack").IsEffectivelyVisible.ShouldBeFalse("откат уже идет");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Перезапустить клиент", "служба откатывает сама — не «Открыть выпуск»");
+
+        Press(window, "UpdateNow");
+        WaitFor(() => Relauncher.Pids.Count > 0);
+        service.Installs.ShouldBe(["0.1.0"]);
+    }
+
+    [AvaloniaFact]
+    public void Update_card_promises_a_way_back_only_when_the_service_has_one()
+    {
+        var (window, page, _) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true, ReturnTo = "0.1.0" });
+
+        Text(window, "UpdateSigned").ShouldBe("Подпись проверена · можно откатить на 0.1.0");
+        page.CanRollBack.ShouldBeFalse();
+
+        var (other, _, _) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true });
+        Text(other, "UpdateSigned").ShouldBe("Подпись проверена");
+    }
+
+    [AvaloniaFact]
     public void Failed_download_and_install_say_so_and_retry()
     {
         var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true });

@@ -80,13 +80,16 @@ public sealed record UpdateSearch(UpdateState State, UpdateManifest? Manifest, I
 /// Поиск обновления. Выпуски — от новых к старым, своего канала (стабильный — без предварительных); первый не новее
 /// установленной версии — конец поиска. Выпуск подходит, только если у него есть подпись, она сходится с ключом
 /// программы, версия в манифесте — та же, что в теге, и номер этой установки (0–99) меньше доли раскатки. Иначе — к
-/// следующему, более старому: пока новейший раскатывается, установка может получить предыдущий.
+/// следующему, более старому: пока новейший раскатывается, установка может получить предыдущий. Версия, с которой
+/// пользователь откатился, не предлагается — только более новая.
 /// </summary>
 public static class UpdateFinder
 {
+    /// <summary>Найти обновление; <paramref name="skip"/> — версия, с которой откатились (null — нет такой).</summary>
     /// <exception cref="HttpRequestException">И другие ошибки <paramref name="feed"/> — проверка не удалась.</exception>
     public static async Task<UpdateSearch> FindAsync(
-        IReleaseFeed feed, IReadOnlyList<string> publicKeys, string current, UpdateChannel channel, int bucket, CancellationToken cancellationToken = default)
+        IReleaseFeed feed, IReadOnlyList<string> publicKeys, string current, UpdateChannel channel, int bucket, string? skip = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(feed);
         ArgumentNullException.ThrowIfNull(publicKeys);
@@ -108,32 +111,20 @@ public static class UpdateFinder
                 break;
             }
 
-            if (release.Manifest is null || release.Signature is null)
+            if (release.Version == skip)
             {
-                skipped.Add($"{release.Version}: выпуск без подписанного манифеста");
+                skipped.Add($"{release.Version}: с этой версии откатились — предлагается только более новая");
                 continue;
             }
 
-            var manifest = await feed.DownloadAsync(release.Manifest, UpdateManifest.MaxBytes, cancellationToken).ConfigureAwait(false);
-            var signature = await feed.DownloadAsync(release.Signature, 1024, cancellationToken).ConfigureAwait(false);
-            if (!UpdateSignature.Verify(manifest, Encoding.ASCII.GetString(signature), publicKeys))
+            var (parsed, problem) = await VerifyAsync(feed, publicKeys, release, cancellationToken).ConfigureAwait(false);
+            if (parsed is null)
             {
-                skipped.Add($"{release.Version}: подпись манифеста не сходится с ключом программы");
+                skipped.Add($"{release.Version}: {problem}");
                 continue;
             }
 
-            UpdateManifest parsed;
-            try
-            {
-                parsed = UpdateManifest.Parse(manifest);
-            }
-            catch (FormatException e)
-            {
-                skipped.Add($"{release.Version}: {e.Message}");
-                continue;
-            }
-
-            if (parsed.Version != release.Version || (parsed.Channel == UpdateChannel.Beta && channel == UpdateChannel.Stable))
+            if (parsed.Channel == UpdateChannel.Beta && channel == UpdateChannel.Stable)
             {
                 skipped.Add($"{release.Version}: манифест от другого выпуска ({parsed.Version}, {parsed.Channel})");
                 continue;
@@ -149,5 +140,56 @@ public static class UpdateFinder
         }
 
         return new UpdateSearch(UpdateState.UpToDate, null, skipped);
+    }
+
+    /// <summary>
+    /// Подписанный выпуск ровно этой версии (для отката на прежнюю или чтобы обещать откат на нынешнюю): тег, подпись
+    /// ключом программы, версия в манифесте. Канал и раскатка не важны — версию ставили на этой машине.
+    /// </summary>
+    /// <returns>Манифест или null и почему.</returns>
+    /// <exception cref="HttpRequestException">И другие ошибки <paramref name="feed"/>.</exception>
+    public static async Task<(UpdateManifest? Manifest, string? Problem)> ReleaseAsync(
+        IReleaseFeed feed, IReadOnlyList<string> publicKeys, string version, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(publicKeys);
+        if (publicKeys.Count == 0)
+        {
+            return (null, "в программе нет ключей подписи");
+        }
+
+        var release = (await feed.ListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(r => r.Version == version);
+        return release is null ? (null, "выпуска нет на GitHub") : await VerifyAsync(feed, publicKeys, release, cancellationToken).ConfigureAwait(false);
+    }
+
+    // Манифест выпуска и его подпись: подпись сходится с ключом программы, манифест разбирается, версия в нем — из тега.
+    private static async Task<(UpdateManifest? Manifest, string? Problem)> VerifyAsync(
+        IReleaseFeed feed, IReadOnlyList<string> publicKeys, ReleaseEntry release, CancellationToken cancellationToken)
+    {
+        if (release.Manifest is null || release.Signature is null)
+        {
+            return (null, "выпуск без подписанного манифеста");
+        }
+
+        var manifest = await feed.DownloadAsync(release.Manifest, UpdateManifest.MaxBytes, cancellationToken).ConfigureAwait(false);
+        var signature = await feed.DownloadAsync(release.Signature, 1024, cancellationToken).ConfigureAwait(false);
+        if (!UpdateSignature.Verify(manifest, Encoding.ASCII.GetString(signature), publicKeys))
+        {
+            return (null, "подпись манифеста не сходится с ключом программы");
+        }
+
+        UpdateManifest parsed;
+        try
+        {
+            parsed = UpdateManifest.Parse(manifest);
+        }
+        catch (FormatException e)
+        {
+            return (null, e.Message);
+        }
+
+        return parsed.Version != release.Version
+            ? (null, $"манифест от другого выпуска ({parsed.Version}, {parsed.Channel})")
+            : (parsed, null);
     }
 }

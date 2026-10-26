@@ -113,7 +113,7 @@ public sealed class UpdateFinderTests : IDisposable
     {
         var feed = new Feed(_key).Add("0.3.0", Manifest("0.3.0"), signed: true).Add("0.2.0", Manifest("0.2.0"), signed: true);
 
-        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 50, TestContext.Current.CancellationToken);
+        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 50, cancellationToken: TestContext.Current.CancellationToken);
 
         search.State.ShouldBe(UpdateState.Available);
         search.Manifest!.Version.ShouldBe("0.3.0");
@@ -125,7 +125,7 @@ public sealed class UpdateFinderTests : IDisposable
     {
         var feed = new Feed(_key).Add("0.2.0", Manifest("0.2.0"), signed: true).Add("0.1.0", Manifest("0.1.0"), signed: true);
 
-        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, TestContext.Current.CancellationToken);
+        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, cancellationToken: TestContext.Current.CancellationToken);
 
         search.State.ShouldBe(UpdateState.UpToDate);
         feed.Downloads.ShouldBe(0);
@@ -136,7 +136,7 @@ public sealed class UpdateFinderTests : IDisposable
     {
         var feed = new Feed(_key).Add("0.3.0", Manifest("0.3.0"), signed: true);
 
-        (await UpdateFinder.FindAsync(feed, [], "0.2.0", UpdateChannel.Stable, bucket: 0, TestContext.Current.CancellationToken)).State.ShouldBe(UpdateState.NotSigned);
+        (await UpdateFinder.FindAsync(feed, [], "0.2.0", UpdateChannel.Stable, bucket: 0, cancellationToken: TestContext.Current.CancellationToken)).State.ShouldBe(UpdateState.NotSigned);
         feed.Listed.ShouldBe(0);
     }
 
@@ -147,9 +147,9 @@ public sealed class UpdateFinderTests : IDisposable
             .Add("0.4.0-beta.1", Manifest("0.4.0-beta.1", channel: "beta"), signed: true, prerelease: true)
             .Add("0.3.0", Manifest("0.3.0"), signed: true);
 
-        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, TestContext.Current.CancellationToken)).Manifest!.Version.ShouldBe("0.3.0");
+        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, cancellationToken: TestContext.Current.CancellationToken)).Manifest!.Version.ShouldBe("0.3.0");
         feed.Downloads.ShouldBe(2, "предварительный выпуск стабильный канал даже не скачивает");
-        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Beta, bucket: 0, TestContext.Current.CancellationToken)).Manifest!.Version.ShouldBe("0.4.0-beta.1");
+        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Beta, bucket: 0, cancellationToken: TestContext.Current.CancellationToken)).Manifest!.Version.ShouldBe("0.4.0-beta.1");
     }
 
     [Fact]
@@ -157,11 +157,11 @@ public sealed class UpdateFinderTests : IDisposable
     {
         var feed = new Feed(_key).Add("0.4.0", Manifest("0.4.0", rollout: 20), signed: true).Add("0.3.0", Manifest("0.3.0", rollout: 100), signed: true);
 
-        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 19, TestContext.Current.CancellationToken)).Manifest!.Version.ShouldBe("0.4.0", "номер 19 < 20 %");
-        var later = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 20, TestContext.Current.CancellationToken);
+        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 19, cancellationToken: TestContext.Current.CancellationToken)).Manifest!.Version.ShouldBe("0.4.0", "номер 19 < 20 %");
+        var later = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 20, cancellationToken: TestContext.Current.CancellationToken);
         later.Manifest!.Version.ShouldBe("0.3.0", "до 0.4.0 раскатка еще не дошла, а 0.3.0 — у всех");
         later.Skipped.ShouldContain(s => s.Contains("раскатка 20 %", StringComparison.Ordinal));
-        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.3.0", UpdateChannel.Stable, bucket: 99, TestContext.Current.CancellationToken)).State.ShouldBe(UpdateState.UpToDate);
+        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.3.0", UpdateChannel.Stable, bucket: 99, cancellationToken: TestContext.Current.CancellationToken)).State.ShouldBe(UpdateState.UpToDate);
     }
 
     [Fact]
@@ -174,7 +174,7 @@ public sealed class UpdateFinderTests : IDisposable
             .Add("0.3.1", Manifest("0.3.1", channel: "beta"), signed: true)
             .Add("0.3.0", Manifest("0.3.0"), signed: true);
 
-        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, TestContext.Current.CancellationToken);
+        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, cancellationToken: TestContext.Current.CancellationToken);
 
         search.Manifest!.Version.ShouldBe("0.3.0");
         search.Skipped.Count.ShouldBe(4);
@@ -182,6 +182,38 @@ public sealed class UpdateFinderTests : IDisposable
         search.Skipped[1].ShouldContain("подпись манифеста не сходится");
         search.Skipped[2].ShouldContain("манифест от другого выпуска", customMessage: "подписанный манифест 0.3.9 под тегом 0.4.0 — подмена");
         search.Skipped[3].ShouldContain("манифест от другого выпуска", customMessage: "бета-манифест в стабильном выпуске");
+    }
+
+    [Fact]
+    public async Task Version_rolled_back_from_is_not_offered_again_but_a_newer_one_is()
+    {
+        var feed = new Feed(_key).Add("0.4.0", Manifest("0.4.0"), signed: true).Add("0.3.0", Manifest("0.3.0"), signed: true);
+
+        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, skip: "0.4.0", cancellationToken: TestContext.Current.CancellationToken);
+
+        search.Manifest!.Version.ShouldBe("0.3.0");
+        search.Skipped.ShouldHaveSingleItem().ShouldContain("откатились");
+        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, skip: "0.3.0", cancellationToken: TestContext.Current.CancellationToken))
+            .Manifest!.Version.ShouldBe("0.4.0", "вышла новее той, с которой откатились, — предлагается");
+    }
+
+    [Fact]
+    public async Task Release_of_an_exact_version_is_taken_only_signed_and_true_to_its_tag()
+    {
+        var feed = new Feed(_key)
+            .Add("0.3.0", Manifest("0.3.0"), signed: true)
+            .Add("0.2.0", Manifest("0.2.0"), signed: false)
+            .Add("0.1.1", Manifest("0.1.0"), signed: true)
+            .Add("0.1.0", Manifest("0.1.0"), signed: true, prerelease: true);
+        var ct = TestContext.Current.CancellationToken;
+
+        (await UpdateFinder.ReleaseAsync(feed, [PublicKey], "0.1.0", ct)).Manifest!.Version.ShouldBe("0.1.0", "канал не важен — эту версию ставили здесь");
+        (await UpdateFinder.ReleaseAsync(feed, [PublicKey], "0.2.0", ct)).Problem.ShouldBe("выпуск без подписанного манифеста");
+        (await UpdateFinder.ReleaseAsync(feed, [PublicKey], "0.1.1", ct)).Problem!.ShouldContain("манифест от другого выпуска");
+        (await UpdateFinder.ReleaseAsync(feed, [PublicKey], "0.0.9", ct)).Problem.ShouldBe("выпуска нет на GitHub");
+        (await UpdateFinder.ReleaseAsync(feed, [], "0.1.0", ct)).Manifest.ShouldBeNull();
+        (await UpdateFinder.ReleaseAsync(new Feed(_otherKey).Add("0.1.0", Manifest("0.1.0"), signed: true), [PublicKey], "0.1.0", ct))
+            .Problem.ShouldBe("подпись манифеста не сходится с ключом программы");
     }
 
     [Fact]
@@ -197,6 +229,9 @@ public sealed class UpdateFinderTests : IDisposable
         back.Highlights.ShouldBe(["Быстрее переподключение после сна"]);
         back.Notes.ShouldBe(offer.Notes);
         back.Checked.ShouldBe(at);
+        (back.Rollback, back.ReturnTo).ShouldBe((null, null));
+        var both = (offer with { Rollback = "0.1.0", ReturnTo = "0.2.0" }).ToContract().ToCore();
+        (both.Rollback, both.ReturnTo).ShouldBe(("0.1.0", "0.2.0"));
         new UpdateOffer(UpdateState.UpToDate, at).ToContract().ToCore().Version.ShouldBeNull();
         Should.Throw<ArgumentException>(() => new V1.UpdateOffer { State = V1.UpdateState.Available, Version = "" }.ToCore());
         foreach (var channel in Enum.GetValues<UpdateChannel>())

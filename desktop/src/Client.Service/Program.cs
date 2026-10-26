@@ -106,13 +106,15 @@ await using var gateway = new Gateway(
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
         TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null),
     time, journal, systemProxy);
-// Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки — в папке состояния.
+// Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки и прежняя версия (для
+// отката) — в папке состояния. Ставит обновление только установленная служба (у нее есть --service-name) программы из
+// установщика.
+var updateKind = UpdateInstaller.ForThisMachine(installedService: !user && Option("--service-name") is not null, ownerSid);
 using var updateHttp = GitHubReleaseFeed.CreateHttp();
 using var updates = new UpdateChecker(new GitHubReleaseFeed(updateHttp, GitHubReleaseFeed.DefaultReleases, GitHubReleaseFeed.DefaultDownloads),
-    UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal);
-// Ставит обновление только установленная служба (у нее есть --service-name) программы из установщика.
-var installer = new UpdateInstaller(updateHttp, GitHubReleaseFeed.DefaultDownloads, Path.Combine(state, "updates"),
-    UpdateInstaller.ForThisMachine(installedService: !user && Option("--service-name") is not null, ownerSid), journal);
+    UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal, VersionHistory.Record(state, ServiceVersion.Current),
+    updateKind?.Asset);
+var installer = new UpdateInstaller(updateHttp, GitHubReleaseFeed.DefaultDownloads, Path.Combine(state, "updates"), updateKind, journal);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox), updates,
     installer);
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));

@@ -178,13 +178,20 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     public bool IsUpdateAvailable => Update == UpdateView.Available;
 
+    /// <summary>Идет откат на прежнюю версию: загрузка, готово, установка — в той же карточке, что обновление.</summary>
+    public bool IsRollingBack => _updates.IsRollingBack;
+
+    /// <summary>Карточка ведет обновление или откат: полоса, главная кнопка, ошибка.</summary>
+    public bool ShowUpdateFlow => IsUpdateAvailable || IsRollingBack;
+
     /// <summary>
-    /// Заголовок блока: на карточке — «Доступно обновление 0.2.0», «Загружаем 0.2.0» или «Обновление готово», иначе
-    /// «Обновления».
+    /// Заголовок блока: на карточке — «Доступно обновление 0.2.0», «Загружаем 0.2.0» или «Обновление готово», при откате —
+    /// «Загружаем 0.1.0» и «Откат на 0.1.0 готов», иначе «Обновления».
     /// </summary>
-    public string UpdatesTitle => !IsUpdateAvailable ? Loc.Instance["about.updates.title"] : _updates.Step switch
+    public string UpdatesTitle => !ShowUpdateFlow ? Loc.Instance["about.updates.title"] : _updates.Step switch
     {
-        UpdateStep.Downloading => Loc.Instance.Format("about.update.loading", _updates.Offer!.Version),
+        UpdateStep.Downloading => Loc.Instance.Format("about.update.loading", _updates.Target ?? _updates.Offer!.Version),
+        UpdateStep.Ready or UpdateStep.Installing when IsRollingBack => Loc.Instance.Format("about.rollback.ready", _updates.Target),
         UpdateStep.Ready or UpdateStep.Installing => Loc.Instance["about.update.ready"],
         _ => Loc.Instance.Format("about.update.available", _updates.Offer!.Version),
     };
@@ -200,7 +207,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
     public bool IsUpdateReady => _updates.Step is UpdateStep.Ready or UpdateStep.Installing;
 
     /// <summary>Полоса загрузки: во время загрузки и когда все скачано.</summary>
-    public bool ShowUpdateProgress => IsUpdateAvailable && _updates.Step is UpdateStep.Downloading or UpdateStep.Ready or UpdateStep.Installing;
+    public bool ShowUpdateProgress => ShowUpdateFlow && _updates.Step is UpdateStep.Downloading or UpdateStep.Ready or UpdateStep.Installing;
 
     /// <summary>Доля скачанного, 0–1.</summary>
     public double UpdateFraction => IsUpdateReady ? 1 : _updates.Total > 0 ? Math.Clamp((double)_updates.Received / _updates.Total, 0, 1) : 0;
@@ -213,8 +220,8 @@ public sealed partial class AboutPageViewModel : ObservableObject
         ? Loc.Instance[_settings.Current.KillSwitch ? "about.update.ready.text" : "about.update.ready.unprotected"]
         : Loc.Instance.Format("about.update.progress", Tenths(_updates.Received), Loc.Instance.Format("about.update.mb", Tenths(_updates.Total)));
 
-    /// <summary>Главная кнопка карточки: служба ставит сама — «Обновить сейчас» и дальше по шагам; нет — «Открыть выпуск».</summary>
-    public string UpdateAction => _updates.Offer?.Installable != true ? Loc.Instance["about.update.open"] : _updates.Step switch
+    /// <summary>Главная кнопка карточки: служба ставит сама (или откатывает) — «Обновить сейчас» и дальше по шагам; нет — «Открыть выпуск».</summary>
+    public string UpdateAction => !IsRollingBack && _updates.Offer?.Installable != true ? Loc.Instance["about.update.open"] : _updates.Step switch
     {
         UpdateStep.Downloading => Loc.Instance["about.update.loading.button"],
         UpdateStep.Ready => Loc.Instance["about.update.restart"],
@@ -228,6 +235,18 @@ public sealed partial class AboutPageViewModel : ObservableObject
     /// <summary>«Позже» и «Подпись проверена» — пока обновление не начато.</summary>
     public bool IsUpdateIdle => IsUpdateAvailable && _updates.Step is UpdateStep.None;
 
+    /// <summary>«Подпись проверена», а если после обновления можно вернуться на нынешнюю — «· можно откатить на 0.1.0» (доска 15).</summary>
+    public string UpdateSignedText => _updates.Offer?.ReturnTo is { } back
+        ? Loc.Instance.Format("about.update.signed.back", back)
+        : Loc.Instance["about.update.signed"];
+
+    /// <summary>Есть прежняя версия, на которую служба откатит сама, а карточка свободна.</summary>
+    public bool CanRollBack => _updates.Offer?.Rollback is not null && !ShowUpdateFlow && _gateway.Service != ServiceKind.Simulated;
+
+    public string RollbackText => Loc.Instance.Format("about.rollback.text", _updates.Offer?.Rollback);
+
+    public string RollbackAction => Loc.Instance.Format("about.rollback.button", _updates.Offer?.Rollback);
+
     /// <summary>Не скачалось или не поставилось — строкой под главным.</summary>
     public string? UpdateError => _updates.Step switch
     {
@@ -236,7 +255,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         _ => null,
     };
 
-    public bool HasUpdateError => IsUpdateAvailable && UpdateError is not null;
+    public bool HasUpdateError => ShowUpdateFlow && UpdateError is not null;
 
     /// <summary>Строка под заголовком — у всех состояний, кроме карточки.</summary>
     public string UpdateText => Update switch
@@ -349,6 +368,12 @@ public sealed partial class AboutPageViewModel : ObservableObject
     [RelayCommand]
     private async Task UpdateNowAsync()
     {
+        if (IsRollingBack)
+        {
+            await (_updates.Step is UpdateStep.Ready or UpdateStep.InstallFailed ? _updates.InstallAsync() : _updates.RollBackAsync()).ConfigureAwait(true);
+            return;
+        }
+
         if (_updates.Offer?.Installable != true)
         {
             if (_updates.Offer?.Notes is { } notes)
@@ -361,6 +386,10 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
         await (_updates.Step is UpdateStep.Ready or UpdateStep.InstallFailed ? _updates.InstallAsync() : _updates.DownloadAsync()).ConfigureAwait(true);
     }
+
+    /// <summary>«Откатить на 0.1.0»: служба качает прежнюю версию; дальше — «Перезапустить клиент» на карточке.</summary>
+    [RelayCommand]
+    private Task RollBackAsync() => _updates.RollBackAsync();
 
     /// <summary>«Позже»: карточка сворачивается в строку до следующей версии или запуска окна.</summary>
     [RelayCommand]

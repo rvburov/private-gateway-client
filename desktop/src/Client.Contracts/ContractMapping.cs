@@ -127,12 +127,14 @@ public static partial class ContractMapping
             NotesUrl = offer.Notes?.AbsoluteUri ?? string.Empty,
             CheckedAt = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(offer.Checked),
             Installable = offer.Installable,
+            Rollback = offer.Rollback ?? string.Empty,
+            ReturnTo = offer.ReturnTo ?? string.Empty,
         };
         contract.Highlights.AddRange(offer.Highlights ?? []);
         return contract;
     }
 
-    /// <summary>Ответ службы; «есть обновление» без версии — ошибка отправителя.</summary>
+    /// <summary>Ответ службы; «есть обновление» без версии — ошибка отправителя; версия отката не по SemVer — отката нет.</summary>
     public static CoreUpdateOffer ToCore(this V1.UpdateOffer offer)
     {
         ArgumentNullException.ThrowIfNull(offer);
@@ -147,6 +149,8 @@ public static partial class ContractMapping
             Uri.TryCreate(offer.NotesUrl, UriKind.Absolute, out var notes) && notes.Scheme == Uri.UriSchemeHttps ? notes : null)
         {
             Installable = state == CoreUpdateState.Available && offer.Installable,
+            Rollback = PrivateGateway.Client.Core.SemVer.IsValid(offer.Rollback) ? offer.Rollback : null,
+            ReturnTo = state == CoreUpdateState.Available && PrivateGateway.Client.Core.SemVer.IsValid(offer.ReturnTo) ? offer.ReturnTo : null,
         };
     }
 
