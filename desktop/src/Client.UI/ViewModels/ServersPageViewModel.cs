@@ -157,7 +157,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
         ? null
         : _catalog.Servers.Count == 0
             ? Loc.Instance["servers.none"]
-            : SearchText.Trim().Length == 0 && FilterCount == 0 && Tab != ServerListTab.All
+            : SearchText.Trim().Length == 0 && Protocols.All(p => p.IsOn) && Tab != ServerListTab.All
                 ? Loc.Instance[Tab == ServerListTab.Favorites ? "servers.empty.favorites" : "servers.empty.recent"]
                 : Loc.Instance["servers.empty"];
 

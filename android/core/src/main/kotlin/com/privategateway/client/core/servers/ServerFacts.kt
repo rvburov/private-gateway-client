@@ -43,6 +43,19 @@ object ServerFacts {
     }
 
     /**
+     * Каким ядром телефон подключается к серверу (строка «Ядро» карточки). На Android ядро одно — Xray-core, WireGuard
+     * тоже через него (у десктопа — sing-box); Hysteria2 и TUIC ядру Xray не по силам — null: подключение к ним —
+     * PGC-SVC-005, как и отказ [com.privategateway.client.core.xray.XrayConfig].
+     */
+    fun coreName(protocol: ProxyProtocol): String? = when (protocol) {
+        ProxyProtocol.Vless, ProxyProtocol.Vmess, ProxyProtocol.Trojan, ProxyProtocol.Shadowsocks, ProxyProtocol.WireGuard -> "Xray-core"
+        ProxyProtocol.Hysteria2, ProxyProtocol.Tuic -> null
+    }
+
+    /** Адрес для карточки: «адрес:порт», IPv6 — в квадратных скобках, как в ссылке («[2001:db8::1]:443»). */
+    fun address(host: String, port: Int): String = (if (':' in host) "[$host]" else host) + ":" + port
+
+    /**
      * Короткая подпись протокола, как в списке серверов: «VLESS · REALITY», «VLESS · XHTTP», «Trojan · WS», «Hysteria2».
      * Второе слово — то, что отличает сервер: REALITY, иначе транспорт, иначе TLS у протоколов, которые бывают и без него.
      */

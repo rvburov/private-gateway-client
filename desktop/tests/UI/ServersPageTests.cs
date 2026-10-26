@@ -113,6 +113,25 @@ public sealed class ServersPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Empty_favorites_are_explained_whatever_the_sort()
+    {
+        var (window, _, page) = OpenServers();
+        var catalog = Service<IServerCatalog>();
+        foreach (var server in catalog.Servers.Where(s => s.IsFavorite).ToList())
+        {
+            catalog.SetFavorite(server.Id, false);
+        }
+
+        page.IsSortByName = true;
+        Find<RadioButton>(window, "TabFavorites").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+
+        page.IsEmpty.ShouldBeTrue();
+        Text(window, "EmptyText").ShouldBe("Избранных пока нет. Отметьте сервер звездой в его карточке.",
+            "порядок строк ничего не скрывает — это не «ничего не найдено»");
+    }
+
+    [AvaloniaFact]
     public async Task Pressing_a_row_while_protected_reconnects_to_that_server()
     {
         var (_, shell, page) = OpenServers();

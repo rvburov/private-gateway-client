@@ -113,8 +113,8 @@ public class ServerListTests
 
         rows.Count.ShouldBe(ServerList.RecentLimit);
         rows.ShouldNotContain(s => s.Id == "tr", "его ни разу не выбирали");
-        rows.Select(s => s.Id).ShouldBe(Enumerable.Range(0, ServerList.RecentLimit).Reverse().Select(i => "s" + i),
-            "самые свежие, а внутри — по пингу");
+        rows.Select(s => s.Id).ShouldBe(Enumerable.Range(0, ServerList.RecentLimit).Select(i => "s" + i),
+            "свежие сверху; задержка порядок не меняет");
     }
 
     [Fact]

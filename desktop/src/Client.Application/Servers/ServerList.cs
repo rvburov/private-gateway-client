@@ -77,7 +77,9 @@ public static class ServerList
         var rows = Filter(servers, query);
         if (query.Tab != ServerListTab.All)
         {
-            return rows.Count == 0 ? [] : [new ServerGroup(null, Sort(rows, query.Sort, culture))];
+            // «Недавние» — в порядке выбора, свежие сверху: сортировка их не трогает.
+            var shown = query.Tab == ServerListTab.Recent ? rows : Sort(rows, query.Sort, culture);
+            return shown.Count == 0 ? [] : [new ServerGroup(null, shown)];
         }
 
         var groups = new List<ServerGroup>();

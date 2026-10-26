@@ -132,10 +132,11 @@ object XrayConfig {
         return rules
     }
 
-    private class Outbound(val json: Map<String, Any?>?, val rejection: CoreRejection?)
+    /** Выход сервера (словарь для JSON) или причина отказа. */
+    internal class Outbound(val json: Map<String, Any?>?, val rejection: CoreRejection?)
 
-    /** Выход сервера — те же поля, что собирает десктоп. */
-    private fun outbound(server: ServerDefinition, settings: CoreSettings): Outbound {
+    /** Выход сервера — те же поля, что собирает десктоп; метка — [PROXY_TAG]. Его же меряет [PingBatch]. */
+    internal fun outbound(server: ServerDefinition, settings: CoreSettings): Outbound {
         val credentials = server.credentials
         val protocolSettings: Map<String, Any?> = when {
             server.protocol == ProxyProtocol.Vless && !credentials.uuid.isNullOrEmpty() -> {
