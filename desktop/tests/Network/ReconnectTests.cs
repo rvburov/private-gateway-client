@@ -17,7 +17,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// перестал отвечать или ядро вышло — «Переподключение» к тому же серверу; вернулся — «Защищено»;
 /// попытки кончились по политике — «Ошибка». Проверочный адрес — свой сайт: из машины ничего не уходит.
 /// </summary>
-public sealed class ReconnectTests
+public sealed partial class ReconnectTests
 {
     /// <summary>Быстрые пробы и паузы, предел «До 5 минут» — 3 с.</summary>
     internal static readonly ReconnectTiming Fast = new(TimeSpan.FromMilliseconds(300), TimeSpan.FromSeconds(2),

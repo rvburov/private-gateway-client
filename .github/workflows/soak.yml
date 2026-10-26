@@ -1,0 +1,64 @@
+name: Долгий прогон
+
+# Soak: сбои по кругу, сторож обхода туннеля и замер ресурсов (scripts/soak.sh) — каждую ночь и по кнопке. Режим прокси —
+# на трех ОС, режим VPN — на Linux от root в своем сетевом пространстве. В обычную проверку не входит: минуты на круг.
+on:
+  schedule:
+    - cron: '17 1 * * *'
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Минут на каждый режим
+        default: '30'
+
+permissions:
+  contents: read
+
+jobs:
+  soak:
+    name: Долгий прогон (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 150
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+      MINUTES: ${{ inputs.minutes || '30' }}
+    defaults:
+      run:
+        # На Windows — Git Bash: скрипты проекта запускаются в нем (AGENTS.md).
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      # Как в проверке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
+      - id: dotnet
+        uses: actions/setup-dotnet@v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
+      - name: Сборка
+        run: dotnet build PrivateGateway.slnx -c Release
+
+      - name: Ядра Xray и sing-box
+        run: |
+          scripts/get-xray.sh
+          scripts/get-singbox.sh
+
+      - name: nftables
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends nftables
+
+      - name: Долгий прогон
+        run: scripts/soak.sh "$MINUTES"

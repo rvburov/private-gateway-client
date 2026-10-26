@@ -165,6 +165,7 @@ dotnet run scripts/gen-tokens.cs                       # тема Avalonia из 
 ```bash
 dotnet test --solution PrivateGateway.slnx            # все тесты (Microsoft.Testing.Platform)
 dotnet test --project desktop/tests/Unit               # быстрый гейт
+scripts/soak.sh 30                                     # долгий прогон (soak), минут на режим; VPN — Linux от root
 ```
 
 - **Тесты гонять всегда.** По ходу работы — `Unit`, перед коммитом — все. В отчете — числа
