@@ -55,12 +55,20 @@ import com.privategateway.client.ui.theme.PgType
 private const val SHOWN_ERRORS = 5
 
 /**
- * «Добавить» (доска 3, для телефона): текст из буфера обмена или вставленный — ссылки, base64, sing-box, Clash; предпросмотр
- * с форматом, числом серверов и строками, которые пропущены, — и только потом добавление. Подписка по адресу https:// и
- * QR-код — пункт 9.2.
+ * «Добавить» (доска 3, для телефона): текст из буфера обмена или вставленный — ссылки, base64, sing-box, Clash или адрес
+ * подписки https://; предпросмотр с форматом, числом серверов и строками, которые пропущены, название профиля — и только
+ * потом добавление. Без названия серверы идут в «Мои серверы», адрес подписки не хранится.
  */
 @Composable
-fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> Unit, onPreview: (String) -> Unit, onAdd: () -> Unit, onClose: () -> Unit) {
+fun ImportScreen(
+    state: ImportUi,
+    clipboard: () -> String?,
+    onText: (String) -> Unit,
+    onPreview: (String) -> Unit,
+    onName: (String) -> Unit,
+    onAdd: () -> Unit,
+    onClose: () -> Unit,
+) {
     // Текст — в модели окна, а не в сохраненном состоянии: конфиг на сотни КБ в Bundle уронил бы процесс (и VPN с ним),
     // а ключи серверов попали бы в системный процесс.
     val text = state.text
@@ -148,7 +156,21 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> 
             Spacer(Modifier.size(PgSpace.S))
             Text(stringResource(R.string.android_import_hint), color = PgColor.Text.Muted, style = PgType.Caption)
             Spacer(Modifier.size(PgSpace.M))
-            PgButton(stringResource(R.string.import_link_check), enabled = text.isNotBlank(), tag = "import.check") { onPreview(text) }
+            PgButton(stringResource(R.string.import_link_check), enabled = text.isNotBlank() && !state.downloading, tag = "import.check") { onPreview(text) }
+            if (state.downloading) {
+                Text(stringResource(R.string.import_downloading), color = PgColor.Text.Secondary, style = PgType.Small, modifier = Modifier.padding(top = PgSpace.S).testTag("import.downloading"))
+            }
+
+            state.failure?.let { reason ->
+                val (message, value) = Texts.failure(reason)
+                val because = if (value == null) stringResource(message) else stringResource(message, value)
+                Text(
+                    stringResource(R.string.import_download_failed, because),
+                    color = PgColor.Status.Danger.Text,
+                    style = PgType.Small,
+                    modifier = Modifier.padding(top = PgSpace.S).testTag("import.failed"),
+                )
+            }
         }
 
         val batch = state.batch
@@ -174,8 +196,28 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> 
                     }
                 }
 
-                Spacer(Modifier.size(PgSpace.M))
+                if (state.insecure) {
+                    // Ключи серверов шли открытым текстом: их могли прочитать по пути (import.insecure, как у десктопа).
+                    Text(
+                        stringResource(R.string.import_insecure),
+                        color = PgColor.Status.Caution.Text,
+                        style = PgType.Small,
+                        modifier = Modifier
+                            .padding(top = PgSpace.S)
+                            .clip(RoundedCornerShape(PgRadius.Button))
+                            .background(PgColor.Status.Caution.Tint)
+                            .padding(PgSpace.M)
+                            .testTag("import.insecure"),
+                    )
+                }
+
                 val added = state.added
+                if (added == null && good > 0) {
+                    Spacer(Modifier.size(PgSpace.M))
+                    NameField(state.name, onName)
+                }
+
+                Spacer(Modifier.size(PgSpace.M))
                 when {
                     added != null && added > 0 -> Text(
                         stringResource(Texts.imported(added, language), added.toString()),
@@ -198,4 +240,35 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> 
 
         Spacer(Modifier.size(PgSpace.L))
     }
+}
+
+/** Название профиля: без него серверы идут в «Мои серверы» (import.name.placeholder), адрес подписки не хранится. */
+@Composable
+private fun NameField(name: String, onName: (String) -> Unit) {
+    Text(stringResource(R.string.import_name), color = PgColor.Text.Secondary, style = PgType.Caption)
+    Spacer(Modifier.size(PgSpace.Xs))
+    val shape = RoundedCornerShape(PgRadius.Input)
+    BasicTextField(
+        value = name,
+        onValueChange = onName,
+        singleLine = true,
+        textStyle = PgType.Body.copy(color = PgColor.Text.Primary),
+        cursorBrush = SolidColor(PgColor.Accent.Base),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(shape)
+            .background(PgColor.Surface.Inset)
+            .border(1.dp, PgColor.Line.Border, shape)
+            .padding(PgSpace.M)
+            .testTag("import.name"),
+        decorationBox = { field ->
+            Box {
+                if (name.isEmpty()) {
+                    Text(stringResource(R.string.import_name_placeholder), color = PgColor.Text.Muted, style = PgType.Body)
+                }
+
+                field()
+            }
+        },
+    )
 }

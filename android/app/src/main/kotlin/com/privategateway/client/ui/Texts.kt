@@ -5,6 +5,7 @@ import androidx.annotation.StringRes
 import com.privategateway.client.R
 import com.privategateway.client.core.links.ImportErrors
 import com.privategateway.client.core.links.ImportParser
+import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.text.Plural
 import com.privategateway.client.vpn.TunnelErrors
 
@@ -51,6 +52,21 @@ object Texts {
      * ресурсы (украинских нет), и формы должны быть русскими.
      */
     fun language(locales: LocaleList): String = locales.getFirstMatch(arrayOf("en", "ru"))?.language ?: "en"
+
+    /** import.download.<причина> и подстановка (код ответа), если она есть в тексте. */
+    fun failure(reason: FailureReason): Pair<Int, String?> = when (reason) {
+        FailureReason.NotFound -> R.string.import_download_not_found to null
+        is FailureReason.Forbidden -> R.string.import_download_forbidden to reason.code.toString()
+        is FailureReason.Status -> R.string.import_download_status to reason.code.toString()
+        FailureReason.TooLarge -> R.string.import_download_too_large to null
+        FailureReason.Timeout -> R.string.import_download_timeout to null
+        FailureReason.NameResolution -> R.string.import_download_dns to null
+        FailureReason.Connection -> R.string.import_download_connection to null
+        FailureReason.Tls -> R.string.import_download_tls to null
+        FailureReason.NoServers -> R.string.import_download_no_servers to null
+        FailureReason.NoAddress -> R.string.import_download_no_address to null
+        FailureReason.Network -> R.string.import_download_network to null
+    }
 
     /** «Добавить 3 сервера». */
     @StringRes

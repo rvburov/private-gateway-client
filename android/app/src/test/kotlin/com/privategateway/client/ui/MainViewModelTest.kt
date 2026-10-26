@@ -10,6 +10,11 @@ import com.privategateway.client.Fixtures
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.core.subscriptions.DownloadFailure
+import com.privategateway.client.core.subscriptions.FailureReason
+import com.privategateway.client.core.subscriptions.SubscriptionContent
+import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
+import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.TunnelMonitor
 import kotlinx.coroutines.CoroutineScope
@@ -29,6 +34,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import java.net.URI
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
@@ -43,6 +49,16 @@ class MainViewModelTest {
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private lateinit var settings: SettingsRepository
     private lateinit var model: MainViewModel
+    private val servers by lazy { ServerRepository(database, FakeBox()) }
+    private val source = FakeSource()
+
+    /** Подписка «по сети» без сети: ответ или неудача, которые задал тест. */
+    private class FakeSource : SubscriptionSource {
+        var content: SubscriptionContent? = null
+        var failure: SubscriptionDownloadException? = null
+
+        override fun download(url: URI): SubscriptionContent = failure?.let { throw it } ?: requireNotNull(content)
+    }
 
     private class FakeEngine : CoreEngine {
         override fun start(configJson: String, protect: (Int) -> Boolean, dns: String): String? = null
@@ -58,7 +74,7 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(TunnelMonitor(), ServerRepository(database, FakeBox()), settings, FakeEngine())
+        model = MainViewModel(TunnelMonitor(), servers, settings, FakeEngine(), source)
     }
 
     @After
@@ -131,6 +147,53 @@ class MainViewModelTest {
         model.add()
         assertEquals(3, wait { model.ui.first { it.servers.size == 3 } }.servers.size)
         assertEquals(result, model.importing.value)
+    }
+
+    @Test
+    fun `subscription address is downloaded, named by its title and stored as a group`() {
+        val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(2)
+        source.content = SubscriptionContent(links.joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) }, "Провайдер")
+        model.edit("https://example.com/sub/abcdef")
+        model.preview(" https://example.com/sub/abcdef ")
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(2, ready.batch?.found)
+        assertEquals("Провайдер", ready.name, "название — из Profile-Title")
+        assertEquals(URI("https://example.com/sub/abcdef"), ready.url)
+        assertEquals(false, ready.insecure)
+
+        model.add()
+        wait { model.importing.first { it.added != null } }
+        val group = wait { servers.groups.first { it.isNotEmpty() } }.single()
+        assertEquals("Провайдер", group.name)
+        assertEquals("https://example.com/sub/••••", group.maskedUrl)
+        assertEquals(2, group.servers)
+    }
+
+    @Test
+    fun `failed download says why and http warns about open keys`() {
+        source.failure = SubscriptionDownloadException(DownloadFailure.Status, 404)
+        model.preview("https://example.com/sub/abcdef")
+        assertEquals(FailureReason.NotFound, wait { model.importing.first { it.failure != null } }.failure)
+
+        source.failure = null
+        source.content = SubscriptionContent(com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first()), null)
+        model.preview("http://example.org/feed")
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(true, ready.insecure)
+        assertEquals(null, ready.failure)
+        assertEquals("example.org", ready.name, "без Profile-Title — сервер подписки")
+    }
+
+    @Test
+    fun `without a name servers go to my servers and the address is not kept`() {
+        source.content = SubscriptionContent(com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first()), null)
+        model.preview("https://example.com/sub/abcdef")
+        wait { model.importing.first { it.batch != null } }
+        model.name("")
+        model.add()
+        wait { model.importing.first { it.added != null } }
+        assertEquals(1, wait { servers.manualCount.first { it == 1 } })
+        assertEquals(emptyList(), wait { servers.groups.first() })
     }
 
     @Test

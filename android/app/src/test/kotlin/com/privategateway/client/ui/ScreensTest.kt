@@ -19,6 +19,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.Fixtures
 import com.privategateway.client.R
 import com.privategateway.client.core.links.ImportParser
+import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
@@ -126,7 +127,7 @@ class ScreensTest {
         val previewed = mutableListOf<String>()
         var state by mutableStateOf(ImportUi())
         var added = 0
-        compose.setContent { PgTheme { ImportScreen(state, { null }, { state = state.copy(text = it) }, { previewed += it }, { added++ }, {}) } }
+        compose.setContent { PgTheme { ImportScreen(state, { null }, { state = state.copy(text = it) }, { previewed += it }, { state = state.copy(name = it) }, { added++ }, {}) } }
 
         compose.onNodeWithTag("import.check").assertIsNotEnabled()
         compose.onNodeWithTag("import.clipboard").performClick()
@@ -146,6 +147,23 @@ class ScreensTest {
 
         state = state.copy(added = 1)
         compose.onNodeWithTag("import.done").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `subscription download shows progress, the reason it failed and the http warning`() {
+        val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
+        var state by mutableStateOf(ImportUi(text = "https://example.com/sub/abcdef", downloading = true))
+        compose.setContent { PgTheme { ImportScreen(state, { null }, {}, {}, { state = state.copy(name = it) }, {}, {}) } }
+        compose.onNodeWithTag("import.downloading").assertIsDisplayed()
+        compose.onNodeWithTag("import.check").assertIsNotEnabled()
+
+        state = ImportUi(text = state.text, failure = FailureReason.Forbidden(403))
+        compose.onNodeWithText(text(R.string.import_download_failed, text(R.string.import_download_forbidden, "403"))).assertIsDisplayed()
+
+        state = ImportUi(text = state.text, batch = ImportParser.parse(link), insecure = true, name = "example.com")
+        compose.onNodeWithTag("import.insecure").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("import.name").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("example.com").assertIsDisplayed()
     }
 
     @Test

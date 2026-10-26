@@ -5,6 +5,8 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.privategateway.client.core.subscriptions.SubscriptionDownloader
+import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.KeystoreSecretBox
 import com.privategateway.client.data.SecretBox
@@ -32,6 +34,10 @@ object AppModule {
 
     @Provides
     fun subscriptionDao(database: AppDatabase): SubscriptionDao = database.subscriptions()
+
+    /** Загрузка подписок по сети; в тестах — подделка. */
+    @Provides
+    fun subscriptionSource(): SubscriptionSource = SubscriptionDownloader()
 
     @Provides
     @Singleton

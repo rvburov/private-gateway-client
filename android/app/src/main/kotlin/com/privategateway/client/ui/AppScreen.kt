@@ -104,7 +104,7 @@ fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, actions: Ap
     PgBackground {
         if (adding) {
             BackHandler(onBack = closeImport)
-            ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::add, closeImport)
+            ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::name, viewModel::add, closeImport)
         } else {
             BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
             when (tab) {
