@@ -83,6 +83,13 @@ service GatewayService {
   // хоста (другое — INVALID_ARGUMENT), порт — для TCP и TLS. Поток — по строке на эхо, участок трассировки или адрес
   // имени; у TCP и TLS — одна строка. Замер идет как вся сеть службы (в режиме VPN — в туннель) и ничего не меняет.
   rpc RunProbe(ProbeRequest) returns (stream ProbeStep);
+
+  // Сокеты TCP и UDP машины с процессами — по возможностям ОС (Windows — IP Helper, Linux — /proc, macOS — lsof); чужие
+  // процессы видны только установленной службе. Только чтение; адреса в журнал не пишутся.
+  rpc ListConnections(ListConnectionsRequest) returns (ConnectionList);
+
+  // Счетчики трафика включенных адаптеров раз в секунду, пока окно слушает: скорость окно считает по соседним.
+  rpc WatchTraffic(WatchTrafficRequest) returns (stream TrafficSample);
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -743,6 +750,55 @@ message TlsFacts {
   repeated string names = 8;
   // Пусто — с сертификатом все в порядке.
   repeated TlsProblem problems = 9;
+}
+
+message ListConnectionsRequest {}
+
+enum SocketProtocol {
+  SOCKET_PROTOCOL_UNSPECIFIED = 0;
+  SOCKET_PROTOCOL_TCP = 1;
+  SOCKET_PROTOCOL_UDP = 2;
+}
+
+enum SocketState {
+  SOCKET_STATE_UNSPECIFIED = 0;
+  SOCKET_STATE_LISTEN = 1;
+  SOCKET_STATE_ESTABLISHED = 2;
+  SOCKET_STATE_OPENING = 3;
+  SOCKET_STATE_CLOSING = 4;
+  // UDP: открыт.
+  SOCKET_STATE_OPEN = 5;
+}
+
+message NetworkConnection {
+  SocketProtocol protocol = 1;
+  string local_address = 2;
+  int32 local_port = 3;
+  // Пусто — другой стороны нет (слушает или UDP без связи).
+  string remote_address = 4;
+  int32 remote_port = 5;
+  SocketState state = 6;
+  // 0 — ОС не назвала владельца.
+  int32 process_id = 7;
+  // Пусто — имя неизвестно.
+  string process = 8;
+}
+
+message ConnectionList {
+  repeated NetworkConnection connections = 1;
+}
+
+message WatchTrafficRequest {}
+
+message AdapterCounters {
+  string name = 1;
+  int64 received = 2;
+  int64 sent = 3;
+}
+
+message TrafficSample {
+  google.protobuf.Timestamp taken_at = 1;
+  repeated AdapterCounters adapters = 2;
 }
 
 message ProbeStep {

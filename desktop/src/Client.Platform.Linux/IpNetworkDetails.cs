@@ -41,6 +41,9 @@ public sealed class IpNetworkDetails(Func<IReadOnlyList<string>, string> ip) : I
         }
     }
 
+    /// <summary>Сокеты — из <c>/proc/net</c> (<see cref="ProcSockets"/>).</summary>
+    public IReadOnlyList<SocketEntry> Sockets() => ProcSockets.Read();
+
     public DhcpLease? Dhcp(string adapter)
     {
         ArgumentException.ThrowIfNullOrEmpty(adapter);

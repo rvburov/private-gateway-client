@@ -38,6 +38,9 @@ public static class Pages
     /// <summary>«Проверка узла» — пинг, путь, DNS, TCP и TLS, подстраница «Проверки» (этап 7).</summary>
     public const string Probe = "probe";
 
+    /// <summary>«Соединения и трафик» — сокеты с процессами и скорость адаптеров, подстраница «Проверки» (этап 7).</summary>
+    public const string Connections = "connections";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

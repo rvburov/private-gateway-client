@@ -19,6 +19,9 @@ public sealed class GatewayRpc(
     Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker updates, UpdateInstaller installer, IHostApplicationLifetime lifetime)
     : V1.GatewayService.GatewayServiceBase
 {
+    /// <summary>Как часто служба шлет счетчики трафика.</summary>
+    public static readonly TimeSpan TrafficEvery = TimeSpan.FromSeconds(1);
+
     public override Task<V1.ServiceInfo> GetServiceInfo(V1.GetServiceInfoRequest request, ServerCallContext context) => Task.FromResult(info);
 
     public override Task<V1.Status> GetStatus(V1.GetStatusRequest request, ServerCallContext context) =>
@@ -176,6 +179,35 @@ public sealed class GatewayRpc(
         await foreach (var step in gateway.ProbeAsync(request.Kind.ToCore(), target, request.Port, cancellation).ConfigureAwait(false))
         {
             await responseStream.WriteAsync(step.ToContract(), cancellation).ConfigureAwait(false);
+        }
+    }
+
+    // Сокеты читает ОС (на macOS — внешняя программа): не в потоке Kestrel.
+    public override Task<V1.ConnectionList> ListConnections(V1.ListConnectionsRequest request, ServerCallContext context) =>
+        Task.Run(() =>
+        {
+            var list = new V1.ConnectionList();
+            list.Connections.AddRange(gateway.ListConnections().Select(c => c.ToContract()));
+            return list;
+        }, context.CancellationToken);
+
+    /// <summary>Счетчики раз в секунду, пока окно слушает; служба останавливается — поток закрывается.</summary>
+    public override async Task WatchTraffic(V1.WatchTrafficRequest request, IServerStreamWriter<V1.TrafficSample> responseStream, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(responseStream);
+        ArgumentNullException.ThrowIfNull(context);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, lifetime.ApplicationStopping);
+        try
+        {
+            while (true)
+            {
+                await responseStream.WriteAsync(gateway.TrafficNow().ToContract(), stop.Token).ConfigureAwait(false);
+                await Task.Delay(TrafficEvery, stop.Token).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // Окно закрыло страницу или служба останавливается.
         }
     }
 

@@ -69,6 +69,9 @@ public sealed class WindowsNetworkDetails : INetworkDetails
         }
     }
 
+    /// <summary>Сокеты — таблицы IP Helper с владельцами (<see cref="WindowsSockets"/>).</summary>
+    public IReadOnlyList<SocketEntry> Sockets() => WindowsSockets.Read();
+
     public DhcpLease? Dhcp(string adapter)
     {
         try

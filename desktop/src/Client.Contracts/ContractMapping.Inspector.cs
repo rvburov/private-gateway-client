@@ -239,6 +239,87 @@ public static partial class ContractMapping
                 : null);
     }
 
+    public static V1.NetworkConnection ToContract(this NetworkConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        var socket = connection.Socket;
+        return new V1.NetworkConnection
+        {
+            Protocol = socket.Protocol switch
+            {
+                SocketProtocol.Tcp => V1.SocketProtocol.Tcp,
+                SocketProtocol.Udp => V1.SocketProtocol.Udp,
+                _ => throw new ArgumentOutOfRangeException(nameof(connection), socket.Protocol, null),
+            },
+            LocalAddress = socket.Local.Address.ToString(),
+            LocalPort = socket.Local.Port,
+            RemoteAddress = socket.Remote?.Address.ToString() ?? string.Empty,
+            RemotePort = socket.Remote?.Port ?? 0,
+            State = socket.State.ToContract(),
+            ProcessId = socket.ProcessId ?? 0,
+            Process = connection.Process ?? string.Empty,
+        };
+    }
+
+    public static V1.SocketState ToContract(this SocketState state) => state switch
+    {
+        SocketState.Listen => V1.SocketState.Listen,
+        SocketState.Established => V1.SocketState.Established,
+        SocketState.Opening => V1.SocketState.Opening,
+        SocketState.Closing => V1.SocketState.Closing,
+        SocketState.Open => V1.SocketState.Open,
+        _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
+    };
+
+    /// <summary>Состояние от службы; незнакомое (служба новее) — «закрывается».</summary>
+    public static SocketState ToCore(this V1.SocketState state) => state switch
+    {
+        V1.SocketState.Listen => SocketState.Listen,
+        V1.SocketState.Established => SocketState.Established,
+        V1.SocketState.Opening => SocketState.Opening,
+        V1.SocketState.Open => SocketState.Open,
+        _ => SocketState.Closing,
+    };
+
+    /// <summary>Сокет от службы; свой адрес не разобрать или протокол незнаком — null (такую строку окно пропускает).</summary>
+    public static NetworkConnection? ToCore(this V1.NetworkConnection connection)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        SocketProtocol? protocol = connection.Protocol switch
+        {
+            V1.SocketProtocol.Tcp => SocketProtocol.Tcp,
+            V1.SocketProtocol.Udp => SocketProtocol.Udp,
+            _ => null,
+        };
+        if (protocol is null || !IPAddress.TryParse(connection.LocalAddress, out var local) || connection.LocalPort is < 0 or > IPEndPoint.MaxPort)
+        {
+            return null;
+        }
+
+        var remote = IPAddress.TryParse(connection.RemoteAddress, out var address) && connection.RemotePort is >= 0 and <= IPEndPoint.MaxPort
+            ? new IPEndPoint(address, connection.RemotePort)
+            : null;
+        return new NetworkConnection(
+            new SocketEntry(protocol.Value, new IPEndPoint(local, connection.LocalPort), remote, connection.State.ToCore(),
+                connection.ProcessId > 0 ? connection.ProcessId : null),
+            connection.Process.Length > 0 ? connection.Process : null);
+    }
+
+    public static V1.TrafficSample ToContract(this TrafficSample sample)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+        var contract = new V1.TrafficSample { TakenAt = Timestamp.FromDateTimeOffset(sample.TakenAt) };
+        contract.Adapters.AddRange(sample.Adapters.Select(a => new V1.AdapterCounters { Name = a.Name, Received = a.Received, Sent = a.Sent }));
+        return contract;
+    }
+
+    public static TrafficSample ToCore(this V1.TrafficSample sample)
+    {
+        ArgumentNullException.ThrowIfNull(sample);
+        return new TrafficSample(sample.TakenAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
+            [.. sample.Adapters.Select(a => new AdapterCounters(a.Name, a.Received, a.Sent))]);
+    }
+
     private static List<IPAddress> Addresses(IEnumerable<string> values) =>
         [.. values.Select(v => IPAddress.TryParse(v, out var address) ? address : null).OfType<IPAddress>()];
 }

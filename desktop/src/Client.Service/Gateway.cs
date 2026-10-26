@@ -1313,6 +1313,12 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>Сетевой инспектор: снимок адаптеров, адресов, DHCP и маршрутов машины — только чтение.</summary>
     public NetworkSnapshot InspectNetwork() => new NetworkInspector(_options.NetworkDetails, _time, _journal).Take();
 
+    /// <summary>Сетевой инспектор: сокеты машины с процессами — только чтение.</summary>
+    public IReadOnlyList<NetworkConnection> ListConnections() => new NetworkInspector(_options.NetworkDetails, _time, _journal).Connections();
+
+    /// <summary>Сетевой инспектор: счетчики трафика адаптеров сейчас.</summary>
+    public TrafficSample TrafficNow() => new NetworkInspector(_options.NetworkDetails, _time, _journal).Traffic();
+
     /// <summary>Замер инспектора до узла пользователя (<see cref="ProbeRunner"/>): идет как вся сеть службы, ничего не меняет.</summary>
     public IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port, CancellationToken cancellationToken = default) =>
         _probes.RunAsync(kind, target, port, cancellationToken);

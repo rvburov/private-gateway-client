@@ -1,0 +1,110 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ConnectionsPage"
+             x:DataType="vm:ConnectionsPageViewModel">
+  <!-- Соединения и трафик — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе, как «Сеть машины»).
+       Подстраница «Проверки»: островок виден, «назад» — к проверке. -->
+  <UserControl.Styles>
+    <!-- Строки разделены линией, у последней ее нет -->
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.connRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="LineHeight" Value="{StaticResource PgLineHeight.Body}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.connections.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <TextBlock Classes="caption" Text="{l:L conn.note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Трафик адаптеров: скорость сейчас и сколько с включения -->
+        <TextBlock Classes="overline" Text="{l:L conn.traffic, Upper=True}" Margin="6,4,6,0" />
+        <Border x:Name="TrafficCard" Classes="card" Padding="16,4">
+          <StackPanel>
+            <TextBlock Classes="caption" Margin="0,11" IsVisible="{Binding !HasTraffic}" Text="{l:L conn.traffic.waiting}" />
+            <ItemsControl x:Name="TrafficList" ItemsSource="{Binding Traffic}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:TrafficRowViewModel">
+                  <Border Classes="connRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,9">
+                    <StackPanel Spacing="2">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Classes="value" FontWeight="SemiBold" Text="{Binding Speed}" Margin="12,0,0,0"
+                                   TextWrapping="NoWrap" />
+                      </Grid>
+                      <TextBlock Classes="caption" Text="{Binding Total}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Сокеты с процессами -->
+        <Grid ColumnDefinitions="*,Auto" Margin="6,8,6,0">
+          <TextBlock Classes="overline" Text="{l:L conn.sockets, Upper=True}" VerticalAlignment="Bottom" />
+          <Button x:Name="RefreshButton" Grid.Column="1" Classes="link" Padding="8,2" Command="{Binding RefreshCommand}"
+                  Content="{l:L network.refresh}" AutomationProperties.Name="{l:L network.refresh}" />
+        </Grid>
+        <Border Classes="segments" AutomationProperties.Name="{l:L conn.sockets}">
+          <UniformGrid Columns="2">
+            <RadioButton x:Name="ActiveTab" Classes="segment" GroupName="connTab" IsChecked="{Binding IsActive}"
+                         Content="{l:L conn.tab.active}" />
+            <RadioButton x:Name="ListeningTab" Classes="segment" GroupName="connTab" IsChecked="{Binding IsListening}"
+                         Content="{l:L conn.tab.listening}" />
+          </UniformGrid>
+        </Border>
+
+        <Border x:Name="Unavailable" Classes="card" Padding="16,14" IsVisible="{Binding IsUnavailable}">
+          <TextBlock Text="{l:L conn.unavailable}" TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Text.Primary}" />
+        </Border>
+
+        <Border x:Name="SocketCard" Classes="card" Padding="16,4">
+          <StackPanel>
+            <TextBlock x:Name="CountText" Classes="caption" Text="{Binding CountText}" Margin="0,11,0,2" />
+            <ItemsControl x:Name="ConnectionList" ItemsSource="{Binding Connections}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ConnectionRowViewModel">
+                  <Border Classes="connRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,8">
+                    <StackPanel Spacing="2">
+                      <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Classes="strong" Text="{Binding Process}" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Grid.Column="1" Classes="caption" Text="{Binding Kind}" Margin="12,0,0,0" />
+                      </Grid>
+                      <SelectableTextBlock Classes="value" Text="{Binding Endpoints}" />
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+        <TextBlock x:Name="HiddenOwners" Classes="caption" Text="{l:L conn.hiddenOwners}" IsVisible="{Binding HasHiddenOwners}"
+                   TextWrapping="Wrap" Margin="6,0" LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

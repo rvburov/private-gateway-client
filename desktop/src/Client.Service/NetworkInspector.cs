@@ -39,6 +39,59 @@ public sealed class NetworkInspector(INetworkDetails? details, TimeProvider time
         return new NetworkSnapshot(time.GetUtcNow(), cards, routes);
     }
 
+    /// <summary>
+    /// Сокеты машины с именами процессов (по номеру — средствами .NET; процесс вышел или нет прав — без имени). Сокеты не
+    /// прочитались — пусто и запись в журнале; адреса в журнал не пишутся.
+    /// </summary>
+    public IReadOnlyList<NetworkConnection> Connections()
+    {
+        IReadOnlyList<SocketEntry> sockets;
+        try
+        {
+            sockets = details?.Sockets() ?? [];
+        }
+        catch (IOException e)
+        {
+            journal.Add(JournalLevel.Warning, "service", "Инспектор: сокеты не прочитаны — " + e.Message);
+            return [];
+        }
+
+        var names = new Dictionary<int, string?>();
+        return [.. sockets.Select(s => new NetworkConnection(s, s.ProcessId is { } pid ? names.TryGetValue(pid, out var known) ? known : names[pid] = ProcessName(pid) : null))];
+    }
+
+    /// <summary>Счетчики включенных адаптеров, кроме петли: сколько байт принято и отправлено; чего ОС не дает — без адаптера.</summary>
+    public TrafficSample Traffic()
+    {
+        var counters = new List<AdapterCounters>();
+        foreach (var adapter in (adapters ?? NetworkInterface.GetAllNetworkInterfaces)())
+        {
+            if (Try(() => adapter.OperationalStatus) != OperationalStatus.Up || adapter.NetworkInterfaceType == NetworkInterfaceType.Loopback
+                || Try(adapter.GetIPStatistics) is not { } statistics)
+            {
+                continue;
+            }
+
+            counters.Add(new AdapterCounters(adapter.Name, statistics.BytesReceived, statistics.BytesSent));
+        }
+
+        return new TrafficSample(time.GetUtcNow(), counters);
+    }
+
+    /// <summary>Имя процесса по номеру; процесс вышел или к нему нет доступа — null.</summary>
+    public static string? ProcessName(int pid)
+    {
+        try
+        {
+            using var process = System.Diagnostics.Process.GetProcessById(pid);
+            return process.ProcessName;
+        }
+        catch (Exception e) when (e is ArgumentException or InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>Вид адаптера: по типу от ОС, а где тип ничего не говорит (Linux, macOS) — по имени и описанию.</summary>
     public static AdapterKind Kind(NetworkInterfaceType type, string name, string description)
     {

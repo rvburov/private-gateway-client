@@ -67,6 +67,13 @@ public interface IGatewayClient
     IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port, CancellationToken cancellationToken = default) =>
         AsyncEnumerable.Empty<ProbeStep>();
 
+    /// <summary>Сокеты машины с процессами — читает служба. Службы нет, она старая или не ответила — null.</summary>
+    Task<IReadOnlyList<NetworkConnection>?> ListConnectionsAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<NetworkConnection>?>(null);
+
+    /// <summary>Счетчики трафика адаптеров раз в секунду, пока окно слушает; службы нет или связь оборвалась — поток кончается.</summary>
+    IAsyncEnumerable<TrafficSample> WatchTrafficAsync(CancellationToken cancellationToken = default) => AsyncEnumerable.Empty<TrafficSample>();
+
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
 

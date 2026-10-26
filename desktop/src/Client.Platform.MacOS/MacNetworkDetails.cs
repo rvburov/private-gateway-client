@@ -17,6 +17,7 @@ public sealed class MacNetworkDetails(Func<string, IReadOnlyList<string>, string
 {
     private const string Netstat = "/usr/sbin/netstat";
     private const string Ipconfig = "/usr/sbin/ipconfig";
+    private const string Lsof = "/usr/sbin/lsof";
 
     /// <summary>netstat и ipconfig этой машины; не macOS — null.</summary>
     public static MacNetworkDetails? ForThisMachine() =>
@@ -24,6 +25,24 @@ public sealed class MacNetworkDetails(Func<string, IReadOnlyList<string>, string
 
     public IReadOnlyList<NetworkRoute> Routes() =>
         [.. ParseRoutes(run(Netstat, ["-rn", "-f", "inet"])), .. ParseRoutes(run(Netstat, ["-rn", "-f", "inet6"]))];
+
+    /// <summary>Сокеты — поля <c>lsof</c> (<see cref="LsofSockets"/>); lsof ничего не нашел — пусто.</summary>
+    public IReadOnlyList<SocketEntry> Sockets()
+    {
+        try
+        {
+            return [.. LsofSockets.Parse(run(Lsof, LsofSockets.Arguments)).Select(s => s.Socket)];
+        }
+        catch (IOException) when (!File.Exists(Lsof))
+        {
+            throw;
+        }
+        catch (IOException e) when (e.Message.EndsWith(": ", StringComparison.Ordinal))
+        {
+            // lsof выходит с ошибкой и без текста, когда сокетов нет.
+            return [];
+        }
+    }
 
     public DhcpLease? Dhcp(string adapter)
     {

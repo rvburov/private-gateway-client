@@ -190,6 +190,46 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>Служба без этого вызова (старая) или без связи — null; строки не по контракту пропускаются.</summary>
+    public async Task<IReadOnlyList<NetworkConnection>?> ListConnectionsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var list = await _client.ListConnectionsAsync(new V1.ListConnectionsRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            return [.. list.Connections.Select(c => c.ToCore()).OfType<NetworkConnection>()];
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Служба без этого вызова (старая) или обрыв связи — поток кончается.</summary>
+    public async IAsyncEnumerable<TrafficSample> WatchTrafficAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        using var call = _client.WatchTraffic(new V1.WatchTrafficRequest(), cancellationToken: cancellationToken);
+        var stream = call.ResponseStream;
+        while (true)
+        {
+            TrafficSample sample;
+            try
+            {
+                if (!await stream.MoveNext(cancellationToken).ConfigureAwait(false))
+                {
+                    yield break;
+                }
+
+                sample = stream.Current.ToCore();
+            }
+            catch (RpcException)
+            {
+                yield break;
+            }
+
+            yield return sample;
+        }
+    }
+
     /// <summary>Служба без замеров (старая), отказ или обрыв связи — поток кончается; отмена окном — тоже.</summary>
     public async IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port,
         [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)

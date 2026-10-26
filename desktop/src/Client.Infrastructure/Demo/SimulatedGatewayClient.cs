@@ -174,6 +174,38 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         }
     }
 
+    /// <summary>Сокеты в демо: браузер, мессенджер, ядро и служба на адресах из диапазонов документации.</summary>
+    public Task<IReadOnlyList<NetworkConnection>?> ListConnectionsAsync(CancellationToken cancellationToken = default)
+    {
+        var local = IPAddress.Parse("192.0.2.23");
+        static IPEndPoint At(string address, int port) => new(IPAddress.Parse(address), port);
+        NetworkConnection[] connections =
+        [
+            new(new SocketEntry(SocketProtocol.Tcp, new IPEndPoint(local, 51234), At("203.0.113.80", 443), SocketState.Established, 4120), "firefox"),
+            new(new SocketEntry(SocketProtocol.Tcp, new IPEndPoint(local, 51240), At("198.51.100.14", 443), SocketState.Established, 4120), "firefox"),
+            new(new SocketEntry(SocketProtocol.Udp, new IPEndPoint(local, 50000), At("203.0.113.90", 443), SocketState.Open, 4120), "firefox"),
+            new(new SocketEntry(SocketProtocol.Tcp, new IPEndPoint(local, 51302), At("198.51.100.200", 5222), SocketState.Established, 5310), "telegram"),
+            new(new SocketEntry(SocketProtocol.Tcp, new IPEndPoint(local, 51310), At("203.0.113.24", 443), SocketState.Closing, 5310), "telegram"),
+            new(new SocketEntry(SocketProtocol.Tcp, At("127.0.0.1", 10808), null, SocketState.Listen, 2208), "xray"),
+            new(new SocketEntry(SocketProtocol.Udp, new IPEndPoint(IPAddress.Any, 5353), null, SocketState.Open, null), null),
+            new(new SocketEntry(SocketProtocol.Tcp, new IPEndPoint(IPAddress.IPv6Any, 22), null, SocketState.Listen, 880), "sshd"),
+        ];
+        return Task.FromResult<IReadOnlyList<NetworkConnection>?>(connections);
+    }
+
+    /// <summary>Трафик в демо: Wi-Fi растет на 1,5 МБ/с приема и 120 КБ/с отправки, каждую секунду имитации.</summary>
+    public async IAsyncEnumerable<TrafficSample> WatchTrafficAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        for (long second = 0; ; second++)
+        {
+            yield return new TrafficSample(time.GetUtcNow(), [
+                new AdapterCounters("Wi-Fi", 1_288_490_188 + (second * 1_572_864), 241_172_480 + (second * 122_880)),
+                new AdapterCounters("Private Gateway", 734_003_200 + (second * 1_468_006), 98_566_144 + (second * 110_592)),
+            ]);
+            await Task.Delay(TimeSpan.FromSeconds(1), time, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
     public IReadOnlyList<JournalEntry> Journal

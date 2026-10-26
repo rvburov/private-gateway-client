@@ -205,6 +205,25 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>Сокеты читает служба; в режиме прокси ради инспектора запускается служба пользователя.</summary>
+    public async Task<IReadOnlyList<NetworkConnection>?> ListConnectionsAsync(CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.ListConnectionsAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
+    public async IAsyncEnumerable<TrafficSample> WatchTrafficAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is not { } service)
+        {
+            yield break;
+        }
+
+        await foreach (var sample in service.WatchTrafficAsync(cancellationToken).ConfigureAwait(false))
+        {
+            yield return sample;
+        }
+    }
+
     public async Task MeasureIpAsync(CancellationToken cancellationToken = default)
     {
         if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)
