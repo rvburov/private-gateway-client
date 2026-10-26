@@ -84,13 +84,18 @@ public sealed class KillSwitchTests
         var lines = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [new(Server, 443)], AllowLan: true,
             Direct: new DirectExit("/opt/pg/sing-box", 0x5047), TunnelDns: dns)));
 
-        lines.Skip(lines.IndexOf("chain dns {")).Take(4).ShouldBe([
+        lines.Skip(lines.IndexOf("chain dns {")).Take(8).ShouldBe([
             "chain dns {",
             "type nat hook output priority -100; policy accept;",
-            "oifname != \"pgtun0\" meta mark != 20551 ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } "
+            "oifname != \"pgtun0\" oifname != \"lo\" meta mark != 20551 ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } "
                 + "meta l4proto { tcp, udp } th dport 53 dnat ip to 172.19.0.2",
             "}",
-        ], "DNS роутера (resolv.conf без systemd-resolved) — в туннель, выход sing-box мимо туннеля — как есть");
+            "chain dns_out {",
+            "type filter hook postrouting priority 0; policy accept;",
+            "oifname != \"pgtun0\" ip daddr 172.19.0.2 meta l4proto { tcp, udp } th dport 53 drop",
+            "}",
+        ], "DNS роутера (resolv.conf без systemd-resolved) — в туннель, выход sing-box мимо туннеля и свой адрес машины — как есть; "
+            + "перенаправленное, что после маршрутизации ушло не в туннель (сокет с привязкой к карте), — закрыто");
         lines.IndexOf("ip daddr 172.19.0.2 meta l4proto { tcp, udp } th dport 53 accept")
             .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"),
                 "фильтр после nat видит прежний интерфейс — перенаправленное разрешено раньше закрытия DNS");
@@ -126,7 +131,7 @@ public sealed class KillSwitchTests
 
         lines.IndexOf("ip daddr 192.168.1.53 meta l4proto { tcp, udp } th dport 53 accept")
             .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"), "раньше закрытия DNS");
-        lines.ShouldContain("oifname != \"pgtun0\" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } ip daddr != 192.168.1.53 "
+        lines.ShouldContain("oifname != \"pgtun0\" oifname != \"lo\" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } ip daddr != 192.168.1.53 "
             + "meta l4proto { tcp, udp } th dport 53 dnat ip to 172.19.0.2", "запрос самого Xray к своему DNS в туннель не возвращается");
         Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [], LanDns: IPAddress.Parse("fd00::53"))))
             .ShouldContain("ip6 daddr fd00::53 meta l4proto { tcp, udp } th dport 53 accept");

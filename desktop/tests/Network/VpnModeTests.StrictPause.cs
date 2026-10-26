@@ -391,6 +391,36 @@ public sealed partial class VpnModeTests
     }
 
     /// <summary>Файл блока во временной папке; удаляется вместе с ней.</summary>
+    [Fact]
+    public async Task Without_the_kill_switch_stop_on_a_pause_and_strict_disconnect_leave_the_network_open()
+    {
+        await using var rig = await Rig.CreateAsync();
+        using var held = new HeldFile(StrictHeld);
+        File.Delete(held.Path);
+        var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { BootBlock = held.Path });
+        await using (service)
+        {
+            using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+            await service.Client.ConnectAsync(VpnRequest(rig.Definition, killSwitch: false), cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+            // «Выключить» с просьбой держать блок (строгий режим): правила «только туннель» — не блок, его нет.
+            await service.Client.DisconnectAsync(new V1.DisconnectRequest { KeepBlock = true }, cancellationToken: Ct);
+            var off = await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct);
+            (off.State, off.StrictBlock, rig.KillSwitch.IsEnabled).ShouldBe((V1.ConnectionState.Off, false, false), "без блока при обрыве сеть открыта");
+
+            await service.Client.ConnectAsync(VpnRequest(rig.Definition, killSwitch: false), cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+            await service.Client.PauseForCaptivePortalAsync(FiveMinutes, cancellationToken: Ct);
+            await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null, service.Journal);
+        }
+
+        // Служба остановлена на паузе: правила «только туннель» без туннеля не возвращаются — сеть открыта, файл блока забыт.
+        rig.KillSwitch.IsEnabled.ShouldBeFalse();
+        BootBlock.Read(held.Path).ShouldBeNull();
+        (await rig.Netns.FetchAsync(rig.Lan.Url, seconds: 3, device: "pgnet0")).ShouldBe("мимо туннеля");
+    }
+
     private sealed class HeldFile : IDisposable
     {
         private readonly string _folder = Directory.CreateDirectory(System.IO.Path.Combine(System.IO.Path.GetTempPath(), "pg-held-" + Guid.NewGuid().ToString("N")[..8])).FullName;

@@ -88,6 +88,16 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>Адрес DNS туннеля: туда блок на Linux перенаправляет DNS к разрешенной локальной сети.</summary>
     private static readonly IPAddress TunnelDns = IPAddress.Parse(SingBoxConfigBuilder.TunDns);
 
+    /// <summary>
+    /// Открыт ли правилами IPv6 мимо туннеля: только без блока при обрыве, только если пользователь сам разрешил («Блокировать
+    /// IPv6 вне туннеля» выключено, не «Только IPv4») и только если туннель сам его мимо себя пропускает.
+    /// </summary>
+    public static bool Ipv6OutsideOpen(bool killSwitchOn, ProtectionSettings protection, bool tunnelLetsIpv6Outside)
+    {
+        ArgumentNullException.ThrowIfNull(protection);
+        return !killSwitchOn && !protection.BlockIpv6 && protection.Ipv6Allowed && tunnelLetsIpv6Outside;
+    }
+
     /// <summary>Метка сокета поиска адреса службой под блоком (Linux): «PH».</summary>
     public const uint LookupMark = 0x5048;
 
@@ -224,13 +234,22 @@ public sealed partial class Gateway : IAsyncDisposable
     /// роутера в разрешенной локальной сети без «Блокировать DNS провайдера»; не идет — null.
     /// </summary>
     public string? DnsReason => Status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Dns: CheckState.Warning }
-        ? DnsOutside(_request?.Protection)
+        ? DnsOutside(_request?.Protection, Ipv6Open)
         : null;
 
-    private static string? DnsOutside(ProtectionSettings? protection) => protection switch
+    /// <summary>IPv6 мимо туннеля открыт: туннель его мимо себя пропускает, а правил нет или правила «только туннель» его пропускают.</summary>
+    private bool Ipv6Open => Volatile.Read(ref _tunnel) is { Ipv6Outside: true } && (!_blocking || _held is { Policy.Ipv6Outside: true });
+
+    /// <summary>
+    /// Почему DNS может идти мимо туннеля при поднятом туннеле: <c>own_dns</c> — свой DNS в частной сети; без «Блокировать DNS
+    /// провайдера» — <c>lan_dns</c> (разрешенная локальная сеть: DNS роутера) или <c>ipv6_dns</c> (IPv6 мимо туннеля открыт:
+    /// DNS провайдера по IPv6). Не может — null.
+    /// </summary>
+    public static string? DnsOutside(ProtectionSettings? protection, bool ipv6Open) => protection switch
     {
         { LanDns: not null } => "own_dns",
         { AllowLan: true, BlockOutsideDns: false } => "lan_dns",
+        { BlockOutsideDns: false, BlockIpv6: false, Ipv6Allowed: true } when ipv6Open => "ipv6_dns",
         _ => null,
     };
 
@@ -373,6 +392,10 @@ public sealed partial class Gateway : IAsyncDisposable
             : Task.FromResult<string?>(null);
         IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
         _directIp = await direct.ConfigureAwait(false) ?? _directIp;
+
+        // Дальше подключение доводится до конца и при отмене вызова: поиск адреса мог остановить прежнее подключение, и
+        // состояние не должно остаться «Подключением» без ядер. Все шаги ниже ограничены по времени.
+        cancellationToken = CancellationToken.None;
         if (vpn && addresses.Count == 0 && SameServer(core) && PickAddresses(_addresses, core.Protection) is { Count: > 0 } current)
         {
             // Тот же сервер, а имя не нашлось (с FakeDNS DNS ОС в туннеле дает только адреса пула) — по нынешним адресам.
@@ -514,7 +537,8 @@ public sealed partial class Gateway : IAsyncDisposable
             _journal.Hide([]);
             // Блок, которого служба не знает (правила остались, файла блока нет), тоже остается: строгий режим просил
             // оставить сеть закрытой — вернуть его после паузы нечем, но и открывать нельзя.
-            if (keepBlock && Status.State != ConnectionState.Off && (HoldStrictBlock() || _blocking))
+            // Правила «только туннель» (блок при обрыве выключен) строгий режим не держит: без блока при обрыве его нет.
+            if (keepBlock && Status.State != ConnectionState.Off && (HoldStrictBlock() || (_blocking && _held is not { Open: true })))
             {
                 if (Status.State == ConnectionState.Blocked)
                 {
@@ -701,10 +725,17 @@ public sealed partial class Gateway : IAsyncDisposable
         BlockWithoutTunnel();
         _systemProxy?.Release();
 
-        // Остановка на паузе для входа в Wi-Fi: защита не выключалась — блок возвращается, как при любой остановке.
-        if (Status.IsPaused && !_blocking && _held is { } held)
+        // Остановка на паузе для входа в Wi-Fi: защита не выключалась — блок возвращается, как при любой остановке, без туннеля:
+        // его уже нет. Правила «только туннель» (блок при обрыве выключен) без туннеля не возвращаются — сеть открыта, как выбрал
+        // пользователь, и файл блока забыт.
+        if (Status.IsPaused && !_blocking && _held is { Open: false } held)
         {
-            Restore(held, "возвращен: служба остановлена на паузе");
+            Restore(held with { Policy = held.Policy with { TunnelInterface = null, TunnelDns = null } }, "возвращен: служба остановлена на паузе");
+        }
+        else if (Status.IsPaused && !_blocking && _held is { Open: true })
+        {
+            _held = null;
+            RememberBlock(null);
         }
 
         if (_blocking)
@@ -753,6 +784,12 @@ public sealed partial class Gateway : IAsyncDisposable
                 && status.State != ConnectionState.Off && _blocking && _held is not { Open: true } && BlockWithoutTunnel();
             if (held || strictHeld || guarded)
             {
+                if (guarded)
+                {
+                    // Прежнее подключение само не вернется (конец паузы, смена сети): «Блокировка» до подключения или отключения.
+                    _request = null;
+                }
+
                 // Новое время — окно видит новый отказ (и экран «Работает другой VPN»), даже если «Блокировка» та же.
                 var now = _time.GetUtcNow();
                 EndPauseTimer();
@@ -1227,13 +1264,17 @@ public sealed partial class Gateway : IAsyncDisposable
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
             BlockWithoutTunnel();
+
+            // Прежнего подключения больше нет: «Подключение», пока ищется адрес нового, а не «Защищено» без туннеля.
+            BeginConnecting(core.Mode, Status.ServerId ?? string.Empty);
         }
         finally
         {
             _switch.Release();
         }
 
-        return PickAddresses(await LookupAsync(host, cancellationToken).ConfigureAwait(false), core.Protection);
+        // Без отмены: подключение уже остановлено, и вызов доведет его до нового или до отказа (поиск ограничен временем).
+        return PickAddresses(await LookupAsync(host, CancellationToken.None).ConfigureAwait(false), core.Protection);
     }
 
     /// <summary>Адреса имени через систему, не дольше времени пробы; не нашлось — пусто.</summary>
@@ -1327,7 +1368,7 @@ public sealed partial class Gateway : IAsyncDisposable
             direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
             core.Protection.BootProtection && _killSwitchOn,
             tunnel ? TunnelDns : null,
-            !_killSwitchOn && Volatile.Read(ref _tunnel) is { Ipv6Outside: true },
+            Ipv6OutsideOpen(_killSwitchOn, core.Protection, Volatile.Read(ref _tunnel) is { Ipv6Outside: true }),
             core.Protection.LanDns);
         if (!Try(() => { killSwitch.Enable(policy); return true; }, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))
         {
@@ -1555,7 +1596,7 @@ public sealed partial class Gateway : IAsyncDisposable
             status = status with { Protection = status.Protection with { Ipv6Tunnel = tunnel is { Ipv6: true } } };
         }
 
-        if (tunnel is { Ipv6Outside: true } && (!_blocking || _held is { Policy.Ipv6Outside: true }))
+        if (tunnel is not null && Ipv6Open)
         {
             status = status with { Protection = status.Protection with { Ipv6 = CheckState.Warning } };
         }
@@ -1563,7 +1604,7 @@ public sealed partial class Gateway : IAsyncDisposable
         // DNS мимо туннеля правила закрывают везде, кроме разрешенной локальной сети при выключенном «Блокировать DNS
         // провайдера» (запросы ОС к DNS роутера могут идти напрямую: resolv.conf с адресом роутера, DNS карты Windows) и своего
         // DNS в частной сети — его Xray спрашивает напрямую.
-        if (tunnel is not null && DnsOutside(_request?.Protection) is not null)
+        if (tunnel is not null && DnsOutside(_request?.Protection, Ipv6Open) is not null)
         {
             status = status with { Protection = status.Protection with { Dns = CheckState.Warning } };
         }

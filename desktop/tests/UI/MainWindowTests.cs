@@ -406,8 +406,10 @@ public sealed class MainWindowTests : WindowHarness
         "Запросы к DNS роутера могут идти мимо туннеля: локальная сеть разрешена", "Видны роутеру")]
     [InlineData(true, "own_dns", "DNS в своей сети", "свой DNS", "DNS — свой адрес в локальной сети",
         "Запросы идут к своему DNS в локальной сети, мимо туннеля", "Свой DNS")]
+    [InlineData(null, "ipv6_dns", "DNS по IPv6 открыт", "мимо туннеля", "IPv6 мимо туннеля открыт, а «Блокировать DNS провайдера» выключено",
+        "Запросы по IPv6 могут идти к DNS провайдера мимо туннеля", "Видны провайдеру")]
     public async Task Dns_chip_tells_who_sees_the_lookups_outside_the_tunnel(
-        bool ownDns, string reason, string title, string value, string text, string detail, string chipText)
+        bool? ownDns, string reason, string title, string value, string text, string detail, string chipText)
     {
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
         {
@@ -420,7 +422,12 @@ public sealed class MainWindowTests : WindowHarness
         Service<SettingsService>().Update(s => s with
         {
             Mode = ConnectionMode.Vpn,
-            Protection = ownDns ? s.Protection with { Dns = DnsChoice.Custom, CustomDns = "192.168.1.53" } : s.Protection with { AllowLan = true, BlockOutsideDns = false },
+            Protection = ownDns switch
+            {
+                true => s.Protection with { Dns = DnsChoice.Custom, CustomDns = "192.168.1.53" },
+                false => s.Protection with { AllowLan = true, BlockOutsideDns = false },
+                null => s.Protection with { BlockIpv6 = false, BlockOutsideDns = false },
+            },
         });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
 

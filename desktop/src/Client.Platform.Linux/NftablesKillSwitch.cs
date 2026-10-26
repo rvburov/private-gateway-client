@@ -147,6 +147,10 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
         if (redirect is not null)
         {
             Chain(text, "dns", [redirect], "type nat hook output priority -100; policy accept;");
+            // Перенаправленный запрос сокета с привязкой к карте (SO_BINDTODEVICE) после nat уходит не в туннель, а фильтр
+            // output видел адрес до маршрутизации — закрыть после нее, по настоящему интерфейсу.
+            Chain(text, "dns_out", [$"oifname != \"{policy.TunnelInterface}\" ip daddr {policy.TunnelDns} meta l4proto {{ tcp, udp }} th dport 53 drop"],
+                "type filter hook postrouting priority 0; policy accept;");
         }
 
         return text.Append("}\n").ToString();
@@ -167,7 +171,8 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
         var mark = policy.Direct is { } exit ? $"meta mark != {exit.Mark.ToString(CultureInfo.InvariantCulture)} " : string.Empty;
         // Свой DNS в частной сети — как есть: его спрашивает сам Xray, перенаправленный, запрос вернулся бы в Xray по кругу.
         var own = policy.LanDns is { AddressFamily: AddressFamily.InterNetwork } lanDns ? $"ip daddr != {lanDns} " : string.Empty;
-        return $"oifname != \"{name}\" {mark}ip daddr {{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }} {own}"
+        // Запрос к своему адресу машины (свой DNS-сервер на адресе в сети) идет через петлю — как есть.
+        return $"oifname != \"{name}\" oifname != \"lo\" {mark}ip daddr {{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }} {own}"
             + $"meta l4proto {{ tcp, udp }} th dport 53 dnat ip to {dns}";
     }
 

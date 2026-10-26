@@ -211,7 +211,10 @@ public sealed class WfpKillSwitchTests
         {
             HyperVFirewall.Close().ShouldBeNull();
             HyperVFirewall.IsClosed().ShouldBeTrue("оба правила стоят\n" + HyperVRules());
-            HyperVFirewall.Close().ShouldBeNull("повторно — заменяет, не падает");
+            var created = HyperVFirewall.Created;
+            HyperVFirewall.Close().ShouldBeNull("повторно — не падает");
+            (HyperVFirewall.Created, HyperVFirewall.IsClosed()).ShouldBe((created, true),
+                "оба правила уже стоят — их не снимают и не ставят заново: ВМ ни на миг не открыты");
 
             WfpKillSwitch.ForService().Warning.ShouldBeNull();
             HyperVFirewall.IsClosed().ShouldBeFalse("фильтров блока нет — правила Hyper-V, оставшиеся с прошлого раза, снимаются при запуске службы");

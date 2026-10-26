@@ -34,6 +34,11 @@ public static class HyperVFirewall
     /// <summary>Пространства имен нет (WBEM_E_INVALID_NAMESPACE).</summary>
     private const int InvalidNamespace = unchecked((int)0x8004100E);
 
+    private static int _created;
+
+    /// <summary>Сколько правил поставлено с запуска процесса — по нему видно, что повторная постановка стоящие не трогает.</summary>
+    public static int Created => Volatile.Read(ref _created);
+
     /// <summary>Правила: InstanceID, название, направление (1 — входящие, 2 — исходящие).</summary>
     private static readonly (string Id, string Name, int Direction)[] Rules =
     [
@@ -41,9 +46,24 @@ public static class HyperVFirewall
         ("{c4e29d71-58b3-4a06-8f1e-2b7d9c3a6e14}", NamePrefix + "ВМ без туннеля закрыты (входящие)", 1),
     ];
 
-    /// <summary>Поставить оба правила (прежние наши — снять). Не вышло — текст для журнала, вышло — null.</summary>
+    /// <summary>
+    /// Поставить оба правила. Уже стоят оба — не трогать: снять и поставить заново значило бы открыть ВМ на это время при каждой
+    /// замене блока. Иначе прежние наши (одно, старые названия) снять и поставить оба. Не вышло — текст для журнала, вышло — null.
+    /// </summary>
     public static string? Close() => Try(scope =>
     {
+        var ours = Ours(scope);
+        var standing = Rules.All(r => ours.Any(o => string.Equals(o["InstanceID"] as string, r.Id, StringComparison.OrdinalIgnoreCase)));
+        foreach (var found in ours)
+        {
+            found.Dispose();
+        }
+
+        if (standing)
+        {
+            return;
+        }
+
         Remove(scope);
         using var rule = new ManagementClass(scope, new ManagementPath(Class), new ObjectGetOptions(Store()));
         foreach (var (id, name, direction) in Rules)
@@ -55,6 +75,7 @@ public static class HyperVFirewall
             instance["Enabled"] = Enabled;
             instance["Direction"] = direction;
             instance.Put(new PutOptions(Store(), TimeSpan.FromSeconds(10), false, PutType.CreateOnly));
+            Interlocked.Increment(ref _created);
         }
     });
 

@@ -81,4 +81,32 @@ public sealed partial class VpnModeTests
         (rig.Site.Requests - sites).ShouldBeGreaterThanOrEqualTo(2 + git);
         rig.Lan.Requests.ShouldBe(0, "мимо туннеля в сеть — ничего");
     }
+
+    [Fact]
+    public async Task Dns_of_a_socket_bound_to_the_card_stays_off_the_wire_after_the_redirect()
+    {
+        NetworkNamespace.SkipUnlessAvailable("python3");
+        await using var rig = await Rig.CreateAsync();
+        // Маршрут по умолчанию — через шлюз, как в настоящей сети: без него пакет к 172.19.0.2 на карте ждал бы ARP самого адреса
+        // и не уходил, и утечку было бы не увидеть.
+        rig.Netns.Run(null, "ip", "route", "replace", "default", "via", rig.Definition.Host, "dev", "pgnet0");
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o));
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        // Локальная сеть разрешена, DNS провайдера закрыт: DNS к роутеру перенаправляется в туннель (DNAT).
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition, allowLan: true), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        using var tap = await WireTap.StartAsync(rig.Netns);
+        try
+        {
+            // Сокет с привязкой к карте (как dnsmasq «сервер@интерфейс»): после перенаправления он все равно уходил бы в карту.
+            await rig.Netns.ResolveAsync("example.com", IPAddress.Parse(rig.Lan.Url.Host), seconds: 2, device: "pgnet0");
+        }
+        catch (InvalidOperationException)
+        {
+            // Закрыто — так и должно быть.
+        }
+
+        tap.Stop().Where(line => line.Split(' ') is [_, "6" or "17", _, "53"]).ShouldBeEmpty("DNS мимо туннеля на провод не вышел");
+    }
 }

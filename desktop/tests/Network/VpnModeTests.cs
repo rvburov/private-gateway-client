@@ -307,6 +307,46 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Connect_canceled_after_the_old_tunnel_stopped_still_ends_in_an_honest_state()
+    {
+        await using var rig = await Rig.CreateAsync();
+        var real = IPAddress.Parse(rig.Definition.Host);
+        var asked = 0;
+        var stopped = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Resolve = async (name, _) =>
+            {
+                // Второй поиск нового имени — уже без прежнего туннеля: тут вызов и отменяется.
+                if (name == "b.example.com" && Interlocked.Increment(ref asked) == 2)
+                {
+                    stopped.TrySetResult();
+                    await release.Task;
+                }
+
+                return name == "b.example.com" ? [] : [real];
+            },
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        using var cancel = new CancellationTokenSource();
+        var call = service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "b.example.com" }), cancellationToken: cancel.Token).ResponseAsync;
+        await stopped.Task.WaitAsync(TimeSpan.FromSeconds(30), Ct);
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State
+            .ShouldBe(V1.ConnectionState.Connecting, "прежнего туннеля уже нет — не «Защищено»");
+        await cancel.CancelAsync();
+        await Should.ThrowAsync<Grpc.Core.RpcException>(() => call);
+        release.TrySetResult();
+
+        // Отмена вызова не оставляет «Подключение» без ядер: имени нет — отказ, блок стоит без туннеля.
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Blocked, service.Journal);
+        (rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.TunnelInterface).ShouldBe((true, null));
+    }
+
+    [Fact]
     public async Task Addresses_of_a_vpn_server_are_not_taken_for_another_server_after_proxy_mode()
     {
         await using var rig = await Rig.CreateAsync();
@@ -350,6 +390,15 @@ public sealed partial class VpnModeTests
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2),
             "смена сервера не удалась — сеть закрыта, а не открыта напрямую");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(rig.Lan.Url, seconds: 2, device: "pgnet0"));
+
+        // Пауза для входа в Wi-Fi и ее конец: прежний сервер сам не подключается — «Блокировка» до подключения или отключения.
+        await service.Client.PauseForCaptivePortalAsync(FiveMinutes, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null, service.Journal);
+        await service.Client.PauseForCaptivePortalAsync(Cancel, cancellationToken: Ct);
+        var resumed = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is null, service.Journal))[^1];
+        (resumed.State, rig.KillSwitch.IsEnabled, rig.KillSwitch.Last!.TunnelInterface).ShouldBe((V1.ConnectionState.Blocked, true, null));
+        service.Journal.Tail(ServiceJournal.Capacity).Count(e => e.Message.StartsWith("Подключение в режиме VPN", StringComparison.Ordinal))
+            .ShouldBe(1, "к прежнему серверу после отказа не подключались");
 
         // Из этой «Блокировки» — снова к рабочему серверу.
         await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);

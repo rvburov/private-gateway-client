@@ -302,9 +302,9 @@ internal sealed class NetworkNamespace : IDisposable
 
     /// <summary>Запрос A по UDP к <paramref name="server"/> изнутри пространства: адрес из ответа или «none».</summary>
     /// <summary>Запрос A к DNS <paramref name="server"/> по UDP или по TCP; ответ — адрес или «none».</summary>
-    public Task<string> ResolveAsync(string name, IPAddress server, int seconds = 10, bool tcp = false) => RunAsync("python3", "-c", """
+    public Task<string> ResolveAsync(string name, IPAddress server, int seconds = 10, bool tcp = false, string? device = null) => RunAsync("python3", "-c", """
         import socket, struct, sys
-        name, server, seconds, tcp = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4] == "tcp"
+        name, server, seconds, tcp, device = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4] == "tcp", sys.argv[5]
         query = struct.pack(">HHHHHH", 0x5047, 0x0100, 1, 0, 0, 0)
         query += b"".join(bytes([len(p)]) + p.encode() for p in name.split(".")) + b"\0" + struct.pack(">HH", 1, 1)
         if tcp:
@@ -319,11 +319,13 @@ internal sealed class NetworkNamespace : IDisposable
             reply = data[2:2 + struct.unpack(">H", data[:2])[0]]
         else:
             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if device:
+                s.setsockopt(socket.SOL_SOCKET, 25, device.encode())
             s.settimeout(seconds)
             s.sendto(query, (server, 53))
             reply = s.recv(512)
         print(socket.inet_ntoa(reply[-4:]) if struct.unpack(">H", reply[6:8])[0] else "none", end="")
-        """, name, server.ToString(), seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), tcp ? "tcp" : "udp");
+        """, name, server.ToString(), seconds.ToString(System.Globalization.CultureInfo.InvariantCulture), tcp ? "tcp" : "udp", device ?? string.Empty);
 
     public void Dispose()
     {

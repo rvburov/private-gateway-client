@@ -1,5 +1,6 @@
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Service;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -116,4 +117,22 @@ public sealed partial class VpnModeTests
             return status;
         }
     }
+
+    [Theory]
+    [InlineData(false, false, true, true)]
+    [InlineData(true, false, true, false)]
+    [InlineData(false, true, true, false)]
+    [InlineData(false, false, false, false)]
+    public void Rules_open_ipv6_outside_only_when_the_user_let_it_and_the_tunnel_does(bool killSwitch, bool blockIpv6, bool tunnelLets, bool open) =>
+        Gateway.Ipv6OutsideOpen(killSwitch, ProtectionSettings.Default with { BlockIpv6 = blockIpv6 }, tunnelLets).ShouldBe(open,
+            "сервер по IPv6 при адаптере без IPv6: туннель пропускает IPv6 мимо себя, но «Блокировать IPv6 вне туннеля» включено — закрыт");
+
+    [Theory]
+    [InlineData(false, false, true, "ipv6_dns")]
+    [InlineData(false, true, true, null)]
+    [InlineData(true, false, true, null)]
+    [InlineData(false, false, false, null)]
+    public void Dns_row_tells_when_dns_over_open_ipv6_goes_around_the_tunnel(bool blockOutsideDns, bool blockIpv6, bool ipv6Open, string? reason) =>
+        Gateway.DnsOutside(ProtectionSettings.Default with { BlockOutsideDns = blockOutsideDns, BlockIpv6 = blockIpv6 }, ipv6Open).ShouldBe(reason,
+            "IPv6 мимо туннеля открыт, а DNS провайдера не закрыт — запросы по IPv6 могут уйти к нему");
 }
