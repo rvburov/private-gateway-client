@@ -132,9 +132,13 @@ internal sealed class NetworkNamespace : IDisposable
         return (host, neighbor, @public);
     }
 
-    /// <summary>Пропустить тест, если в ядре машины нет IPv6 или он выключен для новых адаптеров (контейнер облака).</summary>
+    /// <summary>
+    /// Пропустить тест, если в ядре машины нет IPv6 или он выключен для новых адаптеров (контейнер облака). Не на Linux —
+    /// причина та же, что у <see cref="SkipUnlessAvailable"/>: файла ядра там нет, но дело не в IPv6.
+    /// </summary>
     public static void SkipUnlessIpv6()
     {
+        Assert.SkipUnless(OperatingSystem.IsLinux(), "сетевые пространства есть только в Linux");
         const string Default = "/proc/sys/net/ipv6/conf/default/disable_ipv6";
         Assert.SkipUnless(File.Exists(Default) && File.ReadAllText(Default).Trim() == "0", "в ядре машины нет IPv6 или он выключен");
     }
