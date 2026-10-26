@@ -1,0 +1,66 @@
+<!--
+  Установщик Windows (MSI, WiX v5) — scripts/package-windows.sh: папка сборки выпуска (bindpath App), версия MSI (Version,
+  только цифры SemVer), значок (Icon).
+  - Программа — в Program Files\Private Gateway (на всю машину), ярлык в меню «Пуск» с AUMID окна — уведомления
+    приходят от имени программы.
+  - Служба ставится той же командой, что из окна: PrivateGateway.Service.exe install для пользователя, который ставит
+    программу (UserSID), — копия в Program Files\Private Gateway\Service и запуск с Windows. Не встала — установка
+    откатывается.
+  - Удаление (не обновление) сначала удаляет службу: uninstall снимает блок при обрыве и удаляет папку службы — машина
+    не остается без сети. Обновление службу не удаляет: install новой версии останавливает и заменяет ее.
+  Файлы пользователя (настройки окна в LocalAppData) и чужие файлы в папке программы установщик не трогает.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Private Gateway" Manufacturer="Private Gateway" Version="$(Version)" UpgradeCode="b3f677bb-fd84-4ddd-b04c-8cf67f3ea5c3"
+           Scope="perMachine" Compressed="yes" Language="1033">
+    <MajorUpgrade Schedule="afterInstallInitialize" DowngradeErrorMessage="A newer version of Private Gateway is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Icon Id="AppIcon" SourceFile="$(Icon)" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/rvburov/private-gateway-client" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER" Name="Private Gateway" />
+    </StandardDirectory>
+
+    <ComponentGroup Id="App" Directory="INSTALLFOLDER">
+      <Files Include="!(bindpath.App)\**" />
+    </ComponentGroup>
+
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Component Id="StartMenuShortcut">
+        <Shortcut Id="AppShortcut" Name="Private Gateway" Target="[INSTALLFOLDER]PrivateGateway.exe" WorkingDirectory="INSTALLFOLDER" Icon="AppIcon">
+          <!-- Тот же AUMID, что регистрирует окно для уведомлений (WindowsToastNotifier.AppId). -->
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="PrivateGateway.Client" />
+        </Shortcut>
+        <RegistryValue Root="HKLM" Key="Software\Private Gateway" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </StandardDirectory>
+
+    <Feature Id="Main">
+      <ComponentGroupRef Id="App" />
+      <ComponentRef Id="StartMenuShortcut" />
+    </Feature>
+
+    <!-- Служба: команды самой службы без окна консоли (WixQuietExec), от SYSTEM. -->
+    <SetProperty Id="InstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --install --owner [UserSID]"
+                 Before="InstallService" Sequence="execute" />
+    <CustomAction Id="InstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="check" />
+
+    <SetProperty Id="RollbackInstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --uninstall"
+                 Before="RollbackInstallService" Sequence="execute" />
+    <CustomAction Id="RollbackInstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="rollback" Impersonate="no" Return="ignore" />
+
+    <SetProperty Id="UninstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --uninstall"
+                 Before="UninstallService" Sequence="execute" />
+    <CustomAction Id="UninstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="ignore" />
+
+    <InstallExecuteSequence>
+      <Custom Action="RollbackInstallService" After="InstallFiles" Condition="NOT REMOVE" />
+      <Custom Action="InstallService" After="RollbackInstallService" Condition="NOT REMOVE" />
+      <Custom Action="UninstallService" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
+    </InstallExecuteSequence>
+  </Package>
+</Wix>

@@ -15,6 +15,8 @@ on:
       - scripts/get-singbox.sh
       - scripts/tests/release-smoke.sh
       - scripts/package-linux.sh
+      - scripts/package-windows.sh
+      - scripts/tests/windows-installer-smoke.sh
       - scripts/tests/linux-package-smoke.sh
       - desktop/packaging/**
       - shared/specifications/icons/**
@@ -100,6 +102,22 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends desktop-file-utils nftables
           scripts/tests/linux-package-smoke.sh "${{ steps.version.outputs.version }}"
+
+      # Установщик Windows — WiX 5.0.2 (MS-RL) глобальным инструментом dotnet, затем настоящая установка и удаление на этой
+      # машине (одноразовой): служба, папки, ярлык, запись в «Установленных приложениях».
+      - name: Установщик Windows (MSI)
+        if: runner.os == 'Windows'
+        env:
+          DOTNET_ROLL_FORWARD: Major
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          wix extension add --global WixToolset.Util.wixext/5.0.2
+          scripts/package-windows.sh "${{ steps.version.outputs.version }}"
+
+      - name: Установка и удаление MSI
+        if: runner.os == 'Windows'
+        run: scripts/tests/windows-installer-smoke.sh "${{ steps.version.outputs.version }}"
 
       - uses: actions/upload-artifact@v4
         with:

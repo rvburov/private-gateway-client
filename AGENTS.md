@@ -155,6 +155,7 @@ dotnet run --project desktop/src/Client.Service -- --version
 dotnet run scripts/gen-tokens.cs                       # тема Avalonia из design-tokens.json
 scripts/publish.sh [версия]                            # выпуск для ОС этой машины: архив, SBOM, SHA256SUMS
 scripts/package-linux.sh <версия>                      # .deb и .rpm из сборки выпуска (нужен nfpm)
+scripts/package-windows.sh <версия>                    # MSI из сборки выпуска (Git Bash, нужен wix 5.0.2)
 dotnet run scripts/gen-icons.cs                        # значок программы (SVG, ICO) из Icons.axaml и токенов
 ```
 
