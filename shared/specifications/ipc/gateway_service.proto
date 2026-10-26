@@ -65,6 +65,9 @@ service GatewayService {
   // и ее), ответ — номер процесса установщика: окно ждет его конца и открывается заново. Откат на прежнюю версию
   // (UpdateOffer.rollback) — те же DownloadUpdate и InstallUpdate с ее номером.
   rpc InstallUpdate(InstallUpdateRequest) returns (InstallUpdateReply);
+
+  // Сетевой инспектор: адаптеры, адреса, шлюзы, DNS, DHCP и маршруты машины — только читает, ничего не меняет.
+  rpc InspectNetwork(InspectNetworkRequest) returns (NetworkSnapshot);
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -607,4 +610,60 @@ message InstallUpdateReply {
   // 0 — установщик не запущен (error — почему).
   int32 installer_pid = 1;
   string error = 2;
+}
+
+// ── Сетевой инспектор ───────────────────────────────────────────────────────
+
+message InspectNetworkRequest {}
+
+enum AdapterKind {
+  ADAPTER_KIND_UNSPECIFIED = 0;
+  ADAPTER_KIND_ETHERNET = 1;
+  ADAPTER_KIND_WIFI = 2;
+  ADAPTER_KIND_CELLULAR = 3;
+  // TUN, WireGuard, PPP, TAP — свой или чужой VPN.
+  ADAPTER_KIND_TUNNEL = 4;
+  ADAPTER_KIND_LOOPBACK = 5;
+  ADAPTER_KIND_OTHER = 6;
+}
+
+message NetworkAddress {
+  string address = 1;
+  int32 prefix_length = 2;
+}
+
+message NetworkCard {
+  // Имя адаптера в ОС (eth0, en0, «Ethernet») и описание драйвера.
+  string name = 1;
+  string description = 2;
+  AdapterKind kind = 3;
+  bool up = 4;
+  // aa:bb:cc:dd:ee:ff; у туннелей и петли — пусто.
+  string mac = 5;
+  // 0 — неизвестно.
+  int32 mtu = 6;
+  int64 speed_bps = 7;
+  repeated NetworkAddress addresses = 8;
+  repeated string gateways = 9;
+  repeated string dns_servers = 10;
+  // Адрес получен автоматически (DHCP); сервер и остаток аренды — если ОС их знает.
+  bool dhcp = 11;
+  string dhcp_server = 12;
+  google.protobuf.Duration dhcp_remaining = 13;
+}
+
+message NetworkRoute {
+  // Сеть с префиксом или default.
+  string destination = 1;
+  // Пусто — сеть рядом, без шлюза.
+  string gateway = 2;
+  string interface = 3;
+  // 0 — ОС метрики не называет.
+  int32 metric = 4;
+}
+
+message NetworkSnapshot {
+  google.protobuf.Timestamp taken_at = 1;
+  repeated NetworkCard cards = 2;
+  repeated NetworkRoute routes = 3;
 }

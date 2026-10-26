@@ -1,4 +1,5 @@
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
@@ -38,6 +39,12 @@ public interface IGatewayClient
     /// </summary>
     IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, CancellationToken cancellationToken = default) =>
         AsyncEnumerable.Empty<UpdateProgress>();
+
+    /// <summary>
+    /// Сетевой инспектор: адаптеры, адреса, шлюзы, DNS, DHCP и маршруты машины — читает служба (в окне сеть запрещена) и
+    /// ничего не меняет. Службы нет, она старая или не ответила — null.
+    /// </summary>
+    Task<NetworkSnapshot?> InspectNetworkAsync(CancellationToken cancellationToken = default) => Task.FromResult<NetworkSnapshot?>(null);
 
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);

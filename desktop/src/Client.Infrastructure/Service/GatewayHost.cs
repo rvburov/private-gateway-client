@@ -1,5 +1,6 @@
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
@@ -174,6 +175,12 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default) =>
         await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
             ? await service.CheckForUpdateAsync(channel, force, cancellationToken).ConfigureAwait(false)
+            : null;
+
+    /// <summary>Сеть машины читает служба; в режиме прокси ради инспектора запускается служба пользователя.</summary>
+    public async Task<NetworkSnapshot?> InspectNetworkAsync(CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.InspectNetworkAsync(cancellationToken).ConfigureAwait(false)
             : null;
 
     /// <summary>Скачивает и ставит обновление только найденная служба — та, что его нашла.</summary>

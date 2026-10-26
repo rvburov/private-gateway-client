@@ -4,6 +4,7 @@ using Grpc.Net.Client;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
@@ -138,6 +139,24 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             var reply = await _client.CheckForUpdateAsync(new V1.CheckForUpdateRequest { Channel = channel.ToContract(), Force = force },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             return reply.ToCore();
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // Ответ не по контракту.
+            return null;
+        }
+    }
+
+    /// <summary>Служба без инспектора (старая) или без связи — null.</summary>
+    public async Task<NetworkSnapshot?> InspectNetworkAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return (await _client.InspectNetworkAsync(new V1.InspectNetworkRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
         }
         catch (RpcException)
         {

@@ -146,6 +146,10 @@ public sealed class GatewayRpc(
     /// (<see cref="Gateway.CheckExitAsync"/>, <see cref="Gateway.CheckIpv6Async"/>, <see cref="Gateway.CheckDnsAsync"/>), другие VPN —
     /// по маршрутам.
     /// </summary>
+    // Снимок сети читает ОС: чтение маршрутов внешней программой — не в потоке Kestrel.
+    public override Task<V1.NetworkSnapshot> InspectNetwork(V1.InspectNetworkRequest request, ServerCallContext context) =>
+        Task.Run(() => gateway.InspectNetwork().ToContract(), context.CancellationToken);
+
     public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
         // Замеры IP для сайтов по IPv4 и по IPv6 и DNS мимо туннеля — сразу: каждый ждет ответа.

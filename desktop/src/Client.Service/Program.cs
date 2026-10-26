@@ -133,7 +133,7 @@ await using var gateway = new Gateway(
     new GatewayOptions(xray, canVpn, Uri.TryCreate(Option("--latency-target"), UriKind.Absolute, out var target) ? target : LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
         Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
-        TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null, SystemDns: systemDns),
+        TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null, SystemDns: systemDns, NetworkDetails: ServiceHost.NetworkDetails()),
     time, journal, systemProxy);
 // Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки и прежняя версия (для
 // отката) — в папке состояния. Ставит обновление только установленная служба (у нее есть --service-name) программы из

@@ -10,7 +10,7 @@ namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
 /// Одинаковые контракты платформенных частей службы на каждой ОС: сценарии одни, а проверяется то, что служба берет на этой
-/// ОС (ServiceHost), — блок при обрыве, хранилище секретов, таблица маршрутов, часы сна. Правила блока ставятся
+/// ОС (ServiceHost), — блок при обрыве, хранилище секретов, таблица маршрутов, подробности сети для инспектора, часы сна. Правила блока ставятся
 /// по-настоящему там, где это не отрезает машину CI: Windows — фильтры WFP только для одной программы, Linux — nftables в
 /// своем сетевом пространстве, macOS — pf в своем якоре, который основные правила не вызывают. Что блок пропускает и
 /// закрывает трафик, проверяют тесты каждой ОС (KillSwitchTests, WfpKillSwitchTests, PfKillSwitchTests).
@@ -76,6 +76,17 @@ public sealed class PlatformContractTests
 
         routes.ShouldContain(r => !r.IsTunnel, "у машины маршрут ко всему интернету — через сетевую карту");
         routes.ShouldAllBe(r => r.Adapter.Length > 0 && r.Adapter.Trim() == r.Adapter, "имя адаптера — без пробелов и концов строк");
+    }
+
+    [Fact]
+    public void Network_details_of_this_os_list_the_routes_of_the_machine()
+    {
+        var details = ServiceHost.NetworkDetails().ShouldNotBeNull("маршруты и DHCP для инспектора есть на каждой ОС");
+
+        var routes = details.Routes();
+
+        routes.ShouldContain(r => r.Destination == "default" && r.Gateway != null, "маршрут по умолчанию через шлюз");
+        routes.ShouldAllBe(r => r.Interface.Length > 0 && r.Destination.Length > 0);
     }
 
     [Fact]

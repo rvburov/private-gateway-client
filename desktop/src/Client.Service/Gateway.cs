@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
@@ -39,7 +40,8 @@ namespace PrivateGateway.Client.Service;
 /// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>);
 /// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>;
 /// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять;
-/// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box.
+/// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box;
+/// <paramref name="NetworkDetails"/> — маршруты и DHCP этой ОС для сетевого инспектора; null — без них.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -65,7 +67,8 @@ public sealed record GatewayOptions(
     Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null,
     TimeSpan? BlockWatch = null,
     string? TunDevice = null,
-    ISystemDns? SystemDns = null);
+    ISystemDns? SystemDns = null,
+    INetworkDetails? NetworkDetails = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -1300,6 +1303,9 @@ public sealed partial class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Warning, "service", "DNS ОС не направлен в туннель: " + e.Message);
         }
     }
+
+    /// <summary>Сетевой инспектор: снимок адаптеров, адресов, DHCP и маршрутов машины — только чтение.</summary>
+    public NetworkSnapshot InspectNetwork() => new NetworkInspector(_options.NetworkDetails, _time, _journal).Take();
 
     /// <summary>Туннеля больше нет — DNS ОС как был.</summary>
     private void RestoreDns()

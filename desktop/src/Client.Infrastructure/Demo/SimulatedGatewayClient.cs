@@ -1,7 +1,9 @@
+using System.Net;
 using System.Reflection;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Servers;
 
 namespace PrivateGateway.Client.Infrastructure.Demo;
@@ -63,6 +65,31 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
     public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(new ServiceDetails(
         typeof(SimulatedGatewayClient).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0",
         Contracts.ContractMapping.ApiVersion, []));
+
+    /// <summary>Сеть машины в демо: адреса из диапазонов документации (RFC 5737, RFC 3849) и MAC документации (RFC 7042).</summary>
+    public Task<NetworkSnapshot?> InspectNetworkAsync(CancellationToken cancellationToken = default)
+    {
+        var router = IPAddress.Parse("192.0.2.1");
+        NetworkCard[] cards =
+        [
+            new("Wi-Fi", "Intel(R) Wi-Fi 6 AX201", AdapterKind.Wifi, true, "00:00:5e:00:53:01", 1500, 866_000_000,
+                [new(IPAddress.Parse("192.0.2.23"), 24), new(IPAddress.Parse("2001:db8:1::23"), 64)], [router], [router],
+                new DhcpLease(router, TimeSpan.FromHours(20))),
+            new("Ethernet", "Realtek PCIe GbE", AdapterKind.Ethernet, false, "00:00:5e:00:53:02", 1500, null, [], [], [], null),
+            new("Private Gateway", "Wintun Userspace Tunnel", AdapterKind.Tunnel, true, null, 1420, null,
+                [new(IPAddress.Parse("172.19.0.1"), 30)], [], [IPAddress.Parse("172.19.0.2")], null),
+            new("Loopback", string.Empty, AdapterKind.Loopback, true, null, null, null, [new(IPAddress.Loopback, 8), new(IPAddress.IPv6Loopback, 128)], [], [], null),
+        ];
+        NetworkRoute[] routes =
+        [
+            new("default", router, "Wi-Fi", 25),
+            new("192.0.2.0/24", null, "Wi-Fi", 281),
+            new("0.0.0.0/1", null, "Private Gateway", 5),
+            new("128.0.0.0/1", null, "Private Gateway", 5),
+            new("2001:db8:1::/64", null, "Wi-Fi", 256),
+        ];
+        return Task.FromResult<NetworkSnapshot?>(new NetworkSnapshot(time.GetUtcNow(), cards, routes));
+    }
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
 

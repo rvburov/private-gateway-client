@@ -108,6 +108,13 @@ public static partial class ServiceHost
         : OperatingSystem.IsMacOS() ? Platform.MacOS.NetstatRouteTable.ForThisMachine()
         : null;
 
+    /// <summary>Маршруты и DHCP этой ОС для сетевого инспектора: Windows — IP Helper, Linux — <c>ip</c>, macOS — <c>netstat</c> и <c>ipconfig</c>.</summary>
+    public static INetworkDetails? NetworkDetails() =>
+        OperatingSystem.IsWindows() ? new WindowsNetworkDetails()
+        : OperatingSystem.IsLinux() ? IpNetworkDetails.ForThisMachine()
+        : OperatingSystem.IsMacOS() ? Platform.MacOS.MacNetworkDetails.ForThisMachine()
+        : null;
+
     /// <summary>
     /// DNS ОС на время туннеля, где sing-box его не прописывает: macOS — <c>scutil</c> (копия прежнего — в папке состояния
     /// <paramref name="state"/>); Windows и Linux — null, там DNS прописывает sing-box.
