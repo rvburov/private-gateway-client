@@ -86,6 +86,50 @@ public static partial class ContractMapping
         return new NetworkSnapshot(snapshot.TakenAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue, cards, routes);
     }
 
+    public static V1.AddressInfo ToContract(this AddressInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new V1.AddressInfo
+        {
+            Address = info.Address.ToString(),
+            Asn = info.Asn ?? 0,
+            Holder = info.Holder ?? string.Empty,
+            Prefix = info.Prefix ?? string.Empty,
+            Country = info.Country ?? string.Empty,
+            City = info.City ?? string.Empty,
+            Failure = info.Failure switch
+            {
+                null => V1.AddressFailure.Unspecified,
+                AddressFailure.Private => V1.AddressFailure.Private,
+                AddressFailure.Unreachable => V1.AddressFailure.Unreachable,
+                AddressFailure.NotFound => V1.AddressFailure.NotFound,
+                _ => throw new ArgumentOutOfRangeException(nameof(info), info.Failure, null),
+            },
+        };
+    }
+
+    /// <summary>Сведения от службы; адрес не разобрать — <see cref="ArgumentException"/> (ответ не по контракту).</summary>
+    public static AddressInfo ToCore(this V1.AddressInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        static string? Text(string value) => value.Length > 0 ? value : null;
+        return new AddressInfo(
+            IPAddress.TryParse(info.Address, out var address) ? address : throw new ArgumentException("Адрес не разобрать: " + info.Address, nameof(info)),
+            info.Asn > 0 ? info.Asn : null,
+            Text(info.Holder),
+            Text(info.Prefix),
+            Text(info.Country),
+            Text(info.City),
+            info.Failure switch
+            {
+                V1.AddressFailure.Unspecified => null,
+                V1.AddressFailure.Private => AddressFailure.Private,
+                V1.AddressFailure.Unreachable => AddressFailure.Unreachable,
+                V1.AddressFailure.NotFound => AddressFailure.NotFound,
+                _ => AddressFailure.Unreachable,
+            });
+    }
+
     private static List<IPAddress> Addresses(IEnumerable<string> values) =>
         [.. values.Select(v => IPAddress.TryParse(v, out var address) ? address : null).OfType<IPAddress>()];
 }

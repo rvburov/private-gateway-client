@@ -68,6 +68,16 @@ service GatewayService {
 
   // Сетевой инспектор: адаптеры, адреса, шлюзы, DNS, DHCP и маршруты машины — только читает, ничего не меняет.
   rpc InspectNetwork(InspectNetworkRequest) returns (NetworkSnapshot);
+
+  // Что известно об адресе в интернете: автономная система, владелец, сеть (RIPEstat) и примерное место (MaxMind GeoLite2
+  // через RIPEstat). Только IP — имя служба не принимает (INVALID_ARGUMENT); о частном адресе — ответ без запроса. Об адресе
+  // выхода режима прокси служба спрашивает через ядро, об остальных — обычным путем (в режиме VPN — через туннель). Ответ
+  // служба помнит час.
+  rpc DescribeAddress(DescribeAddressRequest) returns (AddressInfo);
+
+  // Внешний IP по кнопке инспектора: под защитой — адрес выхода (как проверка exit_ip), защита выключена или на паузе —
+  // реальный, прямым путем. Итог — в Status.exit (WatchStatus); подключение, блокировка и ошибка — ничего не меряет.
+  rpc MeasureIp(MeasureIpRequest) returns (MeasureIpReply);
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -666,4 +676,35 @@ message NetworkSnapshot {
   google.protobuf.Timestamp taken_at = 1;
   repeated NetworkCard cards = 2;
   repeated NetworkRoute routes = 3;
+}
+
+message DescribeAddressRequest {
+  string address = 1;
+}
+
+message MeasureIpRequest {}
+
+message MeasureIpReply {}
+
+enum AddressFailure {
+  ADDRESS_FAILURE_UNSPECIFIED = 0;
+  // Частный или служебный адрес: в интернете о нем ничего нет.
+  ADDRESS_FAILURE_PRIVATE = 1;
+  // Источник не ответил (нет сети, сеть закрыта блоком, отказ сервиса).
+  ADDRESS_FAILURE_UNREACHABLE = 2;
+  // Источник об адресе ничего не знает.
+  ADDRESS_FAILURE_NOT_FOUND = 3;
+}
+
+message AddressInfo {
+  string address = 1;
+  // 0 — неизвестна.
+  int64 asn = 2;
+  string holder = 3;
+  string prefix = 4;
+  // Код страны ISO 3166 и город — примерно, по базе геолокации.
+  string country = 5;
+  string city = 6;
+  // UNSPECIFIED — сведения есть.
+  AddressFailure failure = 7;
 }

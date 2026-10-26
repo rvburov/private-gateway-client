@@ -1,9 +1,12 @@
+using System.Net;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Core.Inspector;
+using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
@@ -12,7 +15,8 @@ namespace PrivateGateway.Client.Tests.UI;
 
 /// <summary>
 /// «Сеть машины» — сетевой инспектор (этап 7): открывается из «Проверки», показывает снимок службы (в демо — адреса и MAC
-/// из диапазонов документации), без службы говорит, почему пусто. Снимки — в artifacts/ui-snapshots.
+/// из диапазонов документации) и внешний IP с провайдером по кнопке, без службы говорит, почему пусто. Снимки — в
+/// artifacts/ui-snapshots.
 /// </summary>
 public sealed class NetworkPageTests : WindowHarness
 {
@@ -64,6 +68,69 @@ public sealed class NetworkPageTests : WindowHarness
 
         Press(window, "BackButton");
         shell.CurrentKey.ShouldBe(Pages.Check);
+    }
+
+    [AvaloniaFact]
+    public async Task Public_ip_shows_its_provider_only_on_request_and_keeps_the_answer()
+    {
+        var (window, shell) = Open();
+        shell.NavigateCommand.Execute(Pages.Network);
+        WaitFor(() => shell.CurrentPage is NetworkPageViewModel { IsLoading: false });
+        var page = (NetworkPageViewModel)shell.CurrentPage!;
+
+        var direct = page.PublicAddresses.ShouldHaveSingleItem("защита выключена — выхода нет, есть реальный адрес");
+        (direct.Label, direct.AddressText).ShouldBe(("Напрямую", "198.51.100.7"));
+        direct.Rows.ShouldBeEmpty("о провайдере не спрашивают, пока пользователь не попросит");
+        direct.CanDescribe.ShouldBeTrue();
+        Text(window, "PublicSource").ShouldStartWith("Сведения — RIPEstat (RIPE NCC)");
+        Snapshot(window, "network-public-ask");
+
+        await direct.DescribeCommand.ExecuteAsync(null);
+        direct.Rows.Select(r => (r.Label, r.Value)).ShouldBe([
+            ("Провайдер", "AS64496 · Example Broadband"),
+            ("Сеть", "198.51.100.0/24"),
+            ("Место", "RU · Москва, примерно"),
+        ]);
+        direct.CanDescribe.ShouldBeFalse("ответ есть — второй раз спрашивать незачем");
+        Snapshot(window, "network-public");
+
+        await Connect(shell);
+        page.PublicAddresses.Select(a => (a.Label, a.AddressText)).ShouldBe([("Через сервер", "203.0.113.24"), ("Напрямую", "198.51.100.7")]);
+        page.PublicAddresses[1].ShouldBeSameAs(direct, "тот же адрес — та же строка с уже полученным ответом");
+        await page.PublicAddresses[0].DescribeCommand.ExecuteAsync(null);
+        page.PublicAddresses[0].Rows[0].Value.ShouldBe("AS64500 · Example Hosting B.V.");
+
+        Loc.Instance.SetLanguage("en");
+        Dispatcher.UIThread.RunJobs();
+        direct.Label.ShouldBe("Direct");
+        direct.Rows.Select(r => r.Label).ShouldBe(["Provider", "Network", "Location"]);
+        direct.Rows[2].Value.ShouldBe("RU · Москва, approximate");
+    }
+
+    [AvaloniaFact]
+    public async Task Without_an_answer_the_reason_is_named_and_asking_again_is_possible()
+    {
+        var (_, shell) = Open(gateway: sp =>
+            new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.None));
+        shell.NavigateCommand.Execute(Pages.Network);
+        WaitFor(() => shell.CurrentPage is NetworkPageViewModel { IsLoading: false });
+        ((NetworkPageViewModel)shell.CurrentPage!).HasPublicAddresses.ShouldBeFalse("служба ничего не измеряла");
+
+        var silent = new PublicAddressViewModel(Service<IGatewayClient>(), "network.public.direct", IPAddress.Parse("198.51.100.7"));
+        await silent.DescribeCommand.ExecuteAsync(null);
+        silent.Note.ShouldBe("Служба не ответила — спрашивает она. Запустите службу и спросите еще раз.");
+        silent.CanDescribe.ShouldBeTrue("службу можно запустить и спросить снова");
+
+        var unknown = new PublicAddressViewModel(new SimulatedGatewayClient(Time), "network.public.exit", IPAddress.Parse("192.0.2.99"));
+        await unknown.DescribeCommand.ExecuteAsync(null);
+        unknown.Note.ShouldBe("Источник об этом адресе ничего не знает.");
+        unknown.Rows.ShouldBeEmpty();
+        unknown.CanDescribe.ShouldBeFalse();
+
+        foreach (var failure in Enum.GetValues<AddressFailure>())
+        {
+            Loc.Instance.Has("network.public." + failure.ToString().ToLowerInvariant()).ShouldBeTrue($"у отказа {failure} есть текст");
+        }
     }
 
     [AvaloniaFact]

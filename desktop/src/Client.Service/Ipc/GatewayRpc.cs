@@ -141,15 +141,33 @@ public sealed class GatewayRpc(
         return new V1.CaptivePauseReply { Until = until is { } at ? Timestamp.FromDateTimeOffset(at) : null };
     }
 
+    // Снимок сети читает ОС: чтение маршрутов внешней программой — не в потоке Kestrel.
+    public override Task<V1.NetworkSnapshot> InspectNetwork(V1.InspectNetworkRequest request, ServerCallContext context) =>
+        Task.Run(() => gateway.InspectNetwork().ToContract(), context.CancellationToken);
+
+    /// <summary>Только IP: имя или пустая строка — отказ, служба не ищет адрес по имени ради окна.</summary>
+    public override async Task<V1.AddressInfo> DescribeAddress(V1.DescribeAddressRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (!System.Net.IPAddress.TryParse(request.Address, out var address))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Не адрес IP"));
+        }
+
+        return (await gateway.DescribeAddressAsync(address, context?.CancellationToken ?? default).ConfigureAwait(false)).ToContract();
+    }
+
+    public override async Task<V1.MeasureIpReply> MeasureIp(V1.MeasureIpRequest request, ServerCallContext context)
+    {
+        await gateway.MeasureIpAsync().ConfigureAwait(false);
+        return new V1.MeasureIpReply();
+    }
+
     /// <summary>
     /// Все восемь проверок «Проверки»: служба и ядро, весь трафик и блок — по состоянию, IP для сайтов, IPv6 и DNS — замером
     /// (<see cref="Gateway.CheckExitAsync"/>, <see cref="Gateway.CheckIpv6Async"/>, <see cref="Gateway.CheckDnsAsync"/>), другие VPN —
     /// по маршрутам.
     /// </summary>
-    // Снимок сети читает ОС: чтение маршрутов внешней программой — не в потоке Kestrel.
-    public override Task<V1.NetworkSnapshot> InspectNetwork(V1.InspectNetworkRequest request, ServerCallContext context) =>
-        Task.Run(() => gateway.InspectNetwork().ToContract(), context.CancellationToken);
-
     public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
         // Замеры IP для сайтов по IPv4 и по IPv6 и DNS мимо туннеля — сразу: каждый ждет ответа.

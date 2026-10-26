@@ -91,6 +91,30 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         return Task.FromResult<NetworkSnapshot?>(new NetworkSnapshot(time.GetUtcNow(), cards, routes));
     }
 
+    /// <summary>
+    /// Провайдер адреса в демо — без запроса в интернет: у сервера подключения — хостинг, у реального адреса — домашний
+    /// провайдер; ASN — из диапазона документации (RFC 5398). Остальные адреса источник «не знает».
+    /// </summary>
+    public Task<AddressInfo?> DescribeAddressAsync(IPAddress address, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        AddressInfo info;
+        lock (_gate)
+        {
+            var text = address.ToString();
+            info = _server is { } server && server.Host == text
+                ? new AddressInfo(address, 64500, "Example Hosting B.V.", Network24(address), server.CountryCode, server.City, null)
+                : text == _status.Exit.DirectIp
+                    ? new AddressInfo(address, 64496, "Example Broadband", Network24(address), "RU", "Москва", null)
+                    : AddressInfo.Failed(address, AddressFailure.NotFound);
+        }
+
+        return Task.FromResult<AddressInfo?>(info);
+
+        // Демо-адреса — IPv4: сеть /24 — первые три байта.
+        static string Network24(IPAddress address) => string.Join('.', address.GetAddressBytes()[..3]) + ".0/24";
+    }
+
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
     public IReadOnlyList<JournalEntry> Journal

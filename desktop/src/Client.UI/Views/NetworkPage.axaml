@@ -73,6 +73,58 @@
           </Grid>
         </Border>
 
+        <!-- Внешний IP: адреса из состояния защиты, провайдер — по кнопке (RIPEstat через службу) -->
+        <TextBlock Classes="overline" Text="{l:L network.public, Upper=True}" Margin="6,4,6,0" />
+        <Border x:Name="PublicCard" Classes="card" Padding="16,12">
+          <StackPanel Spacing="10">
+            <TextBlock Classes="caption" IsVisible="{Binding !HasPublicAddresses}" Text="{l:L network.public.none}" TextWrapping="Wrap" />
+            <ItemsControl x:Name="PublicList" ItemsSource="{Binding PublicAddresses}">
+              <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                  <StackPanel Spacing="10" />
+                </ItemsPanelTemplate>
+              </ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:PublicAddressViewModel">
+                  <StackPanel Spacing="4" AutomationProperties.Name="{Binding Label}">
+                    <Grid ColumnDefinitions="88,*,Auto">
+                      <TextBlock Classes="caption" Text="{Binding Label}" VerticalAlignment="Center" />
+                      <SelectableTextBlock Grid.Column="1" Classes="value" FontWeight="SemiBold" Text="{Binding AddressText}"
+                                           VerticalAlignment="Center" />
+                      <Button Grid.Column="2" Classes="link" Padding="8,4" Command="{Binding DescribeCommand}"
+                              IsVisible="{Binding CanDescribe}" Content="{Binding DescribeText}"
+                              AutomationProperties.Name="{Binding DescribeText}" />
+                      <TextBlock Grid.Column="2" Classes="caption" Text="{Binding DescribeText}" IsVisible="{Binding IsAsking}"
+                                 VerticalAlignment="Center" Margin="8,0" />
+                    </Grid>
+                    <ItemsControl ItemsSource="{Binding Rows}">
+                      <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DetailRowViewModel">
+                          <Grid ColumnDefinitions="88,*" Margin="0,3">
+                            <TextBlock Classes="caption" Text="{Binding Label}" />
+                            <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" />
+                          </Grid>
+                        </DataTemplate>
+                      </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="caption" Text="{Binding Note}" IsVisible="{Binding HasNote}" TextWrapping="Wrap" Margin="88,0,0,0" />
+                  </StackPanel>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Button x:Name="MeasureButton" Classes="secondary" Height="40" Padding="14,0" HorizontalAlignment="Left"
+                    CornerRadius="{StaticResource PgRadius.Button}" Command="{Binding MeasureCommand}"
+                    AutomationProperties.Name="{Binding MeasureText}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Classes.spin="{Binding IsMeasuring}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16" StrokeThickness="2.2" />
+                <TextBlock Text="{Binding MeasureText}" VerticalAlignment="Center" FontWeight="Medium" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+        <TextBlock x:Name="PublicSource" Classes="caption" Text="{l:L network.public.source}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
         <!-- Адаптеры -->
         <Grid ColumnDefinitions="*,Auto" Margin="6,4,6,0">
           <TextBlock Classes="overline" Text="{l:L network.adapters, Upper=True}" VerticalAlignment="Bottom" />

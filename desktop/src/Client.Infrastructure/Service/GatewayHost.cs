@@ -1,3 +1,4 @@
+using System.Net;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Inspector;
@@ -182,6 +183,20 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
             ? await service.InspectNetworkAsync(cancellationToken).ConfigureAwait(false)
             : null;
+
+    /// <summary>О провайдере адреса спрашивает служба; как и для инспектора, в режиме прокси запускается служба пользователя.</summary>
+    public async Task<AddressInfo?> DescribeAddressAsync(IPAddress address, CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.DescribeAddressAsync(address, cancellationToken).ConfigureAwait(false)
+            : null;
+
+    public async Task MeasureIpAsync(CancellationToken cancellationToken = default)
+    {
+        if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)
+        {
+            await service.MeasureIpAsync(cancellationToken).ConfigureAwait(false);
+        }
+    }
 
     /// <summary>Скачивает и ставит обновление только найденная служба — та, что его нашла.</summary>
     public IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, CancellationToken cancellationToken = default) =>

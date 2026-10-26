@@ -1,3 +1,4 @@
+using System.Net;
 using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Grpc.Net.Client;
@@ -166,6 +167,39 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             // Ответ не по контракту.
             return null;
+        }
+    }
+
+    /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
+    public async Task<AddressInfo?> DescribeAddressAsync(IPAddress address, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        try
+        {
+            return (await _client.DescribeAddressAsync(new V1.DescribeAddressRequest { Address = address.ToString() }, cancellationToken: cancellationToken)
+                .ConfigureAwait(false)).ToCore();
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+        catch (ArgumentException)
+        {
+            // Ответ не по контракту.
+            return null;
+        }
+    }
+
+    /// <summary>Служба без этого вызова (старая) или без связи — ничего: IP останется прежним.</summary>
+    public async Task MeasureIpAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await _client.MeasureIpAsync(new V1.MeasureIpRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+        catch (RpcException)
+        {
+            // Нет связи или старая служба.
         }
     }
 

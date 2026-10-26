@@ -296,7 +296,7 @@ public static class LatencyProbe
     }
 
     /// <summary>Прокси для всех адресов: WebProxy пропускает localhost мимо прокси, а проверке нужен только вход ядра.</summary>
-    private sealed class FixedProxy(Uri proxy) : IWebProxy
+    internal sealed class FixedProxy(Uri proxy) : IWebProxy
     {
         public ICredentials? Credentials { get; set; }
 

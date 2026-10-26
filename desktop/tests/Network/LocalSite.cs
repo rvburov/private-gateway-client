@@ -15,12 +15,13 @@ internal sealed class LocalSite : IDisposable
     /// <param name="page">Текст страницы.</param>
     /// <param name="address">Где слушать; null — 127.0.0.1.</param>
     /// <param name="port">Порт; 0 — свободный.</param>
-    public LocalSite(string page, IPAddress? address = null, int port = 0)
+    /// <param name="status">Строка ответа: код и текст.</param>
+    public LocalSite(string page, IPAddress? address = null, int port = 0, string status = "200 OK")
     {
         _listener = new TcpListener(address ?? IPAddress.Loopback, port);
         var body = Encoding.UTF8.GetBytes(page);
         _response = [.. Encoding.ASCII.GetBytes(
-            $"HTTP/1.1 200 OK\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), .. body];
+            $"HTTP/1.1 {status}\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), .. body];
         _listener.Start();
         _ = Task.Run(ServeAsync);
     }

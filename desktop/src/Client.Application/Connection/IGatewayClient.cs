@@ -1,3 +1,4 @@
+using System.Net;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Servers;
@@ -45,6 +46,18 @@ public interface IGatewayClient
     /// ничего не меняет. Службы нет, она старая или не ответила — null.
     /// </summary>
     Task<NetworkSnapshot?> InspectNetworkAsync(CancellationToken cancellationToken = default) => Task.FromResult<NetworkSnapshot?>(null);
+
+    /// <summary>
+    /// Что известно об адресе в интернете — провайдер, сеть, примерное место (RIPEstat): спрашивает служба, только по просьбе
+    /// пользователя. Службы нет, она старая или не ответила — null.
+    /// </summary>
+    Task<AddressInfo?> DescribeAddressAsync(IPAddress address, CancellationToken cancellationToken = default) => Task.FromResult<AddressInfo?>(null);
+
+    /// <summary>
+    /// Измерить внешний IP по просьбе пользователя: под защитой — адрес выхода, защита выключена или на паузе — реальный.
+    /// Итог приходит в <see cref="Status"/>; службы нет — ничего.
+    /// </summary>
+    Task MeasureIpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);

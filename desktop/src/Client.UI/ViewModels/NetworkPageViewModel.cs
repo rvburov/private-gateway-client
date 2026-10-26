@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Net;
 using System.Net.Sockets;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -10,26 +11,57 @@ using PrivateGateway.Client.UI.Services;
 namespace PrivateGateway.Client.UI.ViewModels;
 
 /// <summary>
-/// «Сеть машины» — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе): адаптеры с адресами, шлюзами, DNS,
-/// DHCP и MAC и маршруты. Снимок делает служба (окно сеть не трогает) при открытии и по «Обновить»; инспектор только
-/// читает. Подстраница «Проверки»: островок виден, «назад» — к проверке.
+/// «Сеть машины» — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе): внешний IP и его провайдер,
+/// адаптеры с адресами, шлюзами, DNS, DHCP и MAC и маршруты. Снимок делает служба (окно сеть не трогает) при открытии и по
+/// «Обновить»; внешний IP служба меряет, а о провайдере спрашивает RIPEstat только по кнопкам. Инспектор только читает.
+/// Подстраница «Проверки»: островок виден, «назад» — к проверке.
 /// </summary>
 public sealed partial class NetworkPageViewModel : ObservableObject
 {
     private readonly IGatewayClient _gateway;
+    private readonly ProtectionViewModel _protection;
     private readonly INavigator _navigator;
     private readonly TimeProvider _time;
     private NetworkSnapshot? _snapshot;
 
-    public NetworkPageViewModel(IGatewayClient gateway, INavigator navigator, TimeProvider time)
+    public NetworkPageViewModel(IGatewayClient gateway, ProtectionViewModel protection, INavigator navigator, TimeProvider time)
     {
         ArgumentNullException.ThrowIfNull(gateway);
+        ArgumentNullException.ThrowIfNull(protection);
         _gateway = gateway;
+        _protection = protection;
         _navigator = navigator;
         _time = time;
-        Loc.Instance.LanguageChanged += (_, _) => Show(_snapshot);
+        Loc.Instance.LanguageChanged += (_, _) =>
+        {
+            Show(_snapshot);
+            OnPropertyChanged(nameof(MeasureText));
+            foreach (var address in PublicAddresses)
+            {
+                address.Refresh();
+            }
+        };
+        protection.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(ProtectionViewModel.Status) or "")
+            {
+                ShowPublic();
+            }
+        };
+        ShowPublic();
         _ = RefreshAsync();
     }
+
+    /// <summary>Внешние адреса, которые служба знает: через сервер (адрес выхода) и напрямую (реальный).</summary>
+    public ObservableCollection<PublicAddressViewModel> PublicAddresses { get; } = [];
+
+    public bool HasPublicAddresses => PublicAddresses.Count > 0;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MeasureText))]
+    public partial bool IsMeasuring { get; private set; }
+
+    public string MeasureText => Loc.Instance[IsMeasuring ? "network.public.measuring" : "network.public.measure"];
 
     public ObservableCollection<AdapterCardViewModel> Adapters { get; } = [];
 
@@ -72,8 +104,59 @@ public sealed partial class NetworkPageViewModel : ObservableObject
         }
     }
 
+    /// <summary>Внешний IP меряет служба; новый адрес приходит в состоянии защиты.</summary>
+    [RelayCommand]
+    private async Task MeasureAsync()
+    {
+        if (IsMeasuring)
+        {
+            return;
+        }
+
+        IsMeasuring = true;
+        try
+        {
+            await _gateway.MeasureIpAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsMeasuring = false;
+        }
+    }
+
     [RelayCommand]
     private void Back() => _navigator.Navigate(Pages.Check);
+
+    // Адреса из состояния защиты. Тот же адрес остается той же строкой — с уже полученным ответом о провайдере.
+    private void ShowPublic()
+    {
+        var exit = _protection.Status.Exit;
+        var wanted = new List<(string Key, IPAddress Address)>();
+        if (IPAddress.TryParse(exit.Ip, out var through))
+        {
+            wanted.Add(("network.public.exit", through));
+        }
+
+        if (IPAddress.TryParse(exit.DirectIp, out var direct))
+        {
+            wanted.Add(("network.public.direct", direct));
+        }
+
+        if (wanted.SequenceEqual(PublicAddresses.Select(a => (a.LabelKey, a.Address))))
+        {
+            return;
+        }
+
+        var known = PublicAddresses.ToList();
+        PublicAddresses.Clear();
+        foreach (var (key, address) in wanted)
+        {
+            PublicAddresses.Add(known.FirstOrDefault(a => a.LabelKey == key && a.Address.Equals(address))
+                ?? new PublicAddressViewModel(_gateway, key, address));
+        }
+
+        OnPropertyChanged(nameof(HasPublicAddresses));
+    }
 
     private void Show(NetworkSnapshot? snapshot)
     {
@@ -225,6 +308,112 @@ public sealed class AdapterCardViewModel
         }
 
         return string.Join(" · ", parts);
+    }
+}
+
+/// <summary>
+/// Внешний адрес и что о нем известно в интернете. «Кто провайдер» спрашивает службу (она — RIPEstat): ответ — строки
+/// «Провайдер», «Сеть», «Место» или почему сведений нет. Место — примерное, так и подписано.
+/// </summary>
+public sealed partial class PublicAddressViewModel : ObservableObject
+{
+    private readonly IGatewayClient _gateway;
+    private AddressInfo? _info;
+    private bool _noService;
+
+    public PublicAddressViewModel(IGatewayClient gateway, string labelKey, IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(gateway);
+        _gateway = gateway;
+        LabelKey = labelKey;
+        Address = address;
+    }
+
+    /// <summary>Ключ подписи: «Через сервер» или «Напрямую».</summary>
+    public string LabelKey { get; }
+
+    public IPAddress Address { get; }
+
+    public string Label => Loc.Instance[LabelKey];
+
+    public string AddressText => Address.ToString();
+
+    public ObservableCollection<DetailRowViewModel> Rows { get; } = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DescribeText), nameof(CanDescribe))]
+    public partial bool IsAsking { get; private set; }
+
+    /// <summary>Почему сведений нет; есть — пусто.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasNote))]
+    public partial string Note { get; private set; } = string.Empty;
+
+    public bool HasNote => Note.Length > 0;
+
+    public string DescribeText => Loc.Instance[IsAsking ? "network.public.asking" : "network.public.describe"];
+
+    /// <summary>Спросить можно, пока ответа нет или источник не ответил.</summary>
+    public bool CanDescribe => !IsAsking && (_info is null || _info.Failure == AddressFailure.Unreachable);
+
+    /// <summary>Тексты заново — после смены языка.</summary>
+    public void Refresh()
+    {
+        OnPropertyChanged(nameof(Label));
+        OnPropertyChanged(nameof(DescribeText));
+        Show();
+    }
+
+    [RelayCommand]
+    private async Task DescribeAsync()
+    {
+        if (IsAsking)
+        {
+            return;
+        }
+
+        IsAsking = true;
+        try
+        {
+            _info = await _gateway.DescribeAddressAsync(Address).ConfigureAwait(true);
+            _noService = _info is null;
+            Show();
+        }
+        finally
+        {
+            IsAsking = false;
+        }
+    }
+
+    private void Show()
+    {
+        Rows.Clear();
+        Note = _noService ? Loc.Instance["network.public.noService"]
+            : _info?.Failure is { } failure ? Loc.Instance["network.public." + failure.ToString().ToLowerInvariant()]
+            : string.Empty;
+        if (_info is not { Failure: null } info)
+        {
+            OnPropertyChanged(nameof(CanDescribe));
+            return;
+        }
+
+        if (info.Asn is { } asn)
+        {
+            Rows.Add(new DetailRowViewModel(Loc.Instance["network.public.provider"], info.Holder is { } holder ? $"AS{asn} · {holder}" : $"AS{asn}"));
+        }
+
+        if (info.Prefix is { } prefix)
+        {
+            Rows.Add(new DetailRowViewModel(Loc.Instance["network.public.prefix"], prefix));
+        }
+
+        if (info.Country is { } country)
+        {
+            Rows.Add(new DetailRowViewModel(Loc.Instance["network.public.place"],
+                Loc.Instance.Format("network.public.approx", info.City is { } city ? $"{country} · {city}" : country)));
+        }
+
+        OnPropertyChanged(nameof(CanDescribe));
     }
 }
 

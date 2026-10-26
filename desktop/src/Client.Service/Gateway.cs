@@ -41,7 +41,8 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>;
 /// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять;
 /// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box;
-/// <paramref name="NetworkDetails"/> — маршруты и DHCP этой ОС для сетевого инспектора; null — без них.
+/// <paramref name="NetworkDetails"/> — маршруты и DHCP этой ОС для сетевого инспектора; null — без них;
+/// <paramref name="AddressFetch"/> — запрос к RIPEstat о провайдере адреса (тесты); null — <see cref="AddressLookup.FetchAsync"/>.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -68,7 +69,8 @@ public sealed record GatewayOptions(
     TimeSpan? BlockWatch = null,
     string? TunDevice = null,
     ISystemDns? SystemDns = null,
-    INetworkDetails? NetworkDetails = null);
+    INetworkDetails? NetworkDetails = null,
+    Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -140,6 +142,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
     // Вход проверки связи с сервером в ядре этого подключения.
     private ProbeLink? _probe;
+    private readonly AddressLookup _addressLookup;
 
     // Пользователь выбрал подключение, хотя работает другой VPN: на ходу чужой VPN тоже не проверять.
     private volatile bool _allowOtherVpn;
@@ -185,6 +188,7 @@ public sealed partial class Gateway : IAsyncDisposable
         _time = time;
         _journal = journal;
         _systemProxy = systemProxy;
+        _addressLookup = new AddressLookup(options.AddressFetch ?? AddressLookup.FetchAsync, time);
         _status = ConnectionStatus.Initial(time.GetUtcNow());
         if (options.Network is { } network)
         {
@@ -1306,6 +1310,51 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>Сетевой инспектор: снимок адаптеров, адресов, DHCP и маршрутов машины — только чтение.</summary>
     public NetworkSnapshot InspectNetwork() => new NetworkInspector(_options.NetworkDetails, _time, _journal).Take();
+
+    /// <summary>
+    /// Внешний IP по кнопке инспектора: под защитой — адрес выхода (<see cref="CheckExitAsync"/>; в режиме прокси — и
+    /// реальный), защита выключена или на паузе — реальный, прямым путем. Итог — в состоянии. Подключение, блокировка и
+    /// ошибка — ничего: прямой путь закрыт, а выхода еще нет.
+    /// </summary>
+    public async Task MeasureIpAsync()
+    {
+        var status = Status;
+        if (status.IsPaused || status is { State: ConnectionState.Off, StrictBlock: false })
+        {
+            if (await DirectIpAsync().ConfigureAwait(false) is { } ip)
+            {
+                _directIp = ip;
+                Update(s => s.IsPaused || s.State == ConnectionState.Off ? s with { Exit = s.Exit with { DirectIp = ip } } : s);
+            }
+        }
+        else if (status.State == ConnectionState.Connected)
+        {
+            await CheckExitAsync().ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Что известно об адресе в интернете (<see cref="AddressLookup"/>). Об адресе выхода в режиме прокси служба спрашивает
+    /// через вход ядра — с этого же адреса, об остальных — обычным путем: источник не узнает от службы, что реальный адрес и
+    /// адрес выхода — одна машина. В режиме VPN у службы другого пути, кроме туннеля, нет.
+    /// </summary>
+    public Task<AddressInfo> DescribeAddressAsync(IPAddress address, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        var link = AddressRoute(Status, _probe, address);
+        return _addressLookup.DescribeAsync(address, link?.Port ?? 0, link is null ? null : new NetworkCredential(link.User, link.Password), cancellationToken);
+    }
+
+    /// <summary>
+    /// Путь вопроса об адресе: вход ядра <paramref name="link"/> — только об адресе выхода режима прокси, пока «Защищено» и
+    /// не пауза; иначе null — обычным путем службы.
+    /// </summary>
+    public static ProbeLink? AddressRoute(ConnectionStatus status, ProbeLink? link, IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        return status is { State: ConnectionState.Connected, Mode: ConnectionMode.Proxy, IsPaused: false }
+            && IPAddress.TryParse(status.Exit.Ip, out var exit) && exit.Equals(address) ? link : null;
+    }
 
     /// <summary>Туннеля больше нет — DNS ОС как был.</summary>
     private void RestoreDns()
