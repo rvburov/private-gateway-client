@@ -91,6 +91,9 @@ public static class WfpRules
     /// <summary>Сколько адресов сервера можно пропустить — у ключей фильтров есть предел.</summary>
     public const int MaxServers = KillSwitchPolicy.MaxServers;
 
+    /// <summary>Порты запросов имен мимо туннеля: DNS, NetBIOS (имена и датаграммы), DoT, LLMNR.</summary>
+    private static readonly ulong[] NamePorts = [53, 137, 138, 853, 5355];
+
     /// <summary>Ключ фильтра по порядку: базовый GUID, номер — в последних двух байтах.</summary>
     public static Guid FilterKey(int index) =>
         new(0xc9f98d15, 0x2e6c, 0x4db0, 0xaa, 0x5c, 0x48, 0xa6, 0x23, 0xd1, (byte)(index >> 8), (byte)index);
@@ -146,8 +149,9 @@ public static class WfpRules
         {
             if (policy.BlockOutsideDns)
             {
-                // Тяжелее локальной сети: DNS роутера мимо туннеля — утечка, даже если локальная сеть разрешена.
-                rules.Add(new("dns", family, false, 10, [new(WfpField.RemotePort, 53), new(WfpField.RemotePort, 853), .. TcpOrUdp()]));
+                // Тяжелее локальной сети: DNS роутера мимо туннеля — утечка, даже если локальная сеть разрешена. И запросы имен
+                // LLMNR (5355) и NetBIOS (137, 138) — имя, не найденное через DNS, Windows спрашивает у всей сети (Responder).
+                rules.Add(new("dns", family, false, 10, [.. NamePorts.Select(port => new WfpCondition(WfpField.RemotePort, port)), .. TcpOrUdp()]));
             }
 
             if (policy.AllowLan)

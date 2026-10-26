@@ -33,13 +33,13 @@ public sealed class KillSwitchTests
             "ip daddr { 255.255.255.255, 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } udp sport 67 udp dport 68 accept",
             "udp sport 546 udp dport 547 accept",
             "icmpv6 type { nd-router-solicit, nd-neighbor-solicit, nd-neighbor-advert } accept",
-            "meta l4proto { tcp, udp } th dport { 53, 853 } drop",
+            "meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop",
             "}",
             "chain forward {",
             "type filter hook forward priority 0; policy drop;",
             "iifname \"pgtun0\" accept",
             "oifname \"pgtun0\" accept",
-            "meta l4proto { tcp, udp } th dport { 53, 853 } drop",
+            "meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop",
             "}",
             "}",
         ], "прежняя таблица удаляется и новая ставится одной транзакцией; локальная сеть по умолчанию закрыта; " +
@@ -63,7 +63,7 @@ public sealed class KillSwitchTests
         var lan = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [], AllowLan: true)));
         lan.ShouldContain("ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } accept");
         lan.ShouldContain("ip6 daddr { fc00::/7, fe80::/10 } accept");
-        lan.IndexOf("meta l4proto { tcp, udp } th dport { 53, 853 } drop").ShouldBeLessThan(lan.FindIndex(l => l.StartsWith("ip daddr { 10.", StringComparison.Ordinal)),
+        lan.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop").ShouldBeLessThan(lan.FindIndex(l => l.StartsWith("ip daddr { 10.", StringComparison.Ordinal)),
             "DNS роутера закрыт раньше, чем открыта локальная сеть");
         lan.ShouldNotContain(l => l.Contains("224.0.0.0/4", StringComparison.Ordinal), "обнаружение устройств — отдельной настройкой");
         lan.ShouldNotContain(l => l.StartsWith("oifname", StringComparison.Ordinal) && !l.Contains("\"lo\"", StringComparison.Ordinal), "туннеля еще нет");
@@ -71,7 +71,7 @@ public sealed class KillSwitchTests
         var discovery = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [], AllowLan: true, LanDiscovery: true, BlockOutsideDns: false)));
         discovery.ShouldContain("ip daddr { 224.0.0.0/4, 255.255.255.255 } accept");
         discovery.ShouldContain("ip6 daddr ff00::/8 accept");
-        discovery.ShouldNotContain(l => l.Contains("dport { 53, 853 }", StringComparison.Ordinal));
+        discovery.ShouldNotContain(l => l.Contains("dport { 53, 137", StringComparison.Ordinal));
 
         Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy(null, [], LanDiscovery: true)))
             .ShouldNotContain(l => l.Contains("224.0.0.0/4", StringComparison.Ordinal), "без локальной сети нет и обнаружения устройств");
@@ -92,7 +92,7 @@ public sealed class KillSwitchTests
             "}",
         ], "DNS роутера (resolv.conf без systemd-resolved) — в туннель, выход sing-box мимо туннеля — как есть");
         lines.IndexOf("ip daddr 172.19.0.2 meta l4proto { tcp, udp } th dport 53 accept")
-            .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 853 } drop"),
+            .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"),
                 "фильтр после nat видит прежний интерфейс — перенаправленное разрешено раньше закрытия DNS");
 
         foreach (var policy in new KillSwitchPolicy[]
@@ -195,6 +195,33 @@ public sealed class KillSwitchTests
         killSwitch.IsEnabled.ShouldBeFalse();
         (await netns.ResolveAsync("example.com", host)).ShouldBe("1.1.1.1");
         dns.Queries.Count.ShouldBe(2, "закрытые запросы до DNS не дошли");
+    }
+
+    [Fact]
+    public async Task Llmnr_and_netbios_stay_closed_with_the_local_network_and_discovery_while_mdns_goes()
+    {
+        NetworkNamespace.SkipUnlessAvailable("nft", "ip", "python3");
+        using var netns = NetworkNamespace.Create();
+        var octet = netns.Octet;
+        var host = IPAddress.Parse($"10.254.{octet}.1");
+        var self = IPAddress.Parse($"10.254.{octet}.2");
+        netns.Link("pgnet0", host, self);
+        var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
+
+        killSwitch.Enable(new KillSwitchPolicy("pgtun0", [], AllowLan: true, LanDiscovery: true));
+
+        (await netns.SendUdpAsync(IPAddress.Parse("224.0.0.251"), 5353, self)).ShouldBe("sent", "mDNS — у «Обнаружения устройств» (принтеры, AirPlay)");
+        (await netns.SendUdpAsync(host, 9, self)).ShouldBe("sent", "локальная сеть разрешена");
+        foreach (var (address, port) in new[] { ("224.0.0.252", 5355), ("10.254.0.0", 137), ("10.254.0.0", 138) })
+        {
+            var to = address == "10.254.0.0" ? host : IPAddress.Parse(address);
+            await Should.ThrowAsync<InvalidOperationException>(() => netns.SendUdpAsync(to, port, self),
+                $"{to}:{port} — запрос имени мимо туннеля (LLMNR, NetBIOS) закрыт и при разрешенной локальной сети");
+        }
+
+        killSwitch.Enable(new KillSwitchPolicy("pgtun0", [], AllowLan: true, LanDiscovery: true, BlockOutsideDns: false));
+
+        (await netns.SendUdpAsync(IPAddress.Parse("224.0.0.252"), 5355, self)).ShouldBe("sent", "«Блокировать DNS провайдера» выключено — LLMNR открыт");
     }
 
     [Fact]

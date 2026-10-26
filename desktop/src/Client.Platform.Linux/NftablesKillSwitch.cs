@@ -91,8 +91,10 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
         var shared = new List<string>();
         if (policy.BlockOutsideDns)
         {
-            // Раньше локальной сети: DNS роутера мимо туннеля — утечка, даже если локальная сеть разрешена.
-            shared.Add("meta l4proto { tcp, udp } th dport { 53, 853 } drop");
+            // Раньше локальной сети: DNS роутера мимо туннеля — утечка, даже если локальная сеть разрешена. И запросы имен
+            // LLMNR (5355) и NetBIOS (137, 138): ими Windows и Samba спрашивают имя, не найденное через DNS, всю сеть —
+            // имена уходят в чужой Wi-Fi (Responder). mDNS (5353) — у «Обнаружения устройств».
+            shared.Add("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop");
         }
 
         // Для перенаправленного — по адресу назначения в обе стороны: и контейнер в локальную сеть, и ответ

@@ -522,7 +522,7 @@
   "prot.dns.quad9": "DoH: Quad9",
   "prot.dns.custom": "Свой адрес…",
   "prot.dnsBlock.title": "Блокировать DNS провайдера",
-  "prot.dnsBlock.text": "Запросы мимо туннеля отбрасываются.",
+  "prot.dnsBlock.text": "Запросы мимо туннеля отбрасываются, и LLMNR, NetBIOS: устройства сети — по адресу или .local.",
   "prot.fakeDns.title": "FakeDNS",
   "prot.fakeDns.text": "Быстрее, но может ломать некоторые программы.",
   "prot.leaks.title": "Проверять утечки после подключения",

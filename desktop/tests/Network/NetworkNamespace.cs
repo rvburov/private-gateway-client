@@ -177,6 +177,18 @@ internal sealed class NetworkNamespace : IDisposable
         """, url.Host.Trim('[', ']'), url.Port.ToString(System.Globalization.CultureInfo.InvariantCulture), source.ToString(),
         seconds.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
+    /// <summary>
+    /// Датаграмма UDP из пространства на <paramref name="address"/>:<paramref name="port"/>, групповая — через адрес
+    /// <paramref name="source"/>; ответ — «sent». Отброшена блоком (EPERM) — исключение.
+    /// </summary>
+    public Task<string> SendUdpAsync(IPAddress address, int port, IPAddress source) => RunAsync("python3", "-c", """
+        import socket, sys
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_IF, socket.inet_aton(sys.argv[3]))
+        s.sendto(b"pg", (sys.argv[1], int(sys.argv[2])))
+        print("sent", end="")
+        """, address.ToString(), port.ToString(System.Globalization.CultureInfo.InvariantCulture), source.ToString());
+
     /// <summary>Команда изнутри пространства; не вышла успешно — исключение с ее выводом.</summary>
     public async Task<string> RunAsync(params string[] command)
     {

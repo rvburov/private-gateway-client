@@ -522,7 +522,7 @@
   "prot.dns.quad9": "DoH: Quad9",
   "prot.dns.custom": "Custom address…",
   "prot.dnsBlock.title": "Block provider DNS",
-  "prot.dnsBlock.text": "Lookups outside the tunnel are dropped.",
+  "prot.dnsBlock.text": "Lookups outside the tunnel are dropped, LLMNR and NetBIOS too: reach devices by address or .local.",
   "prot.fakeDns.title": "FakeDNS",
   "prot.fakeDns.text": "Faster, but may break some apps.",
   "prot.leaks.title": "Check for leaks after connecting",

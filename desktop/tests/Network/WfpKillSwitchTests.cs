@@ -39,9 +39,9 @@ public sealed class WfpKillSwitchTests
                 "RemoteAddress 10.0.0.0/8, RemoteAddress 172.16.0.0/12, RemoteAddress 192.168.0.0/16, RemoteAddress 169.254.0.0/16",
             "15 permit V6 dhcp: Protocol 17, LocalPort 546, RemotePort 547",
             "15 permit V6 neighbors: Protocol 58, IcmpType 133, IcmpType 134, IcmpType 135, IcmpType 136",
-            "10 block V4 dns: RemotePort 53, RemotePort 853, Protocol 6, Protocol 17",
+            "10 block V4 dns: RemotePort 53, RemotePort 137, RemotePort 138, RemotePort 853, RemotePort 5355, Protocol 6, Protocol 17",
             "0 block V4 block: ",
-            "10 block V6 dns: RemotePort 53, RemotePort 853, Protocol 6, Protocol 17",
+            "10 block V6 dns: RemotePort 53, RemotePort 137, RemotePort 138, RemotePort 853, RemotePort 5355, Protocol 6, Protocol 17",
             "0 block V6 block: ",
         ], "решает подошедший фильтр с наибольшим весом; локальная сеть по умолчанию закрыта; адаптер туннеля есть — " +
             "пересылку ведут маршруты в туннель, фильтров пересылки нет");
