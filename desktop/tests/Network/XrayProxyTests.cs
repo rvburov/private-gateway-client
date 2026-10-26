@@ -81,11 +81,24 @@ public sealed class XrayProxyTests
         // DNS теста — на 127.0.0.1, а локальная сеть закрыта: запросам ядра к нему — напрямую, остальные правила как есть.
         config["routing"]!["rules"]!.AsArray().Insert(0,
             new JsonObject { ["type"] = "field", ["network"] = "udp", ["port"] = dns.Port.ToString(CultureInfo.InvariantCulture), ["outboundTag"] = XrayConfigBuilder.DirectTag });
+        // Подробный журнал ядра — в сообщение при сбое: на Windows в CI запрос ядра изредка не доходит до DNS теста.
+        config["log"] = new JsonObject { ["loglevel"] = "debug" };
         using var client = await XrayKit.Start(config, proxyPort);
+        var log = new List<string>();
+        client.Output += (_, line) =>
+        {
+            lock (log)
+            {
+                log.Add(line);
+            }
+        };
 
         (await Get(new Uri("http://dual.example.com/"), $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page,
             "сайт с A и AAAA не закрывается целиком из-за адреса IPv6 в ответе DNS — и при «Только IPv4»");
-        dns.Queries.ShouldContain("dual.example.com", "имя разрешало ядро — правила по адресам проверены");
+        lock (log)
+        {
+            dns.Queries.ShouldContain("dual.example.com", "имя разрешало ядро — правила по адресам проверены; журнал ядра:\n" + string.Join('\n', log));
+        }
     }
 
     [Fact]

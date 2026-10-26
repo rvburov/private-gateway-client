@@ -58,6 +58,12 @@ internal sealed class TestDns : IDisposable
             {
                 received = await _socket.ReceiveAsync(_stop.Token).ConfigureAwait(false);
             }
+            catch (SocketException e) when (e.SocketErrorCode == SocketError.ConnectionReset && !_stop.IsCancellationRequested)
+            {
+                // Windows: прошлый ответ ушел на уже закрытый сокет ядра, и ICMP «порт недоступен» приходит ошибкой следующего
+                // приема. Сервер DNS теста от этого не останавливается.
+                continue;
+            }
             catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException or SocketException)
             {
                 return;
