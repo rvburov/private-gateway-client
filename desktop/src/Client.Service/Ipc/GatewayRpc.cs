@@ -110,7 +110,14 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
                 : status.Protection.AllTraffic == CheckState.Warning && !status.IsPaused ? "split" : string.Empty,
         });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.KillSwitch.ToContractId(), State = status.Protection.KillSwitch.ToContract() });
-        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = status.Protection.Dns.ToContract() });
+        report.Results.Add(new V1.CheckResult
+        {
+            Id = DiagnosticCheck.Dns.ToContractId(),
+            State = status.Protection.Dns.ToContract(),
+            Reason = status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Dns: CheckState.Warning }
+                ? "lan_dns"
+                : string.Empty,
+        });
         report.Results.Add(new V1.CheckResult
         {
             Id = DiagnosticCheck.Ipv6.ToContractId(),

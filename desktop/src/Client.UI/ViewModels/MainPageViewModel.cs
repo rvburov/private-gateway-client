@@ -450,7 +450,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         // В режиме VPN «частично» — это раздельный режим, а не прокси.
         Chips[0].Update(protection.AllTraffic, paused,
             Status.Mode == ConnectionMode.Vpn && protection.AllTraffic == CheckState.Warning ? "split" : null);
-        Chips[1].Update(protection.Dns, paused);
+        // DNS в режиме VPN «частично» — запросы к DNS разрешенной локальной сети мимо туннеля, а не прокси.
+        Chips[1].Update(protection.Dns, paused,
+            Status.Mode == ConnectionMode.Vpn && Status.State == ConnectionState.Connected && protection.Dns == CheckState.Warning ? "lan_dns" : null);
         // IPv6 в режиме VPN: через туннель (сервер его открывает) или мимо него — свои заголовок, подпись и пояснение.
         Chips[2].Update(protection.Ipv6, paused,
             protection.Ipv6Tunnel ? "tunnel"

@@ -402,6 +402,35 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Dns_chip_tells_that_the_router_sees_the_lookups()
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            // Как служба в режиме VPN: локальная сеть разрешена, «Блокировать DNS провайдера» выключено.
+            Outcome = c => c.MoveTo(ConnectionState.Connected, Time.GetUtcNow()) is var connected
+                ? connected with { Protection = connected.Protection with { Dns = CheckState.Warning } }
+                : c,
+            Checks = [new DiagnosticResult(DiagnosticCheck.Dns, CheckState.Warning, "lan_dns")],
+        });
+        Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Vpn });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        Dispatcher.UIThread.RunJobs();
+
+        var chip = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>().Chips[1];
+        (chip.Title, chip.Value).ShouldBe(("DNS виден сети", "роутер видит"));
+        chip.Text.ShouldStartWith("Локальная сеть разрешена, а «Блокировать DNS провайдера» выключено");
+
+        shell.NavigateCommand.Execute(Pages.Check);
+        var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
+        WaitFor(() => !check.IsRunning);
+        var row = check.Rows.Single(r => r.Check == DiagnosticCheck.Dns);
+        (row.Detail, row.ChipText).ShouldBe(("Запросы к DNS роутера могут идти мимо туннеля: локальная сеть разрешена", "Видны роутеру"));
+    }
+
+    [AvaloniaFact]
     public async Task Check_button_comes_back_even_if_the_service_sends_no_check_time()
     {
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));

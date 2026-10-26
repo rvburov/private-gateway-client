@@ -357,6 +357,26 @@ public sealed partial class VpnModeTests
         (await rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
     }
 
+    [Theory]
+    [InlineData(true, false, true)]
+    [InlineData(true, true, false)]
+    [InlineData(false, false, false)]
+    public async Task Dns_row_is_partial_only_when_dns_of_the_allowed_local_network_goes_around_the_tunnel(bool allowLan, bool blockOutsideDns, bool partial)
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { Trace = Rig.Trace, ExitIp = rig.ExitIpAsync });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition, allowLan: allowLan, blockOutsideDns: blockOutsideDns), cancellationToken: Ct);
+
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal))[^1];
+        connected.Protection.Dns.ShouldBe(partial ? V1.CheckState.Warning : V1.CheckState.Ok,
+            "DNS роутера мимо туннеля правила пропускают только в разрешенную локальную сеть без «Блокировать DNS провайдера»");
+        var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.Dns.ToContractId());
+        (row.State, row.Reason).ShouldBe(partial ? (V1.CheckState.Warning, "lan_dns") : (V1.CheckState.Ok, string.Empty));
+    }
+
     [Fact]
     public async Task Pause_opens_the_network_without_the_tunnel_and_brings_the_tunnel_and_the_block_back()
     {
@@ -1317,14 +1337,14 @@ public sealed partial class VpnModeTests
         VpnRequest(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password)) with { Transport = TransportOptions.Quic });
 
     private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false,
-        bool strictRoutes = true, bool blockIpv6 = true, bool fakeDns = false)
+        bool strictRoutes = true, bool blockIpv6 = true, bool fakeDns = false, bool blockOutsideDns = true)
     {
         var settings = AppSettings.Default with
         {
             Mode = ConnectionMode.Vpn,
             KillSwitch = killSwitch,
             Routing = routing ?? RoutingSettings.Default,
-            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6, FakeDns = fakeDns },
+            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6, FakeDns = fakeDns, BlockOutsideDns = blockOutsideDns },
             Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 20, StrictRoutes = strictRoutes },
         };
         return new V1.ConnectRequest

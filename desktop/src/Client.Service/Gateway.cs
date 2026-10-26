@@ -1480,6 +1480,13 @@ public sealed partial class Gateway : IAsyncDisposable
             status = status with { Protection = status.Protection with { Ipv6 = CheckState.Warning } };
         }
 
+        // DNS мимо туннеля правила закрывают везде, кроме разрешенной локальной сети при выключенном «Блокировать DNS
+        // провайдера»: туда запросы ОС к DNS роутера могут идти напрямую (resolv.conf с адресом роутера, DNS карты Windows).
+        if (tunnel is not null && _request?.Protection is { AllowLan: true, BlockOutsideDns: false })
+        {
+            status = status with { Protection = status.Protection with { Dns = CheckState.Warning } };
+        }
+
         // Открытые правила (блок при обрыве выключен) держат утечки, пока туннель поднят, но блоком при обрыве не считаются.
         return status.Mode != ConnectionMode.Vpn || status.State == ConnectionState.Off || (_blocking && _held is not { Open: true })
             ? status
