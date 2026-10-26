@@ -176,8 +176,14 @@ public static class ServiceSetup
             return;
         }
 
+        // Папка службы бывает внутри папки программы (/opt/private-gateway/service, Program Files\Private Gateway\Service):
+        // список файлов — заранее и без нее, иначе копия подхватывала бы сама себя.
+        var inside = Path.GetFullPath(target).TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+        var files = Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories)
+            .Where(f => !Path.GetFullPath(f).StartsWith(inside, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            .ToList();
         Directory.CreateDirectory(target);
-        foreach (var file in Directory.EnumerateFiles(source, "*", SearchOption.AllDirectories))
+        foreach (var file in files)
         {
             var to = Path.Combine(target, Path.GetRelativePath(source, file));
             Directory.CreateDirectory(Path.GetDirectoryName(to)!);

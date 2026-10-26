@@ -51,6 +51,21 @@ public sealed class ServiceSetupTests : IDisposable
     }
 
     [Fact]
+    public void Copy_into_a_folder_inside_the_program_takes_only_the_program()
+    {
+        // Как после установки пакета: программа в /opt/private-gateway, служба ставится в /opt/private-gateway/service.
+        var program = Touch("program", Exe, "PrivateGateway.Service.dll");
+        Touch(Path.Combine("program", "cores", "xray"), "xray");
+        var target = Path.Combine(program, "service");
+
+        ServiceSetup.Copy(program, Path.Combine(program, "cores", "xray", "xray"), null, target);
+        ServiceSetup.Copy(program, Path.Combine(program, "cores", "xray", "xray"), null, target);
+
+        Files(target).ShouldBe(new[] { Exe, "PrivateGateway.Service.dll", Path.Combine("cores", "xray", "xray") }.Order(StringComparer.Ordinal).ToList(),
+            customMessage: "копия не подхватывает саму себя, и повторная установка не вкладывает service/service");
+    }
+
+    [Fact]
     public void Command_runs_the_installed_copy_for_its_owner()
     {
         var folder = Path.Combine(_root, "svc");
