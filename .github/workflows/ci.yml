@@ -186,6 +186,18 @@ jobs:
       - name: Сборка, тесты и Lint приложения
         run: android/gradlew -p android --continue :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 
+      # Схемы базы (Room) лежат в git: по ним MigrationTestHelper проверяет миграции. Схема, которую сборка выгрузила, а
+      # в git ее нет, — печатается (положить в git); схема в git, которая разошлась с сущностями, — ошибка: базу поменяли
+      # без новой версии и миграции.
+      - name: Схемы базы в git
+        if: ${{ !cancelled() }}
+        run: |
+          changed=$(git ls-files --modified -- android/app/schemas)
+          added=$(git ls-files --others --exclude-standard -- android/app/schemas)
+          for f in $added $changed; do echo "== $f"; cat "$f"; echo; done
+          if [ -n "$added" ]; then echo "::warning::Новая схема базы — положите в git: $added"; fi
+          if [ -n "$changed" ]; then echo "::error::Схема базы в git разошлась с сущностями: $changed"; exit 1; fi
+
       - name: APK и отчеты
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
