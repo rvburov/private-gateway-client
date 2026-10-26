@@ -14,9 +14,11 @@ build="artifacts/publish/PrivateGateway-$version-linux-x64"
 [ -d "$build" ] || { echo "Нет сборки $build — сначала scripts/publish.sh $version" >&2; exit 1; }
 command -v nfpm > /dev/null || { echo "Нет nfpm: go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0" >&2; exit 1; }
 
-export BUILD="$build" VERSION="$version"
-nfpm package --config desktop/packaging/linux/nfpm.yaml --packager deb --target artifacts/release/
-nfpm package --config desktop/packaging/linux/nfpm.yaml --packager rpm --target artifacts/release/
+# nfpm подставляет окружение не во все поля (в contents.src — нет): BUILD и VERSION — во временную копию конфига.
+config=artifacts/nfpm.yaml
+sed -e "s|\${BUILD}|$build|g" -e "s|\${VERSION}|$version|g" desktop/packaging/linux/nfpm.yaml > "$config"
+nfpm package --config "$config" --packager deb --target artifacts/release/
+nfpm package --config "$config" --packager rpm --target artifacts/release/
 
 cd artifacts/release
 sha256sum $(LC_ALL=C ls | grep -v "^SHA256SUMS$") > SHA256SUMS

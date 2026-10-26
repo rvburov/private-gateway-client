@@ -1,4 +1,5 @@
-# Пакеты Linux (.deb и .rpm) из папки выпуска — scripts/package-linux.sh задает BUILD (папка сборки) и VERSION (SemVer).
+# Пакеты Linux (.deb и .rpm) из папки выпуска — scripts/package-linux.sh подставляет ${BUILD} (папка сборки) и ${VERSION}
+# (SemVer) во временную копию.
 # Все — в /opt/private-gateway (окно, служба, ядра, SBOM, THIRD-PARTY-NOTICES), запись меню, значок, команда
 # private-gateway. Службу ставит окно («Установить службу», pkexec): пакет не знает, чей это компьютер (--owner).
 name: private-gateway
