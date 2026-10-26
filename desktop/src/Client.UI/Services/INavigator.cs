@@ -50,6 +50,9 @@ public static class Pages
     /// <summary>«Как устроена сеть» — сетевая лаборатория: уровни OSI и протоколы на фактах машины (этап 8).</summary>
     public const string Layers = "layers";
 
+    /// <summary>«События сети» — сетевая лаборатория: что произошло с защитой и сетью и почему (этап 8).</summary>
+    public const string Events = "events";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

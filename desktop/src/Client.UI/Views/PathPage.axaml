@@ -54,6 +54,32 @@
     <Style Selector="Line.link.tunnel">
       <Setter Property="Stroke" Value="{StaticResource PgBrush.Status.Success.Badge}" />
     </Style>
+    <!-- Пакет в пути: пока идет проверка сайта, по каждому участку бежит точка — сверху вниз, к сайту -->
+    <Style Selector="Ellipse.packet">
+      <Setter Property="IsVisible" Value="False" />
+      <Setter Property="Fill" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <Style Selector="Ellipse.packet.moving">
+      <Setter Property="IsVisible" Value="True" />
+      <Style.Animations>
+        <Animation Duration="0:0:0.9" IterationCount="Infinite">
+          <KeyFrame Cue="0%">
+            <Setter Property="Canvas.Top" Value="-4" />
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+          <KeyFrame Cue="20%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+          <KeyFrame Cue="80%">
+            <Setter Property="Opacity" Value="1" />
+          </KeyFrame>
+          <KeyFrame Cue="100%">
+            <Setter Property="Canvas.Top" Value="30" />
+            <Setter Property="Opacity" Value="0" />
+          </KeyFrame>
+        </Animation>
+      </Style.Animations>
+    </Style>
   </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
@@ -70,6 +96,15 @@
       <StackPanel Margin="20,0" Spacing="12">
         <TextBlock x:Name="Note" Classes="caption" Text="{Binding Note}" TextWrapping="Wrap" Margin="6,0"
                    LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <Border Classes="segments" AutomationProperties.Name="{l:L lab.mode}">
+          <UniformGrid Rows="1">
+            <RadioButton x:Name="BeginnerMode" Classes="segment" GroupName="pathMode" IsChecked="{Binding IsBeginner}"
+                         Content="{l:L lab.mode.beginner}" AutomationProperties.Name="{l:L lab.mode.beginner}" />
+            <RadioButton x:Name="ExpertMode" Classes="segment" GroupName="pathMode" IsChecked="{Binding IsExpert}"
+                         Content="{l:L lab.mode.expert}" AutomationProperties.Name="{l:L lab.mode.expert}" />
+          </UniformGrid>
+        </Border>
 
         <!-- Сайт и замеры, которые делают участки измеренными -->
         <Border Classes="card" Padding="16,14">
@@ -127,6 +162,7 @@
                     <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
                       <TextBlock Classes="strong" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
                       <SelectableTextBlock Classes="value" Text="{Binding Subtitle}" />
+                      <SelectableTextBlock Classes="value" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" />
                     </StackPanel>
                     <Border Grid.Column="2" Classes="evidence" Classes.measured="{Binding IsMeasured}" Padding="9,3" CornerRadius="10"
                             VerticalAlignment="Center">
@@ -140,9 +176,12 @@
                     <Canvas ClipToBounds="True">
                       <Line Classes="link" Classes.measured="{Binding IsMeasured}" Classes.conditional="{Binding IsConditional}"
                             Classes.tunnel="{Binding IsTunnel}" StartPoint="18,0" EndPoint="18,400" />
+                      <Ellipse Classes="packet" Classes.moving="{Binding $parent[ItemsControl].((vm:PathPageViewModel)DataContext).IsChecking}"
+                               Width="8" Height="8" Canvas.Left="14" AutomationProperties.Name="{l:L path.packet}" />
                     </Canvas>
                     <StackPanel Grid.Column="1" Margin="12,4" Spacing="2" VerticalAlignment="Center">
                       <TextBlock Classes="caption" Text="{Binding Text}" TextWrapping="Wrap" />
+                      <SelectableTextBlock Classes="value" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" />
                       <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsTunnel}">
                         <c:Icon Data="{StaticResource Icon.Lock}" Width="12" Height="12" StrokeThickness="2.2"
                                 Foreground="{StaticResource PgBrush.Status.Success.Text}" />

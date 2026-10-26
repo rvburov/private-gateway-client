@@ -82,6 +82,9 @@
     <DataTemplate DataType="vm:LayersPageViewModel">
       <views:LayersPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:EventsPageViewModel">
+      <views:EventsPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:BackupPageViewModel">
       <views:BackupPage />
     </DataTemplate>

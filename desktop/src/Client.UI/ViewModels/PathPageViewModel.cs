@@ -4,6 +4,7 @@ using System.Net;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Lab;
@@ -23,6 +24,7 @@ public sealed partial class PathPageViewModel : ObservableObject
     private readonly IGatewayClient _gateway;
     private readonly ProtectionViewModel _protection;
     private readonly INavigator _navigator;
+    private readonly SettingsService _settings;
     private NetworkSnapshot? _snapshot;
     private AddressInfo? _provider;
     private AddressInfo? _exit;
@@ -30,13 +32,21 @@ public sealed partial class PathPageViewModel : ObservableObject
     private ProbeStep? _siteCheck;
     private IReadOnlyList<ProbeStep>? _trace;
 
-    public PathPageViewModel(IGatewayClient gateway, ProtectionViewModel protection, INavigator navigator)
+    public PathPageViewModel(IGatewayClient gateway, ProtectionViewModel protection, SettingsService settings, INavigator navigator)
     {
         ArgumentNullException.ThrowIfNull(gateway);
         ArgumentNullException.ThrowIfNull(protection);
+        ArgumentNullException.ThrowIfNull(settings);
         _gateway = gateway;
         _protection = protection;
+        _settings = settings;
         _navigator = navigator;
+        settings.Changed += (_, _) =>
+        {
+            OnPropertyChanged(nameof(IsExpert));
+            OnPropertyChanged(nameof(IsBeginner));
+            Show();
+        };
         Loc.Instance.LanguageChanged += (_, _) =>
         {
             Show();
@@ -57,6 +67,19 @@ public sealed partial class PathPageViewModel : ObservableObject
 
     /// <summary>Звенья и участки по порядку: звено, участок, звено…</summary>
     public ObservableCollection<object> Steps { get; } = [];
+
+    /// <summary>Подробности для эксперта: сети провайдеров, узлы трассировки, канал адаптера, TLS сайта — общий режим лаборатории.</summary>
+    public bool IsExpert
+    {
+        get => _settings.Current.LabExpert;
+        set => _settings.Update(s => s with { LabExpert = value });
+    }
+
+    public bool IsBeginner
+    {
+        get => !IsExpert;
+        set => IsExpert = !value;
+    }
 
     /// <summary>Сайт для карты и проверки.</summary>
     [ObservableProperty]
@@ -183,15 +206,19 @@ public sealed partial class PathPageViewModel : ObservableObject
     private void Show()
     {
         var site = ProbeTarget.Normalize(Site);
+        var checkedNow = site is not null && site == _checkedSite;
         var path = PathBuilder.Build(new PathFacts(_snapshot, _protection.Status, _provider, _exit, site,
-            site is not null && site == _checkedSite ? _siteCheck : null, site is not null && site == _checkedSite ? _trace : null));
+            checkedNow ? _siteCheck : null, checkedNow ? _trace : null));
+        var expert = IsExpert;
         Steps.Clear();
         for (var i = 0; i < path.Nodes.Count; i++)
         {
-            Steps.Add(new PathNodeViewModel(path.Nodes[i]));
+            var node = path.Nodes[i];
+            Steps.Add(new PathNodeViewModel(node, expert ? NodeExpert(node, checkedNow) : null));
             if (i < path.Links.Count)
             {
-                Steps.Add(new PathLinkViewModel(path.Links[i], path.Nodes[i], path.Tunneled));
+                var link = path.Links[i];
+                Steps.Add(new PathLinkViewModel(link, node, path.Tunneled, expert ? LinkExpert(link, checkedNow) : null));
             }
         }
 
@@ -200,12 +227,40 @@ public sealed partial class PathPageViewModel : ObservableObject
     }
 
     partial void OnSiteChanged(string value) => Show();
+
+    // Эксперту — измеренное о звене: канал адаптера, сеть адреса провайдера и выхода, TLS сайта.
+    private string? NodeExpert(PathNode node, bool checkedNow)
+    {
+        var loc = Loc.Instance;
+        return node.Kind switch
+        {
+            PathNodeKind.Adapter when PathBuilder.Physical(_snapshot) is { } card && AdapterCardViewModel.Link(card) is { Length: > 0 } link => link,
+            PathNodeKind.Provider when _provider is { Failure: null, Prefix: { } prefix } => loc.Format("path.expert.prefix", prefix),
+            PathNodeKind.Vpn when _exit is { Failure: null, Prefix: { } prefix } => loc.Format("path.expert.prefix", prefix),
+            PathNodeKind.Site when checkedNow && _siteCheck?.Tls is { } tls => tls.Alpn is { } alpn ? $"{tls.Protocol} · {alpn}" : tls.Protocol,
+            _ => null,
+        };
+    }
+
+    // Эксперту — узлы трассировки за роутером, если сеть провайдера измерена ею.
+    private string? LinkExpert(PathLink link, bool checkedNow)
+    {
+        if (link is not { From: PathNodeKind.Router, Evidence: Evidence.Measured } || !checkedNow || _trace is null)
+        {
+            return null;
+        }
+
+        var hops = _trace.Where(s => s.Index > 1).Select(s => s.Address?.ToString() ?? "*");
+        return Loc.Instance.Format("path.expert.hops", string.Join(" → ", hops));
+    }
 }
 
 /// <summary>Звено карты: значок, имя, подробность и «измерено» или «условно».</summary>
 public sealed class PathNodeViewModel
 {
-    public PathNodeViewModel(PathNode node)
+    /// <param name="node">Звено.</param>
+    /// <param name="expert">Подробность для эксперта; не эксперт или нечего сказать — null.</param>
+    public PathNodeViewModel(PathNode node, string? expert = null)
     {
         ArgumentNullException.ThrowIfNull(node);
         var loc = Loc.Instance;
@@ -239,7 +294,12 @@ public sealed class PathNodeViewModel
         }
 
         Subtitle = parts.Count > 0 ? string.Join(" · ", parts) : loc["path.node." + key + ".unknown"];
+        Expert = expert;
     }
+
+    public string? Expert { get; }
+
+    public bool HasExpert => Expert is not null;
 
     public PathNodeKind Kind { get; }
 
@@ -260,7 +320,8 @@ public sealed class PathLinkViewModel
     /// <param name="link">Участок.</param>
     /// <param name="from">Звено, с которого участок начинается: по виду адаптера — радио или кабель.</param>
     /// <param name="tunneled">Трафик машины идет в туннель: внутри компьютера его принимает TUN-адаптер.</param>
-    public PathLinkViewModel(PathLink link, PathNode from, bool tunneled = false)
+    /// <param name="expert">Подробность для эксперта; нет — null.</param>
+    public PathLinkViewModel(PathLink link, PathNode from, bool tunneled = false, string? expert = null)
     {
         ArgumentNullException.ThrowIfNull(link);
         ArgumentNullException.ThrowIfNull(from);
@@ -289,7 +350,12 @@ public sealed class PathLinkViewModel
 
         Text = string.Join(" · ", parts);
         TunnelText = IsTunnel ? loc["path.link.tunnel"] : string.Empty;
+        Expert = expert;
     }
+
+    public string? Expert { get; }
+
+    public bool HasExpert => Expert is not null;
 
     public string Text { get; }
 

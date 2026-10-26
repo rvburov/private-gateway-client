@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Controls.Shapes;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -58,6 +59,9 @@ public sealed class PathPageTests : WindowHarness
             "Интернет до сайта · 61,3 мс",
         ]);
         Links(page).ShouldAllBe(l => l.IsMeasured);
+        page.IsExpert = true;
+        Links(page)[2].Expert.ShouldBe("узлы: 198.51.100.1 → * → 198.51.100.77 → 203.0.113.80", "эксперту — узлы трассировки за роутером");
+        page.IsExpert = false;
 
         await Connect(shell);
         await page.LookupCommand.ExecuteAsync(null);
@@ -73,7 +77,21 @@ public sealed class PathPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         window.GetVisualDescendants().OfType<Line>().Count(l => l.Classes.Contains("conditional") && l.Classes.Contains("link"))
             .ShouldBeGreaterThan(1, "условные участки — пунктиром (и в легенде)");
+        var packets = window.GetVisualDescendants().OfType<Ellipse>().Where(e => e.Classes.Contains("packet")).ToList();
+        packets.Count.ShouldBe(Links(page).Count, "у каждого участка — свой пакет");
+        packets.ShouldAllBe(e => !e.Classes.Contains("moving") && !e.IsVisible, "пакеты бегут только во время проверки");
+        Nodes(page).ShouldAllBe(n => !n.HasExpert, "для начинающего — без подробностей");
         Snapshot(window, "path");
+
+        window.GetVisualDescendants().OfType<RadioButton>().Single(r => r.Name == "ExpertMode").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        page.IsExpert.ShouldBeTrue();
+        Nodes(page).Select(n => n.Expert).ShouldBe([null, "MTU 1500 · 866 Мбит/с", null, "сеть 198.51.100.0/24", "сеть 203.0.113.0/24", "TLS 1.3 · h2"]);
+        Links(page).ShouldAllBe(l => !l.HasExpert, "в туннеле сеть провайдера трассировкой не измерена — узлов не показываем");
+        Snapshot(window, "path-expert");
+        window.GetVisualDescendants().OfType<RadioButton>().Single(r => r.Name == "BeginnerMode").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+        Nodes(page).ShouldAllBe(n => !n.HasExpert);
 
         page.Site = "nxdomain.example";
         Nodes(page)[^1].Subtitle.ShouldBe("Не проверен", "другой сайт — прежняя проверка к нему не относится");

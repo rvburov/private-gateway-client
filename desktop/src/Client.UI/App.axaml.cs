@@ -49,6 +49,7 @@ public partial class App : Avalonia.Application
         Services.GetRequiredService<SubscriptionUpdater>().Start();
         Services.GetRequiredService<AutostartSync>().Start();
         Services.GetRequiredService<ProtectionSync>().Start();
+        Services.GetRequiredService<NetworkEventLog>().Start();
         Services.GetRequiredService<UpdateWatcher>().Start();
         _ = Services.GetRequiredService<LaunchConnect>().RunAsync();
 
@@ -78,6 +79,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, ComparePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ComparePageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, PathPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<PathPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, LayersPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<LayersPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, EventsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<EventsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SubscriptionsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SubscriptionsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ProtectionPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProtectionPageViewModel>(sp, navigator));
