@@ -126,6 +126,54 @@ public sealed partial class ReconnectTests
             .ShouldBe(V1.ConnectionState.Connected, "сервер отвечает — смена сети ничего не ломает");
     }
 
+    [Fact]
+    public async Task Network_change_during_an_attempt_brings_the_next_attempt_at_once()
+    {
+        // Пауза между попытками — час: следующая попытка без часа ожидания бывает, только если смену сети во время попытки
+        // служба не потеряла. Ответы пробы дает тест — по одному на каждый вызов.
+        var hour = TimeSpan.FromHours(1);
+        var network = new FakeNetwork();
+        var probes = System.Threading.Channels.Channel.CreateUnbounded<TaskCompletionSource<bool>>();
+        Task<bool> Probe(ServerProbe probe, CancellationToken cancellationToken)
+        {
+            var answer = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            probes.Writer.TryWrite(answer);
+            return answer.Task;
+        }
+
+        async Task<TaskCompletionSource<bool>> NextProbe() => await probes.Reader.ReadAsync(Ct).AsTask().WaitAsync(TimeSpan.FromSeconds(20), Ct);
+
+        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network, probe: Probe);
+        using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        (await NextProbe()).SetResult(true);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        network.Raise();
+        (await NextProbe()).SetResult(false);
+        (await NextProbe()).SetResult(false);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting);
+
+        network.Raise();
+        var first = await NextProbe();
+        network.Raise();
+        first.SetResult(false);
+
+        // И во время удачной попытки сеть сменилась — этот сигнал следующему переподключению первую паузу не сокращает.
+        var second = await NextProbe();
+        network.Raise();
+        second.SetResult(true);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Переподключение, попытка 2");
+
+        network.Raise();
+        (await NextProbe()).SetResult(false);
+        (await NextProbe()).SetResult(false);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting);
+        await Task.Delay(TimeSpan.FromSeconds(2), Ct);
+        probes.Reader.TryRead(out _).ShouldBeFalse("первая попытка нового переподключения ждет свою паузу");
+    }
+
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -359,7 +407,7 @@ public sealed partial class ReconnectTests
         public RunningService Service { get; }
 
         public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null, IRouteTable? routes = null,
-            (ISystemProxy Proxy, string Backup)? systemProxy = null)
+            (ISystemProxy Proxy, string Backup)? systemProxy = null, Func<ServerProbe, CancellationToken, Task<bool>>? probe = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var site = new LocalSite("проверка");
@@ -369,7 +417,7 @@ public sealed partial class ReconnectTests
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
             var service = await RunningService.StartAsync(site.Url, systemProxy: systemProxy,
-                options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes });
+                options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes, Probe = probe ?? o.Probe });
             return new ProxyRig(site, serverConfig, serverPort, definition, server, service);
         }
 

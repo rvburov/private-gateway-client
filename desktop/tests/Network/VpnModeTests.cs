@@ -1292,7 +1292,8 @@ public sealed partial class VpnModeTests
     [Fact]
     public async Task Without_a_boot_block_the_service_does_not_connect_by_itself()
     {
-        var sealer = BootConnectionTests.OsSealer();
+        // Здесь важна логика службы, а не хранилище ОС (его проверяют BootConnectionTests): тест идет на всех ОС.
+        var sealer = new PlainSealer();
         var folder = Directory.CreateDirectory(Path.Combine(Path.GetTempPath(), "pg-boot-" + Guid.NewGuid().ToString("N")[..8])).FullName;
         var connect = Path.Combine(folder, "boot-connect.sealed");
         try

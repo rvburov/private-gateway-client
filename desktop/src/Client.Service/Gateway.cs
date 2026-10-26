@@ -1042,6 +1042,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
             _lostAt = _time.GetUtcNow();
             _journal.Add(JournalLevel.Warning, "service", "Сервер не ответил при подключении — переподключение к тому же серверу");
+            Volatile.Write(ref _nudge, NewNudge());
             Move(s => s, ConnectionState.Reconnecting);
         }
         finally

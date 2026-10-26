@@ -23,7 +23,7 @@ public sealed partial class Gateway
     private int _watch;
 
     // Пауза перед попыткой переподключения: сменилась сеть — попытка сразу.
-    private TaskCompletionSource _nudge = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private TaskCompletionSource _nudge = NewNudge();
 
     private ReconnectTiming Timing => _options.Reconnect ?? ReconnectTiming.Default with { Every = null };
 
@@ -268,6 +268,7 @@ public sealed partial class Gateway
 
             _lostAt = _time.GetUtcNow();
             _journal.Add(JournalLevel.Warning, "service", $"{why} — переподключение к тому же серверу");
+            Volatile.Write(ref _nudge, NewNudge());
             Move(s => s, ConnectionState.Reconnecting);
         }
         finally
@@ -290,15 +291,23 @@ public sealed partial class Gateway
         }
     }
 
+    /// <summary>
+    /// Сигнал «попытка сразу» (смена сети, пробуждение): свежий — с началом переподключения, до «Переподключения», чтобы
+    /// смена сети сразу после него не пропала; остаток прошлого переподключения первую паузу не съедает.
+    /// </summary>
+    private static TaskCompletionSource NewNudge() => new(TaskCreationOptions.RunContinuationsAsynchronously);
+
     /// <summary>Попытки с растущей паузой, пока ядра не поднимутся и сервер не ответит или политика не скажет сдаться.</summary>
     private async Task ReconnectLoopAsync(int session, string code)
     {
         var timing = Timing;
         for (var attempt = 1; ; attempt++)
         {
-            var nudge = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            Volatile.Write(ref _nudge, nudge);
+            var nudge = Volatile.Read(ref _nudge);
             await Task.WhenAny(Task.Delay(Reconnect.Delay(attempt, timing.FirstPause, timing.MaxPause), _time), nudge.Task).ConfigureAwait(false);
+
+            // Подгон забран. Смена сети во время попытки подгоняет следующую: ее сигнал ждет конца попытки, а не пропадает.
+            Interlocked.CompareExchange(ref _nudge, NewNudge(), nudge);
             if (!IsReconnecting(session))
             {
                 return;
