@@ -177,9 +177,10 @@ public sealed class CoreLedgerTests : IDisposable
         log[^1].ShouldStartWith("Восстановление: ядер прошлого запуска снято — ");
         log[^1].ShouldEndWith("блока при обрыве нет");
 
-        // Штатная остановка (закрылось окно) — следующий запуск аварии не видит.
+        // Штатная остановка (закрылось окно) — следующий запуск аварии не видит. На Windows в CI остановка однажды заняла
+        // больше 20 с: ждать с запасом, а при сбое показать журнал службы с диска — по времени записей видно, где она стояла.
         window.Kill();
-        await WaitForAsync(() => !File.Exists(Path.Combine(_root, "running")));
+        await WaitForAsync(() => !File.Exists(Path.Combine(_root, "running")), TimeSpan.FromSeconds(60), JournalOnDisk);
         StartService(endpoint);
         var after = await LogUntilAsync(endpoint, m => m.StartsWith("Служба ", StringComparison.Ordinal) && m.Contains("слушает IPC", StringComparison.Ordinal),
             skip: log.Count);
@@ -228,12 +229,27 @@ public sealed class CoreLedgerTests : IDisposable
         ? new ProcessStartInfo("ping") { ArgumentList = { "-n", "600", "127.0.0.1" } }
         : new ProcessStartInfo("sleep") { ArgumentList = { "600" } };
 
-    private static async Task WaitForAsync(Func<bool> done)
+    private static async Task WaitForAsync(Func<bool> done) => await WaitForAsync(done, TimeSpan.FromSeconds(20), () => string.Empty);
+
+    private static async Task WaitForAsync(Func<bool> done, TimeSpan limit, Func<string> why)
     {
         for (var waited = Stopwatch.StartNew(); !done(); await Task.Delay(100, Ct))
         {
-            waited.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(20));
+            waited.Elapsed.ShouldBeLessThan(limit, why());
         }
+    }
+
+    /// <summary>Журнал службы с диска — читать, как любая программа, с общим доступом на запись.</summary>
+    private string JournalOnDisk()
+    {
+        var path = Path.Combine(_root, "journal.jsonl");
+        if (!File.Exists(path))
+        {
+            return "журнала на диске нет";
+        }
+
+        using var reader = new StreamReader(new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite));
+        return "журнал службы:\n" + string.Join('\n', reader.ReadToEnd().Split('\n').TakeLast(15));
     }
 
     /// <summary>Ядро Xray с одним входом SOCKS на свободном порту — долгий процесс, который тест закрывает сам.</summary>
