@@ -85,9 +85,14 @@ public static class DnsProbe
 
         var index = NetworkInterface.GetAllNetworkInterfaces().FirstOrDefault(n => n.Name == adapter)?.GetIPProperties().GetIPv4Properties()?.Index
             ?? throw new SocketException((int)SocketError.NetworkDown);
+        if (OperatingSystem.IsWindows())
+        {
+            // Windows ждет номер карты в сетевом порядке байт.
+            socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)IpUnicastIf, IPAddress.HostToNetworkOrder(index));
+            return;
+        }
 
-        // Windows ждет номер карты в сетевом порядке байт, macOS — в своем.
-        socket.SetSocketOption(SocketOptionLevel.IP, (SocketOptionName)(OperatingSystem.IsWindows() ? IpUnicastIf : IpBoundIf),
-            OperatingSystem.IsWindows() ? IPAddress.HostToNetworkOrder(index) : index);
+        // macOS: опции IP_BOUND_IF нет среди имен .NET — значение прямо в setsockopt (IPPROTO_IP — 0), номер в своем порядке.
+        socket.SetRawSocketOption(0, IpBoundIf, BitConverter.GetBytes(index));
     }
 }
