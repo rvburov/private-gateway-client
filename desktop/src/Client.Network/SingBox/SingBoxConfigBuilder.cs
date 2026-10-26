@@ -65,9 +65,12 @@ public static class SingBoxConfigBuilder
 
     public const string TunDns6 = "fdfe:dcba:9876::2";
 
-    /// <summary>Имя адаптера — по нему правила блока при обрыве узнают туннель.</summary>
+    /// <summary>
+    /// Имя адаптера — по нему правила блока при обрыве узнают туннель. На macOS адаптер — только utunN: номер свой и
+    /// высокий, чтобы не совпасть со штатными utun0–utun3 и чужими VPN.
+    /// </summary>
     public static string InterfaceName =>
-        OperatingSystem.IsWindows() ? "Private Gateway" : OperatingSystem.IsMacOS() ? string.Empty : "pgtun0";
+        OperatingSystem.IsWindows() ? "Private Gateway" : OperatingSystem.IsMacOS() ? "utun225" : "pgtun0";
 
     /// <summary>
     /// Linux: таблица маршрутов и первый номер правил (<c>ip rule</c>) туннеля — свои, а не 2022 и 9000 sing-box

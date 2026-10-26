@@ -63,6 +63,11 @@
     "os": ["Linux", "Windows"],
     "why": "служба launchd; на macOS CI ставит ее шагом от root"
   },
+  {
+    "reason": "pf — только на macOS от root",
+    "os": ["Linux", "Windows"],
+    "why": "блок при обрыве macOS; на macOS CI грузит правила в свой якорь шагом от root"
+  },
 
   // Только Linux: на Windows и macOS этих частей ОС нет.
   {

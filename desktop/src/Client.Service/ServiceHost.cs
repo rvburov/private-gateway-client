@@ -75,13 +75,11 @@ public static partial class ServiceHost
         : OperatingSystem.IsLinux() ? (ISystemProxy?)KdeSystemProxy.ForThisSession() ?? GnomeSystemProxy.ForThisSession()
         : null;
 
-    /// <summary>
-    /// Блок при обрыве этой ОС для установленной службы: Windows — WFP, Linux — nftables; macOS — еще
-    /// нет, и режим VPN там отвечает «еще не готов».
-    /// </summary>
+    /// <summary>Блок при обрыве этой ОС для установленной службы: Windows — WFP, Linux — nftables, macOS — pf.</summary>
     public static IKillSwitch? KillSwitch() =>
         OperatingSystem.IsWindows() ? WfpKillSwitch.ForService()
         : OperatingSystem.IsLinux() ? NftablesKillSwitch.ForThisMachine()
+        : OperatingSystem.IsMacOS() ? Platform.MacOS.PfKillSwitch.ForThisMachine()
         : null;
 
     /// <summary>
