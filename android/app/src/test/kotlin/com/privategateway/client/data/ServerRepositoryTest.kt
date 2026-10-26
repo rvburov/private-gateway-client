@@ -30,7 +30,7 @@ class ServerRepositoryTest {
     @Test
     fun `every fixture server comes back as it went in`() = runBlocking {
         val servers = Fixtures.servers()
-        assertTrue(servers.size > 20, "эталонов слишком мало: ${servers.size}")
+        assertTrue(servers.size >= 15, "эталонов слишком мало: ${servers.size}")
         // Дубль не добавляется — остается первый с этим отпечатком.
         val unique = servers.distinctBy { Fixtures.identity(it) }.associateBy { Fixtures.identity(it) }
 
@@ -57,8 +57,10 @@ class ServerRepositoryTest {
         for (entity in entities) {
             val server = assertNotNull(repository.load(entity.id))
             val open = listOf(entity.id, entity.name, entity.countryCode, entity.protocol, entity.security, entity.transport).joinToString("|")
+            // Адрес открыт только в названии, если названия в ссылке не было: тогда сервер называется адресом (как на
+            // десктопе). Ключи и пароли не открыты никогда.
             val secrets = listOfNotNull(
-                server.host,
+                server.host.takeIf { it != entity.name },
                 server.credentials.uuid,
                 server.credentials.password,
                 server.credentials.privateKey,

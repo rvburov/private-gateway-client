@@ -184,7 +184,7 @@ jobs:
       # Приложение: сборка APK (подпись отладочным ключом), тесты без устройства (Robolectric: хранилище, тексты RU/EN,
       # экраны Compose) и Android Lint — его ошибки роняют проверку.
       - name: Сборка, тесты и Lint приложения
-        run: android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+        run: android/gradlew -p android --continue :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 
       - name: APK и отчеты
         if: ${{ !cancelled() }}

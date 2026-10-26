@@ -12,6 +12,7 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -31,10 +32,12 @@ import com.privategateway.client.vpn.TunnelStatus
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
 
-/** Экраны без устройства (Robolectric): что видно в каждом состоянии и что делают нажатия. */
+/** Экраны без устройства (Robolectric): что видно в каждом состоянии и что делают нажатия. Экран — как в макете (доска 25). */
 @RunWith(AndroidJUnit4::class)
+@Config(qualifiers = "w384dp-h832dp")
 class ScreensTest {
     @get:Rule
     val compose = createComposeRule()
@@ -82,8 +85,8 @@ class ScreensTest {
     fun `home without servers leads to adding one`() {
         var added = 0
         compose.setContent { PgTheme { HomeScreen(MainUi(), {}, {}, { added++ }) } }
-        compose.onNodeWithText(text(R.string.servers_none)).performClick()
-        compose.onNodeWithTag("add").performClick()
+        compose.onNodeWithText(text(R.string.servers_none)).performScrollTo().performClick()
+        compose.onNodeWithTag("add").performScrollTo().performClick()
         assertEquals(2, added)
     }
 
@@ -120,12 +123,12 @@ class ScreensTest {
         assertEquals(listOf(input), previewed)
 
         state = ImportUi(ImportParser.parse(input))
-        compose.onNodeWithText(text(R.string.import_line, "2", text(R.string.import_error_bad_link))).assertIsDisplayed()
-        compose.onNodeWithTag("import.add").assertIsDisplayed().performClick()
+        compose.onNodeWithText(text(R.string.import_line, "2", text(R.string.import_error_bad_link))).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("import.add").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(1, added)
 
         state = state.copy(added = 1)
-        compose.onNodeWithTag("import.done").assertIsDisplayed()
+        compose.onNodeWithTag("import.done").performScrollTo().assertIsDisplayed()
     }
 
     @Test
