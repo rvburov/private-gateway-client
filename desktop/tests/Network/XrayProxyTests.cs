@@ -95,6 +95,13 @@ public sealed class XrayProxyTests
 
         (await Get(new Uri("http://dual.example.com/"), $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page,
             "сайт с A и AAAA не закрывается целиком из-за адреса IPv6 в ответе DNS — и при «Только IPv4»");
+        // Запись DNS теста и вывод ядра приходят из своих потоков: читать их сразу после ответа — значит иногда увидеть
+        // пустой журнал (так было на Windows в CI). До 3 с ждем запрос, а без него — хвост журнала ядра.
+        for (var i = 0; i < 30 && !dns.Queries.Contains("dual.example.com"); i++)
+        {
+            await Task.Delay(100, TestContext.Current.CancellationToken);
+        }
+
         lock (log)
         {
             dns.Queries.ShouldContain("dual.example.com", "имя разрешало ядро — правила по адресам проверены; журнал ядра:\n" + string.Join('\n', log));

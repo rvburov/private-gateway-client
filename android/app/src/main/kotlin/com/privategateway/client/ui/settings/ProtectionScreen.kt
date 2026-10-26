@@ -3,7 +3,9 @@ package com.privategateway.client.ui.settings
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +16,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -81,6 +82,16 @@ fun ProtectionScreen(tunnel: TunnelSettings, onChange: (TunnelSettings) -> Unit,
             // Свой адрес: выбор открывает ввод; без верного адреса выбор не сохраняется.
             val custom = tunnel.customDns?.takeIf { TunnelSettings.validCustomDns(it) }
             PgChoiceRow(stringResource(R.string.prot_dns_custom), custom, tunnel.dns == DnsChoice.Custom, "dns.Custom") { editingDns = true }
+            if (editingDns) {
+                CustomDnsEditor(
+                    initial = tunnel.customDns.orEmpty(),
+                    onSave = { address ->
+                        editingDns = false
+                        onChange(tunnel.copy(dns = DnsChoice.Custom, customDns = address))
+                    },
+                    onCancel = { editingDns = false },
+                )
+            }
         }
 
         PgCard(Modifier.fillMaxWidth()) {
@@ -103,60 +114,51 @@ fun ProtectionScreen(tunnel: TunnelSettings, onChange: (TunnelSettings) -> Unit,
         }
     }
 
-    if (editingDns) {
-        CustomDnsDialog(
-            initial = tunnel.customDns.orEmpty(),
-            onSave = { address ->
-                editingDns = false
-                onChange(tunnel.copy(dns = DnsChoice.Custom, customDns = address))
-            },
-            onDismiss = { editingDns = false },
-        )
-    }
 }
 
 /** Свой адрес DNS: IP или DoH по IP (https://IP/…); неверный не сохраняется — ядру ушел бы DNS по умолчанию молча. */
 @Composable
-private fun CustomDnsDialog(initial: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+private fun CustomDnsEditor(initial: String, onSave: (String) -> Unit, onCancel: () -> Unit) {
     var text by remember { mutableStateOf(initial) }
     var tried by remember { mutableStateOf(false) }
     val valid = TunnelSettings.validCustomDns(text)
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.prot_dnsCustom_title), style = PgType.Title) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(PgSpace.S)) {
-                Text(stringResource(R.string.prot_dnsCustom_label), color = PgColor.Text.Secondary, style = PgType.Caption)
-                val shape = RoundedCornerShape(PgRadius.Input)
-                BasicTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    singleLine = true,
-                    textStyle = PgType.Mono.copy(color = PgColor.Text.Primary),
-                    cursorBrush = SolidColor(PgColor.Accent.Base),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(shape)
-                        .background(PgColor.Surface.Inset)
-                        .border(1.dp, if (tried && !valid) PgColor.Status.Danger.Base else PgColor.Line.Border, shape)
-                        .padding(PgSpace.M)
-                        .testTag("dns.custom.text"),
-                    decorationBox = { field ->
-                        if (text.isEmpty()) {
-                            Text(stringResource(R.string.android_dnsCustom_placeholder), color = PgColor.Text.Muted, style = PgType.Mono)
-                        }
+    Column(Modifier.fillMaxWidth().padding(top = PgSpace.S), verticalArrangement = Arrangement.spacedBy(PgSpace.S)) {
+        Text(stringResource(R.string.prot_dnsCustom_label), color = PgColor.Text.Secondary, style = PgType.Caption)
+        val shape = RoundedCornerShape(PgRadius.Input)
+        BasicTextField(
+            value = text,
+            onValueChange = { text = it },
+            singleLine = true,
+            textStyle = PgType.Mono.copy(color = PgColor.Text.Primary),
+            cursorBrush = SolidColor(PgColor.Accent.Base),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(PgColor.Surface.Inset)
+                .border(1.dp, if (tried && !valid) PgColor.Status.Danger.Base else PgColor.Line.Border, shape)
+                .padding(PgSpace.M)
+                .testTag("dns.custom.text"),
+            decorationBox = { field ->
+                Box {
+                    if (text.isEmpty()) {
+                        Text(stringResource(R.string.android_dnsCustom_placeholder), color = PgColor.Text.Muted, style = PgType.Mono)
+                    }
 
-                        field()
-                    },
-                )
-                if (tried && !valid) {
-                    Text(stringResource(R.string.prot_dnsCustom_bad), color = PgColor.Status.Danger.Text, style = PgType.Caption)
-                } else {
-                    Text(stringResource(R.string.android_dnsCustom_note), color = PgColor.Text.Muted, style = PgType.Caption)
+                    field()
                 }
+            },
+        )
+        if (tried && !valid) {
+            Text(stringResource(R.string.prot_dnsCustom_bad), color = PgColor.Status.Danger.Text, style = PgType.Caption)
+        } else {
+            Text(stringResource(R.string.android_dnsCustom_note), color = PgColor.Text.Muted, style = PgType.Caption)
+        }
+
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onCancel) {
+                Text(stringResource(R.string.dialog_cancel))
             }
-        },
-        confirmButton = {
+
             TextButton(
                 onClick = {
                     tried = true
@@ -168,12 +170,6 @@ private fun CustomDnsDialog(initial: String, onSave: (String) -> Unit, onDismiss
             ) {
                 Text(stringResource(R.string.card_rename_save))
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.dialog_cancel))
-            }
-        },
-        containerColor = PgColor.Surface.Solid,
-    )
+        }
+    }
 }

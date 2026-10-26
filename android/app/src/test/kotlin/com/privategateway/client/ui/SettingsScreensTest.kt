@@ -78,18 +78,19 @@ class SettingsScreensTest {
         compose.setContent { PgTheme { ProtectionScreen(tunnel, { tunnel = it }, {}) } }
 
         compose.onNodeWithTag("dns.Custom").performClick()
-        compose.onNodeWithText(text(R.string.android_dnsCustom_note)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.android_dnsCustom_note)).performScrollTo().assertIsDisplayed()
         // Имя хоста — нет: чтобы найти сам DNS, ядру пришлось бы спросить имя мимо туннеля.
         compose.onNodeWithTag("dns.custom.text").performTextInput("https://dns.example.com/dns-query")
-        compose.onNodeWithTag("dns.custom.save").performClick()
-        compose.onNodeWithText(text(R.string.prot_dnsCustom_bad)).assertIsDisplayed()
+        compose.onNodeWithTag("dns.custom.save").performScrollTo().performClick()
+        compose.onNodeWithText(text(R.string.prot_dnsCustom_bad)).performScrollTo().assertIsDisplayed()
         assertEquals(TunnelSettings(), tunnel, "неверный адрес не сохранен")
 
         compose.onNodeWithTag("dns.custom.text").performTextClearance()
         compose.onNodeWithTag("dns.custom.text").performTextInput(" https://192.0.2.53/dns-query ")
-        compose.onNodeWithTag("dns.custom.save").performClick()
+        compose.onNodeWithTag("dns.custom.save").performScrollTo().performClick()
         assertEquals(TunnelSettings(DnsChoice.Custom, "https://192.0.2.53/dns-query"), tunnel)
-        compose.onNodeWithTag("dns.Custom").assertIsSelected()
+        compose.onNodeWithTag("dns.Custom").performScrollTo().assertIsSelected()
         compose.onNodeWithText("https://192.0.2.53/dns-query").assertIsDisplayed()
+        compose.onNodeWithTag("dns.custom.text").assertDoesNotExist()
     }
 }
