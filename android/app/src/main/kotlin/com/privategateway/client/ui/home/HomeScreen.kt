@@ -151,7 +151,12 @@ private fun StatusCard(ui: MainUi, onCheck: () -> Unit) {
         HorizontalDivider(color = PgColor.Line.Divider)
         Row(Modifier.fillMaxWidth().padding(top = PgSpace.M), verticalAlignment = Alignment.CenterVertically) {
             val note = when (state) {
-                TunnelState.Off -> if (server == null) R.string.server_addFirst else R.string.checked_off
+                TunnelState.Off -> when {
+                    server != null -> R.string.checked_off
+                    ui.servers.isEmpty() -> R.string.server_addFirst
+                    else -> R.string.android_server_choose
+                }
+
                 TunnelState.Connecting, TunnelState.Stopping -> R.string.checked_connecting
                 TunnelState.Error -> Texts.error(ui.status.error)
                 TunnelState.Connected -> null
@@ -220,12 +225,24 @@ private fun Chip(chip: ProtectionChip, modifier: Modifier) {
 private fun ServerCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit) {
     val server = ui.inUse
     PgCard(Modifier.fillMaxWidth()) {
-        if (server == null) {
+        if (server == null && ui.servers.isEmpty()) {
             Overline(stringResource(R.string.server_none))
             Spacer(Modifier.height(PgSpace.S))
             Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onAdd), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.servers_none), color = PgColor.Text.Secondary, style = PgType.Small, modifier = Modifier.weight(1f))
                 PgIcon(PgIcons.Plus, stringResource(R.string.header_add), color = PgColor.Accent.Base)
+            }
+
+        } else if (server == null) {
+            // Серверы есть, но ни один не выбран (выбранный удален): сам сервер не выбирается — ведем к списку.
+            Overline(stringResource(R.string.server_none))
+            Spacer(Modifier.height(PgSpace.S))
+            Row(
+                Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onServers).testTag("server.choose"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(stringResource(R.string.android_server_choose), color = PgColor.Text.Secondary, style = PgType.Small, modifier = Modifier.weight(1f))
+                Text(stringResource(R.string.server_all), color = PgColor.Accent.Text, style = PgType.BodyStrong)
             }
 
         } else {

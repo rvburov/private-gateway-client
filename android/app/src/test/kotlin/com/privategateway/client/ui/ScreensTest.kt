@@ -91,6 +91,19 @@ class ScreensTest {
     }
 
     @Test
+    fun `home with servers but none selected leads to the list, not to adding`() {
+        // Выбранный сервер удален, другие остались: «серверов нет» и «добавьте первый» были бы неправдой.
+        var listed = 0
+        var added = 0
+        compose.setContent { PgTheme { HomeScreen(MainUi(servers = listOf(nl, plain)), { listed++ }, {}, { added++ }) } }
+        compose.onNodeWithText(text(R.string.servers_none)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.server_addFirst)).assertDoesNotExist()
+        compose.onNodeWithTag("server.choose").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(1, listed)
+        assertEquals(0, added)
+    }
+
+    @Test
     fun `servers select by tap and delete after confirmation`() {
         val selected = mutableListOf<String>()
         val deleted = mutableListOf<String>()
@@ -113,7 +126,7 @@ class ScreensTest {
         val previewed = mutableListOf<String>()
         var state by mutableStateOf(ImportUi())
         var added = 0
-        compose.setContent { PgTheme { ImportScreen(state, { null }, { previewed += it }, { added++ }, {}) } }
+        compose.setContent { PgTheme { ImportScreen(state, { null }, { state = state.copy(text = it) }, { previewed += it }, { added++ }, {}) } }
 
         compose.onNodeWithTag("import.check").assertIsNotEnabled()
         compose.onNodeWithTag("import.clipboard").performClick()
@@ -122,10 +135,14 @@ class ScreensTest {
         compose.onNodeWithTag("import.check").assertIsEnabled().performClick()
         assertEquals(listOf(input), previewed)
 
-        state = ImportUi(ImportParser.parse(input))
+        assertEquals(input, state.text, "текст живет в модели окна, а не в сохраненном состоянии")
+        state = state.copy(batch = ImportParser.parse(input))
         compose.onNodeWithText(text(R.string.import_line, "2", text(R.string.import_error_bad_link))).performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("import.add").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(1, added)
+
+        state = state.copy(adding = true)
+        compose.onNodeWithTag("import.add").performScrollTo().assertIsNotEnabled()
 
         state = state.copy(added = 1)
         compose.onNodeWithTag("import.done").performScrollTo().assertIsDisplayed()

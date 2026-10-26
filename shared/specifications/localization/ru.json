@@ -1349,6 +1349,8 @@
   "tray.quit.user.note": "Прокси остановится вместе с программой",
   "android.notify.channel": "Защита",
   "android.notify.channel.text": "Состояние VPN, пока защита включена",
+  "android.notify.alerts": "Сбои защиты",
+  "android.notify.alerts.text": "Защита не включилась или прервалась — трафик мог пойти напрямую",
   "android.notify.disconnect": "Отключить",
   "android.permission.denied": "Android не дал разрешения на VPN — защита не включилась",
   "android.check.ks.system": "в настройках Android",
@@ -1357,5 +1359,6 @@
   "android.settings.vpn.text": "«Постоянная VPN» держит защиту после перезагрузки, «Блокировать подключения без VPN» закрывает интернет, пока туннеля нет. Включаются там: приложение само их включить не может.",
   "android.settings.vpn.open": "Открыть настройки VPN",
   "android.import.hint": "Ссылки по строкам, подписка в base64, конфиг sing-box или Clash",
+  "android.server.choose": "Выберите сервер в списке",
   "android.settings.language": "как в системе — меняется в настройках Android"
 }

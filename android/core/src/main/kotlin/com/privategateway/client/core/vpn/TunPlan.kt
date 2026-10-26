@@ -57,3 +57,25 @@ object CoreDns {
         return address.contains(':') || address.split('.').let { parts -> parts.size == 4 && parts.all { it.toIntOrNull() in 0..255 } }
     }
 }
+
+/**
+ * DNS ядра вслед за сетью телефона. Ядро находит адрес сервера через DNS сети под туннелем, а DNS прежней сети (роутер
+ * Wi-Fi, DNS оператора) из новой обычно недоступен: после смены Wi-Fi ↔ мобильная сервер по имени не находился бы, и
+ * новые соединения ждали бы до таймаута. Служба передает сюда DNS каждой новой сети; ядру — только то, что изменилось.
+ */
+class CoreDnsFollower(networkDns: List<String>) {
+    /** Адрес, который сейчас у ядра. */
+    var endpoint: String = CoreDns.endpoint(networkDns)
+        private set
+
+    /** Сеть под туннелем сменилась или сменила DNS; новый адрес для ядра — или null, если он тот же. */
+    fun network(networkDns: List<String>): String? {
+        val next = CoreDns.endpoint(networkDns)
+        if (next == endpoint) {
+            return null
+        }
+
+        endpoint = next
+        return next
+    }
+}

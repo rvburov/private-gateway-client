@@ -20,6 +20,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -36,10 +37,38 @@ data class MainUi(
     val inUse: ServerItem?
         get() = status.serverId?.takeIf { status.state != TunnelState.Off }?.let { id -> servers.firstOrNull { it.id == id } }
             ?: servers.firstOrNull { it.id == selectedId }
+
+    /** Что делает кнопка-щит: подключаться не к чему — серверов нет (добавить) или ни один не выбран (к списку). */
+    val power: PowerAction
+        get() {
+            val off = status.state == TunnelState.Off || status.state == TunnelState.Error
+            return when {
+                !off || inUse != null -> PowerAction.Toggle
+                servers.isEmpty() -> PowerAction.Add
+                else -> PowerAction.Choose
+            }
+        }
 }
 
-/** Разобранный текст импорта и итог добавления (null — еще не добавляли). */
-data class ImportUi(val batch: ImportBatch? = null, val added: Int? = null, val duplicates: Int = 0)
+enum class PowerAction {
+    /** Включить или выключить защиту. */
+    Toggle,
+
+    /** Открыть добавление сервера. */
+    Add,
+
+    /** Открыть список серверов: сервер выбирает только пользователь. */
+    Choose,
+}
+
+/** Текст импорта, его разбор, идет ли добавление и его итог (null — еще не добавляли). */
+data class ImportUi(
+    val text: String = "",
+    val batch: ImportBatch? = null,
+    val adding: Boolean = false,
+    val added: Int? = null,
+    val duplicates: Int = 0,
+)
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -72,17 +101,30 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    fun edit(text: String) {
+        importState.update { it.copy(text = text) }
+    }
+
     /** Разобрать текст: ссылки, base64, sing-box или Clash — тем же разбором, что у десктопа (shared/testdata). */
     fun preview(text: String) {
         viewModelScope.launch {
             val batch = withContext(Dispatchers.Default) { ImportParser.parse(text) }
-            importState.value = ImportUi(batch)
+            importState.update { ImportUi(it.text, batch) }
         }
     }
 
-    /** Добавить разобранные серверы; ничего не было выбрано — выбрать первый новый, иначе выбор не меняется. */
+    /**
+     * Добавить разобранные серверы; ничего не было выбрано — выбрать первый новый, иначе выбор не меняется. Повторное
+     * нажатие, пока идет добавление, не считается: второе добавление нашло бы одни дубли и затерло итог первого.
+     */
     fun add() {
-        val batch = importState.value.batch ?: return
+        val current = importState.value
+        val batch = current.batch ?: return
+        if (current.added != null || current.adding) {
+            return
+        }
+
+        importState.value = current.copy(adding = true)
         viewModelScope.launch {
             val parsed = batch.lines.mapNotNull { it.result.server }
             val before = servers.servers.first().map { it.id }.toSet()
@@ -91,7 +133,7 @@ class MainViewModel @Inject constructor(
                 servers.servers.first().firstOrNull { it.id !in before }?.let { settings.select(it.id) }
             }
 
-            importState.value = ImportUi(batch, result.added, result.duplicates)
+            importState.update { if (it.batch === batch) it.copy(adding = false, added = result.added, duplicates = result.duplicates) else it }
         }
     }
 

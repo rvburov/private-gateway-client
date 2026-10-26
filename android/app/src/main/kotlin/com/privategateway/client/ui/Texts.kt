@@ -1,5 +1,6 @@
 package com.privategateway.client.ui
 
+import android.os.LocaleList
 import androidx.annotation.StringRes
 import com.privategateway.client.R
 import com.privategateway.client.core.links.ImportErrors
@@ -44,6 +45,12 @@ object Texts {
         ImportParser.FORMAT_CLASH -> R.string.import_format_clash
         else -> R.string.import_format_links
     }
+
+    /**
+     * Язык текстов на экране — для форм чисел. Не первый язык телефона: при «украинский, русский» Android берет русские
+     * ресурсы (украинских нет), и формы должны быть русскими.
+     */
+    fun language(locales: LocaleList): String = locales.getFirstMatch(arrayOf("en", "ru"))?.language ?: "en"
 
     /** «Добавить 3 сервера». */
     @StringRes

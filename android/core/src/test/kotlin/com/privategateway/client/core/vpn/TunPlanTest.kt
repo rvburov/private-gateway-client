@@ -50,4 +50,18 @@ class TunPlanTest {
         assertEquals(CoreDns.FALLBACK, CoreDns.endpoint(listOf("not-an-address", "300.1.1.1")))
         assertEquals("198.51.100.1:53", CoreDns.endpoint(listOf("172.19.0.2", "198.51.100.1")))
     }
+
+    @Test
+    fun `core dns follows the network under the tunnel and is set only when it changes`() {
+        val follower = CoreDnsFollower(listOf("192.168.1.1"))
+        assertEquals("192.168.1.1:53", follower.endpoint)
+        assertEquals(null, follower.network(listOf("192.168.1.1", "fe80::1%wlan0")), "та же сеть — ядро не трогаем")
+
+        // Wi-Fi пропал — мобильная сеть со своим DNS: роутер Wi-Fi из нее недоступен.
+        assertEquals("10.0.0.53:53", follower.network(listOf("10.0.0.53")))
+        assertEquals("10.0.0.53:53", follower.endpoint)
+        assertEquals(CoreDns.FALLBACK, follower.network(emptyList()), "сеть еще без DNS — запасной")
+        assertEquals("192.168.1.1:53", follower.network(listOf("192.168.1.1")), "назад в Wi-Fi")
+        assertEquals(null, follower.network(listOf("192.168.1.1")))
+    }
 }

@@ -94,7 +94,7 @@ fun AppScreen(viewModel: MainViewModel, actions: AppActions) {
     PgBackground {
         if (adding) {
             BackHandler(onBack = closeImport)
-            ImportScreen(importing, actions.clipboard, viewModel::preview, viewModel::add, closeImport)
+            ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::add, closeImport)
         } else {
             BackHandler(enabled = tab != Tab.Home) { tab = Tab.Home }
             when (tab) {
@@ -117,13 +117,11 @@ fun AppScreen(viewModel: MainViewModel, actions: AppActions) {
                 Tab.Settings -> SettingsScreen(core, viewModel::loadCoreVersion, actions.openVpnSettings)
             }
 
-            // Сервера нет — кнопка-щит ведет к добавлению: подключаться не к чему.
             val power: () -> Unit = {
-                val off = ui.status.state == TunnelState.Off || ui.status.state == TunnelState.Error
-                if (off && ui.inUse == null) {
-                    adding = true
-                } else {
-                    actions.power()
+                when (ui.power) {
+                    PowerAction.Toggle -> actions.power()
+                    PowerAction.Add -> adding = true
+                    PowerAction.Choose -> tab = Tab.Servers
                 }
             }
             Island(tab, ui.status.state, hasServer = ui.inUse != null, onTab = { tab = it }, onPower = power, Modifier.align(Alignment.BottomCenter))

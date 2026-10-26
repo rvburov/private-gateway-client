@@ -47,6 +47,8 @@ class MainViewModelTest {
     private class FakeEngine : CoreEngine {
         override fun start(configJson: String, protect: (Int) -> Boolean, dns: String): String? = null
 
+        override fun changeDns(dns: String): String? = null
+
         override fun stop() = Unit
 
         override fun version() = "26.10.21"
@@ -107,6 +109,28 @@ class MainViewModelTest {
         val result = wait { model.importing.first { it.added != null } }
         assertEquals(0, result.added)
         assertEquals(1, result.duplicates)
+    }
+
+    @Test
+    fun `second tap on add while adding is ignored and the text survives the preview`() {
+        val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
+        val text = links.joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) }
+        model.edit(text)
+        model.preview(text)
+        wait { model.importing.first { it.batch != null } }
+        assertEquals(text, model.importing.value.text)
+
+        // Двойное нажатие: второе добавление нашло бы одни дубли и показало бы «ничего не добавлено».
+        model.add()
+        assertEquals(true, model.importing.value.adding, "кнопка «Добавить» гаснет сразу")
+        model.add()
+        val result = wait { model.importing.first { it.added != null } }
+        assertEquals(false, result.adding)
+        assertEquals(3, result.added)
+        assertEquals(0, result.duplicates)
+        model.add()
+        assertEquals(3, wait { model.ui.first { it.servers.size == 3 } }.servers.size)
+        assertEquals(result, model.importing.value)
     }
 
     @Test

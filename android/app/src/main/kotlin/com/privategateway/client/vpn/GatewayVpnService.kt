@@ -1,30 +1,41 @@
 package com.privategateway.client.vpn
 
+import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
+import android.net.LinkProperties
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.net.VpnService
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.privategateway.client.MainActivity
 import com.privategateway.client.PrivateGatewayApp
 import com.privategateway.client.R
 import com.privategateway.client.core.text.SecretMasker
-import com.privategateway.client.core.vpn.CoreDns
+import com.privategateway.client.core.vpn.CoreDnsFollower
 import com.privategateway.client.core.vpn.TunPlan
 import com.privategateway.client.core.xray.CoreSettings
 import com.privategateway.client.core.xray.XrayConfig
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.ui.Texts
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -40,7 +51,7 @@ import javax.inject.Inject
  * Туннель защиты: системный VPN Android. Весь трафик телефона идет в карту TUN ([TunPlan]), ее читает ядро Xray (вход
  * tun с дескриптором карты) и отправляет через выбранный сервер; сокеты ядра выведены из туннеля (protect). Сервер —
  * только выбранный пользователем: другой сам не выбирается. Запускают окно (кнопка включения), уведомление
- * («Отключить») и система — «Постоянная VPN».
+ * («Отключить») и система — «Постоянная VPN». Поле [tun], ядро и слежение за сетью меняются только под [lock].
  */
 @AndroidEntryPoint
 class GatewayVpnService : VpnService() {
@@ -57,26 +68,50 @@ class GatewayVpnService : VpnService() {
     private var work: Job? = null
     private var tun: ParcelFileDescriptor? = null
     private var coreRunning = false
+    private var dns: CoreDnsFollower? = null
+    private var underlying: ConnectivityManager.NetworkCallback? = null
+
+    /** DNS сети под туннелем — последнее, что сообщил Android; ядру его передает [followNetwork] под замком. */
+    @Volatile
+    private var networkDns: List<String>? = null
+
+    /** Номер последнего запуска: остановка по старому не гасит службу, если после него пришел новый запуск. */
+    @Volatile
+    private var lastStart = 0
+
+    /** Служба уничтожена: подключение, которое шло в это время, снимает за собой туннель и ядро само. */
+    @Volatile
+    private var destroyed = false
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        lastStart = startId
         if (intent?.action == ACTION_DISCONNECT) {
-            disconnect()
+            disconnect(startId)
             return START_NOT_STICKY
         }
 
         // Окно, «Постоянная VPN» (действие android.net.VpnService) и перезапуск системой — подключение к выбранному.
-        connect()
+        connect(startId)
         return START_STICKY
     }
 
     override fun onRevoke() {
         // Разрешение отозвано: VPN другой программы занял место или пользователь отключил нас в настройках Android.
-        disconnect()
+        disconnect(lastStart)
     }
 
     override fun onDestroy() {
+        destroyed = true
         work?.cancel()
-        stopCore()
+        // establish() и запуск ядра не прерываются: если подключение держит замок, туннель и ядро снимет оно само.
+        if (lock.tryLock()) {
+            try {
+                stopCore()
+            } finally {
+                lock.unlock()
+            }
+        }
+
         if (monitor.status.value.state != TunnelState.Error) {
             monitor.set(TunnelStatus())
         }
@@ -85,18 +120,32 @@ class GatewayVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun connect() {
+    private fun connect(startId: Int) {
         foreground(notification(getString(R.string.status_connecting_title), null))
         work?.cancel()
         work = scope.launch {
             lock.withLock {
                 stopCore()
-                val error = start()
-                if (error != null) {
+                val error = try {
+                    start()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Сбой Android или ядра — не авария всего приложения: ошибка с кодом, текст — в журнал через SecretMasker.
+                    Log.w(TAG, "connect: " + SecretMasker.mask(e.toString()))
+                    TunnelErrors.CORE_FAILED
+                }
+
+                if (destroyed) {
+                    stopCore()
+                    monitor.set(if (error != null) TunnelStatus(state = TunnelState.Error, error = error) else TunnelStatus())
+                } else if (error != null) {
                     stopCore()
                     monitor.set(TunnelStatus(state = TunnelState.Error, error = error))
                     ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                    stopSelf()
+                    // Запуск «Постоянной VPN» не виден в окне: без уведомления пользователь думал бы, что защищен.
+                    notifyFailure(error)
+                    stopSelfResult(startId)
                 }
             }
         }
@@ -110,8 +159,8 @@ class GatewayVpnService : VpnService() {
         val core = CoreSettings()
         val plan = TunPlan.of(core)
 
-        // DNS сети — до туннеля: потом сеть по умолчанию — уже он сам.
-        val dns = CoreDns.endpoint(networkDns())
+        // DNS сети — до туннеля: потом сеть по умолчанию — уже он сам. Дальше DNS ведет слежение за сетью.
+        val follower = CoreDnsFollower(activeNetworkDns())
         val builder = Builder()
             .setSession(getString(R.string.app_title))
             .setMtu(plan.mtu)
@@ -129,14 +178,21 @@ class GatewayVpnService : VpnService() {
 
         val config = XrayConfig.build(server, core, descriptor.fd)
         val json = config.json ?: return TunnelErrors.UNSUPPORTED
-        val failure = engine.start(json, { socket -> protect(socket) }, dns)
+        // Ядро считается запущенным и при отказе: остановка снимет то, что успело запуститься (DNS, контроллер сокетов).
+        coreRunning = true
+        val failure = engine.start(json, { socket -> protect(socket) }, follower.endpoint)
         if (failure != null) {
             // Текст ядра — в журнал Android через SecretMasker: ссылок, UUID и ключей в журнале нет.
             Log.w(TAG, "core: " + SecretMasker.mask(failure))
             return TunnelErrors.CORE_FAILED
         }
 
-        coreRunning = true
+        dns = follower
+        watchNetwork()
+        if (destroyed) {
+            return null
+        }
+
         val alwaysOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isAlwaysOn else null
         val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
         monitor.set(
@@ -163,7 +219,7 @@ class GatewayVpnService : VpnService() {
         null
     }
 
-    private fun disconnect() {
+    private fun disconnect(startId: Int) {
         work?.cancel()
         scope.launch {
             lock.withLock {
@@ -171,13 +227,17 @@ class GatewayVpnService : VpnService() {
                 stopCore()
                 monitor.set(TunnelStatus())
                 ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                stopSelf()
+                stopSelfResult(startId)
             }
         }
     }
 
     /** Ядро — до карты: ядро читает свою копию дескриптора, а карту закрывает только приложение. */
     private fun stopCore() {
+        underlying?.let { callback -> runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback) } }
+        underlying = null
+        dns = null
+        networkDns = null
         if (coreRunning) {
             engine.stop()
             coreRunning = false
@@ -187,10 +247,49 @@ class GatewayVpnService : VpnService() {
         tun = null
     }
 
-    private fun networkDns(): List<String> {
+    private fun activeNetworkDns(): List<String> {
         val connectivity = getSystemService(ConnectivityManager::class.java) ?: return emptyList()
         val properties = connectivity.getLinkProperties(connectivity.activeNetwork) ?: return emptyList()
         return properties.dnsServers.mapNotNull { it.hostAddress }
+    }
+
+    /**
+     * Следить за сетью под туннелем: лучшая сеть с интернетом, кроме VPN, — та, по которой уходит трафик ядра. Сменилась
+     * (Wi-Fi ↔ мобильная) или сменила DNS — ядру DNS новой сети. Сеть под туннелем Android выбирает сам (сеть по умолчанию).
+     */
+    private fun watchNetwork() {
+        val connectivity = getSystemService(ConnectivityManager::class.java) ?: return
+        val request = NetworkRequest.Builder()
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+            .addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN)
+            .build()
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            // С Android 8 за onAvailable всегда идет onLinkPropertiesChanged: новая сеть приходит сюда же.
+            override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
+                networkDns = linkProperties.dnsServers.mapNotNull { it.hostAddress }
+                scope.launch { lock.withLock { followNetwork() } }
+            }
+        }
+
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                connectivity.registerBestMatchingNetworkCallback(request, callback, Handler(Looper.getMainLooper()))
+            } else {
+                // До Android 12 лучшую подходящую сеть дает запрос сети: ее же Android делает сетью по умолчанию.
+                connectivity.requestNetwork(request, callback)
+            }
+
+            underlying = callback
+        } catch (e: RuntimeException) {
+            Log.w(TAG, "network callback: " + SecretMasker.mask(e.message))
+        }
+    }
+
+    /** Под замком: DNS последней сети — ядру, если он изменился. */
+    private fun followNetwork() {
+        val follower = dns ?: return
+        val endpoint = networkDns?.let { follower.network(it) } ?: return
+        engine.changeDns(endpoint)?.let { Log.w(TAG, "core dns: " + SecretMasker.mask(it)) }
     }
 
     private fun foreground(notification: Notification) {
@@ -211,6 +310,29 @@ class GatewayVpnService : VpnService() {
             .addAction(0, getString(R.string.android_notify_disconnect), disconnectIntent(this))
             .build()
 
+    /** Защита не включилась: уведомление с причиной; при «Блокировать подключения без VPN» интернета нет вовсе. */
+    private fun notifyFailure(error: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+
+        val blocked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isLockdownEnabled
+        val text = getString(if (blocked) R.string.notify_failed_blocked else R.string.notify_failed_direct, "", "", getString(Texts.error(error)))
+        val notification = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_ALERTS)
+            .setSmallIcon(R.drawable.pg_notification)
+            .setContentTitle(getString(R.string.notify_failed_title))
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setContentIntent(openApp())
+            .setAutoCancel(true)
+            .setCategory(NotificationCompat.CATEGORY_ERROR)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+        NotificationManagerCompat.from(this).notify(FAILURE_NOTIFICATION_ID, notification)
+    }
+
     private fun openApp(): PendingIntent = PendingIntent.getActivity(
         this,
         0,
@@ -221,6 +343,7 @@ class GatewayVpnService : VpnService() {
     companion object {
         private const val TAG = "PrivateGateway"
         private const val NOTIFICATION_ID = 1
+        private const val FAILURE_NOTIFICATION_ID = 2
         const val ACTION_CONNECT = "com.privategateway.client.CONNECT"
         const val ACTION_DISCONNECT = "com.privategateway.client.DISCONNECT"
 

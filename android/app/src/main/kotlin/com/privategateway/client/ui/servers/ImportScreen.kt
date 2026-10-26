@@ -59,10 +59,12 @@ private const val SHOWN_ERRORS = 5
  * QR-код — пункт 9.2.
  */
 @Composable
-fun ImportScreen(state: ImportUi, clipboard: () -> String?, onPreview: (String) -> Unit, onAdd: () -> Unit, onClose: () -> Unit) {
-    var text by rememberSaveable { mutableStateOf("") }
+fun ImportScreen(state: ImportUi, clipboard: () -> String?, onText: (String) -> Unit, onPreview: (String) -> Unit, onAdd: () -> Unit, onClose: () -> Unit) {
+    // Текст — в модели окна, а не в сохраненном состоянии: конфиг на сотни КБ в Bundle уронил бы процесс (и VPN с ним),
+    // а ключи серверов попали бы в системный процесс.
+    val text = state.text
     var emptyClipboard by rememberSaveable { mutableStateOf(false) }
-    val language = LocalConfiguration.current.locales[0].language
+    val language = Texts.language(LocalConfiguration.current.locales)
     Column(
         Modifier
             .fillMaxSize()
@@ -95,7 +97,7 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onPreview: (String) 
                         val pasted = clipboard()?.takeIf { it.isNotBlank() }
                         emptyClipboard = pasted == null
                         if (pasted != null) {
-                            text = pasted
+                            onText(pasted)
                             onPreview(pasted)
                         }
                     }
@@ -121,7 +123,7 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onPreview: (String) 
             val shape = RoundedCornerShape(PgRadius.Input)
             BasicTextField(
                 value = text,
-                onValueChange = { text = it },
+                onValueChange = onText,
                 textStyle = PgType.Mono.copy(color = PgColor.Text.Primary),
                 cursorBrush = SolidColor(PgColor.Accent.Base),
                 modifier = Modifier
@@ -188,7 +190,7 @@ fun ImportScreen(state: ImportUi, clipboard: () -> String?, onPreview: (String) 
                         modifier = Modifier.testTag("import.done"),
                     )
 
-                    else -> Button(stringResource(Texts.importAdd(good, language), good.toString()), enabled = true, tag = "import.add", onClick = onAdd)
+                    else -> Button(stringResource(Texts.importAdd(good, language), good.toString()), enabled = !state.adding, tag = "import.add", onClick = onAdd)
                 }
             }
         }

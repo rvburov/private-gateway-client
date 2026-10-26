@@ -6,6 +6,9 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -91,6 +94,18 @@ class ServerRepositoryTest {
         assertNull(repository.load("broken"))
         repository.delete("broken")
         assertTrue(repository.servers.first().isEmpty())
+    }
+
+    @Test
+    fun `adds at the same time do not add the same servers twice`() = runBlocking {
+        val slow = ServerRepository(database.servers(), FakeBox(delayMillis = 20))
+        val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(5)
+        val results = (1..3).map { async(Dispatchers.Default) { slow.add(servers) } }.awaitAll()
+        assertEquals(servers.size, results.sumOf { it.added })
+        assertEquals(2 * servers.size, results.sumOf { it.duplicates })
+        val stored = database.servers().all()
+        assertEquals(servers.map { it.name }, stored.map { it.name })
+        assertEquals(servers.indices.toList(), stored.map { it.position })
     }
 
     @Test

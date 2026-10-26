@@ -27,10 +27,13 @@ object Fixtures {
  * «Шифрование» для тестов: каждый байт — XOR с постоянной, впереди метка; видно, что данные прошли через ящик. Обращение
  * байтов не годится: ключ из одинаковых знаков («AAAA…=») читался бы и обращенным. Keystore в Robolectric нет.
  */
-class FakeBox : SecretBox {
+class FakeBox(private val delayMillis: Long = 0) : SecretBox {
+    @Volatile
     var sealed = 0
 
     override fun seal(plain: ByteArray): ByteArray {
+        // Медленный ящик (как Keystore) — чтобы два добавления сразу точно шли одновременно.
+        Thread.sleep(delayMillis)
         sealed++
         return MARK + flip(plain)
     }

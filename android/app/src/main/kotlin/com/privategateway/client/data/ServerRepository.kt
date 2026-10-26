@@ -10,6 +10,8 @@ import com.privategateway.client.core.servers.TransportSecurity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import javax.inject.Inject
@@ -42,7 +44,12 @@ data class AddResult(val added: Int, val duplicates: Int)
 class ServerRepository @Inject constructor(private val dao: ServerDao, private val box: SecretBox) {
     val servers: Flow<List<ServerItem>> = dao.observeAll().map { list -> list.mapNotNull { item(it) } }
 
-    suspend fun add(servers: List<ServerDefinition>): AddResult = withContext(Dispatchers.IO) {
+    /** Добавления по одному: два сразу (двойное нажатие) прочли бы список до вставки и добавили бы те же серверы дважды. */
+    private val writes = Mutex()
+
+    suspend fun add(servers: List<ServerDefinition>): AddResult = withContext(Dispatchers.IO) { writes.withLock { insert(servers) } }
+
+    private suspend fun insert(servers: List<ServerDefinition>): AddResult {
         val known = dao.all().mapNotNull { open(it) }.map { identity(it) }.toMutableSet()
         var position = dao.lastPosition()
         val now = System.currentTimeMillis()
@@ -72,7 +79,7 @@ class ServerRepository @Inject constructor(private val dao: ServerDao, private v
         }
 
         dao.insertAll(fresh)
-        AddResult(fresh.size, duplicates)
+        return AddResult(fresh.size, duplicates)
     }
 
     /** Сервер целиком — для подключения; нет в списке или не открылся (ключ Keystore утерян) — null. */
