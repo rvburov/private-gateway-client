@@ -23,19 +23,24 @@ object Fixtures {
     fun identity(server: ServerDefinition) = LinkWriter.write(server.copy(name = "", countryCode = ""))
 }
 
-/** «Шифрование» для тестов: обращает байты и ставит метку — видно, что данные прошли через ящик. Keystore в Robolectric нет. */
+/**
+ * «Шифрование» для тестов: каждый байт — XOR с постоянной, впереди метка; видно, что данные прошли через ящик. Обращение
+ * байтов не годится: ключ из одинаковых знаков («AAAA…=») читался бы и обращенным. Keystore в Robolectric нет.
+ */
 class FakeBox : SecretBox {
     var sealed = 0
 
     override fun seal(plain: ByteArray): ByteArray {
         sealed++
-        return MARK + plain.reversedArray()
+        return MARK + flip(plain)
     }
 
     override fun open(sealed: ByteArray): ByteArray {
         require(sealed.size >= MARK.size && sealed.copyOfRange(0, MARK.size).contentEquals(MARK)) { "чужие данные" }
-        return sealed.copyOfRange(MARK.size, sealed.size).reversedArray()
+        return flip(sealed.copyOfRange(MARK.size, sealed.size))
     }
+
+    private fun flip(bytes: ByteArray) = ByteArray(bytes.size) { (bytes[it].toInt() xor 0x5A).toByte() }
 
     private companion object {
         val MARK = byteArrayOf(0x50, 0x47, 0x01)

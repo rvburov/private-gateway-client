@@ -89,7 +89,8 @@ public sealed class CaptivePauseTests : IDisposable
 
         reply.Until.ShouldBeNull("программы с прокси ходят через него и дальше — делать вид паузы нельзя");
         (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).CaptivePauseUntil.ShouldBeNull();
-        service.Journal.Tail(1).ShouldHaveSingleItem().Message.ShouldContain("ничего не меняет");
+        // Строка ядра («Xray started») может прийти в журнал позже ответа на паузу — ищется запись службы, не последняя.
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.Contains("ничего не меняет", StringComparison.Ordinal));
     }
 
     [Theory]
