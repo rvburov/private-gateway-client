@@ -316,18 +316,6 @@ public sealed partial class ReconnectTests
     }
 
     [Fact]
-    public void Sleep_clock_of_this_os_reads()
-    {
-        Assert.SkipUnless(ServiceHost.SuspendClock() is not null, "часов сна для этой ОС нет");
-        var clock = ServiceHost.SuspendClock()!;
-
-        var (first, second) = (clock.Suspended, clock.Suspended);
-
-        first.ShouldBeGreaterThanOrEqualTo(-TimeSpan.FromMilliseconds(50), "сон с загрузки — не меньше нуля (с погрешностью двух чтений)");
-        (second - first).Duration().ShouldBeLessThan(TimeSpan.FromSeconds(1), "без сна часы сна стоят");
-    }
-
-    [Fact]
     public void Network_fingerprint_ignores_the_own_tunnel_the_loopback_and_the_order()
     {
         (string, bool, IEnumerable<IPAddress>) Adapter(string name, params string[] addresses) =>

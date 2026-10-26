@@ -32,10 +32,27 @@
 | `Client.Service` | служба: сервер IPC, запуск ядер, состояние защиты, пинг, проверки | Core, Contracts, Network, Platform.* | да |
 | `Client.Platform.Windows` | Wintun, WFP, служба Windows, определение сети (WLAN API, NLM) | Core | да |
 | `Client.Platform.Linux` | nftables, systemd, systemd-resolved, polkit, NetworkManager | Core | да |
-| `Client.Platform.MacOS` | Network Extension или launchd + utun + pf — решение на спайке | Core | да |
+| `Client.Platform.MacOS` | служба launchd, pf, маршруты (`netstat`), DNS ОС (`scutil`), системный прокси (`networksetup`), Связка ключей; TUN — sing-box (utun) | Core | да |
 
 Правила держат тесты `desktop/tests/Architecture` (объявленные ссылки в `.csproj` и
 используемые сборки) и анализатор запрещенных вызовов (`desktop/BannedSymbols.NoNetwork.txt`).
+
+## Одинаковые контракты на всех ОС
+
+Логика защиты — одна для всех ОС (`Gateway`, `ConnectionStateMachine`); различаются только платформенные части за
+интерфейсами `Client.Core.Platform`. Поэтому сценарии проверяются одни, а ОС дает свои части (решение 369):
+
+| Контракт | Что одинаково | Windows | Linux | macOS | Тесты |
+| --- | --- | --- | --- | --- | --- |
+| Блок при обрыве (`IKillSwitch`) | ставится и меняется без щели, отказ в новой политике оставляет прежний блок, снимается и повторно | WFP | nftables | pf | `PlatformContractTests` (настоящие правила: WFP для одной программы, nftables в своем пространстве, pf в своем якоре); трафик — `WfpKillSwitchTests`, `KillSwitchTests`, загрузка — `PfKillSwitchTests` |
+| Хранилище секретов службы (`ISecretSealer`) | шифр не содержит секрета, каждый раз разный, испорченное и чужое не открывается | DPAPI | systemd-creds | Связка ключей | `PlatformContractTests`, `BootConnectionTests` |
+| Маршруты, чужой VPN (`IRouteTable`) | маршрут ко всему интернету через карту виден, имена адаптеров чистые | IP Helper | `ip` | `netstat` | `PlatformContractTests`, `RouteTableTests` |
+| Сон и пробуждение (`ISuspendClock`) | без сна часы сна стоят, сон — не меньше нуля; пробуждение — проверка сервера сразу | счетчики прерываний | `CLOCK_BOOTTIME` | `mach_continuous_time` | `PlatformContractTests`; `ReconnectTests.Waking_up_checks_the_server_at_once` |
+| Ручной выход и переподключение | только к выбранному серверу, смена сети — попытка сразу, политика «Не повторять» | общая логика | общая логика | общая логика | `ReconnectTests` — с настоящим Xray на всех трех ОС |
+| DNS и IPv6 | DNS ОС — в туннель, IPv6 вне туннеля закрыт или через туннель, замер утечек честный | sing-box (DNS адаптера), WFP | sing-box (resolved), nftables | служба (`scutil`), pf | `LeakCheckTests` на всех ОС; путь трафика — `VpnModeTests` и `VpnTunnelTests` в пространствах Linux, DNS macOS — `ScutilDnsTests` |
+
+На машинах CI правила ставятся так, чтобы не отрезать саму машину; полный путь трафика через TUN и блок при обрыве
+проверяется в сетевых пространствах Linux. На настоящих Windows и macOS с туннелем — проверка вручную (README, этап 11).
 
 ## Ход подключения
 

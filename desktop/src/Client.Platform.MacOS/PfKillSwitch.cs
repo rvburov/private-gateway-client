@@ -44,9 +44,9 @@ public sealed partial class PfKillSwitch(
         && pfctl(["-s", "info"], null).Output.Contains("Status: Enabled", StringComparison.Ordinal)
         && pfctl(["-s", "rules"], null).Output.Contains("anchor \"com.apple/*\"", StringComparison.Ordinal);
 
-    /// <summary>pfctl этой машины; не macOS — null.</summary>
-    public static PfKillSwitch? ForThisMachine() =>
-        OperatingSystem.IsMacOS() && File.Exists(Program) ? new PfKillSwitch(Run) : null;
+    /// <summary>pfctl этой машины; не macOS — null. Тесты дают свои файл ссылки и якорь.</summary>
+    public static PfKillSwitch? ForThisMachine(string tokenFile = "/var/run/private-gateway/pf.token", string anchor = Anchor) =>
+        OperatingSystem.IsMacOS() && File.Exists(Program) ? new PfKillSwitch(Run, tokenFile, anchor) : null;
 
     public void Enable(KillSwitchPolicy policy)
     {

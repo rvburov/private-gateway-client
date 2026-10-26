@@ -103,7 +103,8 @@ jobs:
           sudo env "PATH=$PATH" "DOTNET_ROOT=$DOTNET_ROOT" "HOME=$HOME" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
             dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
             --filter-class '*.VpnTunnelTests' --filter-class '*.VpnModeTests' --filter-class '*.KillSwitchTests' \
-            --filter-class '*.RouteTableTests' --filter-class '*.BootConnectionTests' --filter-class '*.NetworkNamespaceTests'
+            --filter-class '*.RouteTableTests' --filter-class '*.BootConnectionTests' --filter-class '*.NetworkNamespaceTests' \
+            --filter-class '*.PlatformContractTests'
 
       # Служба launchd на macOS — от root: ставится по-настоящему и удаляется (машина CI одноразовая); pf — правила разных
       # политик грузятся в свой якорь, который основные правила не вызывают (сеть машины CI не закрывается); DNS — на своей
@@ -121,7 +122,8 @@ jobs:
           sudo env "PATH=$PATH" "DOTNET_ROOT=$dotnet_root" "HOME=$HOME" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
             dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
             --filter-class '*.ServiceSetupTests' --filter-class '*.PfKillSwitchTests' --filter-class '*.ScutilDnsTests' \
-            --filter-class '*.NetworksetupSystemProxyTests' --filter-class '*.KeychainSealerTests' --filter-class '*.BootConnectionTests'
+            --filter-class '*.NetworksetupSystemProxyTests' --filter-class '*.KeychainSealerTests' --filter-class '*.BootConnectionTests' \
+            --filter-class '*.PlatformContractTests'
 
       # Итог всех запусков в сводку задания: упавшие и пропущенные — каждый с причиной. Пропуск, не разрешенный для этой ОС в
       # desktop/tests/allowed-skips.json, роняет проверку: тест не может тихо перестать идти в CI.
