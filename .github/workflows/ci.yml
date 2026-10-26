@@ -184,7 +184,7 @@ jobs:
       # Приложение: сборка APK (подпись отладочным ключом), тесты без устройства (Robolectric: хранилище, тексты RU/EN,
       # экраны Compose) и Android Lint — его ошибки роняют проверку.
       - name: Сборка, тесты и Lint приложения
-        run: android/gradlew -p android --continue :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+        run: android/gradlew -p android --continue :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug
 
       # Схемы базы (Room) лежат в git: по ним MigrationTestHelper проверяет миграции. Схема, которую сборка выгрузила, а
       # в git ее нет, — печатается (положить в git); схема в git, которая разошлась с сущностями, — ошибка: базу поменяли
@@ -207,6 +207,75 @@ jobs:
             android/app/build/outputs/apk/debug/*.apk
             android/app/build/reports/
             android/app/schemas/
+          if-no-files-found: ignore
+
+  # Настоящий туннель на эмуляторе (пункт 9.4): VpnService, ядро libXray и сервер Xray на машине CI
+  # (scripts/android-test-server.sh). Ускорение эмулятора — KVM машины GitHub.
+  android-emulator:
+    name: Android (эмулятор)
+    needs: android
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: KVM для эмулятора
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle.kts
+            android/gradle/libs.versions.toml
+            android/gradle/wrapper/gradle-wrapper.properties
+
+      # libXray — из кеша задания «Android» (оно идет раньше и собирает ядро при промахе).
+      - id: libxray
+        uses: actions/cache/restore@v4
+        with:
+          path: android/app/libs/libXray.aar
+          key: libxray-${{ hashFiles('android/libxray.version', 'scripts/get-libxray.sh') }}
+
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Ядро libXray (gomobile)
+        if: steps.libxray.outputs.cache-hit != 'true'
+        run: scripts/get-libxray.sh
+
+      - name: Сервер проверки туннеля (Xray и HTTP на машине CI)
+        run: |
+          scripts/get-xray.sh
+          scripts/android-test-server.sh
+
+      - name: Проверки на эмуляторе (Android 14)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
+          script: android/gradlew -p android :app:connectedDebugAndroidTest
+
+      - name: Отчеты и журнал сервера
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-emulator
+          path: |
+            android/app/build/reports/androidTests/
+            android/app/build/outputs/androidTest-results/
+            artifacts/android-test-server/*.log
           if-no-files-found: ignore
 
   worktree:
