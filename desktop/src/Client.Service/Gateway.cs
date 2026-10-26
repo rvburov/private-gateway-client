@@ -37,7 +37,8 @@ namespace PrivateGateway.Client.Service;
 /// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
 /// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
 /// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>);
-/// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>.
+/// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>;
+/// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -61,7 +62,8 @@ public sealed record GatewayOptions(
     Func<Uri, string, uint, CancellationToken, Task<IReadOnlyList<IPAddress>>>? LookupPastBlock = null,
     IPEndPoint? OutsideDns = null,
     Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null,
-    TimeSpan? BlockWatch = null);
+    TimeSpan? BlockWatch = null,
+    string? TunDevice = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -386,6 +388,15 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             return await RejectAsync(request, core.Mode, ErrorCodes.VpnNotReady,
                 _options.KillSwitch is null ? "Режим VPN на этой ОС еще не готов: нет блока при обрыве" : "Нет сборки sing-box", cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        // Без устройства TUN (контейнер без проброса /dev/net/tun, ядро без модуля tun) sing-box туннель не поднимет: сказать
+        // это сразу и прямо, а не общим «ядро не запустилось» из его вывода.
+        if (vpn && _options.TunDevice is { } tun && !File.Exists(tun))
+        {
+            return await RejectAsync(request, core.Mode, ErrorCodes.VpnNotReady,
+                $"Нет устройства TUN ({tun}): в контейнере его нужно пробросить, на машине — включить модуль ядра tun", cancellationToken)
                 .ConfigureAwait(false);
         }
 

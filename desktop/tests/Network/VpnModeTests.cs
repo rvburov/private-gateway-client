@@ -44,6 +44,26 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Vpn_without_a_tun_device_is_not_ready_and_says_why()
+    {
+        // Сборка sing-box здесь — любой существующий файл: до запуска не дойдет.
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        var killSwitch = new FakeKillSwitch(enabled: false);
+        var missing = Path.Combine(Path.GetTempPath(), "pg-no-tun-" + Guid.NewGuid().ToString("N")[..8], "tun");
+        await using var service = await RunningService.StartAsync(options: o => o with
+        {
+            CanVpn = true, SingBoxPath = XrayKit.Xray, KillSwitch = killSwitch, TunDevice = missing,
+        });
+        var (definition, _) = XrayKit.Pair("vless", 443);
+
+        var reply = await service.Client.ConnectAsync(VpnRequest(definition), cancellationToken: Ct);
+
+        (reply.Accepted, reply.Error.Code).ShouldBe((false, ErrorCodes.VpnNotReady), "контейнер без /dev/net/tun — VPN не обещается");
+        reply.Error.Message.ShouldContain("Нет устройства TUN");
+        killSwitch.IsEnabled.ShouldBeFalse("до блока и ядер не дошло");
+    }
+
+    [Fact]
     public async Task Block_left_after_a_crash_is_shown_and_lifted_by_turning_off()
     {
         var killSwitch = new FakeKillSwitch(enabled: true);
