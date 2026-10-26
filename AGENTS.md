@@ -151,10 +151,11 @@ dotnet run --project desktop/src/Client.UI             # интерфейс
 dotnet run --project desktop/src/Client.UI -- --demo   # интерфейс на имитации службы, с демо-серверами
 dotnet run --project desktop/src/Client.Service -- --version
 dotnet run scripts/gen-tokens.cs                       # тема Avalonia из design-tokens.json
+scripts/publish.sh [версия]                            # выпуск для ОС этой машины: архив, SBOM, SHA256SUMS
 ```
 
-- Вывод сборки — в `artifacts/bin/<проект>/debug/`. Версии пакетов — только в
-  `Directory.Packages.props`.
+- Вывод сборки — в `artifacts/bin/<проект>/debug/`, выпуска — в `artifacts/release/`
+  ([docs/architecture/release.md](docs/architecture/release.md)). Версии пакетов — только в `Directory.Packages.props`.
 - Предупреждения — ошибки (`TreatWarningsAsErrors`): сборка с предупреждением не проходит.
 - Пользователь запускает программу из основной папки, и сборка там падает на занятых файлах. У
   рабочей папки агента своя `artifacts/`. Процесс программы и службы не завершать и закрыть не

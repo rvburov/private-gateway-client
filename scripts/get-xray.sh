@@ -2,6 +2,7 @@
 # Сборка Xray-core для тестов и разработки: версия — из shared/cores/xray.version, архив сверяется по
 # SHA-256 с закрепленной суммой из shared/cores/xray.sha256 (без нее — с предупреждением) и с .dgst
 # того же выпуска. Распаковка — в artifacts/cores/xray/. Запуск: scripts/get-xray.sh
+# Для выпуска (scripts/publish.sh) — scripts/get-xray.sh --pinned: без закрепленной суммы — ошибка, а не предупреждение.
 # В облаке без доступа к выпускам GitHub — scripts/get-xray.sh --build (сборка из исходников тега).
 set -euo pipefail
 
@@ -53,7 +54,10 @@ if [ "$actual" != "$published" ]; then
 fi
 
 pinned=$(grep -E "^$version $asset " "$root/shared/cores/xray.sha256" 2> /dev/null | cut -d' ' -f3 || true)
-if [ -z "$pinned" ]; then
+if [ -z "$pinned" ] && [ "${1:-}" = "--pinned" ]; then
+  echo "Для $version $asset нет закрепленной суммы в shared/cores/xray.sha256 — в выпуск такая сборка не идет" >&2
+  exit 1
+elif [ -z "$pinned" ]; then
   echo "Внимание: для $version $asset нет закрепленной суммы в shared/cores/xray.sha256 — сверено только с .dgst выпуска" >&2
 elif [ "$actual" != "$pinned" ]; then
   echo "SHA-256 $asset не совпала с закрепленной в shared/cores/xray.sha256: $actual ≠ $pinned" >&2

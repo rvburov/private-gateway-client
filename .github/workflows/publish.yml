@@ -1,0 +1,82 @@
+name: Сборка выпуска
+
+# Выпуск для трех ОС (scripts/publish.sh): окно и служба с .NET в комплекте, ядра с закрепленными суммами, SBOM
+# (CycloneDX) и SHA256SUMS; scripts/tests/release-smoke.sh проверяет его из архива. На тег v* — сборка с версией тега,
+# по кнопке — с любой; на ветках — когда меняется сама сборка. Подпись артефактов — «Отложено» (README).
+on:
+  push:
+    branches: ['**']
+    tags: ['v*']
+    # Для тегов пути не проверяются: тег собирается всегда.
+    paths:
+      - scripts/publish.sh
+      - scripts/package.cs
+      - scripts/get-xray.sh
+      - scripts/get-singbox.sh
+      - scripts/tests/release-smoke.sh
+      - shared/cores/**
+      - Directory.Build.props
+      - Directory.Packages.props
+      - '**/*.csproj'
+      - .github/workflows/publish.yml
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Версия (SemVer); пусто — из Directory.Build.props
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Выпуск (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    defaults:
+      run:
+        # На Windows — Git Bash: скрипты проекта запускаются в нем (AGENTS.md).
+        shell: bash
+    steps:
+      - uses: actions/checkout@v5
+
+      # Как в проверке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
+      - id: dotnet
+        uses: actions/setup-dotnet@v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
+      - name: Версия
+        id: version
+        env:
+          INPUT: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version=${GITHUB_REF_NAME#v}
+          elif [ -n "$INPUT" ]; then version=$INPUT
+          else version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Сборка выпуска
+        run: scripts/publish.sh "${{ steps.version.outputs.version }}"
+
+      - name: Проверка выпуска из архива
+        run: scripts/tests/release-smoke.sh "${{ steps.version.outputs.version }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ runner.os }}
+          path: artifacts/release/
+          if-no-files-found: error
