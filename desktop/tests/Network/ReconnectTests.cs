@@ -110,6 +110,7 @@ public sealed class ReconnectTests
 
         var lost = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting))[^1];
         lost.ServerId.ShouldBe("srv-1");
+        lost.NetworkChangedAt.ShouldNotBeNull("окно видит, что попытки идут сразу после смены сети");
         rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Сеть сменилась, сервер не отвечает — переподключение к тому же серверу");
 
         await rig.StartServerAsync();

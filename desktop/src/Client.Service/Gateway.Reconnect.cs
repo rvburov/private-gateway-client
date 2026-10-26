@@ -111,12 +111,11 @@ public sealed partial class Gateway
     /// </summary>
     private void OnNetworkChanged(object? sender, EventArgs e)
     {
-        // В другой сети и реальный IP другой: прежний замер не годится для проверки утечек.
+        // В другой сети и реальный IP другой: прежний замер не годится для проверки утечек. Время смены окно берет для
+        // уведомления «Нужен вход в Wi-Fi».
         (_directIp, _directIp6) = (null, null);
-        if (Status.Exit.DirectIp is not null)
-        {
-            Update(s => s with { Exit = s.Exit with { DirectIp = null } });
-        }
+        var now = _time.GetUtcNow();
+        Update(s => s with { Exit = s.Exit with { DirectIp = null }, NetworkChangedAt = now });
 
         CheckAtOnce("Сеть машины сменилась");
     }

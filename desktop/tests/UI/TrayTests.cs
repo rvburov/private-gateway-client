@@ -1,14 +1,17 @@
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
+using PrivateGateway.Client.UI.Views;
 
 namespace PrivateGateway.Client.Tests.UI;
 
@@ -133,6 +136,34 @@ public sealed class TrayTests : WindowHarness
 
         on.PixelSize.ShouldBe(new Avalonia.PixelSize(64, 64));
         Png(on).ShouldNotBe(Png(off));
+    }
+
+    [AvaloniaFact]
+    public void Autostart_shows_only_the_tray_icon_after_the_first_launch()
+    {
+        var (window, _) = Open();
+        window.Hide();
+        var settings = Service<SettingsService>();
+
+        var autostart = Host(window, minimized: true);
+        autostart.MainWindow.ShouldBeNull("запуск с --minimized после первого запуска — окно не показывается, только значок");
+        window.IsVisible.ShouldBeFalse();
+
+        Service<NoticeWindow>().Bring();
+        (autostart.MainWindow, window.IsVisible).ShouldBe((window, true), "нажали уведомление — окно показано");
+
+        Host(window, minimized: false).MainWindow.ShouldBe(window, "обычный запуск — окно");
+        settings.Update(s => s with { OnboardingDone = false });
+        Host(window, minimized: true).MainWindow.ShouldBe(window, "первый запуск — приветствие и при --minimized");
+    }
+
+    // Жизненный цикл окна без Start: DesktopHost только назначает ему главное окно.
+    private ClassicDesktopStyleApplicationLifetime Host(MainWindow window, bool minimized)
+    {
+        var lifetime = new ClassicDesktopStyleApplicationLifetime();
+        _ = new DesktopHost(Avalonia.Application.Current!, lifetime, window, Service<TrayViewModel>(), Service<SettingsService>(), null, minimized,
+            Service<NoticeWindow>());
+        return lifetime;
     }
 
     private static List<string> Headers(NativeMenu menu) =>

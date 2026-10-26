@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
@@ -21,6 +22,7 @@ public static class ApplicationModule
         services.AddSingleton<AutostartSync>();
         services.AddSingleton<ProtectionSync>();
         services.AddSingleton<LaunchConnect>();
+        services.AddSingleton<NotificationCenter>();
         return services;
     }
 }

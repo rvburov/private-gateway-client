@@ -11,6 +11,7 @@ using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
 using PrivateGateway.Client.Infrastructure.Logging;
+using PrivateGateway.Client.Infrastructure.Notifications;
 using PrivateGateway.Client.Infrastructure.Secrets;
 using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Infrastructure.Startup;
@@ -60,6 +61,7 @@ public static class InfrastructureModule
         services.AddSingleton<IServerCatalog, UserOrDemoCatalog>();
         services.AddSingleton<BackupService>();
         services.AddSingleton<IAutostart>(_ => OsAutostart.ForCurrentUser());
+        services.AddSingleton(_ => SystemNotifiers.ForCurrentOs(File.Exists(paths.NotifyIcon) ? paths.NotifyIcon : null));
         services.AddSingleton<ISubscriptionDownloader>(sp =>
             new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>()));
         return services;

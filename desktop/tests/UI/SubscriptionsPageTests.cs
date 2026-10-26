@@ -218,6 +218,11 @@ public sealed class SubscriptionsPageTests : WindowHarness
         page.UpdateOnlyViaVpn = false;
         Downloads.Responses[MainUrl] = "trojan://pw-b@198.51.100.2:443#B";
 
+        // Говорит центр уведомлений: окно активно — всплывашкой в окне.
+        Service<NoticeWindow>().Attach(window, window.Show);
+        window.Activate();
+        Service<NoticeActions>().Start();
+
         await page.Cards.Single(c => c.Name == "Основная").UpdateCommand.ExecuteAsync(null);
         Dispatcher.UIThread.RunJobs();
 

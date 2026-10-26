@@ -65,3 +65,4 @@
 | xUnit v3, Shouldly | Apache-2.0, BSD-3-Clause | тесты |
 | YamlDotNet | MIT | разбор YAML Clash/Mihomo — только события разборщика (`YamlTree`) |
 | ZXing.Net | Apache-2.0 | QR-код: распознавание картинки при импорте и рисование для «Поделиться» |
+| Tmds.DBus.Protocol | MIT | уведомления Linux по D-Bus (`FreedesktopNotifier`); пакет и так приходит с Avalonia.FreeDesktop — та же версия 0.94.1, код не переносится |

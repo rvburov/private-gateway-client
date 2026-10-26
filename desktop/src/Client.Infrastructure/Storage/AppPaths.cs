@@ -13,6 +13,9 @@ public sealed record AppPaths(string DataDirectory)
 
     public string LogDirectory => Path.Combine(DataDirectory, "logs");
 
+    /// <summary>Значок программы для уведомлений Windows (рисует окно при запуске).</summary>
+    public string NotifyIcon => Path.Combine(DataDirectory, "notify.png");
+
     public static AppPaths ForCurrentUser()
     {
         var overridden = Environment.GetEnvironmentVariable(OverrideVariable);

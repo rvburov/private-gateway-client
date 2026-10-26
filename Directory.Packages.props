@@ -13,6 +13,8 @@
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="Avalonia.Headless.XUnit" Version="$(AvaloniaVersion)" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <!-- Уведомления Linux по D-Bus; та же версия, что приходит с Avalonia.FreeDesktop. -->
+    <PackageVersion Include="Tmds.DBus.Protocol" Version="0.94.1" />
   </ItemGroup>
 
   <ItemGroup Label="Хост и служба">

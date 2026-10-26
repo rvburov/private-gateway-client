@@ -20,6 +20,20 @@ public class ErrorCodesTests
         described.ShouldBe(codes, ignoreOrder: true, "каждая константа — строка каталога, и каждая строка — константа");
     }
 
+    [Theory]
+    [InlineData("ru")]
+    [InlineData("en")]
+    public void Every_code_has_words_in_both_languages(string language)
+    {
+        var texts = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(FindRoot(), "shared", "specifications", "localization", language + ".json")))
+            .RootElement;
+        var missing = typeof(ErrorCodes).GetFields(BindingFlags.Public | BindingFlags.Static)
+            .Where(f => f.IsLiteral).Select(f => (string)f.GetRawConstantValue()!)
+            .Where(code => !texts.TryGetProperty("error." + code, out var text) || string.IsNullOrWhiteSpace(text.GetString()));
+
+        missing.ShouldBeEmpty("код в уведомлении — словами, а не только номером");
+    }
+
     private static string FindRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)

@@ -293,7 +293,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
     public async Task Due_subscriptions_follow_the_interval_and_retry_failures_hourly()
     {
         var catalog = Catalog();
-        Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
         catalog.Add(Parse("trojan://pw-b@198.51.100.2:443#B"), "Без адреса");
         var updater = Updater(catalog);
 
@@ -303,7 +303,12 @@ public sealed class SubscriptionUpdateTests : IDisposable
         updater.Due().ShouldHaveSingleItem().Name.ShouldBe("Основная", "группа без адреса не обновляется");
 
         _downloads.Failure = new SubscriptionDownloadException(DownloadFailure.Timeout);
+        var failures = new List<UpdateFailureNotice>();
+        updater.ScheduledUpdateFailed += (_, f) => failures.Add(f);
         await updater.UpdateDueAsync(Ct);
+        failures.ShouldBe([new UpdateFailureNotice("Основная", DownloadFailure.Timeout, null)], "неудачу по расписанию окно скажет уведомлением");
+        await updater.UpdateAsync(id, Ct);
+        failures.Count.ShouldBe(1, "неудачу по кнопке показывает сам экран подписок");
         _time.Advance(TimeSpan.FromMinutes(59));
         updater.Due().ShouldBeEmpty("после неудачи — не чаще раза в час");
         _time.Advance(TimeSpan.FromMinutes(1));

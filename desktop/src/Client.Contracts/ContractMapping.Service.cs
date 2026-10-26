@@ -342,6 +342,7 @@ public static partial class ContractMapping
             },
             CaptivePauseUntil = status.CaptivePauseUntil is { } until ? Timestamp.FromDateTimeOffset(until) : null,
             StrictBlock = status.StrictBlock,
+            NetworkChangedAt = status.NetworkChangedAt is { } changed ? Timestamp.FromDateTimeOffset(changed) : null,
         };
         if (status.ErrorCode is { } code)
         {
@@ -369,7 +370,8 @@ public static partial class ContractMapping
             status.Network is { } n ? new NetworkInfo(n.Kind.ToCore(), Empty(n.Name), n.IsOpen, n.IsMetered) : NetworkInfo.Unknown,
             Empty(status.Error?.Code),
             status.CaptivePauseUntil?.ToDateTimeOffset(),
-            status.StrictBlock);
+            status.StrictBlock,
+            status.NetworkChangedAt?.ToDateTimeOffset());
     }
 
     /// <summary>Пустая строка контракта — как отсутствующее значение.</summary>

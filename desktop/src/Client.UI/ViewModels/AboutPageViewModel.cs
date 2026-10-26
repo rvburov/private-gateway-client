@@ -66,6 +66,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         new("gRPC", "Apache-2.0", "Grpc.Core.Api", "Grpc.Net.Client", "Grpc.AspNetCore.Server"),
         new("YamlDotNet", "MIT", "YamlDotNet"),
         new("ZXing.Net", "Apache-2.0", "ZXing.Net"),
+        new("Tmds.DBus", "MIT", "Tmds.DBus.Protocol"),
     ];
 
     /// <summary>«Версия 0.1 · Windows 11 · x64».</summary>

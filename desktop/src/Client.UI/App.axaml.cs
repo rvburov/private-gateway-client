@@ -4,6 +4,7 @@ using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
@@ -36,7 +37,11 @@ public partial class App : Avalonia.Application
         {
             var window = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
             _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
-                startup.Minimized && settings.Current.OnboardingDone);
+                startup.Minimized, Services.GetRequiredService<NoticeWindow>());
+
+            // Уведомления ОС — только у настоящего окна: тесты без экрана их не шлют.
+            NotifyIcon.Write(startup.Paths);
+            Services.GetRequiredService<NoticeActions>().Start();
         }
 
         // Обновление подписок по расписанию — в потоке окна: список серверов меняется там, где его показывают.
@@ -76,6 +81,10 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, ProblemPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProblemPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();
         services.AddSingleton<TrayViewModel>();
+        services.AddSingleton<INoticeTexts, NoticeTexts>();
+        services.AddSingleton<NoticeWindow>();
+        services.AddSingleton<INoticeWindow>(sp => sp.GetRequiredService<NoticeWindow>());
+        services.AddSingleton<NoticeActions>();
         overrides?.Invoke(services);
         return services.BuildServiceProvider();
     }

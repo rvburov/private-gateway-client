@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
@@ -55,6 +56,9 @@ public abstract class WindowHarness : IDisposable
     /// <summary>Системный прокси пользователя: по умолчанию выключен — тесты не читают настройки машины.</summary>
     protected FakeUserProxy SystemProxy { get; } = new();
 
+    /// <summary>Уведомления ОС в тестах не показываются, а запоминаются.</summary>
+    protected FakeNotifier Notifier { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -85,6 +89,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<IAutostart>(Autostart);
             s.AddSingleton<IServiceInstaller>(Installer);
             s.AddSingleton<IUserProxySettings>(SystemProxy);
+            s.AddSingleton<ISystemNotifier>(Notifier);
             if (gateway is not null)
             {
                 s.AddSingleton<IGatewayClient>(gateway);
@@ -377,6 +382,26 @@ public abstract class WindowHarness : IDisposable
     }
 
     /// <summary>Открытые адреса — вместо браузера.</summary>
+    protected sealed class FakeNotifier : ISystemNotifier
+    {
+        public bool IsSupported => true;
+
+        public List<NoticeText> Shown { get; } = [];
+
+        public event EventHandler<NoticeReply>? Replied;
+
+        /// <summary>Пользователь нажал уведомление или кнопку.</summary>
+        public void Press(NoticeReply reply) => Replied?.Invoke(this, reply);
+
+        public Task ShowAsync(string tag, NoticeText text, bool important, CancellationToken cancellationToken = default)
+        {
+            Shown.Add(text);
+            return Task.CompletedTask;
+        }
+
+        public Task CloseAsync(string tag, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
     protected sealed class FakeUrlLauncher : IUrlLauncher
     {
         public List<Uri> Opened { get; } = [];

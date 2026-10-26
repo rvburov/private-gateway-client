@@ -93,7 +93,8 @@ public sealed record ExitInfo(string? Ip, string? City, string? NetworkType, str
 /// уведомления показывают один и тот же снимок. <c>StrictBlock</c> — «Блокировка» строгого режима:
 /// защиту выключили вручную, а сеть закрыта до подключения или выключения строгого режима.
 /// <c>CaptivePauseUntil</c> — пауза для входа в Wi-Fi: в «Защищено», «Блокировке» (и строгого режима), «Ошибке» под блоком,
-/// а также в «Подключении» и «Переподключении» — тогда попытки стоят до конца паузы.
+/// а также в «Подключении» и «Переподключении» — тогда попытки стоят до конца паузы. <c>NetworkChangedAt</c> — когда служба
+/// последний раз видела смену сети машины.
 /// </summary>
 public sealed record ConnectionStatus(
     ConnectionState State,
@@ -107,7 +108,8 @@ public sealed record ConnectionStatus(
     NetworkInfo Network,
     string? ErrorCode,
     DateTimeOffset? CaptivePauseUntil,
-    bool StrictBlock = false)
+    bool StrictBlock = false,
+    DateTimeOffset? NetworkChangedAt = null)
 {
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;

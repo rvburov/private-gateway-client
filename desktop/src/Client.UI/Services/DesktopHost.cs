@@ -10,10 +10,10 @@ namespace PrivateGateway.Client.UI.Services;
 
 /// <summary>
 /// Окно и значок в трее на компьютере: закрыть окно — спрятать в трей (настройка «Сворачивать в трей»),
-/// «Закрыть» в меню — выйти, вторая копия программы — показать окно этой. При автозапуске окно не
-/// показывается: программа ждет в трее.
+/// «Закрыть» в меню — выйти, вторая копия программы — показать окно этой. При автозапуске (<c>--minimized</c>) окно не
+/// показывается: программа ждет в трее, — но только после первого запуска: приветствие показывается всегда.
 /// </summary>
-internal sealed class DesktopHost
+public sealed class DesktopHost
 {
     private readonly IClassicDesktopStyleApplicationLifetime _desktop;
     private readonly MainWindow _window;
@@ -28,7 +28,8 @@ internal sealed class DesktopHost
         TrayViewModel tray,
         SettingsService settings,
         SingleInstance? instance,
-        bool minimized)
+        bool minimized,
+        NoticeWindow notices)
     {
         _desktop = desktop;
         _window = window;
@@ -47,13 +48,14 @@ internal sealed class DesktopHost
         TrayIcon.SetIcons(app, [icon]);
         desktop.Exit += (_, _) => icon.Dispose();
 
+        notices.Attach(window, Show);
         window.Closing += OnClosing;
         if (instance is not null)
         {
             instance.ActivationRequested += (_, _) => Dispatcher.UIThread.Post(Show);
         }
 
-        if (!minimized)
+        if (!minimized || !settings.Current.OnboardingDone)
         {
             desktop.MainWindow = window;
         }

@@ -31,6 +31,9 @@ public sealed record UpdateResult(SubscriptionUpdate? Update, DownloadFailure? F
 /// <summary>Выбранный сервер пропал из подписки или изменился после обновления — сказать пользователю.</summary>
 public sealed record SelectedServerNotice(string SubscriptionName, string ServerName, SelectedServerChange Change);
 
+/// <summary>Подписка не обновилась по расписанию — прошлый список оставлен; причина и код ответа сервера подписки.</summary>
+public sealed record UpdateFailureNotice(string SubscriptionName, DownloadFailure Failure, int? StatusCode);
+
 /// <summary>
 /// Обновление подписок: по кнопке и по расписанию из настроек. Неудача не трогает прошлый список —
 /// причина запоминается у подписки. «Только через VPN» — пока защита не включена через настоящую
@@ -78,6 +81,9 @@ public sealed partial class SubscriptionUpdater : IDisposable
 
     /// <summary>Выбранный сервер пропал или изменился, а пользователь просил об этом сообщать.</summary>
     public event EventHandler<SelectedServerNotice>? SelectedServerChanged;
+
+    /// <summary>Подписка не обновилась по расписанию. По кнопке «Обновить» причину показывает сам экран подписок.</summary>
+    public event EventHandler<UpdateFailureNotice>? ScheduledUpdateFailed;
 
     /// <summary>Можно ли обновлять сейчас — по настройке «только через VPN» и состоянию защиты.</summary>
     public UpdateBlock Block =>
@@ -136,7 +142,11 @@ public sealed partial class SubscriptionUpdater : IDisposable
 
         foreach (var subscription in Due())
         {
-            await UpdateAsync(subscription.Id, cancellationToken).ConfigureAwait(true);
+            var result = await UpdateAsync(subscription.Id, cancellationToken).ConfigureAwait(true);
+            if (result.Failure is { } failure)
+            {
+                ScheduledUpdateFailed?.Invoke(this, new UpdateFailureNotice(subscription.Name, failure, result.StatusCode));
+            }
         }
     }
 

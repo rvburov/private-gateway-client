@@ -25,8 +25,8 @@
 | `Client.Core` | модели и правила без ввода-вывода: состояния защиты и переходы, протоколы, маскирование секретов, интерфейсы платформы | — | нет |
 | `Client.Contracts` | контракт IPC (код из `.proto`) и перевод перечислений ядра в контракт | Core | — |
 | `Client.Network` | разбор ссылок и подписок, сборка конфигов ядер, правила «зашифрован ли трафик» — чистые функции | Core | нет |
-| `Client.Application` | сценарии: подключение, смена сервера, импорт, обновление серверов, проверка | Core, Contracts, Network | нет |
-| `Client.Infrastructure` | SQLite, секреты в хранилище ОС, Serilog, клиент службы по IPC, загрузка списков серверов | Core, Contracts, Application | только загрузка списков |
+| `Client.Application` | сценарии: подключение, смена сервера, импорт, обновление серверов, проверка, правила уведомлений | Core, Contracts, Network | нет |
+| `Client.Infrastructure` | SQLite, секреты в хранилище ОС, Serilog, клиент службы по IPC, загрузка списков серверов, уведомления ОС (D-Bus, WinRT) | Core, Contracts, Application | только загрузка списков |
 | `Client.UI` | Avalonia: окна, модели представлений, тема из токенов | Core, Contracts, Application, Infrastructure | нет |
 | `Client.Service` | служба: сервер IPC, запуск ядер, состояние защиты, пинг, проверки | Core, Contracts, Network, Platform.* | да |
 | `Client.Platform.Windows` | Wintun, WFP, служба Windows, определение сети (WLAN API, NLM) | Core | да |

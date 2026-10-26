@@ -12,7 +12,8 @@ namespace PrivateGateway.Client.UI.ViewModels;
 
 /// <summary>
 /// Окно: текущая страница, островок навигации с кнопкой-щитом и всплывающая подсказка. Новая ошибка
-/// «Служба не запущена» или «Нужны права администратора» открывает экран ошибки (доска 16).
+/// «Служба не запущена» или «Нужны права администратора» открывает экран ошибки (доска 16). О пропавшем или
+/// изменившемся выбранном сервере говорит центр уведомлений: всплывашкой в окне или уведомлением ОС.
 /// </summary>
 public sealed partial class ShellViewModel : ObservableObject, INavigator
 {
@@ -37,15 +38,13 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, WelcomePageViewModel> welcomePage,
         Func<INavigator, ProblemPageViewModel> problemPage,
         IGatewayClient gateway,
-        SettingsService settings,
-        SubscriptionUpdater updater)
+        SettingsService settings)
     {
         ArgumentNullException.ThrowIfNull(gateway);
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(mainPage);
         ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
-        ArgumentNullException.ThrowIfNull(updater);
         Protection = protection;
         Toast = toast;
         Overlay = overlay;
@@ -68,12 +67,6 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
 
         // Первый запуск — приветствие (доска 10), дальше — сразу главная.
         Navigate(settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome);
-
-        // Выбранный сервер пропал из подписки или изменился — сказать сразу, на каком бы экране ни был.
-        updater.SelectedServerChanged += (_, notice) => Dispatcher.UIThread.Post(() => Toast.Show(
-            Loc.Instance.Format(notice.Change == SelectedServerChange.Changed ? "subs.notice.changed" : "subs.notice.missing",
-                notice.ServerName, notice.SubscriptionName),
-            ToastViewModel.LongDuration));
 
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => ShowProblem(status));
     }
