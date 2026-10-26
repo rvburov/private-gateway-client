@@ -22,7 +22,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** Как плитка показывает состояние: включена ли и подпись под названием (Android 10+). */
-data class TileLook(val active: Boolean, @StringRes val subtitle: Int) {
+data class TileLook(val active: Boolean, @param:StringRes val subtitle: Int) {
     companion object {
         fun of(state: TunnelState, hasServer: Boolean): TileLook = when (state) {
             TunnelState.Connected -> TileLook(true, R.string.status_connected_title)
