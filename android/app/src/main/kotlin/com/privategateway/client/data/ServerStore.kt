@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.Index
 import androidx.room.Insert
@@ -11,6 +12,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.Update
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import kotlinx.coroutines.flow.Flow
@@ -23,7 +25,7 @@ import kotlinx.coroutines.flow.Flow
  * выбран.
  */
 @Entity(tableName = "servers", indices = [Index("subscriptionId")])
-class ServerEntity(
+data class ServerEntity(
     @PrimaryKey val id: String,
     val name: String,
     val countryCode: String,
@@ -49,7 +51,7 @@ class ServerEntity(
  * («https://example.com/sub/••••»). Последняя неудача — причина ([lastFailure], имя DownloadFailure) и код ответа.
  */
 @Entity(tableName = "subscriptions")
-class SubscriptionEntity(
+data class SubscriptionEntity(
     @PrimaryKey val id: String,
     val name: String,
     val maskedUrl: String?,
@@ -76,12 +78,52 @@ interface ServerDao {
     @Query("SELECT COALESCE(MAX(position), -1) FROM servers")
     suspend fun lastPosition(): Int
 
+    @Query("SELECT * FROM servers WHERE subscriptionId = :group ORDER BY position, addedAt")
+    suspend fun inGroup(group: String): List<ServerEntity>
+
+    @Query("SELECT * FROM servers WHERE subscriptionId IS NULL ORDER BY position, addedAt")
+    suspend fun manual(): List<ServerEntity>
+
+    @Query("SELECT COUNT(*) FROM servers WHERE subscriptionId IS NULL")
+    fun observeManualCount(): Flow<Int>
+
     @Insert
     suspend fun insertAll(servers: List<ServerEntity>)
 
+    @Update
+    suspend fun updateAll(servers: List<ServerEntity>)
+
     @Query("DELETE FROM servers WHERE id = :id")
     suspend fun delete(id: String)
+
+    @Query("DELETE FROM servers WHERE id IN (:ids)")
+    suspend fun deleteIds(ids: List<String>)
+
+    @Query("DELETE FROM servers WHERE subscriptionId = :group")
+    suspend fun deleteGroup(group: String)
+
+    @Query("DELETE FROM servers WHERE subscriptionId IS NULL")
+    suspend fun deleteManual()
+
+    /** Выбранный сервер пропал из подписки: время — первого раза, повторное обновление его не сдвигает. */
+    @Query("UPDATE servers SET missingSince = :at WHERE id = :id AND missingSince IS NULL")
+    suspend fun markMissing(id: String, at: Long)
+
+    @Query("UPDATE servers SET favorite = :favorite WHERE id = :id")
+    suspend fun setFavorite(id: String, favorite: Boolean)
+
+    @Query("UPDATE servers SET customName = :name WHERE id = :id")
+    suspend fun rename(id: String, name: String?)
+
+    @Query("UPDATE servers SET lastUsedAt = :at WHERE id = :id")
+    suspend fun markUsed(id: String, at: Long)
+
+    @Query("UPDATE servers SET latencyMs = :ms, latencyFailure = :failure WHERE id = :id")
+    suspend fun setLatency(id: String, ms: Int?, failure: String?)
 }
+
+/** Подписка и число ее серверов — для «Профили и подписки». */
+data class SubscriptionWithCount(@Embedded val subscription: SubscriptionEntity, val servers: Int)
 
 @Dao
 interface SubscriptionDao {
@@ -94,8 +136,23 @@ interface SubscriptionDao {
     @Query("SELECT * FROM subscriptions WHERE id = :id")
     suspend fun byId(id: String): SubscriptionEntity?
 
+    @Query(
+        "SELECT subscriptions.*, (SELECT COUNT(*) FROM servers WHERE servers.subscriptionId = subscriptions.id) AS servers " +
+            "FROM subscriptions ORDER BY position, addedAt",
+    )
+    fun observeWithCounts(): Flow<List<SubscriptionWithCount>>
+
+    @Query("SELECT COALESCE(MAX(position), -1) FROM subscriptions")
+    suspend fun lastPosition(): Int
+
     @Insert
     suspend fun insert(subscription: SubscriptionEntity)
+
+    @Update
+    suspend fun update(subscription: SubscriptionEntity)
+
+    @Query("DELETE FROM subscriptions WHERE id = :id")
+    suspend fun delete(id: String)
 }
 
 /**

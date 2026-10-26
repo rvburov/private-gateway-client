@@ -58,7 +58,7 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(TunnelMonitor(), ServerRepository(database.servers(), FakeBox()), settings, FakeEngine())
+        model = MainViewModel(TunnelMonitor(), ServerRepository(database, FakeBox()), settings, FakeEngine())
     }
 
     @After

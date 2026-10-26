@@ -25,7 +25,7 @@ class ServerRepositoryTest {
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val database = Room.inMemoryDatabaseBuilder(context, AppDatabase::class.java).allowMainThreadQueries().build()
     private val box = FakeBox()
-    private val repository = ServerRepository(database.servers(), box)
+    private val repository = ServerRepository(database, box)
 
     @After
     fun close() = database.close()
@@ -98,7 +98,7 @@ class ServerRepositoryTest {
 
     @Test
     fun `adds at the same time do not add the same servers twice`() = runBlocking {
-        val slow = ServerRepository(database.servers(), FakeBox(delayMillis = 20))
+        val slow = ServerRepository(database, FakeBox(delayMillis = 20))
         val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(5)
         val results = (1..3).map { async(Dispatchers.Default) { slow.add(servers) } }.awaitAll()
         assertEquals(servers.size, results.sumOf { it.added })

@@ -1,8 +1,8 @@
 package com.privategateway.client
 
 import com.privategateway.client.core.links.LinkParser
-import com.privategateway.client.core.links.LinkWriter
 import com.privategateway.client.core.servers.ServerDefinition
+import com.privategateway.client.core.servers.ServerKeys
 import com.privategateway.client.data.SecretBox
 import java.io.File
 
@@ -19,8 +19,8 @@ object Fixtures {
         .mapNotNull { LinkParser.parse(it.readText().trim()).server }
         .toList()
 
-    /** Тот же сервер под другим названием — тот же «отпечаток». */
-    fun identity(server: ServerDefinition) = LinkWriter.write(server.copy(name = "", countryCode = ""))
+    /** Тот же сервер под другим названием — тот же «отпечаток» (ServerKeys.key, как у десктопа). */
+    fun identity(server: ServerDefinition) = ServerKeys.key(server)
 }
 
 /**
