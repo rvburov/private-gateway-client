@@ -143,6 +143,7 @@ public sealed partial class Gateway : IAsyncDisposable
     // Вход проверки связи с сервером в ядре этого подключения.
     private ProbeLink? _probe;
     private readonly AddressLookup _addressLookup;
+    private readonly ProbeRunner _probes;
 
     // Пользователь выбрал подключение, хотя работает другой VPN: на ходу чужой VPN тоже не проверять.
     private volatile bool _allowOtherVpn;
@@ -189,6 +190,7 @@ public sealed partial class Gateway : IAsyncDisposable
         _journal = journal;
         _systemProxy = systemProxy;
         _addressLookup = new AddressLookup(options.AddressFetch ?? AddressLookup.FetchAsync, time);
+        _probes = new ProbeRunner(time, options.Resolve);
         _status = ConnectionStatus.Initial(time.GetUtcNow());
         if (options.Network is { } network)
         {
@@ -1310,6 +1312,10 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>Сетевой инспектор: снимок адаптеров, адресов, DHCP и маршрутов машины — только чтение.</summary>
     public NetworkSnapshot InspectNetwork() => new NetworkInspector(_options.NetworkDetails, _time, _journal).Take();
+
+    /// <summary>Замер инспектора до узла пользователя (<see cref="ProbeRunner"/>): идет как вся сеть службы, ничего не меняет.</summary>
+    public IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port, CancellationToken cancellationToken = default) =>
+        _probes.RunAsync(kind, target, port, cancellationToken);
 
     /// <summary>
     /// Внешний IP по кнопке инспектора: под защитой — адрес выхода (<see cref="CheckExitAsync"/>; в режиме прокси — и

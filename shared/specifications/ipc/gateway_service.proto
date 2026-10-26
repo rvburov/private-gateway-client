@@ -78,6 +78,11 @@ service GatewayService {
   // Внешний IP по кнопке инспектора: под защитой — адрес выхода (как проверка exit_ip), защита выключена или на паузе —
   // реальный, прямым путем. Итог — в Status.exit (WatchStatus); подключение, блокировка и ошибка — ничего не меряет.
   rpc MeasureIp(MeasureIpRequest) returns (MeasureIpReply);
+
+  // Замер инспектора до узла, который назвал пользователь: пинг, трассировка, поиск имени, TCP, TLS. Узел — IP или имя
+  // хоста (другое — INVALID_ARGUMENT), порт — для TCP и TLS. Поток — по строке на эхо, участок трассировки или адрес
+  // имени; у TCP и TLS — одна строка. Замер идет как вся сеть службы (в режиме VPN — в туннель) и ничего не меняет.
+  rpc RunProbe(ProbeRequest) returns (stream ProbeStep);
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -685,6 +690,72 @@ message DescribeAddressRequest {
 message MeasureIpRequest {}
 
 message MeasureIpReply {}
+
+enum ProbeKind {
+  PROBE_KIND_UNSPECIFIED = 0;
+  PROBE_KIND_PING = 1;
+  PROBE_KIND_TRACE = 2;
+  PROBE_KIND_DNS = 3;
+  PROBE_KIND_TCP = 4;
+  PROBE_KIND_TLS = 5;
+}
+
+message ProbeRequest {
+  ProbeKind kind = 1;
+  // IP или имя хоста.
+  string target = 2;
+  // Порт TCP и TLS: 1–65535.
+  int32 port = 3;
+}
+
+enum ProbeOutcome {
+  PROBE_OUTCOME_UNSPECIFIED = 0;
+  PROBE_OUTCOME_OK = 1;
+  // Промежуточный узел трассировки.
+  PROBE_OUTCOME_HOP = 2;
+  PROBE_OUTCOME_TIMED_OUT = 3;
+  PROBE_OUTCOME_REFUSED = 4;
+  PROBE_OUTCOME_UNREACHABLE = 5;
+  PROBE_OUTCOME_NOT_FOUND = 6;
+  PROBE_OUTCOME_FAILED = 7;
+}
+
+enum TlsProblem {
+  TLS_PROBLEM_UNSPECIFIED = 0;
+  TLS_PROBLEM_NAME_MISMATCH = 1;
+  TLS_PROBLEM_EXPIRED = 2;
+  TLS_PROBLEM_NOT_YET_VALID = 3;
+  TLS_PROBLEM_UNTRUSTED = 4;
+  TLS_PROBLEM_OTHER = 5;
+}
+
+message TlsFacts {
+  // «TLS 1.3».
+  string protocol = 1;
+  string cipher = 2;
+  // Согласованный протокол приложения (h2, http/1.1); пусто — не согласован.
+  string alpn = 3;
+  string subject = 4;
+  string issuer = 5;
+  google.protobuf.Timestamp not_before = 6;
+  google.protobuf.Timestamp not_after = 7;
+  // Имена сертификата (SAN).
+  repeated string names = 8;
+  // Пусто — с сертификатом все в порядке.
+  repeated TlsProblem problems = 9;
+}
+
+message ProbeStep {
+  // Номер эха, участок трассировки (TTL) или номер адреса имени; у TCP и TLS — 1.
+  int32 index = 1;
+  // Кто ответил или к кому шли; пусто — неизвестно.
+  string address = 2;
+  // Время ответа; нет — ответа не было.
+  google.protobuf.Duration time = 3;
+  ProbeOutcome outcome = 4;
+  // Только у замера TLS.
+  TlsFacts tls = 5;
+}
 
 enum AddressFailure {
   ADDRESS_FAILURE_UNSPECIFIED = 0;

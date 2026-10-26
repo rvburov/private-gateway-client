@@ -83,24 +83,43 @@
           </ItemsControl>
         </Border>
 
-        <!-- Сеть машины — сетевой инспектор: только чтение -->
+        <!-- Сетевой инспектор: сеть машины и проверка узла — только чтение -->
         <Border Classes="card" Padding="8,4">
-          <Button x:Name="NetworkButton" Classes="plain" Padding="8,10" Command="{Binding OpenNetworkCommand}"
-                  AutomationProperties.Name="{l:L diag.network.title}">
-            <Grid ColumnDefinitions="Auto,*,Auto">
-              <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
-                      Background="{StaticResource PgBrush.Accent.Tint}">
-                <c:Icon Data="{StaticResource Icon.Net.Ethernet}" Width="20" Height="20"
-                        StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
-              </Border>
-              <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
-                <TextBlock Classes="strong" Text="{l:L diag.network.title}" />
-                <TextBlock Classes="caption" Text="{l:L diag.network.text}" TextTrimming="CharacterEllipsis" />
-              </StackPanel>
-              <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                      StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
-            </Grid>
-          </Button>
+          <StackPanel>
+            <Button x:Name="NetworkButton" Classes="plain" Padding="8,10" Command="{Binding OpenNetworkCommand}"
+                    AutomationProperties.Name="{l:L diag.network.title}">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                        Background="{StaticResource PgBrush.Accent.Tint}">
+                  <c:Icon Data="{StaticResource Icon.Net.Ethernet}" Width="20" Height="20"
+                          StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Classes="strong" Text="{l:L diag.network.title}" />
+                  <TextBlock Classes="caption" Text="{l:L diag.network.text}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+              </Grid>
+            </Button>
+            <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+            <Button x:Name="ProbeButton" Classes="plain" Padding="8,10" Command="{Binding OpenProbeCommand}"
+                    AutomationProperties.Name="{l:L diag.probe.title}">
+              <Grid ColumnDefinitions="Auto,*,Auto">
+                <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                        Background="{StaticResource PgBrush.Accent.Tint}">
+                  <c:Icon Data="{StaticResource Icon.Pulse}" Width="20" Height="20"
+                          StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                </Border>
+                <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                  <TextBlock Classes="strong" Text="{l:L diag.probe.title}" />
+                  <TextBlock Classes="caption" Text="{l:L diag.probe.text}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+              </Grid>
+            </Button>
+          </StackPanel>
         </Border>
 
         <!-- Журнал службы: новые записи сверху, секреты скрыты -->

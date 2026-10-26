@@ -4,6 +4,7 @@ using Grpc.Core;
 using Microsoft.Extensions.Hosting;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Service.Updates;
 using V1 = PrivateGateway.Client.Contracts.V1;
 
@@ -155,6 +156,27 @@ public sealed class GatewayRpc(
         }
 
         return (await gateway.DescribeAddressAsync(address, context?.CancellationToken ?? default).ConfigureAwait(false)).ToContract();
+    }
+
+    /// <summary>
+    /// Узел — только IP или имя хоста (<see cref="ProbeTarget.Normalize"/>), порт TCP и TLS — 1–65535; другое — отказ:
+    /// служба не принимает ни команд, ни адресов с путями.
+    /// </summary>
+    public override async Task RunProbe(V1.ProbeRequest request, IServerStreamWriter<V1.ProbeStep> responseStream, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(responseStream);
+        if (request.Kind == V1.ProbeKind.Unspecified || ProbeTarget.Normalize(request.Target) is not { } target
+            || request.Kind is V1.ProbeKind.Tcp or V1.ProbeKind.Tls && request.Port is < 1 or > ProbeTarget.MaxPort)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Замер, узел или порт не заданы"));
+        }
+
+        var cancellation = context?.CancellationToken ?? default;
+        await foreach (var step in gateway.ProbeAsync(request.Kind.ToCore(), target, request.Port, cancellation).ConfigureAwait(false))
+        {
+            await responseStream.WriteAsync(step.ToContract(), cancellation).ConfigureAwait(false);
+        }
     }
 
     public override async Task<V1.MeasureIpReply> MeasureIp(V1.MeasureIpRequest request, ServerCallContext context)

@@ -5,7 +5,7 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Contracts;
 
-/// <summary>Сетевой инспектор: снимок сети машины в контракт и обратно.</summary>
+/// <summary>Сетевой инспектор: снимок сети машины, сведения об адресе и замеры до узла — в контракт и обратно.</summary>
 public static partial class ContractMapping
 {
     public static V1.AdapterKind ToContract(this AdapterKind kind) => kind switch
@@ -128,6 +128,115 @@ public static partial class ContractMapping
                 V1.AddressFailure.NotFound => AddressFailure.NotFound,
                 _ => AddressFailure.Unreachable,
             });
+    }
+
+    public static V1.ProbeKind ToContract(this ProbeKind kind) => kind switch
+    {
+        ProbeKind.Ping => V1.ProbeKind.Ping,
+        ProbeKind.Trace => V1.ProbeKind.Trace,
+        ProbeKind.Dns => V1.ProbeKind.Dns,
+        ProbeKind.Tcp => V1.ProbeKind.Tcp,
+        ProbeKind.Tls => V1.ProbeKind.Tls,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
+
+    /// <summary>Замер из просьбы окна; не задан — <see cref="ArgumentOutOfRangeException"/> (просьба не по контракту).</summary>
+    public static ProbeKind ToCore(this V1.ProbeKind kind) => kind switch
+    {
+        V1.ProbeKind.Ping => ProbeKind.Ping,
+        V1.ProbeKind.Trace => ProbeKind.Trace,
+        V1.ProbeKind.Dns => ProbeKind.Dns,
+        V1.ProbeKind.Tcp => ProbeKind.Tcp,
+        V1.ProbeKind.Tls => ProbeKind.Tls,
+        _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
+    };
+
+    public static V1.ProbeOutcome ToContract(this ProbeOutcome outcome) => outcome switch
+    {
+        ProbeOutcome.Ok => V1.ProbeOutcome.Ok,
+        ProbeOutcome.Hop => V1.ProbeOutcome.Hop,
+        ProbeOutcome.TimedOut => V1.ProbeOutcome.TimedOut,
+        ProbeOutcome.Refused => V1.ProbeOutcome.Refused,
+        ProbeOutcome.Unreachable => V1.ProbeOutcome.Unreachable,
+        ProbeOutcome.NotFound => V1.ProbeOutcome.NotFound,
+        ProbeOutcome.Failed => V1.ProbeOutcome.Failed,
+        _ => throw new ArgumentOutOfRangeException(nameof(outcome), outcome, null),
+    };
+
+    /// <summary>Итог от службы; незнакомый (служба новее) — «не удалось».</summary>
+    public static ProbeOutcome ToCore(this V1.ProbeOutcome outcome) => outcome switch
+    {
+        V1.ProbeOutcome.Ok => ProbeOutcome.Ok,
+        V1.ProbeOutcome.Hop => ProbeOutcome.Hop,
+        V1.ProbeOutcome.TimedOut => ProbeOutcome.TimedOut,
+        V1.ProbeOutcome.Refused => ProbeOutcome.Refused,
+        V1.ProbeOutcome.Unreachable => ProbeOutcome.Unreachable,
+        V1.ProbeOutcome.NotFound => ProbeOutcome.NotFound,
+        _ => ProbeOutcome.Failed,
+    };
+
+    public static V1.TlsProblem ToContract(this TlsProblem problem) => problem switch
+    {
+        TlsProblem.NameMismatch => V1.TlsProblem.NameMismatch,
+        TlsProblem.Expired => V1.TlsProblem.Expired,
+        TlsProblem.NotYetValid => V1.TlsProblem.NotYetValid,
+        TlsProblem.Untrusted => V1.TlsProblem.Untrusted,
+        TlsProblem.Other => V1.TlsProblem.Other,
+        _ => throw new ArgumentOutOfRangeException(nameof(problem), problem, null),
+    };
+
+    /// <summary>Что не так с сертификатом; незнакомое (служба новее) — «другое».</summary>
+    public static TlsProblem ToCore(this V1.TlsProblem problem) => problem switch
+    {
+        V1.TlsProblem.NameMismatch => TlsProblem.NameMismatch,
+        V1.TlsProblem.Expired => TlsProblem.Expired,
+        V1.TlsProblem.NotYetValid => TlsProblem.NotYetValid,
+        V1.TlsProblem.Untrusted => TlsProblem.Untrusted,
+        _ => TlsProblem.Other,
+    };
+
+    public static V1.ProbeStep ToContract(this ProbeStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        var contract = new V1.ProbeStep
+        {
+            Index = step.Index,
+            Address = step.Address?.ToString() ?? string.Empty,
+            Time = step.Time is { } time ? Duration.FromTimeSpan(time) : null,
+            Outcome = step.Outcome.ToContract(),
+        };
+        if (step.Tls is { } tls)
+        {
+            contract.Tls = new V1.TlsFacts
+            {
+                Protocol = tls.Protocol,
+                Cipher = tls.Cipher,
+                Alpn = tls.Alpn ?? string.Empty,
+                Subject = tls.Subject,
+                Issuer = tls.Issuer,
+                NotBefore = Timestamp.FromDateTimeOffset(tls.NotBefore),
+                NotAfter = Timestamp.FromDateTimeOffset(tls.NotAfter),
+            };
+            contract.Tls.Names.AddRange(tls.Names);
+            contract.Tls.Problems.AddRange(tls.Problems.Select(p => p.ToContract()));
+        }
+
+        return contract;
+    }
+
+    public static ProbeStep ToCore(this V1.ProbeStep step)
+    {
+        ArgumentNullException.ThrowIfNull(step);
+        return new ProbeStep(
+            step.Index,
+            IPAddress.TryParse(step.Address, out var address) ? address : null,
+            step.Time?.ToTimeSpan(),
+            step.Outcome.ToCore(),
+            step.Tls is { } tls
+                ? new TlsFacts(tls.Protocol, tls.Cipher, tls.Alpn.Length > 0 ? tls.Alpn : null, tls.Subject, tls.Issuer,
+                    tls.NotBefore?.ToDateTimeOffset() ?? DateTimeOffset.MinValue, tls.NotAfter?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
+                    [.. tls.Names], [.. tls.Problems.Select(p => p.ToCore())])
+                : null);
     }
 
     private static List<IPAddress> Addresses(IEnumerable<string> values) =>

@@ -35,6 +35,9 @@ public static class Pages
     /// <summary>«Сеть машины» — сетевой инспектор, подстраница «Проверки» (этап 7).</summary>
     public const string Network = "network";
 
+    /// <summary>«Проверка узла» — пинг, путь, DNS, TCP и TLS, подстраница «Проверки» (этап 7).</summary>
+    public const string Probe = "probe";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

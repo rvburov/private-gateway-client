@@ -190,6 +190,21 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             ? await service.DescribeAddressAsync(address, cancellationToken).ConfigureAwait(false)
             : null;
 
+    /// <summary>Замер делает служба; как и для инспектора, в режиме прокси запускается служба пользователя.</summary>
+    public async IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is not { } service)
+        {
+            yield break;
+        }
+
+        await foreach (var step in service.ProbeAsync(kind, target, port, cancellationToken).ConfigureAwait(false))
+        {
+            yield return step;
+        }
+    }
+
     public async Task MeasureIpAsync(CancellationToken cancellationToken = default)
     {
         if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)

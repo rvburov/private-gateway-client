@@ -28,6 +28,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         Func<INavigator, ServersPageViewModel> serversPage,
         Func<INavigator, CheckPageViewModel> checkPage,
         Func<INavigator, NetworkPageViewModel> networkPage,
+        Func<INavigator, ProbePageViewModel> probePage,
         Func<INavigator, ImportPageViewModel> importPage,
         Func<INavigator, SettingsPageViewModel> settingsPage,
         Func<INavigator, SubscriptionsPageViewModel> subscriptionsPage,
@@ -55,6 +56,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
             [Pages.Servers] = () => serversPage(this),
             [Pages.Check] = () => checkPage(this),
             [Pages.Network] = () => networkPage(this),
+            [Pages.Probe] = () => probePage(this),
             [Pages.Settings] = () => settingsPage(this),
             [Pages.Add] = () => importPage(this),
             [Pages.Protection] = () => protectionPage(this),
@@ -96,7 +98,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
 
     public bool IsServers => CurrentKey == Pages.Servers;
 
-    public bool IsCheck => CurrentKey is Pages.Check or Pages.Network;
+    public bool IsCheck => CurrentKey is Pages.Check or Pages.Network or Pages.Probe;
 
     /// <summary>Подстраницы настроек подсвечивают в островке «Настройки».</summary>
     public bool IsSettings => CurrentKey is Pages.Settings or Pages.Protection or Pages.Core or Pages.Routing or Pages.Profiles or Pages.Backup or Pages.About;

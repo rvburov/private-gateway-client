@@ -1,0 +1,153 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.ProbePage"
+             x:DataType="vm:ProbePageViewModel">
+  <!-- Проверка узла — замеры инспектора (этап 7, экрана в макете нет — по дизайн-системе, как «Сеть машины»). Подстраница
+       «Проверки»: островок виден, «назад» — к проверке. -->
+  <UserControl.Styles>
+    <!-- Строки разделены линией, у последней ее нет -->
+    <Style Selector="ContentPresenter:nth-last-child(1) Border.probeRow">
+      <Setter Property="BorderThickness" Value="0" />
+    </Style>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="LineHeight" Value="{StaticResource PgLineHeight.Body}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Нет ответа — словом, цветом предупреждения -->
+    <Style Selector="TextBlock.result">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Warning.Text}" />
+    </Style>
+    <Style Selector="TextBlock.result.ok">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.probe.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <TextBlock Classes="caption" Text="{l:L probe.note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Что мерить и до какого узла -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="12">
+            <Border Classes="segments" AutomationProperties.Name="{l:L probe.kind}">
+              <ItemsControl x:Name="KindList" ItemsSource="{Binding Kinds}">
+                <ItemsControl.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <UniformGrid Rows="1" />
+                  </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate x:DataType="vm:ProbeKindOption">
+                    <RadioButton Classes="segment" GroupName="probeKind" IsChecked="{Binding IsSelected}" Content="{Binding Label}"
+                                 AutomationProperties.Name="{Binding Label}" />
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </Border>
+
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="small" Text="{l:L probe.target}" FontWeight="SemiBold"
+                           Foreground="{StaticResource PgBrush.Text.Secondary}" />
+                <TextBox x:Name="TargetBox" Classes="input" Text="{Binding Target}" PlaceholderText="{l:L probe.target.placeholder}"
+                         FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                         AutomationProperties.Name="{l:L probe.target}">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding RunCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+              </StackPanel>
+              <StackPanel Grid.Column="1" Spacing="6" Width="92" IsVisible="{Binding NeedsPort}">
+                <TextBlock Classes="small" Text="{l:L probe.portLabel}" FontWeight="SemiBold"
+                           Foreground="{StaticResource PgBrush.Text.Secondary}" />
+                <TextBox x:Name="PortBox" Classes="input" Text="{Binding PortText}" MaxLength="5"
+                         FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                         AutomationProperties.Name="{l:L probe.portLabel}">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding RunCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+              </StackPanel>
+            </Grid>
+
+            <TextBlock x:Name="ProbeError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                       TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+
+            <Button x:Name="RunButton" Classes="primary" Height="46" HorizontalAlignment="Stretch"
+                    Command="{Binding RunCommand}" AutomationProperties.Name="{Binding RunText}">
+              <StackPanel Orientation="Horizontal" Spacing="8">
+                <c:Icon Classes.spin="{Binding IsRunning}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16" StrokeThickness="2.2"
+                        IsVisible="{Binding IsRunning}" />
+                <TextBlock Text="{Binding RunText}" VerticalAlignment="Center" FontWeight="SemiBold" />
+              </StackPanel>
+            </Button>
+          </StackPanel>
+        </Border>
+
+        <!-- Как устроен замер и каким путем идет -->
+        <StackPanel Spacing="4" Margin="6,0">
+          <TextBlock x:Name="Method" Classes="caption" Text="{Binding Method}" TextWrapping="Wrap"
+                     LineHeight="{StaticResource PgLineHeight.Body}" />
+          <TextBlock x:Name="PathNote" Classes="caption" Text="{Binding PathNote}" IsVisible="{Binding HasPathNote}" TextWrapping="Wrap"
+                     LineHeight="{StaticResource PgLineHeight.Body}" Foreground="{StaticResource PgBrush.Status.Warning.Text}" />
+        </StackPanel>
+
+        <!-- Ход замера -->
+        <Border x:Name="ResultCard" Classes="card" Padding="16,4" IsVisible="{Binding HasRows}">
+          <StackPanel>
+            <TextBlock x:Name="Summary" Classes="strong" Text="{Binding Summary}" IsVisible="{Binding HasSummary}" TextWrapping="Wrap"
+                       Margin="0,11,0,4" />
+            <ItemsControl x:Name="StepList" ItemsSource="{Binding Rows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ProbeRowViewModel">
+                  <Border Classes="probeRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,8">
+                    <Grid ColumnDefinitions="64,*,Auto">
+                      <TextBlock Classes="caption" Text="{Binding Label}" VerticalAlignment="Center" />
+                      <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Address}" VerticalAlignment="Center" />
+                      <TextBlock Grid.Column="2" Classes="caption result" Classes.ok="{Binding IsOk}" Text="{Binding Result}"
+                                 VerticalAlignment="Center" Margin="12,0,0,0" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Рукопожатие TLS -->
+        <Border x:Name="TlsCard" Classes="card" Padding="16,12" IsVisible="{Binding HasTls}">
+          <ItemsControl ItemsSource="{Binding TlsRows}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:DetailRowViewModel">
+                <Grid ColumnDefinitions="96,*" Margin="0,3">
+                  <TextBlock Classes="caption" Text="{Binding Label}" />
+                  <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Value}" />
+                </Grid>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

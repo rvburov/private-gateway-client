@@ -190,6 +190,33 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>Служба без замеров (старая), отказ или обрыв связи — поток кончается; отмена окном — тоже.</summary>
+    public async IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        using var call = _client.RunProbe(new V1.ProbeRequest { Kind = kind.ToContract(), Target = target, Port = port }, cancellationToken: cancellationToken);
+        var stream = call.ResponseStream;
+        while (true)
+        {
+            ProbeStep step;
+            try
+            {
+                if (!await stream.MoveNext(cancellationToken).ConfigureAwait(false))
+                {
+                    yield break;
+                }
+
+                step = stream.Current.ToCore();
+            }
+            catch (RpcException)
+            {
+                yield break;
+            }
+
+            yield return step;
+        }
+    }
+
     /// <summary>Служба без этого вызова (старая) или без связи — ничего: IP останется прежним.</summary>
     public async Task MeasureIpAsync(CancellationToken cancellationToken = default)
     {

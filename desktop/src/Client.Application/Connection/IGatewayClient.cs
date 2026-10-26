@@ -59,6 +59,14 @@ public interface IGatewayClient
     /// </summary>
     Task MeasureIpAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
+    /// <summary>
+    /// Замер до узла пользователя — пинг, трассировка, поиск имени, TCP, TLS: меряет служба, по строке на эхо, участок или
+    /// адрес. Узел — уже проверенный <see cref="ProbeTarget.Normalize"/>. Службы нет, она старая или оборвала связь —
+    /// поток кончается; пустой поток — служба не ответила.
+    /// </summary>
+    IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port, CancellationToken cancellationToken = default) =>
+        AsyncEnumerable.Empty<ProbeStep>();
+
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
 

@@ -115,6 +115,65 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         static string Network24(IPAddress address) => string.Join('.', address.GetAddressBytes()[..3]) + ".0/24";
     }
 
+    /// <summary>
+    /// Замеры в демо — без сети: имя — адреса из диапазонов документации, путь — роутер, провайдер, узел; порт 443 и 80
+    /// открыты, остальные закрыты; сертификат — выдуманный, без ошибок. Имя «nxdomain.example» не находится.
+    /// </summary>
+    public async IAsyncEnumerable<ProbeStep> ProbeAsync(ProbeKind kind, string target, int port,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        await Task.Yield();
+        var literal = IPAddress.TryParse(target, out var parsed);
+        if (!literal && target == "nxdomain.example")
+        {
+            yield return new ProbeStep(1, null, null, ProbeOutcome.NotFound);
+            yield break;
+        }
+
+        var address = literal ? parsed! : IPAddress.Parse("203.0.113.80");
+        static TimeSpan Ms(double ms) => TimeSpan.FromMilliseconds(ms);
+        switch (kind)
+        {
+            case ProbeKind.Dns:
+                yield return new ProbeStep(1, address, Ms(18), ProbeOutcome.Ok);
+                if (!literal)
+                {
+                    yield return new ProbeStep(2, IPAddress.Parse("2001:db8::80"), Ms(18), ProbeOutcome.Ok);
+                }
+
+                break;
+            case ProbeKind.Ping:
+                double[] times = [24.1, 23.6, 25.3, 23.9];
+                for (var i = 0; i < times.Length; i++)
+                {
+                    yield return new ProbeStep(i + 1, address, Ms(times[i]), ProbeOutcome.Ok);
+                }
+
+                break;
+            case ProbeKind.Trace:
+                yield return new ProbeStep(1, IPAddress.Parse("192.0.2.1"), Ms(1.8), ProbeOutcome.Hop);
+                yield return new ProbeStep(2, IPAddress.Parse("198.51.100.1"), Ms(7.4), ProbeOutcome.Hop);
+                yield return new ProbeStep(3, null, null, ProbeOutcome.TimedOut);
+                yield return new ProbeStep(4, IPAddress.Parse("198.51.100.77"), Ms(19.2), ProbeOutcome.Hop);
+                yield return new ProbeStep(5, address, Ms(23.8), ProbeOutcome.Ok);
+                break;
+            case ProbeKind.Tcp:
+                yield return port is 443 or 80 ? new ProbeStep(1, address, Ms(24.6), ProbeOutcome.Ok) : new ProbeStep(1, address, null, ProbeOutcome.Refused);
+                break;
+            case ProbeKind.Tls when port is 443 or 80:
+                var now = time.GetUtcNow();
+                yield return new ProbeStep(1, address, Ms(61.3), ProbeOutcome.Ok, new TlsFacts(
+                    "TLS 1.3", "TLS_AES_128_GCM_SHA256", "h2", "CN=" + target, "CN=Example Demo CA, O=Example",
+                    now.AddDays(-30), now.AddDays(60), [target, "www." + target], []));
+                break;
+            case ProbeKind.Tls:
+                yield return new ProbeStep(1, address, null, ProbeOutcome.Refused);
+                break;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(kind), kind, null);
+        }
+    }
+
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
     public IReadOnlyList<JournalEntry> Journal

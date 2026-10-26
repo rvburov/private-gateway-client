@@ -84,6 +84,9 @@ public sealed partial class CheckPageViewModel : ObservableObject
     [RelayCommand]
     private void OpenNetwork() => _navigator.Navigate(Pages.Network);
 
+    [RelayCommand]
+    private void OpenProbe() => _navigator.Navigate(Pages.Probe);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RunText))]
     public partial bool IsRunning { get; private set; }
