@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Private Gateway
+Comment=Proxy and VPN client with manual server choice and leak protection
+Comment[ru]=Клиент прокси и VPN с ручным выбором сервера и защитой от утечек
+Exec=/opt/private-gateway/PrivateGateway
+Icon=private-gateway
+Terminal=false
+Categories=Network;
+Keywords=VPN;Proxy;Xray;
+StartupWMClass=PrivateGateway

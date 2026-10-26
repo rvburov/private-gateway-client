@@ -43,6 +43,34 @@ PrivateGateway-<версия>-<rid>/
   в `.nuspec`, ядро без версии или файла — ошибка сборки.
 - `SHA256SUMS` — суммы всех файлов папки выпуска, проверяются `sha256sum -c SHA256SUMS`.
 
+## Пакеты Linux
+
+`scripts/package-linux.sh <версия>` (шаг `publish.yml` на Ubuntu) собирает из папки сборки `.deb` и `.rpm` — nfpm по
+`desktop/packaging/linux/nfpm.yaml` (CI ставит nfpm v2.47.0 через `go install`: модуль сверяется по sum.golang.org):
+
+- `/opt/private-gateway/` — папка сборки целиком (окно, служба, ядра, SBOM, THIRD-PARTY-NOTICES);
+- `/usr/share/applications/private-gateway.desktop` — запись меню (RU и EN), `/usr/share/icons/hicolor/scalable/apps/
+  private-gateway.svg` — значок, `/usr/bin/private-gateway` — команда окна;
+- зависимости — то, без чего не запустится самодостаточная сборка: ICU, fontconfig, X11 (libX11, libICE, libSM);
+  nftables — рекомендуется (блок при обрыве).
+
+Службу пакет не ставит: при установке пакета неизвестно, чей это компьютер (`--owner`), поэтому ее ставит окно —
+«Установить службу» (pkexec), как и без пакета. Удаление пакета (`remove`, `purge`, у rpm — последняя копия) сначала
+удаляет службу (`--uninstall`: юнит systemd, таблица блока при обрыве, папка службы) — машина не остается без сети;
+обновление пакета службу не трогает. Данные пользователя (`~/.local/share/private-gateway`) остаются.
+
+`scripts/tests/linux-package-smoke.sh` (шаг `publish.yml`) на машине CI ставит `.deb` через apt со всеми
+зависимостями, сверяет файлы, команду, версию службы и запись меню (`desktop-file-validate`), ставит службу так же, как
+окно, ждет ее под systemd, удаляет пакет и проверяет, что не осталось службы, юнита, таблицы блока, файлов пакета, а
+данные пользователя на месте.
+
+## Значок программы
+
+`shared/specifications/icons/app.svg` и `app.ico` — щит цвета «Защищено» с галочкой, как в трее; их рисует
+`scripts/gen-icons.cs` из геометрий `Icons.axaml` и токена цвета (SkiaSharp), руками не правятся. SVG — значок записи
+меню Linux, ICO (16–256 px) — значок файла окна на Windows (`ApplicationIcon`) и установщика. Тест UI сверяет хеш
+источников в шапке SVG.
+
 ## Лицензии открытых компонентов
 
 Список компонентов один — `shared/licenses/components.json`: из него экран «О программе» показывает «Лицензии открытых

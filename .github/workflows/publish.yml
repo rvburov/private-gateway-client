@@ -14,6 +14,10 @@ on:
       - scripts/get-xray.sh
       - scripts/get-singbox.sh
       - scripts/tests/release-smoke.sh
+      - scripts/package-linux.sh
+      - scripts/tests/linux-package-smoke.sh
+      - desktop/packaging/**
+      - shared/specifications/icons/**
       - shared/cores/**
       - shared/licenses/**
       - Directory.Build.props
@@ -75,6 +79,27 @@ jobs:
 
       - name: Проверка выпуска из архива
         run: scripts/tests/release-smoke.sh "${{ steps.version.outputs.version }}"
+
+      # Пакеты Linux — nfpm закрепленной версии (модуль сверяется по sum.golang.org), затем настоящая установка и удаление
+      # на этой машине: машина CI одноразовая, служба и таблица блока при обрыве с нее никуда не уходят.
+      - if: runner.os == 'Linux'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Пакеты Linux (.deb, .rpm)
+        if: runner.os == 'Linux'
+        run: |
+          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0
+          PATH="$(go env GOPATH)/bin:$PATH" scripts/package-linux.sh "${{ steps.version.outputs.version }}"
+
+      - name: Установка и удаление .deb
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends desktop-file-utils nftables
+          scripts/tests/linux-package-smoke.sh "${{ steps.version.outputs.version }}"
 
       - uses: actions/upload-artifact@v4
         with:

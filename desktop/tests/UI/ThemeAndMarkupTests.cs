@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
+using System.Xml.Linq;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media;
 using Avalonia.Styling;
@@ -21,6 +23,26 @@ public partial class ThemeAndMarkupTests
 
         theme.ShouldContain("tokens-sha256: " + hash,
             customMessage: "Токены поменялись, а тема нет: dotnet run scripts/gen-tokens.cs");
+    }
+
+    [Fact]
+    public void App_icon_is_generated_from_the_current_shield_and_color()
+    {
+        // Как в scripts/gen-icons.cs: щит, галочка и цвет «Защищено» — источники значка.
+        var icons = XDocument.Load(Path.Combine(Repo.UiSource, "Themes", "Icons.axaml"));
+        string Geometry(string key) => icons.Descendants().Single(e => (string?)e.Attribute(XName.Get("Key", "http://schemas.microsoft.com/winfx/2006/xaml")) == key).Value.Trim();
+        using var tokens = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Repo.Root, "shared", "specifications", "design-tokens.json")));
+        var color = tokens.RootElement.GetProperty("state").GetProperty("connected").GetProperty("ring").GetString();
+        var hash = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes($"{Geometry("Icon.Shield")}\n{Geometry("Icon.Mark.Ok")}\n{color}")));
+        var folder = Path.Combine(Repo.Root, "shared", "specifications", "icons");
+
+        File.ReadAllText(Path.Combine(folder, "app.svg")).ShouldContain("icon-sha256: " + hash,
+            customMessage: "Щит или цвет поменялись, а значок нет: dotnet run scripts/gen-icons.cs");
+        var ico = File.ReadAllBytes(Path.Combine(folder, "app.ico"));
+        (BitConverter.ToUInt16(ico, 2), BitConverter.ToUInt16(ico, 4)).ShouldBe(((ushort)1, (ushort)9), "ICO с девятью размерами");
+        Enumerable.Range(0, 9).Select(i => ico[6 + (16 * i)] == 0 ? 256 : ico[6 + (16 * i)]).ShouldBe([16, 20, 24, 32, 40, 48, 64, 128, 256]);
+        XDocument.Load(Path.Combine(Repo.UiSource, "Client.UI.csproj")).Descendants("ApplicationIcon").Single().Value
+            .ShouldEndWith("shared/specifications/icons/app.ico", customMessage: "у файла окна — тот же значок");
     }
 
     [Fact]

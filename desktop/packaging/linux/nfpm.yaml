@@ -1,0 +1,54 @@
+# Пакеты Linux (.deb и .rpm) из папки выпуска — scripts/package-linux.sh задает BUILD (папка сборки) и VERSION (SemVer).
+# Все — в /opt/private-gateway (окно, служба, ядра, SBOM, THIRD-PARTY-NOTICES), запись меню, значок, команда
+# private-gateway. Службу ставит окно («Установить службу», pkexec): пакет не знает, чей это компьютер (--owner).
+name: private-gateway
+arch: amd64
+platform: linux
+version: ${VERSION}
+version_schema: semver
+section: net
+priority: optional
+maintainer: Roman Burov <92747928+rvburov@users.noreply.github.com>
+vendor: Private Gateway
+homepage: https://github.com/rvburov/private-gateway-client
+license: Proprietary
+description: |-
+  Private Gateway Client — proxy and VPN client.
+  Manual server choice, full-system routing through a TUN tunnel and leak protection: kill switch, DNS, IPv6.
+
+contents:
+  - src: ${BUILD}
+    dst: /opt/private-gateway
+    type: tree
+  - src: desktop/packaging/linux/private-gateway.desktop
+    dst: /usr/share/applications/private-gateway.desktop
+  - src: shared/specifications/icons/app.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/private-gateway.svg
+  - src: /opt/private-gateway/PrivateGateway
+    dst: /usr/bin/private-gateway
+    type: symlink
+
+scripts:
+  postinstall: desktop/packaging/linux/postinstall.sh
+  preremove: desktop/packaging/linux/preremove.sh
+
+overrides:
+  deb:
+    depends:
+      - libc6
+      - libicu74 | libicu72 | libicu71 | libicu70 | libicu67 | libicu66
+      - libfontconfig1
+      - libx11-6
+      - libice6
+      - libsm6
+    recommends:
+      - nftables
+  rpm:
+    depends:
+      - libicu
+      - fontconfig
+      - libX11
+      - libICE
+      - libSM
+    recommends:
+      - nftables

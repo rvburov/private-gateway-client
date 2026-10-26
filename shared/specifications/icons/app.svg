@@ -1,0 +1,5 @@
+<!-- Сгенерировано scripts/gen-icons.cs из Icons.axaml и design-tokens.json; руками не править. icon-sha256: e6ca23e4a0aa9ff7f993c5f69283ea4611588efa86689587e1d3c89cd4797dc0 -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="256" height="256">
+  <path d="M12 2.8l7.5 3v5.4c0 4.7-3.1 8.6-7.5 10-4.4-1.4-7.5-5.3-7.5-10V5.8z" fill="#16A34A" stroke="#16A34A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M8.8 12.2l2.2 2.2 4.4-4.6" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+</svg>

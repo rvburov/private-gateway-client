@@ -154,6 +154,8 @@ dotnet run --project desktop/src/Client.UI -- --demo   # интерфейс на
 dotnet run --project desktop/src/Client.Service -- --version
 dotnet run scripts/gen-tokens.cs                       # тема Avalonia из design-tokens.json
 scripts/publish.sh [версия]                            # выпуск для ОС этой машины: архив, SBOM, SHA256SUMS
+scripts/package-linux.sh <версия>                      # .deb и .rpm из сборки выпуска (нужен nfpm)
+dotnet run scripts/gen-icons.cs                        # значок программы (SVG, ICO) из Icons.axaml и токенов
 ```
 
 - Вывод сборки — в `artifacts/bin/<проект>/debug/`, выпуска — в `artifacts/release/`
