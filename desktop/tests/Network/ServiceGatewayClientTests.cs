@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
@@ -98,6 +99,36 @@ public sealed class ServiceGatewayClientTests
             routes.Routes = [new DefaultRoute("eth0", IsTunnel: false), new DefaultRoute(own, IsTunnel: true)];
             (await client.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn]!.State.ShouldBe(CheckState.Ok, "свой туннель — не чужой VPN");
         }
+    }
+
+    [Fact]
+    public async Task Vpn_connect_shows_connecting_while_the_server_name_is_looked_up()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        var lookup = new TaskCompletionSource();
+
+        // Имя ищется долго и не находится: окно все это время видит «Подключение», а не прежнее «IP открыт».
+        await using var service = await RunningService.StartAsync(options: o => o with
+        {
+            CanVpn = true, SingBoxPath = XrayKit.Xray, KillSwitch = new NoKillSwitch(),
+            Resolve = async (_, _) =>
+            {
+                await lookup.Task;
+                throw new SocketException(11001);
+            },
+        });
+        var (definition, _) = XrayKit.Pair("vless", 443);
+        definition = definition with { Host = "slow.example.com" };
+        using var client = Client(service.Endpoint, definition, Settings(XrayKit.FreePort()) with { Mode = ConnectionMode.Vpn, KillSwitch = false });
+
+        var connect = client.ConnectAsync(Profile(definition), Ct);
+        await WaitFor(() => client.Status.State == ConnectionState.Connecting);
+        client.Status.ServerId.ShouldBe(Profile(definition).Id);
+        lookup.SetResult();
+        await connect;
+
+        await WaitFor(() => client.Status.State == ConnectionState.Error);
+        client.Status.ErrorCode.ShouldBe(ErrorCodes.ServerNotFound);
     }
 
     [Fact]

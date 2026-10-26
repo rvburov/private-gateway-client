@@ -152,6 +152,17 @@ public class ServerListTests
     }
 
     [Fact]
+    public void Server_in_use_comes_from_the_service_while_protection_is_on()
+    {
+        var catalog = new ConnectionControllerTests.FakeCatalog(Nl, Fi) { SelectedId = "nl" };
+        var working = ConnectionStatus.Initial(Now) with { State = ConnectionState.Reconnecting, ServerId = "fi" };
+
+        ServerFacts.InUse(catalog, working).ShouldBe(Fi, "выбранный сменили, а защита идет через прежний — показывать его");
+        ServerFacts.InUse(catalog, working with { State = ConnectionState.Off }).ShouldBe(Nl, "защита выключена — выбранный");
+        ServerFacts.InUse(catalog, working with { ServerId = "gone" }).ShouldBe(Nl, "сервера нет в списке — выбранный");
+    }
+
+    [Fact]
     public void Demo_catalog_matches_the_mockup_list()
     {
         var catalog = new DemoServerCatalog(new FakeTimeProvider(Now));

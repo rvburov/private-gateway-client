@@ -111,7 +111,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
         : Status.State switch
     {
-        ConnectionState.Connected => _catalog.Selected is { } server && !ServerFacts.IsEncrypted(server)
+        ConnectionState.Connected => Server is { } server && !ServerFacts.IsEncrypted(server)
             ? Loc.Instance["status.connected.subPlain"]
             : Loc.Instance["status.connected.sub"],
         ConnectionState.Reconnecting => Loc.Instance.Format("status.reconnecting.sub", Status.Attempt),
@@ -328,13 +328,16 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string MaskHint => IsIpMasked ? Loc.Instance["ip.show"] : Loc.Instance["ip.hide"];
 
-    public bool HasServer => _catalog.Selected is not null;
+    /// <summary>Сервер карточки — тот, через который идет защита, а не только выбранный (<see cref="ServerFacts.InUse"/>).</summary>
+    private ServerProfile? Server => ServerFacts.InUse(_catalog, Status);
 
-    public string ServerTitle => _catalog.Selected is { } s
+    public bool HasServer => Server is not null;
+
+    public string ServerTitle => Server is { } s
         ? (string.IsNullOrEmpty(s.CountryCode) ? s.Name : s.CountryCode + " · " + s.Name)
         : Loc.Instance["server.none"];
 
-    public string ServerMeta => _catalog.Selected is { } s ? Describe(s, withPort: true) : Loc.Instance["server.addFirst"];
+    public string ServerMeta => Server is { } s ? Describe(s, withPort: true) : Loc.Instance["server.addFirst"];
 
     [ObservableProperty]
     public partial bool IsSwitchOpen { get; set; }
@@ -344,7 +347,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     {
         get
         {
-            var current = _catalog.Selected;
+            var current = Server;
             var others = _catalog.Servers
                 .Where(s => s.Id != current?.Id && s.LatencyMs is not null)
                 .OrderBy(s => s.LatencyMs);

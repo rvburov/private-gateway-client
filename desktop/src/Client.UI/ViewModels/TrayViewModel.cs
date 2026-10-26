@@ -64,8 +64,8 @@ public sealed partial class TrayViewModel : ObservableObject
     /// <summary>Подсказка над значком: «Private Gateway · IP скрыт».</summary>
     public string ToolTip => Loc.Instance["app.title"] + " · " + _protection.Title;
 
-    /// <summary>Строка состояния вверху меню: «IP скрыт · NL · Нидерланды 01 · 42 мс».</summary>
-    public string Header => _catalog.Selected is { } server
+    /// <summary>Строка состояния вверху меню: «IP скрыт · NL · Нидерланды 01 · 42 мс» — сервер, через который идет защита.</summary>
+    public string Header => ServerFacts.InUse(_catalog, _protection.Status) is { } server
         ? string.Join(" · ", _protection.Title, ServerLine(server, _protection.Status))
         : _protection.Title;
 

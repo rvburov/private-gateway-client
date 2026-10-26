@@ -336,6 +336,30 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Main_page_and_tray_show_the_server_protection_goes_through()
+    {
+        // Выбор сменили, а подключение идет через прежний сервер (окно другого пользователя, восстановление из копии):
+        // карточка и трей — про сервер в работе, а не про выбранный.
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        var store = Service<IServerStore>();
+        store.Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Первый").Server!, LinkParser.Parse("trojan://pw-b@198.51.100.2:443#Второй").Server!], null);
+        store.Choose(store.Servers.Single(s => s.Name == "Первый").Id);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        store.Choose(store.Servers.Single(s => s.Name == "Второй").Id);
+        Dispatcher.UIThread.RunJobs();
+
+        main.ServerTitle.ShouldBe("Первый");
+        Service<TrayViewModel>().Header.ShouldEndWith("Первый");
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
+        main.ServerTitle.ShouldBe("Второй", "защита выключена — выбранный");
+    }
+
+    [AvaloniaFact]
     public async Task Reconnecting_offers_wifi_sign_in_on_the_main_page()
     {
         // Отель: сервер за порталом не отвечает, а служба переподключается без конца — вход в Wi-Fi прямо с главной.

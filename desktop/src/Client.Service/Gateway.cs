@@ -415,6 +415,26 @@ public sealed partial class Gateway : IAsyncDisposable
             _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({string.Join(", ", other)}) — подключение по выбору пользователя");
         }
 
+        // Поиск адреса сервера бывает долгим (до срока пробы, под блоком — еще DoH службы): с выключенной защитой окно сразу
+        // видит «Подключение», а не прежнее «IP открыт». Дальше подключение доводится до конца и при отмене вызова — все
+        // шаги ограничены по времени, а «Подключение» не должно остаться без ядер.
+        if (vpn && known is null && Status.State == ConnectionState.Off && !IPAddress.TryParse(core.Server.Host.Trim('[', ']'), out _))
+        {
+            await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
+            try
+            {
+                if (Status.State == ConnectionState.Off)
+                {
+                    BeginConnecting(core.Mode, serverId);
+                    cancellationToken = CancellationToken.None;
+                }
+            }
+            finally
+            {
+                _switch.Release();
+            }
+        }
+
         // Реальный IP — до блока и туннеля, пока прямой путь открыт: один раз на сеть, вместе с поиском адреса сервера,
         // чтобы не ждать дважды. Под блоком и в туннеле прежнего подключения прямого пути нет.
         var direct = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect

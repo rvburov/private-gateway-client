@@ -7,6 +7,20 @@ namespace PrivateGateway.Client.Application.Servers;
 /// <summary>Сведения о сервере для подписей интерфейса.</summary>
 public static class ServerFacts
 {
+    /// <summary>
+    /// Сервер, через который идет защита: его называет служба в состоянии. Защита выключена или сервера нет в списке —
+    /// выбранный. Выбранный и рабочий расходятся после восстановления из копии, при окне другого пользователя на той же
+    /// службе, после подключения при загрузке — на главной и в трее показывается рабочий.
+    /// </summary>
+    public static ServerProfile? InUse(IServerCatalog catalog, ConnectionStatus status)
+    {
+        ArgumentNullException.ThrowIfNull(catalog);
+        ArgumentNullException.ThrowIfNull(status);
+        return status.State != ConnectionState.Off && status.ServerId is { } id && catalog.Servers.FirstOrDefault(s => s.Id == id) is { } working
+            ? working
+            : catalog.Selected;
+    }
+
     /// <summary>Шифруется ли трафик до сервера — от этого зависит подпись «Трафик зашифрован».</summary>
     public static bool IsEncrypted(ServerProfile server)
     {
