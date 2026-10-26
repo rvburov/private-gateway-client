@@ -36,7 +36,14 @@ public static class IpcServer
     public static WebApplication Build(IpcOptions options, Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker? updates = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        var builder = WebApplication.CreateSlimBuilder();
+        // Файлов настроек у службы нет — и следить не за чем. По умолчанию ASP.NET Core следит за appsettings в корне
+        // содержимого — текущей папке, а у службы systemd это «/»: inotify обходил бы всю файловую систему, запуск шел
+        // десятки секунд и забирал у машины весь лимит слежения (ломая его другим программам и самому systemd).
+        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
+        {
+            ContentRootPath = AppContext.BaseDirectory,
+            Args = ["--hostBuilder:reloadConfigOnChange=false"],
+        });
         builder.Logging.ClearProviders();
 
         // Запущена диспетчером служб Windows — живет по его командам; иначе ничего не меняется.

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Service;
+using PrivateGateway.Client.Service.Cores;
 
 namespace PrivateGateway.Client.Tests.Network;
 
@@ -18,6 +19,33 @@ public sealed class ServiceHostTests : IDisposable
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Service_host_watches_no_files_wherever_it_is_started()
+    {
+        // Служба systemd запускается с текущей папкой «/»: слежение за настройками в ней обходило бы всю файловую систему.
+        var previous = Environment.CurrentDirectory;
+        Environment.CurrentDirectory = Path.GetPathRoot(previous)!;
+        try
+        {
+            var journal = new ServiceJournal(TimeProvider.System);
+            await using var gateway = new Gateway(new GatewayOptions(null, CanVpn: false, LatencyProbe.DefaultTarget), TimeProvider.System, journal);
+            await using var app = PrivateGateway.Client.Service.Ipc.IpcServer.Build(
+                new PrivateGateway.Client.Service.Ipc.IpcOptions(Path.Combine(Folder("ipc"), "ipc.sock")), gateway, journal, ServiceHost.Info(null));
+
+            app.Environment.ContentRootPath.TrimEnd(Path.DirectorySeparatorChar).ShouldBe(AppContext.BaseDirectory.TrimEnd(Path.DirectorySeparatorChar),
+                "корень содержимого — папка службы, а не текущая");
+            ((Microsoft.Extensions.Configuration.IConfigurationRoot)app.Configuration).Providers
+                .OfType<Microsoft.Extensions.Configuration.FileConfigurationProvider>()
+                .Where(p => p.Source.ReloadOnChange)
+                .Select(p => p.Source.Path)
+                .ShouldBeEmpty("файлы настроек не отслеживаются");
+        }
+        finally
+        {
+            Environment.CurrentDirectory = previous;
         }
     }
 
