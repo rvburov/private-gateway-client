@@ -1346,5 +1346,16 @@
   "tray.quit": "Close interface",
   "tray.quit.note": "VPN and kill switch keep working",
   "tray.quit.app": "Quit",
-  "tray.quit.user.note": "The proxy stops together with the app"
+  "tray.quit.user.note": "The proxy stops together with the app",
+  "android.notify.channel": "Protection",
+  "android.notify.channel.text": "VPN status while protection is on",
+  "android.notify.disconnect": "Disconnect",
+  "android.permission.denied": "Android did not grant the VPN permission — protection is off",
+  "android.check.ks.system": "in Android settings",
+  "android.check.ks.text": "On Android the kill switch belongs to the system: “Always-on VPN” and “Block connections without VPN” in the phone's VPN settings. Only you can turn them on.",
+  "android.settings.vpn.title": "VPN in Android settings",
+  "android.settings.vpn.text": "“Always-on VPN” keeps protection after a restart, “Block connections without VPN” closes the internet while there is no tunnel. They are turned on there: the app cannot turn them on itself.",
+  "android.settings.vpn.open": "Open VPN settings",
+  "android.import.hint": "Links one per line, a base64 subscription, a sing-box or Clash config",
+  "android.settings.language": "as in the system — change it in Android settings"
 }

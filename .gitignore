@@ -59,3 +59,15 @@ appsettings.Local.json
 
 # ===== ЯДРА (скачиваются скриптом, в git не хранятся) =====
 /runtimes/
+
+# ===== ANDROID (android/) =====
+/android/.gradle/
+/android/**/.gradle/
+/android/build/
+/android/*/build/
+/android/.kotlin/
+/android/**/.kotlin/
+/android/local.properties
+# Ядро для Android собирает scripts/get-libxray.sh (gomobile), в git не хранится.
+/android/app/libs/*.aar
+/android/app/libs/*.jar

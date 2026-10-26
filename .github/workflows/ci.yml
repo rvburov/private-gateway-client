@@ -131,6 +131,63 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet run scripts/test-report.cs artifacts/test-results
 
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # JDK 21: Gradle и AGP идут и на 17, а Robolectric с Android 15 (SDK 35) — только на 21.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle.kts
+            android/gradle/libs.versions.toml
+            android/gradle/wrapper/gradle-wrapper.properties
+
+      # Общий модуль (разбор ссылок и подписок на эталонах shared/testdata, конфиг ядра) и генераторы темы и текстов —
+      # без SDK Android: так же их гоняют локально (android/gradlew -p android/core test).
+      - name: Общий модуль и генераторы ресурсов
+        run: |
+          android/gradlew -p android/core test
+          android/gradlew -p android/build-logic test
+
+      # Ядро — libXray из исходников закрепленного коммита (shared/cores/libxray.version) через gomobile; NDK — с машины CI.
+      # Готовый .aar кешируется по коммиту и скрипту: сборка всех четырех ABI идет минуты.
+      - id: libxray
+        uses: actions/cache@v4
+        with:
+          path: android/app/libs/libXray.aar
+          key: libxray-${{ hashFiles('shared/cores/libxray.version', 'scripts/get-libxray.sh') }}
+
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Ядро libXray (gomobile)
+        if: steps.libxray.outputs.cache-hit != 'true'
+        run: scripts/get-libxray.sh
+
+      # Приложение: сборка APK (подпись отладочным ключом), тесты без устройства (Robolectric: хранилище, тексты RU/EN,
+      # экраны Compose) и Android Lint — его ошибки роняют проверку.
+      - name: Сборка, тесты и Lint приложения
+        run: android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
+
+      - name: APK и отчеты
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-debug
+          path: |
+            android/app/build/outputs/apk/debug/*.apk
+            android/app/build/reports/
+          if-no-files-found: ignore
+
   worktree:
     name: Рабочие папки агентов (${{ matrix.os }})
     strategy:

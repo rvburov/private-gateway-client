@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Окно до первого кадра Compose: фон из токенов (color.bg.window), без белой вспышки. Остальное рисует Compose. -->
+    <style name="Theme.PrivateGateway" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/pg_window_background</item>
+    </style>
+</resources>

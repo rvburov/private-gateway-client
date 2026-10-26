@@ -1346,5 +1346,16 @@
   "tray.quit": "Закрыть интерфейс",
   "tray.quit.note": "VPN и блок при обрыве продолжат работать",
   "tray.quit.app": "Закрыть программу",
-  "tray.quit.user.note": "Прокси остановится вместе с программой"
+  "tray.quit.user.note": "Прокси остановится вместе с программой",
+  "android.notify.channel": "Защита",
+  "android.notify.channel.text": "Состояние VPN, пока защита включена",
+  "android.notify.disconnect": "Отключить",
+  "android.permission.denied": "Android не дал разрешения на VPN — защита не включилась",
+  "android.check.ks.system": "в настройках Android",
+  "android.check.ks.text": "Блок при обрыве на Android — системный: «Постоянная VPN» и «Блокировать подключения без VPN» в настройках VPN телефона. Включить их может только пользователь.",
+  "android.settings.vpn.title": "VPN в настройках Android",
+  "android.settings.vpn.text": "«Постоянная VPN» держит защиту после перезагрузки, «Блокировать подключения без VPN» закрывает интернет, пока туннеля нет. Включаются там: приложение само их включить не может.",
+  "android.settings.vpn.open": "Открыть настройки VPN",
+  "android.import.hint": "Ссылки по строкам, подписка в base64, конфиг sing-box или Clash",
+  "android.settings.language": "как в системе — меняется в настройках Android"
 }
