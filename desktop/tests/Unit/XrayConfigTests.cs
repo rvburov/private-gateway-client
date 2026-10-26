@@ -208,7 +208,8 @@ public sealed class XrayConfigTests
         var lan = config["routing"]!["rules"]!.AsArray().Single(r => r!["ip"]?[0]?.GetValue<string>() == XrayConfigBuilder.LocalNetworks[0])!;
         lan["ip"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(XrayConfigBuilder.LocalNetworks);
         config.ToJsonString().ShouldNotContain("geoip:", customMessage: "geoip.dat в выпуск не идет: без него ядро не запустилось бы с таким правилом");
-        MustBeLocal.Except(XrayConfigBuilder.LocalNetworks).ShouldBeEmpty("частные, CGNAT, петля, link-local, групповые и адреса документации — локальные");
+        MustBeLocal.Except(XrayConfigBuilder.LocalNetworks).ShouldBeEmpty("частные, CGNAT, петля, link-local, групповые и адреса документации IPv4 — локальные");
+        XrayConfigBuilder.LocalNetworks.ShouldNotContain("2001:db8::/32", "адреса документации IPv6 — не локальные, как в геобазе закрепленной версии");
     }
 
     [Fact]
@@ -477,7 +478,7 @@ public sealed class XrayConfigTests
     private static readonly string[] MustBeLocal =
     [
         "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "192.0.2.0/24", "198.51.100.0/24",
-        "203.0.113.0/24", "224.0.0.0/4", "fc00::/7", "fe80::/10", "ff00::/8", "2001:db8::/32", "::/127",
+        "203.0.113.0/24", "224.0.0.0/4", "fc00::/7", "fe80::/10", "ff00::/8", "::1/128",
     ];
 
     // Правило локальной сети в Rules: первым адресом списка.
