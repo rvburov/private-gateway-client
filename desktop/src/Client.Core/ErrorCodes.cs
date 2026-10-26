@@ -30,6 +30,9 @@ public static class ErrorCodes
     /// <summary>Блок при обрыве сняла другая программа — служба поставила его снова.</summary>
     public const string BlockRemoved = "PGC-SVC-008";
 
+    /// <summary>Служба уже работает с этой папкой состояния — вторая копия не запускается.</summary>
+    public const string ServiceRunning = "PGC-SVC-009";
+
     /// <summary>Сервер не отвечает.</summary>
     public const string ServerNotResponding = "PGC-NET-001";
 

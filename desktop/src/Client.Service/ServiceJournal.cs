@@ -8,9 +8,10 @@ namespace PrivateGateway.Client.Service;
 /// появления. Каждая строка проходит через <see cref="SecretMasker"/>, а ключи текущего
 /// подключения вырезаются дословно — даже если ядро напечатает их в непривычном виде. В выводе
 /// ядер (<see cref="CoreSources"/>) скрыты и адреса (<see cref="AddressMasker"/>): адреса сайтов в
-/// журнал не попадают и на подробных уровнях «Журнала ядра».
+/// журнал не попадают и на подробных уровнях «Журнала ядра». <paramref name="file"/> — журнал на диске (<see cref="JournalFile"/>):
+/// туда идет то же, уже скрытое; null — только в памяти.
 /// </summary>
-public sealed class ServiceJournal(TimeProvider time)
+public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
 {
     /// <summary>Сколько записей хранится.</summary>
     public const int Capacity = 500;
@@ -47,14 +48,38 @@ public sealed class ServiceJournal(TimeProvider time)
 
             text = SecretMasker.Mask(text);
             entry = new JournalEntry(time.GetUtcNow(), level, source, CoreSources.Contains(source) ? AddressMasker.Mask(text) : text);
-            _entries.Enqueue(entry);
-            while (_entries.Count > Capacity)
-            {
-                _entries.Dequeue();
-            }
+            Keep(entry);
         }
 
+        file?.Append(entry);
         Added?.Invoke(this, entry);
+    }
+
+    /// <summary>
+    /// Записи прошлого запуска с диска — в начало журнала в памяти, без события и без записи на диск: окно видит, что было до
+    /// аварии или перезагрузки.
+    /// </summary>
+    public void Preload(IEnumerable<JournalEntry> entries)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        lock (_gate)
+        {
+            var now = _entries.ToList();
+            _entries.Clear();
+            foreach (var entry in entries.Concat(now))
+            {
+                Keep(entry);
+            }
+        }
+    }
+
+    private void Keep(JournalEntry entry)
+    {
+        _entries.Enqueue(entry);
+        while (_entries.Count > Capacity)
+        {
+            _entries.Dequeue();
+        }
     }
 
     /// <summary>Последние <paramref name="count"/> записей, от старых к новым.</summary>

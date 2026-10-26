@@ -50,12 +50,33 @@ var ownerSid = Option("--owner") is { } sid && sid.StartsWith("S-", StringCompar
 var xray = Option("--xray") ?? ServiceHost.DefaultXray();
 var singBox = Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory);
 var time = TimeProvider.System;
-var journal = new ServiceJournal(time);
+
+// Одна копия на папку состояния — раньше всего остального: вторая сняла бы ядра первой и правила ее туннеля.
+var state = Option("--state") is { Length: > 0 } given ? given : user ? UserServiceFiles.Folder : AppContext.BaseDirectory;
+using var instance = ServiceLock.TryAcquire(state, out var busy);
+if (busy)
+{
+    await Console.Error.WriteLineAsync($"{ErrorCodes.ServiceRunning}: служба уже работает (папка состояния {state})").ConfigureAwait(false);
+    return 2;
+}
+
+// Журнал — и на диске, в папке состояния: окно видит, что было до аварии или перезагрузки. Признак работы остался — прошлый
+// запуск завершился аварийно.
+using var journalFile = new JournalFile(state);
+var journal = new ServiceJournal(time, journalFile);
+journal.Preload(journalFile.Tail(ServiceJournal.Capacity));
+using var running = new RunMarker(state);
+var crashed = running.Start();
+if (crashed)
+{
+    journal.Add(JournalLevel.Warning, "service", "Прошлый запуск службы завершился аварийно — восстановление");
+}
 
 // Ядра, которые пережили прошлый запуск службы (служба пользователя на Linux и macOS после сбоя), — снять:
 // они держат порт прокси и ходят через сервер. Папка — та же, что у снимка прокси или «Защиты при загрузке».
-var ledger = new CoreLedger(CoreLedger.In(Option("--state") ?? (user ? UserServiceFiles.Folder : AppContext.BaseDirectory)));
-foreach (var pid in ledger.KillLeftovers())
+var ledger = new CoreLedger(CoreLedger.In(state));
+var leftovers = ledger.KillLeftovers();
+foreach (var pid in leftovers)
 {
     journal.Add(JournalLevel.Warning, "service", $"Ядро прошлого запуска пережило службу (процесс {pid}) — остановлено");
 }
@@ -64,15 +85,15 @@ CoreProcess.Ledger = ledger;
 
 // Системный прокси — настройки пользователя: их меняет только служба пользователя. Снимок остался после сбоя — вернуть сразу.
 var systemProxy = user && ServiceHost.SystemProxy() is { } proxy
-    ? new SystemProxyGuard(proxy, UserServiceFiles.ProxyBackup(Option("--state") ?? UserServiceFiles.Folder), journal)
+    ? new SystemProxyGuard(proxy, UserServiceFiles.ProxyBackup(state), journal)
     : null;
-systemProxy?.RestoreStale();
+var proxyRestored = systemProxy?.RestoreStale() == true;
 var canVpn = !user && Environment.IsPrivilegedProcess;
-using var network = new SystemNetworkEvents(time);
+using var network = new SystemNetworkEvents(time, sleep: ServiceHost.SuspendClock());
 
 // «Защита при загрузке» — в папке установленной службы: туда пишут только администраторы и root. Последнее
 // подключение — там же, зашифрованное хранилищем ОС; нет хранилища — при загрузке только блок.
-var bootFolder = Option("--state") ?? AppContext.BaseDirectory;
+var bootFolder = state;
 var bootBlock = canVpn ? Path.Combine(bootFolder, "boot-block.json") : null;
 var bootConnect = canVpn && ServiceHost.Sealer() is { } sealer ? new BootConnection(Path.Combine(bootFolder, "boot-connect.sealed"), sealer) : null;
 await using var gateway = new Gateway(
@@ -82,6 +103,13 @@ await using var gateway = new Gateway(
     time, journal, systemProxy);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox));
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
+if (crashed)
+{
+    // Сводка: что после аварии найдено и сделано — подробности строками выше.
+    journal.Add(JournalLevel.Info, "recovery", $"Восстановление: ядер прошлого запуска снято — {leftovers.Count}; системный прокси " +
+        (proxyRestored ? "возвращен, как был" : "не оставался") + "; " +
+        (gateway.Status.State == ConnectionState.Blocked ? "блок при обрыве держит трафик до подключения или отключения" : "блока при обрыве нет"));
+}
 if (int.TryParse(Option("--parent"), out var parent))
 {
     _ = ServiceHost.StopWithParentAsync(parent, () =>

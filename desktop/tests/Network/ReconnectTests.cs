@@ -220,6 +220,65 @@ public sealed class ReconnectTests
     }
 
     [Fact]
+    public async Task Waking_up_checks_the_server_at_once()
+    {
+        // Пробы раз в час: после сна сервер проверяется сразу, а не к следующей пробе.
+        var hour = TimeSpan.FromHours(1);
+        var network = new FakeNetwork();
+        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network);
+        using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        rig.StopServer();
+        network.Wake(TimeSpan.FromMinutes(30));
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting);
+        rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Машина проснулась — проверка связи с сервером");
+    }
+
+    [Fact]
+    public void Sleep_is_reported_once_when_the_sleep_clock_grows_and_the_network_is_compared()
+    {
+        var time = new FakeTimeProvider();
+        var (network, clock) = ("wlan0=192.0.2.10", new FakeSuspendClock());
+        using var events = new SystemNetworkEvents(time, () => network, clock);
+        var (woke, changes) = (new List<TimeSpan>(), 0);
+        events.Resumed += (_, slept) => woke.Add(slept);
+        events.Changed += (_, _) => changes++;
+
+        clock.Suspended = TimeSpan.FromSeconds(1);
+        time.Advance(SystemNetworkEvents.SleepCheck);
+
+        woke.ShouldBeEmpty("доля секунды на часах сна — шум, а не сон");
+
+        // Проспала 10 минут, проснулась в другой сети.
+        clock.Suspended += TimeSpan.FromMinutes(10);
+        network = "wlan0=198.51.100.7";
+        time.Advance(SystemNetworkEvents.SleepCheck);
+        time.Advance(SystemNetworkEvents.Quiet);
+
+        woke.ShouldBe([TimeSpan.FromMinutes(10)], "сколько спала — с прошлой сверки");
+        changes.ShouldBe(1, "после сна сеть сверяется — и другая сеть видна без события ОС");
+
+        time.Advance(SystemNetworkEvents.SleepCheck);
+
+        woke.Count.ShouldBe(1, "один сон — одно пробуждение");
+    }
+
+    [Fact]
+    public void Sleep_clock_of_this_os_reads()
+    {
+        Assert.SkipUnless(ServiceHost.SuspendClock() is not null, "часов сна для этой ОС нет");
+        var clock = ServiceHost.SuspendClock()!;
+
+        var (first, second) = (clock.Suspended, clock.Suspended);
+
+        first.ShouldBeGreaterThanOrEqualTo(-TimeSpan.FromMilliseconds(50), "сон с загрузки — не меньше нуля (с погрешностью двух чтений)");
+        (second - first).Duration().ShouldBeLessThan(TimeSpan.FromSeconds(1), "без сна часы сна стоят");
+    }
+
+    [Fact]
     public void Network_fingerprint_ignores_the_own_tunnel_the_loopback_and_the_order()
     {
         (string, bool, IEnumerable<IPAddress>) Adapter(string name, params string[] addresses) =>
@@ -327,5 +386,10 @@ public sealed class ReconnectTests
             _server?.Dispose();
             _site.Dispose();
         }
+    }
+
+    private sealed class FakeSuspendClock : ISuspendClock
+    {
+        public TimeSpan Suspended { get; set; }
     }
 }

@@ -134,14 +134,23 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         return report;
     }
 
-    /// <summary>Последние записи и новые по мере появления; секреты уже скрыты журналом.</summary>
+    /// <summary>Сколько записей журнала ждут окно, которое не успевает их читать: дальше старые выпадают, и окно узнает, сколько.</summary>
+    public const int LogBuffer = 1000;
+
+    /// <summary>
+    /// Последние записи и новые по мере появления; секреты уже скрыты журналом. Очередь ограничена (<see cref="LogBuffer"/>):
+    /// зависшее окно не растит память службы, а выпавшие записи — одной строкой «пропущено N».
+    /// </summary>
     public override async Task WatchLog(V1.WatchLogRequest request, IServerStreamWriter<V1.LogEntry> responseStream, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(responseStream);
         ArgumentNullException.ThrowIfNull(context);
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, lifetime.ApplicationStopping);
-        var updates = Channel.CreateUnbounded<JournalEntry>(new UnboundedChannelOptions { SingleReader = true });
+        var dropped = 0;
+        var updates = Channel.CreateBounded<JournalEntry>(
+            new BoundedChannelOptions(LogBuffer) { SingleReader = true, FullMode = BoundedChannelFullMode.DropOldest },
+            _ => Interlocked.Increment(ref dropped));
         void OnAdded(object? sender, JournalEntry entry) => updates.Writer.TryWrite(entry);
         journal.Added += OnAdded;
         try
@@ -153,6 +162,12 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
 
             await foreach (var entry in updates.Reader.ReadAllAsync(stop.Token).ConfigureAwait(false))
             {
+                if (Interlocked.Exchange(ref dropped, 0) is var lost and > 0)
+                {
+                    await responseStream.WriteAsync(Entry(new JournalEntry(entry.Time, JournalLevel.Warning, "service",
+                        $"Пропущено записей журнала: {lost} — окно не успевало их читать")), stop.Token).ConfigureAwait(false);
+                }
+
                 await responseStream.WriteAsync(Entry(entry), stop.Token).ConfigureAwait(false);
             }
         }

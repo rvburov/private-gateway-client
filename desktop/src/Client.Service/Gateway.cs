@@ -182,6 +182,7 @@ public sealed partial class Gateway : IAsyncDisposable
         if (options.Network is { } network)
         {
             network.Changed += OnNetworkChanged;
+            network.Resumed += OnResumed;
         }
 
         var held = options.BootBlock is { } path ? Service.BootBlock.Read(path) : null;
@@ -285,14 +286,22 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
+    /// <summary>Сколько состояний ждут подписчика, который не успевает их читать: дальше старые выпадают, последнее приходит всегда.</summary>
+    public const int WatchBuffer = 64;
+
     /// <summary>
     /// Текущее состояние и все следующие — атомарно: снимок и подписка под той же блокировкой, что
     /// и смена состояния, поэтому изменение не теряется и не приходит дважды. Подписка снимается
-    /// завершением <paramref name="stop"/>.
+    /// завершением <paramref name="stop"/>. Очередь ограничена (<see cref="WatchBuffer"/>): зависшее окно не растит память службы —
+    /// состояние это снимок, и выпавшие старые ничего не значат после нового.
     /// </summary>
     public (ConnectionStatus Current, ChannelReader<ConnectionStatus> Updates) Watch(CancellationToken stop)
     {
-        var channel = Channel.CreateUnbounded<ConnectionStatus>(new UnboundedChannelOptions { SingleReader = true });
+        var channel = Channel.CreateBounded<ConnectionStatus>(new BoundedChannelOptions(WatchBuffer)
+        {
+            SingleReader = true,
+            FullMode = BoundedChannelFullMode.DropOldest,
+        });
         ConnectionStatus current;
         lock (_gate)
         {
@@ -773,6 +782,7 @@ public sealed partial class Gateway : IAsyncDisposable
         if (_options.Network is { } network)
         {
             network.Changed -= OnNetworkChanged;
+            network.Resumed -= OnResumed;
         }
 
         await StopCoreAsync().ConfigureAwait(false);

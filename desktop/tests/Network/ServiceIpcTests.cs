@@ -39,6 +39,35 @@ public sealed class ServiceIpcTests
     }
 
     [Fact]
+    public async Task Window_that_does_not_read_the_log_does_not_grow_the_service_and_learns_what_it_missed()
+    {
+        await using var service = await RunningService.StartAsync();
+        using var log = service.Client.WatchLog(new V1.WatchLogRequest(), cancellationToken: Ct);
+        await Task.Delay(TimeSpan.FromMilliseconds(500), Ct);
+
+        // Окно зависло: записи идут, а оно не читает.
+        for (var i = 0; i < 20_000; i++)
+        {
+            service.Journal.Add(JournalLevel.Info, "test", $"запись {i} " + new string('·', 200));
+        }
+
+        var (read, missed) = (0, (string?)null);
+        while (await log.ResponseStream.MoveNext(Ct))
+        {
+            read++;
+            var message = log.ResponseStream.Current.Message;
+            missed ??= message.StartsWith("Пропущено записей журнала: ", StringComparison.Ordinal) ? message : null;
+            if (message.StartsWith("запись 19999 ", StringComparison.Ordinal))
+            {
+                break;
+            }
+        }
+
+        missed.ShouldNotBeNull("выпавшие записи — одной строкой, окно знает, что пропустило");
+        read.ShouldBeLessThan(20_000, "служба держит для окна не больше своей очереди, а не все подряд");
+    }
+
+    [Fact]
     public async Task Proxy_mode_starts_the_core_and_stops_it_on_disconnect()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");

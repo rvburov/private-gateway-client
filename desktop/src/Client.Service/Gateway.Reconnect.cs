@@ -118,6 +118,28 @@ public sealed partial class Gateway
             Update(s => s with { Exit = s.Exit with { DirectIp = null } });
         }
 
+        CheckAtOnce("Сеть машины сменилась");
+    }
+
+    /// <summary>
+    /// Машина проснулась: таймеры .NET во сне стояли. Пауза для входа в Wi-Fi, чей срок по часам вышел во сне, кончается сейчас,
+    /// а не через остаток своего таймера; иначе — как после смены сети: сервер проверить сразу, попытка сразу.
+    /// </summary>
+    private void OnResumed(object? sender, TimeSpan slept)
+    {
+        _journal.Add(JournalLevel.Info, "service", $"Машина проснулась после сна ({slept.TotalMinutes:0.#} мин)");
+        if (Status.CaptivePauseUntil is { } until && _time.GetUtcNow() >= until)
+        {
+            _ = ResumeAsync(Volatile.Read(ref _session), "время вышло во сне");
+            return;
+        }
+
+        CheckAtOnce("Машина проснулась");
+    }
+
+    /// <summary>«Защищено» — проверить сервер сразу, а не через минуту; «Переподключение» — попытка сразу, без остатка паузы.</summary>
+    private void CheckAtOnce(string why)
+    {
         var status = Status;
         var session = Volatile.Read(ref _session);
         if (status.State is ConnectionState.Connected or ConnectionState.Reconnecting && OtherVpnStarted(session))
@@ -127,13 +149,13 @@ public sealed partial class Gateway
 
         if (status is { State: ConnectionState.Connected, IsPaused: false } && Timing.Every is not null)
         {
-            _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — проверка связи с сервером");
+            _journal.Add(JournalLevel.Info, "service", $"{why} — проверка связи с сервером");
             _ = CheckNowAsync(session, Volatile.Read(ref _watch));
         }
         else if (status is { State: ConnectionState.Reconnecting, IsPaused: false })
         {
             // На паузе для входа в Wi-Fi попыток нет — подгонять нечего.
-            _journal.Add(JournalLevel.Info, "service", "Сеть машины сменилась — попытка переподключения сразу");
+            _journal.Add(JournalLevel.Info, "service", $"{why} — попытка переподключения сразу");
             Volatile.Read(ref _nudge).TrySetResult();
         }
     }

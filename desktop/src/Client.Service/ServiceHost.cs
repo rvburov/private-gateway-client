@@ -103,6 +103,13 @@ public static partial class ServiceHost
         : OperatingSystem.IsLinux() ? IpRouteTable.ForThisMachine()
         : null;
 
+    /// <summary>Часы сна этой ОС (<see cref="ISuspendClock"/>): по ним служба узнает, что машина спала.</summary>
+    public static ISuspendClock? SuspendClock() =>
+        OperatingSystem.IsWindows() ? new WindowsSuspendClock()
+        : OperatingSystem.IsLinux() ? new LinuxSuspendClock()
+        : OperatingSystem.IsMacOS() ? new Platform.MacOS.MacSuspendClock()
+        : null;
+
     /// <summary>Сведения для GetServiceInfo: версии службы и контракта, ОС, ядра — какие есть и какой версии.</summary>
     public static V1.ServiceInfo Info(string? xray, string? singBox = null)
     {

@@ -245,8 +245,12 @@ public sealed class ServiceGatewayClientTests
         using var server = await XrayKit.Start(serverConfig, serverPort);
         // «Окно» — отдельный процесс службы на своем адресе: его можно закрыть, не закрывая тест.
         // Своя папка состояния: служба пользователя не смотрит в снимок системного прокси этой машины.
-        var state = Path.GetDirectoryName(MissingEndpoint())!;
-        using var window = Process.Start(new ProcessStartInfo(ServiceExecutable) { ArgumentList = { "--user", "--ipc", MissingEndpoint(), "--state", state } })!;
+        // У «окна» — своя папка: служба на той же папке состояния не запустилась бы (одна копия на папку).
+        var state = Path.Combine(Path.GetTempPath(), "pg-state-" + Guid.NewGuid().ToString("N")[..8]);
+        using var window = Process.Start(new ProcessStartInfo(ServiceExecutable)
+        {
+            ArgumentList = { "--user", "--ipc", MissingEndpoint(), "--state", Path.Combine(state, "window") },
+        })!;
         var user = new ServiceAddress(MissingEndpoint(), System: false);
         try
         {
