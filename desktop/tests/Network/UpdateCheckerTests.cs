@@ -127,7 +127,9 @@ public sealed class UpdateCheckerTests : IDisposable
             new UpdateChecker(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], "0.2.0", 0, _time, journal));
         using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
 
-        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct))!.Version.ShouldBe("0.3.0");
+        var stable = await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct);
+        stable!.Version.ShouldBe("0.3.0");
+        stable.Installable.ShouldBeFalse("служба без установщика не ставит — окно ведет на страницу выпуска");
         var beta = await client.CheckForUpdateAsync(UpdateChannel.Beta, force: false, Ct);
         beta!.Version.ShouldBe("0.4.0-beta.1");
         beta.Notes.ShouldBe(new Uri("https://github.com/rvburov/private-gateway-client/releases/tag/v0.4.0-beta.1"));
@@ -145,6 +147,105 @@ public sealed class UpdateCheckerTests : IDisposable
 
         offer.State.ShouldBe(V1.UpdateState.NotSigned);
     }
+
+    [Fact]
+    public async Task Update_file_is_downloaded_with_progress_checked_against_the_manifest_and_handed_to_the_installer()
+    {
+        var package = RandomNumberGenerator.GetBytes(300_000);
+        var manifest = UpdateManifest.Parse(ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package));
+        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", package);
+        var launched = new List<(string File, string Log)>();
+        var installer = Installer(new UpdateKind("linux-x64-deb", (file, log) =>
+        {
+            launched.Add((file, log));
+            return 4242;
+        }));
+        Directory.CreateDirectory(Path.Combine(_state, "updates"));
+        File.WriteAllText(Path.Combine(_state, "updates", "private-gateway_0.2.0_amd64.deb"), "прежняя загрузка");
+
+        var progress = await Collect(installer.DownloadAsync(manifest, Ct));
+
+        progress[^1].ShouldBe(new UpdateProgress(package.Length, package.Length, Ready: true));
+        progress.ShouldAllBe(p => p.Total == package.Length && p.Error == null);
+        File.ReadAllBytes(Path.Combine(_state, "updates", "private-gateway_0.3.0_amd64.deb")).ShouldBe(package);
+        Directory.GetFiles(Path.Combine(_state, "updates")).Select(Path.GetFileName).ShouldBe(["private-gateway_0.3.0_amd64.deb"], "прежние загрузки убраны");
+        (await Collect(installer.DownloadAsync(manifest, Ct))).ShouldBe([new UpdateProgress(package.Length, package.Length, Ready: true)],
+            "уже скачанное и сверенное не качается заново");
+
+        installer.Install(manifest).ShouldBe(4242);
+        launched.ShouldBe([(Path.Combine(_state, "updates", "private-gateway_0.3.0_amd64.deb"), Path.Combine(_state, "updates", "install.log"))]);
+        _journal.Tail(5).ShouldContain(e => e.Message.Contains("Ставится обновление 0.3.0", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task File_that_does_not_match_the_signed_manifest_is_not_kept_or_installed()
+    {
+        var package = RandomNumberGenerator.GetBytes(100_000);
+        var manifest = UpdateManifest.Parse(ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package));
+        var tampered = package.ToArray();
+        tampered[500] ^= 1;
+        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", tampered);
+        var installer = Installer(new UpdateKind("linux-x64-deb", (_, _) => throw new InvalidOperationException("не должен запускаться")));
+
+        var progress = await Collect(installer.DownloadAsync(manifest, Ct));
+
+        progress[^1].Error!.ShouldContain("SHA-256");
+        Directory.GetFiles(Path.Combine(_state, "updates")).ShouldBeEmpty("подмененный файл не остается ни целым, ни частью");
+        Should.Throw<IOException>(() => installer.Install(manifest));
+
+        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", [.. package, 1]);
+        (await Collect(installer.DownloadAsync(manifest, Ct)))[^1].Error!.ShouldContain("байт", customMessage: "длиннее манифеста — отказ");
+        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", [.. package, 1], chunked: true);
+        (await Collect(installer.DownloadAsync(manifest, Ct)))[^1].Error!.ShouldContain("больше", customMessage: "без длины в заголовке — отказ на первом лишнем байте");
+
+        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", package);
+        (await Collect(installer.DownloadAsync(manifest, Ct)))[^1].Ready.ShouldBeTrue();
+        var file = Path.Combine(_state, "updates", "private-gateway_0.3.0_amd64.deb");
+        File.WriteAllBytes(file, tampered);
+        Should.Throw<IOException>(() => installer.Install(manifest), "файл подменили после загрузки — перед установкой сверяется заново");
+        (await Collect(Installer(null).DownloadAsync(manifest, Ct)))[^1].Error.ShouldBe("в выпуске нет файла для этой установки");
+    }
+
+    [Fact]
+    public async Task Window_downloads_and_installs_only_what_the_service_found()
+    {
+        var package = RandomNumberGenerator.GetBytes(50_000);
+        var manifest = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package);
+        _site.Release("0.3.0", manifest, Sign(manifest));
+        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", package);
+        await using var service = await RunningService.StartAsync(
+            updates: journal => new UpdateChecker(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], "0.2.0", 0, _time, journal),
+            installer: journal => new UpdateInstaller(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"),
+                new UpdateKind("linux-x64-deb", (_, _) => 4242), journal));
+        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
+
+        (await Collect(client.DownloadUpdateAsync("0.3.0", Ct)))[^1].Error.ShouldNotBeNull("служба еще не находила 0.3.0 — качать нечего");
+        (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBeNull();
+
+        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct))!.Installable.ShouldBeTrue();
+        (await Collect(client.DownloadUpdateAsync("0.2.9", Ct)))[^1].Error.ShouldNotBeNull("другую версию служба не качает");
+        (await Collect(client.DownloadUpdateAsync("0.3.0", Ct)))[^1].Ready.ShouldBeTrue();
+        (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBe(4242);
+    }
+
+    private UpdateInstaller Installer(UpdateKind? kind) => new(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"), kind, _journal);
+
+    private static async Task<List<UpdateProgress>> Collect(IAsyncEnumerable<UpdateProgress> progress)
+    {
+        var list = new List<UpdateProgress>();
+        await foreach (var step in progress)
+        {
+            list.Add(step);
+        }
+
+        return list;
+    }
+
+    private static byte[] ManifestWith(string version, string kind, string file, byte[] content) => Encoding.UTF8.GetBytes($$"""
+        {"version":"{{version}}","channel":"stable","rollout":100,"published":"2026-10-26T08:00:00Z",
+         "notes":"https://github.com/rvburov/private-gateway-client/releases/tag/v{{version}}",
+         "assets":{"{{kind}}":{"file":"{{file}}","sha256":"{{Convert.ToHexStringLower(SHA256.HashData(content))}}","size":{{content.Length}}} } }
+        """);
 
     private UpdateChecker Checker(string current) => new(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], current, 0, _time, _journal);
 
@@ -193,6 +294,15 @@ public sealed class UpdateCheckerTests : IDisposable
                 _releases.Add((version, prerelease));
                 _files[$"/storage/v{version}/update.json"] = (manifest, chunked);
                 _files[$"/storage/v{version}/update.json.sig"] = (Encoding.ASCII.GetBytes(signature), false);
+            }
+        }
+
+        /// <summary>Файл выпуска: /download/v…/файл → переадресация → /storage/v…/файл.</summary>
+        public void Asset(string version, string file, byte[] content, bool chunked = false)
+        {
+            lock (_files)
+            {
+                _files[$"/storage/v{version}/{file}"] = (content, chunked);
             }
         }
 

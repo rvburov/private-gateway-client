@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -29,7 +30,8 @@ public sealed class DesktopHost
         SettingsService settings,
         SingleInstance? instance,
         bool minimized,
-        NoticeWindow notices)
+        NoticeWindow notices,
+        UpdateWatcher updates)
     {
         _desktop = desktop;
         _window = window;
@@ -45,6 +47,9 @@ public sealed class DesktopHost
         };
         tray.ShowWindowRequested += (_, _) => Show();
         tray.QuitRequested += (_, _) => Quit();
+
+        // Установщик обновления запущен, окно откроется после него само (AppRelauncher): закрыться, освободив свои файлы.
+        updates.RestartRequested += (_, _) => Dispatcher.UIThread.Post(Quit);
         TrayIcon.SetIcons(app, [icon]);
         desktop.Exit += (_, _) => icon.Dispose();
 

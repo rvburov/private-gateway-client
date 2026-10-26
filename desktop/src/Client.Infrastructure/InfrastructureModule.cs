@@ -6,6 +6,7 @@ using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
@@ -54,6 +55,7 @@ public static class InfrastructureModule
         services.AddSingleton<IServiceInstaller>(sp => demo
             ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<IAppRelauncher>(_ => demo ? new AppRelauncher(null) : AppRelauncher.ForThisWindow());
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());

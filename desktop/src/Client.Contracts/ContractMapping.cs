@@ -126,6 +126,7 @@ public static partial class ContractMapping
             Version = offer.Version ?? string.Empty,
             NotesUrl = offer.Notes?.AbsoluteUri ?? string.Empty,
             CheckedAt = Google.Protobuf.WellKnownTypes.Timestamp.FromDateTimeOffset(offer.Checked),
+            Installable = offer.Installable,
         };
         contract.Highlights.AddRange(offer.Highlights ?? []);
         return contract;
@@ -143,7 +144,22 @@ public static partial class ContractMapping
 
         return new CoreUpdateOffer(state, offer.CheckedAt?.ToDateTimeOffset() ?? DateTimeOffset.MinValue,
             state == CoreUpdateState.Available ? offer.Version : null, [.. offer.Highlights],
-            Uri.TryCreate(offer.NotesUrl, UriKind.Absolute, out var notes) && notes.Scheme == Uri.UriSchemeHttps ? notes : null);
+            Uri.TryCreate(offer.NotesUrl, UriKind.Absolute, out var notes) && notes.Scheme == Uri.UriSchemeHttps ? notes : null)
+        {
+            Installable = state == CoreUpdateState.Available && offer.Installable,
+        };
+    }
+
+    public static V1.UpdateDownload ToContract(this PrivateGateway.Client.Core.Updates.UpdateProgress progress)
+    {
+        ArgumentNullException.ThrowIfNull(progress);
+        return new V1.UpdateDownload { Received = progress.Received, Total = progress.Total, Ready = progress.Ready, Error = progress.Error ?? string.Empty };
+    }
+
+    public static PrivateGateway.Client.Core.Updates.UpdateProgress ToCore(this V1.UpdateDownload download)
+    {
+        ArgumentNullException.ThrowIfNull(download);
+        return new(download.Received, download.Total, download.Ready, download.Error.Length > 0 ? download.Error : null);
     }
 
     /// <summary>Что служба говорит о себе — для «О программе» и сверки версий с окном.</summary>

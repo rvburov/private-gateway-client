@@ -54,7 +54,8 @@ public sealed class AboutPageTests : WindowHarness
         Find<TextBlock>(window, "UpdatesText").IsEffectivelyVisible.ShouldBeFalse();
         Snapshot(window, "about-update");
 
-        Press(window, "OpenRelease");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Открыть выпуск", "служба сама его не поставит — программа не из установщика");
+        Press(window, "UpdateNow");
         Dispatcher.UIThread.RunJobs();
         Urls.Opened.ShouldBe([notes]);
 
@@ -65,6 +66,66 @@ public sealed class AboutPageTests : WindowHarness
         Press(window, "ShowUpdate");
         Dispatcher.UIThread.RunJobs();
         page.IsUpdateAvailable.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
+    public void Update_now_downloads_with_progress_and_restarts_the_window_after_the_installer()
+    {
+        var gate = new TaskCompletionSource();
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0", ["Быстрее переподключение после сна"],
+            new Uri("https://github.com/rvburov/private-gateway-client/releases/tag/v0.2.0"))
+        { Installable = true });
+        service.Download = [new UpdateProgress(0, 30_093_312), new UpdateProgress(19_293_798, 30_093_312), new UpdateProgress(30_093_312, 30_093_312, Ready: true)];
+        service.DownloadGate = gate.Task;
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Обновить сейчас");
+
+        Press(window, "UpdateNow");
+        WaitFor(() => page.UpdateFraction > 0.6);
+
+        Text(window, "UpdatesTitle").ShouldBe("Загружаем 0.2.0");
+        Text(window, "UpdateBadge").ShouldBe("Загрузка");
+        Text(window, "UpdateProgress").ShouldBe("18,4 из 28,7 МБ · VPN продолжает работать");
+        Find<Button>(window, "UpdateNow").IsEnabled.ShouldBeFalse("пока качается, второй раз не начать");
+        Find<Button>(window, "PostponeUpdate").IsEffectivelyVisible.ShouldBeFalse();
+        Snapshot(window, "about-update-loading");
+
+        gate.SetResult();
+        WaitFor(() => page.IsUpdateReady);
+        Text(window, "UpdatesTitle").ShouldBe("Обновление готово");
+        Text(window, "UpdateBadge").ShouldBe("Готово");
+        Text(window, "UpdateProgress").ShouldStartWith("Установится при перезапуске клиента; блок при обрыве");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Перезапустить клиент");
+        Snapshot(window, "about-update-ready");
+
+        Press(window, "UpdateNow");
+        WaitFor(() => Relauncher.Pids.Count > 0);
+        Relauncher.Pids.ShouldBe([4242], "окно откроется заново после установщика, которого запустила служба");
+    }
+
+    [AvaloniaFact]
+    public void Failed_download_and_install_say_so_and_retry()
+    {
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true });
+        Service<SettingsService>().Update(s => s with { KillSwitch = false });
+        service.Download = [new UpdateProgress(0, 100, Error: "SHA-256 не сходится")];
+
+        Press(window, "UpdateNow");
+        WaitFor(() => page.HasUpdateError);
+        Text(window, "UpdateError").ShouldStartWith("Загрузить обновление не удалось");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Повторить");
+
+        service.Download = [new UpdateProgress(100, 100, Ready: true)];
+        Press(window, "UpdateNow");
+        WaitFor(() => page.IsUpdateReady);
+        Text(window, "UpdateProgress").ShouldStartWith("Установится при перезапуске клиента. Блок при обрыве выключен",
+            customMessage: "без блока при обрыве — честно, что на время замены службы защиты нет");
+
+        service.Installer = null;
+        Press(window, "UpdateNow");
+        WaitFor(() => page.HasUpdateError);
+        Text(window, "UpdateError").ShouldStartWith("Поставить обновление не удалось");
+        Relauncher.Pids.ShouldBeEmpty("установщик не запущен — окно не закрывается");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Повторить");
     }
 
     [AvaloniaFact]

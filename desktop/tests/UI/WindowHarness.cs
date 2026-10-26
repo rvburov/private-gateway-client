@@ -11,6 +11,7 @@ using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
@@ -60,6 +61,8 @@ public abstract class WindowHarness : IDisposable
     /// <summary>Уведомления ОС в тестах не показываются, а запоминаются.</summary>
     protected FakeNotifier Notifier { get; } = new();
 
+    protected FakeRelauncher Relauncher { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -91,6 +94,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<IServiceInstaller>(Installer);
             s.AddSingleton<IUserProxySettings>(SystemProxy);
             s.AddSingleton<ISystemNotifier>(Notifier);
+            s.AddSingleton<IAppRelauncher>(Relauncher);
             if (gateway is not null)
             {
                 s.AddSingleton<IGatewayClient>(gateway);
@@ -179,6 +183,31 @@ public abstract class WindowHarness : IDisposable
             UpdateChecks.Add((channel, force));
             return Task.FromResult(Update);
         }
+
+        /// <summary>Как служба качает обновление: ход загрузки по шагам.</summary>
+        public IReadOnlyList<UpdateProgress> Download { get; set; } = [];
+
+        /// <summary>Номер процесса установщика; null — служба его не запустила.</summary>
+        public int? Installer { get; set; } = 4242;
+
+        /// <summary>Пока не завершится, последний шаг загрузки не приходит — экран видно посреди загрузки.</summary>
+        public Task? DownloadGate { get; set; }
+
+        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            for (var i = 0; i < Download.Count; i++)
+            {
+                if (i == Download.Count - 1 && DownloadGate is { } gate)
+                {
+                    await gate;
+                }
+
+                await Task.Yield();
+                yield return Download[i];
+            }
+        }
+
+        public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult(Installer);
 
         /// <summary>Что служба сделает из «Подключения».</summary>
         public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());
@@ -418,6 +447,14 @@ public abstract class WindowHarness : IDisposable
         }
 
         public Task CloseAsync(string tag, CancellationToken cancellationToken = default) => Task.CompletedTask;
+    }
+
+    /// <summary>Перезапуск окна после установщика обновления: запоминает номер процесса установщика.</summary>
+    protected sealed class FakeRelauncher : IAppRelauncher
+    {
+        public List<int> Pids { get; } = [];
+
+        public void RelaunchAfter(int installerPid) => Pids.Add(installerPid);
     }
 
     protected sealed class FakeUrlLauncher : IUrlLauncher

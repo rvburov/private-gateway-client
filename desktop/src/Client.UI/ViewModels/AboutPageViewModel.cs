@@ -178,8 +178,65 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     public bool IsUpdateAvailable => Update == UpdateView.Available;
 
-    /// <summary>Заголовок блока: «Доступно обновление 0.2.0» на карточке, иначе «Обновления».</summary>
-    public string UpdatesTitle => IsUpdateAvailable ? Loc.Instance.Format("about.update.available", _updates.Offer!.Version) : Loc.Instance["about.updates.title"];
+    /// <summary>
+    /// Заголовок блока: на карточке — «Доступно обновление 0.2.0», «Загружаем 0.2.0» или «Обновление готово», иначе
+    /// «Обновления».
+    /// </summary>
+    public string UpdatesTitle => !IsUpdateAvailable ? Loc.Instance["about.updates.title"] : _updates.Step switch
+    {
+        UpdateStep.Downloading => Loc.Instance.Format("about.update.loading", _updates.Offer!.Version),
+        UpdateStep.Ready or UpdateStep.Installing => Loc.Instance["about.update.ready"],
+        _ => Loc.Instance.Format("about.update.available", _updates.Offer!.Version),
+    };
+
+    /// <summary>Метка карточки: «Новое», «Загрузка» или «Готово» (зеленая).</summary>
+    public string UpdateBadge => _updates.Step switch
+    {
+        UpdateStep.Downloading => Loc.Instance["about.update.badge.loading"],
+        UpdateStep.Ready or UpdateStep.Installing => Loc.Instance["about.update.badge.ready"],
+        _ => Loc.Instance["about.update.new"],
+    };
+
+    public bool IsUpdateReady => _updates.Step is UpdateStep.Ready or UpdateStep.Installing;
+
+    /// <summary>Полоса загрузки: во время загрузки и когда все скачано.</summary>
+    public bool ShowUpdateProgress => IsUpdateAvailable && _updates.Step is UpdateStep.Downloading or UpdateStep.Ready or UpdateStep.Installing;
+
+    /// <summary>Доля скачанного, 0–1.</summary>
+    public double UpdateFraction => IsUpdateReady ? 1 : _updates.Total > 0 ? Math.Clamp((double)_updates.Received / _updates.Total, 0, 1) : 0;
+
+    /// <summary>
+    /// Под полосой: «18,4 из 28,7 МБ · VPN продолжает работать» (доска 15); готово — когда ставится и что с защитой: с блоком при
+    /// обрыве трафик мимо VPN не уйдет, пока служба меняется, без него — на это время защиты нет.
+    /// </summary>
+    public string UpdateProgressText => IsUpdateReady
+        ? Loc.Instance[_settings.Current.KillSwitch ? "about.update.ready.text" : "about.update.ready.unprotected"]
+        : Loc.Instance.Format("about.update.progress", Tenths(_updates.Received), Loc.Instance.Format("about.update.mb", Tenths(_updates.Total)));
+
+    /// <summary>Главная кнопка карточки: служба ставит сама — «Обновить сейчас» и дальше по шагам; нет — «Открыть выпуск».</summary>
+    public string UpdateAction => _updates.Offer?.Installable != true ? Loc.Instance["about.update.open"] : _updates.Step switch
+    {
+        UpdateStep.Downloading => Loc.Instance["about.update.loading.button"],
+        UpdateStep.Ready => Loc.Instance["about.update.restart"],
+        UpdateStep.Installing => Loc.Instance["about.update.installing"],
+        UpdateStep.DownloadFailed or UpdateStep.InstallFailed => Loc.Instance["about.update.retry"],
+        _ => Loc.Instance["about.update.now"],
+    };
+
+    public bool CanUpdateAction => _updates.Step is not (UpdateStep.Downloading or UpdateStep.Installing);
+
+    /// <summary>«Позже» и «Подпись проверена» — пока обновление не начато.</summary>
+    public bool IsUpdateIdle => IsUpdateAvailable && _updates.Step is UpdateStep.None;
+
+    /// <summary>Не скачалось или не поставилось — строкой под главным.</summary>
+    public string? UpdateError => _updates.Step switch
+    {
+        UpdateStep.DownloadFailed => Loc.Instance["about.update.downloadFailed"],
+        UpdateStep.InstallFailed => Loc.Instance["about.update.installFailed"],
+        _ => null,
+    };
+
+    public bool HasUpdateError => IsUpdateAvailable && UpdateError is not null;
 
     /// <summary>Строка под заголовком — у всех состояний, кроме карточки.</summary>
     public string UpdateText => Update switch
@@ -285,14 +342,24 @@ public sealed partial class AboutPageViewModel : ObservableObject
     [RelayCommand]
     private Task CheckUpdatesNowAsync() => _updates.CheckAsync(force: true);
 
-    /// <summary>Страница выпуска на GitHub: заметки и файлы.</summary>
+    /// <summary>
+    /// Главная кнопка карточки: служба ставит сама — скачать, а скачанное — поставить и перезапустить окно; не ставит —
+    /// страница выпуска на GitHub (заметки и файлы).
+    /// </summary>
     [RelayCommand]
-    private async Task OpenReleaseAsync()
+    private async Task UpdateNowAsync()
     {
-        if (_updates.Offer?.Notes is { } notes)
+        if (_updates.Offer?.Installable != true)
         {
-            await _launcher.OpenAsync(notes).ConfigureAwait(true);
+            if (_updates.Offer?.Notes is { } notes)
+            {
+                await _launcher.OpenAsync(notes).ConfigureAwait(true);
+            }
+
+            return;
         }
+
+        await (_updates.Step is UpdateStep.Ready or UpdateStep.InstallFailed ? _updates.InstallAsync() : _updates.DownloadAsync()).ConfigureAwait(true);
     }
 
     /// <summary>«Позже»: карточка сворачивается в строку до следующей версии или запуска окна.</summary>
@@ -335,6 +402,9 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
         OnPropertyChanged(string.Empty);
     }
+
+    // Мегабайты с десятыми — по языку окна: «18,4».
+    private static string Tenths(long bytes) => (bytes / 1048576.0).ToString("0.0", Loc.Instance.Culture);
 
     private static string ChannelLabel(UpdateChannel channel) =>
         Loc.Instance[channel == UpdateChannel.Beta ? "about.channel.beta" : "about.channel.stable"];

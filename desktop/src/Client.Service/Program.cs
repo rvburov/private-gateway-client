@@ -110,7 +110,11 @@ await using var gateway = new Gateway(
 using var updateHttp = GitHubReleaseFeed.CreateHttp();
 using var updates = new UpdateChecker(new GitHubReleaseFeed(updateHttp, GitHubReleaseFeed.DefaultReleases, GitHubReleaseFeed.DefaultDownloads),
     UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal);
-await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox), updates);
+// Ставит обновление только установленная служба (у нее есть --service-name) программы из установщика.
+var installer = new UpdateInstaller(updateHttp, GitHubReleaseFeed.DefaultDownloads, Path.Combine(state, "updates"),
+    UpdateInstaller.ForThisMachine(installedService: !user && Option("--service-name") is not null, ownerSid), journal);
+await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox), updates,
+    installer);
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));
 if (crashed)
 {

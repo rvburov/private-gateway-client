@@ -2,6 +2,7 @@ using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 
 namespace PrivateGateway.Client.Infrastructure.Service;
 
@@ -162,6 +163,25 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service
             ? await service.MeasureLatencyAsync(serverIds, cancellationToken).ConfigureAwait(false)
             : new Dictionary<string, LatencyResult>();
+
+    /// <summary>Сведения службы — той, что найдена (службу пользователя ради них не запускает); нет — null.</summary>
+    public async Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.GetDetailsAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
+    /// <summary>Обновление ищет найденная служба; службу пользователя ради проверки не запускает.</summary>
+    public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.CheckForUpdateAsync(channel, force, cancellationToken).ConfigureAwait(false)
+            : null;
+
+    /// <summary>Скачивает и ставит обновление только найденная служба — та, что его нашла.</summary>
+    public IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, CancellationToken cancellationToken = default) =>
+        Current?.DownloadUpdateAsync(version, cancellationToken) ?? AsyncEnumerable.Empty<UpdateProgress>();
+
+    public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) =>
+        Current?.InstallUpdateAsync(version, cancellationToken) ?? Task.FromResult<int?>(null);
 
     public void Dispose()
     {

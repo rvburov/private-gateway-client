@@ -55,6 +55,15 @@ service GatewayService {
   // манифеста — ключом программы, доля раскатки — номером этой установки. Ответ служба помнит час; force — искать
   // заново (кнопка «Проверить»).
   rpc CheckForUpdate(CheckForUpdateRequest) returns (UpdateOffer);
+
+  // Скачать найденное обновление: файл своей ОС из подписанного манифеста — в папку состояния службы, со сверкой
+  // размера и SHA-256. Поток — ход загрузки, последнее сообщение — готово или отказ. Версия — только та, что служба
+  // сама нашла (CheckForUpdate); путь и адрес окно не передает.
+  rpc DownloadUpdate(DownloadUpdateRequest) returns (stream UpdateDownload);
+
+  // Поставить скачанное обновление: служба сверяет файл еще раз и запускает установщик ОС отдельно от себя (он заменит
+  // и ее), ответ — номер процесса установщика: окно ждет его конца и открывается заново.
+  rpc InstallUpdate(InstallUpdateRequest) returns (InstallUpdateReply);
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -567,4 +576,28 @@ message UpdateOffer {
   string notes_url = 4;
   // Когда служба проверяла (ответ мог быть из памяти).
   google.protobuf.Timestamp checked_at = 5;
+  // Служба поставит его сама (MSI, .deb, .rpm установленной программы); нет — окно ведет на страницу выпуска.
+  bool installable = 6;
+}
+
+message DownloadUpdateRequest {
+  string version = 1;
+}
+
+message UpdateDownload {
+  int64 received = 1;
+  int64 total = 2;
+  // Последнее сообщение: файл скачан и сверен (ready) или отказ (error — для журнала окна).
+  bool ready = 3;
+  string error = 4;
+}
+
+message InstallUpdateRequest {
+  string version = 1;
+}
+
+message InstallUpdateReply {
+  // 0 — установщик не запущен (error — почему).
+  int32 installer_pid = 1;
+  string error = 2;
 }

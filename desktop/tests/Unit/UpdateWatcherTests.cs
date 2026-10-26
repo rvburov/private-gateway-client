@@ -15,9 +15,10 @@ public sealed class UpdateWatcherTests : IDisposable
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero));
     private readonly FakeGateway _gateway = new();
     private readonly SettingsService _settings = new(new MemorySettings());
+    private readonly FakeRelauncher _relauncher = new();
     private readonly UpdateWatcher _watcher;
 
-    public UpdateWatcherTests() => _watcher = new UpdateWatcher(_gateway, _settings, _time);
+    public UpdateWatcherTests() => _watcher = new UpdateWatcher(_gateway, _settings, _time, _relauncher);
 
     public void Dispose() => _watcher.Dispose();
 
@@ -84,6 +85,85 @@ public sealed class UpdateWatcherTests : IDisposable
         changes.ShouldBe(1);
     }
 
+    [Fact]
+    public async Task Update_is_downloaded_with_progress_then_installed_and_the_window_asks_to_restart()
+    {
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };
+        _gateway.Progress = [new UpdateProgress(0, 300), new UpdateProgress(150, 300), new UpdateProgress(300, 300, Ready: true)];
+        await _watcher.CheckAsync(force: false, TestContext.Current.CancellationToken);
+        var seen = new List<(UpdateStep, long)>();
+        _watcher.Changed += (_, _) => seen.Add((_watcher.Step, _watcher.Received));
+        var restart = 0;
+        _watcher.RestartRequested += (_, _) => restart++;
+
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+
+        seen.ShouldBe([(UpdateStep.Downloading, 0), (UpdateStep.Downloading, 0), (UpdateStep.Downloading, 150), (UpdateStep.Ready, 300)]);
+        _gateway.Downloads.ShouldBe(["0.3.0"]);
+
+        await _watcher.InstallAsync(TestContext.Current.CancellationToken);
+
+        _gateway.Installs.ShouldBe(["0.3.0"]);
+        _relauncher.Pids.ShouldBe([4242], "окно откроется после установщика, которого запустила служба");
+        (_watcher.Step, restart).ShouldBe((UpdateStep.Installing, 1));
+    }
+
+    [Fact]
+    public async Task Failures_are_said_and_can_be_retried()
+    {
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };
+        await _watcher.CheckAsync(force: false, TestContext.Current.CancellationToken);
+
+        _gateway.Progress = [new UpdateProgress(10, 300)];
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+        _watcher.Step.ShouldBe(UpdateStep.DownloadFailed, "поток кончился без итога — служба пропала");
+
+        _gateway.Progress = [new UpdateProgress(0, 300, Error: "SHA-256 не сходится")];
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+        _watcher.Step.ShouldBe(UpdateStep.DownloadFailed);
+
+        _gateway.Progress = [new UpdateProgress(300, 300, Ready: true)];
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+        var restarts = 0;
+        _watcher.RestartRequested += (_, _) => restarts++;
+        _gateway.InstallerPid = null;
+        await _watcher.InstallAsync(TestContext.Current.CancellationToken);
+        _watcher.Step.ShouldBe(UpdateStep.InstallFailed);
+        _relauncher.Pids.ShouldBeEmpty("установщик не запущен — окно не перезапускается");
+        restarts.ShouldBe(0, "и не закрывается");
+
+        _gateway.InstallerPid = 7;
+        await _watcher.InstallAsync(TestContext.Current.CancellationToken);
+        _relauncher.Pids.ShouldBe([7]);
+        restarts.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Only_an_installable_offer_is_downloaded_and_a_new_version_starts_over()
+    {
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0");
+        await _watcher.CheckAsync(force: false, TestContext.Current.CancellationToken);
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+        _gateway.Downloads.ShouldBeEmpty("служба сама не поставит — окно ведет на страницу выпуска");
+
+        _gateway.Offer = _gateway.Offer with { Installable = true };
+        _gateway.Progress = [new UpdateProgress(300, 300, Ready: true)];
+        await _watcher.CheckAsync(force: true, TestContext.Current.CancellationToken);
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+        _watcher.Step.ShouldBe(UpdateStep.Ready);
+
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.4.0") { Installable = true };
+        await _watcher.CheckAsync(force: true, TestContext.Current.CancellationToken);
+        _watcher.Step.ShouldBe(UpdateStep.None, "скачанное 0.3.0 для 0.4.0 не годится");
+    }
+
+    private sealed class FakeRelauncher : IAppRelauncher
+    {
+        public List<int> Pids { get; } = [];
+
+        public void RelaunchAfter(int installerPid) => Pids.Add(installerPid);
+    }
+
     private sealed class MemorySettings : ISettingsStore
     {
         private AppSettings _value = AppSettings.Default;
@@ -121,6 +201,30 @@ public sealed class UpdateWatcherTests : IDisposable
         {
             Checks.Add((channel, force));
             return Task.FromResult(Offer);
+        }
+
+        public IReadOnlyList<UpdateProgress> Progress { get; set; } = [];
+
+        public List<string> Downloads { get; } = [];
+
+        public List<string> Installs { get; } = [];
+
+        public int? InstallerPid { get; set; } = 4242;
+
+        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            Downloads.Add(version);
+            foreach (var step in Progress)
+            {
+                await Task.Yield();
+                yield return step;
+            }
+        }
+
+        public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default)
+        {
+            Installs.Add(version);
+            return Task.FromResult(InstallerPid);
         }
 
         public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default) => Task.CompletedTask;

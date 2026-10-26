@@ -33,6 +33,16 @@ public interface IGatewayClient
         Task.FromResult<UpdateOffer?>(null);
 
     /// <summary>
+    /// Скачать обновление <paramref name="version"/>, найденное службой: ход загрузки, последнее — готово (файл сверен с
+    /// подписанным манифестом) или отказ. Службы нет или она старая — пусто.
+    /// </summary>
+    IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, CancellationToken cancellationToken = default) =>
+        AsyncEnumerable.Empty<UpdateProgress>();
+
+    /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
+    Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
+
+    /// <summary>
     /// «Продолжить (не рекомендуется)» на «Работает другой VPN»: подключиться, хотя служба нашла чужой
     /// туннель. Выбор действует до отключения — переподключения и смена настроек на ходу его не спрашивают
     /// снова. Где чужой VPN не проверяется (имитация), — обычное подключение.

@@ -3,6 +3,7 @@ using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.Infrastructure.Service;
 
 namespace PrivateGateway.Client.Tests.Unit;
@@ -264,6 +265,30 @@ public sealed class GatewayHostTests
         host.Status.State.ShouldBe(ConnectionState.Off);
     }
 
+    [Fact]
+    public async Task Service_details_and_updates_go_to_the_service_it_found()
+    {
+        using var host = Host();
+        (await host.GetDetailsAsync(Ct)).ShouldBeNull("службы нет — и сведений нет");
+        (await host.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct)).ShouldBeNull();
+        (await host.InstallUpdateAsync("0.3.0", Ct)).ShouldBeNull();
+        _launcher.Started.ShouldBe(0, "ради сведений и обновлений служба пользователя не запускается");
+        _answering.Add(Installed);
+
+        (await host.GetDetailsAsync(Ct))!.Version.ShouldBe("0.2.0");
+        (await host.CheckForUpdateAsync(UpdateChannel.Beta, force: true, Ct))!.Version.ShouldBe("0.3.0");
+        _services[Installed].UpdateChecks.ShouldBe([(UpdateChannel.Beta, true)]);
+        var progress = new List<UpdateProgress>();
+        await foreach (var step in host.DownloadUpdateAsync("0.3.0", Ct))
+        {
+            progress.Add(step);
+        }
+
+        progress.Select(p => p.Received).ShouldBe([1, 2]);
+        progress[^1].Ready.ShouldBeTrue();
+        (await host.InstallUpdateAsync("0.3.0", Ct)).ShouldBe(4242);
+    }
+
     /// <summary>Так клиент службы показывает, что служба пропала.</summary>
     private ConnectionStatus Lost(ConnectionStatus status) =>
         (status.MoveTo(ConnectionState.Connecting, _time.GetUtcNow()) with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, _time.GetUtcNow());
@@ -337,6 +362,26 @@ public sealed class GatewayHostTests
 
         public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(serverIds.ToDictionary(id => id, _ => new LatencyResult(42, null)));
+
+        public List<(UpdateChannel Channel, bool Force)> UpdateChecks { get; } = [];
+
+        public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<ServiceDetails?>(new ServiceDetails("0.2.0", "1", []));
+
+        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+        {
+            UpdateChecks.Add((channel, force));
+            return Task.FromResult<UpdateOffer?>(new UpdateOffer(UpdateState.Available, time.GetUtcNow(), "0.3.0"));
+        }
+
+        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        {
+            await Task.Yield();
+            yield return new UpdateProgress(1, 2);
+            yield return new UpdateProgress(2, 2, Ready: true);
+        }
+
+        public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(4242);
 
         public void Dispose() => Disposed = true;
     }

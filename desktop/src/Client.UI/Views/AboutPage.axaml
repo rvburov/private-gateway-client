@@ -37,10 +37,32 @@
     <Style Selector="Border.card.offer">
       <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
     </Style>
+    <Style Selector="Border.card.offer.ready">
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Success.Line}" />
+    </Style>
     <Style Selector="Border.badge">
       <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Chip}" />
       <Setter Property="Padding" Value="8,2" />
       <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.badge.ready">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Tint}" />
+    </Style>
+    <Style Selector="Border.badge.ready TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+    </Style>
+    <!-- Полоса загрузки обновления -->
+    <Style Selector="Border.track">
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="ClipToBounds" Value="True" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.fill">
+      <Setter Property="CornerRadius" Value="3" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Base}" />
+    </Style>
+    <Style Selector="Border.fill.ready">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Success.Base}" />
     </Style>
     <Style Selector="Border.badge TextBlock">
       <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
@@ -85,12 +107,13 @@
         </Border>
 
         <!-- Обновления: ищет служба; есть новее — карточка с главным из заметок, подписью и кнопками -->
-        <Border x:Name="UpdatesCard" Classes="card" Classes.offer="{Binding IsUpdateAvailable}" Padding="16,14,16,4">
+        <Border x:Name="UpdatesCard" Classes="card" Classes.offer="{Binding IsUpdateAvailable}" Classes.ready="{Binding IsUpdateReady}" Padding="16,14,16,4">
           <StackPanel Spacing="8">
             <Grid ColumnDefinitions="*,Auto">
               <TextBlock x:Name="UpdatesTitle" Classes="title" Text="{Binding UpdatesTitle}" TextWrapping="Wrap" VerticalAlignment="Center" />
-              <Border Grid.Column="1" Classes="badge" Margin="8,0,0,0" VerticalAlignment="Center" IsVisible="{Binding IsUpdateAvailable}">
-                <TextBlock Text="{l:L about.update.new}" />
+              <Border Grid.Column="1" Classes="badge" Classes.ready="{Binding IsUpdateReady}" Margin="8,0,0,0" VerticalAlignment="Center"
+                      IsVisible="{Binding IsUpdateAvailable}">
+                <TextBlock x:Name="UpdateBadge" Text="{Binding UpdateBadge}" />
               </Border>
             </Grid>
             <TextBlock x:Name="UpdatesText" Classes="caption" Text="{Binding UpdateText}" TextWrapping="Wrap" IsVisible="{Binding !IsUpdateAvailable}" />
@@ -104,18 +127,31 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsUpdateAvailable}">
+            <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding IsUpdateIdle}">
               <c:Icon Data="{StaticResource Icon.Mark.Ok}" Width="14" Height="14" StrokeThickness="2.6"
                       Foreground="{StaticResource PgBrush.Status.Success.Text}" VerticalAlignment="Center" />
               <TextBlock x:Name="UpdateSigned" Classes="small" Text="{l:L about.update.signed}" Foreground="{StaticResource PgBrush.Status.Success.Text}"
                          VerticalAlignment="Center" />
             </StackPanel>
+            <!-- Загрузка и готово: полоса и что дальше -->
+            <StackPanel Spacing="6" IsVisible="{Binding ShowUpdateProgress}">
+              <Border Classes="track" Height="6">
+                <Border Classes="fill" Classes.ready="{Binding IsUpdateReady}" HorizontalAlignment="Stretch" RenderTransformOrigin="0%,50%">
+                  <Border.RenderTransform>
+                    <ScaleTransform ScaleX="{Binding UpdateFraction}" />
+                  </Border.RenderTransform>
+                </Border>
+              </Border>
+              <TextBlock x:Name="UpdateProgress" Classes="caption" Text="{Binding UpdateProgressText}" TextWrapping="Wrap" />
+            </StackPanel>
             <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0" IsVisible="{Binding IsUpdateAvailable}">
-              <Button x:Name="OpenRelease" Classes="primary" Height="44" HorizontalAlignment="Stretch"
-                      Command="{Binding OpenReleaseCommand}" Content="{l:L about.update.open}" />
-              <Button x:Name="PostponeUpdate" Grid.Column="1" Classes="secondary" Height="44" Margin="10,0,0,0"
+              <Button x:Name="UpdateNow" Classes="primary" Height="44" HorizontalAlignment="Stretch" IsEnabled="{Binding CanUpdateAction}"
+                      Command="{Binding UpdateNowCommand}" Content="{Binding UpdateAction}" />
+              <Button x:Name="PostponeUpdate" Grid.Column="1" Classes="secondary" Height="44" Margin="10,0,0,0" IsVisible="{Binding IsUpdateIdle}"
                       Command="{Binding PostponeUpdateCommand}" Content="{l:L about.update.later}" />
             </Grid>
+            <TextBlock x:Name="UpdateError" Classes="caption" Text="{Binding UpdateError}" TextWrapping="Wrap" IsVisible="{Binding HasUpdateError}"
+                       Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
             <Button x:Name="CheckUpdatesNow" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding CanCheckUpdates}"
                     Command="{Binding CheckUpdatesNowCommand}" Content="{l:L about.updates.check}" />
             <Button x:Name="ShowUpdate" Classes="secondary" Height="40" HorizontalAlignment="Left" IsVisible="{Binding IsUpdatePostponed}"

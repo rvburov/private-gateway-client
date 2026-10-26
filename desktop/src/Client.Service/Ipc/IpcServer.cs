@@ -33,7 +33,8 @@ public sealed record IpcOptions(string Endpoint, uint? OwnerUid = null, string? 
 /// </summary>
 public static class IpcServer
 {
-    public static WebApplication Build(IpcOptions options, Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker? updates = null)
+    public static WebApplication Build(
+        IpcOptions options, Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker? updates = null, UpdateInstaller? installer = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         // Файлов настроек у службы нет — и следить не за чем. По умолчанию ASP.NET Core следит за appsettings в корне
@@ -86,6 +87,7 @@ public static class IpcServer
         builder.Services.AddSingleton(info);
         // Проверки обновлений нет (тесты) — служба без ключей подписи: «нет подписанных выпусков», в сеть не ходит.
         builder.Services.AddSingleton(updates ?? UpdateChecker.WithoutKeys(journal));
+        builder.Services.AddSingleton(installer ?? new UpdateInstaller(new HttpClient(), GitHubReleaseFeed.DefaultDownloads, Path.GetTempPath(), null, journal));
         var app = builder.Build();
         app.MapGrpcService<GatewayRpc>();
         if (!pipe)

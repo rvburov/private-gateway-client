@@ -43,8 +43,10 @@ internal sealed class RunningService : IAsyncDisposable
     /// <param name="options">Поправить возможности службы (режим VPN, блок при обрыве); null — служба без прав, только прокси.</param>
     /// <param name="time">Часы службы; null — настоящие.</param>
     /// <param name="updates">Проверка обновлений (journal службы → проверка); null — без ключей подписи.</param>
+    /// <param name="installer">Установка обновлений; null — служба их не ставит.</param>
     public static async Task<RunningService> StartAsync(Uri? latencyTarget = null, string? endpoint = null, (ISystemProxy Proxy, string Backup)? systemProxy = null,
-        Func<GatewayOptions, GatewayOptions>? options = null, TimeProvider? time = null, Func<ServiceJournal, UpdateChecker>? updates = null)
+        Func<GatewayOptions, GatewayOptions>? options = null, TimeProvider? time = null, Func<ServiceJournal, UpdateChecker>? updates = null,
+        Func<ServiceJournal, UpdateInstaller>? installer = null)
     {
         endpoint ??= OperatingSystem.IsWindows()
             ? "PrivateGateway.Test." + Guid.NewGuid().ToString("N")
@@ -53,7 +55,8 @@ internal sealed class RunningService : IAsyncDisposable
         var guard = systemProxy is var (proxy, backup) ? new SystemProxyGuard(proxy, backup, journal) : null;
         var defaults = new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget);
         var gateway = new Gateway(options?.Invoke(defaults) ?? defaults, time ?? TimeProvider.System, journal, guard);
-        var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox), updates?.Invoke(journal));
+        var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox), updates?.Invoke(journal),
+            installer?.Invoke(journal));
         await app.StartAsync(TestContext.Current.CancellationToken);
         return new RunningService(endpoint, app, gateway, IpcChannel.Create(endpoint, system: false), journal);
     }

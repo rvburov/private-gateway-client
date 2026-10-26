@@ -38,7 +38,7 @@ public partial class App : Avalonia.Application
         {
             var window = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
             _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
-                startup.Minimized, Services.GetRequiredService<NoticeWindow>());
+                startup.Minimized, Services.GetRequiredService<NoticeWindow>(), Services.GetRequiredService<UpdateWatcher>());
 
             // Уведомления ОС — только у настоящего окна: тесты без экрана их не шлют.
             NotifyIcon.Write(startup.Paths);

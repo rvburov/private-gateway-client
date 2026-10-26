@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Localization;
@@ -162,7 +163,7 @@ public sealed class TrayTests : WindowHarness
     {
         var lifetime = new ClassicDesktopStyleApplicationLifetime();
         _ = new DesktopHost(Avalonia.Application.Current!, lifetime, window, Service<TrayViewModel>(), Service<SettingsService>(), null, minimized,
-            Service<NoticeWindow>());
+            Service<NoticeWindow>(), Service<UpdateWatcher>());
         return lifetime;
     }
 

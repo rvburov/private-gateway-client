@@ -150,6 +150,48 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        using var call = _client.DownloadUpdate(new V1.DownloadUpdateRequest { Version = version }, cancellationToken: cancellationToken);
+        var stream = call.ResponseStream;
+        while (true)
+        {
+            UpdateProgress progress;
+            try
+            {
+                if (!await stream.MoveNext(cancellationToken).ConfigureAwait(false))
+                {
+                    yield break;
+                }
+
+                progress = stream.Current.ToCore();
+            }
+            catch (RpcException e) when (e.StatusCode != StatusCode.Cancelled)
+            {
+                progress = new UpdateProgress(0, 0, Error: e.Status.Detail);
+            }
+
+            yield return progress;
+            if (progress.Ready || progress.Failed)
+            {
+                yield break;
+            }
+        }
+    }
+
+    public async Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var reply = await _client.InstallUpdateAsync(new V1.InstallUpdateRequest { Version = version }, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return reply.InstallerPid > 0 ? reply.InstallerPid : null;
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+    }
+
     public Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default)
     {
         _allowOtherVpn = true;

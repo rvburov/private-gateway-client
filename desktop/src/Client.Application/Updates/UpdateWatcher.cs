@@ -5,11 +5,40 @@ using PrivateGateway.Client.Core.Updates;
 
 namespace PrivateGateway.Client.Application.Updates;
 
+/// <summary>Открыть окно заново, когда установщик обновления закончит работу (окно к тому времени закрыто).</summary>
+public interface IAppRelauncher
+{
+    /// <param name="installerPid">Номер процесса установщика ОС, который запустила служба.</param>
+    void RelaunchAfter(int installerPid);
+}
+
+/// <summary>Что с найденным обновлением в окне: «Обновить сейчас» → загрузка → готово → «Перезапустить клиент».</summary>
+public enum UpdateStep
+{
+    /// <summary>Не начинали.</summary>
+    None,
+
+    Downloading,
+
+    /// <summary>Скачано и сверено службой с подписанным манифестом.</summary>
+    Ready,
+
+    /// <summary>Установщик ОС запущен, окно закрывается и откроется уже новым.</summary>
+    Installing,
+
+    DownloadFailed,
+
+    InstallFailed,
+}
+
 /// <summary>
 /// Обновление программы для окна. Ищет его служба (<see cref="IGatewayClient.CheckForUpdateAsync"/>), а здесь — когда
 /// спросить: через две минуты после запуска и потом раз в 12 часов, если включено «Проверять сами»
 /// (<see cref="AppSettings.CheckUpdates"/>); при смене канала — сразу; кнопка «Проверить» — сразу и мимо памяти службы.
 /// Выключено — окно само в сеть за обновлениями не ходит, только по кнопке. Последний ответ — <see cref="Offer"/>.
+/// Найденное служба ставит сама, если может (<see cref="UpdateOffer.Installable"/>): <see cref="DownloadAsync"/> —
+/// загрузка с ходом (<see cref="Step"/>, <see cref="Received"/> из <see cref="Total"/>), <see cref="InstallAsync"/> —
+/// установщик ОС, перезапуск окна после него (<see cref="IAppRelauncher"/>) и <see cref="RestartRequested"/>: окно закрывается.
 /// </summary>
 public sealed class UpdateWatcher : IDisposable
 {
@@ -25,15 +54,17 @@ public sealed class UpdateWatcher : IDisposable
     private readonly IGatewayClient _gateway;
     private readonly SettingsService _settings;
     private readonly TimeProvider _time;
+    private readonly IAppRelauncher _relauncher;
     private SynchronizationContext? _context;
     private ITimer? _timer;
     private UpdateChannel _channel;
 
-    public UpdateWatcher(IGatewayClient gateway, SettingsService settings, TimeProvider time)
+    public UpdateWatcher(IGatewayClient gateway, SettingsService settings, TimeProvider time, IAppRelauncher relauncher)
     {
         _gateway = gateway;
         _settings = settings;
         _time = time;
+        _relauncher = relauncher;
         _channel = settings.Current.UpdateChannel;
     }
 
@@ -55,8 +86,18 @@ public sealed class UpdateWatcher : IDisposable
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>Началась или кончилась проверка, пришел ответ. В контексте окна.</summary>
+    public UpdateStep Step { get; private set; }
+
+    /// <summary>Сколько байт скачано из скольких (<see cref="Total"/> — 0, пока служба не начала).</summary>
+    public long Received { get; private set; }
+
+    public long Total { get; private set; }
+
+    /// <summary>Началась или кончилась проверка, пришел ответ, сдвинулась загрузка. В контексте окна.</summary>
     public event EventHandler? Changed;
+
+    /// <summary>Установщик запущен, перезапуск окна назначен — окну пора закрыться.</summary>
+    public event EventHandler? RestartRequested;
 
     /// <summary>Проверять по расписанию; работа — в контексте вызова (окно).</summary>
     public void Start()
@@ -93,13 +134,68 @@ public sealed class UpdateWatcher : IDisposable
         try
         {
             Attempted = _time.GetUtcNow();
-            Offer = await _gateway.CheckForUpdateAsync(_settings.Current.UpdateChannel, force, cancellationToken).ConfigureAwait(true);
+            var offer = await _gateway.CheckForUpdateAsync(_settings.Current.UpdateChannel, force, cancellationToken).ConfigureAwait(true);
+            if (offer?.Version != Offer?.Version && Step is not (UpdateStep.Downloading or UpdateStep.Installing))
+            {
+                // Другая версия — загрузка прежней ей не годится.
+                (Step, Received, Total) = (UpdateStep.None, 0, 0);
+            }
+
+            Offer = offer;
         }
         finally
         {
             IsChecking = false;
             Changed?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>«Обновить сейчас»: служба скачивает найденное и сверяет с манифестом; ход — в <see cref="Received"/>.</summary>
+    public async Task DownloadAsync(CancellationToken cancellationToken = default)
+    {
+        if (Offer is not { State: UpdateState.Available, Installable: true, Version: { } version } || Step is UpdateStep.Downloading or UpdateStep.Installing)
+        {
+            return;
+        }
+
+        (Step, Received, Total) = (UpdateStep.Downloading, 0, 0);
+        Changed?.Invoke(this, EventArgs.Empty);
+        await foreach (var progress in _gateway.DownloadUpdateAsync(version, cancellationToken).ConfigureAwait(true))
+        {
+            (Received, Total) = (progress.Received, progress.Total);
+            Step = progress.Ready ? UpdateStep.Ready : progress.Failed ? UpdateStep.DownloadFailed : UpdateStep.Downloading;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        // Поток кончился без итога — служба пропала посреди загрузки.
+        if (Step == UpdateStep.Downloading)
+        {
+            Step = UpdateStep.DownloadFailed;
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    /// <summary>
+    /// «Перезапустить клиент»: служба запускает установщик ОС, окно назначает себе запуск после него и просит закрыться.
+    /// </summary>
+    public async Task InstallAsync(CancellationToken cancellationToken = default)
+    {
+        if (Step is not (UpdateStep.Ready or UpdateStep.InstallFailed) || Offer?.Version is not { } version)
+        {
+            return;
+        }
+
+        Step = UpdateStep.Installing;
+        Changed?.Invoke(this, EventArgs.Empty);
+        if (await _gateway.InstallUpdateAsync(version, cancellationToken).ConfigureAwait(true) is not { } installer)
+        {
+            Step = UpdateStep.InstallFailed;
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        _relauncher.RelaunchAfter(installer);
+        RestartRequested?.Invoke(this, EventArgs.Empty);
     }
 
     // Новый канал — другой список выпусков: спросить сразу (служба помнит ответ по каналу, лишнего запроса к GitHub нет).

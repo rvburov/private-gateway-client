@@ -10,11 +10,12 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 namespace PrivateGateway.Client.Service.Ipc;
 
 /// <summary>
-/// gRPC-обертка над <see cref="Gateway"/>, <see cref="ServiceJournal"/> и <see cref="UpdateChecker"/>: перевод контракта,
+/// gRPC-обертка над <see cref="Gateway"/>, <see cref="ServiceJournal"/>, <see cref="UpdateChecker"/> и <see cref="UpdateInstaller"/>: перевод контракта,
 /// потоки WatchStatus и WatchLog. Сама ничего не решает — решает служба. Служба останавливается — потоки
 /// закрываются сразу: интерфейс узнает об этом без ожидания и остановка не ждет окон.
 /// </summary>
-public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker updates, IHostApplicationLifetime lifetime)
+public sealed class GatewayRpc(
+    Gateway gateway, ServiceJournal journal, V1.ServiceInfo info, UpdateChecker updates, UpdateInstaller installer, IHostApplicationLifetime lifetime)
     : V1.GatewayService.GatewayServiceBase
 {
     public override Task<V1.ServiceInfo> GetServiceInfo(V1.GetServiceInfoRequest request, ServerCallContext context) => Task.FromResult(info);
@@ -70,7 +71,46 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         }
 
         var offer = await updates.CheckAsync(request.Channel.ToCore(), request.Force, context?.CancellationToken ?? default).ConfigureAwait(false);
-        return offer.ToContract();
+        return (offer with { Installable = offer.State == Core.Updates.UpdateState.Available && installer.Kind is not null }).ToContract();
+    }
+
+    /// <summary>Скачать то, что служба сама нашла последней проверкой; другая версия — отказ.</summary>
+    public override async Task DownloadUpdate(V1.DownloadUpdateRequest request, IServerStreamWriter<V1.UpdateDownload> responseStream, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        ArgumentNullException.ThrowIfNull(responseStream);
+        var cancellation = context?.CancellationToken ?? default;
+        if (updates.Found is not { } manifest || manifest.Version != request.Version)
+        {
+            await responseStream.WriteAsync(new V1.UpdateDownload { Error = "сначала проверьте обновления: служба не находила " + request.Version }, cancellation)
+                .ConfigureAwait(false);
+            return;
+        }
+
+        await foreach (var progress in installer.DownloadAsync(manifest, cancellation).ConfigureAwait(false))
+        {
+            await responseStream.WriteAsync(progress.ToContract(), cancellation).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Поставить скачанное обновление той версии, что служба нашла; ответ — номер процесса установщика.</summary>
+    public override Task<V1.InstallUpdateReply> InstallUpdate(V1.InstallUpdateRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (updates.Found is not { } manifest || manifest.Version != request.Version)
+        {
+            return Task.FromResult(new V1.InstallUpdateReply { Error = "служба не находила " + request.Version });
+        }
+
+        try
+        {
+            return Task.FromResult(new V1.InstallUpdateReply { InstallerPid = installer.Install(manifest) });
+        }
+        catch (IOException e)
+        {
+            journal.Add(JournalLevel.Warning, "update", $"Обновление {manifest.Version} не поставлено: {e.Message}");
+            return Task.FromResult(new V1.InstallUpdateReply { Error = e.Message });
+        }
     }
 
     /// <summary>Защиту служба применит при следующем подключении: в режиме прокси менять на ходу нечего.</summary>
