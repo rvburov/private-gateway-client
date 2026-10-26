@@ -84,8 +84,21 @@ class MainViewModel @Inject constructor(
     private val importState = MutableStateFlow(ImportUi())
     val importing: StateFlow<ImportUi> = importState.asStateFlow()
 
+    private val tabRequest = MutableStateFlow<Tab?>(null)
+
+    /** Раздел, который окно должно открыть (из уведомления); окно сбрасывает его, когда открыло. */
+    val requestedTab: StateFlow<Tab?> = tabRequest.asStateFlow()
+
     private val coreVersion = MutableStateFlow<String?>(null)
     val core: StateFlow<String?> = coreVersion.asStateFlow()
+
+    fun show(tab: Tab) {
+        tabRequest.value = tab
+    }
+
+    fun tabShown() {
+        tabRequest.value = null
+    }
 
     /** Выбор сервера — только нажатием пользователя; работающая защита переходит на него при следующем подключении. */
     fun select(id: String) {

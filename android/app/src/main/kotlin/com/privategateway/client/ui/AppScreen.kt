@@ -27,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -87,6 +88,14 @@ fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, actions: Ap
     val core by viewModel.core.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var adding by rememberSaveable { mutableStateOf(false) }
+    val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
+    LaunchedEffect(requested) {
+        requested?.let {
+            tab = it
+            adding = false
+            viewModel.tabShown()
+        }
+    }
     val closeImport: () -> Unit = {
         adding = false
         viewModel.closeImport()

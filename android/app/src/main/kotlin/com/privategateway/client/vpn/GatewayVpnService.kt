@@ -26,6 +26,7 @@ import androidx.core.content.ContextCompat
 import com.privategateway.client.MainActivity
 import com.privategateway.client.PrivateGatewayApp
 import com.privategateway.client.R
+import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CoreDnsFollower
@@ -176,6 +177,9 @@ class GatewayVpnService : VpnService() {
         val id = settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
         monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
         val server = servers.load(id) ?: return TunnelErrors.NO_SERVER
+        // Название для уведомления — свое, если есть. Читается до карты и ядра: после них точек ожидания нет — отмена не
+        // оставит туннель без хозяина.
+        val name = servers.servers.first().firstOrNull { it.id == id }?.name ?: server.name
         val tunnel = settings.tunnel.first()
         val core = tunnel.core()
         val plan = TunPlan.of(core)
@@ -221,16 +225,25 @@ class GatewayVpnService : VpnService() {
 
         val alwaysOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isAlwaysOn else null
         val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
+        val since = SystemClock.elapsedRealtime()
         monitor.set(
             TunnelStatus(
                 state = TunnelState.Connected,
                 serverId = id,
-                since = SystemClock.elapsedRealtime(),
+                since = since,
                 alwaysOn = alwaysOn,
                 lockdown = lockdown,
             ),
         )
-        foreground(notification(getString(R.string.status_connected_title) + " · " + server.name, getString(R.string.status_connected_sub)))
+        // Доска 26: «IP скрыт · сервер», шифруется ли трафик, «в сети» с таймером, «Отключить» и «Сменить сервер».
+        val encrypted = ServerFacts.isEncrypted(server.protocol, server.security.kind)
+        foreground(
+            notification(
+                getString(R.string.status_connected_title) + " · " + name,
+                getString(if (encrypted) R.string.status_connected_sub else R.string.status_connected_subPlain),
+                onlineSince = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - since),
+            ),
+        )
         return null
     }
 
@@ -324,8 +337,9 @@ class GatewayVpnService : VpnService() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
     }
 
-    private fun notification(title: String, text: String?): Notification =
-        NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
+    /** Постоянное уведомление туннеля; [onlineSince] — когда защита включилась (время эпохи): «в сети» с таймером. */
+    private fun notification(title: String, text: String?, onlineSince: Long? = null): Notification {
+        val builder = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
             .setSmallIcon(R.drawable.pg_notification)
             .setContentTitle(title)
             .setContentText(text)
@@ -335,7 +349,16 @@ class GatewayVpnService : VpnService() {
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .addAction(0, getString(R.string.android_notify_disconnect), disconnectIntent(this))
-            .build()
+        if (onlineSince != null) {
+            builder.setSubText(getString(R.string.status_online))
+                .setWhen(onlineSince)
+                .setShowWhen(true)
+                .setUsesChronometer(true)
+                .addAction(0, getString(R.string.notify_action_changeServer), openApp(MainActivity.TAB_SERVERS))
+        }
+
+        return builder.build()
+    }
 
     /** Защита не включилась: уведомление с причиной; при «Блокировать подключения без VPN» интернета нет вовсе. */
     private fun notifyFailure(error: String) {
@@ -346,7 +369,9 @@ class GatewayVpnService : VpnService() {
         }
 
         val blocked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isLockdownEnabled
-        val text = getString(if (blocked) R.string.notify_failed_blocked else R.string.notify_failed_direct, "", "", getString(Texts.error(error)))
+        // Причина и код, как у десктопа: «Ядро не запустилось · PGC-SVC-002. Трафик идет напрямую.»
+        val reason = getString(Texts.error(error)) + " · " + error
+        val text = getString(if (blocked) R.string.notify_failed_blocked else R.string.notify_failed_direct, "", "", reason)
         val notification = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_ALERTS)
             .setSmallIcon(R.drawable.pg_notification)
             .setContentTitle(getString(R.string.notify_failed_title))
@@ -360,10 +385,13 @@ class GatewayVpnService : VpnService() {
         NotificationManagerCompat.from(this).notify(FAILURE_NOTIFICATION_ID, notification)
     }
 
-    private fun openApp(): PendingIntent = PendingIntent.getActivity(
+    /** Открыть окно; [tab] — сразу на разделе (MainActivity.TAB_*). У каждого раздела свой PendingIntent. */
+    private fun openApp(tab: String? = null): PendingIntent = PendingIntent.getActivity(
         this,
-        0,
-        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+        if (tab == null) 0 else 1,
+        Intent(this, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .apply { tab?.let { putExtra(MainActivity.EXTRA_TAB, it) } },
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 

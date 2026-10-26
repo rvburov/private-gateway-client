@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import com.privategateway.client.ui.AppActions
 import com.privategateway.client.ui.AppScreen
 import com.privategateway.client.ui.MainViewModel
+import com.privategateway.client.ui.Tab
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.GatewayVpnService
@@ -65,6 +66,21 @@ class MainActivity : ComponentActivity() {
                 AppScreen(viewModel, settings, actions)
             }
         }
+
+        openTab(intent)
+    }
+
+    // Окно одно (singleTask): «Сменить сервер» из уведомления приходит сюда, когда окно уже открыто.
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        openTab(intent)
+    }
+
+    private fun openTab(intent: Intent?) {
+        if (intent?.getStringExtra(EXTRA_TAB) == TAB_SERVERS) {
+            viewModel.show(Tab.Servers)
+            intent.removeExtra(EXTRA_TAB)
+        }
     }
 
     /** Кнопка-щит: включена или подключается — выключить; выключена или ошибка — подключить к выбранному. */
@@ -102,6 +118,12 @@ class MainActivity : ComponentActivity() {
         } catch (_: ActivityNotFoundException) {
             startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
         }
+    }
+
+    companion object {
+        /** Раздел, который открыть сразу (из уведомления). */
+        const val EXTRA_TAB = "com.privategateway.client.TAB"
+        const val TAB_SERVERS = "servers"
     }
 
     private fun clipboardText(): String? {

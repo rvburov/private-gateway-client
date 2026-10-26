@@ -145,6 +145,15 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `notification asks the window to open servers once`() {
+        assertNull(model.requestedTab.value)
+        model.show(Tab.Servers)
+        assertEquals(Tab.Servers, model.requestedTab.value)
+        model.tabShown()
+        assertNull(model.requestedTab.value, "открытый раздел не открывается снова при повороте экрана")
+    }
+
+    @Test
     fun `select changes the choice and core version loads once`() {
         model.select("nl")
         assertEquals("nl", wait { settings.selectedServerId.first { it == "nl" } })
