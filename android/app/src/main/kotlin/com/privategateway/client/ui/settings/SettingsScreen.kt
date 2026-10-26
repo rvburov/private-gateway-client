@@ -51,6 +51,7 @@ import com.privategateway.client.ui.theme.PgType
 enum class SettingsPage {
     Main,
     Protection,
+    Subscriptions,
 }
 
 /**
@@ -58,12 +59,24 @@ enum class SettingsPage {
  * пользователь) и «О программе». Язык — системный или выбранный для приложения в настройках Android 13+.
  */
 @Composable
-fun SettingsScreen(core: String?, loadCore: () -> Unit, openVpnSettings: () -> Unit, tunnel: TunnelSettings, onTunnel: (TunnelSettings) -> Unit) {
+fun SettingsScreen(
+    core: String?,
+    loadCore: () -> Unit,
+    openVpnSettings: () -> Unit,
+    tunnel: TunnelSettings,
+    onTunnel: (TunnelSettings) -> Unit,
+    subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
+) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
     when (page) {
         SettingsPage.Protection -> {
             BackHandler { page = SettingsPage.Main }
             ProtectionScreen(tunnel, onTunnel) { page = SettingsPage.Main }
+        }
+
+        SettingsPage.Subscriptions -> {
+            BackHandler { page = SettingsPage.Main }
+            subscriptions { page = SettingsPage.Main }
         }
 
         SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings) { page = it }
@@ -87,6 +100,10 @@ private fun MainSettings(core: String?, loadCore: () -> Unit, openVpnSettings: (
         PgCard(Modifier.fillMaxWidth()) {
             SectionRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection") {
                 onPage(SettingsPage.Protection)
+            }
+
+            SectionRow(PgIcons.AdvProfiles, R.string.settings_adv_profiles_title, R.string.settings_adv_profiles_text, "settings.profiles") {
+                onPage(SettingsPage.Subscriptions)
             }
         }
 
