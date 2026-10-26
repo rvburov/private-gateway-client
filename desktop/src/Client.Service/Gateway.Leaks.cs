@@ -10,7 +10,8 @@ namespace PrivateGateway.Client.Service;
 
 /// <summary>
 /// Проверка утечек: IP, который видят сайты, — запрос к проверочному адресу, — и сравнение с реальным IP,
-/// измеренным напрямую до туннеля; так же по IPv6 (<see cref="CheckIpv6Async"/>). В режиме VPN запрос идет как у любой программы, без прокси: если трафик
+/// измеренным напрямую до туннеля; так же по IPv6 (<see cref="CheckIpv6Async"/>); DNS — запросом через сетевую карту мимо
+/// туннеля (<see cref="CheckDnsAsync"/>). В режиме VPN запрос идет как у любой программы, без прокси: если трафик
 /// уходит мимо туннеля, ответ покажет реальный IP. В режиме прокси — через вход проверки ядра (прямо в выход
 /// сервера): через туннель идут только программы с прокси. Совпали IP — трафик идет мимо туннеля. После
 /// «Защищено» — если включено «Проверять утечки после подключения», и по просьбе окна («Проверить», экран
@@ -215,6 +216,54 @@ public sealed partial class Gateway
         return policy.Reason == "outside" ? policy : (CheckState.Warning, "leak");
     }
 
+    /// <summary>
+    /// DNS мимо туннеля сейчас. В «Защищено» режима VPN — замер: запрос DNS через сетевую карту мимо маршрутов TUN, как его шлет
+    /// DNS ОС по каждой карте (<see cref="DnsProbe"/>). Ответ пришел — путь мимо туннеля открыт, хотя правила его закрывают
+    /// (к резолверу в интернете не открывает ни одна настройка): «Внимание» (<c>dns_open</c>), DNS «частично» в состоянии, ошибка в
+    /// журнале. Закрыто или мерить нечем — по состоянию (<see cref="DnsReason"/>); следующий замер без ответа возвращает строку и
+    /// чип к состоянию.
+    /// </summary>
+    public async Task<(CheckState State, string? Reason)> CheckDnsAsync()
+    {
+        var status = Status;
+        if (status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } && _options.OutsideDns is { } resolver)
+        {
+            var session = Volatile.Read(ref _session);
+            if (await (_options.DnsPastTunnel ?? DnsThroughCardAsync)(resolver, CancellationToken.None).ConfigureAwait(false) is { } open)
+            {
+                Update(s => session != _session || s.State != ConnectionState.Connected ? s
+                    : open ? s with { Protection = s.Protection with { Dns = CheckState.Warning } }
+                    : Honest(s with { Protection = s.Protection with { Dns = ProtectionChecks.For(s.State, s.Mode).Dns } }));
+                if (open)
+                {
+                    _journal.Add(JournalLevel.Error, "service", "Проверка утечек: запрос DNS через сетевую карту прошел мимо туннеля — DNS мимо туннеля открыт");
+                    return (CheckState.Warning, "dns_open");
+                }
+            }
+        }
+
+        return (Status.Protection.Dns, DnsReason);
+    }
+
+    /// <summary>
+    /// Запрос DNS через карту маршрута по умолчанию, не туннель (<see cref="DnsProbe.PastTunnelAsync"/>); маршрутов служба не
+    /// читает или такой карты нет — null.
+    /// </summary>
+    private async Task<bool?> DnsThroughCardAsync(IPEndPoint resolver, CancellationToken cancellationToken)
+    {
+        string? adapter;
+        try
+        {
+            adapter = _options.Routes?.DefaultRoutes().FirstOrDefault(r => !r.IsTunnel)?.Adapter;
+        }
+        catch (IOException)
+        {
+            adapter = null;
+        }
+
+        return adapter is null ? null : await DnsProbe.PastTunnelAsync(resolver, adapter, DirectTimeout, cancellationToken).ConfigureAwait(false);
+    }
+
     /// <summary>«Защищено»: проверять связь с сервером и, если включено, проверить утечки.</summary>
     private void AfterConnected(int session)
     {
@@ -238,6 +287,7 @@ public sealed partial class Gateway
             }
 
             await CheckIpv6Async().ConfigureAwait(false);
+            await CheckDnsAsync().ConfigureAwait(false);
         }
         catch (ObjectDisposedException)
         {

@@ -34,7 +34,9 @@ namespace PrivateGateway.Client.Service;
 /// null — только через систему; <paramref name="Lookup"/> — этот поиск (тесты); null — <see cref="LatencyProbe.LookupAsync"/>;
 /// <paramref name="Resolve"/> — поиск адреса через систему (тесты); null — DNS ОС;
 /// <paramref name="LookupPastBlock"/> — поиск DoH самой службы под блоком без туннеля (тесты); null —
-/// <see cref="LatencyProbe.LookupDirectAsync"/>.
+/// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
+/// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
+/// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>).
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -55,7 +57,9 @@ public sealed record GatewayOptions(
     Uri? Doh = null,
     Func<ServerProbe, string, CancellationToken, Task<IReadOnlyList<IPAddress>>>? Lookup = null,
     Func<string, CancellationToken, Task<IPAddress[]>>? Resolve = null,
-    Func<Uri, string, uint, CancellationToken, Task<IReadOnlyList<IPAddress>>>? LookupPastBlock = null);
+    Func<Uri, string, uint, CancellationToken, Task<IReadOnlyList<IPAddress>>>? LookupPastBlock = null,
+    IPEndPoint? OutsideDns = null,
+    Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,

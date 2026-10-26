@@ -426,6 +426,77 @@ public sealed partial class VpnModeTests
         (row.State, row.Reason).ShouldBe(partial ? (V1.CheckState.Warning, "lan_dns") : (V1.CheckState.Ok, string.Empty));
     }
 
+    [Fact]
+    public async Task Dns_past_the_tunnel_is_measured_through_the_card_and_rules_taken_away_show_up()
+    {
+        NetworkNamespace.SkipUnlessAvailable("python3");
+        await using var rig = await Rig.CreateAsync();
+        // DNS в интернете — на адресе машины: из пространства до него только через карту, мимо туннеля.
+        using var outside = new TestDns(IPAddress.Parse("192.0.2.53"), new IPEndPoint(rig.Public, 53));
+        var rulesBack = false;
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            OutsideDns = new IPEndPoint(rig.Public, 53),
+            DnsPastTunnel = (resolver, _) => Volatile.Read(ref rulesBack) ? Task.FromResult<bool?>(false) : rig.DnsPastTunnelAsync(resolver),
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        // Блок стоит: запрос через карту не прошел — строка по состоянию.
+        (await DnsRowAsync()).ShouldBe((V1.CheckState.Ok, string.Empty));
+        outside.Queries.ShouldBeEmpty("запрос через карту закрыт блоком");
+
+        // Правила сняла другая программа: запрос через карту проходит — замер это видит.
+        rig.Netns.Run(null, "nft", "delete", "table", "inet", "private_gateway");
+        (await DnsRowAsync()).ShouldBe((V1.CheckState.Warning, "dns_open"));
+        outside.Queries.ShouldNotBeEmpty();
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Protection.Dns
+            .ShouldBe(V1.CheckState.Warning, "и чип DNS на главной — «частично»");
+        service.Journal.Tail(ServiceJournal.Capacity)
+            .ShouldContain(e => e.Message == "Проверка утечек: запрос DNS через сетевую карту прошел мимо туннеля — DNS мимо туннеля открыт");
+
+        // Правила вернулись (замер снова не проходит) — строка и чип снова по состоянию.
+        Volatile.Write(ref rulesBack, true);
+        (await DnsRowAsync()).ShouldBe((V1.CheckState.Ok, string.Empty));
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Protection.Dns.ShouldBe(V1.CheckState.Ok);
+
+        async Task<(V1.CheckState, string)> DnsRowAsync()
+        {
+            var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+                .Single(r => r.Id == DiagnosticCheck.Dns.ToContractId());
+            return (row.State, row.Reason);
+        }
+    }
+
+    [Fact]
+    public async Task Dns_measurement_goes_through_the_card_of_the_default_route_and_not_the_tunnel()
+    {
+        await using var rig = await Rig.CreateAsync();
+        // Карта маршрута по умолчанию у службы — петля машины (служба работает вне пространства теста), DNS «в интернете» — на ней.
+        var loopback = System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()
+            .First(n => n.NetworkInterfaceType == System.Net.NetworkInformation.NetworkInterfaceType.Loopback).Name;
+        using var outside = new TestDns(IPAddress.Parse("192.0.2.53"));
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            OutsideDns = new IPEndPoint(IPAddress.Loopback, outside.Port),
+            Routes = new FakeRoutes { Routes = [new DefaultRoute(SingBoxConfigBuilder.InterfaceName, IsTunnel: true), new DefaultRoute(loopback, IsTunnel: false)] },
+            Trace = Rig.Trace,
+            ExitIp = rig.ExitIpAsync,
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+
+        // Проверка утечек после подключения меряет и DNS.
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected && s.Protection.Dns == V1.CheckState.Warning, service.Journal);
+
+        var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.Dns.ToContractId());
+
+        (row.State, row.Reason).ShouldBe((V1.CheckState.Warning, "dns_open"), "запрос ушел через карту маршрута по умолчанию, а не туннеля, и получил ответ");
+        outside.Queries.ShouldContain(string.Empty);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
@@ -1393,6 +1464,23 @@ public sealed partial class VpnModeTests
                 }
                 """, "nft", "-f", "-");
             return site;
+        }
+
+        /// <summary>
+        /// Запрос DNS к <paramref name="resolver"/> из сокета, привязанного к карте пространства, — как его шлет DNS ОС по каждой
+        /// карте; ответ пришел — true.
+        /// </summary>
+        public async Task<bool?> DnsPastTunnelAsync(IPEndPoint resolver)
+        {
+            try
+            {
+                await Netns.ResolveAsync("example.com", resolver.Address, seconds: 2, device: "pgnet0");
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
         }
 
         /// <summary>

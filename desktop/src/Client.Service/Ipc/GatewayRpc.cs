@@ -82,16 +82,19 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
     }
 
     /// <summary>
-    /// Все восемь проверок «Проверки»: служба и ядро, весь трафик, блок и DNS — по состоянию, IP для сайтов и IPv6 — замером
-    /// (<see cref="Gateway.CheckExitAsync"/>, <see cref="Gateway.CheckIpv6Async"/>), другие VPN — по маршрутам.
+    /// Все восемь проверок «Проверки»: служба и ядро, весь трафик и блок — по состоянию, IP для сайтов, IPv6 и DNS — замером
+    /// (<see cref="Gateway.CheckExitAsync"/>, <see cref="Gateway.CheckIpv6Async"/>, <see cref="Gateway.CheckDnsAsync"/>), другие VPN —
+    /// по маршрутам.
     /// </summary>
     public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
-        // Замеры IP для сайтов по IPv4 и по IPv6 — сразу: оба ждут ответа проверочного адреса.
+        // Замеры IP для сайтов по IPv4 и по IPv6 и DNS мимо туннеля — сразу: каждый ждет ответа.
         var exit = gateway.CheckExitAsync();
         var ipv6 = gateway.CheckIpv6Async();
+        var dns = gateway.CheckDnsAsync();
         var (exitState, exitReason) = await exit.ConfigureAwait(false);
         var (ipv6State, ipv6Reason) = await ipv6.ConfigureAwait(false);
+        var (dnsState, dnsReason) = await dns.ConfigureAwait(false);
         var status = gateway.Status;
         var report = new V1.CheckReport { FinishedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Service.ToContractId(), State = V1.CheckState.Ok });
@@ -114,12 +117,7 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
                 : status.Protection.AllTraffic == CheckState.Warning && !status.IsPaused ? "split" : string.Empty,
         });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.KillSwitch.ToContractId(), State = status.Protection.KillSwitch.ToContract() });
-        report.Results.Add(new V1.CheckResult
-        {
-            Id = DiagnosticCheck.Dns.ToContractId(),
-            State = status.Protection.Dns.ToContract(),
-            Reason = gateway.DnsReason ?? string.Empty,
-        });
+        report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = dnsState.ToContract(), Reason = dnsReason ?? string.Empty });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Ipv6.ToContractId(), State = ipv6State.ToContract(), Reason = ipv6Reason ?? string.Empty });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.ExitIp.ToContractId(), State = exitState.ToContract(), Reason = exitReason ?? string.Empty });
         if (gateway.OtherVpnAdapters() is { } other)

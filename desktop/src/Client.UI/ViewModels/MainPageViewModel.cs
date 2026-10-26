@@ -454,14 +454,15 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         Chips[0].Update(protection.AllTraffic, paused,
             Status.Mode == ConnectionMode.Vpn && protection.AllTraffic == CheckState.Warning ? "split" : null);
         // DNS в режиме VPN «частично» — свой DNS в частной сети, DNS разрешенной локальной сети или DNS провайдера по открытому
-        // IPv6 мимо туннеля, а не прокси.
+        // IPv6 мимо туннеля, а не прокси; ни одна настройка его не открывает — значит, его нашел замер службы (правила сняты).
         Chips[1].Update(protection.Dns, paused,
             Status.Mode != ConnectionMode.Vpn || Status.State != ConnectionState.Connected || protection.Dns != CheckState.Warning ? null
             : _settings.Current.Protection switch
             {
                 { LanDns: not null } => "own_dns",
-                { AllowLan: true } => "lan_dns",
-                _ => "ipv6_dns",
+                { AllowLan: true, BlockOutsideDns: false } => "lan_dns",
+                { BlockOutsideDns: false, BlockIpv6: false } => "ipv6_dns",
+                _ => "dns_open",
             });
         // IPv6 в режиме VPN: через туннель (сервер его открывает) или мимо него — свои заголовок, подпись и пояснение.
         Chips[2].Update(protection.Ipv6, paused,

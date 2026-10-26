@@ -438,8 +438,10 @@ public sealed class MainWindowTests : WindowHarness
         "Запросы идут к своему DNS в локальной сети, мимо туннеля", "Свой DNS")]
     [InlineData(null, "ipv6_dns", "DNS по IPv6 открыт", "мимо туннеля", "IPv6 мимо туннеля открыт, а «Блокировать DNS провайдера» выключено",
         "Запросы по IPv6 могут идти к DNS провайдера мимо туннеля", "Видны провайдеру")]
+    [InlineData(false, "dns_open", "DNS мимо туннеля открыт", "замер: открыт", "Замер: запрос DNS через сетевую карту прошел мимо туннеля",
+        "Запрос DNS через сетевую карту прошел мимо туннеля: правила защиты его не остановили", "Открыт", true)]
     public async Task Dns_chip_tells_who_sees_the_lookups_outside_the_tunnel(
-        bool? ownDns, string reason, string title, string value, string text, string detail, string chipText)
+        bool? ownDns, string reason, string title, string value, string text, string detail, string chipText, bool closedBySettings = false)
     {
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
         {
@@ -452,7 +454,8 @@ public sealed class MainWindowTests : WindowHarness
         Service<SettingsService>().Update(s => s with
         {
             Mode = ConnectionMode.Vpn,
-            Protection = ownDns switch
+            // Настройки DNS мимо туннеля не открывают (замер службы нашел снятые правила) — или открывают, как сказано.
+            Protection = closedBySettings ? s.Protection with { AllowLan = true, BlockOutsideDns = true } : ownDns switch
             {
                 true => s.Protection with { Dns = DnsChoice.Custom, CustomDns = "192.168.1.53" },
                 false => s.Protection with { AllowLan = true, BlockOutsideDns = false },
