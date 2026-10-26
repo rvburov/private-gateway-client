@@ -1,3 +1,4 @@
+using System.Reflection;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -57,6 +58,11 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
     }
 
     public ServiceKind Service => ServiceKind.Simulated;
+
+    /// <summary>Имитация — той же версии, что окно (одна сборка), и без настоящих ядер.</summary>
+    public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(new ServiceDetails(
+        typeof(SimulatedGatewayClient).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0",
+        Contracts.ContractMapping.ApiVersion, []));
 
     public event EventHandler<ConnectionStatus>? StatusChanged;
 

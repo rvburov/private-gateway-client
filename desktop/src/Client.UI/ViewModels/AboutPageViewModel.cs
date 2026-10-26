@@ -3,6 +3,8 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -62,13 +64,17 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private readonly IGatewayClient _gateway;
     private readonly OverlayViewModel _overlay;
     private readonly INavigator _navigator;
+    private readonly IServiceInstaller _installer;
+    private ServiceDetails? _details;
 
-    public AboutPageViewModel(SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator)
+    public AboutPageViewModel(SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator, IServiceInstaller installer)
     {
         _settings = settings;
         _gateway = gateway;
         _overlay = overlay;
         _navigator = navigator;
+        _installer = installer;
+        _ = LoadDetailsAsync();
         ChannelOptions = [.. Enum.GetValues<UpdateChannel>().Select(v => new ChoiceOptionViewModel(
             () => ChannelLabel(v), () => _settings.Current.UpdateChannel == v, () =>
             {
@@ -99,15 +105,53 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     public string ClientVersion => AppInfo.Version;
 
-    /// <summary>Какая служба отвечает окну: установленная, пользователя (только прокси), никакой, имитация.</summary>
-    public string ServiceState => ServiceTexts.State(_gateway.Service);
+    /// <summary>Какая служба отвечает окну (установленная, пользователя, никакой, имитация) и ее версия.</summary>
+    public string ServiceState => _details is { } details && _gateway.Service != ServiceKind.Simulated
+        ? Loc.Instance.Format("about.service.version", ServiceTexts.State(_gateway.Service), details.Version)
+        : ServiceTexts.State(_gateway.Service);
 
-    public string XrayVersion => Loc.Instance["core.version.none"];
+    /// <summary>Версии ядер — то, что служба нашла рядом с собой и запустила.</summary>
+    public string XrayVersion => _details?.Core("xray")?.Version ?? Loc.Instance["core.version.none"];
 
+    /// <summary>Второе ядро для Hysteria2 и TUIC пока не выбрано: sing-box в программе — движок TUN режима VPN.</summary>
     public string SecondCore => Loc.Instance["core.second.none"];
 
-    /// <summary>На Windows TUN дает драйвер Wintun — его ставит служба; на macOS и Linux TUN есть в самой ОС.</summary>
-    public string TunDriver => Loc.Instance[OperatingSystem.IsWindows() ? "about.tun.none" : "about.tun.system"];
+    /// <summary>Служба другой версии, чем окно: программу обновили, а службу нет (или наоборот).</summary>
+    public ServiceMatch ServiceMatch => _details is { } details ? ServiceVersions.Compare(AppInfo.Version, details, ContractMapping.ApiVersion) : ServiceMatch.Same;
+
+    public bool HasServiceNotice => ServiceMatch != ServiceMatch.Same || UpdateFailed;
+
+    public string ServiceNotice => UpdateFailed ? Loc.Instance["about.service.updateFailed"] : ServiceMatch switch
+    {
+        ServiceMatch.Older => Loc.Instance.Format("about.service.older", _details!.Version, AppInfo.Version),
+        ServiceMatch.Newer => Loc.Instance.Format("about.service.newer", _details!.Version, AppInfo.Version),
+        ServiceMatch.Incompatible => Loc.Instance.Format("about.service.incompatible", _details!.Version, AppInfo.Version),
+        _ => string.Empty,
+    };
+
+    /// <summary>Переустановить службу из этой копии программы — та же установка, что «Установить службу».</summary>
+    public bool CanUpdateService => ServiceMatch != ServiceMatch.Same && _installer.IsAvailable && _gateway.Service == ServiceKind.Installed && !IsUpdatingService;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanUpdateService))]
+    public partial bool IsUpdatingService { get; set; }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasServiceNotice), nameof(ServiceNotice))]
+    public partial bool UpdateFailed { get; set; }
+
+    /// <summary>
+    /// TUN режима VPN — sing-box (его версия от службы) поверх драйвера: на Windows — Wintun, его ставит служба; на macOS
+    /// и Linux TUN есть в самой ОС.
+    /// </summary>
+    public string TunDriver
+    {
+        get
+        {
+            var driver = Loc.Instance[OperatingSystem.IsWindows() ? "about.tun.none" : "about.tun.system"];
+            return _details?.Core("sing-box") is { } engine ? Loc.Instance.Format("about.tun.engine", engine.Version, driver) : driver;
+        }
+    }
 
     // ── Команды ──────────────────────────────────────────────────────────────
 
@@ -128,6 +172,30 @@ public sealed partial class AboutPageViewModel : ObservableObject
     /// <summary>Проблема — на экран «Проверка»: там обезличенный отчет для поддержки.</summary>
     [RelayCommand]
     private void ReportProblem() => _navigator.Navigate(Pages.Check);
+
+    [RelayCommand]
+    private async Task UpdateServiceAsync()
+    {
+        IsUpdatingService = true;
+        UpdateFailed = false;
+        try
+        {
+            var result = await _installer.InstallAsync().ConfigureAwait(true);
+            UpdateFailed = result == ServiceInstallResult.Failed;
+            await LoadDetailsAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsUpdatingService = false;
+        }
+    }
+
+    /// <summary>Сведения службы: версия и ядра; не ответила — строки «не установлено», как без службы.</summary>
+    private async Task LoadDetailsAsync()
+    {
+        _details = await _gateway.GetDetailsAsync().ConfigureAwait(true);
+        OnPropertyChanged(string.Empty);
+    }
 
     private void Refresh()
     {

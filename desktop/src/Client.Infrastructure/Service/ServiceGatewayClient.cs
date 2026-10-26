@@ -117,6 +117,18 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    public async Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return (await _client.GetServiceInfoAsync(new V1.GetServiceInfoRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+    }
+
     public Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default)
     {
         _allowOtherVpn = true;

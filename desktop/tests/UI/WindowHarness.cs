@@ -162,6 +162,11 @@ public abstract class WindowHarness : IDisposable
 
         public ServiceKind Service => kind;
 
+        /// <summary>Что служба скажет о себе (GetServiceInfo); null — не ответила.</summary>
+        public ServiceDetails? Details { get; set; }
+
+        public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult(Details);
+
         /// <summary>Что служба сделает из «Подключения».</summary>
         public Func<ConnectionStatus, ConnectionStatus> Outcome { get; init; } = c => c.MoveTo(ConnectionState.Connected, time.GetUtcNow());
 

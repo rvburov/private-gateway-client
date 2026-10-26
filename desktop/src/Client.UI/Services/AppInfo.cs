@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Runtime.InteropServices;
 
 namespace PrivateGateway.Client.UI.Services;
@@ -5,8 +6,12 @@ namespace PrivateGateway.Client.UI.Services;
 /// <summary>Сведения о программе для подписей: версия и имя текущей ОС.</summary>
 public static class AppInfo
 {
-    /// <summary>Версия для шапки, подвала настроек и отчета проверки.</summary>
-    public const string Version = "0.1";
+    /// <summary>
+    /// Версия для шапки, подвала настроек, отчета проверки и сверки со службой — из сборки (Version в Directory.Build.props,
+    /// у выпуска — из тега), без метаданных сборки.
+    /// </summary>
+    public static string Version { get; } =
+        typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
 
     /// <summary>Имя ОС для подписей («Запуск вместе с Windows»): программа одна на три ОС.</summary>
     public static string OsName =>

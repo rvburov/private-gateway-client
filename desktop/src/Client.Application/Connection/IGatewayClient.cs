@@ -20,6 +20,9 @@ public interface IGatewayClient
 
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
 
+    /// <summary>Что служба говорит о себе: версия, контракт, ядра; службы нет или она не ответила — null.</summary>
+    Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(null);
+
     /// <summary>
     /// «Продолжить (не рекомендуется)» на «Работает другой VPN»: подключиться, хотя служба нашла чужой
     /// туннель. Выбор действует до отключения — переподключения и смена настроек на ходу его не спрашивают

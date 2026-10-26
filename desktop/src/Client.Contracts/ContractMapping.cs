@@ -81,6 +81,13 @@ public static partial class ContractMapping
         return result.Reachable ? new CoreLatency(result.LatencyMs, null) : CoreLatency.Failed(result.Failure.ToCore());
     }
 
+    /// <summary>Что служба говорит о себе — для «О программе» и сверки версий с окном.</summary>
+    public static PrivateGateway.Client.Core.ServiceDetails ToCore(this V1.ServiceInfo info)
+    {
+        ArgumentNullException.ThrowIfNull(info);
+        return new(info.ServiceVersion, info.ApiVersion, [.. info.Cores.Select(c => new PrivateGateway.Client.Core.CoreDetails(c.Name, c.Version, c.Available))]);
+    }
+
     public static V1.Protocol ToContract(this CoreProtocol protocol) => protocol switch
     {
         CoreProtocol.Vless => V1.Protocol.Vless,

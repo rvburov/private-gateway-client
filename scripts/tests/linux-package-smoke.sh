@@ -2,8 +2,8 @@
 #
 # Установка и удаление пакета .deb на машине (CI, Ubuntu, от root через sudo): пакет ставится со всеми зависимостями,
 # окно и служба на месте, запись меню проходит desktop-file-validate, служба из пакета ставится так же, как ее ставит
-# окно, и работает под systemd; удаление пакета убирает службу, юнит, таблицу блока при обрыве и все файлы пакета, а
-# данные пользователя не трогает. На компьютере пользователя не запускать — ставит службу:
+# окно, и работает под systemd; обновление пакета переставляет службу тем же владельцем; удаление пакета убирает
+# службу, юнит, таблицу блока при обрыве и все файлы пакета, а данные пользователя не трогает. На компьютере пользователя не запускать — ставит службу:
 #
 #   scripts/tests/linux-package-smoke.sh <версия>
 set -euo pipefail
@@ -38,6 +38,22 @@ for _ in $(seq 1 50); do
   sleep 0.2
 done
 systemctl is-active --quiet private-gateway || fail "служба не запустилась под systemd"
+
+# Переустановка пакета — как обновление: прежняя служба не удаляется (prerm «upgrade»), а ставится заново из нового
+# пакета тем же владельцем (postinst) и снова работает.
+# Время изменения inode (ctime) не переносится копированием: новое — значит, файл службы записан заново.
+before=$(stat -c %Z /opt/private-gateway/service/PrivateGateway.Service)
+started=$(systemctl show -p ActiveEnterTimestampMonotonic --value private-gateway)
+sleep 1.1
+sudo dpkg -i "$deb"
+[ "$(stat -c %Z /opt/private-gateway/service/PrivateGateway.Service)" -gt "$before" ] || fail "после обновления пакета служба не переставлена"
+[ "$(systemctl show -p ActiveEnterTimestampMonotonic --value private-gateway)" != "$started" ] || fail "после обновления служба не перезапущена"
+grep -q "\"--owner\" \"$(id -u)\"" /etc/systemd/system/private-gateway.service || fail "после обновления у службы другой владелец"
+for _ in $(seq 1 50); do
+  systemctl is-active --quiet private-gateway && break
+  sleep 0.2
+done
+systemctl is-active --quiet private-gateway || fail "после обновления пакета служба не работает"
 
 sudo apt-get remove -y private-gateway
 ! systemctl cat private-gateway > /dev/null 2>&1 || fail "после удаления пакета остался юнит службы"

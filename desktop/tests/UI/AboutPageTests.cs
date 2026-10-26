@@ -1,7 +1,12 @@
 using System.Xml.Linq;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
@@ -70,6 +75,42 @@ public sealed class AboutPageTests : WindowHarness
         Press(window, "ReportLink");
         Dispatcher.UIThread.RunJobs();
         shell.CurrentKey.ShouldBe(Pages.Check, "отчет для поддержки — на экране «Проверка»");
+    }
+
+    [AvaloniaFact]
+    public void Older_service_shows_its_cores_says_what_happened_and_is_updated_from_this_copy()
+    {
+        ScriptedService? service = null;
+        Installer.IsAvailable = true;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Details = new ServiceDetails("0.0.9", ContractMapping.ApiVersion, [new CoreDetails("xray", "25.8.3", true), new CoreDetails("sing-box", "1.14.3", true)]),
+        });
+        Installer.OnInstalled = () => service!.Details = service.Details! with { Version = AppInfo.Version };
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
+
+        Text(window, "AboutXray").ShouldBe("25.8.3", "версии ядер — от службы");
+        Text(window, "TunDriver").ShouldStartWith("sing-box 1.14.3 · ", customMessage: "sing-box — движок TUN, а не второе ядро");
+        Text(window, "AboutSecondCore").ShouldBe("не выбрано");
+        Text(window, "ServiceState").ShouldBe("работает · 0.0.9");
+        page.ServiceNotice.ShouldStartWith($"Служба 0.0.9 старше окна {AppInfo.Version}");
+        Find<Button>(window, "UpdateService").IsEffectivelyVisible.ShouldBeTrue("кнопка — рядом с объяснением");
+        Snapshot(window, "about-service-older");
+
+        Press(window, "UpdateService");
+        Dispatcher.UIThread.RunJobs();
+
+        Installer.Installs.ShouldBe(1, "та же установка, что «Установить службу»: из этой копии программы");
+        page.HasServiceNotice.ShouldBeFalse("после переустановки версии совпадают");
+        Text(window, "ServiceState").ShouldBe($"работает · {AppInfo.Version}");
+
+        service!.Details = service.Details! with { Version = "0.0.8" };
+        Installer.Result = ServiceInstallResult.Failed;
+        page.UpdateServiceCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        page.ServiceNotice.ShouldStartWith("Службу обновить не удалось", customMessage: "неудача — словами, а не молча");
     }
 
     [Fact]
