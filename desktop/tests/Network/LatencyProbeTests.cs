@@ -30,6 +30,14 @@ public sealed class LatencyProbeTests
         var results = await LatencyProbe.MeasureAsync(
             XrayKit.Xray!, [dead, alive, hysteria, alive], ConnectionSettings.Default, site.Url, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
 
+        if (results[1].Failure is not null || results[3].Failure is not null)
+        {
+            // Живой сервер не ответил за срок (так бывало на Windows в CI): тот же замер с минутой — медленно или не отвечает вовсе.
+            var again = await LatencyProbe.MeasureAsync(
+                XrayKit.Xray!, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
+            Assert.Fail($"Живой сервер не ответил за {Timeout.TotalSeconds:0} с: {string.Join(", ", results)}; тот же замер с минутой: {again[0]}");
+        }
+
         results.Select(r => r.Failure).ShouldBe([LatencyFailure.NoResponse, null, LatencyFailure.Unsupported, null]);
         results[1].Milliseconds.ShouldNotBeNull().ShouldBeInRange(1, (int)Timeout.TotalMilliseconds);
         results[3].Milliseconds.ShouldNotBeNull();
