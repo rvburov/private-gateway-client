@@ -16,6 +16,10 @@ deb=$(ls artifacts/release/private-gateway_*_amd64.deb)
 
 fail() {
   echo "НЕ ТАК: $*" >&2
+  # Что было со службой — для разбора в журнале CI.
+  sudo systemctl status private-gateway --no-pager 2>&1 | tail -20 >&2 || true
+  sudo journalctl -u private-gateway --no-pager -n 60 2>&1 >&2 || true
+  sudo ls -la /var/lib/private-gateway /opt/private-gateway/service 2>&1 | head -40 >&2 || true
   exit 1
 }
 
@@ -37,7 +41,7 @@ done
 desktop-file-validate /usr/share/applications/private-gateway.desktop || fail "запись меню не проходит desktop-file-validate"
 
 # Служба — как ее ставит окно: от root, владелец — пользователь окна.
-sudo /opt/private-gateway/PrivateGateway.Service --install --owner "$(id -u)"
+sudo /opt/private-gateway/PrivateGateway.Service --install --owner "$(id -u)" || fail "служба не установилась"
 for _ in $(seq 1 50); do
   systemctl is-active --quiet private-gateway && break
   sleep 0.2

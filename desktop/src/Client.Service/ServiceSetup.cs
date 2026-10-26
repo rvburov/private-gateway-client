@@ -235,16 +235,17 @@ public static class ServiceSetup
         if (hadService && Directory.Exists(previous))
         {
             Move(previous, folder);
+            var failure = Ready(options.StateFolder);
             if (Started(options, os, readyTimeout ?? ReadyTimeout))
             {
-                throw new IOException("новая служба не запустилась — работает прежняя");
+                throw new IOException("новая служба не запустилась — работает прежняя" + failure);
             }
 
             throw new IOException("новая служба не запустилась, прежняя — тоже");
         }
 
         os.Remove(options.Name);
-        throw new IOException("служба не запустилась");
+        throw new IOException("служба не запустилась" + Ready(options.StateFolder));
     }
 
     /// <summary>Остановить и удалить службу, снять блок при обрыве, удалить ее папку и состояние.</summary>
@@ -263,7 +264,7 @@ public static class ServiceSetup
         DeleteServiceFolder(folder);
     }
 
-    /// <summary>Файлы состояния (<see cref="StateFiles"/>) и пустая папка; чужое остается.</summary>
+    /// <summary>Файлы состояния (<see cref="StateFiles"/>), скачанные обновления и пустая папка; чужое остается.</summary>
     public static void DeleteState(string state)
     {
         if (!Directory.Exists(state))
@@ -274,6 +275,12 @@ public static class ServiceSetup
         foreach (var file in StateFiles)
         {
             File.Delete(Path.Combine(state, file));
+        }
+
+        // Скачанные обновления и журнал их установки (UpdateInstaller).
+        if (Directory.Exists(Path.Combine(state, "updates")))
+        {
+            Directory.Delete(Path.Combine(state, "updates"), recursive: true);
         }
 
         if (!Directory.EnumerateFileSystemEntries(state).Any())
@@ -314,6 +321,13 @@ public static class ServiceSetup
         }
 
         return ServiceReady.Wait(options.StateFolder, ServiceVersion.Current, timeout);
+    }
+
+    // Что служба успела сказать о готовности — в текст ошибки: «готова» другой версии или ничего.
+    private static string Ready(string state)
+    {
+        var path = Path.Combine(state, ServiceReady.FileName);
+        return File.Exists(path) ? $" (в {path} — «{File.ReadAllText(path).Trim()}», а ждали {ServiceVersion.Current})" : $" ({path} не появился за отведенное время)";
     }
 
     /// <summary>

@@ -43,8 +43,11 @@ running() {
   return 1
 }
 
+# Версия в «Установленных приложениях»: поиск по имени дает ключ записи, из него — DisplayVersion.
 installed_version() {
-  reg query 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' /s /f 'Private Gateway' /d | sed -n 's/.*DisplayVersion *REG_SZ *//p' | tr -d '\r'
+  local key
+  key=$(reg query 'HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall' /s /f 'Private Gateway' /d | tr -d '\r' | grep -m 1 '^HKEY')
+  reg query "$key" /v DisplayVersion | tr -d '\r' | sed -n 's/.*DisplayVersion *REG_SZ *//p'
 }
 
 mkdir -p "$data"
@@ -69,6 +72,7 @@ for _ in $(seq 1 50); do [ -f "$program/ServiceState/journal.jsonl" ] && break; 
 echo keep > "$program/ServiceState/update-bucket"
 owner=$(sc qc PrivateGateway | grep -o -- '--owner S-1-5-[0-9-]*')
 msi_version=$(installed_version)
+[ "$msi_version" = "${version%%-*}" ] || fail "в «Установленных приложениях» версия «$msi_version»"
 
 # Обновление: та же сборка в MSI с версией выше — служба заменяется и снова работает, ее состояние на месте.
 IFS=. read -r major minor patch <<< "${version%%-*}"

@@ -166,7 +166,7 @@ public sealed class ServiceSetupTests : IDisposable
         var os = new FakeOs(options.StateFolder, works: _ => false);
 
         Should.Throw<IOException>(() => ServiceSetup.Install(options, New(), null, null, os, TimeSpan.FromSeconds(1)))
-            .Message.ShouldBe("служба не запустилась");
+            .Message.ShouldStartWith("служба не запустилась");
 
         os.Calls[^1].ShouldBe("remove");
         Directory.Exists(options.Folder).ShouldBeFalse();
