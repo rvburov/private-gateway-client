@@ -239,7 +239,7 @@
   "error.PGC-SVC-003": "The service rejected the connection request",
   "error.PGC-SVC-004": "VPN mode needs administrator rights",
   "error.PGC-SVC-005": "The core cannot work with this server",
-  "error.PGC-SVC-006": "VPN mode is not ready on this system yet",
+  "error.PGC-SVC-006": "VPN mode is unavailable: a required system part is missing (details in the log)",
   "error.PGC-SVC-007": "The kill switch did not turn on",
   "error.PGC-SVC-008": "Another program removed the kill switch — the service put it back",
   "error.PGC-SVC-009": "The service is already running",

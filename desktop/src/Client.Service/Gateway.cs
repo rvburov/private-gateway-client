@@ -389,7 +389,9 @@ public sealed partial class Gateway : IAsyncDisposable
         if (vpn && (_options.KillSwitch is null || _options.SingBoxPath is not { } singBox || !File.Exists(singBox)))
         {
             return await RejectAsync(request, core.Mode, ErrorCodes.VpnNotReady,
-                _options.KillSwitch is null ? "Режим VPN на этой ОС еще не готов: нет блока при обрыве" : "Нет сборки sing-box", cancellationToken)
+                _options.KillSwitch is not null ? "Нет сборки sing-box"
+                : OperatingSystem.IsLinux() ? "Режим VPN недоступен: нет nftables (программа nft), а без нее нет блока при обрыве"
+                : "Режим VPN недоступен: нет блока при обрыве", cancellationToken)
                 .ConfigureAwait(false);
         }
 
