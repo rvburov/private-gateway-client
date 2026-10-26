@@ -75,6 +75,13 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
             rules.Add($"{family} daddr {server.Address} meta l4proto {{ tcp, udp }} th dport {server.Port.ToString(CultureInfo.InvariantCulture)} accept");
         }
 
+        // Свой DNS в частной сети: его выбрал пользователь, и Xray спрашивает его напрямую — раньше закрытия DNS.
+        if (policy.LanDns is { } lanDns)
+        {
+            var family = lanDns.AddressFamily == AddressFamily.InterNetworkV6 ? "ip6" : "ip";
+            rules.Add($"{family} daddr {lanDns} meta l4proto {{ tcp, udp }} th dport 53 accept");
+        }
+
         // Адрес от DHCP и соседи IPv6: без них машина теряет сеть, данные через них наружу не уходят.
         rules.Add("udp sport 68 udp dport 67 accept");
         // Машина как DHCP-сервер ВМ и хот-спота (libvirt, NetworkManager): адрес клиенту — только в локальной сети.
@@ -147,7 +154,9 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
         }
 
         var mark = policy.Direct is { } exit ? $"meta mark != {exit.Mark.ToString(CultureInfo.InvariantCulture)} " : string.Empty;
-        return $"oifname != \"{name}\" {mark}ip daddr {{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }} "
+        // Свой DNS в частной сети — как есть: его спрашивает сам Xray, перенаправленный, запрос вернулся бы в Xray по кругу.
+        var own = policy.LanDns is { AddressFamily: AddressFamily.InterNetwork } lanDns ? $"ip daddr != {lanDns} " : string.Empty;
+        return $"oifname != \"{name}\" {mark}ip daddr {{ 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 }} {own}"
             + $"meta l4proto {{ tcp, udp }} th dport 53 dnat ip to {dns}";
     }
 

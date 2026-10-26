@@ -33,6 +33,10 @@ public sealed record DirectExit(string Program, uint Mark);
 /// (роутер из resolv.conf без systemd-resolved) перенаправляются сюда — в туннель (nftables). На Windows ОС и так
 /// спрашивает DNS адаптера туннеля. null — не перенаправлять.
 /// </param>
+/// <param name="LanDns">
+/// Свой DNS в частной сети («DNS» — свой адрес, как у Pi-hole): к нему DNS (53, TCP и UDP) мимо туннеля пропускается — его
+/// спрашивает Xray, через сервер частный адрес не достать. Остальное к этому адресу — по <paramref name="AllowLan"/>. null — нет.
+/// </param>
 /// <param name="Ipv6Outside">
 /// IPv6 мимо туннеля открыт: «Блок при обрыве» выключен, а туннель сам пропускает IPv6 мимо себя («Блокировать IPv6 вне
 /// туннеля» выключено, у сервера IPv6 нет) — правила «только туннель» его не закрывают, и это видно на главной. С блоком при
@@ -47,7 +51,8 @@ public sealed record KillSwitchPolicy(
     DirectExit? Direct = null,
     bool Persistent = false,
     IPAddress? TunnelDns = null,
-    bool Ipv6Outside = false)
+    bool Ipv6Outside = false,
+    IPAddress? LanDns = null)
 {
     /// <summary>Сколько адресов сервера держит блок: у ключей фильтров WFP есть предел.</summary>
     public const int MaxServers = 16;

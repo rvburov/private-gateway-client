@@ -136,6 +136,13 @@ public static class WfpRules
                 [new(WfpField.RemoteAddress, Address: server.Address), new(WfpField.RemotePort, (ulong)server.Port), .. TcpOrUdp()]));
         }
 
+        // Свой DNS в частной сети: его выбрал пользователь, и Xray спрашивает его напрямую — тяжелее закрытия DNS.
+        if (policy.LanDns is { } lanDns)
+        {
+            rules.Add(new("lan-dns", lanDns.AddressFamily == AddressFamily.InterNetworkV6 ? WfpFamily.V6 : WfpFamily.V4, true, 15,
+                [new(WfpField.RemoteAddress, Address: lanDns), new(WfpField.RemotePort, 53), .. TcpOrUdp()]));
+        }
+
         // Адрес от DHCP и соседи IPv6 (с объявлениями роутера — без них нет адреса IPv6): данные через них наружу не уходят.
         rules.Add(new("dhcp", WfpFamily.V4, true, 15, [new(WfpField.Protocol, Udp), new(WfpField.LocalPort, 68), new(WfpField.RemotePort, 67)]));
         // Машина как DHCP-сервер хот-спота, общего доступа и ВМ: адрес клиенту — только в локальной сети, наружу не уходит.

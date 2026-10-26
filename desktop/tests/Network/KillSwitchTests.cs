@@ -118,6 +118,22 @@ public sealed class KillSwitchTests
         Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", []))).ShouldNotContain("meta nfproto ipv6 accept");
     }
 
+    [Fact]
+    public void Own_dns_in_a_private_network_gets_dns_alone_and_is_not_redirected()
+    {
+        var lines = Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [new(Server, 443)], AllowLan: true,
+            TunnelDns: IPAddress.Parse("172.19.0.2"), LanDns: IPAddress.Parse("192.168.1.53"))));
+
+        lines.IndexOf("ip daddr 192.168.1.53 meta l4proto { tcp, udp } th dport 53 accept")
+            .ShouldBeLessThan(lines.IndexOf("meta l4proto { tcp, udp } th dport { 53, 137, 138, 853, 5355 } drop"), "раньше закрытия DNS");
+        lines.ShouldContain("oifname != \"pgtun0\" ip daddr { 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.0.0/16 } ip daddr != 192.168.1.53 "
+            + "meta l4proto { tcp, udp } th dport 53 dnat ip to 172.19.0.2", "запрос самого Xray к своему DNS в туннель не возвращается");
+        Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [], LanDns: IPAddress.Parse("fd00::53"))))
+            .ShouldContain("ip6 daddr fd00::53 meta l4proto { tcp, udp } th dport 53 accept");
+        Lines(NftablesKillSwitch.Ruleset(new KillSwitchPolicy("pgtun0", [], AllowLan: true)))
+            .ShouldNotContain(l => l.Contains("192.168.1.53", StringComparison.Ordinal));
+    }
+
     [Theory]
     [InlineData("pg tun")]
     [InlineData("pgtun0\" accept; flush ruleset; #")]

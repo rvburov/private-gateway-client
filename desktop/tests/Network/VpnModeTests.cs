@@ -377,6 +377,46 @@ public sealed partial class VpnModeTests
         (row.State, row.Reason).ShouldBe(partial ? (V1.CheckState.Warning, "lan_dns") : (V1.CheckState.Ok, string.Empty));
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Own_dns_in_the_local_network_answers_while_the_rest_of_the_network_follows_the_setting(bool allowLan)
+    {
+        NetworkNamespace.SkipUnlessAvailable("getent");
+        await using var rig = await Rig.CreateAsync(services: true);
+        // «Pi-hole» — на адресе соседа в сети, как DNS в локальной сети.
+        var lanDns = IPAddress.Parse(rig.Lan.Url.Host);
+        using var pihole = new TestDns(IPAddress.Parse("192.0.2.77"), new IPEndPoint(lanDns, 53));
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { Trace = Rig.Trace, ExitIp = rig.ExitIpAsync });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        var request = VpnRequest(rig.Definition, allowLan: allowLan);
+        request.Protection.Dns.Servers.Clear();
+        request.Protection.Dns.Servers.Add(lanDns.ToString());
+
+        await service.Client.ConnectAsync(request, cancellationToken: Ct);
+
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal))[^1];
+        // DNS ОС — в туннель, Xray спрашивает свой DNS в сети напрямую.
+        (await rig.Netns.ResolveWithSystemAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns))).ShouldStartWith("192.0.2.77");
+        pihole.Queries.ShouldContain("example.com");
+        rig.Dns!.Queries.ShouldBeEmpty("через сервер DNS не спрашивали");
+        if (allowLan)
+        {
+            (await rig.Netns.CurlAsync(rig.Lan.Url)).ShouldBe("мимо туннеля", "локальная сеть разрешена");
+        }
+        else
+        {
+            await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(rig.Lan.Url, seconds: 2, device: "pgnet0"),
+                "к адресу своего DNS открыт только DNS: локальная сеть закрыта");
+            rig.Lan.Requests.ShouldBe(0);
+        }
+
+        connected.Protection.Dns.ShouldBe(V1.CheckState.Warning, "запросы имен идут мимо туннеля — к своему DNS");
+        var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
+            .Single(r => r.Id == DiagnosticCheck.Dns.ToContractId());
+        (row.State, row.Reason).ShouldBe((V1.CheckState.Warning, "own_dns"));
+    }
+
     [Fact]
     public async Task Pause_opens_the_network_without_the_tunnel_and_brings_the_tunnel_and_the_block_back()
     {

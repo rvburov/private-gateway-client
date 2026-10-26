@@ -213,6 +213,21 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// Почему DNS идет мимо туннеля (причина строки DNS «Проверки»): <c>own_dns</c> — свой DNS в частной сети, <c>lan_dns</c> — DNS
+    /// роутера в разрешенной локальной сети без «Блокировать DNS провайдера»; не идет — null.
+    /// </summary>
+    public string? DnsReason => Status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Dns: CheckState.Warning }
+        ? DnsOutside(_request?.Protection)
+        : null;
+
+    private static string? DnsOutside(ProtectionSettings? protection) => protection switch
+    {
+        { LanDns: not null } => "own_dns",
+        { AllowLan: true, BlockOutsideDns: false } => "lan_dns",
+        _ => null,
+    };
+
     public ConnectionStatus Status
     {
         get
@@ -1248,7 +1263,8 @@ public sealed partial class Gateway : IAsyncDisposable
             direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
             core.Protection.BootProtection && _killSwitchOn,
             tunnel ? TunnelDns : null,
-            !_killSwitchOn && Volatile.Read(ref _tunnel) is { Ipv6Outside: true });
+            !_killSwitchOn && Volatile.Read(ref _tunnel) is { Ipv6Outside: true },
+            core.Protection.LanDns);
         if (!Try(() => { killSwitch.Enable(policy); return true; }, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))
         {
             return false;
@@ -1481,8 +1497,9 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         // DNS мимо туннеля правила закрывают везде, кроме разрешенной локальной сети при выключенном «Блокировать DNS
-        // провайдера»: туда запросы ОС к DNS роутера могут идти напрямую (resolv.conf с адресом роутера, DNS карты Windows).
-        if (tunnel is not null && _request?.Protection is { AllowLan: true, BlockOutsideDns: false })
+        // провайдера» (запросы ОС к DNS роутера могут идти напрямую: resolv.conf с адресом роутера, DNS карты Windows) и своего
+        // DNS в частной сети — его Xray спрашивает напрямую.
+        if (tunnel is not null && DnsOutside(_request?.Protection) is not null)
         {
             status = status with { Protection = status.Protection with { Dns = CheckState.Warning } };
         }

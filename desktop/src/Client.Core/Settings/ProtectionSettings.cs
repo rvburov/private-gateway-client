@@ -52,6 +52,14 @@ public sealed record ProtectionSettings(
     /// </summary>
     public bool Ipv6Allowed => Addresses != AddressPreference.Ipv4Only;
 
+    /// <summary>
+    /// Свой DNS в частной сети (адрес, как у Pi-hole на 192.168.x.x): Xray спрашивает его напрямую, а блок при обрыве и
+    /// правила «только туннель» пропускают к нему DNS — через сервер частный адрес не достать. Иначе null.
+    /// </summary>
+    public IPAddress? LanDns => Dns == DnsChoice.Custom && IPAddress.TryParse(CustomDns, out var address) && PrivateNetwork.Contains(address)
+        ? address
+        : null;
+
     /// <summary>Адреса DNS для службы: пусто — из профиля сервера.</summary>
     public IReadOnlyList<string> DnsServers => Dns switch
     {
@@ -80,5 +88,23 @@ public static class DnsAddress
         return Uri.TryCreate(trimmed, UriKind.Absolute, out var url) && url.Scheme == Uri.UriSchemeHttps && url.Host.Length > 0
             ? url.GetLeftPart(UriPartial.Path)
             : null;
+    }
+}
+
+/// <summary>Частные сети — те же, что открывает «Разрешить локальную сеть»: 10/8, 172.16/12, 192.168/16, 169.254/16, fc00::/7, fe80::/10.</summary>
+public static class PrivateNetwork
+{
+    public static bool Contains(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        if (address.IsIPv4MappedToIPv6)
+        {
+            address = address.MapToIPv4();
+        }
+
+        var bytes = address.GetAddressBytes();
+        return address.AddressFamily == AddressFamily.InterNetwork
+            ? bytes[0] == 10 || (bytes[0] == 172 && (bytes[1] & 0xF0) == 16) || (bytes[0] == 192 && bytes[1] == 168) || (bytes[0] == 169 && bytes[1] == 254)
+            : (bytes[0] & 0xFE) == 0xFC || (bytes[0] == 0xFE && (bytes[1] & 0xC0) == 0x80);
     }
 }

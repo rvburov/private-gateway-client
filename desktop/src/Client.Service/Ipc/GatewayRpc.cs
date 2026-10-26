@@ -114,9 +114,7 @@ public sealed class GatewayRpc(Gateway gateway, ServiceJournal journal, V1.Servi
         {
             Id = DiagnosticCheck.Dns.ToContractId(),
             State = status.Protection.Dns.ToContract(),
-            Reason = status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Dns: CheckState.Warning }
-                ? "lan_dns"
-                : string.Empty,
+            Reason = gateway.DnsReason ?? string.Empty,
         });
         report.Results.Add(new V1.CheckResult
         {

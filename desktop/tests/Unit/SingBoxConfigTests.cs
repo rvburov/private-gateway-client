@@ -59,6 +59,14 @@ public sealed class SingBoxConfigTests
     }
 
     [Fact]
+    public void Own_dns_in_a_private_network_goes_around_the_tunnel()
+    {
+        var tun = Tun(Build([IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "192.168.1.53" }));
+
+        Strings(tun["route_exclude_address"]).ShouldBe(["198.51.100.20/32", "192.168.1.53/32"], "Xray спрашивает свой DNS напрямую, локальная сеть закрыта");
+    }
+
+    [Fact]
     public void Settings_shape_the_tunnel()
     {
         var config = Build([IPAddress.Parse("198.51.100.20")],

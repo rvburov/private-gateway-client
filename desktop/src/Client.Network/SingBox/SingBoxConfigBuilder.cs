@@ -134,8 +134,10 @@ public static class SingBoxConfigBuilder
                 TunEngine.Mixed => "mixed",
                 _ => "system",
             },
+            // Мимо TUN — адреса сервера, свой DNS в частной сети (его Xray спрашивает напрямую) и частные сети, если разрешены.
             ["route_exclude_address"] = new JsonArray([
-                .. request.ServerAddresses.Select(a => (JsonNode)(a.AddressFamily == AddressFamily.InterNetworkV6 ? $"{a}/128" : $"{a}/32")),
+                .. request.ServerAddresses.Concat(protection.LanDns is { } lanDns ? [lanDns] : [])
+                    .Select(a => (JsonNode)(a.AddressFamily == AddressFamily.InterNetworkV6 ? $"{a}/128" : $"{a}/32")),
                 .. protection.AllowLan ? PrivateNetworks.Select(n => (JsonNode)n) : []]),
         };
         if (OperatingSystem.IsLinux())

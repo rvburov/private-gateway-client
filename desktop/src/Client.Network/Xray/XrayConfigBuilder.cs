@@ -434,6 +434,19 @@ public static class XrayConfigBuilder
             });
         }
 
+        // Свой DNS в частной сети (Pi-hole): запросы самого Xray к нему — напрямую, и при закрытой локальной сети: через
+        // сервер частный адрес не достать. Мимо TUN к нему ведет исключение в маршрутах sing-box, блок пропускает только DNS.
+        if (request.Protection.LanDns is { } lanDns)
+        {
+            rules.Add(new JsonObject
+            {
+                ["type"] = "field",
+                ["ip"] = new JsonArray(lanDns.ToString()),
+                ["port"] = "53",
+                ["outboundTag"] = DirectTag,
+            });
+        }
+
         // Локальная сеть: разрешена — напрямую, иначе — блок (по умолчанию запрещена, модель угроз).
         rules.Add(new JsonObject
         {

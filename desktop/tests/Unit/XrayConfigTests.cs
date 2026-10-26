@@ -230,6 +230,27 @@ public sealed class XrayConfigTests
             .ShouldContain(("ip:::/0", "block"), "«Только IPv4» — IPv6 закрыт и в правилах");
     }
 
+    [Theory]
+    [InlineData("192.168.1.53", true)]
+    [InlineData("fd00::53", true)]
+    [InlineData("9.9.9.9", false)]
+    [InlineData("https://192.168.1.53/dns-query", false)]
+    public void Own_dns_in_a_private_network_is_asked_directly_even_with_the_lan_closed(string custom, bool direct)
+    {
+        var config = Build(Link("vless/reality-vision"), protection: ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = custom });
+
+        var rules = Rules(config);
+        if (direct)
+        {
+            rules.IndexOf(("ip:" + custom, "direct")).ShouldBe(rules.IndexOf(("ip:geoip:private", "block")) - 1, "раньше закрытия локальной сети");
+            config["routing"]!["rules"]!.AsArray().Single(r => r!["ip"]?[0]?.GetValue<string>() == custom)!["port"]!.GetValue<string>().ShouldBe("53");
+        }
+        else
+        {
+            rules.ShouldNotContain(r => r.Outbound == "direct");
+        }
+    }
+
     [Fact]
     public void Mux_and_tls_fragment_are_added_when_chosen_but_mux_not_with_vision()
     {

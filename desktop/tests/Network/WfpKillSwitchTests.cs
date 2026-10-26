@@ -107,6 +107,16 @@ public sealed class WfpKillSwitchTests
     }
 
     [Fact]
+    public void Own_dns_in_a_private_network_is_permitted_above_the_dns_rule()
+    {
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", [], LanDns: IPAddress.Parse("192.168.1.53")), 42).Select(r => r.ToString())
+            .ShouldContain("15 permit V4 lan-dns: RemoteAddress 192.168.1.53, RemotePort 53, Protocol 6, Protocol 17", "вес выше закрытия DNS (10)");
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", [], LanDns: IPAddress.Parse("fd00::53")), 42).Select(r => r.ToString())
+            .ShouldContain("15 permit V6 lan-dns: RemoteAddress fd00::53, RemotePort 53, Protocol 6, Protocol 17");
+        WfpRules.For(new KillSwitchPolicy("Private Gateway", []), 42).ShouldNotContain(r => r.Name == "lan-dns");
+    }
+
+    [Fact]
     public void Filter_keys_go_in_order_from_one_base()
     {
         WfpRules.FilterKey(0).ShouldBe(new Guid("c9f98d15-2e6c-4db0-aa5c-48a623d10000"));
