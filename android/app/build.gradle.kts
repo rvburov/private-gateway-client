@@ -78,11 +78,19 @@ kotlin {
 }
 
 // Тема (Tokens.kt, Icons.kt) и ресурсы (тексты RU/EN, иконка запуска) — из shared/specifications при каждой сборке.
+// Ресурсы — через API вариантов AGP; Kotlin-плагин сгенерированные папки этого API не видит (AGP 8.13, Kotlin 2.2),
+// поэтому тема — папкой исходников main, а генерация — до любой сборки (preBuild).
 val pgTheme = tasks.named<GeneratePgTheme>("generatePgTheme")
 val pgResources = tasks.named<GeneratePgResources>("generatePgResources")
+android.sourceSets.getByName("main").java.srcDir(pgTheme.flatMap { it.outputDir })
+tasks.configureEach {
+    // Все, кто читает исходники (KSP, компиляция, Lint), — после генерации темы.
+    if (name == "preBuild" || name.startsWith("ksp") || name.startsWith("compile") || name.contains("Lint")) {
+        dependsOn(pgTheme)
+    }
+}
 androidComponents {
     onVariants { variant ->
-        variant.sources.kotlin?.addGeneratedSourceDirectory(pgTheme, GeneratePgTheme::outputDir)
         variant.sources.res?.addGeneratedSourceDirectory(pgResources, GeneratePgResources::outputDir)
     }
 }
