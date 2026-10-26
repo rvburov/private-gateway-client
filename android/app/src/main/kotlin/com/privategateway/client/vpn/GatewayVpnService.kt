@@ -29,7 +29,6 @@ import com.privategateway.client.R
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CoreDnsFollower
 import com.privategateway.client.core.vpn.TunPlan
-import com.privategateway.client.core.xray.CoreSettings
 import com.privategateway.client.core.xray.XrayConfig
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
@@ -125,7 +124,6 @@ class GatewayVpnService : VpnService() {
         work?.cancel()
         work = scope.launch {
             lock.withLock {
-                stopCore()
                 val error = try {
                     start()
                 } catch (e: CancellationException) {
@@ -156,7 +154,7 @@ class GatewayVpnService : VpnService() {
         val id = settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
         monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
         val server = servers.load(id) ?: return TunnelErrors.NO_SERVER
-        val core = CoreSettings()
+        val core = settings.tunnel.first().core()
         val plan = TunPlan.of(core)
 
         // DNS сети — до туннеля: потом сеть по умолчанию — уже он сам. Дальше DNS ведет слежение за сетью.
@@ -173,7 +171,11 @@ class GatewayVpnService : VpnService() {
             builder.setMetered(false)
         }
 
+        // Переподключение без окна утечки: новая карта поднимается, пока прежняя еще держит трафик (Android меняет одну на
+        // другую сам), и только потом останавливается прежнее ядро. Пока новое не запущено, пакеты ждут в карте, а не
+        // уходят мимо туннеля.
         val descriptor = establish(builder) ?: return TunnelErrors.OTHER_VPN
+        stopCore()
         tun = descriptor
 
         val config = XrayConfig.build(server, core, descriptor.fd)

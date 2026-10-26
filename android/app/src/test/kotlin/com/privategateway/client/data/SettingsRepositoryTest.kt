@@ -1,6 +1,10 @@
 package com.privategateway.client.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
+import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.TunnelSettings
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -44,5 +48,26 @@ class SettingsRepositoryTest {
         } finally {
             again.cancel()
         }
+    }
+
+    @Test
+    fun `tunnel settings default to the protected choice and come back as saved`() = runBlocking {
+        val file = folder.root.resolve("settings.preferences_pb")
+        val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+        val settings = SettingsRepository(store)
+        assertEquals(TunnelSettings(), settings.tunnel.first(), "по умолчанию: DNS по DoH, IPv6 закрыт, локальная сеть закрыта")
+
+        val custom = TunnelSettings(DnsChoice.Custom, "https://192.0.2.53/dns-query", ipv6 = true, allowLan = true)
+        settings.setTunnel(custom)
+        assertEquals(custom, settings.tunnel.first())
+        assertEquals("https://192.0.2.53/dns-query", settings.tunnel.first().dnsServer)
+
+        // Свой DNS стерт — ключа нет, а не пустая строка.
+        settings.setTunnel(TunnelSettings(DnsChoice.Quad9Doh, "  "))
+        assertEquals(TunnelSettings(DnsChoice.Quad9Doh), settings.tunnel.first())
+
+        // Значение из будущей версии — по умолчанию, а не авария.
+        store.edit { it[stringPreferencesKey("tunnel_dns")] = "SomethingNew" }
+        assertEquals(DnsChoice.Profile, settings.tunnel.first().dns)
     }
 }
