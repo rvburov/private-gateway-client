@@ -1,0 +1,142 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.LayersPage"
+             x:DataType="vm:LayersPageViewModel">
+  <!-- Как устроена сеть — сетевая лаборатория (этап 8, экрана в макете нет — по дизайн-системе, как «Сеть машины»).
+       Подстраница «Проверки»: островок виден, «назад» — к проверке. Карточка — объяснение, под ним факты машины на подложке:
+       измеренное — моноширинным, «не измерено» — приглушенно. -->
+  <UserControl.Styles>
+    <Style Selector="SelectableTextBlock.fact">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="LineHeight" Value="{StaticResource PgLineHeight.Body}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <Style Selector="SelectableTextBlock.fact.missing">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Ui}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+  </UserControl.Styles>
+
+  <UserControl.DataTemplates>
+    <DataTemplate DataType="vm:LabCardViewModel">
+      <Border Classes="card" Padding="16,14" AutomationProperties.Name="{Binding Title}">
+        <StackPanel Spacing="8">
+          <StackPanel Orientation="Horizontal" Spacing="10">
+            <Border Width="28" Height="28" CornerRadius="14" Background="{StaticResource PgBrush.Accent.Tint}" IsVisible="{Binding HasBadge}">
+              <TextBlock Text="{Binding Badge}" HorizontalAlignment="Center" VerticalAlignment="Center" FontWeight="SemiBold"
+                         Foreground="{StaticResource PgBrush.Accent.Text}" />
+            </Border>
+            <TextBlock Classes="strong" Text="{Binding Title}" VerticalAlignment="Center" TextWrapping="Wrap" />
+          </StackPanel>
+          <TextBlock Text="{Binding Text}" TextWrapping="Wrap" LineHeight="{StaticResource PgLineHeight.Body}"
+                     Foreground="{StaticResource PgBrush.Text.Primary}" />
+          <TextBlock Classes="caption" Text="{Binding Expert}" IsVisible="{Binding HasExpert}" TextWrapping="Wrap"
+                     LineHeight="{StaticResource PgLineHeight.Body}" />
+          <TextBlock Classes="caption" Text="{Binding Protocols}" IsVisible="{Binding HasProtocols}" TextWrapping="Wrap"
+                     Foreground="{StaticResource PgBrush.Text.Muted}" />
+          <Border Background="{StaticResource PgBrush.Surface.Inset}" CornerRadius="{StaticResource PgRadius.Input}" Padding="12,8">
+            <ItemsControl ItemsSource="{Binding Facts}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:FactRowViewModel">
+                  <Grid ColumnDefinitions="120,*" Margin="0,3">
+                    <TextBlock Classes="caption" Text="{Binding Label}" TextWrapping="Wrap" />
+                    <SelectableTextBlock Grid.Column="1" Classes="fact" Classes.missing="{Binding !IsMeasured}" Text="{Binding Value}" />
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </StackPanel>
+      </Border>
+    </DataTemplate>
+  </UserControl.DataTemplates>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.layers.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <TextBlock Classes="caption" Text="{l:L layers.note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Подробность объяснений и замер сайта -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="12">
+            <Border Classes="segments" AutomationProperties.Name="{l:L lab.mode}">
+              <UniformGrid Rows="1">
+                <RadioButton x:Name="BeginnerMode" Classes="segment" GroupName="labMode" IsChecked="{Binding IsBeginner}"
+                             Content="{l:L lab.mode.beginner}" AutomationProperties.Name="{l:L lab.mode.beginner}" />
+                <RadioButton x:Name="ExpertMode" Classes="segment" GroupName="labMode" IsChecked="{Binding IsExpert}"
+                             Content="{l:L lab.mode.expert}" AutomationProperties.Name="{l:L lab.mode.expert}" />
+              </UniformGrid>
+            </Border>
+
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+              <StackPanel Spacing="6">
+                <TextBlock Classes="small" Text="{l:L layers.site}" FontWeight="SemiBold"
+                           Foreground="{StaticResource PgBrush.Text.Secondary}" />
+                <TextBox x:Name="SiteBox" Classes="input" Text="{Binding Site}" PlaceholderText="{l:L probe.target.placeholder}"
+                         FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                         AutomationProperties.Name="{l:L layers.site}">
+                  <TextBox.KeyBindings>
+                    <KeyBinding Gesture="Enter" Command="{Binding MeasureCommand}" />
+                  </TextBox.KeyBindings>
+                </TextBox>
+              </StackPanel>
+              <Button x:Name="MeasureButton" Grid.Column="1" Classes="secondary" Height="44" Padding="16,0" VerticalAlignment="Bottom"
+                      CornerRadius="{StaticResource PgRadius.Button}" Command="{Binding MeasureCommand}"
+                      AutomationProperties.Name="{Binding MeasureText}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <c:Icon Classes.spin="{Binding IsMeasuring}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16"
+                          StrokeThickness="2.2" />
+                  <TextBlock Text="{Binding MeasureText}" VerticalAlignment="Center" FontWeight="Medium" />
+                </StackPanel>
+              </Button>
+            </Grid>
+
+            <TextBlock x:Name="LayersError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                       TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+          </StackPanel>
+        </Border>
+
+        <!-- Семь уровней: сверху прикладной, снизу физический -->
+        <TextBlock Classes="overline" Text="{l:L layers.osi, Upper=True}" Margin="6,8,6,0" />
+        <ItemsControl x:Name="LayerList" ItemsSource="{Binding Layers}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="10" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <!-- VPN на уровнях -->
+        <ContentControl x:Name="TunnelCard" Content="{Binding Tunnel}" />
+
+        <!-- Протоколы и устройство -->
+        <TextBlock Classes="overline" Text="{l:L layers.protocols, Upper=True}" Margin="6,8,6,0" />
+        <ItemsControl x:Name="TopicList" ItemsSource="{Binding Topics}">
+          <ItemsControl.ItemsPanel>
+            <ItemsPanelTemplate>
+              <StackPanel Spacing="10" />
+            </ItemsPanelTemplate>
+          </ItemsControl.ItemsPanel>
+        </ItemsControl>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

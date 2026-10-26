@@ -27,7 +27,7 @@ public sealed class ConnectionsPageTests : WindowHarness
         var page = (ConnectionsPageViewModel)shell.CurrentPage!;
         shell.IsCheck.ShouldBeTrue("подстраница «Проверки»");
 
-        page.Traffic.Select(t => (t.Name, t.Speed)).ShouldBe([("Wi-Fi", "меряем…"), ("Private Gateway", "меряем…")], "по одному замеру скорости нет");
+        page.Traffic.Select(t => (t.Name, t.Speed)).ShouldBe([("Wi-Fi", "меряем…")], "по одному замеру скорости нет; защита выключена — туннеля нет");
         Time.Advance(TimeSpan.FromSeconds(1));
         WaitFor(() => page.Traffic.Count > 0 && page.Traffic[0].Speed != "меряем…");
         page.Traffic[0].Speed.ShouldBe("↓ 1,5 МБ/с · ↑ 120 КБ/с");

@@ -21,9 +21,10 @@ namespace PrivateGateway.Client.Tests.UI;
 public sealed class NetworkPageTests : WindowHarness
 {
     [AvaloniaFact]
-    public void Network_of_the_machine_opens_from_the_check_and_shows_adapters_and_routes()
+    public async Task Network_of_the_machine_opens_from_the_check_and_shows_adapters_and_routes()
     {
         var (window, shell) = Open();
+        await Connect(shell); // туннель в демо — только под защитой в режиме VPN
         shell.NavigateCommand.Execute(Pages.Check);
         Dispatcher.UIThread.RunJobs();
 

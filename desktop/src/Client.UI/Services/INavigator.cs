@@ -47,6 +47,9 @@ public static class Pages
     /// <summary>«Путь до сайта» — сетевая лаборатория: карта пути с измеренными и условными участками (этап 8).</summary>
     public const string Path = "path";
 
+    /// <summary>«Как устроена сеть» — сетевая лаборатория: уровни OSI и протоколы на фактах машины (этап 8).</summary>
+    public const string Layers = "layers";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

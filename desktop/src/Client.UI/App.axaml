@@ -79,6 +79,9 @@
     <DataTemplate DataType="vm:PathPageViewModel">
       <views:PathPage />
     </DataTemplate>
+    <DataTemplate DataType="vm:LayersPageViewModel">
+      <views:LayersPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:BackupPageViewModel">
       <views:BackupPage />
     </DataTemplate>

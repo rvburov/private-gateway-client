@@ -77,6 +77,9 @@ public sealed record AppSettings(
     /// <summary>Первый запуск пройден (доска 10): приветствие больше не показывается.</summary>
     public bool OnboardingDone { get; init; }
 
+    /// <summary>Лаборатория объясняет «для эксперта»: с заголовками, портами и диапазонами; иначе — «для начинающего» (этап 8).</summary>
+    public bool LabExpert { get; init; }
+
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch
     {

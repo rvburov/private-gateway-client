@@ -302,13 +302,16 @@ public sealed class AdapterCardViewModel
 
         if (card.SpeedBitsPerSecond is { } speed)
         {
-            parts.Add(speed >= 1_000_000_000 && speed % 1_000_000_000 == 0
-                ? Loc.Instance.Format("network.speed.gbit", speed / 1_000_000_000)
-                : Loc.Instance.Format("network.speed.mbit", (speed / 1_000_000).ToString("N0", Loc.Instance.Culture)));
+            parts.Add(Speed(speed));
         }
 
         return string.Join(" · ", parts);
     }
+
+    /// <summary>Скорость канала: «866 Мбит/с», «1 Гбит/с».</summary>
+    public static string Speed(long bitsPerSecond) => bitsPerSecond >= 1_000_000_000 && bitsPerSecond % 1_000_000_000 == 0
+        ? Loc.Instance.Format("network.speed.gbit", bitsPerSecond / 1_000_000_000)
+        : Loc.Instance.Format("network.speed.mbit", (bitsPerSecond / 1_000_000).ToString("N0", Loc.Instance.Culture));
 }
 
 /// <summary>

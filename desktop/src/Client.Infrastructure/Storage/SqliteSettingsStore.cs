@@ -107,6 +107,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             UpdateChannel = Enum("update_channel", d.UpdateChannel),
             CheckUpdates = Bool("check_updates", d.CheckUpdates),
             OnboardingDone = Bool("onboarding_done", d.OnboardingDone),
+            LabExpert = Bool("lab_expert", d.LabExpert),
         };
 
         bool Bool(string key, bool fallback) =>
@@ -197,6 +198,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["update_channel"] = settings.UpdateChannel.ToString(),
             ["check_updates"] = Text(settings.CheckUpdates),
             ["onboarding_done"] = Text(settings.OnboardingDone),
+            ["lab_expert"] = Text(settings.LabExpert),
         };
     }
 

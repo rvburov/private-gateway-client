@@ -57,6 +57,7 @@ public sealed class SettingsStorageTests : IDisposable
             UpdateChannel = UpdateChannel.Beta,
             CheckUpdates = false,
             OnboardingDone = true,
+            LabExpert = true,
         };
         Store().Save(changed);
 
