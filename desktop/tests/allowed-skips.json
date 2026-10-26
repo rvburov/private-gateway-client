@@ -64,6 +64,11 @@
     "why": "служба launchd; на macOS CI ставит ее шагом от root"
   },
   {
+    "reason": "центр уведомлений macOS",
+    "os": ["Linux", "Windows"],
+    "why": "уведомления macOS вне пакета .app; в пакете их проверяет смоук выпуска (--check-notifications)"
+  },
+  {
     "reason": "таблица маршрутов macOS",
     "os": ["Linux", "Windows"],
     "why": "маршруты macOS через netstat"
