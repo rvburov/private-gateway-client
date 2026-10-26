@@ -93,6 +93,9 @@ public sealed partial class CheckPageViewModel : ObservableObject
     [RelayCommand]
     private void OpenCompare() => _navigator.Navigate(Pages.Compare);
 
+    [RelayCommand]
+    private void OpenPath() => _navigator.Navigate(Pages.Path);
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(RunText))]
     public partial bool IsRunning { get; private set; }

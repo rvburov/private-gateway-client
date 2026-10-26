@@ -76,6 +76,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, ProbePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProbePageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ConnectionsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ConnectionsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ComparePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ComparePageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, PathPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<PathPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SettingsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SettingsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, SubscriptionsPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<SubscriptionsPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ProtectionPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProtectionPageViewModel>(sp, navigator));

@@ -62,4 +62,9 @@
   <!-- Треугольник: предупреждение раздельного режима (доска 13) -->
   <StreamGeometry x:Key="Icon.Lock">M5 11h14v10H5zM8 11V8a4 4 0 0 1 8 0v3M12 15v2</StreamGeometry>
   <StreamGeometry x:Key="Icon.Warning">M10.3 3.9L1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01</StreamGeometry>
+  <!-- Звенья пути до сайта (лаборатория, этап 8; в макете нет — тем же контуром 24×24): компьютер, роутер, провайдер, сайт -->
+  <StreamGeometry x:Key="Icon.Lab.Device">M3 5h18v11H3zM8 20h8M12 16v4</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Lab.Router">M3 14h18v6H3zM7 17h.01M11 17h.01M8 14L6 7M16 14l2-7</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Lab.Provider">M5 21V8l7-4 7 4v13M3 21h18M9 21v-5h6v5M9 11h.01M15 11h.01</StreamGeometry>
+  <StreamGeometry x:Key="Icon.Lab.Site">M12 3a9 9 0 1 0 0 18a9 9 0 1 0 0-18zM3 12h18M12 3c2.4 2.5 3.6 5.5 3.6 9s-1.2 6.5-3.6 9c-2.4-2.5-3.6-5.5-3.6-9s1.2-6.5 3.6-9z</StreamGeometry>
 </ResourceDictionary>

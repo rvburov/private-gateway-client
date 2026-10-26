@@ -76,6 +76,9 @@
     <DataTemplate DataType="vm:ComparePageViewModel">
       <views:ComparePage />
     </DataTemplate>
+    <DataTemplate DataType="vm:PathPageViewModel">
+      <views:PathPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:BackupPageViewModel">
       <views:BackupPage />
     </DataTemplate>

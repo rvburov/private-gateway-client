@@ -44,6 +44,9 @@ public static class Pages
     /// <summary>«До и после VPN» — что видят сайты и ОС до защиты и сейчас, подстраница «Проверки» (этап 7).</summary>
     public const string Compare = "compare";
 
+    /// <summary>«Путь до сайта» — сетевая лаборатория: карта пути с измеренными и условными участками (этап 8).</summary>
+    public const string Path = "path";
+
     /// <summary>Ошибка службы (доска 16): «Служба не запущена», «Нужны права администратора».</summary>
     public const string Problem = "problem";
 }

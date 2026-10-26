@@ -1,0 +1,195 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.PathPage"
+             x:DataType="vm:PathPageViewModel">
+  <!-- Путь до сайта — сетевая лаборатория (этап 8, экрана в макете нет — по дизайн-системе, как «Сеть машины»). Подстраница
+       «Проверки»: островок виден, «назад» — к проверке. Звено — значок в круге, участок — линия: сплошная — измерено,
+       пунктир — условно; участки в туннеле — цветом защиты. -->
+  <UserControl.Styles>
+    <Style Selector=":is(TextBlock).value">
+      <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+      <Setter Property="TextWrapping" Value="Wrap" />
+    </Style>
+    <!-- Звено: измерено — цветом акцента, условно — серым -->
+    <Style Selector="Border.node">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+    </Style>
+    <Style Selector="Border.node c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+    <Style Selector="Border.node.measured">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.node.measured c|Icon">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <Style Selector="Border.evidence">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Inset}" />
+    </Style>
+    <Style Selector="Border.evidence TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+    <Style Selector="Border.evidence.measured">
+      <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+    </Style>
+    <Style Selector="Border.evidence.measured TextBlock">
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    </Style>
+    <!-- Участок: сплошная линия — измерен, пунктир — условно; в туннеле — цветом защиты -->
+    <Style Selector="Line.link">
+      <Setter Property="Stroke" Value="{StaticResource PgBrush.Line.Divider}" />
+      <Setter Property="StrokeThickness" Value="2" />
+    </Style>
+    <Style Selector="Line.link.measured">
+      <Setter Property="Stroke" Value="{StaticResource PgBrush.Text.Muted}" />
+    </Style>
+    <Style Selector="Line.link.conditional">
+      <Setter Property="StrokeDashArray" Value="2,2" />
+    </Style>
+    <Style Selector="Line.link.tunnel">
+      <Setter Property="Stroke" Value="{StaticResource PgBrush.Status.Success.Badge}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
+      <Button x:Name="BackButton" Classes="icon" Command="{Binding BackCommand}"
+              ToolTip.Tip="{l:L common.back}" AutomationProperties.Name="{l:L common.back}">
+        <c:Icon Data="{StaticResource Icon.Back}" Width="22" Height="22" StrokeThickness="2.2" />
+      </Button>
+      <TextBlock Grid.Column="1" Classes="h1" Text="{l:L page.path.title}" VerticalAlignment="Center"
+                 Margin="4,0,0,0" TextTrimming="CharacterEllipsis" />
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="20,0" Spacing="12">
+        <TextBlock x:Name="Note" Classes="caption" Text="{Binding Note}" TextWrapping="Wrap" Margin="6,0"
+                   LineHeight="{StaticResource PgLineHeight.Body}" />
+
+        <!-- Сайт и замеры, которые делают участки измеренными -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="12">
+            <StackPanel Spacing="6">
+              <TextBlock Classes="small" Text="{l:L path.site}" FontWeight="SemiBold"
+                         Foreground="{StaticResource PgBrush.Text.Secondary}" />
+              <TextBox x:Name="SiteBox" Classes="input" Text="{Binding Site}" PlaceholderText="{l:L probe.target.placeholder}"
+                       FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Caption}"
+                       AutomationProperties.Name="{l:L path.site}">
+                <TextBox.KeyBindings>
+                  <KeyBinding Gesture="Enter" Command="{Binding CheckCommand}" />
+                </TextBox.KeyBindings>
+              </TextBox>
+            </StackPanel>
+
+            <TextBlock x:Name="PathError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                       TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+
+            <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+              <Button x:Name="CheckButton" Classes="primary" Height="46" HorizontalAlignment="Stretch"
+                      Command="{Binding CheckCommand}" AutomationProperties.Name="{Binding CheckText}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <c:Icon Classes.spin="{Binding IsChecking}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16"
+                          StrokeThickness="2.2" IsVisible="{Binding IsChecking}" />
+                  <TextBlock Text="{Binding CheckText}" VerticalAlignment="Center" FontWeight="SemiBold"
+                             TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Button>
+              <Button x:Name="LookupButton" Grid.Column="1" Classes="secondary" Height="46" HorizontalAlignment="Stretch"
+                      CornerRadius="{StaticResource PgRadius.Button}" Command="{Binding LookupCommand}"
+                      AutomationProperties.Name="{Binding LookupText}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                  <c:Icon Classes.spin="{Binding IsLookingUp}" Data="{StaticResource Icon.Refresh}" Width="16" Height="16"
+                          StrokeThickness="2.2" IsVisible="{Binding IsLookingUp}" />
+                  <TextBlock Text="{Binding LookupText}" VerticalAlignment="Center" FontWeight="Medium"
+                             TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+              </Button>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Карта: звено, участок, звено… -->
+        <Border Classes="card" Padding="16,14">
+          <StackPanel Spacing="8">
+            <TextBlock x:Name="Summary" Classes="strong" Text="{Binding Summary}" TextWrapping="Wrap" />
+            <ItemsControl x:Name="PathList" ItemsSource="{Binding Steps}">
+              <ItemsControl.DataTemplates>
+                <DataTemplate DataType="vm:PathNodeViewModel">
+                  <Grid ColumnDefinitions="Auto,*,Auto" AutomationProperties.Name="{Binding Title}">
+                    <Border Classes="node" Classes.measured="{Binding IsMeasured}" Width="36" Height="36" CornerRadius="18">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="20" Height="20" StrokeThickness="1.9" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Title}" TextTrimming="CharacterEllipsis" />
+                      <SelectableTextBlock Classes="value" Text="{Binding Subtitle}" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Classes="evidence" Classes.measured="{Binding IsMeasured}" Padding="9,3" CornerRadius="10"
+                            VerticalAlignment="Center">
+                      <TextBlock Text="{Binding EvidenceText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold" />
+                    </Border>
+                  </Grid>
+                </DataTemplate>
+                <DataTemplate DataType="vm:PathLinkViewModel">
+                  <Grid ColumnDefinitions="36,*" MinHeight="34">
+                    <!-- Линия на всю высоту участка: холст в разметке места не просит, лишнее обрезается -->
+                    <Canvas ClipToBounds="True">
+                      <Line Classes="link" Classes.measured="{Binding IsMeasured}" Classes.conditional="{Binding IsConditional}"
+                            Classes.tunnel="{Binding IsTunnel}" StartPoint="18,0" EndPoint="18,400" />
+                    </Canvas>
+                    <StackPanel Grid.Column="1" Margin="12,4" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="caption" Text="{Binding Text}" TextWrapping="Wrap" />
+                      <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsTunnel}">
+                        <c:Icon Data="{StaticResource Icon.Lock}" Width="12" Height="12" StrokeThickness="2.2"
+                                Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+                        <TextBlock Classes="caption" Text="{Binding TunnelText}" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+                      </StackPanel>
+                    </StackPanel>
+                  </Grid>
+                </DataTemplate>
+              </ItemsControl.DataTemplates>
+            </ItemsControl>
+          </StackPanel>
+        </Border>
+
+        <!-- Что значат «измерено» и «условно» -->
+        <TextBlock Classes="overline" Text="{l:L path.legend, Upper=True}" Margin="6,8,6,0" />
+        <Border Classes="card" Padding="16,12">
+          <StackPanel Spacing="10">
+            <Grid ColumnDefinitions="36,*">
+              <Line Classes="link measured" StartPoint="18,2" EndPoint="18,30" />
+              <StackPanel Grid.Column="1" Margin="12,0" Spacing="2">
+                <TextBlock Classes="strong" Text="{l:L path.measured.title}" />
+                <TextBlock Classes="caption" Text="{l:L path.measured.text}" TextWrapping="Wrap"
+                           LineHeight="{StaticResource PgLineHeight.Body}" />
+              </StackPanel>
+            </Grid>
+            <Grid ColumnDefinitions="36,*">
+              <Line Classes="link conditional" StartPoint="18,2" EndPoint="18,30" />
+              <StackPanel Grid.Column="1" Margin="12,0" Spacing="2">
+                <TextBlock Classes="strong" Text="{l:L path.conditional.title}" />
+                <TextBlock Classes="caption" Text="{l:L path.conditional.text}" TextWrapping="Wrap"
+                           LineHeight="{StaticResource PgLineHeight.Body}" />
+              </StackPanel>
+            </Grid>
+            <Grid ColumnDefinitions="36,*">
+              <Line Classes="link measured tunnel" StartPoint="18,2" EndPoint="18,30" />
+              <StackPanel Grid.Column="1" Margin="12,0" Spacing="2">
+                <TextBlock Classes="strong" Text="{l:L path.tunnel.title}" />
+                <TextBlock Classes="caption" Text="{l:L path.tunnel.text}" TextWrapping="Wrap"
+                           LineHeight="{StaticResource PgLineHeight.Body}" />
+              </StackPanel>
+            </Grid>
+          </StackPanel>
+        </Border>
+
+        <!-- Запас под островок: содержимое прокручивается под ним -->
+        <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>
