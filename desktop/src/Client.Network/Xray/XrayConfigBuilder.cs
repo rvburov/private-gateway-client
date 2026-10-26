@@ -84,6 +84,21 @@ public static class XrayConfigBuilder
     /// <summary>DNS по умолчанию, если в профиле своего нет: DoH через туннель.</summary>
     public const string DefaultDns = "https://1.1.1.1/dns-query";
 
+    /// <summary>
+    /// Локальные и особые адреса — их закрывает правило локальной сети (при «Разрешить локальную сеть» — пускает напрямую):
+    /// частные, CGNAT, петля, link-local, адреса документации и тестов, групповые, зарезервированные — по реестрам особых
+    /// адресов IANA для IPv4 и IPv6. Это категория private геобазы Xray (Loyalsoldier/geoip), только без самой геобазы:
+    /// ее GeoIP собран из данных MaxMind GeoLite2, а нужна была от нее одна эта категория.
+    /// </summary>
+    public static IReadOnlyList<string> LocalNetworks { get; } =
+    [
+        "0.0.0.0/8", "10.0.0.0/8", "100.64.0.0/10", "127.0.0.0/8", "169.254.0.0/16", "172.16.0.0/12", "192.0.0.0/24", "192.0.2.0/24",
+        "192.31.196.0/24", "192.52.193.0/24", "192.88.99.0/24", "192.168.0.0/16", "198.18.0.0/15", "198.51.100.0/24", "203.0.113.0/24",
+        "224.0.0.0/4", "240.0.0.0/4", "255.255.255.255/32",
+        "::/127", "64:ff9b::/96", "64:ff9b:1::/48", "100::/64", "2001::/23", "2001:db8::/32", "2620:4f:8000::/48", "3fff::/20", "5f00::/16",
+        "fc00::/7", "fe80::/10", "ff00::/8",
+    ];
+
     /// <param name="request">Сервер и настройки.</param>
     /// <param name="tun">Режим VPN: вход только для своего TUN и адрес сервера; null — вход прокси из настроек.</param>
     /// <param name="probe">Вход проверки связи с сервером; null — без него.</param>
@@ -451,7 +466,7 @@ public static class XrayConfigBuilder
         rules.Add(new JsonObject
         {
             ["type"] = "field",
-            ["ip"] = new JsonArray("geoip:private"),
+            ["ip"] = new JsonArray([.. LocalNetworks.Select(n => JsonValue.Create(n))]),
             ["outboundTag"] = request.Protection.AllowLan ? DirectTag : BlockTag,
         });
         // «Только IPv4»: адреса IPv6 без имени — в блок. Только с входа программ: собственный DNS Xray, заданный адресом

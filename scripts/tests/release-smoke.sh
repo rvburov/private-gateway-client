@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # Проверка выпуска из artifacts/release (scripts/publish.sh): суммы SHA256SUMS сходятся, архив распаковывается, в нем
-# окно, служба, ядра, геобазы, SBOM и THIRD-PARTY-NOTICES, служба запускается без установленного .NET и называет свою
-# версию, ядра запускаются, SBOM в архиве — тот же, что рядом с ним, и называет оба ядра, уведомления — с полными текстами
-# лицензий ядер и авторством геобаз. Запускается в publish.yml и вручную:
+# окно, служба, ядра, геобаза сайтов (геобазы IP нет), SBOM и THIRD-PARTY-NOTICES, служба запускается без установленного
+# .NET и называет свою версию, ядра запускаются, SBOM в архиве — тот же, что рядом с ним, и называет оба ядра,
+# уведомления — с полными текстами лицензий ядер и геобазой. Запускается в publish.yml и вручную:
 #
 #   scripts/tests/release-smoke.sh <версия>
 #
@@ -38,10 +38,11 @@ dir="$tmp/$name"
 
 exe=
 case "$name" in *-win-*) exe=.exe ;; esac
-for file in "PrivateGateway$exe" "PrivateGateway.Service$exe" "cores/xray/xray$exe" cores/xray/geoip.dat cores/xray/geosite.dat \
+for file in "PrivateGateway$exe" "PrivateGateway.Service$exe" "cores/xray/xray$exe" cores/xray/geosite.dat \
   "cores/sing-box/sing-box$exe" cores/sing-box/LICENSE sbom.cdx.json THIRD-PARTY-NOTICES.txt; do
   [ -f "$dir/$file" ] || fail "в архиве нет $file"
 done
+[ ! -e "$dir/cores/xray/geoip.dat" ] || fail "в архиве geoip.dat: локальные сети — списком в конфиге, геобаза IP не нужна"
 if [ -z "$exe" ]; then
   for file in PrivateGateway PrivateGateway.Service cores/xray/xray cores/sing-box/sing-box; do
     [ -x "$dir/$file" ] || fail "$file в архиве без права на запуск"
@@ -60,7 +61,7 @@ for core in '"name": "Xray-core"' '"name": "sing-box"' '"name": "Avalonia"' '"bo
   grep -qF "$core" "$dir/sbom.cdx.json" || fail "в SBOM нет $core"
 done
 for notice in 'sing-box v' 'Исходный код / Source code: https://github.com/SagerNet/sing-box/tree/v' 'GNU GENERAL PUBLIC LICENSE' \
-  'Mozilla Public License Version 2.0' 'JetBrains Mono' 'GeoLite2 data created by MaxMind'; do
+  'Mozilla Public License Version 2.0' 'JetBrains Mono' 'geosite.dat'; do
   grep -qF "$notice" "$dir/THIRD-PARTY-NOTICES.txt" || fail "в THIRD-PARTY-NOTICES нет «$notice»"
 done
 echo "Выпуск $name проверен"

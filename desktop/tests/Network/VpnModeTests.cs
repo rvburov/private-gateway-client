@@ -766,7 +766,7 @@ public sealed partial class VpnModeTests
     {
         await using var rig = await Rig.CreateAsync();
 
-        // Адрес документации Xray считает локальным (geoip:private), а в исключениях TUN его нет: прямой
+        // Адрес документации Xray считает локальным (XrayConfigBuilder.LocalNetworks), а в исключениях TUN его нет: прямой
         // выход Xray к нему идет в TUN — и только правило sing-box по процессу Xray выводит его наружу.
         using var outside = new LocalSite("напрямую", rig.Public);
         await using var service = await RunningService.StartAsync(options: rig.Vpn);

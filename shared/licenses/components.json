@@ -33,14 +33,6 @@
     "source": "https://github.com/SagerNet/sing-box/tree/{version}"
   },
   {
-    "name": "Геобаза IP (geoip.dat)",
-    "license": "GPL-3.0-only",
-    "copyright": "Loyalsoldier/v2ray-rules-dat contributors",
-    "url": "https://github.com/Loyalsoldier/v2ray-rules-dat",
-    "notice": "This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com",
-    "data": "geoip.dat"
-  },
-  {
     "name": "Геобаза сайтов (geosite.dat)",
     "license": "GPL-3.0-only",
     "copyright": "Loyalsoldier/v2ray-rules-dat contributors; domain-list-community: Copyright (c) 2018-2019 V2Ray (MIT)",

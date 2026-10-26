@@ -57,7 +57,7 @@ public sealed class XrayProxyTests
 
         await Should.ThrowAsync<Exception>(() => Get(site.Url, $"socks5://127.0.0.1:{proxyPort}"));
 
-        site.Requests.ShouldBe(0, "geoip:private — блок: до сайта в локальной сети запрос не дошел");
+        site.Requests.ShouldBe(0, "локальная сеть — блок: до сайта в локальной сети запрос не дошел");
     }
 
     [Theory]

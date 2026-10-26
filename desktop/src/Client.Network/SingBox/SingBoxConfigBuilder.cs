@@ -278,7 +278,7 @@ public static class SingBoxConfigBuilder
     /// Программы мимо туннеля: в раздельном режиме — включенные программы из настроек; и сам Xray, когда у
     /// него есть прямой выход — сайты «Напрямую», разрешенная локальная сеть или программы мимо туннеля с
     /// FakeDNS. Иначе его прямое соединение вернулось бы в TUN и снова в Xray: в исключениях TUN не все, что
-    /// Xray считает локальным (<c>geoip:private</c> — еще CGNAT, адреса документации, групповые). Ничего из
+    /// Xray считает локальным (<see cref="Xray.XrayConfigBuilder.LocalNetworks"/> — еще CGNAT, адреса документации, групповые). Ничего из
     /// этого нет — никого. Пути — как их видит ОС у процесса (<paramref name="xray"/> — настоящий путь, без ссылок).
     /// </summary>
     public static IReadOnlyList<string> DirectPrograms(RoutingSettings routing, ProtectionSettings protection, string xray)

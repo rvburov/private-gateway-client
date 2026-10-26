@@ -13,7 +13,7 @@ PrivateGateway-<версия>-<rid>/
   PrivateGateway(.exe)            окно
   PrivateGateway.Service(.exe)    служба — рядом с окном: окно ищет ее в своей папке (UserServiceLauncher)
   *.dll, *.so, *.dylib            .NET и пакеты — самодостаточная сборка, ставить .NET не нужно
-  cores/xray/                     Xray-core, geoip.dat, geosite.dat — служба ищет ядро в cores/ рядом с собой
+  cores/xray/                     Xray-core и geosite.dat — служба ищет ядро в cores/ рядом с собой
   cores/sing-box/                 sing-box (TUN режима VPN, GPL-3.0, отдельный процесс) и его LICENSE
   sbom.cdx.json                   SBOM этого выпуска
   THIRD-PARTY-NOTICES.txt         открытые компоненты, их авторство и полные тексты лицензий
@@ -35,7 +35,8 @@ PrivateGateway-<версия>-<rid>/
   - пакеты NuGet обоих приложений — из их `*.deps.json`, с SHA-512 пакета и лицензией из `.nuspec` в кеше пакетов;
   - среда .NET и ASP.NET Core (runtime pack);
   - Xray-core (MPL-2.0) и sing-box (GPL-3.0-or-later) — версия из `shared/cores/*.version`, SHA-256 файла;
-  - геобазы из архива выпуска Xray (`geoip.dat`, `geosite.dat`) — SHA-256 файла;
+  - геобаза сайтов `geosite.dat` из архива выпуска Xray — SHA-256 файла. `geoip.dat` выпуск не возит: локальные сети
+    служба пишет в конфиг списком (`XrayConfigBuilder.LocalNetworks`), а GeoIP в нем — данные MaxMind GeoLite2;
   - время — `SOURCE_DATE_EPOCH` (время коммита), чтобы две сборки одного коммита не расходились во времени.
 
   Лицензии ядер и геобаз — из `shared/licenses/components.json` (ниже). Неполный SBOM не пишется: пакет без лицензии
@@ -52,7 +53,7 @@ PrivateGateway-<версия>-<rid>/
 
 `THIRD-PARTY-NOTICES.txt`:
 
-- компоненты выпуска с версиями, авторством, ссылками, пакетами и обязательными строками авторства данных (GeoLite2);
+- компоненты выпуска с версиями, авторством, ссылками, пакетами и обязательными строками авторства данных;
 - полные тексты лицензий из `shared/licenses/texts/<SPDX>.txt` (канонические тексты SPDX), каждый один раз;
 - уведомления, которые пакеты NuGet приносят сами (`THIRD-PARTY-NOTICES` .NET, SkiaSharp и HarfBuzz с их встроенными
   библиотеками, CommunityToolkit), одинаковые — один раз со списком пакетов.
@@ -64,7 +65,7 @@ PrivateGateway-<версия>-<rid>/
 - тесты `AboutPageTests` — каждый пакет проектов и каждый шрифт окна в списке, у каждого компонента есть авторство и
   ссылка, у каждой лицензии — текст, лишних текстов нет, каждое ядро из `shared/cores` в списке;
 - `release-smoke.sh` — в архиве есть уведомления с текстами GPL и MPL, ссылкой на исходники sing-box, JetBrains Mono и
-  строкой авторства GeoLite2.
+  геобазой сайтов.
 
 ## Проверка
 

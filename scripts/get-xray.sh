@@ -22,8 +22,8 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
 if [ "${1:-}" = "--build" ]; then
-  # Облако без доступа к выпускам GitHub: сборка из исходников тега (нужны git и go), геобазы — из ветки
-  # release Loyalsoldier/v2ray-rules-dat, их же кладет в архив выпуск Xray. Только для тестов: суммы
+  # Облако без доступа к выпускам GitHub: сборка из исходников тега (нужны git и go), геобаза сайтов — из ветки
+  # release Loyalsoldier/v2ray-rules-dat, ее же кладет в архив выпуск Xray. Только для тестов: суммы
   # выпуска к такой сборке не относятся.
   command -v go > /dev/null || { echo "Нет go — собрать Xray из исходников нельзя" >&2; exit 1; }
   git -c advice.detachedHead=false clone -q --depth 1 --branch "$version" https://github.com/XTLS/Xray-core "$tmp/src"
@@ -31,7 +31,7 @@ if [ "${1:-}" = "--build" ]; then
   rm -rf "$dest"
   mkdir -p "$dest"
   (cd "$tmp/src" && CGO_ENABLED=0 go build -o "$dest/xray$(go env GOEXE)" -trimpath -buildvcs=false -ldflags="-s -w -buildid=" ./main)
-  cp "$tmp/geo/geoip.dat" "$tmp/geo/geosite.dat" "$dest/"
+  cp "$tmp/geo/geosite.dat" "$dest/"
   echo "Xray $version собран из исходников → $dest (только для тестов)"
   exit 0
 fi
@@ -72,6 +72,9 @@ else
   python3 -m zipfile -e "$tmp/$asset" "$dest" 2> /dev/null || python -m zipfile -e "$tmp/$asset" "$dest"
 fi
 chmod +x "$dest/xray" 2> /dev/null || true
+# geoip.dat не нужен: локальные сети служба пишет в конфиг списком (XrayConfigBuilder.LocalNetworks), а GeoIP в нем
+# собран из данных MaxMind GeoLite2 со своими условиями. Без файла его не возит ни выпуск, ни тесты.
+rm -f "$dest/geoip.dat"
 
 echo "Xray $version ($asset) → $dest"
 echo "SHA-256: $version $asset $actual ${pinned:+(закреплена)}"

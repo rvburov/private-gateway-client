@@ -201,6 +201,17 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Lan_rule_lists_its_networks_and_the_core_needs_no_geoip_database()
+    {
+        var config = Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], [new DomainRule("geosite:category-ads-all", RuleAction.Block)]));
+
+        var lan = config["routing"]!["rules"]!.AsArray().Single(r => r!["ip"]?[0]?.GetValue<string>() == XrayConfigBuilder.LocalNetworks[0])!;
+        lan["ip"]!.AsArray().Select(n => n!.GetValue<string>()).ShouldBe(XrayConfigBuilder.LocalNetworks);
+        config.ToJsonString().ShouldNotContain("geoip:", customMessage: "geoip.dat в выпуск не идет: без него ядро не запустилось бы с таким правилом");
+        MustBeLocal.Except(XrayConfigBuilder.LocalNetworks).ShouldBeEmpty("частные, CGNAT, петля, link-local, групповые и адреса документации — локальные");
+    }
+
+    [Fact]
     public void Rules_block_the_lan_and_ipv6_and_keep_direct_only_in_split_mode()
     {
         var rules = new[]
@@ -216,7 +227,7 @@ public sealed class XrayConfigTests
         var all = Rules(Build(Link("vless/reality-vision"), routing: new RoutingSettings(RoutingMode.AllTraffic, [], rules)));
         all.ShouldBe(
         [
-            ("ip:geoip:private", "block"),
+            (Local, "block"),
             ("domain:domain:example.net", "block"), ("domain:geosite:category-ads-all", "block"), ("domain:domain:example.org", "proxy"),
             ("ip:203.0.113.9", "block"),
         ], "адрес и подсеть — условием IP, в порядке списка");
@@ -224,7 +235,7 @@ public sealed class XrayConfigTests
         var split = Rules(Build(Link("vless/reality-vision"),
             protection: ProtectionSettings.Default with { AllowLan = true, BlockIpv6 = false },
             routing: new RoutingSettings(RoutingMode.Split, [], rules)));
-        split[0].ShouldBe(("ip:geoip:private", "direct"), "локальная сеть разрешена");
+        split[0].ShouldBe((Local, "direct"), "локальная сеть разрешена");
         split.ShouldContain(("domain:domain:example.com", "direct"));
         split.ShouldContain(("ip:198.51.100.0/24", "direct"));
         split.ShouldNotContain(("ip:::/0", "block"));
@@ -244,7 +255,7 @@ public sealed class XrayConfigTests
         var rules = Rules(config);
         if (direct)
         {
-            rules.IndexOf(("ip:" + custom, "direct")).ShouldBe(rules.IndexOf(("ip:geoip:private", "block")) - 1, "раньше закрытия локальной сети");
+            rules.IndexOf(("ip:" + custom, "direct")).ShouldBe(rules.IndexOf((Local, "block")) - 1, "раньше закрытия локальной сети");
             config["routing"]!["rules"]!.AsArray().Single(r => r!["ip"]?[0]?.GetValue<string>() == custom)!["port"]!.GetValue<string>().ShouldBe("53");
         }
         else
@@ -462,6 +473,15 @@ public sealed class XrayConfigTests
                 + (named["skipFallback"]!.GetValue<bool>() ? string.Empty : " и для остальных")
             : s!.GetValue<string>()),
     ];
+
+    private static readonly string[] MustBeLocal =
+    [
+        "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "100.64.0.0/10", "127.0.0.0/8", "192.0.2.0/24", "198.51.100.0/24",
+        "203.0.113.0/24", "224.0.0.0/4", "fc00::/7", "fe80::/10", "ff00::/8", "2001:db8::/32", "::/127",
+    ];
+
+    // Правило локальной сети в Rules: первым адресом списка.
+    private static readonly string Local = "ip:" + XrayConfigBuilder.LocalNetworks[0];
 
     private static List<(string Condition, string Outbound)> Rules(JsonObject config) =>
     [
