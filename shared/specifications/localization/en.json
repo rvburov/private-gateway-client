@@ -1365,5 +1365,7 @@
   "android.dnsCustom.note": "An IP address or DoH by IP (https://IP/…). Lookups go through the tunnel.",
   "android.servers.search.placeholder": "Name, country, protocol",
   "android.servers.latency.never": "Latency not measured yet",
-  "android.card.core.none": "none: the phone does not connect Hysteria2 or TUIC"
+  "android.card.core.none": "none: the phone does not connect Hysteria2 or TUIC",
+  "android.servers.ping.done": "Latency checked",
+  "android.servers.ping.busy": "Latency is measured while the VPN is off"
 }

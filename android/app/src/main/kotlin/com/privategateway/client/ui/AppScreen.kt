@@ -1,5 +1,6 @@
 package com.privategateway.client.ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -38,6 +39,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -96,6 +98,10 @@ fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, servers: Se
     // Открытая карточка сервера (доска 11) — страница поверх списка серверов.
     var card by rememberSaveable { mutableStateOf<String?>(null) }
     val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+    LaunchedEffect(viewModel) {
+        viewModel.messages.collect { Toast.makeText(context, context.getString(it.text, *it.args), Toast.LENGTH_LONG).show() }
+    }
     LaunchedEffect(requested) {
         requested?.let {
             tab = it
@@ -124,7 +130,14 @@ fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, servers: Se
 
             val open = card
             when (tab) {
-                Tab.Home -> HomeScreen(ui, onServers = { tab = Tab.Servers }, onCheck = { tab = Tab.Check }, onAdd = { adding = true })
+                Tab.Home -> HomeScreen(
+                    ui,
+                    onServers = { tab = Tab.Servers },
+                    onCheck = { tab = Tab.Check },
+                    onAdd = { adding = true },
+                    onSelect = viewModel::select,
+                    onRefresh = viewModel::refreshLatency,
+                )
                 Tab.Servers -> if (open != null) {
                     ServerCardScreen(
                         ui,
@@ -149,6 +162,7 @@ fun AppScreen(viewModel: MainViewModel, settings: SettingsViewModel, servers: Se
                             select = viewModel::select,
                             open = { card = it },
                             add = { adding = true },
+                            refresh = viewModel::refreshLatency,
                             search = servers::search,
                             tab = servers::tab,
                             toggleProtocol = servers::toggleProtocol,

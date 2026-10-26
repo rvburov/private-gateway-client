@@ -1365,5 +1365,7 @@
   "android.dnsCustom.note": "IP-адрес или DoH по IP (https://IP/…). Запросы идут через туннель.",
   "android.servers.search.placeholder": "Название, страна, протокол",
   "android.servers.latency.never": "Задержку еще не мерили",
-  "android.card.core.none": "нет: Hysteria2 и TUIC телефон не подключает"
+  "android.card.core.none": "нет: Hysteria2 и TUIC телефон не подключает",
+  "android.servers.ping.done": "Задержка проверена",
+  "android.servers.ping.busy": "Задержка меряется, пока VPN выключен"
 }

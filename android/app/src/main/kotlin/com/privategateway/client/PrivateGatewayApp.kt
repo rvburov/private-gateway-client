@@ -3,6 +3,8 @@ package com.privategateway.client
 import android.app.Application
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
+import com.privategateway.client.di.AppEntryPoint
+import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.android.HiltAndroidApp
 
 @HiltAndroidApp
@@ -22,6 +24,9 @@ class PrivateGatewayApp : Application() {
             .setDescription(getString(R.string.android_notify_alerts_text))
             .build()
         NotificationManagerCompat.from(this).createNotificationChannelsCompat(listOf(tunnel, alerts))
+
+        // Подписки обновляются в процессе приложения: на переходе в «Защищено» и по расписанию (решение 434).
+        EntryPointAccessors.fromApplication(this, AppEntryPoint::class.java).updater().start()
     }
 
     companion object {

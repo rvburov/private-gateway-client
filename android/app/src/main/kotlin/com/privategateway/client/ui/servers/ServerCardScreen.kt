@@ -167,10 +167,13 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
             title = { Text(stringResource(R.string.dialog_deleteServer_title, server.displayName), style = PgType.Title) },
             text = { Text(stringResource(if (active) R.string.dialog_deleteServer_textInUse else R.string.dialog_deleteServer_text), style = PgType.Body) },
             confirmButton = {
-                TextButton(onClick = {
-                    deleting = false
-                    actions.delete(server.id)
-                }) {
+                TextButton(
+                    onClick = {
+                        deleting = false
+                        actions.delete(server.id)
+                    },
+                    modifier = Modifier.testTag("card.delete.confirm"),
+                ) {
                     Text(stringResource(R.string.dialog_deleteServer_delete), color = PgColor.Status.Danger.Text)
                 }
             },

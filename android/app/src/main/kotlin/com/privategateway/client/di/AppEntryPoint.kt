@@ -2,6 +2,7 @@ package com.privategateway.client.di
 
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
@@ -16,4 +17,6 @@ interface AppEntryPoint {
     fun settings(): SettingsRepository
 
     fun monitor(): TunnelMonitor
+
+    fun updater(): SubscriptionUpdater
 }

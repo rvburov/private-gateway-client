@@ -23,7 +23,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,11 +37,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
+import com.privategateway.client.core.servers.QuickSwitch
+import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.ProtectionChip
 import com.privategateway.client.ui.ProtectionChips
 import com.privategateway.client.ui.StateLook
 import com.privategateway.client.ui.Texts
+import com.privategateway.client.ui.servers.LatencyText
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
@@ -57,7 +63,14 @@ import java.util.Locale
  * замера (этапы 9.2 и 9.5): показывается только измеренное, без предполагаемых значений.
  */
 @Composable
-fun HomeScreen(ui: MainUi, onServers: () -> Unit, onCheck: () -> Unit, onAdd: () -> Unit) {
+fun HomeScreen(
+    ui: MainUi,
+    onServers: () -> Unit,
+    onCheck: () -> Unit,
+    onAdd: () -> Unit,
+    onSelect: (String) -> Unit = {},
+    onRefresh: () -> Unit = {},
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -69,7 +82,7 @@ fun HomeScreen(ui: MainUi, onServers: () -> Unit, onCheck: () -> Unit, onAdd: ()
     ) {
         Header(onAdd)
         StatusCard(ui, onCheck)
-        ServerCard(ui, onServers, onAdd)
+        ServerCard(ui, onServers, onAdd, onSelect, onRefresh)
     }
 }
 
@@ -220,10 +233,14 @@ private fun Chip(chip: ProtectionChip, modifier: Modifier) {
     }
 }
 
-/** Сервер в работе (или выбранный): флаг страны, название, протокол и порт; «Сменить» ведет в «Серверы». */
+/**
+ * Сервер в работе (или выбранный): флаг страны, название, протокол и порт. «Сменить ▾» раскрывает быструю смену (доска
+ * 25, решение 431): сервер в работе и два самых быстрых измеренных, «Обновить» — замер задержки, «Все серверы ›».
+ */
 @Composable
-private fun ServerCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit) {
+private fun ServerCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSelect: (String) -> Unit, onRefresh: () -> Unit) {
     val server = ui.inUse
+    var quick by rememberSaveable { mutableStateOf(false) }
     PgCard(Modifier.fillMaxWidth()) {
         if (server == null && ui.servers.isEmpty()) {
             Overline(stringResource(R.string.server_none))
@@ -246,7 +263,13 @@ private fun ServerCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit) {
             }
 
         } else {
-            Row(Modifier.fillMaxWidth().clickable(role = Role.Button, onClick = onServers), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable(role = Role.Button, onClickLabel = stringResource(R.string.server_quick)) { quick = !quick }
+                    .testTag("server.switch"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 CountryBadge(server.countryCode)
                 Spacer(Modifier.width(PgSpace.L))
                 Column(Modifier.weight(1f)) {
@@ -257,8 +280,64 @@ private fun ServerCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit) {
                 Text(stringResource(R.string.server_switch), color = PgColor.Accent.Text, style = PgType.BodyStrong)
                 PgIcon(PgIcons.ChevronDown, null, color = PgColor.Accent.Text, size = 16.dp)
             }
+
+            if (quick) {
+                QuickSwitchList(ui, server, onRefresh, onServers) { id ->
+                    quick = false
+                    onSelect(id)
+                }
+            }
         }
     }
+}
+
+/** Быстрая смена: сервер в работе и самые быстрые измеренные; нажатие — выбор (под защитой — сразу переподключение). */
+@Composable
+private fun QuickSwitchList(ui: MainUi, inUse: ServerItem, onRefresh: () -> Unit, onServers: () -> Unit, onPick: (String) -> Unit) {
+    Spacer(Modifier.height(PgSpace.M))
+    HorizontalDivider(color = PgColor.Line.Divider)
+    Row(Modifier.fillMaxWidth().padding(top = PgSpace.S), verticalAlignment = Alignment.CenterVertically) {
+        Overline(stringResource(R.string.server_quick), Modifier.weight(1f))
+        val refresh = stringResource(R.string.server_refresh)
+        Box(
+            Modifier
+                .size(PgLayout.TouchTarget)
+                .clip(CircleShape)
+                .clickable(enabled = !ui.measuring, onClickLabel = refresh, role = Role.Button, onClick = onRefresh)
+                .testTag("quick.refresh"),
+            contentAlignment = Alignment.Center,
+        ) {
+            PgIcon(PgIcons.Refresh, refresh, color = if (ui.measuring) PgColor.Text.Muted else PgColor.Accent.Text, size = 20.dp)
+        }
+    }
+
+    for (server in QuickSwitch.pick(ui.servers, inUse)) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(PgRadius.Button))
+                .clickable(role = Role.Button) { onPick(server.id) }
+                .padding(vertical = PgSpace.S)
+                .testTag("quick.${server.id}"),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CountryBadge(server.countryCode)
+            Spacer(Modifier.width(PgSpace.M))
+            Text(server.displayName, style = PgType.Body, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            LatencyText(server)
+        }
+    }
+
+    Text(
+        stringResource(R.string.server_all),
+        color = PgColor.Accent.Text,
+        style = PgType.BodyStrong,
+        modifier = Modifier
+            .clip(RoundedCornerShape(PgRadius.Button))
+            .clickable(role = Role.Button, onClick = onServers)
+            .padding(vertical = PgSpace.S)
+            .testTag("quick.all"),
+    )
 }
 
 /** Значок страны: две буквы кода на подложке (цветные флаги шрифт рисует не везде); кода нет — щит. */

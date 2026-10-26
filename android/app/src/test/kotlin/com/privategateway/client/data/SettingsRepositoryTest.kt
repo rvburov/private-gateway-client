@@ -4,7 +4,9 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.subscriptions.RefreshInterval
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -69,5 +71,20 @@ class SettingsRepositoryTest {
         // Значение из будущей версии — по умолчанию, а не авария.
         store.edit { it[stringPreferencesKey("tunnel_dns")] = "SomethingNew" }
         assertEquals(DnsChoice.Profile, settings.tunnel.first().dns)
+    }
+
+    @Test
+    fun `subscription settings default to every 12 hours only via vpn and come back as saved`() = runBlocking<Unit> {
+        val file = folder.root.resolve("settings.preferences_pb")
+        val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+        val settings = SettingsRepository(store)
+        assertEquals(SubscriptionSettings(RefreshInterval.Every12Hours, onlyViaVpn = true, notifySelected = true), settings.subscriptions.first())
+
+        val changed = SubscriptionSettings(RefreshInterval.Off, onlyViaVpn = false, notifySelected = false)
+        settings.setSubscriptions(changed)
+        assertEquals(changed, settings.subscriptions.first())
+
+        store.edit { it[stringPreferencesKey("subs_refresh")] = "Every48Hours" }
+        assertEquals(RefreshInterval.Every12Hours, settings.subscriptions.first().refresh, "значение из будущей версии — по умолчанию")
     }
 }

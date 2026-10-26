@@ -1,7 +1,9 @@
 package com.privategateway.client.ui
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.privategateway.client.R
 import com.privategateway.client.core.links.ImportBatch
 import com.privategateway.client.core.links.ImportParser
 import com.privategateway.client.core.servers.ServerItem
@@ -15,16 +17,23 @@ import com.privategateway.client.core.subscriptions.SubscriptionFetch
 import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.subscriptions.SubscriptionNotice
+import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.vpn.CoreEngine
+import com.privategateway.client.vpn.LatencyMeter
+import com.privategateway.client.vpn.MeasureResult
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
 import com.privategateway.client.vpn.TunnelState
 import com.privategateway.client.vpn.TunnelStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
@@ -44,6 +53,7 @@ data class MainUi(
     val servers: List<ServerItem> = emptyList(),
     val selectedId: String? = null,
     val subscriptions: List<SubscriptionRef> = emptyList(),
+    val measuring: Boolean = false,
 ) {
     /** Защита идет или поднимается через этот сервер (строка «активен», «Используется сейчас» в карточке). */
     fun active(id: String): Boolean = status.state != TunnelState.Off && status.state != TunnelState.Error && status.serverId == id
@@ -63,6 +73,9 @@ data class MainUi(
             }
         }
 }
+
+/** Короткое сообщение окна: текст и подстановки. */
+class Message(@param:StringRes val text: Int, vararg val args: String)
 
 enum class PowerAction {
     /** Включить или выключить защиту. */
@@ -101,10 +114,40 @@ class MainViewModel @Inject constructor(
     private val engine: CoreEngine,
     private val source: SubscriptionSource,
     private val control: TunnelControl,
+    private val meter: LatencyMeter,
+    private val updater: SubscriptionUpdater,
 ) : ViewModel() {
-    val ui: StateFlow<MainUi> = combine(monitor.status, servers.servers, settings.selectedServerId, servers.subscriptionRefs) { status, list, selected, groups ->
-        MainUi(status, list, selected, groups)
+    val ui: StateFlow<MainUi> = combine(
+        monitor.status,
+        servers.servers,
+        settings.selectedServerId,
+        servers.subscriptionRefs,
+        meter.measuring,
+    ) { status, list, selected, groups, measuring ->
+        MainUi(status, list, selected, groups, measuring)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MainUi())
+
+    private val notices = MutableSharedFlow<Message>(extraBufferCapacity = 8)
+
+    /** Короткие сообщения окна: итог замера задержки, выбранный сервер пропал или изменился, подписка не обновилась. */
+    val messages: SharedFlow<Message> = notices.asSharedFlow()
+
+    init {
+        viewModelScope.launch {
+            updater.notices.collect { notice ->
+                notices.emit(
+                    when (notice) {
+                        is SubscriptionNotice.Gone -> Message(R.string.subs_notice_missing, notice.server, notice.subscription)
+                        is SubscriptionNotice.Changed -> Message(R.string.subs_notice_changed, notice.server, notice.subscription)
+                        is SubscriptionNotice.Stale -> Message(R.string.subs_failed, notice.subscription)
+                    },
+                )
+            }
+        }
+    }
+
+    /** Окно на экране: не пора ли обновить подписки (как при открытии окна у десктопа). */
+    fun windowShown() = updater.checkNow()
 
     private val importState = MutableStateFlow(ImportUi())
     val importing: StateFlow<ImportUi> = importState.asStateFlow()
@@ -192,6 +235,20 @@ class MainViewModel @Inject constructor(
         val valid = ServerNames.validate(name) ?: return
         val server = ui.value.servers.firstOrNull { it.id == id } ?: return
         viewModelScope.launch { servers.rename(id, valid.takeIf { it != server.linkName }) }
+    }
+
+    /**
+     * «Обновить»: задержка всех серверов через ядро — только без защиты (решение 430). Замер уже идет — нажатие не
+     * считается; защита включена или включилась во время замера — сообщение, почему не мерили.
+     */
+    fun refreshLatency() {
+        viewModelScope.launch {
+            when (meter.measure()) {
+                MeasureResult.Done -> notices.emit(Message(R.string.android_servers_ping_done))
+                MeasureResult.Busy -> notices.emit(Message(R.string.android_servers_ping_busy))
+                MeasureResult.Running -> Unit
+            }
+        }
     }
 
     /** Адрес сервера для карточки («адрес:порт»): открывается из запечатанной ссылки только по просьбе карточки. */

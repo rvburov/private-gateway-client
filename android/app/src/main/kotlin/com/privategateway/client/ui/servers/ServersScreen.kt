@@ -76,6 +76,7 @@ class ServersActions(
     val select: (String) -> Unit,
     val open: (String) -> Unit,
     val add: () -> Unit,
+    val refresh: () -> Unit,
     val search: (String) -> Unit,
     val tab: (ServerListTab) -> Unit,
     val toggleProtocol: (ProxyProtocol) -> Unit,
@@ -102,6 +103,11 @@ fun ServersScreen(ui: MainUi, query: ServerListQuery, actions: ServersActions) {
         item {
             Row(Modifier.fillMaxWidth().padding(top = PgSpace.L, bottom = PgSpace.S), verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.nav_servers), style = PgType.H1, modifier = Modifier.weight(1f))
+                if (ui.servers.isNotEmpty()) {
+                    // Задержка через ядро — только без защиты; пока идет замер, кнопка гаснет (решение 430).
+                    RoundButton(PgIcons.Refresh, stringResource(R.string.server_refresh), "servers.refresh", actions.refresh, enabled = !ui.measuring)
+                }
+
                 RoundButton(PgIcons.Plus, stringResource(R.string.header_add), "servers.add", actions.add)
             }
         }
@@ -160,12 +166,16 @@ private fun emptyText(empty: ServerListEmpty): Int = when (empty) {
 }
 
 @Composable
-private fun RoundButton(icon: String, label: String, tag: String, onClick: () -> Unit) {
+private fun RoundButton(icon: String, label: String, tag: String, onClick: () -> Unit, enabled: Boolean = true) {
     Box(
-        Modifier.size(PgLayout.TouchTarget).clip(CircleShape).clickable(onClickLabel = label, role = Role.Button, onClick = onClick).testTag(tag),
+        Modifier
+            .size(PgLayout.TouchTarget)
+            .clip(CircleShape)
+            .clickable(enabled = enabled, onClickLabel = label, role = Role.Button, onClick = onClick)
+            .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        PgIcon(icon, label, color = PgColor.Text.Primary, size = 24.dp, strokeWidth = 2f)
+        PgIcon(icon, label, color = if (enabled) PgColor.Text.Primary else PgColor.Text.Muted, size = 24.dp, strokeWidth = 2f)
     }
 }
 

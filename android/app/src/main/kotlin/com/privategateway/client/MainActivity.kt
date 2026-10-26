@@ -72,6 +72,11 @@ class MainActivity : ComponentActivity() {
         openTab(intent)
     }
 
+    override fun onStart() {
+        super.onStart()
+        viewModel.windowShown()
+    }
+
     // Окно одно (singleTask): «Сменить сервер» из уведомления приходит сюда, когда окно уже открыто.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)

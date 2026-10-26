@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -13,8 +14,9 @@ import javax.inject.Inject
 import javax.inject.Singleton
 
 /**
- * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя) и настройки туннеля — DNS,
- * IPv6 через сервер, локальная сеть мимо туннеля. Неизвестное значение (из будущей версии) — значение по умолчанию.
+ * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя), настройки туннеля — DNS,
+ * IPv6 через сервер, локальная сеть мимо туннеля — и подписок. Неизвестное значение (из будущей версии) — значение по
+ * умолчанию.
  */
 @Singleton
 class SettingsRepository @Inject constructor(private val store: DataStore<Preferences>) {
@@ -54,8 +56,24 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         }
     }
 
+    /** «Профили и подписки»: автообновление, только через VPN, сообщать о выбранном сервере. */
+    val subscriptions: Flow<SubscriptionSettings> = store.data.map { preferences ->
+        SubscriptionSettings.read(preferences[SUBS_REFRESH], preferences[SUBS_ONLY_VPN], preferences[SUBS_NOTIFY])
+    }
+
+    suspend fun setSubscriptions(settings: SubscriptionSettings) {
+        store.edit { preferences ->
+            preferences[SUBS_REFRESH] = settings.refresh.name
+            preferences[SUBS_ONLY_VPN] = settings.onlyViaVpn
+            preferences[SUBS_NOTIFY] = settings.notifySelected
+        }
+    }
+
     private companion object {
         val SELECTED = stringPreferencesKey("selected_server")
+        val SUBS_REFRESH = stringPreferencesKey("subs_refresh")
+        val SUBS_ONLY_VPN = booleanPreferencesKey("subs_only_vpn")
+        val SUBS_NOTIFY = booleanPreferencesKey("subs_notify_selected")
         val DNS = stringPreferencesKey("tunnel_dns")
         val CUSTOM_DNS = stringPreferencesKey("tunnel_custom_dns")
         val IPV6 = booleanPreferencesKey("tunnel_ipv6")

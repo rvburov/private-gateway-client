@@ -21,6 +21,12 @@ interface CoreEngine {
 
     fun stop()
 
+    /**
+     * Замер задержки (`pingBatch` libXray) — только без туннеля: сокеты замера идут напрямую, [dns] — DNS сети для адресов
+     * серверов. Ответ libXray как есть (разбирает PingBatch); сбой вызова — null.
+     */
+    fun ping(request: String, dns: String): String?
+
     fun version(): String?
 }
 
@@ -30,11 +36,14 @@ interface CoreEngine {
  * приложении нет.
  */
 class LibXrayEngine @Inject constructor() : CoreEngine {
-    override fun start(configJson: String, protect: (Int) -> Boolean, dns: String): String? {
+    /** Запуск, остановка и замер — по одному: замер ставит свой DNS и свой режим сокетов, ядро туннеля — свои. */
+    private val lock = Any()
+
+    override fun start(configJson: String, protect: (Int) -> Boolean, dns: String): String? = synchronized(lock) {
         Dialer.attach(protect)
         changeDns(dns)?.let { return it }
         val response = XrayResponse.parse(LibXray.invoke(XrayConfig.runRequest(configJson)))
-        return if (response.success) null else response.error ?: "runXray"
+        if (response.success) null else response.error ?: "runXray"
     }
 
     override fun changeDns(dns: String): String? = try {
@@ -44,10 +53,30 @@ class LibXrayEngine @Inject constructor() : CoreEngine {
         "setDNS: ${e.message}"
     }
 
-    override fun stop() {
+    override fun stop() = synchronized(lock) {
         LibXray.invoke(XrayConfig.invoke("stopXray"))
         LibXray.resetDNS()
         Dialer.detach()
+    }
+
+    // Туннеля нет — защищать сокет не от чего: контроллер пропускает каждый (иначе замер не вышел бы в сеть). После замера
+    // контроллер снова закрыт, пока служба не подключит свой.
+    override fun ping(request: String, dns: String): String? = synchronized(lock) {
+        // Туннель успел подняться — его контроллер не трогать: пропуск всех сокетов увел бы соединения ядра в туннель.
+        if (Dialer.attached) {
+            return null
+        }
+
+        Dialer.attach { true }
+        try {
+            changeDns(dns)
+            LibXray.invoke(request)
+        } catch (_: Exception) {
+            null
+        } finally {
+            LibXray.resetDNS()
+            Dialer.detach()
+        }
     }
 
     override fun version(): String? = try {
@@ -80,5 +109,8 @@ class LibXrayEngine @Inject constructor() : CoreEngine {
         fun detach() {
             protect = null
         }
+
+        /** Служба подключила свой контроллер — ядро туннеля работает. */
+        val attached: Boolean get() = protect != null
     }
 }

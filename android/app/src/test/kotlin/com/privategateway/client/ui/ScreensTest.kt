@@ -19,6 +19,8 @@ import com.privategateway.client.Fixtures
 import com.privategateway.client.R
 import com.privategateway.client.core.links.ImportParser
 import com.privategateway.client.core.subscriptions.FailureReason
+import com.privategateway.client.core.servers.Latency
+import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
@@ -100,6 +102,30 @@ class ScreensTest {
         compose.onNodeWithTag("server.choose").performScrollTo().assertIsDisplayed().performClick()
         assertEquals(1, listed)
         assertEquals(0, added)
+    }
+
+    @Test
+    fun `home quick switch offers the server in use and the fastest measured`() {
+        val fast = ServerItem("fast", "Быстрый", "FI", ProxyProtocol.Vless, TransportSecurity.Tls, TransportKind.Tcp, 443, latency = Latency.of(30))
+        val silent = ServerItem("silent", "Молчит", "TR", ProxyProtocol.Vless, TransportSecurity.Tls, TransportKind.Tcp, 443, latency = Latency.failed(LatencyFailure.NoResponse))
+        val picked = mutableListOf<String>()
+        var refreshed = 0
+        compose.setContent {
+            PgTheme { HomeScreen(MainUi(servers = listOf(nl, fast, silent, plain), selectedId = "nl"), {}, {}, {}, { picked += it }, { refreshed++ }) }
+        }
+
+        compose.onNodeWithTag("quick.nl").assertDoesNotExist()
+        compose.onNodeWithTag("server.switch").performScrollTo().performClick()
+        compose.onNodeWithTag("quick.nl").assertExists()
+        compose.onNodeWithTag("quick.fast").assertExists()
+        compose.onNodeWithTag("quick.silent").assertDoesNotExist()
+        compose.onNodeWithTag("quick.plain").assertDoesNotExist()
+
+        compose.onNodeWithTag("quick.refresh").performScrollTo().performClick()
+        assertEquals(1, refreshed)
+        compose.onNodeWithTag("quick.fast").performScrollTo().performClick()
+        assertEquals(listOf("fast"), picked)
+        compose.onNodeWithTag("quick.fast").assertDoesNotExist()
     }
 
     @Test

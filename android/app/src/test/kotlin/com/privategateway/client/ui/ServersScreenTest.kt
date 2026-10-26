@@ -70,6 +70,7 @@ class ServersScreenTest {
             select = { selected += it },
             open = { opened += it },
             add = {},
+            refresh = {},
             search = { query = query.copy(search = it) },
             tab = { query = query.copy(tab = it) },
             toggleProtocol = { p -> query = query.copy(hiddenProtocols = if (p in query.hiddenProtocols) query.hiddenProtocols - p else query.hiddenProtocols + p) },
@@ -104,10 +105,10 @@ class ServersScreenTest {
     fun `latency is fast, slow, no answer or not measured`() {
         list(MainUi(servers = listOf(nl, us, tr, fi), subscriptions = listOf(provider)))
         val ms = text(R.string.unit_ms)
-        compose.onNodeWithTag("latency.nl").assertTextEquals("42 $ms")
-        compose.onNodeWithTag("latency.us").assertTextEquals("148 $ms")
-        compose.onNodeWithTag("latency.tr").assertTextEquals(text(R.string.servers_latency_none))
-        compose.onNodeWithTag("latency.fi").assertTextEquals("—")
+        compose.onNodeWithTag("latency.nl", useUnmergedTree = true).assertTextEquals("42 $ms")
+        compose.onNodeWithTag("latency.us", useUnmergedTree = true).assertTextEquals("148 $ms")
+        compose.onNodeWithTag("latency.tr", useUnmergedTree = true).assertTextEquals(text(R.string.servers_latency_none))
+        compose.onNodeWithTag("latency.fi", useUnmergedTree = true).assertTextEquals("—")
             .assert(SemanticsMatcher.expectValue(SemanticsProperties.ContentDescription, listOf(text(R.string.android_servers_latency_never))))
     }
 
@@ -127,18 +128,18 @@ class ServersScreenTest {
     @Test
     fun `filter hides protocols, counts what differs and resets`() {
         val harness = list(MainUi(servers = listOf(nl, us, tr), subscriptions = listOf(provider)))
-        compose.onNodeWithTag("servers.filter.count").assertDoesNotExist()
+        compose.onNodeWithTag("servers.filter.count", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("servers.filter").performClick()
         compose.onNodeWithTag("filter.Hysteria2").assertDoesNotExist()
         compose.onNodeWithTag("filter.Trojan").performClick()
         assertEquals(setOf(ProxyProtocol.Trojan), harness.query.hiddenProtocols)
         compose.onNodeWithTag("server.us").assertDoesNotExist()
-        compose.onNodeWithTag("servers.filter.count").assertTextEquals("1")
+        compose.onNodeWithTag("servers.filter.count", useUnmergedTree = true).assertTextEquals("1")
 
         compose.onNodeWithTag("sort.Name").performScrollTo().performClick()
-        compose.onNodeWithTag("servers.filter.count").assertTextEquals("2")
+        compose.onNodeWithTag("servers.filter.count", useUnmergedTree = true).assertTextEquals("2")
         compose.onNodeWithTag("filter.reset").performScrollTo().performClick()
-        compose.onNodeWithTag("servers.filter.count").assertDoesNotExist()
+        compose.onNodeWithTag("servers.filter.count", useUnmergedTree = true).assertDoesNotExist()
         compose.onNodeWithTag("filter.done").performScrollTo().performClick()
         compose.onNodeWithTag("servers.filter.panel").assertDoesNotExist()
     }
@@ -244,7 +245,7 @@ class ServersScreenTest {
         assertEquals(emptyList(), card.deleted)
 
         compose.onNodeWithTag("card.delete").performScrollTo().performClick()
-        compose.onNodeWithText(text(R.string.dialog_deleteServer_delete)).performClick()
+        compose.onNodeWithTag("card.delete.confirm").performClick()
         assertEquals(listOf("nl"), card.deleted)
     }
 

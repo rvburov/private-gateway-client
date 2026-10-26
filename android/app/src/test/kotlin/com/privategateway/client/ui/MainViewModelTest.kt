@@ -10,12 +10,14 @@ import com.privategateway.client.Fixtures
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.core.subscriptions.DownloadFailure
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SubscriptionContent
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.vpn.CoreEngine
+import com.privategateway.client.vpn.LatencyMeter
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
 import com.privategateway.client.vpn.TunnelState
@@ -89,6 +91,8 @@ class MainViewModelTest {
 
         override fun stop() = Unit
 
+        override fun ping(request: String, dns: String): String? = null
+
         override fun version() = "26.10.21"
     }
 
@@ -96,7 +100,7 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(monitor, servers, settings, FakeEngine(), source, control)
+        model = MainViewModel(monitor, servers, settings, FakeEngine(), source, control, LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() }, SubscriptionUpdater(source, servers, settings, monitor))
     }
 
     @After
@@ -309,10 +313,12 @@ class MainViewModelTest {
         model.delete(second)
         assertEquals(0, control.disconnects, "защита идет через другой сервер")
 
+        assertEquals(listOf(first), wait { servers.servers.first { it.size == 1 } }.map { it.id })
+
         model.delete(first)
         assertEquals(1, control.disconnects)
         assertNull(wait { settings.selectedServerId.first { it == null } })
-        assertEquals(listOf(second), wait { servers.servers.first { it.size == 1 } }.map { it.id })
+        assertEquals(emptyList(), wait { servers.servers.first { it.isEmpty() } })
     }
 
     @Test

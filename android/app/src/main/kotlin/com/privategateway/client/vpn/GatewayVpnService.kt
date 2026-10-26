@@ -97,7 +97,7 @@ class GatewayVpnService : VpnService() {
         // чтобы несколько нажатий подряд дали одно переподключение; то, что ядра не меняет, переподключения не требует.
         scope.launch {
             settings.tunnel.combine(applied) { wanted, running -> wanted to running }.collectLatest { (wanted, running) ->
-                if (running != null && running.core() != wanted.core()) {
+                if (running != null && running.needsReconnect(wanted)) {
                     delay(SETTINGS_QUIET_MS)
                     connect(lastStart)
                 }
