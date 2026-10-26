@@ -31,6 +31,9 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     private const uint RpcAuthnWinNt = 10;
     private const uint AlreadyExists = 0x80320009;
     private const uint FilterNotFound = 0x80320003;
+
+    // Сколько ненайденных ключей подряд — конец наших фильтров (DeleteFilters).
+    private const int MissesToEnd = 32;
     private const uint Persistent = 1;
     private const ushort SublayerWeight = 0xFFFF;
 
@@ -193,19 +196,25 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         return true;
     }
 
-    /// <summary>Снять наши фильтры: ключи идут подряд от нулевого, первый ненайденный — конец.</summary>
+    /// <summary>
+    /// Снять наши фильтры: ключи идут подряд от нулевого. Другая программа могла снять часть, и в нумерации дырка — поэтому
+    /// конец не первый ненайденный ключ, а <see cref="MissesToEnd"/> ненайденных подряд: иначе оставшиеся после дырки фильтры
+    /// не дали бы поставить блок заново (уже есть).
+    /// </summary>
     private static void DeleteFilters(IntPtr engine)
     {
-        for (var index = 0; index <= ushort.MaxValue; index++)
+        for (int index = 0, misses = 0; index <= ushort.MaxValue && misses < MissesToEnd; index++)
         {
             var key = WfpRules.FilterKey(index);
             var result = FwpmFilterDeleteByKey0(engine, ref key);
             if (result == FilterNotFound)
             {
-                return;
+                misses++;
+                continue;
             }
 
             Check(result, "снятие фильтра");
+            misses = 0;
         }
     }
 
