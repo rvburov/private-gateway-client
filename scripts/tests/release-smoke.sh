@@ -1,8 +1,9 @@
 #!/bin/bash
 #
 # Проверка выпуска из artifacts/release (scripts/publish.sh): суммы SHA256SUMS сходятся, архив распаковывается, в нем
-# окно, служба, ядра, геобазы и SBOM, служба запускается без установленного .NET и называет свою версию, ядра
-# запускаются, SBOM в архиве — тот же, что рядом с ним, и называет оба ядра. Запускается в publish.yml и вручную:
+# окно, служба, ядра, геобазы, SBOM и THIRD-PARTY-NOTICES, служба запускается без установленного .NET и называет свою
+# версию, ядра запускаются, SBOM в архиве — тот же, что рядом с ним, и называет оба ядра, уведомления — с полными текстами
+# лицензий ядер и авторством геобаз. Запускается в publish.yml и вручную:
 #
 #   scripts/tests/release-smoke.sh <версия>
 #
@@ -38,7 +39,7 @@ dir="$tmp/$name"
 exe=
 case "$name" in *-win-*) exe=.exe ;; esac
 for file in "PrivateGateway$exe" "PrivateGateway.Service$exe" "cores/xray/xray$exe" cores/xray/geoip.dat cores/xray/geosite.dat \
-  "cores/sing-box/sing-box$exe" cores/sing-box/LICENSE sbom.cdx.json; do
+  "cores/sing-box/sing-box$exe" cores/sing-box/LICENSE sbom.cdx.json THIRD-PARTY-NOTICES.txt; do
   [ -f "$dir/$file" ] || fail "в архиве нет $file"
 done
 if [ -z "$exe" ]; then
@@ -57,5 +58,9 @@ echo "ок: $service"
 cmp -s "$dir/sbom.cdx.json" "$release/$name.cdx.json" || fail "SBOM в архиве и рядом с ним разные"
 for core in '"name": "Xray-core"' '"name": "sing-box"' '"name": "Avalonia"' '"bomFormat": "CycloneDX"'; do
   grep -qF "$core" "$dir/sbom.cdx.json" || fail "в SBOM нет $core"
+done
+for notice in 'sing-box v' 'Исходный код / Source code: https://github.com/SagerNet/sing-box/tree/v' 'GNU GENERAL PUBLIC LICENSE' \
+  'Mozilla Public License Version 2.0' 'JetBrains Mono' 'GeoLite2 data created by MaxMind'; do
+  grep -qF "$notice" "$dir/THIRD-PARTY-NOTICES.txt" || fail "в THIRD-PARTY-NOTICES нет «$notice»"
 done
 echo "Выпуск $name проверен"

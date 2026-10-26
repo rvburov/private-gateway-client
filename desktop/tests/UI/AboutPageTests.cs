@@ -55,7 +55,8 @@ public sealed class AboutPageTests : WindowHarness
         Press(window, "LicensesLink");
         var licenses = shell.Overlay.Sheet.ShouldBeOfType<AboutSheetViewModel>();
         licenses.Title.ShouldBe("Лицензии открытых компонентов");
-        licenses.Components.ShouldContain(c => c.Name == "Avalonia" && c.License == "MIT");
+        licenses.Components.ShouldContain(c => c.Name == "Avalonia" && c.Label == "MIT");
+        licenses.Components.ShouldContain(c => c.Name == "SQLite" && c.Label == "Public domain", "непонятный людям SPDX — подписью");
         Dispatcher.UIThread.RunJobs();
         Snapshot(window, "about-licenses");
         licenses.CloseCommand.Execute(null);
@@ -74,15 +75,42 @@ public sealed class AboutPageTests : WindowHarness
     [Fact]
     public void License_list_covers_every_package_the_app_ships()
     {
+        // Пакеты, которые подключают сами проекты; пришедшие с ними сверяет со списком сборка выпуска по SBOM (scripts/package.cs).
         var shipped = Directory.GetFiles(Path.Combine(Repo.Root, "desktop", "src"), "*.csproj", SearchOption.AllDirectories)
             .SelectMany(p => XDocument.Load(p).Descendants("PackageReference"))
             .Where(r => (string?)r.Attribute("PrivateAssets") != "all")
             .Select(r => (string)r.Attribute("Include")!)
             .ToHashSet();
-        var listed = AboutPageViewModel.Components.SelectMany(c => c.Packages).ToHashSet();
 
-        shipped.Except(listed).ShouldBeEmpty("пакет в программе есть, а его лицензии на экране нет");
-        listed.Except(shipped).ShouldBeEmpty("на экране — пакет, которого в программе нет");
+        shipped.Where(p => !AboutPageViewModel.Components.Any(c => c.Covers(p))).ShouldBeEmpty("пакет в программе есть, а его лицензии на экране нет");
+        AboutPageViewModel.Components.Where(c => c.Packages.Count == 0 && c.Files.Count == 0 && c.Core is null && c.Data is null)
+            .Select(c => c.Name).ShouldBeEmpty("компонент ни к чему в программе не привязан");
+    }
+
+    [Fact]
+    public void License_list_covers_every_font_the_window_carries()
+    {
+        var src = Path.Combine(Repo.Root, "desktop", "src");
+        var fonts = Directory.GetFiles(Path.Combine(src, "Client.UI", "Assets"), "*.*", SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".ttf", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".otf", StringComparison.OrdinalIgnoreCase))
+            .Select(f => Path.GetRelativePath(src, f).Replace('\\', '/'))
+            .ToList();
+
+        fonts.ShouldNotBeEmpty();
+        fonts.Where(f => !AboutPageViewModel.Components.Any(c => c.Files.Any(pattern => Matches(pattern, f))))
+            .ShouldBeEmpty("шрифт в окне есть, а его лицензии на экране нет");
+    }
+
+    [Fact]
+    public void Every_license_has_its_full_text_and_every_component_its_copyright()
+    {
+        var texts = Path.Combine(Repo.Root, "shared", "licenses", "texts");
+        var used = AboutPageViewModel.Components.SelectMany(c => LicenseIds(c.License)).Distinct().ToList();
+
+        used.Where(id => !File.Exists(Path.Combine(texts, TextName(id)))).ShouldBeEmpty("лицензия без полного текста в shared/licenses/texts");
+        Directory.GetFiles(texts).Select(Path.GetFileName).Except(used.Select(TextName)).ShouldBeEmpty("текст лицензии, которой ни у кого нет");
+        AboutPageViewModel.Components.Where(c => string.IsNullOrWhiteSpace(c.Copyright) || !c.Url.StartsWith("https://", StringComparison.Ordinal))
+            .Select(c => c.Name).ShouldBeEmpty("у компонента нет строки авторства или ссылки — THIRD-PARTY-NOTICES без них неполный");
     }
 
     [Fact]
@@ -92,10 +120,20 @@ public sealed class AboutPageTests : WindowHarness
         var cores = Directory.GetFiles(Path.Combine(Repo.Root, "shared", "cores"), "*.version").Select(f => Path.GetFileNameWithoutExtension(f)).ToList();
 
         cores.ShouldNotBeEmpty();
-        cores.ShouldAllBe(core => AboutPageViewModel.Components.Any(c => c.Name.StartsWith(core, StringComparison.OrdinalIgnoreCase) && c.Packages.Length == 0),
-            "ядро в службе есть, а его лицензии на экране нет");
-        AboutPageViewModel.Components.Single(c => c.Name == "sing-box").License.ShouldBe("GPL-3.0");
+        cores.Where(core => !AboutPageViewModel.Components.Any(c => c.Core == core)).ShouldBeEmpty("ядро в службе есть, а его лицензии на экране нет");
+        AboutPageViewModel.Components.Single(c => c.Core == "sing-box").License.ShouldBe("GPL-3.0-or-later");
     }
+
+    // Выражение SPDX → идентификаторы: «MIT OR Apache-2.0» → MIT, Apache-2.0.
+    private static IEnumerable<string> LicenseIds(string expression) =>
+        expression.Replace("(", " ", StringComparison.Ordinal).Replace(")", " ", StringComparison.Ordinal)
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(t => t is not ("OR" or "AND" or "WITH"));
+
+    // Текст GPL один на «-only» и «-or-later»: разница — в строке разрешения, а не в тексте.
+    private static string TextName(string id) => id.Replace("-only", string.Empty, StringComparison.Ordinal).Replace("-or-later", string.Empty, StringComparison.Ordinal) + ".txt";
+
+    private static bool Matches(string pattern, string path) =>
+        pattern.EndsWith('*') ? path.StartsWith(pattern[..^1], StringComparison.Ordinal) : path == pattern;
 
     private (MainWindow Window, ShellViewModel Shell, AboutPageViewModel Page) OpenAbout()
     {

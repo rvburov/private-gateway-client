@@ -31,6 +31,8 @@
     <!-- Тексты RU/EN — общие для всех приложений (shared/specifications/localization). -->
     <EmbeddedResource Include="../../../shared/specifications/localization/*.json"
                       LogicalName="loc.%(Filename).json" />
+    <!-- Открытые компоненты для «О программе» — тот же список, что в THIRD-PARTY-NOTICES выпуска. -->
+    <EmbeddedResource Include="../../../shared/licenses/components.json" LogicalName="open-components.json" />
   </ItemGroup>
 
 </Project>

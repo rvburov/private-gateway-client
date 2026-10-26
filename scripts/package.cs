@@ -1,4 +1,5 @@
-// Упаковка сборки выпуска: SBOM (CycloneDX 1.6), архив и контрольные суммы. Вызывает scripts/publish.sh, вручную —
+// Упаковка сборки выпуска: SBOM (CycloneDX 1.6), THIRD-PARTY-NOTICES, архив и контрольные суммы. Вызывает
+// scripts/publish.sh, вручную —
 //   dotnet run scripts/package.cs <папка сборки> <папка выпуска> <версия> <rid>
 //
 // Папка сборки — окно и служба (dotnet publish, самодостаточные) и ядра в cores/xray, cores/sing-box. Имя выпуска —
@@ -7,8 +8,12 @@
 //   <имя>.cdx.json — SBOM: пакеты NuGet обоих приложений (из *.deps.json, с SHA-512 и лицензией из .nuspec кеша
 //     пакетов), среда .NET, ядра и геобазы с SHA-256 файлов; он же лежит в архиве как sbom.cdx.json;
 //   SHA256SUMS — суммы всех файлов папки выпуска (формат sha256sum -c).
+// В папку сборки (и в архив) — еще THIRD-PARTY-NOTICES.txt: компоненты из shared/licenses/components.json (тот же
+// список, что на экране «О программе») с версиями, авторством, ссылками на исходники, полные тексты их лицензий из
+// shared/licenses/texts и уведомления, которые пакеты NuGet приносят сами (THIRD-PARTY-NOTICES в пакете).
 //
-// Неполный SBOM не пишется: пакет без лицензии, ядро без версии или файла — ошибка, а не пропуск.
+// Неполное не пишется: пакет без лицензии в .nuspec или без строки в components.json, ядро без версии или файла,
+// лицензия без текста — ошибка, а не пропуск.
 
 using System.Diagnostics;
 using System.Formats.Tar;
@@ -76,15 +81,46 @@ if (components.Count == 0)
     throw new InvalidOperationException($"В {build.FullName} нет *.deps.json: это не папка dotnet publish.");
 }
 
-var exe = windows ? ".exe" : string.Empty;
-var xray = Version("xray");
-var singBox = Version("sing-box");
-Core("Xray-core", xray, $"pkg:github/XTLS/Xray-core@{xray}", "MPL-2.0", Path.Combine("cores", "xray", "xray" + exe));
-Core("sing-box", singBox, $"pkg:github/SagerNet/sing-box@{singBox}", "GPL-3.0-or-later", Path.Combine("cores", "sing-box", "sing-box" + exe));
+// Открытые компоненты — тот же список, что на экране «О программе»: каждый пакет выпуска должен в нем быть.
+var open = OpenComponents(Path.Combine(root, "shared", "licenses", "components.json"));
+var nuget = components.Values.Select(c => (Id: (string)c["name"]!, Version: (string)c["version"]!)).ToList();
+var uncovered = nuget.Where(p => !open.Any(o => o.Covers(p.Id))).Select(p => p.Id).ToList();
+if (uncovered.Count > 0)
+{
+    throw new InvalidOperationException("Пакеты выпуска без строки в shared/licenses/components.json: " + string.Join(", ", uncovered));
+}
 
-// Геобазы из архива выпуска Xray: GeoIP — данные IPinfo Lite / GeoLite2 (CC BY-SA 4.0), GeoSite — v2fly/domain-list-community (MIT).
-Data("geoip.dat", xray, "CC-BY-SA-4.0", Path.Combine("cores", "xray", "geoip.dat"));
-Data("geosite.dat", xray, "MIT", Path.Combine("cores", "xray", "geosite.dat"));
+// Ядра и геобазы (из архива выпуска Xray, рядом с ним): версия — из shared/cores, лицензия — из списка.
+var exe = windows ? ".exe" : string.Empty;
+foreach (var core in open.Where(o => o.Core is not null))
+{
+    var purl = $"pkg:github/{core.Url["https://github.com/".Length..]}@{Version(core.Core!)}";
+    components[purl] = new JsonObject
+    {
+        ["type"] = "application",
+        ["bom-ref"] = purl,
+        ["name"] = core.Name,
+        ["version"] = Version(core.Core!),
+        ["purl"] = purl,
+        ["licenses"] = new JsonArray(new JsonObject { ["expression"] = core.License }),
+        ["hashes"] = new JsonArray(Hash("SHA-256", Sha256(Existing(Path.Combine("cores", core.Core!, core.Core + exe))))),
+    };
+}
+
+foreach (var data in open.Where(o => o.Data is not null))
+{
+    components["data:" + data.Data] = new JsonObject
+    {
+        ["type"] = "data",
+        ["bom-ref"] = "data:" + data.Data,
+        ["name"] = data.Data,
+        ["version"] = Version("xray"),
+        ["licenses"] = new JsonArray(new JsonObject { ["expression"] = data.License }),
+        ["hashes"] = new JsonArray(Hash("SHA-256", Sha256(Existing(Path.Combine("cores", "xray", data.Data!))))),
+    };
+}
+
+File.WriteAllText(Path.Combine(build.FullName, "THIRD-PARTY-NOTICES.txt"), Notices());
 
 var sbom = new JsonObject
 {
@@ -159,27 +195,6 @@ JsonArray License(string id, string packageVersion)
     throw new InvalidOperationException($"У пакета {id} {packageVersion} в .nuspec нет лицензии — записать ее вручную нельзя, только разобраться.");
 }
 
-void Core(string coreName, string coreVersion, string purl, string license, string path) => components[purl] = new JsonObject
-{
-    ["type"] = "application",
-    ["bom-ref"] = purl,
-    ["name"] = coreName,
-    ["version"] = coreVersion,
-    ["purl"] = purl,
-    ["licenses"] = new JsonArray(new JsonObject { ["expression"] = license }),
-    ["hashes"] = new JsonArray(Hash("SHA-256", Sha256(Existing(path)))),
-};
-
-void Data(string file, string coreVersion, string license, string path) => components["data:" + file] = new JsonObject
-{
-    ["type"] = "data",
-    ["bom-ref"] = "data:" + file,
-    ["name"] = file,
-    ["version"] = coreVersion,
-    ["licenses"] = new JsonArray(new JsonObject { ["expression"] = license }),
-    ["hashes"] = new JsonArray(Hash("SHA-256", Sha256(Existing(path)))),
-};
-
 string Existing(string relative)
 {
     var path = Path.Combine(build.FullName, relative);
@@ -210,6 +225,93 @@ static string PackagesFolder()
     return process.ExitCode == 0 && at > 0 ? output[(at + 1)..].Trim() : throw new InvalidOperationException("dotnet nuget locals не назвал кеш пакетов");
 }
 
+// THIRD-PARTY-NOTICES.txt: компоненты выпуска, тексты их лицензий, уведомления пакетов.
+string Notices()
+{
+    const string Rule = "================================================================================";
+    var lines = new List<string>
+    {
+        $"Private Gateway Client {version} ({rid})",
+        "Открытые компоненты программы и их лицензии / Open source components and their licenses",
+    };
+    var licenses = new List<string>();
+    foreach (var component in open)
+    {
+        var shipped = nuget.Where(p => component.Covers(p.Id)).Select(p => $"{p.Id} {p.Version}").ToList();
+        var componentVersion = component.Core is { } core ? Version(core)
+            : component.Data is not null ? Version("xray")
+            : string.Join(", ", nuget.Where(p => component.Covers(p.Id)).Select(p => p.Version).Distinct());
+        if (component.Packages.Count > 0 && shipped.Count == 0)
+        {
+            // На этой ОС пакетов компонента нет (например, только для другой платформы) — в уведомления он не идет.
+            Console.Error.WriteLine($"Внимание: в выпуске {rid} нет пакетов компонента «{component.Name}»");
+            continue;
+        }
+
+        lines.AddRange([string.Empty, Rule, $"{component.Name} {componentVersion}".TrimEnd(), $"Лицензия / License: {component.License}", component.Copyright, component.Url]);
+        if (component.Source is { } source)
+        {
+            lines.Add("Исходный код / Source code: " + source.Replace("{version}", componentVersion, StringComparison.Ordinal));
+        }
+
+        if (component.Notice is { } notice)
+        {
+            lines.Add(notice);
+        }
+
+        if (shipped.Count > 0)
+        {
+            lines.Add("Пакеты / Packages: " + string.Join(", ", shipped));
+        }
+
+        licenses.AddRange(LicenseIds(component.License).Where(id => !licenses.Contains(id)));
+    }
+
+    // Один текст на несколько идентификаторов (GPL-3.0-only и -or-later) — один раз.
+    lines.AddRange([string.Empty, Rule, "Тексты лицензий / License texts"]);
+    foreach (var group in licenses.GroupBy(id => id.Replace("-only", string.Empty, StringComparison.Ordinal).Replace("-or-later", string.Empty, StringComparison.Ordinal)))
+    {
+        var path = Path.Combine(root, "shared", "licenses", "texts", group.Key + ".txt");
+        if (!File.Exists(path))
+        {
+            throw new InvalidOperationException($"Нет полного текста лицензии {group.Key}: {path}");
+        }
+
+        lines.AddRange([string.Empty, "---------------------------------------- " + string.Join(", ", group), File.ReadAllText(path).ReplaceLineEndings("\n").TrimEnd()]);
+    }
+
+    // Одно и то же уведомление (у пакетов .NET оно общее) — один раз, со списком пакетов, которые его принесли.
+    lines.AddRange([string.Empty, Rule, "Уведомления, которые пакеты приносят сами / Notices shipped with packages"]);
+    var shippedNotices = nuget.OrderBy(p => p.Id, StringComparer.Ordinal)
+        .SelectMany(p => Directory.GetFiles(Path.Combine(packages, p.Id.ToLowerInvariant(), p.Version.ToLowerInvariant()))
+            .Where(f => Path.GetFileName(f).Replace("-", string.Empty, StringComparison.Ordinal).StartsWith("thirdpartynotices", StringComparison.OrdinalIgnoreCase))
+            .Select(f => (Package: $"{p.Id} {p.Version}", Text: File.ReadAllText(f).ReplaceLineEndings("\n").TrimEnd())))
+        .GroupBy(n => n.Text, StringComparer.Ordinal);
+    foreach (var notice in shippedNotices)
+    {
+        lines.AddRange([string.Empty, "---------------------------------------- " + string.Join(", ", notice.Select(n => n.Package)), notice.Key]);
+    }
+
+    return string.Join('\n', lines) + "\n";
+}
+
+// Выражение SPDX → идентификаторы: «MIT OR Apache-2.0» → MIT, Apache-2.0.
+static IEnumerable<string> LicenseIds(string expression) =>
+    expression.Replace("(", " ", StringComparison.Ordinal).Replace(")", " ", StringComparison.Ordinal)
+        .Split(' ', StringSplitOptions.RemoveEmptyEntries).Where(t => t is not ("OR" or "AND" or "WITH"));
+
+// shared/licenses/components.json — разбор вручную: сериализатор по отражению в файловом приложении не годится (AOT).
+static List<OpenComponent> OpenComponents(string path)
+{
+    using var json = JsonDocument.Parse(File.ReadAllBytes(path), new JsonDocumentOptions { CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true });
+    return [.. json.RootElement.EnumerateArray().Select(c => new OpenComponent(
+        c.GetProperty("name").GetString()!, c.GetProperty("license").GetString()!, c.GetProperty("copyright").GetString()!, c.GetProperty("url").GetString()!,
+        c.TryGetProperty("packages", out var list) ? [.. list.EnumerateArray().Select(p => p.GetString()!)] : [],
+        Optional(c, "core"), Optional(c, "data"), Optional(c, "source"), Optional(c, "notice")))];
+
+    static string? Optional(JsonElement element, string property) => element.TryGetProperty(property, out var value) ? value.GetString() : null;
+}
+
 static string FindRoot()
 {
     for (var dir = new DirectoryInfo(Environment.CurrentDirectory); dir is not null; dir = dir.Parent)
@@ -221,4 +323,14 @@ static string FindRoot()
     }
 
     throw new InvalidOperationException("Не найден корень репозитория (PrivateGateway.slnx): запускать из него.");
+}
+
+// Строка shared/licenses/components.json.
+internal sealed record OpenComponent(
+    string Name, string License, string Copyright, string Url, IReadOnlyList<string> Packages, string? Core, string? Data, string? Source, string? Notice)
+{
+    // «*» в конце — любой хвост имени пакета.
+    public bool Covers(string package) => Packages.Any(p => p.EndsWith('*')
+        ? package.StartsWith(p[..^1], StringComparison.OrdinalIgnoreCase)
+        : string.Equals(p, package, StringComparison.OrdinalIgnoreCase));
 }

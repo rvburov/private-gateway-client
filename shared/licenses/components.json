@@ -1,0 +1,178 @@
+// Открытые компоненты программы — один список для экрана «О программе» (Client.UI встраивает его) и для
+// THIRD-PARTY-NOTICES.txt выпуска (scripts/package.cs). Тексты лицензий — shared/licenses/texts/<SPDX>.txt.
+//
+// name — как компонент называется для людей; license — выражение SPDX; shown — подпись лицензии на экране, если SPDX
+// людям непонятен; copyright, url — для THIRD-PARTY-NOTICES; notice — обязательная строка авторства данных.
+// Чем компонент приходит в программу (хотя бы одно):
+//   packages — пакеты NuGet, «*» в конце — любой хвост имени: выпуск не собирается, если пакет из SBOM не покрыт;
+//   files — свои файлы в desktop/src (шрифты); тест сверяет их со списком;
+//   core — ядро из shared/cores/<core>.version (версия и source — ссылка на исходники этой версии);
+//   data — файл геобазы рядом с ядром, версия — версия ядра.
+[
+  {
+    "name": ".NET",
+    "license": "MIT",
+    "copyright": "Copyright (c) .NET Foundation and Contributors",
+    "url": "https://github.com/dotnet/runtime",
+    "packages": ["Microsoft.NETCore.App.Runtime.*", "Microsoft.AspNetCore.App.Runtime.*", "Microsoft.Extensions.*", "System.*"]
+  },
+  {
+    "name": "Xray-core",
+    "license": "MPL-2.0",
+    "copyright": "Project X (XTLS) contributors",
+    "url": "https://github.com/XTLS/Xray-core",
+    "core": "xray",
+    "source": "https://github.com/XTLS/Xray-core/tree/{version}"
+  },
+  {
+    "name": "sing-box",
+    "license": "GPL-3.0-or-later",
+    "copyright": "Copyright (C) 2022 by nekohasekai <contact-sagernet@sekai.icu>",
+    "url": "https://github.com/SagerNet/sing-box",
+    "core": "sing-box",
+    "source": "https://github.com/SagerNet/sing-box/tree/{version}"
+  },
+  {
+    "name": "Геобаза IP (geoip.dat)",
+    "license": "GPL-3.0-only",
+    "copyright": "Loyalsoldier/v2ray-rules-dat contributors",
+    "url": "https://github.com/Loyalsoldier/v2ray-rules-dat",
+    "notice": "This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com",
+    "data": "geoip.dat"
+  },
+  {
+    "name": "Геобаза сайтов (geosite.dat)",
+    "license": "GPL-3.0-only",
+    "copyright": "Loyalsoldier/v2ray-rules-dat contributors; domain-list-community: Copyright (c) 2018-2019 V2Ray (MIT)",
+    "url": "https://github.com/Loyalsoldier/v2ray-rules-dat",
+    "data": "geosite.dat"
+  },
+  {
+    "name": "Avalonia",
+    "license": "MIT",
+    "copyright": "Copyright (c) AvaloniaUI OÜ",
+    "url": "https://github.com/AvaloniaUI/Avalonia",
+    "packages": ["Avalonia", "Avalonia.*"]
+  },
+  {
+    "name": "Inter",
+    "license": "OFL-1.1",
+    "copyright": "Copyright (c) 2016 The Inter Project Authors (https://github.com/rsms/inter)",
+    "url": "https://github.com/rsms/inter",
+    "packages": ["Avalonia.Fonts.Inter"]
+  },
+  {
+    "name": "JetBrains Mono",
+    "license": "OFL-1.1",
+    "copyright": "Copyright 2020 The JetBrains Mono Project Authors (https://github.com/JetBrains/JetBrainsMono)",
+    "url": "https://github.com/JetBrains/JetBrainsMono",
+    "files": ["Client.UI/Assets/Fonts/JetBrainsMono-*"]
+  },
+  {
+    "name": "SkiaSharp",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2015-2016 Xamarin, Inc.; Copyright (c) 2017-2018 Microsoft Corporation",
+    "url": "https://github.com/mono/SkiaSharp",
+    "packages": ["SkiaSharp", "SkiaSharp.*"]
+  },
+  {
+    "name": "Skia",
+    "license": "BSD-3-Clause",
+    "copyright": "Copyright (c) 2011 Google Inc. All rights reserved.",
+    "url": "https://skia.org",
+    "packages": ["SkiaSharp.NativeAssets.*"]
+  },
+  {
+    "name": "HarfBuzzSharp",
+    "license": "MIT",
+    "copyright": "Copyright (c) Microsoft Corporation",
+    "url": "https://github.com/mono/SkiaSharp",
+    "packages": ["HarfBuzzSharp", "HarfBuzzSharp.*"]
+  },
+  {
+    "name": "HarfBuzz",
+    "license": "MIT-Modern-Variant",
+    "shown": "MIT (HarfBuzz)",
+    "copyright": "Copyright (c) 2010-2022 Google, Inc.; Ebrahim Byagowi; Facebook, Inc. and others (COPYING HarfBuzz)",
+    "url": "https://github.com/harfbuzz/harfbuzz",
+    "packages": ["HarfBuzzSharp.NativeAssets.*"]
+  },
+  {
+    "name": "MicroCom",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2021 Nikita Tsukanov",
+    "url": "https://github.com/kekekeks/MicroCom",
+    "packages": ["MicroCom.Runtime"]
+  },
+  {
+    "name": "CommunityToolkit.Mvvm",
+    "license": "MIT",
+    "copyright": "Copyright (c) .NET Foundation and Contributors",
+    "url": "https://github.com/CommunityToolkit/dotnet",
+    "packages": ["CommunityToolkit.Mvvm"]
+  },
+  {
+    "name": "Microsoft.Data.Sqlite",
+    "license": "MIT",
+    "copyright": "Copyright (c) .NET Foundation and Contributors",
+    "url": "https://github.com/dotnet/efcore",
+    "packages": ["Microsoft.Data.Sqlite", "Microsoft.Data.Sqlite.*"]
+  },
+  {
+    "name": "SQLitePCLRaw",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2014-2024 SourceGear, LLC",
+    "url": "https://github.com/ericsink/SQLitePCL.raw",
+    "packages": ["SQLitePCLRaw.*"]
+  },
+  {
+    "name": "SQLite",
+    "license": "blessing",
+    "shown": "Public domain",
+    "copyright": "The author disclaims copyright to this source code",
+    "url": "https://sqlite.org",
+    "packages": ["SQLitePCLRaw.lib.e_sqlite3"]
+  },
+  {
+    "name": "Serilog",
+    "license": "Apache-2.0",
+    "copyright": "Copyright (c) Serilog Contributors",
+    "url": "https://github.com/serilog/serilog",
+    "packages": ["Serilog", "Serilog.*"]
+  },
+  {
+    "name": "Protocol Buffers",
+    "license": "BSD-3-Clause",
+    "copyright": "Copyright 2008 Google Inc. All rights reserved.",
+    "url": "https://github.com/protocolbuffers/protobuf",
+    "packages": ["Google.Protobuf"]
+  },
+  {
+    "name": "gRPC",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2019 The gRPC Authors",
+    "url": "https://github.com/grpc/grpc-dotnet",
+    "packages": ["Grpc.*"]
+  },
+  {
+    "name": "YamlDotNet",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2008-2014 Antoine Aubry and contributors",
+    "url": "https://github.com/aaubry/YamlDotNet",
+    "packages": ["YamlDotNet"]
+  },
+  {
+    "name": "ZXing.Net",
+    "license": "Apache-2.0",
+    "copyright": "Copyright ZXing.Net authors",
+    "url": "https://github.com/micjahn/ZXing.Net",
+    "packages": ["ZXing.Net"]
+  },
+  {
+    "name": "Tmds.DBus",
+    "license": "MIT",
+    "copyright": "Copyright (c) Tom Deseyn",
+    "url": "https://github.com/tmds/Tmds.DBus",
+    "packages": ["Tmds.DBus.Protocol"]
+  },
+]

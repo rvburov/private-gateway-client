@@ -138,6 +138,8 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
+- `shared/licenses/` — открытые компоненты программы (`components.json`: экран «О программе» и THIRD-PARTY-NOTICES
+  выпуска) и полные тексты их лицензий;
 - `docs/` — `design/` (макет v1.0), `architecture/`, `security/`, `roadmap/`, `sources/`;
 - `scripts/` — `worktree.sh`, `cloud-session.sh` и скрипты сборки;
 - `artifacts/` — вывод сборки, `packages/` — кеш NuGet, `.localdata/` — данные отладочного
@@ -234,6 +236,8 @@ dotnet run scripts/test-report.cs artifacts/test-results   # итог и про�
 - **PRIVATE GATEWAY** (сервер) — источник форматов ссылок и подписок для тестов совместимости.
   Секреты, ключи, реальные адреса подписок, UUID устройств и учетные данные не переносить.
 - sing-box — GPL-3.0: запускать отдельным процессом, в код не встраивать.
+- **Новый пакет, шрифт или ядро — строка в `shared/licenses/components.json`** (авторство, ссылка, SPDX) и текст
+  лицензии в `shared/licenses/texts`, если ее там еще нет. Без строки падают тесты «О программе» и сборка выпуска.
 
 ## Тексты: интерфейс, документация, комментарии
 

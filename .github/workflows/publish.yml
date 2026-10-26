@@ -15,6 +15,7 @@ on:
       - scripts/get-singbox.sh
       - scripts/tests/release-smoke.sh
       - shared/cores/**
+      - shared/licenses/**
       - Directory.Build.props
       - Directory.Packages.props
       - '**/*.csproj'
