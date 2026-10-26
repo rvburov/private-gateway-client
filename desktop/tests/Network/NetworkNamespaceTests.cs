@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Shouldly;
 
 namespace PrivateGateway.Client.Tests.Network;
@@ -24,5 +25,26 @@ public sealed class NetworkNamespaceTests
         netns.LinkAsMachine();
 
         NetworkNamespace.MachineOctets().ShouldContain(netns.Octet, "пара пространства, оставшаяся от другого прогона, так же видна новому");
+    }
+
+    [Fact]
+    public void Pairs_go_away_with_the_namespace_at_once_even_while_a_process_still_holds_it()
+    {
+        NetworkNamespace.SkipUnlessAvailable("ip", "sleep");
+        var netns = NetworkNamespace.Create();
+        netns.LinkAsMachine();
+        var octet = netns.Octet;
+        // Процесс в пространстве держит его живым и после размонтирования — как ядро, которое еще выходит.
+        using var holder = Process.Start("nsenter", ["--net=" + netns.Path, "sleep", "30"]);
+        try
+        {
+            netns.Dispose();
+
+            NetworkNamespace.MachineOctets().ShouldNotContain(octet, "номер сети свободен на машине сразу");
+        }
+        finally
+        {
+            holder.Kill();
+        }
     }
 }

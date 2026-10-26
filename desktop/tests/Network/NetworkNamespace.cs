@@ -21,6 +21,10 @@ internal sealed class NetworkNamespace : IDisposable
     // Конец пары LinkAsMachine в сети машины.
     private string? _machineLink;
 
+    // Концы всех пар пространства в сети машины: удаляются сразу, а не вместе с пространством, — его ядро Linux разбирает
+    // позже, и пара с тем же адресом мешала бы следующему стенду с тем же номером сети.
+    private readonly List<string> _links = [];
+
     private NetworkNamespace(string path) => Path = path;
 
     /// <summary>Файл пространства в /run/netns.</summary>
@@ -99,6 +103,7 @@ internal sealed class NetworkNamespace : IDisposable
     {
         var outside = "pgv" + Guid.NewGuid().ToString("N")[..8];
         Host("ip", "link", "add", outside, "type", "veth", "peer", "name", inside, "netns", Name);
+        _links.Add(outside);
         Host("ip", "addr", "add", hostAddress + "/30", "dev", outside);
         Host("ip", "link", "set", outside, "up");
         Run(null, "ip", "addr", "add", insideAddress + "/30", "dev", inside);
@@ -299,6 +304,18 @@ internal sealed class NetworkNamespace : IDisposable
 
     public void Dispose()
     {
+        foreach (var link in _links)
+        {
+            try
+            {
+                Host("ip", "link", "del", link);
+            }
+            catch (InvalidOperationException)
+            {
+                // Пары уже нет.
+            }
+        }
+
         Host("umount", Path);
         File.Delete(Path);
         lock (Taken)
