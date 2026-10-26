@@ -81,7 +81,18 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     /// <summary>Что не вышло с брандмауэром Hyper-V при последнем включении или снятии; все вышло — null.</summary>
     public string? Warning { get; private set; }
 
+    // Сколько фильтров поставил последний Enable: сторож блока проверяет, что на месте все.
+    private int _filters;
+
     public bool IsEnabled => FirstFilterFlags() is not null;
+
+    /// <summary>
+    /// На месте все фильтры последнего включения, а не только первый: другая программа могла снять часть. Включала не эта
+    /// служба (блок с прошлого запуска) — как <see cref="IsEnabled"/>.
+    /// </summary>
+    public bool IsIntact => Volatile.Read(ref _filters) is var count and > 0
+        ? WithEngine(engine => Enumerable.Range(0, count).All(index => FilterExists(engine, index)))
+        : IsEnabled;
 
     /// <summary>Фильтры постоянные — переживут перезагрузку («Защита при загрузке»).</summary>
     public static bool IsPersistent => (FirstFilterFlags() & Persistent) != 0;
@@ -108,6 +119,8 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
                         "фильтр " + rule.Name);
                 }
             }
+
+            Volatile.Write(ref _filters, index);
         }));
 
         // ВМ (WSL, Hyper-V) — брандмауэром Hyper-V, пока туннеля нет: их трафик через NAT может идти мимо слоев IP. В
@@ -145,6 +158,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         {
             DeleteFilters(engine);
             DeleteBase(engine);
+            Volatile.Write(ref _filters, 0);
         }));
         if (onlyProgram is null)
         {
@@ -165,6 +179,19 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         FwpmFreeMemory0(ref filter);
         return flags;
     });
+
+    /// <summary>Фильтр с ключом номер <paramref name="index"/> на месте.</summary>
+    private static bool FilterExists(IntPtr engine, int index)
+    {
+        var key = WfpRules.FilterKey(index);
+        if (FwpmFilterGetByKey0(engine, ref key, out var filter) != 0)
+        {
+            return false;
+        }
+
+        FwpmFreeMemory0(ref filter);
+        return true;
+    }
 
     /// <summary>Снять наши фильтры: ключи идут подряд от нулевого, первый ненайденный — конец.</summary>
     private static void DeleteFilters(IntPtr engine)

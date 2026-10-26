@@ -27,6 +27,19 @@ public sealed class NftablesKillSwitch(Func<IReadOnlyList<string>, string?, stri
     public bool IsEnabled => nft(["list", "tables"], null)
         .Split('\n', StringSplitOptions.TrimEntries).Contains("table inet " + Table, StringComparer.Ordinal);
 
+    /// <summary>
+    /// Таблица на месте, и ее цепочки исходящего и пересылаемого трафика закрывают все, что правила не пропустили (policy
+    /// drop): без них — или без таблицы — трафик шел бы мимо туннеля.
+    /// </summary>
+    public bool IsIntact => IsEnabled && nft(["list", "table", "inet", Table], null) is var table && Closes(table, "output") && Closes(table, "forward");
+
+    /// <summary>
+    /// Цепочка с хуком <paramref name="hook"/> в выводе <c>nft list table</c> отбрасывает все, что правила не пропустили
+    /// («type filter hook output priority filter; policy drop;»).
+    /// </summary>
+    private static bool Closes(string table, string hook) => table.Split('\n', StringSplitOptions.TrimEntries)
+        .Any(line => line.StartsWith($"type filter hook {hook} ", StringComparison.Ordinal) && line.EndsWith("policy drop;", StringComparison.Ordinal));
+
     /// <summary>nft этой машины — по полному пути, без поиска в PATH: служба работает от root. Нет nft — null.</summary>
     public static NftablesKillSwitch? ForThisMachine() =>
         Programs.FirstOrDefault(File.Exists) is { } program ? new NftablesKillSwitch((arguments, input) => Run(program, arguments, input)) : null;

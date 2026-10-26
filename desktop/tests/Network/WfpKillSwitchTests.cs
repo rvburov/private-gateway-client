@@ -47,6 +47,21 @@ public sealed class WfpKillSwitchTests
             "пересылку ведут маршруты в туннель, фильтров пересылки нет");
     }
 
+    /// <summary>Снять наш фильтр так, как это сделала бы другая программа.</summary>
+    [SupportedOSPlatform("windows")]
+    private static void RemoveFilter(Guid key)
+    {
+        Native.FwpmEngineOpen0(IntPtr.Zero, 10, IntPtr.Zero, IntPtr.Zero, out var engine).ShouldBe(0u);
+        try
+        {
+            Native.FwpmFilterDeleteByKey0(engine, ref key).ShouldBe(0u);
+        }
+        finally
+        {
+            _ = Native.FwpmEngineClose0(engine);
+        }
+    }
+
     [Fact]
     public void Forwarding_without_the_tunnel_is_closed_but_the_allowed_local_network()
     {
@@ -158,7 +173,11 @@ public sealed class WfpKillSwitchTests
 
             killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
 
-            killSwitch.IsEnabled.ShouldBeTrue();
+            (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, true));
+            RemoveFilter(WfpRules.FilterKey(1));
+            (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, false), "другая программа сняла один фильтр — блок уже не цел, хотя первый на месте");
+            killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
+            killSwitch.IsIntact.ShouldBeTrue("тот же блок заново — снова цел");
             (await Reaches(curl, github, 443)).ShouldBeTrue("к серверу — мимо туннеля");
             (await Reaches(curl, github, 80)).ShouldBeFalse("другой порт того же адреса — не сервер");
             (await Run(curl, "-sS", "-m", "5", loopback.Url.ToString())).ShouldBe("петля");
@@ -376,5 +395,21 @@ public sealed class WfpKillSwitchTests
         var output = await process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
         await process.WaitForExitAsync(TestContext.Current.CancellationToken);
         return process.ExitCode == 0 ? output : null;
+    }
+
+    /// <summary>WFP для теста: снять фильтр по ключу (RPC_C_AUTHN_WINNT — 10).</summary>
+    private static class Native
+    {
+        [DllImport("fwpuclnt.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static extern uint FwpmEngineOpen0(IntPtr serverName, uint authnService, IntPtr authIdentity, IntPtr session, out IntPtr engine);
+
+        [DllImport("fwpuclnt.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static extern uint FwpmFilterDeleteByKey0(IntPtr engine, ref Guid key);
+
+        [DllImport("fwpuclnt.dll")]
+        [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+        public static extern uint FwpmEngineClose0(IntPtr engine);
     }
 }

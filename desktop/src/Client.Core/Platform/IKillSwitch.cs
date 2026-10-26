@@ -85,6 +85,12 @@ public interface IKillSwitch
     /// <summary>Правила стоят — этого запуска службы или оставленные прошлым.</summary>
     bool IsEnabled { get; }
 
+    /// <summary>
+    /// Правила не только объявлены, но и целы: их не сняла и не разобрала другая программа (<c>nft flush ruleset</c>, перезапуск
+    /// брандмауэра). По умолчанию — как <see cref="IsEnabled"/>.
+    /// </summary>
+    bool IsIntact => IsEnabled;
+
     /// <summary>Поставить правила или заменить прежние одним шагом: щели между старыми и новыми нет.</summary>
     void Enable(KillSwitchPolicy policy);
 

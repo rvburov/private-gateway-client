@@ -36,7 +36,8 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="LookupPastBlock"/> — поиск DoH самой службы под блоком без туннеля (тесты); null —
 /// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
 /// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
-/// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>).
+/// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>);
+/// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -59,7 +60,8 @@ public sealed record GatewayOptions(
     Func<string, CancellationToken, Task<IPAddress[]>>? Resolve = null,
     Func<Uri, string, uint, CancellationToken, Task<IReadOnlyList<IPAddress>>>? LookupPastBlock = null,
     IPEndPoint? OutsideDns = null,
-    Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null);
+    Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null,
+    TimeSpan? BlockWatch = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -162,6 +164,10 @@ public sealed partial class Gateway : IAsyncDisposable
     // TUN не встанет поверх страницы входа в сеть.
     private CancellationTokenSource _starting = new();
 
+    // Сторож блока (EnsureBlock) и признак, что его такт уже ждет замка.
+    private readonly ITimer _blockWatch;
+    private int _guarding;
+
     /// <param name="options">Что умеет служба.</param>
     /// <param name="time">Часы.</param>
     /// <param name="journal">Журнал службы.</param>
@@ -233,6 +239,9 @@ public sealed partial class Gateway : IAsyncDisposable
             // Блок без «Защиты при загрузке» перезагрузку не пережил — помнить нечего.
             RememberBlock(null);
         }
+
+        var every = options.BlockWatch ?? BlockWatchEvery;
+        _blockWatch = time.CreateTimer(_ => _ = GuardBlockAsync(), null, every, every);
 
         // Своего sing-box еще нет: правила маршрутизации, оставшиеся от его аварии в прошлом запуске, — убрать.
         if (options.CanVpn && VpnTunnel.RemoveLeftoverRules(options.TunnelNetns) is { Length: > 0 } removed)
@@ -755,6 +764,8 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             _pauseEnd?.Dispose();
         }
+
+        await _blockWatch.DisposeAsync().ConfigureAwait(false);
 
         // Переподключение, проверка связи и запуски туннеля останавливаются: подключения больше нет.
         Interlocked.Increment(ref _session);
@@ -1478,6 +1489,63 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         return !_killSwitchOn || _held?.Policy.TunnelInterface is null || Block(request, _addresses, "обновлен: туннеля нет", tunnel: false);
+    }
+
+    /// <summary>Как часто сторож блока проверяет правила: столько трафик может идти мимо туннеля после того, как их сняли.</summary>
+    public static readonly TimeSpan BlockWatchEvery = TimeSpan.FromSeconds(15);
+
+    /// <summary>Такт сторожа блока — под замком смены подключения, как любая работа с блоком; прежний такт еще ждет — пропуск.</summary>
+    private async Task GuardBlockAsync()
+    {
+        if (Interlocked.Exchange(ref _guarding, 1) == 1)
+        {
+            return;
+        }
+
+        try
+        {
+            await _switch.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                EnsureBlock();
+            }
+            finally
+            {
+                _switch.Release();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Служба остановилась.
+        }
+        finally
+        {
+            Volatile.Write(ref _guarding, 0);
+        }
+    }
+
+    /// <summary>
+    /// Сторож блока: служба держит блок или правила «только туннель», а их нет или они не целы — сняла другая программа
+    /// (<c>nft flush ruleset</c>, перезапуск брандмауэра). Тот же блок ставится снова: иначе «Блокировка» и «Переподключение» шли
+    /// бы без него, и трафик — мимо туннеля. На паузе для входа в Wi-Fi блока нет — ставить нечего.
+    /// </summary>
+    private void EnsureBlock()
+    {
+        if (!_blocking || _options.KillSwitch is not { } killSwitch || _held is not { } held
+            || Try(() => killSwitch.IsIntact, "Правила блока при обрыве не прочитаны"))
+        {
+            return;
+        }
+
+        var (removed, failed, back) = held.Open
+            ? ("Правила «только туннель» сняла другая программа — они ставятся снова", "Правила «только туннель» не вернулись", "Правила «только туннель» поставлены снова")
+            : ("Блок при обрыве сняла другая программа — он ставится снова", "Блок при обрыве не вернулся", "Блок при обрыве поставлен снова");
+        _journal.Add(JournalLevel.Warning, "service", $"{ErrorCodes.BlockRemoved}: {removed}");
+        if (Try(() => { killSwitch.Enable(held.Policy); return true; }, $"{ErrorCodes.KillSwitchFailed}: {failed} — трафик может идти мимо туннеля"))
+        {
+            _journal.Add(JournalLevel.Info, "service", $"{back} ({killSwitch.Name})");
+            Warn(killSwitch);
+        }
     }
 
     /// <summary>Вернуть блок, который служба держит (после паузы, при остановке, в строгом режиме); не встал — false.</summary>

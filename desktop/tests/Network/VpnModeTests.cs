@@ -810,6 +810,47 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Block_taken_away_by_another_program_comes_back_by_itself()
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(new Uri("http://1.1.1.1/"), options: o => rig.Vpn(o) with
+        {
+            BlockWatch = TimeSpan.FromMilliseconds(300),
+            Reconnect = ReconnectTests.Fast with { GiveUpAfter = TimeSpan.FromHours(1) },
+            Probe = rig.ProbeAsync,
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+        Removals().ShouldBe(0, "цел блок — сторож молчит");
+
+        // «Защищено»: другая программа сняла таблицу блока — без него DNS, IPv6 и сокеты с привязкой к карте шли бы мимо туннеля.
+        rig.Netns.Run(null, "nft", "delete", "table", "inet", "private_gateway");
+        await BackAsync();
+        Removals().ShouldBe(1);
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(rig.Lan.Url, seconds: 2, device: "pgnet0"), "блок снова закрывает карту");
+
+        // «Переподключение»: туннеля нет — без блока трафик шел бы напрямую.
+        rig.StopServer();
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting, service.Journal);
+        rig.Netns.Run(null, "nft", "flush", "ruleset");
+        await BackAsync();
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2), "мимо туннеля — ничего");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Блок при обрыве поставлен снова (nftables)");
+
+        int Removals() => service.Journal.Tail(ServiceJournal.Capacity).Count(e => e.Message.StartsWith(ErrorCodes.BlockRemoved, StringComparison.Ordinal));
+
+        async Task BackAsync()
+        {
+            for (var waited = Stopwatch.StartNew(); !rig.KillSwitch.IsIntact; await Task.Delay(100, Ct))
+            {
+                waited.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10), "сторож ставит блок снова за несколько своих тактов");
+            }
+        }
+    }
+
+    [Fact]
     public async Task Block_that_cannot_drop_the_tunnel_does_not_stop_reconnecting_and_is_not_shown_as_blocked()
     {
         await using var rig = await Rig.CreateAsync();
@@ -1681,6 +1722,8 @@ public sealed partial class VpnModeTests
         public string Name => inner.Name;
 
         public bool IsEnabled => inner.IsEnabled;
+
+        public bool IsIntact => inner.IsIntact;
 
         public void Enable(KillSwitchPolicy policy)
         {

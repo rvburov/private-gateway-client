@@ -251,6 +251,31 @@ public sealed class KillSwitchTests
     }
 
     [Fact]
+    public void Rules_are_intact_only_while_both_chains_close_what_they_did_not_let_through()
+    {
+        NetworkNamespace.SkipUnlessAvailable("nft");
+        using var netns = NetworkNamespace.Create();
+        var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
+        var policy = new KillSwitchPolicy("pgtun0", [new(Server, 443)]);
+
+        killSwitch.Enable(policy);
+        (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, true));
+
+        // Другая программа открыла цепочку: таблица на месте, а исходящее идет мимо правил.
+        netns.Run(null, "nft", "chain", "inet", "private_gateway", "output", "{ policy accept; }");
+        (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, false));
+
+        killSwitch.Enable(policy);
+        netns.Run(null, "nft", "flush", "chain", "inet", "private_gateway", "forward");
+        netns.Run(null, "nft", "delete", "chain", "inet", "private_gateway", "forward");
+        (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, false), "без цепочки пересылки контейнеры и ВМ идут мимо туннеля");
+
+        killSwitch.Enable(policy);
+        netns.Run(null, "nft", "flush", "ruleset");
+        (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((false, false));
+    }
+
+    [Fact]
     public async Task Llmnr_and_netbios_stay_closed_with_the_local_network_and_discovery_while_mdns_goes()
     {
         NetworkNamespace.SkipUnlessAvailable("nft", "ip", "python3");
