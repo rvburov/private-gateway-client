@@ -7,8 +7,8 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.test.assertEquals

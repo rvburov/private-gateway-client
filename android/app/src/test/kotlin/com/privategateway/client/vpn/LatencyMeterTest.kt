@@ -10,6 +10,8 @@ import com.privategateway.client.Fixtures
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository

@@ -6,6 +6,7 @@ import com.privategateway.client.R
 import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.subscriptions.SubscriptionAddress
 import com.privategateway.client.core.subscriptions.UpdateBlock
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.data.GroupItem
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
@@ -14,7 +15,6 @@ import com.privategateway.client.subscriptions.UpdateOutcome
 import com.privategateway.client.ui.Message
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
-import com.privategateway.client.vpn.TunnelState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow

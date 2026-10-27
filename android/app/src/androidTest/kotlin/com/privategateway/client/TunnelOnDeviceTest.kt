@@ -5,9 +5,9 @@ import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.privategateway.client.core.links.LinkParser
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.di.AppEntryPoint
 import com.privategateway.client.vpn.GatewayVpnService
-import com.privategateway.client.vpn.TunnelState
 import dagger.hilt.android.EntryPointAccessors
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking

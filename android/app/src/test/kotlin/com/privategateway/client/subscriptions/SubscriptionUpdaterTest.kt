@@ -16,12 +16,12 @@ import com.privategateway.client.core.subscriptions.SubscriptionContent
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.core.subscriptions.UpdateBlock
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.vpn.TunnelMonitor
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

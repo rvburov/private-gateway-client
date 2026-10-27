@@ -20,17 +20,20 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.notify.AppWindow
 import com.privategateway.client.ui.AppActions
 import com.privategateway.client.ui.AppScreen
 import com.privategateway.client.ui.MainViewModel
 import com.privategateway.client.ui.Tab
 import com.privategateway.client.ui.servers.ServersViewModel
+import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.subscriptions.SubscriptionsViewModel
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.GatewayVpnService
-import com.privategateway.client.vpn.TunnelState
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Окно приложения. Здесь — то, что требует Activity: разрешение Android на VPN (системное окно «Запрос на подключение»,
@@ -42,6 +45,8 @@ class MainActivity : ComponentActivity() {
     private val settings: SettingsViewModel by viewModels()
     private val servers: ServersViewModel by viewModels()
     private val subscriptions: SubscriptionsViewModel by viewModels()
+
+    @Inject lateinit var appWindow: AppWindow
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -80,7 +85,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        appWindow.set(true)
         viewModel.windowShown()
+    }
+
+    override fun onStop() {
+        appWindow.set(false)
+        super.onStop()
     }
 
     // Окно одно (singleTask): «Сменить сервер» из уведомления приходит сюда, когда окно уже открыто.
@@ -90,16 +101,23 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun openTab(intent: Intent?) {
-        if (intent?.getStringExtra(EXTRA_TAB) == TAB_SERVERS) {
-            viewModel.show(Tab.Servers)
-            intent.removeExtra(EXTRA_TAB)
+        when (intent?.getStringExtra(EXTRA_TAB)) {
+            TAB_SERVERS -> viewModel.show(Tab.Servers)
+            TAB_SUBSCRIPTIONS -> {
+                viewModel.show(Tab.Settings)
+                settings.request(SettingsPage.Subscriptions)
+            }
+
+            else -> return
         }
+
+        intent.removeExtra(EXTRA_TAB)
     }
 
     /** Кнопка-щит: включена или подключается — выключить; выключена или ошибка — подключить к выбранному. */
     private fun power() {
         when (viewModel.ui.value.status.state) {
-            TunnelState.Connected, TunnelState.Connecting -> GatewayVpnService.disconnect(this)
+            TunnelState.Connected, TunnelState.Connecting, TunnelState.Reconnecting -> GatewayVpnService.disconnect(this)
             TunnelState.Stopping -> Unit
             TunnelState.Off, TunnelState.Error -> start()
         }
@@ -137,6 +155,7 @@ class MainActivity : ComponentActivity() {
         /** Раздел, который открыть сразу (из уведомления). */
         const val EXTRA_TAB = "com.privategateway.client.TAB"
         const val TAB_SERVERS = "servers"
+        const val TAB_SUBSCRIPTIONS = "subscriptions"
 
         /** ClipDescription.EXTRA_IS_SENSITIVE (Android 13); раньше тот же ключ просто не читается. */
         private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"

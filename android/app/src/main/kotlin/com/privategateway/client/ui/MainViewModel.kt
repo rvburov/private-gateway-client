@@ -16,6 +16,8 @@ import com.privategateway.client.core.subscriptions.SubscriptionAddress
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionFetch
 import com.privategateway.client.core.subscriptions.SubscriptionSource
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.subscriptions.SubscriptionNotice
@@ -27,8 +29,6 @@ import com.privategateway.client.vpn.LatencyMeter
 import com.privategateway.client.vpn.MeasureResult
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -197,7 +197,7 @@ class MainViewModel @Inject constructor(
             val changed = choose(id)
             when (monitor.status.value.state) {
                 TunnelState.Off, TunnelState.Error -> start()
-                TunnelState.Connecting, TunnelState.Connected -> if (changed) control.connect()
+                TunnelState.Connecting, TunnelState.Connected, TunnelState.Reconnecting -> if (changed) control.connect()
                 TunnelState.Stopping -> Unit
             }
         }

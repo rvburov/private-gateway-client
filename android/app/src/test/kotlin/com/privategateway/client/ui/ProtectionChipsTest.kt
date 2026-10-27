@@ -5,8 +5,8 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import org.junit.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -40,6 +40,17 @@ class ProtectionChipsTest {
     fun `connecting waits`() {
         val chips = ProtectionChips.of(TunnelState.Connecting, lockdown = null)
         assertEquals(listOf(ChipLook.Waiting, ChipLook.Waiting, ChipLook.Waiting, ChipLook.Warning), chips.map { it.look })
+    }
+
+    @Test
+    fun `reconnecting waits and keeps what android reported about the kill switch`() {
+        // Карта туннеля осталась — трафик ждет, а не идет напрямую; Android сообщил о блоке при подключении.
+        val chips = ProtectionChips.of(TunnelState.Reconnecting, lockdown = true)
+        assertEquals(listOf(ChipLook.Waiting, ChipLook.Waiting, ChipLook.Waiting, ChipLook.Ok), chips.map { it.look })
+        val reconnecting = StateLook.of(TunnelState.Reconnecting)
+        assertEquals(R.string.status_reconnecting_title, reconnecting.title)
+        assertEquals(R.string.power_label_reconnecting, reconnecting.power)
+        assertEquals(StateLook.of(TunnelState.Connecting).ring, reconnecting.ring, "вид подключения, как у десктопа")
     }
 
     @Test

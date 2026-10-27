@@ -1,9 +1,13 @@
 package com.privategateway.client.ui
 
 import android.content.Context
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.Text
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
@@ -20,9 +24,13 @@ import androidx.compose.ui.test.performTextInput
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.R
+import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.vpn.ReconnectPolicy
+import com.privategateway.client.ui.settings.Behavior
 import com.privategateway.client.ui.settings.ProtectionScreen
+import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.theme.PgTheme
 import org.junit.Rule
@@ -51,6 +59,40 @@ class SettingsScreensTest {
         compose.onNodeWithText(text(R.string.prot_dns_title)).assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
         compose.onNodeWithTag("settings.protection").assertIsDisplayed()
+    }
+
+    @Test
+    fun `notifications and reconnect are chosen on the main page`() {
+        var behavior by mutableStateOf(Behavior())
+        compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, TunnelSettings(), {}, behavior, { behavior = it }) } }
+
+        // По умолчанию — как у десктопа: «Только важные» и «Экспоненц. до 60 с».
+        compose.onNodeWithTag("notify.ImportantOnly").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("reconnect.Backoff60Seconds").performScrollTo().assertIsSelected()
+
+        compose.onNodeWithTag("notify.All").performScrollTo().performClick()
+        compose.onNodeWithTag("reconnect.Never").performScrollTo().performClick()
+        assertEquals(Behavior(NotificationLevel.All, ReconnectPolicy.Never), behavior)
+        compose.onNodeWithTag("notify.All").performScrollTo().assertIsSelected()
+        compose.onNodeWithTag("notify.ImportantOnly").assertIsNotSelected()
+        compose.onNodeWithTag("reconnect.Never").performScrollTo().assertIsSelected()
+    }
+
+    @Test
+    fun `notification button opens profiles and subscriptions once`() {
+        var requested by mutableStateOf<SettingsPage?>(SettingsPage.Subscriptions)
+        compose.setContent {
+            PgTheme {
+                SettingsScreen("26.10.21", {}, {}, TunnelSettings(), {}, requested = requested, onRequested = { requested = null }) { back ->
+                    Text("subscriptions", Modifier.testTag("subscriptions.page").clickable(onClick = back))
+                }
+            }
+        }
+
+        compose.onNodeWithTag("subscriptions.page").assertIsDisplayed()
+        assertEquals(null, requested, "запрос снят — назад ведет в настройки, а не снова в подписки")
+        compose.onNodeWithTag("subscriptions.page").performClick()
+        compose.onNodeWithTag("settings.profiles").assertIsDisplayed()
     }
 
     @Test

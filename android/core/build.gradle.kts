@@ -23,10 +23,13 @@ kotlin {
 dependencies {
     implementation(libs.snakeyaml.engine)
     implementation(libs.zxing.core)
+    // Наблюдение за связью и переподключение (TunnelGuard) — ожидания и сигналы на корутинах, как в приложении.
+    implementation(libs.kotlinx.coroutines.core)
     testImplementation(platform(libs.junit.bom))
     testImplementation(libs.junit.jupiter)
     testImplementation(libs.junit.params)
     testImplementation(libs.kotlinx.serialization.json)
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(kotlin("test"))
     testRuntimeOnly(libs.junit.launcher)
 }

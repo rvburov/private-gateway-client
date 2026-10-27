@@ -65,5 +65,10 @@
                 android:name="android.service.quicksettings.TOGGLEABLE_TILE"
                 android:value="true" />
         </service>
+
+        <!-- Кнопка уведомления «Позже» (доска 22): убрать уведомление. Только для своих уведомлений. -->
+        <receiver
+            android:name=".notify.NoticeReceiver"
+            android:exported="false" />
     </application>
 </manifest>

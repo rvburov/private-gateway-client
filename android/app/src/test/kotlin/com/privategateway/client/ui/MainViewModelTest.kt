@@ -8,6 +8,8 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.R
@@ -24,8 +26,6 @@ import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.LatencyMeter
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi

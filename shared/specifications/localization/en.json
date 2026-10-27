@@ -1351,6 +1351,8 @@
   "android.notify.channel.text": "VPN status while protection is on",
   "android.notify.alerts": "Protection failures",
   "android.notify.alerts.text": "Protection did not start or stopped — traffic may go directly",
+  "android.notify.events": "Events",
+  "android.notify.events.text": "Connection, disconnection, server changes in subscriptions",
   "android.notify.disconnect": "Disconnect",
   "android.permission.denied": "Android did not grant the VPN permission — protection is off",
   "android.check.ks.system": "in Android settings",

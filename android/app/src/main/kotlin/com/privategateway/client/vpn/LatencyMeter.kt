@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.util.Log
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CoreDns
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.xray.PingBatch
 import com.privategateway.client.core.xray.PingTarget
 import com.privategateway.client.core.xray.XrayResponse

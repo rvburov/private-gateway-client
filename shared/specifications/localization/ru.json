@@ -1351,6 +1351,8 @@
   "android.notify.channel.text": "Состояние VPN, пока защита включена",
   "android.notify.alerts": "Сбои защиты",
   "android.notify.alerts.text": "Защита не включилась или прервалась — трафик мог пойти напрямую",
+  "android.notify.events": "События",
+  "android.notify.events.text": "Подключение, отключение, изменения серверов в подписках",
   "android.notify.disconnect": "Отключить",
   "android.permission.denied": "Android не дал разрешения на VPN — защита не включилась",
   "android.check.ks.system": "в настройках Android",

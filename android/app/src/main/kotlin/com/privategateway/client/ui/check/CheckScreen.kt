@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.ProtectionChips
 import com.privategateway.client.ui.Texts
@@ -35,7 +36,6 @@ import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgLayout
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
-import com.privategateway.client.vpn.TunnelState
 
 /**
  * «Проверка»: четыре пункта защиты с объяснением — что значит каждый и в каком он состоянии сейчас, ошибка туннеля и ядро.

@@ -31,13 +31,13 @@ import com.privategateway.client.core.servers.ServerSort
 import com.privategateway.client.core.servers.SubscriptionRef
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.ui.servers.CardActions
 import com.privategateway.client.ui.servers.ServerCardScreen
 import com.privategateway.client.ui.servers.ServersActions
 import com.privategateway.client.ui.servers.ServersScreen
 import com.privategateway.client.ui.theme.PgTheme
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

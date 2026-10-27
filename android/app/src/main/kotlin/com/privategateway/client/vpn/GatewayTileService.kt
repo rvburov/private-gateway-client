@@ -11,6 +11,7 @@ import android.service.quicksettings.TileService
 import androidx.annotation.StringRes
 import com.privategateway.client.MainActivity
 import com.privategateway.client.R
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.data.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
@@ -28,6 +29,7 @@ data class TileLook(val active: Boolean, @param:StringRes val subtitle: Int) {
         fun of(state: TunnelState, hasServer: Boolean): TileLook = when (state) {
             TunnelState.Connected -> TileLook(true, R.string.status_connected_title)
             TunnelState.Connecting -> TileLook(true, R.string.power_label_connecting)
+            TunnelState.Reconnecting -> TileLook(true, R.string.power_label_reconnecting)
             TunnelState.Stopping -> TileLook(false, R.string.power_label_off)
             TunnelState.Error -> TileLook(false, R.string.power_label_error)
             TunnelState.Off -> TileLook(false, if (hasServer) R.string.power_label_off else R.string.power_label_noServer)
@@ -85,7 +87,7 @@ class GatewayTileService : TileService() {
 
     private fun toggle() {
         when (monitor.status.value.state) {
-            TunnelState.Connected, TunnelState.Connecting -> GatewayVpnService.disconnect(this)
+            TunnelState.Connected, TunnelState.Connecting, TunnelState.Reconnecting -> GatewayVpnService.disconnect(this)
             TunnelState.Stopping -> Unit
             TunnelState.Off, TunnelState.Error ->
                 if (hasServer && VpnService.prepare(this) == null) GatewayVpnService.connect(this) else openApp()

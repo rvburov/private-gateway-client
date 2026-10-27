@@ -7,7 +7,7 @@ import com.privategateway.client.core.links.ImportErrors
 import com.privategateway.client.core.links.ImportParser
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.text.Plural
-import com.privategateway.client.vpn.TunnelErrors
+import com.privategateway.client.core.vpn.TunnelErrors
 
 /**
  * Тексты по кодам: ключи общие для всех приложений (shared/specifications/localization), здесь — явные соответствия
@@ -20,6 +20,7 @@ object Texts {
         TunnelErrors.CORE_FAILED -> R.string.error_PGC_SVC_002
         TunnelErrors.NO_SERVER -> R.string.error_PGC_SVC_003
         TunnelErrors.UNSUPPORTED -> R.string.error_PGC_SVC_005
+        TunnelErrors.SERVER_NOT_RESPONDING -> R.string.error_PGC_NET_001
         TunnelErrors.OTHER_VPN -> R.string.error_PGC_NET_010
         else -> R.string.error_PGC_SVC_002
     }

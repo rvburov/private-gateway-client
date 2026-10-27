@@ -5,9 +5,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.vpn.ReconnectPolicy
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -15,8 +17,8 @@ import javax.inject.Singleton
 
 /**
  * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя), настройки туннеля — DNS,
- * IPv6 через сервер, локальная сеть мимо туннеля — и подписок. Неизвестное значение (из будущей версии) — значение по
- * умолчанию.
+ * IPv6 через сервер, локальная сеть мимо туннеля, — подписок, уведомлений и переподключения. Неизвестное значение (из
+ * будущей версии) — значение по умолчанию.
  */
 @Singleton
 class SettingsRepository @Inject constructor(private val store: DataStore<Preferences>) {
@@ -69,6 +71,20 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         }
     }
 
+    /** «Уведомления» (доска 22): что идет в шторку; по умолчанию «Только важные». */
+    val notifications: Flow<NotificationLevel> = store.data.map { NotificationLevel.read(it[NOTIFY_LEVEL]) }
+
+    suspend fun setNotifications(level: NotificationLevel) {
+        store.edit { it[NOTIFY_LEVEL] = level.name }
+    }
+
+    /** «Переподключение»: что делать, когда связь с сервером пропала; по умолчанию «Экспоненц. до 60 с». */
+    val reconnect: Flow<ReconnectPolicy> = store.data.map { ReconnectPolicy.read(it[RECONNECT]) }
+
+    suspend fun setReconnect(policy: ReconnectPolicy) {
+        store.edit { it[RECONNECT] = policy.name }
+    }
+
     private companion object {
         val SELECTED = stringPreferencesKey("selected_server")
         val SUBS_REFRESH = stringPreferencesKey("subs_refresh")
@@ -78,5 +94,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val CUSTOM_DNS = stringPreferencesKey("tunnel_custom_dns")
         val IPV6 = booleanPreferencesKey("tunnel_ipv6")
         val ALLOW_LAN = booleanPreferencesKey("tunnel_allow_lan")
+        val NOTIFY_LEVEL = stringPreferencesKey("notify_level")
+        val RECONNECT = stringPreferencesKey("reconnect_policy")
     }
 }

@@ -1,6 +1,7 @@
 package com.privategateway.client.vpn
 
 import com.privategateway.client.R
+import com.privategateway.client.core.vpn.TunnelState
 import org.junit.Test
 import kotlin.test.assertEquals
 
@@ -9,6 +10,7 @@ class TileLookTest {
     fun `tile is on while protection goes or starts and says why it is off`() {
         assertEquals(TileLook(true, R.string.status_connected_title), TileLook.of(TunnelState.Connected, hasServer = true))
         assertEquals(TileLook(true, R.string.power_label_connecting), TileLook.of(TunnelState.Connecting, hasServer = true))
+        assertEquals(TileLook(true, R.string.power_label_reconnecting), TileLook.of(TunnelState.Reconnecting, hasServer = true), "защита идет — плитка включена")
         assertEquals(TileLook(false, R.string.power_label_off), TileLook.of(TunnelState.Stopping, hasServer = true))
         assertEquals(TileLook(false, R.string.power_label_error), TileLook.of(TunnelState.Error, hasServer = true))
         assertEquals(TileLook(false, R.string.power_label_off), TileLook.of(TunnelState.Off, hasServer = true))

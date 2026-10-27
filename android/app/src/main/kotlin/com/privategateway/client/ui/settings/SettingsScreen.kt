@@ -36,9 +36,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
+import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.vpn.ReconnectPolicy
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
+import com.privategateway.client.ui.theme.PgChoiceRow
 import com.privategateway.client.ui.theme.PgColor
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
@@ -55,8 +58,10 @@ enum class SettingsPage {
 }
 
 /**
- * «Настройки»: разделы («Защита и утечки»), VPN в настройках Android (Постоянная VPN и блок без VPN включает только
- * пользователь) и «О программе». Язык — системный или выбранный для приложения в настройках Android 13+.
+ * «Настройки»: разделы («Защита и утечки», «Профили и подписки»), «Уведомления» и «Переподключение» (как у десктопа:
+ * главная страница и «Подключение и ядро»), VPN в настройках Android (Постоянная VPN и блок без VPN включает только
+ * пользователь) и «О программе». Язык — системный или выбранный для приложения в настройках Android 13+. [requested] —
+ * открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
  */
 @Composable
 fun SettingsScreen(
@@ -65,9 +70,20 @@ fun SettingsScreen(
     openVpnSettings: () -> Unit,
     tunnel: TunnelSettings,
     onTunnel: (TunnelSettings) -> Unit,
+    behavior: Behavior = Behavior(),
+    onBehavior: (Behavior) -> Unit = {},
+    requested: SettingsPage? = null,
+    onRequested: () -> Unit = {},
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
+    LaunchedEffect(requested) {
+        if (requested != null) {
+            page = requested
+            onRequested()
+        }
+    }
+
     when (page) {
         SettingsPage.Protection -> {
             BackHandler { page = SettingsPage.Main }
@@ -79,12 +95,25 @@ fun SettingsScreen(
             subscriptions { page = SettingsPage.Main }
         }
 
-        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings) { page = it }
+        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, behavior, onBehavior) { page = it }
     }
 }
 
+/** Уведомления и переподключение — то, что на десктопе в главных настройках и в «Подключении и ядре». */
+data class Behavior(
+    val notifications: NotificationLevel = NotificationLevel.DEFAULT,
+    val reconnect: ReconnectPolicy = ReconnectPolicy.Backoff60Seconds,
+)
+
 @Composable
-private fun MainSettings(core: String?, loadCore: () -> Unit, openVpnSettings: () -> Unit, onPage: (SettingsPage) -> Unit) {
+private fun MainSettings(
+    core: String?,
+    loadCore: () -> Unit,
+    openVpnSettings: () -> Unit,
+    behavior: Behavior,
+    onBehavior: (Behavior) -> Unit,
+    onPage: (SettingsPage) -> Unit,
+) {
     LaunchedEffect(Unit) { loadCore() }
     Column(
         Modifier
@@ -104,6 +133,38 @@ private fun MainSettings(core: String?, loadCore: () -> Unit, openVpnSettings: (
 
             SectionRow(PgIcons.AdvProfiles, R.string.settings_adv_profiles_title, R.string.settings_adv_profiles_text, "settings.profiles") {
                 onPage(SettingsPage.Subscriptions)
+            }
+        }
+
+        PgCard(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.settings_notifications_title), style = PgType.Title)
+            Spacer(Modifier.size(PgSpace.S))
+            val levels = listOf(
+                NotificationLevel.All to R.string.settings_notifications_all,
+                NotificationLevel.ImportantOnly to R.string.settings_notifications_important,
+                NotificationLevel.Off to R.string.settings_notifications_off,
+            )
+            for ((level, label) in levels) {
+                PgChoiceRow(stringResource(label), null, behavior.notifications == level, "notify.${level.name}") {
+                    onBehavior(behavior.copy(notifications = level))
+                }
+            }
+        }
+
+        PgCard(Modifier.fillMaxWidth()) {
+            Text(stringResource(R.string.core_reconnect_title), style = PgType.Title)
+            Spacer(Modifier.size(PgSpace.Xs))
+            Text(stringResource(R.string.core_reconnect_text), color = PgColor.Text.Secondary, style = PgType.Small)
+            Spacer(Modifier.size(PgSpace.S))
+            val policies = listOf(
+                ReconnectPolicy.Backoff60Seconds to R.string.core_reconnect_backoff,
+                ReconnectPolicy.UpTo5Minutes to R.string.core_reconnect_5min,
+                ReconnectPolicy.Never to R.string.core_reconnect_never,
+            )
+            for ((policy, label) in policies) {
+                PgChoiceRow(stringResource(label), null, behavior.reconnect == policy, "reconnect.${policy.name}") {
+                    onBehavior(behavior.copy(reconnect = policy))
+                }
             }
         }
 

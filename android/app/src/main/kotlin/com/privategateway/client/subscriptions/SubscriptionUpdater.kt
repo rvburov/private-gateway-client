@@ -11,10 +11,10 @@ import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.core.subscriptions.SubscriptionTimes
 import com.privategateway.client.core.subscriptions.UpdateBlock
 import com.privategateway.client.core.subscriptions.UpdateGate
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.vpn.TunnelMonitor
-import com.privategateway.client.vpn.TunnelState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

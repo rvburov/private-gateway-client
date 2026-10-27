@@ -26,13 +26,13 @@ import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.subscriptions.DownloadFailure
 import com.privategateway.client.core.subscriptions.RefreshInterval
 import com.privategateway.client.core.text.Plural
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.GroupItem
 import com.privategateway.client.ui.subscriptions.SubscriptionsActions
 import com.privategateway.client.ui.subscriptions.SubscriptionsScreen
 import com.privategateway.client.ui.subscriptions.SubscriptionsUi
 import com.privategateway.client.ui.theme.PgTheme
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

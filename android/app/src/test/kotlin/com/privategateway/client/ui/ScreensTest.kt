@@ -25,11 +25,11 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.servers.ImportScreen
 import com.privategateway.client.ui.theme.PgTheme
-import com.privategateway.client.vpn.TunnelState
-import com.privategateway.client.vpn.TunnelStatus
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith

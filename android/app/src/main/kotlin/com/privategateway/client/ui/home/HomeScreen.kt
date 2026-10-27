@@ -39,6 +39,7 @@ import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
 import com.privategateway.client.core.servers.QuickSwitch
 import com.privategateway.client.core.servers.ServerItem
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.ProtectionChip
 import com.privategateway.client.ui.ProtectionChips
@@ -54,7 +55,6 @@ import com.privategateway.client.ui.theme.PgLayout
 import com.privategateway.client.ui.theme.PgRadius
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
-import com.privategateway.client.vpn.TunnelState
 import kotlinx.coroutines.delay
 import java.util.Locale
 
@@ -171,6 +171,7 @@ private fun StatusCard(ui: MainUi, onCheck: () -> Unit) {
                 }
 
                 TunnelState.Connecting, TunnelState.Stopping -> R.string.checked_connecting
+                TunnelState.Reconnecting -> R.string.checked_reconnecting
                 TunnelState.Error -> Texts.error(ui.status.error)
                 TunnelState.Connected -> null
             }
@@ -193,6 +194,7 @@ private fun subtitle(ui: MainUi): String {
     return when (ui.status.state) {
         TunnelState.Connected -> stringResource(if (server?.encrypted == false) R.string.status_connected_subPlain else R.string.status_connected_sub)
         TunnelState.Connecting, TunnelState.Stopping -> server?.displayName ?: ""
+        TunnelState.Reconnecting -> stringResource(R.string.status_reconnecting_sub, ui.status.attempt.toString())
         TunnelState.Error -> stringResource(R.string.status_error_sub_direct, ui.status.error ?: "")
         TunnelState.Off -> stringResource(R.string.status_off_sub)
     }

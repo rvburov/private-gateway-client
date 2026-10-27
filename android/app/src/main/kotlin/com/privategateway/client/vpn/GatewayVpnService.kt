@@ -1,11 +1,11 @@
 package com.privategateway.client.vpn
 
-import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.LinkProperties
@@ -17,10 +17,10 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.ParcelFileDescriptor
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.privategateway.client.MainActivity
@@ -30,11 +30,16 @@ import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CoreDnsFollower
+import com.privategateway.client.core.vpn.GuardEvents
 import com.privategateway.client.core.vpn.TunPlan
+import com.privategateway.client.core.vpn.TunnelErrors
+import com.privategateway.client.core.vpn.TunnelGuard
+import com.privategateway.client.core.vpn.TunnelProbe
+import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.core.xray.XrayConfig
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
-import com.privategateway.client.ui.Texts
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -50,13 +55,16 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 /**
  * Туннель защиты: системный VPN Android. Весь трафик телефона идет в карту TUN ([TunPlan]), ее читает ядро Xray (вход
  * tun с дескриптором карты) и отправляет через выбранный сервер; сокеты ядра выведены из туннеля (protect). Сервер —
  * только выбранный пользователем: другой сам не выбирается. Запускают окно (кнопка включения), уведомление
- * («Отключить») и система — «Постоянная VPN». Поле [tun], ядро и слежение за сетью меняются только под [lock].
+ * («Отключить») и система — «Постоянная VPN». Поле [tun], ядро и слежение за сетью меняются только под [lock]. Пока
+ * защита включена, [TunnelGuard] пробует связь через туннель и переподключает к тому же серверу; карта туннеля все это
+ * время держит трафик.
  */
 @AndroidEntryPoint
 class GatewayVpnService : VpnService() {
@@ -91,8 +99,37 @@ class GatewayVpnService : VpnService() {
     /** Настройки туннеля, с которыми он поднят; null — туннеля нет. */
     private val applied = MutableStateFlow<TunnelSettings?>(null)
 
+    /** Поднятый туннель: сервер, его название для уведомления, шифруется ли трафик. */
+    private class Up(val id: String, val name: String, val encrypted: Boolean)
+
+    @Volatile
+    private var up: Up? = null
+
+    /** Наблюдение за связью и переподключение, пока защита включена. */
+    private var guard: Job? = null
+
+    @Volatile
+    private var guardian: TunnelGuard? = null
+
+    /**
+     * Сеть под туннелем, о которой Android сообщил последней. Не сбрасывается с ядром: подписка на сеть ставится заново на
+     * каждую попытку, и Android сразу присылает текущую сеть — это не смена сети и не повод для попытки без паузы.
+     */
+    @Volatile
+    private var lastNetwork: Network? = null
+
+    /** Телефон вышел из глубокого сна (Doze) — проба связи сразу, а не через минуту. */
+    private val wake = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (getSystemService(PowerManager::class.java)?.isDeviceIdleMode == false) {
+                guardian?.nudge()
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
+        ContextCompat.registerReceiver(this, wake, IntentFilter(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED), ContextCompat.RECEIVER_NOT_EXPORTED)
         // Настройки сменились под защитой — переподключение без окна утечки (как ProtectionSync десктопа): после тишины,
         // чтобы несколько нажатий подряд дали одно переподключение; то, что ядра не меняет, переподключения не требует.
         scope.launch {
@@ -125,6 +162,8 @@ class GatewayVpnService : VpnService() {
     override fun onDestroy() {
         destroyed = true
         work?.cancel()
+        stopGuard()
+        unregisterReceiver(wake)
         // establish() и запуск ядра не прерываются: если подключение держит замок, туннель и ядро снимет оно само.
         if (lock.tryLock()) {
             try {
@@ -145,37 +184,109 @@ class GatewayVpnService : VpnService() {
     private fun connect(startId: Int) {
         foreground(notification(getString(R.string.status_connecting_title), null))
         work?.cancel()
+        stopGuard()
         work = scope.launch {
-            lock.withLock {
-                val error = try {
-                    start()
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    // Сбой Android или ядра — не авария всего приложения: ошибка с кодом, текст — в журнал через SecretMasker.
-                    Log.w(TAG, "connect: " + SecretMasker.mask(e.toString()))
-                    TunnelErrors.CORE_FAILED
-                }
-
+            val connected = lock.withLock {
+                val error = attempt(0)
                 if (destroyed) {
                     stopCore()
                     monitor.set(if (error != null) TunnelStatus(state = TunnelState.Error, error = error) else TunnelStatus())
+                    false
                 } else if (error != null) {
-                    stopCore()
-                    monitor.set(TunnelStatus(state = TunnelState.Error, error = error))
-                    ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
-                    // Запуск «Постоянной VPN» не виден в окне: без уведомления пользователь думал бы, что защищен.
-                    notifyFailure(error)
-                    stopSelfResult(startId)
+                    fail(error, startId)
+                    false
+                } else {
+                    showProtected()
+                    true
                 }
+            }
+
+            if (connected) {
+                startGuard()
             }
         }
     }
 
-    /** Поднять туннель и ядро; удалось — null, иначе код ошибки. */
-    private suspend fun start(): String? {
+    /** Подключение (0) или попытка переподключения [number] под замком: удалось — null, иначе код ошибки. */
+    private suspend fun attempt(number: Int): String? = try {
+        start(number)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (e: Exception) {
+        // Сбой Android или ядра — не авария всего приложения: ошибка с кодом, текст — в журнал через SecretMasker.
+        Log.w(TAG, "connect: " + SecretMasker.mask(e.toString()))
+        TunnelErrors.CORE_FAILED
+    }
+
+    /** Под замком: защита не включилась или переподключение сдалось — «Ошибка» с кодом, ядра и карты нет. */
+    private fun fail(error: String, startId: Int) {
+        stopCore()
+        up = null
+        monitor.set(TunnelStatus(state = TunnelState.Error, error = error))
+        // Уведомление со сбоем дает ProtectionNotifier по смене состояния: запуск «Постоянной VPN» не виден в окне.
+        ServiceCompat.stopForeground(this, ServiceCompat.STOP_FOREGROUND_REMOVE)
+        stopSelfResult(startId)
+    }
+
+    /** «Защищено» (доска 26): «IP скрыт · сервер», шифруется ли трафик, «в сети» с таймером, «Отключить» и «Сменить сервер». */
+    private fun showProtected() {
+        val current = up ?: return
+        val alwaysOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isAlwaysOn else null
+        val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
+        val since = SystemClock.elapsedRealtime()
+        monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id, since = since, alwaysOn = alwaysOn, lockdown = lockdown))
+        foreground(
+            notification(
+                getString(R.string.status_connected_title) + " · " + current.name,
+                getString(if (current.encrypted) R.string.status_connected_sub else R.string.status_connected_subPlain),
+                onlineSince = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - since),
+            ),
+        )
+    }
+
+    /**
+     * Наблюдение за связью (TunnelGuard): проба через туннель, переподключение к тому же серверу с паузами по политике
+     * «Переподключение», при отказе — «Ошибка» с кодом. Сеть сменилась ([watchNetwork]) или телефон проснулся — сразу.
+     */
+    private fun startGuard() {
+        val guardian = TunnelGuard(
+            clock = SystemClock::elapsedRealtime,
+            policy = { settings.reconnect.first() },
+            probe = { withContext(Dispatchers.IO) { TunnelProbe.answers() } },
+            restart = { number -> lock.withLock { attempt(number) } },
+            events = object : GuardEvents {
+                override suspend fun reconnecting(attempt: Int) {
+                    monitor.update { it.copy(state = TunnelState.Reconnecting, since = null, attempt = attempt) }
+                    foreground(notification(getString(R.string.status_reconnecting_title), up?.name))
+                }
+
+                override suspend fun protectedAgain() {
+                    lock.withLock { showProtected() }
+                }
+
+                override suspend fun gaveUp(error: String) {
+                    Log.w(TAG, "reconnect: $error")
+                    lock.withLock { fail(error, lastStart) }
+                }
+            },
+        )
+        this.guardian = guardian
+        guard = scope.launch { guardian.run() }
+    }
+
+    private fun stopGuard() {
+        guard?.cancel()
+        guard = null
+        guardian = null
+    }
+
+    /** Поднять туннель и ядро; [attempt] — номер попытки переподключения (0 — подключение). Удалось — null, иначе код ошибки. */
+    private suspend fun start(attempt: Int): String? {
         val id = settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
-        monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
+        if (attempt == 0) {
+            monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
+        }
+
         val server = servers.load(id) ?: return TunnelErrors.NO_SERVER
         // Название для уведомления — свое, если есть. Читается до карты и ядра: после них точек ожидания нет — отмена не
         // оставит туннель без хозяина.
@@ -219,31 +330,7 @@ class GatewayVpnService : VpnService() {
         dns = follower
         applied.value = tunnel
         watchNetwork()
-        if (destroyed) {
-            return null
-        }
-
-        val alwaysOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isAlwaysOn else null
-        val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
-        val since = SystemClock.elapsedRealtime()
-        monitor.set(
-            TunnelStatus(
-                state = TunnelState.Connected,
-                serverId = id,
-                since = since,
-                alwaysOn = alwaysOn,
-                lockdown = lockdown,
-            ),
-        )
-        // Доска 26: «IP скрыт · сервер», шифруется ли трафик, «в сети» с таймером, «Отключить» и «Сменить сервер».
-        val encrypted = ServerFacts.isEncrypted(server.protocol, server.security.kind)
-        foreground(
-            notification(
-                getString(R.string.status_connected_title) + " · " + name,
-                getString(if (encrypted) R.string.status_connected_sub else R.string.status_connected_subPlain),
-                onlineSince = System.currentTimeMillis() - (SystemClock.elapsedRealtime() - since),
-            ),
-        )
+        up = Up(id, name, ServerFacts.isEncrypted(server.protocol, server.security.kind))
         return null
     }
 
@@ -260,10 +347,12 @@ class GatewayVpnService : VpnService() {
 
     private fun disconnect(startId: Int) {
         work?.cancel()
+        stopGuard()
         scope.launch {
             lock.withLock {
                 monitor.update { it.copy(state = TunnelState.Stopping) }
                 stopCore()
+                up = null
                 monitor.set(TunnelStatus())
                 ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelfResult(startId)
@@ -308,6 +397,12 @@ class GatewayVpnService : VpnService() {
             override fun onLinkPropertiesChanged(network: Network, linkProperties: LinkProperties) {
                 networkDns = linkProperties.dnsServers.mapNotNull { it.hostAddress }
                 scope.launch { lock.withLock { followNetwork() } }
+                // Сеть сменилась (Wi-Fi ↔ мобильная) — проба связи сразу; во время переподключения — попытка сразу.
+                val previous = lastNetwork
+                lastNetwork = network
+                if (previous != null && previous != network) {
+                    guardian?.nudge()
+                }
             }
         }
 
@@ -360,31 +455,6 @@ class GatewayVpnService : VpnService() {
         return builder.build()
     }
 
-    /** Защита не включилась: уведомление с причиной; при «Блокировать подключения без VPN» интернета нет вовсе. */
-    private fun notifyFailure(error: String) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-
-        val blocked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && isLockdownEnabled
-        // Причина и код, как у десктопа: «Ядро не запустилось · PGC-SVC-002. Трафик идет напрямую.»
-        val reason = getString(Texts.error(error)) + " · " + error
-        val text = getString(if (blocked) R.string.notify_failed_blocked else R.string.notify_failed_direct, "", "", reason)
-        val notification = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_ALERTS)
-            .setSmallIcon(R.drawable.pg_notification)
-            .setContentTitle(getString(R.string.notify_failed_title))
-            .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-            .setContentIntent(openApp())
-            .setAutoCancel(true)
-            .setCategory(NotificationCompat.CATEGORY_ERROR)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-        NotificationManagerCompat.from(this).notify(FAILURE_NOTIFICATION_ID, notification)
-    }
-
     /** Открыть окно; [tab] — сразу на разделе (MainActivity.TAB_*). У каждого раздела свой PendingIntent. */
     private fun openApp(tab: String? = null): PendingIntent = PendingIntent.getActivity(
         this,
@@ -398,7 +468,6 @@ class GatewayVpnService : VpnService() {
     companion object {
         private const val TAG = "PrivateGateway"
         private const val NOTIFICATION_ID = 1
-        private const val FAILURE_NOTIFICATION_ID = 2
         private const val SETTINGS_QUIET_MS = 700L
         const val ACTION_CONNECT = "com.privategateway.client.CONNECT"
         const val ACTION_DISCONNECT = "com.privategateway.client.DISCONNECT"

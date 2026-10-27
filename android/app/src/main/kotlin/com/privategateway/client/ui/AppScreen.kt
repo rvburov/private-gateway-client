@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.R
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.servers.CardActions
@@ -75,7 +76,6 @@ import com.privategateway.client.ui.theme.PgShadow
 import com.privategateway.client.ui.theme.PgState
 import com.privategateway.client.ui.theme.PgType
 import com.privategateway.client.ui.theme.pgShadow
-import com.privategateway.client.vpn.TunnelState
 import kotlinx.coroutines.flow.merge
 
 /** Разделы островка-меню: Главная · Серверы · [кнопка-щит] · Проверка · Настройки. */
@@ -203,7 +203,19 @@ fun AppScreen(
                 Tab.Check -> CheckScreen(ui, core, viewModel::loadCoreVersion)
                 Tab.Settings -> {
                     val tunnel by settings.tunnel.collectAsStateWithLifecycle()
-                    SettingsScreen(core, viewModel::loadCoreVersion, actions.openVpnSettings, tunnel, settings::setTunnel) { back ->
+                    val behavior by settings.behavior.collectAsStateWithLifecycle()
+                    val page by settings.requestedPage.collectAsStateWithLifecycle()
+                    SettingsScreen(
+                        core,
+                        viewModel::loadCoreVersion,
+                        actions.openVpnSettings,
+                        tunnel,
+                        settings::setTunnel,
+                        behavior,
+                        settings::setBehavior,
+                        page,
+                        settings::pageShown,
+                    ) { back ->
                         val state by subscriptions.ui.collectAsStateWithLifecycle()
                         SubscriptionsScreen(
                             state,
@@ -318,7 +330,7 @@ private fun PowerLabel(state: TunnelState, hasServer: Boolean, modifier: Modifie
 @Composable
 fun PowerButton(state: TunnelState, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val look = StateLook.of(state)
-    val on = state == TunnelState.Connected || state == TunnelState.Connecting
+    val on = state == TunnelState.Connected || state == TunnelState.Connecting || state == TunnelState.Reconnecting
     val description = stringResource(if (on) R.string.power_action_disconnect else R.string.power_action_connect)
     val ring = PgLayout.PowerButton.RingWidth
     Box(
@@ -333,7 +345,7 @@ fun PowerButton(state: TunnelState, onClick: () -> Unit, modifier: Modifier = Mo
             .testTag("power"),
         contentAlignment = Alignment.Center,
     ) {
-        if (state == TunnelState.Connecting) {
+        if (state == TunnelState.Connecting || state == TunnelState.Reconnecting) {
             val spin = rememberInfiniteTransition(label = "spinner")
             val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "angle")
             Canvas(Modifier.size(PgLayout.PowerButton.Size)) {
