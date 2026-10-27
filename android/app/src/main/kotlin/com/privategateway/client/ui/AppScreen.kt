@@ -58,7 +58,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.R
 import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.inspect.InspectorViewModel
 import com.privategateway.client.ui.check.CheckScreen
+import com.privategateway.client.ui.check.InspectorActions
 import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.qr.QrCameraScreen
 import com.privategateway.client.ui.servers.CardActions
@@ -110,6 +112,7 @@ fun AppScreen(
     servers: ServersViewModel,
     subscriptions: SubscriptionsViewModel,
     actions: AppActions,
+    inspector: InspectorViewModel,
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
@@ -247,7 +250,16 @@ fun AppScreen(
                     )
                 }
 
-                Tab.Check -> CheckScreen(ui, core, viewModel::loadCoreVersion)
+                Tab.Check -> {
+                    val inspect by inspector.ui.collectAsStateWithLifecycle()
+                    CheckScreen(
+                        ui,
+                        core,
+                        viewModel::loadCoreVersion,
+                        inspect,
+                        InspectorActions(inspector::measureIp, inspector::describe, inspector::kind, inspector::target, inspector::port, inspector::run),
+                    )
+                }
                 Tab.Settings -> {
                     val tunnel by settings.tunnel.collectAsStateWithLifecycle()
                     val behavior by settings.behavior.collectAsStateWithLifecycle()

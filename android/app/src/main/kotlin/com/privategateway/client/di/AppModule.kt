@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.privategateway.client.core.inspect.ProbeRunner
 import com.privategateway.client.core.subscriptions.SubscriptionDownloader
 import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.data.AppDatabase
@@ -12,6 +13,10 @@ import com.privategateway.client.data.KeystoreSecretBox
 import com.privategateway.client.data.SecretBox
 import com.privategateway.client.data.ServerDao
 import com.privategateway.client.data.SubscriptionDao
+import com.privategateway.client.inspect.DeviceWebFetch
+import com.privategateway.client.inspect.PhoneNetworkReader
+import com.privategateway.client.inspect.PhoneNetworkSource
+import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.ui.qr.DeviceQrImages
 import com.privategateway.client.ui.qr.QrImages
 import com.privategateway.client.vpn.CoreEngine
@@ -40,6 +45,10 @@ object AppModule {
 
     @Provides
     fun subscriptionDao(database: AppDatabase): SubscriptionDao = database.subscriptions()
+
+    /** Замеры инспектора (DNS, TCP, TLS) — доверенные корни телефона. */
+    @Provides
+    fun probeRunner(): ProbeRunner = ProbeRunner()
 
     /** Загрузка подписок по сети; в тестах — подделка. */
     @Provides
@@ -73,4 +82,11 @@ abstract class BindingsModule {
     @Binds
     @Singleton
     abstract fun qrImages(images: DeviceQrImages): QrImages
+
+    @Binds
+    @Singleton
+    abstract fun phoneNetworks(reader: PhoneNetworkReader): PhoneNetworkSource
+
+    @Binds
+    abstract fun webFetch(fetch: DeviceWebFetch): WebFetch
 }

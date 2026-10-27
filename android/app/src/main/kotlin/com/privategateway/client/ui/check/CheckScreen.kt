@@ -26,6 +26,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
 import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.inspect.InspectorUi
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.ProtectionChips
 import com.privategateway.client.ui.Texts
@@ -38,11 +39,17 @@ import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 
 /**
- * «Проверка»: четыре пункта защиты с объяснением — что значит каждый и в каком он состоянии сейчас, ошибка туннеля и ядро.
- * Замеры (внешний IP, утечки DNS, путь) — инспектор Android, пункт 9.5.
+ * «Проверка»: четыре пункта защиты с объяснением — что значит каждый и в каком он состоянии сейчас, ошибка туннеля, ядро
+ * и инспектор сети (пункт 9.5): сети телефона, внешний IP и его провайдер, замеры DNS, TCP и TLS.
  */
 @Composable
-fun CheckScreen(ui: MainUi, core: String?, loadCore: () -> Unit) {
+fun CheckScreen(
+    ui: MainUi,
+    core: String?,
+    loadCore: () -> Unit,
+    inspector: InspectorUi = InspectorUi(),
+    inspectorActions: InspectorActions = InspectorActions(),
+) {
     LaunchedEffect(Unit) { loadCore() }
     Column(
         Modifier
@@ -88,5 +95,7 @@ fun CheckScreen(ui: MainUi, core: String?, loadCore: () -> Unit) {
             Spacer(Modifier.size(PgSpace.Xs))
             Text("Xray-core " + (core ?: "—"), style = PgType.Mono, modifier = Modifier.testTag("check.core"))
         }
+
+        InspectorSection(inspector, ui.status.state == TunnelState.Connected, inspectorActions)
     }
 }
