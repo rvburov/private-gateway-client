@@ -9,7 +9,6 @@ struct HomeView: View {
     var home = HomeState()
     var killSwitch = true
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-    var onPower: () -> Void = {}
     var onAdd: () -> Void = {}
     var onServers: () -> Void = {}
     var onSelect: (String) -> Void = { _ in }
@@ -17,21 +16,16 @@ struct HomeView: View {
     var onCheck: () -> Void = {}
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            PgBackground()
-            ScrollView {
-                VStack(alignment: .leading, spacing: PgSpace.l) {
-                    header
-                    StatusCard(texts: texts, home: home, killSwitch: killSwitch, onCheck: onCheck)
-                    ServerCard(texts: texts, home: home, onAdd: onAdd, onServers: onServers, onSelect: onSelect, onRefresh: onRefresh)
-                }
-                .padding(.horizontal, PgSpace.windowSideMobile)
-                .padding(.bottom, PgLayout.scrollBottomPadding)
+        ScrollView {
+            VStack(alignment: .leading, spacing: PgSpace.l) {
+                header
+                StatusCard(texts: texts, home: home, killSwitch: killSwitch, onCheck: onCheck)
+                ServerCard(texts: texts, home: home, onAdd: onAdd, onServers: onServers, onSelect: onSelect, onRefresh: onRefresh)
             }
-
-            PowerButton(look: StateLook.of(home.status.state, texts), texts: texts, on: !home.off, action: onPower)
-                .padding(.bottom, PgLayout.Island.bottomMargin)
+            .padding(.horizontal, PgSpace.windowSideMobile)
+            .padding(.bottom, PgLayout.scrollBottomPadding)
         }
+        .accessibilityIdentifier("home")
     }
 
     private var header: some View {
@@ -327,29 +321,39 @@ struct ChipView: View {
     }
 }
 
-/// Кнопка включения внизу экрана (доска 25): кольцо цвета состояния, щит, подпись состояния.
+/// Кнопка-щит (layout.powerButton): кольцо цвета состояния, щит с отметкой; при подключении по кольцу бежит дуга. Подпись
+/// состояния — под кнопкой в островке.
 struct PowerButton: View {
     let look: StateLook
     let texts: PgTexts
-    let on: Bool
+    let state: TunnelState
     let action: () -> Void
+
+    private var on: Bool { state == .connected || state == .connecting || state == .reconnecting }
 
     var body: some View {
         Button(action: action) {
-            VStack(spacing: PgSpace.xxs) {
-                ZStack {
-                    Circle().fill(Color(PgColor.Surface.solid))
-                    Circle().stroke(Color(look.ring), lineWidth: PgLayout.PowerButton.ringWidth)
-                    PgIcon(data: PgIcons.shield, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 2)
-                    PgIcon(data: look.mark, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 2.2)
+            ZStack {
+                Circle().fill(Color(PgColor.Surface.solid))
+                Circle().stroke(Color(look.ring), lineWidth: PgLayout.PowerButton.ringWidth)
+                if state == .connecting || state == .reconnecting {
+                    TimelineView(.animation) { context in
+                        let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.1) / 1.1
+                        Circle()
+                            .trim(from: 0, to: 100.0 / 360)
+                            .stroke(Color(PgState.Connecting.spinner), style: StrokeStyle(lineWidth: PgLayout.PowerButton.ringWidth, lineCap: .round))
+                            .rotationEffect(.degrees(turn * 360))
+                    }
                 }
-                .frame(width: PgLayout.PowerButton.size, height: PgLayout.PowerButton.size)
-                .shadow(color: Color(look.glow), radius: PgSpace.l)
 
-                Text(look.power).pgText(PgType.navActive).foregroundStyle(Color(look.icon))
+                PgIcon(data: PgIcons.shield, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 2)
+                PgIcon(data: look.mark, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 2.2)
             }
+            .frame(width: PgLayout.PowerButton.size, height: PgLayout.PowerButton.size)
+            .shadow(color: Color(look.glow), radius: 14)
         }
         .buttonStyle(.plain)
+        .disabled(state == .stopping)
         .accessibilityLabel(look.power)
         .accessibilityHint(on ? texts.powerActionDisconnect : texts.powerActionConnect)
         .accessibilityIdentifier("power")

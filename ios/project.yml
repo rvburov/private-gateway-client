@@ -40,6 +40,8 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleLocalizations: [en, ru]
         UILaunchScreen: {}
+        # Камера — только для QR-кода со ссылкой на сервер; текст по языкам — App/Resources/*.lproj/InfoPlist.strings.
+        NSCameraUsageDescription: The camera is used only to read a QR code with a server link. Nothing is saved or sent anywhere.
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false

@@ -34,6 +34,14 @@ final class TextsTests: XCTestCase {
         XCTAssertEqual(PgTexts.substitute("{10}", Array(repeating: "-", count: 10) + ["десять"]), "десять")
     }
 
+    func testKeyedTextTakesArguments() {
+        let ru = PgTexts(.russian)
+        XCTAssertEqual(ru.text(key: "import.add.few", ["3"]), "Добавить 3 сервера")
+        XCTAssertEqual(ru.text(key: "import.add.few", ["3"]), ru.importAddFew(3), "то же, что функция по ключу")
+        XCTAssertEqual(PgTexts(.english).text(key: "server.port", ["443"]), PgTexts(.english).serverPort(443))
+        XCTAssertNil(ru.text(key: "no.such.key", ["1"]))
+    }
+
     func testLanguageFollowsTheFirstKnownPreferredLanguage() {
         XCTAssertEqual(PgTexts.language(for: ["ru-RU", "en-US"]), .russian)
         XCTAssertEqual(PgTexts.language(for: ["ru_RU"]), .russian)

@@ -91,6 +91,12 @@ public struct PgTexts: Sendable {
         Self.index[key].map { line($0) }
     }
 
+    /// Текст по ключу с подстановками «{0}», «{1}» по порядку — для ключей, которые собираются на ходу (формы чисел, причина
+    /// отказа); нет такого ключа — nil.
+    public func text(key: String, _ arguments: [String]) -> String? {
+        text(key: key).map { Self.substitute($0, arguments) }
+    }
+
     private static let index: [String: Int] = {
         var index: [String: Int] = [:]
         for (number, key) in keys.enumerated() {

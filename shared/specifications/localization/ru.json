@@ -1407,5 +1407,7 @@
   "android.import.qr.camera.close": "Закрыть",
   "android.import.qr.camera.denied": "Нет доступа к камере: разрешите его в настройках Android или выберите картинку",
   "android.import.qr.camera.failed": "Камера не открылась: она занята другим приложением или ее нет — выберите картинку",
-  "android.share.send": "Отправить ссылку"
+  "android.share.send": "Отправить ссылку",
+  "ios.import.qr.text": "Камерой или с картинки из Фото",
+  "ios.import.qr.camera.failed": "Камера недоступна: разрешите доступ к ней в Настройках iOS (Private Gateway → Камера) или выберите картинку"
 }

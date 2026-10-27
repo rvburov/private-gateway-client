@@ -11,7 +11,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var settings = AppSettings()
 
     let texts: PgTexts
-    private let container: SharedContainer
+    let container: SharedContainer
     private let tunnel: TunnelController
     private let actions: ServerActions
 
@@ -87,6 +87,16 @@ final class AppModel: ObservableObject {
 
     func rename(_ id: String, _ name: String) async {
         await run { try await self.actions.rename(id, name) }
+    }
+
+    /// Адрес сервера для карточки («адрес:порт») — из ссылки в Связке ключей, только по просьбе открытой карточки.
+    func address(_ id: String) async -> String? {
+        try? await container.servers.address(id)
+    }
+
+    /// Ссылка сервера для «Поделиться» — только по нажатию; ключа нет — nil.
+    func shareLink(_ id: String) async -> String? {
+        try? await container.servers.shareLink(id)
     }
 
     /// Действие и перечитанное состояние. Отказ туннеля (iOS не дала поднять VPN) — ошибкой с кодом; файл не записался —
