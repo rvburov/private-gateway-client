@@ -8,7 +8,7 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 
 | Часть | Что внутри | Как проверяется |
 | --- | --- | --- |
-| `ios/Core` — `PrivateGatewayCore` | без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`); конфиг Xray (`XrayConfig`, ответ libXray — `XrayResponse`), настройки туннеля и свой DNS (`TunnelSettings`), строгий разбор адресов IP и частные сети (`IpAddress`, `PrivateNetwork`); список серверов — сервер без адреса и ключа (`ServerItem`), задержка (`Latency`), поиск, вкладки, фильтр и порядок (`ServerList`), быстрая смена (`QuickSwitch`), подписи (`ServerFacts`), узнавание того же сервера (`ServerKeys`), свое название (`ServerNames`); состояние туннеля (`TunnelStatus`); подписки — слияние при обновлении (`SubscriptionMerge`), адрес без токена (`SubscriptionAddress`), название из Profile-Title, причины отказа, расписание и очередь обновлений, разбор загруженного (`SubscriptionFetch`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
+| `ios/Core` — `PrivateGatewayCore` | без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`); конфиг Xray (`XrayConfig`, ответ libXray — `XrayResponse`), настройки туннеля и свой DNS (`TunnelSettings`), строгий разбор адресов IP и частные сети (`IpAddress`, `PrivateNetwork`); список серверов — сервер без адреса и ключа (`ServerItem`), задержка (`Latency`), поиск, вкладки, фильтр и порядок (`ServerList`), быстрая смена (`QuickSwitch`), подписи (`ServerFacts`), узнавание того же сервера (`ServerKeys`), свое название (`ServerNames`); состояние туннеля (`TunnelStatus`); подписки — слияние при обновлении (`SubscriptionMerge`), адрес без токена (`SubscriptionAddress`), название из Profile-Title, причины отказа, расписание и очередь обновлений, разбор загруженного (`SubscriptionFetch`); хранение — серверы и группы (`ServerStore`), секреты в Связке ключей (`KeychainVault`), открытые данные файлом (`DiskFile`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
 | `ios/Core` — `PrivateGatewayTheme` | тема, тексты RU/EN и иконки из `shared/specifications` и `Icons.axaml` десктопа — значения без SwiftUI (`PgColor`, `PgType`, `PgSpace`, `PgTexts`, `PgIcons`, разбор контура `SvgPath`); код генерирует плагин сборки `SharedResources` (исполняемый `SharedGen`, логика — `SharedGenKit`) | тот же `swift test`: каждый цвет и длина — как в Tokens.axaml десктопа, каждый текст — как в JSON, каждая иконка разбирается |
 | `ios/App` | приложение SwiftUI: тема SwiftUI из `PrivateGatewayTheme` (`Color`, шрифт, `PgIcon`, карточка, фон), главная по доске 25 — карточка состояния с четырьмя чипами защиты, сервер, кнопка включения внизу | `scripts/ios-test.sh` — тесты XCTest на симуляторе iPhone (задание CI «iOS — приложение (симулятор)», macOS) |
 | `ios/PacketTunnel` | расширение туннеля (`NEPacketTunnelProvider`); пока ядра нет, честно отказывает с кодом PGC-SVC-002, а не поднимается без защиты | собирается вместе с приложением; туннель на симуляторе не поднять — проверка на iPhone, когда будет аккаунт |
@@ -73,8 +73,23 @@ SwiftPM `SharedResources` запускает `SharedGen`, тот читает `d
 - Блок при обрыве на iOS — системный «весь трафик только через VPN» (`includeAllNetworks`): пока туннель поднят или
   поднимается, трафик мимо него не уходит; выключенный туннель блока не держит. Так его и показывает чип на главной.
 
+## Хранение
+
+Как у Android (решение 399): адрес и ключи сервера и токен подписки открытым текстом на диск не попадают (решение 458).
+
+- Ссылка сервера (`LinkWriter`) и полный адрес подписки — записи Связки ключей службы `com.privategateway.client`
+  («после первой разблокировки, только это устройство»: в резервную копию и на другой iPhone не уходят), группа доступа —
+  App Group `group.com.privategateway.client`, чтобы расширение туннеля открыло ссылку выбранного сервера.
+- Открытые данные — подписи для списка (название из ссылки, страна, протокол, защита, транспорт, порт), порядок, группа,
+  избранное, свое название, замер, время выбора, маска адреса подписки и итог последнего обновления — один файл JSON в общей
+  папке App Group, запись целиком через временный файл, защита данных «до первой разблокировки».
+- `ServerStore` — актор с тем же набором действий, что `ServerRepository` Android: добавление без дублей (тот же сервер под
+  другим названием), загрузка для подключения, обновление подписки (`SubscriptionMerge`), неудача и новый адрес, удаление
+  группы, избранное, свое название, «Недавние», замеры. Файл читается заново на каждое действие — его же читает расширение
+  туннеля. Сервер без записи в Связке ключей (восстановление на другом iPhone) виден в списке и удаляется, но не подключается.
+
 ## Дальше
 
-Ядро libXray для iOS (.xcframework, gomobile) в расширении туннеля, хранение (GRDB, Связка ключей и App Group), остальные
+Ядро libXray для iOS (.xcframework, gomobile) в расширении туннеля, остальные
 экраны SwiftUI (серверы, карточка сервера, проверка, настройки, островок навигации) и управление туннелем
 (`NETunnelProviderManager`).
