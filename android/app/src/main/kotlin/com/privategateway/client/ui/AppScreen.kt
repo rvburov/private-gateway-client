@@ -1,5 +1,7 @@
 package com.privategateway.client.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -51,11 +54,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.R
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.home.HomeScreen
+import com.privategateway.client.ui.qr.QrCameraScreen
 import com.privategateway.client.ui.servers.CardActions
 import com.privategateway.client.ui.servers.ImportScreen
 import com.privategateway.client.ui.servers.ServerCardScreen
@@ -112,6 +117,8 @@ fun AppScreen(
     val query by servers.query.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var adding by rememberSaveable { mutableStateOf(false) }
+    // Сканер QR камерой — поверх «Добавить».
+    var scanning by rememberSaveable { mutableStateOf(false) }
     // Открытая карточка сервера (доска 11) — страница поверх списка серверов.
     var card by rememberSaveable { mutableStateOf<String?>(null) }
     val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
@@ -131,8 +138,10 @@ fun AppScreen(
     }
     val closeImport: () -> Unit = {
         adding = false
+        scanning = false
         viewModel.closeImport()
     }
+    val hasCamera = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
 
     PgBackground {
         if (adding) {
@@ -141,8 +150,46 @@ fun AppScreen(
             val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { image ->
                 image?.let(viewModel::previewQr)
             }
-            ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::name, viewModel::add, closeImport) {
-                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            // Доступ к камере спрашивается по нажатию «Сканировать камерой», а не при запуске; отказ — подсказка в карточке QR.
+            val cameraAccess = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                if (granted) {
+                    scanning = true
+                } else {
+                    viewModel.cameraProblem(R.string.android_import_qr_camera_denied)
+                }
+            }
+            if (scanning) {
+                QrCameraScreen(
+                    onFound = { text ->
+                        scanning = false
+                        viewModel.preview(text)
+                    },
+                    onFailed = {
+                        scanning = false
+                        viewModel.cameraProblem(R.string.android_import_qr_camera_failed)
+                    },
+                    onClose = { scanning = false },
+                )
+            } else {
+                val scan = {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                        scanning = true
+                    } else {
+                        cameraAccess.launch(Manifest.permission.CAMERA)
+                    }
+                }
+                ImportScreen(
+                    importing,
+                    actions.clipboard,
+                    viewModel::edit,
+                    viewModel::preview,
+                    viewModel::name,
+                    viewModel::add,
+                    closeImport,
+                    onScan = scan.takeIf { hasCamera },
+                ) {
+                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                }
             }
         } else {
             BackHandler(enabled = tab != Tab.Home) {

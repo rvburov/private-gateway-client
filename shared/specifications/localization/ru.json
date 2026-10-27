@@ -1376,5 +1376,11 @@
   "android.import.qr.reading": "Ищем QR-код на картинке…",
   "android.import.qr.none": "QR-код не найден: выберите картинку, где код крупнее и четче",
   "android.import.qr.failed": "Картинка не прочитана",
+  "android.import.qr.camera": "Сканировать камерой",
+  "android.import.qr.camera.title": "Наведите камеру на QR-код",
+  "android.import.qr.camera.text": "Код прочитается сам, как только целиком попадет в рамку",
+  "android.import.qr.camera.close": "Закрыть",
+  "android.import.qr.camera.denied": "Нет доступа к камере: разрешите его в настройках Android или выберите картинку",
+  "android.import.qr.camera.failed": "Камера не открылась: она занята другим приложением или ее нет — выберите картинку",
   "android.share.send": "Отправить ссылку"
 }

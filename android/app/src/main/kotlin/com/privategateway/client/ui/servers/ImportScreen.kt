@@ -1,5 +1,6 @@
 package com.privategateway.client.ui.servers
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -68,6 +69,7 @@ fun ImportScreen(
     onName: (String) -> Unit,
     onAdd: () -> Unit,
     onClose: () -> Unit,
+    onScan: (() -> Unit)? = null,
     onPickImage: () -> Unit = {},
 ) {
     // Текст — в модели окна, а не в сохраненном состоянии: конфиг на сотни КБ в Bundle уронил бы процесс (и VPN с ним),
@@ -127,7 +129,7 @@ fun ImportScreen(
             }
         }
 
-        QrCard(state, onPickImage)
+        QrCard(state, onScan, onPickImage)
 
         PgCard(Modifier.fillMaxWidth()) {
             Overline(stringResource(R.string.import_link_title))
@@ -245,9 +247,12 @@ fun ImportScreen(
     }
 }
 
-/** QR-код: картинка из галереи (системный выбор — без доступа ко всем фото); найденный текст разбирается как введенный. */
+/**
+ * QR-код: камерой (нет камеры — [onScan] null, строки нет) или картинка из галереи (системный выбор — без доступа ко всем
+ * фото); найденный текст разбирается как введенный.
+ */
 @Composable
-private fun QrCard(state: ImportUi, onPickImage: () -> Unit) {
+private fun QrCard(state: ImportUi, onScan: (() -> Unit)?, onPickImage: () -> Unit) {
     PgCard(Modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             PgIcon(PgIcons.Qr, null, color = PgColor.Accent.Base, size = 22.dp)
@@ -259,16 +264,11 @@ private fun QrCard(state: ImportUi, onPickImage: () -> Unit) {
         }
 
         Spacer(Modifier.size(PgSpace.S))
-        Text(
-            stringResource(R.string.android_import_qr_image),
-            color = if (state.qrReading) PgColor.Text.Muted else PgColor.Accent.Text,
-            style = PgType.BodyStrong,
-            modifier = Modifier
-                .clip(RoundedCornerShape(PgRadius.Button))
-                .clickable(enabled = !state.qrReading, role = Role.Button, onClick = onPickImage)
-                .padding(vertical = PgSpace.S)
-                .testTag("import.qr.image"),
-        )
+        if (onScan != null) {
+            QrLink(R.string.android_import_qr_camera, !state.qrReading, "import.qr.camera", onScan)
+        }
+
+        QrLink(R.string.android_import_qr_image, !state.qrReading, "import.qr.image", onPickImage)
         if (state.qrReading) {
             Text(stringResource(R.string.android_import_qr_reading), color = PgColor.Text.Secondary, style = PgType.Caption, modifier = Modifier.testTag("import.qr.reading"))
         }
@@ -277,6 +277,21 @@ private fun QrCard(state: ImportUi, onPickImage: () -> Unit) {
             Text(stringResource(it), color = PgColor.Status.Warning.Text, style = PgType.Caption, modifier = Modifier.testTag("import.qr.problem"))
         }
     }
+}
+
+/** Строка-кнопка карточки QR; пока ищется код на картинке, обе недоступны. */
+@Composable
+private fun QrLink(@StringRes label: Int, enabled: Boolean, tag: String, onClick: () -> Unit) {
+    Text(
+        stringResource(label),
+        color = if (enabled) PgColor.Accent.Text else PgColor.Text.Muted,
+        style = PgType.BodyStrong,
+        modifier = Modifier
+            .clip(RoundedCornerShape(PgRadius.Button))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(vertical = PgSpace.S)
+            .testTag(tag),
+    )
 }
 
 /** Название профиля: без него серверы идут в «Мои серверы» (import.name.placeholder), адрес подписки не хранится. */

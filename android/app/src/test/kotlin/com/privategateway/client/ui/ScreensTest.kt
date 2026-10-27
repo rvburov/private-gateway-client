@@ -158,6 +158,20 @@ class ScreensTest {
     }
 
     @Test
+    fun `import offers the camera only when the phone has one`() {
+        var scans = 0
+        val scan: () -> Unit = { scans++ }
+        var camera by mutableStateOf(true)
+        compose.setContent { PgTheme { ImportScreen(ImportUi(), { null }, {}, {}, {}, {}, {}, onScan = scan.takeIf { camera }) } }
+        compose.onNodeWithTag("import.qr.camera").performScrollTo().assertIsDisplayed().performClick()
+        assertEquals(1, scans)
+
+        camera = false
+        compose.onNodeWithTag("import.qr.camera").assertDoesNotExist()
+        compose.onNodeWithTag("import.qr.image").performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
     fun `subscription download shows progress, the reason it failed and the http warning`() {
         val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
         var state by mutableStateOf(ImportUi(text = "https://example.com/sub/abcdef", downloading = true))

@@ -376,6 +376,17 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `camera problem is said in the qr card and the code from the camera is parsed like typed text`() {
+        model.cameraProblem(R.string.android_import_qr_camera_denied)
+        assertEquals(R.string.android_import_qr_camera_denied, wait { model.importing.first { it.qrProblem != null } }.qrProblem)
+
+        model.preview(com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first()))
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(1, ready.batch?.found)
+        assertNull(ready.qrProblem, "новый разбор убирает прежнюю подсказку")
+    }
+
+    @Test
     fun `share link is the stored one with the link name`() {
         val server = Fixtures.servers().first()
         wait { servers.add(listOf(server)) }

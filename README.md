@@ -231,7 +231,7 @@ artifacts/    # ignored
 - [ ] Регрессия всех платформ/протоколов, chaos/network tests, утечки, обновления.
 - [x] Десктоп: QR из картинки не читал наши же коды части ссылок (`hysteria2/hy2-short-scheme`, `vmess/empty-alter-id`; маски 4 и 6) — ZXing.Net обрывал поиск угловых меток на похожем узоре в данных. 2026-10-26: после обычного и обратного прохода — `QRCodeMultiReader`, тест «туда и обратно» по всем `shared/testdata/links` на трех масштабах, как в `QrCode` Android (решение 433).
 - [ ] Тест `ReconnectTests.Network_change_checks_the_server_at_once…` один раз (2026-10-26, Windows CI, коммит fca915d) не дождался состояния — остался в «Переподключении»; следующий прогон прошел. Тест теперь печатает журнал службы — при повторе разобрать по нему.
-- [ ] Android: экран «Лицензии открытых компонентов» (libXray и Xray-core, AndroidX (и WorkManager), Compose, Room, Dagger, snakeyaml-engine, ZXing) и уведомления в APK — как `shared/licenses/components.json` десктопа.
+- [ ] Android: экран «Лицензии открытых компонентов» (libXray и Xray-core, AndroidX (с WorkManager и CameraX), Compose, Room, Dagger, snakeyaml-engine, ZXing) и уведомления в APK — как `shared/licenses/components.json` десктопа.
 - [ ] Performance, CPU/RAM/battery, доступность UI, локализация.
 - [ ] Security review, лицензии, SBOM, privacy, документация, инструкции, changelog; подписи — по разделу «Отложено», если к выпуску решено.
 - [ ] Релизный чеклист и план поддержки/реагирования на инциденты.

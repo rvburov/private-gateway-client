@@ -14,7 +14,7 @@ import com.google.zxing.PlanarYUVLuminanceSource
  * Код читается один раз: после него [offer] дает null до [reset] — экран успевает закрыться, повторов нет. Кадры подаются
  * из одного потока (анализатор камеры); [reset] можно звать из любого.
  */
-class QrScanner(val cropShare: Double = 0.75) {
+class QrScanner(val cropShare: Double = FRAME_SHARE) {
     init {
         require(cropShare > 0 && cropShare <= 1) { "Доля кадра — больше 0 и не больше 1" }
     }
@@ -48,5 +48,10 @@ class QrScanner(val cropShare: Double = 0.75) {
     fun reset() {
         next = 0
         read = false
+    }
+
+    companion object {
+        /** Доля меньшей стороны кадра, где ищется код, — та же рамка на экране камеры. */
+        const val FRAME_SHARE = 0.75
     }
 }

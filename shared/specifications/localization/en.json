@@ -1376,5 +1376,11 @@
   "android.import.qr.reading": "Looking for a QR code in the image…",
   "android.import.qr.none": "No QR code found: choose an image where the code is larger and sharper",
   "android.import.qr.failed": "The image could not be read",
+  "android.import.qr.camera": "Scan with the camera",
+  "android.import.qr.camera.title": "Point the camera at a QR code",
+  "android.import.qr.camera.text": "The code is read as soon as it is fully inside the frame",
+  "android.import.qr.camera.close": "Close",
+  "android.import.qr.camera.denied": "No camera access: allow it in Android settings or choose an image",
+  "android.import.qr.camera.failed": "The camera did not open: another app is using it or there is none — choose an image",
   "android.share.send": "Send link"
 }
