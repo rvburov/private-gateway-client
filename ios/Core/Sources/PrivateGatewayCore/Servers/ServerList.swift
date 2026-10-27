@@ -149,7 +149,7 @@ public enum ServerList {
             return rows.filter(\.favorite)
         case .recent:
             let used = rows.compactMap { row in row.lastUsedAt.map { (row, $0) } }
-            return Array(used.sorted { $0.1 > $1.1 }.prefix(recentLimit).map(\.0))
+            return Array(used.sorted { $0.1 > $1.1 }.prefix(recentLimit).map { $0.0 })
         }
     }
 
