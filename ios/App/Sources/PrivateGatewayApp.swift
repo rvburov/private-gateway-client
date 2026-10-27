@@ -15,7 +15,7 @@ struct PrivateGatewayApp: App {
     }
 }
 
-/// Окно — как `AppScreen` Android: разделы островка (главная, серверы), карточка сервера поверх списка, «Добавить» поверх
+/// Окно — как `AppScreen` Android: разделы островка (главная, серверы, настройки), карточка сервера поверх списка, «Добавить» поверх
 /// всего. Вернулись в приложение — серверы, настройки и состояние перечитываются: их мог поменять «Пункт управления» или
 /// расширение туннеля.
 struct RootView: View {
@@ -80,6 +80,11 @@ struct RootView: View {
                     onAdd: { adding = true }
                 )
             }
+        case .settings:
+            SettingsView(
+                texts: model.texts, settings: model.settings, about: model.about,
+                onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } }
+            )
         }
     }
 

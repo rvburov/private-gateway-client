@@ -35,7 +35,7 @@ struct ImportView: View {
                     }
                 }
                 .padding(.horizontal, PgSpace.windowSideMobile)
-                .padding(.bottom, PgSpace.xl)
+                .padding(.bottom, PgSpace.l)
             }
         }
         .onChange(of: photo) { item in

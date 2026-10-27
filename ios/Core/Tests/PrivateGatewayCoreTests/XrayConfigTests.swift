@@ -133,6 +133,11 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual(XrayResponse.parse(#"{"success":false,"data":null,"error":"boom"}"#), XrayResponse(success: false, error: "boom"))
         XCTAssertFalse(XrayResponse.parse("not json").success)
         XCTAssertFalse(XrayResponse.parse(nil).success)
+        XCTAssertEqual(XrayResponse.version(#"{"success":true,"data":{"version":"26.3.27"}}"#), "26.3.27")
+        XCTAssertNil(XrayResponse.version(#"{"success":false,"data":{"version":"26.3.27"}}"#))
+        XCTAssertNil(XrayResponse.version(#"{"success":true,"data":{"version":""}}"#))
+        XCTAssertNil(XrayResponse.version(#"{"success":true,"data":null}"#))
+        XCTAssertNil(XrayResponse.version(nil))
     }
 
     // MARK: Помощники

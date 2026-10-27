@@ -34,8 +34,12 @@ final class SharedContainerTests: XCTestCase {
         try tunnel.status.write(TunnelStatus(state: .connected, serverId: id, since: Date(timeIntervalSince1970: 1_793_029_320)))
         XCTAssertEqual(app.status.read()?.serverId, id)
 
+        XCTAssertNil(app.coreVersion.read(), "ядро еще не запускалось")
+        try tunnel.coreVersion.write("26.10.21\n")
+        XCTAssertEqual(app.coreVersion.read(), "26.10.21")
+
         let files = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
-        XCTAssertEqual(files, [SharedContainer.serversFile, SharedContainer.settingsFile, SharedContainer.statusFile].sorted())
+        XCTAssertEqual(files, [SharedContainer.serversFile, SharedContainer.settingsFile, SharedContainer.statusFile, SharedContainer.coreVersionFile].sorted())
         let uuid = try XCTUnwrap(server.credentials.uuid)
         for file in files {
             let text = try String(contentsOf: directory.appendingPathComponent(file), encoding: .utf8)

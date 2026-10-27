@@ -120,6 +120,12 @@ final class HomeStateTests: XCTestCase {
         )
     }
 
+    func testReloadAnswerIsOkOrACode() {
+        XCTAssertNil(TunnelMessages.failure(TunnelMessages.ok))
+        XCTAssertEqual(TunnelMessages.failure(Data(TunnelErrors.noServer.utf8)), TunnelErrors.noServer)
+        XCTAssertEqual(TunnelMessages.failure(nil), TunnelErrors.coreFailed, "расширение не ответило — ядро не перезапущено")
+    }
+
     // MARK: Действия
 
     func testWithoutProtectionATapOnlySelects() async throws {

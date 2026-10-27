@@ -44,10 +44,23 @@ final class TunnelController: TunnelControl {
         onChange()
     }
 
-    /// iOS не дала сохранить профиль или поднять туннель (разрешение не дано или отозвано, VPN занят) — PGC-NET-010.
+    /// Поднять туннель или поднять его заново с выбранным сервером и настройками. Туннель уже идет и профиль тот же — расширению
+    /// сообщение «перечитать» (туннель не опускается, трафик ждет в нем, решение 410); профиль другой (блок при обрыве, локальная
+    /// сеть) — туннель опускается, профиль сохраняется, туннель поднимается. iOS не дала сохранить профиль или поднять туннель
+    /// (разрешение не дано или отозвано, VPN занят) — PGC-NET-010; расширение не перезапустило ядро — его код.
     func connect() async throws {
         let profile = try await VpnProfile.of(settings.load())
+        if let manager, Self.running(manager), Self.profile(of: manager) == profile {
+            try await reload(manager)
+            return
+        }
+
         do {
+            if let manager, Self.running(manager) {
+                manager.connection.stopVPNTunnel()
+                await Self.stopped(manager)
+            }
+
             let manager = try await prepared(profile)
             try manager.connection.startVPNTunnel()
         } catch {
@@ -57,6 +70,46 @@ final class TunnelController: TunnelControl {
 
     func disconnect() async {
         manager?.connection.stopVPNTunnel()
+    }
+
+    private static func running(_ manager: NETunnelProviderManager) -> Bool {
+        [.connected, .connecting, .reasserting].contains(manager.connection.status)
+    }
+
+    /// Свойства сохраненного профиля.
+    private static func profile(of manager: NETunnelProviderManager) -> VpnProfile? {
+        guard let tunnel = manager.protocolConfiguration as? NETunnelProviderProtocol else {
+            return nil
+        }
+
+        return VpnProfile(includeAllNetworks: tunnel.includeAllNetworks, excludeLocalNetworks: tunnel.excludeLocalNetworks, enforceRoutes: tunnel.enforceRoutes)
+    }
+
+    /// Ждать, пока туннель опустится, — не дольше 10 секунд.
+    private static func stopped(_ manager: NETunnelProviderManager) async {
+        for _ in 0..<100 where running(manager) || manager.connection.status == .disconnecting {
+            try? await Task.sleep(nanoseconds: 100_000_000)
+        }
+    }
+
+    /// «Перечитать сервер и настройки» — расширению; ответ — удалось или код ошибки.
+    private func reload(_ manager: NETunnelProviderManager) async throws {
+        guard let session = manager.connection as? NETunnelProviderSession else {
+            throw TunnelFailure(TunnelErrors.coreFailed, detail: "no provider session")
+        }
+
+        let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data?, any Error>) in
+            do {
+                try session.sendProviderMessage(TunnelMessages.reload) { @Sendable response in
+                    continuation.resume(returning: response)
+                }
+            } catch {
+                continuation.resume(throwing: TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)"))
+            }
+        }
+        if let code = TunnelMessages.failure(response) {
+            throw TunnelFailure(code)
+        }
     }
 
     /// Профиль с нужными свойствами, сохраненный в настройках iOS. Сохранение нового профиля спрашивает разрешение; после

@@ -6,6 +6,7 @@ import SwiftUI
 enum AppTab: Hashable {
     case home
     case servers
+    case settings
 }
 
 /// Островок внизу (layout.island, layout.powerButton) — как `Island` Android: разделы и кнопка-щит в выемке посередине, под
@@ -22,14 +23,25 @@ struct Island: View {
         let lift = PgLayout.PowerButton.size / 2
         let shape = RoundedRectangle(cornerRadius: PgLayout.Island.cornerRadius, style: .continuous)
         ZStack(alignment: .top) {
+            // Половины по обе стороны кнопки — равной ширины: подпись под кнопкой остается посередине при любом числе разделов.
             HStack(spacing: 0) {
-                NavItem(texts: texts, icon: PgIcons.navHome, detail: nil, label: texts.navHome, active: tab == .home) { onTab(.home) }
-                    .accessibilityIdentifier("nav.home")
-                powerLabel.frame(width: PgLayout.PowerButton.size)
-                NavItem(texts: texts, icon: PgIcons.navServers, detail: PgIcons.navServersDetail, label: texts.navServers, active: tab == .servers) {
-                    onTab(.servers)
+                HStack(spacing: 0) {
+                    NavItem(texts: texts, icon: PgIcons.navHome, detail: nil, label: texts.navHome, active: tab == .home) { onTab(.home) }
+                        .accessibilityIdentifier("nav.home")
+                    NavItem(texts: texts, icon: PgIcons.navServers, detail: PgIcons.navServersDetail, label: texts.navServers, active: tab == .servers) {
+                        onTab(.servers)
+                    }
+                    .accessibilityIdentifier("nav.servers")
                 }
-                .accessibilityIdentifier("nav.servers")
+                .frame(maxWidth: .infinity)
+                powerLabel.frame(width: PgLayout.PowerButton.size)
+                HStack(spacing: 0) {
+                    NavItem(texts: texts, icon: PgIcons.navSettings, detail: PgIcons.navSettingsDetail, label: texts.navSettings, active: tab == .settings) {
+                        onTab(.settings)
+                    }
+                    .accessibilityIdentifier("nav.settings")
+                }
+                .frame(maxWidth: .infinity)
             }
             .frame(height: PgLayout.Island.height)
             .background(shape.fill(Color(PgColor.Surface.card)))

@@ -9,11 +9,16 @@ import PrivateGatewayTheme
 final class AppModel: ObservableObject {
     @Published private(set) var home = HomeState()
     @Published private(set) var settings = AppSettings()
+    /// Версия Xray-core — ее пишет расширение туннеля после запуска ядра; до первого подключения — nil.
+    @Published private(set) var coreVersion: String?
 
     let texts: PgTexts
     let container: SharedContainer
+    /// Версии и лицензии из пакета приложения — читаются один раз.
+    private let bundleInfo: AboutInfo
     private let tunnel: TunnelController
     private let actions: ServerActions
+    private let settingsActions: SettingsActions
 
     /// Отказ самого приложения (iOS не дала сохранить профиль VPN): показывается как ошибка, пока туннель не поднимется.
     private var appError: String?
@@ -21,8 +26,10 @@ final class AppModel: ObservableObject {
     init(container: SharedContainer = .current(), texts: PgTexts = .current) {
         self.container = container
         self.texts = texts
+        bundleInfo = .of(core: nil)
         tunnel = TunnelController(settings: container.settings)
         actions = ServerActions(servers: container.servers, settings: container.settings, control: tunnel)
+        settingsActions = SettingsActions(settings: container.settings, control: tunnel)
         tunnel.onChange = { [weak self] in
             self?.refreshStatus()
         }
@@ -32,6 +39,13 @@ final class AppModel: ObservableObject {
     func start() async {
         await tunnel.load()
         await reload()
+    }
+
+    /// «О программе»: пакет приложения и версия ядра от расширения туннеля.
+    var about: AboutInfo {
+        var info = bundleInfo
+        info.core = coreVersion
+        return info
     }
 
     func reload() async {
@@ -46,6 +60,7 @@ final class AppModel: ObservableObject {
             home.selectedId = loaded.selectedServerId
         }
 
+        coreVersion = container.coreVersion.read()
         refreshStatus()
     }
 
@@ -87,6 +102,18 @@ final class AppModel: ObservableObject {
 
     func rename(_ id: String, _ name: String) async {
         await run { try await self.actions.rename(id, name) }
+    }
+
+    /// DNS, IPv6 и локальная сеть: под защитой — сразу в работу (ядро перечитывает настройки или туннель переподключается).
+    func setTunnel(_ next: TunnelSettings) async {
+        let state = home.status.state
+        await run { try await self.settingsActions.setTunnel(next, state: state) }
+    }
+
+    /// Блок при обрыве — свойство профиля VPN: под защитой туннель переподключается с новым профилем.
+    func setKillSwitch(_ on: Bool) async {
+        let state = home.status.state
+        await run { try await self.settingsActions.setKillSwitch(on, state: state) }
     }
 
     /// Адрес сервера для карточки («адрес:порт») — из ссылки в Связке ключей, только по просьбе открытой карточки.

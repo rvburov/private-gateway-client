@@ -26,6 +26,15 @@ targets:
     sources:
       - path: App/Sources
       - path: App/Resources
+      # «Лицензии открытых компонентов»: список и тексты лицензий — те же файлы, что сверяют тесты; коммит libXray — общий
+      # с Android. Тексты — папкой (texts/<SPDX>.txt в пакете приложения).
+      - path: ../shared/licenses/ios.json
+        buildPhase: resources
+      - path: ../shared/licenses/texts
+        type: folder
+        buildPhase: resources
+      - path: ../android/libxray.version
+        buildPhase: resources
     dependencies:
       - package: PrivateGatewayCore
         product: PrivateGatewayCore

@@ -338,4 +338,15 @@ public struct XrayResponse: Equatable, Sendable {
 
         return XrayResponse(success: false, error: error)
     }
+
+    /// Версия Xray-core из ответа на «xrayVersion» (`{"success": true, "data": {"version": "…"}}`); нет — nil.
+    public static func version(_ text: String?) -> String? {
+        guard let parsed = try? JsonTree.parse(text ?? ""), case let .object(root, _) = parsed.root, case .bool(true)? = root["success"],
+              case let .object(data, _)? = root["data"], case let .string(version)? = data["version"], !version.isEmpty
+        else {
+            return nil
+        }
+
+        return version
+    }
 }

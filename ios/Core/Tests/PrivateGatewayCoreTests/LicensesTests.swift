@@ -61,6 +61,21 @@ final class LicensesTests: XCTestCase {
         }
     }
 
+    func testListParsesForTheLicensesScreen() throws {
+        let text = try String(contentsOf: Self.root.appendingPathComponent("shared/licenses/ios.json"), encoding: .utf8)
+        let list = try OpenComponents.parse(text)
+        XCTAssertEqual(list.map(\.name), try components().map(\.name))
+        let libXray = try XCTUnwrap(list.first { $0.name == "libXray" })
+        XCTAssertEqual(libXray.sourceUrl(version: "abc123"), "https://github.com/XTLS/libXray/tree/abc123")
+        XCTAssertNil(libXray.sourceUrl(version: nil), "без версии — без ссылки на исходники")
+        XCTAssertEqual(libXray.xcframework, "LibXray")
+        XCTAssertEqual(list.first { $0.name == "Xray-core" }?.inside, "libXray")
+        XCTAssertEqual(OpenComponent(name: "x", license: "MIT OR (Apache-2.0 AND BSD-3-Clause)", shown: nil, copyright: "", url: "", source: nil, notice: nil, inside: nil,
+                                     xcframework: nil).licenseIds,
+                       ["MIT", "Apache-2.0", "BSD-3-Clause"])
+        XCTAssertThrowsError(try OpenComponents.parse(#"[{"name": "x"}]"#), "без лицензии — ошибка, а не пропуск")
+    }
+
     func testListMatchesTheBuild() throws {
         let list = try components()
         let package = try String(contentsOf: Self.root.appendingPathComponent("ios/Core/Package.swift"), encoding: .utf8)

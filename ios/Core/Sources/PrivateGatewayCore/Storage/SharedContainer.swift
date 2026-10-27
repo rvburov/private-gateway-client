@@ -13,17 +13,21 @@ public struct SharedContainer: Sendable {
     public static let serversFile = "servers.json"
     public static let settingsFile = "settings.json"
     public static let statusFile = "tunnel-status.json"
+    public static let coreVersionFile = "core-version.txt"
 
     public let directory: URL
     public let servers: ServerStore
     public let settings: SettingsStore
     public let status: TunnelStatusFile
+    /// Версия Xray-core — ее пишет расширение туннеля после запуска ядра: в процессе приложения ядра нет.
+    public let coreVersion: TextFile
 
     public init(directory: URL, vault: any SecretVault) {
         self.directory = directory
         servers = ServerStore(file: DiskFile(url: directory.appendingPathComponent(Self.serversFile)), vault: vault)
         settings = SettingsStore(file: DiskFile(url: directory.appendingPathComponent(Self.settingsFile)))
         status = TunnelStatusFile(file: DiskFile(url: directory.appendingPathComponent(Self.statusFile)))
+        coreVersion = TextFile(file: DiskFile(url: directory.appendingPathComponent(Self.coreVersionFile)))
     }
 
     #if canImport(Security)
@@ -45,4 +49,26 @@ public struct SharedContainer: Sendable {
         )
     }
     #endif
+}
+
+/// Короткий текст в файле общей папки (версия ядра): нет файла или не прочитать — nil.
+public struct TextFile: Sendable {
+    private let file: any StateFile
+
+    public init(file: any StateFile) {
+        self.file = file
+    }
+
+    public func read() -> String? {
+        guard let data = try? file.read() else {
+            return nil
+        }
+
+        let text = String(decoding: data, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
+
+    public func write(_ text: String) throws {
+        try file.write(Data(text.utf8))
+    }
 }

@@ -15,29 +15,71 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     // В изоляции вызывающего, как метод суперкласса: словарь параметров (NSObject — не Sendable) никуда не пересылается.
     override nonisolated(nonsending) func startTunnel(options: [String: NSObject]?) async throws {
         do {
-            let launch = try await TunnelLaunch.prepare(settings: container.settings, servers: container.servers)
-            report(TunnelStatus(state: .connecting, serverId: launch.serverId))
-            try await apply(launch.plan.networkSettings())
-            guard let fd = TunnelInterface.descriptor() else {
-                throw TunnelFailure(TunnelErrors.coreFailed, detail: "utun descriptor not found")
-            }
-
-            // Ядро запускается после маршрутов: до него пакеты ждут в интерфейсе туннеля, а не уходят мимо.
-            try TunnelLaunch.started(LibXrayInvoke(XrayConfig.runRequest(launch.config(tunFd: fd))))
-            report(TunnelStatus(state: .connected, serverId: launch.serverId, since: Date()))
+            try await bringUp()
         } catch {
-            let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
-            // Подробность — уже без секретов (SecretMasker): адресов, ключей и ссылок в журнале нет.
-            log.error("start: \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
-            stopCore()
-            report(TunnelStatus(state: .error, error: failure.code))
-            throw failure
+            throw failed(error, "start")
+        }
+    }
+
+    /// Сообщение приложения: «перечитать сервер и настройки» — другой сервер под защитой или новые настройки. Туннель не
+    /// опускается: новые маршруты ставятся поверх, прежнее ядро останавливается, новое запускается — трафик ждет в туннеле.
+    /// Не вышло — туннель закрывается с ошибкой: держать его без ядра незачем.
+    override func handleAppMessage(_ messageData: Data) async -> Data? {
+        guard messageData == TunnelMessages.reload else {
+            return nil
+        }
+
+        do {
+            try await bringUp()
+            return TunnelMessages.ok
+        } catch {
+            let failure = failed(error, "reload")
+            cancelTunnelWithError(failure)
+            return Data(failure.code.utf8)
         }
     }
 
     override func stopTunnel(with reason: NEProviderStopReason) async {
         stopCore()
         report(TunnelStatus())
+    }
+
+    /// Сервер и настройки из общей папки, маршруты и DNS, ядро на дескрипторе utun. Ядро запускается после маршрутов: до него
+    /// пакеты ждут в туннеле, а не уходят мимо; прежнее ядро (перезапуск) останавливается тоже после новых маршрутов.
+    private nonisolated(nonsending) func bringUp() async throws {
+        let launch = try await TunnelLaunch.prepare(settings: container.settings, servers: container.servers)
+        report(TunnelStatus(state: .connecting, serverId: launch.serverId))
+        try await apply(launch.plan.networkSettings())
+        guard let fd = TunnelInterface.descriptor() else {
+            throw TunnelFailure(TunnelErrors.coreFailed, detail: "utun descriptor not found")
+        }
+
+        stopCore()
+        try TunnelLaunch.started(LibXrayInvoke(XrayConfig.runRequest(launch.config(tunFd: fd))))
+        report(TunnelStatus(state: .connected, serverId: launch.serverId, since: Date()))
+        reportCoreVersion()
+    }
+
+    /// Версия ядра для «О программе»: в процессе приложения ядра нет. Не записалась — там будет «—».
+    private func reportCoreVersion() {
+        guard let version = XrayResponse.version(LibXrayInvoke(XrayConfig.invoke("xrayVersion"))) else {
+            return
+        }
+
+        do {
+            try container.coreVersion.write(version)
+        } catch {
+            log.error("core version: \(SecretMasker.mask("\(error)"), privacy: .public)")
+        }
+    }
+
+    /// Отказ: в журнал — код и подробность без секретов (SecretMasker), ядро — остановить, приложению — «Ошибка» с кодом.
+    private func failed(_ error: any Error, _ step: String) -> TunnelFailure {
+        let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
+        log.error("\(step, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
+        stopCore()
+        report(TunnelStatus(state: .error, error: failure.code))
+        return failure
     }
 
     private func stopCore() {

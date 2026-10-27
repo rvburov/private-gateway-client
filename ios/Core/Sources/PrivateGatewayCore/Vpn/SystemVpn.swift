@@ -1,3 +1,5 @@
+import Foundation
+
 /// Состояние VPN в системе — `NEVPNStatus` без NetworkExtension, чтобы правило проверялось и на Linux.
 public enum SystemVpnStatus: Sendable {
     case invalid
@@ -54,10 +56,34 @@ public struct VpnProfile: Equatable, Sendable {
     public let excludeLocalNetworks: Bool
     public let enforceRoutes: Bool
 
+    public init(includeAllNetworks: Bool, excludeLocalNetworks: Bool, enforceRoutes: Bool) {
+        self.includeAllNetworks = includeAllNetworks
+        self.excludeLocalNetworks = excludeLocalNetworks
+        self.enforceRoutes = enforceRoutes
+    }
+
     public static func of(_ settings: AppSettings) -> VpnProfile {
         VpnProfile(
             includeAllNetworks: settings.killSwitch, excludeLocalNetworks: settings.tunnel.allowLan,
             enforceRoutes: !settings.killSwitch && !settings.tunnel.allowLan
         )
+    }
+}
+
+/// Сообщения приложения расширению туннеля (`sendProviderMessage`) и ответы.
+public enum TunnelMessages {
+    /// Перечитать выбранный сервер и настройки и перезапустить ядро, не опуская туннель: маршруты остаются, и пока ядро
+    /// поднимается заново, трафик ждет в туннеле, а не уходит мимо — как переподключение службы Android (решение 410).
+    public static let reload = Data("reload".utf8)
+
+    public static let ok = Data("ok".utf8)
+
+    /// Ответ расширения: nil — перезапуск удался, иначе код ошибки (PGC-…).
+    public static func failure(_ response: Data?) -> String? {
+        guard let response, response != ok else {
+            return response == nil ? TunnelErrors.coreFailed : nil
+        }
+
+        return String(decoding: response, as: UTF8.self)
     }
 }

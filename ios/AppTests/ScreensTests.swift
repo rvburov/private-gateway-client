@@ -104,7 +104,7 @@ final class ScreensTests: XCTestCase {
         }
 
         for state in TunnelState.allCases {
-            for tab in [AppTab.home, .servers] {
+            for tab in [AppTab.home, .servers, .settings] {
                 let island = Island(texts: texts, tab: tab, state: state, hasServer: state != .off, onTab: { _ in }, onPower: {})
                 XCTAssertNotNil(try render(island, height: 160))
             }
@@ -153,5 +153,46 @@ final class ScreensTests: XCTestCase {
         await model.readQr(Data("not an image".utf8))
         XCTAssertEqual(model.qrProblem, "android.import.qr.failed")
         XCTAssertNotNil(PgTexts(.russian).text(key: try XCTUnwrap(model.qrProblem)))
+    }
+
+    @MainActor
+    func testSettingsDrawOnEveryPageAndLanguage() throws {
+        let about = AboutInfo.of(core: "26.3.27")
+        for language in PgTexts.Language.allCases {
+            let texts = PgTexts(language)
+            for page in [SettingsPage.main, .protection, .licenses] {
+                let view = SettingsView(texts: texts, settings: AppSettings(), about: about, page: page, onTunnel: { _ in }, onKillSwitch: { _ in })
+                XCTAssertEqual(try render(view).size.width, 393, accuracy: 1)
+            }
+
+            let custom = TunnelSettings(dns: .custom, customDns: "192.0.2.53", ipv6: true, allowLan: true)
+            let editing = ProtectionView(texts: texts, tunnel: custom, killSwitch: false, editingDns: true, onTunnel: { _ in }, onKillSwitch: { _ in }, onBack: {})
+            XCTAssertNotNil(try render(editing))
+            for component in about.components {
+                XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, open: component.name, onBack: {}), height: 2000), component.name)
+            }
+        }
+    }
+
+    /// Пакет приложения несет список компонентов, тексты всех их лицензий и коммит libXray (ios/project.yml).
+    @MainActor
+    func testAppCarriesTheLicensesAndVersions() throws {
+        let about = AboutInfo.of(core: nil)
+        let file = Self.testData.deletingLastPathComponent().appendingPathComponent("licenses/ios.json")
+        XCTAssertEqual(about.components, try OpenComponents.parse(String(contentsOf: file, encoding: .utf8)))
+        for component in about.components {
+            for id in component.licenseIds {
+                XCTAssertFalse(about.licenseText(id).isEmpty, "\(component.name): нет текста \(id) в пакете приложения")
+            }
+        }
+
+        let libXray = try XCTUnwrap(about.components.first { $0.xcframework != nil })
+        let commit = try String(contentsOf: Self.testData.deletingLastPathComponent().deletingLastPathComponent().appendingPathComponent("android/libxray.version"), encoding: .utf8)
+        XCTAssertEqual(about.version(libXray), commit.trimmingCharacters(in: .whitespacesAndNewlines))
+        XCTAssertNotNil(libXray.sourceUrl(version: about.version(libXray)))
+        XCTAssertNil(about.version(try XCTUnwrap(about.components.first { $0.name == "Xray-core" })), "версию ядра сообщает расширение")
+        XCTAssertEqual(AboutInfo.of(core: "26.3.27").version(try XCTUnwrap(about.components.first { $0.name == "Xray-core" })), "26.3.27")
+        XCTAssertFalse(about.app.isEmpty)
+        XCTAssertTrue(about.system.hasPrefix("iOS "))
     }
 }
