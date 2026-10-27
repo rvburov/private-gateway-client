@@ -19,8 +19,15 @@ CI уже проверяет без вас на симуляторе iPhone: с�
 (бесплатный Apple ID ее не дает). Пока аккаунта нет, проверка ждет его (решение 2026-10-25).
 
 1. Mac с Xcode 26 и go (`brew install go`), iPhone с iOS 16 или новее, кабель.
-2. В Терминале, в папке репозитория: `scripts/ios-test.sh` — соберет ядро, проект и прогонит тесты на симуляторе. Дождитесь
-   строки «Тесты iOS: всего …, упало 0».
+2. В Терминале:
+
+   ```bash
+   git clone https://github.com/rvburov/private-gateway-client.git
+   cd private-gateway-client
+   scripts/ios-test.sh
+   ```
+
+   Скрипт соберет ядро, проект и прогонит тесты на симуляторе. Дождитесь строки «Тесты iOS: всего …, упало 0».
 3. Откройте `ios/PrivateGateway.xcodeproj` в Xcode. Слева — проект **PrivateGateway** → цель **PrivateGateway** → вкладка
    **Signing & Capabilities** → **Team** — ваша команда. Если Xcode пишет, что идентификатор занят, поменяйте в
    `ios/project.yml` префикс `com.privategateway.client` (у приложения, расширения и группы `group.…`) на свой и снова

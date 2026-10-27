@@ -13,11 +13,14 @@ CI уже проверяет без вас: правила WFP блока при
 
 ## Подготовка (один раз)
 
-1. Windows 10 или 11, учетная запись администратора, Git Bash, .NET 10 SDK.
-2. В Git Bash, в папке репозитория:
+1. Windows 10 или 11, учетная запись администратора. Git (с ним Git Bash) и .NET 10 SDK — в PowerShell:
+   `winget install Git.Git Microsoft.DotNet.SDK.10`.
+2. В Git Bash (репозиторий уже скачан — вместо первых двух строк `cd private-gateway-client && git checkout master &&
+   git pull`):
 
    ```bash
-   git checkout master && git pull
+   git clone https://github.com/rvburov/private-gateway-client.git
+   cd private-gateway-client
    scripts/get-xray.sh && scripts/get-singbox.sh
    dotnet build PrivateGateway.slnx
    dotnet run --project desktop/src/Client.UI

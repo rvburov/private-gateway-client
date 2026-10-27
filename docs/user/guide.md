@@ -7,7 +7,8 @@
 
 ## 1. Установка
 
-Скачайте файл своей системы со страницы выпусков GitHub и рядом — `SHA256SUMS`. Сверьте загрузку:
+Скачайте файл своей системы со страницы выпусков GitHub и рядом — `SHA256SUMS` (выпусков пока нет — ниже, «Пока
+выпуска нет: сборка из исходников»). Сверьте загрузку:
 `sha256sum -c SHA256SUMS --ignore-missing` (Linux, Git Bash на Windows) или `shasum -a 256 -c SHA256SUMS --ignore-missing`
 (macOS) — строка вашего файла должна закончиться словом `OK`.
 
@@ -18,6 +19,32 @@
 - **macOS** (Apple Silicon) — `PrivateGateway-<версия>-osx-arm64.dmg`: откройте образ и перетащите Private Gateway в
   «Программы». При первом запуске macOS программу не откроет — «Системные настройки» → «Конфиденциальность и
   безопасность» → «Все равно открыть».
+
+### Пока выпуска нет: сборка из исходников
+
+Выпуски на GitHub появятся с первым тегом `v…`; до него программа ставится из исходников. Один раз поставьте Git и
+.NET 10 SDK:
+
+- **Windows** — в PowerShell: `winget install Git.Git Microsoft.DotNet.SDK.10`; дальше все команды — в Git Bash (он
+  ставится вместе с Git).
+- **Linux** — Debian, Ubuntu: `sudo apt-get install -y git curl unzip dotnet-sdk-10.0`; Fedora:
+  `sudo dnf install -y git curl unzip dotnet-sdk-10.0`.
+- **macOS** — `xcode-select --install` (Git), затем `brew install --cask dotnet-sdk` (нужен Homebrew).
+
+Затем в терминале (на Windows — в Git Bash):
+
+```bash
+git clone https://github.com/rvburov/private-gateway-client.git
+cd private-gateway-client
+scripts/get-xray.sh && scripts/get-singbox.sh
+dotnet build PrivateGateway.slnx
+dotnet run --project desktop/src/Client.UI
+```
+
+`get-xray.sh` и `get-singbox.sh` скачивают ядра Xray и sing-box и сверяют их суммы с закрепленными в репозитории.
+`dotnet build` собирает и окно, и службу (пару минут в первый раз): без собранной службы не будет ни «Установка
+службы», ни режима прокси. Откроется окно — дальше раздел «Первый запуск». Обновиться до свежей версии — в той же
+папке: `git pull`, `dotnet build PrivateGateway.slnx`, `dotnet run --project desktop/src/Client.UI`.
 
 ## 2. Первый запуск
 
