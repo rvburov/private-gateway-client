@@ -1,6 +1,7 @@
 # Проект Xcode приложения iOS — генерирует XcodeGen (scripts/ios-project.sh), сам проект в git не хранится.
 # Приложение (SwiftUI) и расширение туннеля (Packet Tunnel) берут общий пакет ios/Core: разбор, конфиг ядра — из
-# PrivateGatewayCore, тема и тексты — из PrivateGatewayTheme (их пишет плагин сборки из shared/specifications).
+# PrivateGatewayCore, тема и тексты — из PrivateGatewayTheme (их пишет плагин сборки из shared/specifications). Ядро Xray
+# расширения — ios/Frameworks/LibXray.xcframework (scripts/get-libxray-ios.sh, в git не хранится).
 # Подписи нет (аккаунта Apple Developer нет, решение 2026-10-25): сборка и тесты — на симуляторе.
 name: PrivateGateway
 options:
@@ -59,6 +60,11 @@ targets:
       - package: PrivateGatewayCore
         product: PrivateGatewayCore
       - sdk: NetworkExtension.framework
+      # Ядро Xray — libXray, собранный gomobile (scripts/get-libxray-ios.sh): статическая библиотека, вшивается в расширение,
+      # отдельно не встраивается. libresolv — для разрешения имен Go (адрес сервера).
+      - framework: Frameworks/LibXray.xcframework
+        embed: false
+      - sdk: libresolv.tbd
     info:
       path: PacketTunnel/Info.plist
       properties:

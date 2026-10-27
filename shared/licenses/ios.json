@@ -1,8 +1,26 @@
 // Открытые компоненты приложения iOS — один список для будущего экрана «Лицензии открытых компонентов» и
 // THIRD-PARTY-NOTICES приложения, как shared/licenses/android.json у Android; тексты лицензий — shared/licenses/texts/<SPDX>.txt.
 // Поля — как у android.json; чем компонент приходит в приложение:
-//   swiftpm — пакет Swift Package Manager из ios/Core/Package.swift (имя пакета); версия закреплена там же.
+//   swiftpm — пакет Swift Package Manager из ios/Core/Package.swift (имя пакета); версия закреплена там же;
+//   xcframework — свой .xcframework в ios/Frameworks (собирает скрипт), версия — как у Android: android/libxray.version;
+//   inside — входит в другой компонент этого списка (Xray-core — внутри libXray).
 [
+  {
+    "name": "libXray",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023-2025 XTLS",
+    "url": "https://github.com/XTLS/libXray",
+    "xcframework": "LibXray",
+    "source": "https://github.com/XTLS/libXray/tree/{version}"
+  },
+  {
+    "name": "Xray-core",
+    "license": "MPL-2.0",
+    "copyright": "Project X (XTLS) contributors",
+    "url": "https://github.com/XTLS/Xray-core",
+    "inside": "libXray",
+    "notice": "Версия — из go.mod libXray / Version as in the libXray go.mod"
+  },
   {
     "name": "Yams",
     "license": "MIT",

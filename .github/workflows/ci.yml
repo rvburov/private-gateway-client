@@ -340,6 +340,30 @@ jobs:
       - name: Xcode
         run: xcodebuild -version
 
+      # Ядро — тот же коммит libXray, что у Android (android/libxray.version), через gomobile для iPhone и симулятора.
+      # Готовый .xcframework кешируется по коммиту и скрипту и сохраняется сразу после сборки.
+      - id: libxray
+        uses: actions/cache/restore@v4
+        with:
+          path: ios/Frameworks
+          key: libxray-ios-${{ hashFiles('android/libxray.version', 'scripts/get-libxray-ios.sh') }}
+
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Ядро libXray (gomobile)
+        if: steps.libxray.outputs.cache-hit != 'true'
+        run: scripts/get-libxray-ios.sh
+
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ios/Frameworks
+          key: ${{ steps.libxray.outputs.cache-primary-key }}
+
       - name: Сборка и тесты на симуляторе
         run: scripts/ios-test.sh
 

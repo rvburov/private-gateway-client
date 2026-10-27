@@ -84,3 +84,5 @@ ios/App/Info.plist
 ios/App/PrivateGateway.entitlements
 ios/PacketTunnel/Info.plist
 ios/PacketTunnel/PacketTunnel.entitlements
+# Ядро для iOS собирает scripts/get-libxray-ios.sh (gomobile), в git не хранится.
+ios/Frameworks/

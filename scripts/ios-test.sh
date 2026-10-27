@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
-# Приложение iOS: проект (scripts/ios-project.sh), сборка приложения и расширения туннеля, тесты на симуляторе — первый
-# доступный iPhone самой новой iOS. Нужны macOS и Xcode; подписи нет. Итог тестов — artifacts/ios-tests.xcresult.
-# Запуск: scripts/ios-test.sh
+# Приложение iOS: ядро (scripts/get-libxray-ios.sh — если его нет или коммит libXray сменился), проект
+# (scripts/ios-project.sh), сборка приложения и расширения туннеля, тесты на симуляторе — первый доступный iPhone самой новой
+# iOS. Нужны macOS, Xcode и go (для ядра); подписи нет. Итог тестов — artifacts/ios-tests.xcresult. Запуск: scripts/ios-test.sh
 set -euo pipefail
 
 root=$(cd "$(dirname "$0")/.." && pwd)
+built=$(cat "$root/ios/Frameworks/LibXray.version" 2> /dev/null || true)
+if [ ! -d "$root/ios/Frameworks/LibXray.xcframework" ] || [ "$built" != "$(tr -d '[:space:]' < "$root/android/libxray.version")" ]; then
+  "$root/scripts/get-libxray-ios.sh"
+fi
+
 "$root/scripts/ios-project.sh"
 
 device=$(xcrun simctl list devices available --json | python3 -c '
