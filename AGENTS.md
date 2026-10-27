@@ -139,7 +139,8 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
   модуль на чистом Kotlin (разбор, конфиг ядра), `build-logic` — тема и тексты из `shared/specifications` при сборке,
   `app` — Compose, VpnService, хранилище; ядро libXray собирает `scripts/get-libxray.sh` (нужны go и NDK);
 - `ios/` — приложение iOS ([docs/architecture/ios.md](docs/architecture/ios.md)): `Core` — общий пакет Swift без UIKit
-  (разбор ссылок и подписок на эталонах `shared/testdata`), собирается и на Linux;
+  (разбор ссылок и подписок на эталонах `shared/testdata`; тема, тексты и иконки из `shared/specifications` — плагин сборки
+  `SharedResources`), собирается и на Linux;
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;

@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: 525a89820eb6a06b545f48e8bf296ac8a6b5c97b414a78e195704e21b3849747
+  tokens-sha256: f6c752d024edd73e736e231200ed67ec50210760066b2d6e96d3a313019d7bf6
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">

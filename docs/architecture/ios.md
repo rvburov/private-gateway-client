@@ -8,7 +8,8 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 
 | Часть | Что внутри | Как проверяется |
 | --- | --- | --- |
-| `ios/Core` | пакет Swift `PrivateGatewayCore` без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
+| `ios/Core` — `PrivateGatewayCore` | без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
+| `ios/Core` — `PrivateGatewayTheme` | тема, тексты RU/EN и иконки из `shared/specifications` и `Icons.axaml` десктопа — значения без SwiftUI (`PgColor`, `PgType`, `PgSpace`, `PgTexts`, `PgIcons`, разбор контура `SvgPath`); код генерирует плагин сборки `SharedResources` (исполняемый `SharedGen`, логика — `SharedGenKit`) | тот же `swift test`: каждый цвет и длина — как в Tokens.axaml десктопа, каждый текст — как в JSON, каждая иконка разбирается |
 
 Общий модуль — перенос `android/core` один к одному: те же правила, те же коды ошибок, тесты на тех же эталонах
 `shared/testdata` (ссылки, подписки, «туда и обратно» через `LinkWriter`, один сервер из четырех форматов PRIVATE GATEWAY)
@@ -27,7 +28,28 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 - Ошибка разбора конфига — одна строка `bad_encoding` с номером строки, где разбор встал; незакрытая скобка — строка, где она
   открыта (как у десктопа и Android).
 
+## Тема, тексты и иконки
+
+Как у Android (build-logic), код темы не хранится в git, а пишется при каждой сборке модуля `PrivateGatewayTheme`: плагин
+SwiftPM `SharedResources` запускает `SharedGen`, тот читает `design-tokens.json`, `localization/ru.json` и `en.json` и
+`desktop/src/Client.UI/Themes/Icons.axaml` и пишет `Tokens.swift`, `Texts.swift` и `Icons.swift` в папку сборки. Правка
+токенов или текстов попадает в приложение без ручного шага; ошибка в них (разные ключи RU и EN, разные подстановки, два
+ключа с одним именем, неразобранный цвет) роняет сборку с объяснением (решение 456).
+
+- Значения — без SwiftUI (`PgRGBA` — ARGB одним числом, `PgTextStyle`, `PgShadowLayer`, длины — `Double` в пунктах), чтобы
+  модуль собирался и проверялся на Linux; цвет, шрифт и контур SwiftUI из них собирает приложение. Имена — как у Android:
+  `color.bg.window` → `PgColor.Bg.window`, `state.connected.ring` → `PgState.Connected.ring`, `type.h1` → `PgType.h1`.
+  `PgTokens.colors` и `PgTokens.lengths` — те же значения по именам ресурсов десктопа: тест сверяет все 75 цветов и 31 длину
+  с Tokens.axaml. Прозрачность `rgba(…, 0.70)` считается в десятичной записи с округлением половины вверх — 179, как у
+  десктопа и Android, а не 178 из двоичной дроби.
+- Тексты — `PgTexts(язык)`: ключ `status.connected.title` → свойство `statusConnectedTitle`, текст с «{N}» → функция с
+  аргументами по порядку; `text(key:)` — по ключу, собранному на ходу. Язык — первый русский или английский из
+  предпочитаемых языков системы, иначе английский (как values/values-ru у Android); выбор языка для одного приложения в
+  «Настройках» iOS работает, когда приложение объявит оба языка в Info.plist.
+- Иконки — данные пути SVG (`PgIcons.navHome`), контур — `SvgPath.parse`: M, L, H, V, C, S, Q, T, A, Z, числа без
+  разделителей, флаги дуги слитно; дуги переводятся в кривые Безье не больше четверти оборота (SVG 1.1, F.6.5).
+
 ## Дальше
 
-Тема и тексты из `shared/specifications` (как у Android — генератором), хранение (GRDB, Связка ключей и App Group), экраны
-SwiftUI по доскам 25–26, расширение Packet Tunnel с libXray (.xcframework), сборка проекта (XcodeGen) и тесты на симуляторе.
+Хранение (GRDB, Связка ключей и App Group), экраны SwiftUI по доскам 25–26 (цвет, шрифт и контур SwiftUI из
+`PrivateGatewayTheme`), расширение Packet Tunnel с libXray (.xcframework), сборка проекта (XcodeGen) и тесты на симуляторе.

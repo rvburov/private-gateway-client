@@ -5,8 +5,8 @@
   "theme": "light",
   "targets": {
     "desktop": "desktop/src/Client.UI/Themes/Tokens.axaml",
-    "android": "android/…/ui/theme/Theme.kt",
-    "ios": "ios/…/DesignSystem/Tokens.swift"
+    "android": "android/app: Tokens.kt (build-logic при сборке)",
+    "ios": "ios/Core: Tokens.swift модуля PrivateGatewayTheme (плагин SharedResources при сборке)"
   },
 
   "color": {
