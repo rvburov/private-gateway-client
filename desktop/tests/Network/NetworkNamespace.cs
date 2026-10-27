@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Network.Xray;
+using PrivateGateway.Client.Service.Cores;
 
 namespace PrivateGateway.Client.Tests.Network;
 
@@ -282,6 +285,46 @@ internal sealed class NetworkNamespace : IDisposable
             Directory.Delete(etc, recursive: true);
         }
     }
+
+    /// <summary>
+    /// UDP входа Xray до TUN (<see cref="SocksUdp"/>) изнутри пространства: вход там, из сети машины его не видно. Имя и пароль
+    /// связи — через stdin, не в аргументах процесса. Вход ответил «успех» — true.
+    /// </summary>
+    public Task<bool> OpenSocksUdpAsync(int port, TunLink link, CancellationToken cancellationToken) => Task.Run(() =>
+    {
+        try
+        {
+            Run(link.User + "\n" + link.Password + "\n", "python3", "-c", """
+                import socket, sys
+                user, password = (part.encode() for part in sys.stdin.read().split("\n")[:2])
+                s = socket.create_connection(("127.0.0.1", int(sys.argv[1])), 3)
+                def read(count):
+                    data = b""
+                    while len(data) < count:
+                        chunk = s.recv(count - len(data))
+                        if not chunk:
+                            sys.exit("closed")
+                        data += chunk
+                    return data
+                s.sendall(b"\x05\x01\x02")
+                if read(2) != b"\x05\x02":
+                    sys.exit("method")
+                s.sendall(bytes([1, len(user)]) + user + bytes([len(password)]) + password)
+                if read(2) != b"\x01\x00":
+                    sys.exit("auth")
+                s.sendall(b"\x05\x03\x00\x01\x00\x00\x00\x00\x00\x00")
+                head = read(4)
+                if head[:2] != b"\x05\x00":
+                    sys.exit("associate")
+                read({1: 6, 4: 18}[head[3]])
+                """, port.ToString(CultureInfo.InvariantCulture));
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return false;
+        }
+    }, cancellationToken);
 
     /// <summary>Команда изнутри пространства; не вышла успешно — исключение с ее выводом.</summary>
     public async Task<string> RunAsync(params string[] command)

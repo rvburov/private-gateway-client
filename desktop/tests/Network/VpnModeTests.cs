@@ -1558,7 +1558,7 @@ public sealed partial class VpnModeTests
         }
 
         public GatewayOptions Vpn(GatewayOptions options) =>
-            options with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = KillSwitch, TunnelNetns = Netns.Path };
+            options with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = KillSwitch, TunnelNetns = Netns.Path, TunnelUdp = Netns.OpenSocksUdpAsync };
 
         /// <summary>Сервер перестал отвечать.</summary>
         public void StopServer()

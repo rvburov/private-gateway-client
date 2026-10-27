@@ -395,7 +395,7 @@ public sealed partial class Gateway
         try
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, request, _addresses, timeout, _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), starting).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), _options.TunnelUdp, starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -474,8 +474,8 @@ public sealed partial class Gateway
 
             // Переподключение после подключения, на которое сервер не ответил, системного прокси еще не ставило.
             ApplySystemProxy();
-            Move(s => s, ConnectionState.Connected);
             _journal.Add(JournalLevel.Info, "service", $"Связь с сервером восстановлена (попытка {attempt})");
+            Move(s => s, ConnectionState.Connected);
             AfterConnected(session);
         }
         finally

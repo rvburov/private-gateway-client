@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -54,7 +55,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
         try
         {
             (await output.TraceAsync(() => netns.CurlAsync(new Uri("http://1.1.1.1/")))).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
@@ -96,14 +97,24 @@ public sealed class VpnTunnelTests
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
             ConnectionSettings.Default with { Stack = stack, CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
         var output = new CoreOutput(netns);
+        var opened = new ConcurrentQueue<bool>();
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, openUdp: async (port, link, cancellationToken) =>
+            {
+                var ok = await netns.OpenSocksUdpAsync(port, link, cancellationToken);
+                opened.Enqueue(ok);
+                return ok;
+            }, cancellationToken: Ct);
 
         // Этот адрес sing-box прописывает ОС: Windows — DNS адаптера, Linux — systemd-resolved.
         (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), tcp: tcp)))
             .ShouldBe("203.0.113.7", "DNS ОС отвечает Xray через сервер, а не sing-box своим DNS мимо туннеля");
         dns.Queries.ShouldContain("example.com");
+
+        // UDP входа открыт до TUN: первый запрос DNS после подъема не может прийти раньше, чем вход запомнил адрес (CI, прогон 322).
+        opened.ShouldBe([true]);
+        output.Lines.ShouldNotContain(line => line.Contains("Unauthorized UDP access", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -124,7 +135,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
         (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), seconds: 5)))
             .ShouldBe("203.0.113.7", "адрес DNS туннеля есть только в TUN — запрос к нему идет в Xray и от программы мимо туннеля");
@@ -150,7 +161,7 @@ public sealed class VpnTunnelTests
         var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
         killSwitch.Enable(new KillSwitchPolicy(SingBoxConfigBuilder.InterfaceName, [new(host, definition.Port)], AllowLan: true,
             BlockOutsideDns: true, TunnelDns: IPAddress.Parse(SingBoxConfigBuilder.TunDns)));
 
@@ -179,7 +190,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
         var fake = IPAddress.Parse(await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53")));
         IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool).Contains(fake).ShouldBeTrue($"{fake} — адрес из пула FakeDNS");
@@ -211,7 +222,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
         // DNS за программу спросила другая (как служба DNS ОС) — через туннель, и ответ — из пула.
         var fake = await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53"));
@@ -385,7 +396,7 @@ public sealed class VpnTunnelTests
             {
                 lines.Enqueue((source, line));
                 output.Add(source, line);
-            }, VpnTunnel.NewProbe(), (_, _) => Task.FromResult(true), Ct);
+            }, VpnTunnel.NewProbe(), (_, _) => Task.FromResult(true), netns.OpenSocksUdpAsync, Ct);
 
         tunnel.Ipv6.ShouldBeFalse("сервер открывает IPv6, но адаптеру ОС его не дала");
         lines.ShouldContain(("service", "sing-box не поднял адаптер с IPv6 — на это подключение IPv6 закрыт"));
@@ -416,7 +427,7 @@ public sealed class VpnTunnelTests
             {
                 Interlocked.Increment(ref asked);
                 return Task.FromResult(false);
-            }, cancellationToken: Ct);
+            }, netns.OpenSocksUdpAsync, Ct);
 
         (tunnel.Ipv6, asked).ShouldBe((true, 0), "с сервером Xray соединяется по IPv6 — IPv6 у него есть, без проверки");
         (await output.TraceAsync(() => netns.CurlAsync(new Uri("http://[2606:4700:4700::1111]/")))).ShouldBe("через туннель", "IPv6 — через TUN и сервер по IPv6");
@@ -451,7 +462,7 @@ public sealed class VpnTunnelTests
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken);
                 return true;
-            }, Ct);
+            }, netns.OpenSocksUdpAsync, Ct);
 
         tunnel.Ipv6.ShouldBeFalse();
         lines.ShouldContain(("service", "Проверка IPv6 сервера не уложилась во время подключения — на это подключение IPv6 закрыт"));

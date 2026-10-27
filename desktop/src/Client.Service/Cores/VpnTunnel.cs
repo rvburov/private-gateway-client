@@ -23,6 +23,9 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <summary>Сколько sing-box дается на то, чтобы убрать маршруты при остановке.</summary>
     public static readonly TimeSpan StopGrace = TimeSpan.FromSeconds(5);
 
+    /// <summary>Сколько ждать ответа входа Xray на UDP ASSOCIATE.</summary>
+    public static readonly TimeSpan UdpTimeout = TimeSpan.FromSeconds(2);
+
     private readonly CoreProcess _xray;
     private readonly CoreProcess _singBox;
     private readonly string? _netns;
@@ -139,10 +142,15 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// Открывает ли сервер IPv6 — запросом через вход проверки, после запуска Xray и до TUN; null — не спрашивать: IPv6 через
     /// туннель не идет.
     /// </param>
+    /// <param name="openUdp">
+    /// Открыть UDP входа Xray (порт входа, связь) до TUN — <see cref="SocksUdp"/>; null — <see cref="SocksUdp.AssociateAsync"/>,
+    /// а в сетевом пространстве (вход отсюда не виден) — не открывать.
+    /// </param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
         TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, ProbeLink? probe = null,
-        Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, CancellationToken cancellationToken = default)
+        Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, Func<int, TunLink, CancellationToken, Task<bool>>? openUdp = null,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -176,6 +184,16 @@ public sealed class VpnTunnel : IAsyncDisposable
             // печатает, когда входы уже слушают.
             await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : Volatile.Read(ref xrayStarted) == 1),
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
+
+            // UDP входов — до TUN: иначе первый пакет sing-box (запрос DNS сразу после «Подключено») мог пропасть.
+            openUdp ??= netns is null ? (port, l, c) => SocksUdp.AssociateAsync(port, l.User, l.Password, UdpTimeout, c) : null;
+            foreach (var port in (int[])[link.Port, link.BypassPort])
+            {
+                if (openUdp is not null && port > 0 && !await openUdp(port, link, cancellationToken).ConfigureAwait(false))
+                {
+                    output?.Invoke("service", "Вход Xray не открыл UDP заранее — первый запрос DNS через туннель может ждать повтора");
+                }
+            }
 
             // IPv6 через туннель — только если сервер его открывает: иначе соединения IPv6 принимал бы TUN, а рвал сервер, и
             // программа не перешла бы на IPv4. С сервером Xray соединяется по IPv6 — у него IPv6 есть, проверять нечего: без

@@ -43,7 +43,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box;
 /// <paramref name="NetworkDetails"/> — маршруты и DHCP этой ОС для сетевого инспектора; null — без них;
 /// <paramref name="AddressFetch"/> — запрос к RIPEstat о провайдере адреса (тесты); null — <see cref="AddressLookup.FetchAsync"/>;
-/// <paramref name="Webrtc"/> — замер STUN обычным путем службы (<see cref="StunProbe"/>): какой адрес видит WebRTC; null — не мерить.
+/// <paramref name="Webrtc"/> — замер STUN обычным путем службы (<see cref="StunProbe"/>): какой адрес видит WebRTC; null — не мерить;
+/// <paramref name="TunnelUdp"/> — открыть UDP входа Xray до TUN (тесты: вход в сетевом пространстве отсюда не виден); null —
+/// <see cref="SocksUdp.AssociateAsync"/>.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -72,7 +74,8 @@ public sealed record GatewayOptions(
     ISystemDns? SystemDns = null,
     INetworkDetails? NetworkDetails = null,
     Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null,
-    Func<CancellationToken, Task<IPEndPoint?>>? Webrtc = null);
+    Func<CancellationToken, Task<IPEndPoint?>>? Webrtc = null,
+    Func<int, TunLink, CancellationToken, Task<bool>>? TunnelUdp = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -1050,10 +1053,11 @@ public sealed partial class Gateway : IAsyncDisposable
 
             if (answered)
             {
-                // Сначала системный прокси: «Защищено» в окне — когда браузеры уже идут через прокси.
+                // Сначала системный прокси: «Защищено» в окне — когда браузеры уже идут через прокси. Запись в журнале — до
+                // смены состояния: кто увидел «Защищено», найдет ее и на диске, даже если служба сразу упадет.
                 ApplySystemProxy();
-                Move(s => s, ConnectionState.Connected);
                 _journal.Add(JournalLevel.Info, "service", connected);
+                Move(s => s, ConnectionState.Connected);
                 AfterConnected(session);
                 return;
             }
@@ -1408,7 +1412,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), starting).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelUdp, starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {

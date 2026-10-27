@@ -12,6 +12,9 @@ internal sealed class CoreOutput(NetworkNamespace? netns = null)
     private const int Capacity = 300;
     private readonly ConcurrentQueue<string> _lines = new();
 
+    /// <summary>Последние строки — «источник: строка».</summary>
+    public IReadOnlyList<string> Lines => [.. _lines];
+
     public void Add(string source, string line)
     {
         _lines.Enqueue($"{source}: {line}");
