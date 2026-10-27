@@ -92,7 +92,10 @@ final class LicensesTests: XCTestCase {
             XCTAssertTrue(project.contains("Frameworks/\(framework).xcframework"), "\(framework) нет в ios/project.yml")
         }
 
-        let frameworks = project.components(separatedBy: .newlines).filter { $0.contains(".xcframework") && $0.contains("framework:") }
-        XCTAssertEqual(frameworks.count, list.compactMap { $0.fields["xcframework"] }.count, "каждый .xcframework проекта — строкой в ios.json")
+        // Одна библиотека бывает в нескольких целях (libXray — в приложении и в расширении туннеля): сверяются имена, а не строки.
+        let frameworks = Set(project.components(separatedBy: .newlines).filter { $0.contains(".xcframework") && $0.contains("framework:") }.compactMap { line in
+            line.components(separatedBy: "/").last?.components(separatedBy: ".xcframework").first
+        })
+        XCTAssertEqual(frameworks, Set(list.compactMap { $0.fields["xcframework"] }), "каждый .xcframework проекта — строкой в ios.json")
     }
 }
