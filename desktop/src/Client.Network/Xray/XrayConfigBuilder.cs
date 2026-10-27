@@ -58,6 +58,9 @@ public sealed record ProbeLink(int Port, string User, string Password);
 /// </summary>
 public sealed record RelayLink(int Port, string User, string Password);
 
+/// <summary>Имя и пароль входов замера задержки (<see cref="XrayConfigBuilder.BuildProbe"/>) — свои на каждый замер.</summary>
+public sealed record SocksAccount(string User, string Password);
+
 /// <summary>Конфиг проверки задержки и причина отказа для каждого сервера (null — сервер проверяется).</summary>
 public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejection?> Rejections);
 
@@ -216,10 +219,11 @@ public static class XrayConfigBuilder
     /// <paramref name="ports"/> с тем же номером) и свой выход, вход ведет только в свой выход. Без DNS,
     /// правил и журнала соединений — проверяется путь через сервер с настройками подключения
     /// (фрагментация, Mux, отпечаток). Сервер, за который ядро не возьмется, входа не получает. <paramref name="relays"/> —
-    /// ретранслятор sing-box серверу с тем же номером (Hysteria2, TUIC); null — ни одного.
+    /// ретранслятор sing-box серверу с тем же номером (Hysteria2, TUIC); null — ни одного. <paramref name="account"/> — входы
+    /// с этим именем и паролем: пока идет замер, другая программа на машине через них к серверам не пройдет; null — без пароля.
     /// </summary>
     public static XrayProbeConfig BuildProbe(IReadOnlyList<ServerDefinition> servers, IReadOnlyList<int> ports, ConnectionSettings connection,
-        IReadOnlyList<RelayLink?>? relays = null)
+        IReadOnlyList<RelayLink?>? relays = null, SocksAccount? account = null)
     {
         ArgumentNullException.ThrowIfNull(servers);
         ArgumentNullException.ThrowIfNull(ports);
@@ -248,7 +252,14 @@ public static class XrayConfigBuilder
                 ["listen"] = "127.0.0.1",
                 ["port"] = ports[i],
                 ["protocol"] = "socks",
-                ["settings"] = new JsonObject { ["auth"] = "noauth", ["udp"] = false },
+                ["settings"] = account is null
+                    ? new JsonObject { ["auth"] = "noauth", ["udp"] = false }
+                    : new JsonObject
+                    {
+                        ["auth"] = "password",
+                        ["accounts"] = new JsonArray(new JsonObject { ["user"] = account.User, ["pass"] = account.Password }),
+                        ["udp"] = false,
+                    },
             });
             rules.Add(new JsonObject
             {

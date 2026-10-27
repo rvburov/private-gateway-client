@@ -1,5 +1,7 @@
 package com.privategateway.client
 
+import android.app.Notification
+import android.app.NotificationManager
 import android.net.VpnService
 import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -52,6 +54,13 @@ class TunnelOnDeviceTest {
 
         connect()
         assertEquals("pg-tunnel-ok", fetch().trim())
+
+        // На экране блокировки уведомление туннеля — без текста: в нем название сервера.
+        val tunnel = context.getSystemService(NotificationManager::class.java).activeNotifications
+            .single { it.notification.channelId == PrivateGatewayApp.CHANNEL_TUNNEL }.notification
+        assertEquals(Notification.VISIBILITY_PRIVATE, tunnel.visibility)
+        assertNotNull(tunnel.extras.getCharSequence(Notification.EXTRA_TEXT), "в самом уведомлении сервер назван")
+        assertNull(assertNotNull(tunnel.publicVersion, "нет версии для экрана блокировки").extras.getCharSequence(Notification.EXTRA_TEXT))
 
         // Проба связи службы (сразу после подключения, через туннель к cp.cloudflare.com) прошла — переподключения нет.
         delay(12_000)

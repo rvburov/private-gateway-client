@@ -84,6 +84,16 @@ public sealed class XrayConfigTests
             ConnectionSettings.Default, [null, new RelayLink(31500, "relay-user", "relay-pass")]);
         relayed.Rejections.ShouldBe([null, null]);
         Outbound(relayed.Config.ShouldNotBeNull(), "probe-out-1")["settings"]!["servers"]![0]!["port"]!.GetValue<int>().ShouldBe(31500);
+
+        // С именем и паролем замера — у каждого входа: другая программа на машине через них к серверам не пройдет.
+        var locked = XrayConfigBuilder.BuildProbe([Link("vless/reality-vision"), Link("trojan/ws")], [20001, 20002], ConnectionSettings.Default,
+            account: new SocksAccount("probe-user", "probe-pass")).Config.ShouldNotBeNull();
+        foreach (var inbound in locked["inbounds"]!.AsArray())
+        {
+            inbound!["settings"]!["auth"]!.GetValue<string>().ShouldBe("password");
+            var account = inbound["settings"]!["accounts"]!.AsArray().ShouldHaveSingleItem()!;
+            (account["user"]!.GetValue<string>(), account["pass"]!.GetValue<string>()).ShouldBe(("probe-user", "probe-pass"));
+        }
     }
 
     [Fact]

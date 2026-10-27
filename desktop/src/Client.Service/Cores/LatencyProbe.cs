@@ -60,7 +60,11 @@ public static class LatencyProbe
         ArgumentNullException.ThrowIfNull(time);
         var ports = servers.Select(_ => FreePort()).ToList();
         var relays = servers.Select(server => CoreRelay.LinkFor(server, singBox)).ToList();
-        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays);
+
+        // Входы замера — с паролем на этот замер: служба работает от SYSTEM или root, и без пароля любая программа на машине,
+        // пока идет замер, прошла бы через них к серверам в обход правил.
+        var account = new SocksAccount(VpnTunnel.Secret(), VpnTunnel.Secret());
+        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays, account);
         var results = probe.Rejections
             .Select(r => r is null ? null : LatencyResult.Failed(LatencyFailure.Unsupported))
             .ToArray();
@@ -87,7 +91,8 @@ public static class LatencyProbe
             await Parallel.ForEachAsync(
                 checkedIndexes,
                 new ParallelOptions { MaxDegreeOfParallelism = MaxParallel, CancellationToken = cancellationToken },
-                async (i, token) => results[i] = await RequestAsync(ports[i], target, timeout, time, token).ConfigureAwait(false))
+                async (i, token) => results[i] = await RequestAsync(ports[i], target, timeout, time, token, new NetworkCredential(account.User, account.Password))
+                    .ConfigureAwait(false))
                 .ConfigureAwait(false);
             return Done(results);
         }
@@ -269,8 +274,10 @@ public static class LatencyProbe
 
     private static LatencyResult[] Done(LatencyResult?[] results) => [.. results.Select(r => r!)];
 
-    /// <summary>Ждать, пока ядро откроет все входы; false — ядро вышло или не успело.</summary>
-    // Входы Xray открыты, а ретранслятор Hysteria2 и TUIC, если он есть, сказал, что готов.
+    /// <summary>
+    /// Ждать, пока ядро откроет все входы, а ретранслятор Hysteria2 и TUIC, если он есть, скажет, что готов; false — ядро вышло
+    /// или не успело.
+    /// </summary>
     private static async Task<bool> WaitForPortsAsync(CoreProcess core, IReadOnlyList<int> ports, Func<bool> relayReady, TimeProvider time,
         CancellationToken cancellationToken)
     {

@@ -435,8 +435,16 @@ class GatewayVpnService : VpnService() {
         ServiceCompat.startForeground(this, NOTIFICATION_ID, notification, type)
     }
 
-    /** Постоянное уведомление туннеля; [onlineSince] — когда защита включилась (время эпохи): «в сети» с таймером. */
+    /**
+     * Постоянное уведомление туннеля; [onlineSince] — когда защита включилась (время эпохи): «в сети» с таймером. На экране
+     * блокировки — только состояние: в тексте название сервера, а какими серверами пользуется человек, видеть не нужно
+     * никому, кто взял телефон (модель угроз), — как у остальных уведомлений.
+     */
     private fun notification(title: String, text: String?, onlineSince: Long? = null): Notification {
+        val lockScreen = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
+            .setSmallIcon(R.drawable.pg_notification)
+            .setContentTitle(title)
+            .build()
         val builder = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
             .setSmallIcon(R.drawable.pg_notification)
             .setContentTitle(title)
@@ -445,7 +453,8 @@ class GatewayVpnService : VpnService() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setPublicVersion(lockScreen)
             .addAction(0, getString(R.string.android_notify_disconnect), disconnectIntent(this))
         if (onlineSince != null) {
             builder.setSubText(getString(R.string.status_online))
