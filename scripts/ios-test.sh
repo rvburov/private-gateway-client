@@ -31,4 +31,14 @@ xcodebuild -quiet test \
   -skipPackagePluginValidation \
   -resultBundlePath "$result" \
   CODE_SIGNING_ALLOWED=NO
-echo "Тесты iOS прошли: $result"
+
+# Числа прогона — из итога xcodebuild (-quiet их не печатает); ни одного теста — тоже сбой, а не «прошло».
+xcrun xcresulttool get test-results summary --path "$result" --compact | python3 -c '
+import json, sys
+summary = json.load(sys.stdin)
+total = summary.get("totalTestCount", 0)
+counts = (total, summary.get("passedTests"), summary.get("failedTests"), summary.get("skippedTests"))
+print("Тесты iOS: всего %s, прошло %s, упало %s, пропущено %s" % counts)
+sys.exit(0 if total > 0 else "Тесты iOS не запускались")
+'
+echo "Итог: $result"
