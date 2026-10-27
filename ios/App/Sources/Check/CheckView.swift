@@ -5,7 +5,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// «Проверка» — как `CheckScreen` Android: ошибка туннеля, четыре пункта защиты с объяснением, ядро, инспектор сети (сети
-/// iPhone, внешний IP и его провайдер) и журнал расширения туннеля. Замеры DNS, TCP и TLS — `ProbeCard`.
+/// iPhone, внешний IP и его провайдер, замеры DNS, TCP и TLS) и журнал расширения туннеля.
 struct CheckView: View {
     let texts: PgTexts
     let status: TunnelStatus
@@ -14,8 +14,10 @@ struct CheckView: View {
     let networks: [PhoneNetwork]
     let ip: PublicIp
     let log: [String]
+    @Binding var probe: ProbeState
     var onMeasure: () -> Void = {}
     var onDescribe: () -> Void = {}
+    var onProbe: () -> Void = {}
     var onRefreshLog: () -> Void = {}
 
     var body: some View {
@@ -60,6 +62,7 @@ struct CheckView: View {
 
                 NetworksCard(texts: texts, networks: networks)
                 PublicIpCard(texts: texts, ip: ip, onMeasure: onMeasure, onDescribe: onDescribe)
+                ProbeCard(texts: texts, probe: $probe, protected: status.state == .connected, onRun: onProbe)
                 LogCard(texts: texts, lines: log, onRefresh: onRefreshLog)
             }
             .padding(.horizontal, PgSpace.windowSideMobile)
@@ -194,6 +197,136 @@ struct Fact: View {
             }
             .padding(.top, 2)
         }
+    }
+}
+
+/// Замер до узла — как `ProbeCard` Android: вид (DNS, TCP, TLS) и как он идет, узел, порт (у TCP и TLS), путь замера,
+/// «Проверить», итог и ход по шагам, у TLS — сведения о сертификате.
+private struct ProbeCard: View {
+    let texts: PgTexts
+    @Binding var probe: ProbeState
+    let protected: Bool
+    let onRun: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PgSpace.xs) {
+            Overline(text: texts.probeKind)
+            ForEach(ProbeKind.allCases, id: \.self) { kind in
+                PgChoiceRow(title: texts.text(key: TextKeys.probeKind(kind)) ?? kind.rawValue, selected: probe.kind == kind, identifier: "inspect.probe.\(kind.rawValue)") {
+                    probe.kind = kind
+                    probe.error = nil
+                }
+            }
+
+            Text(texts.text(key: TextKeys.probeMethod(probe.kind)) ?? "").pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary))
+            ProbeField(label: texts.probeTarget, placeholder: texts.probeTargetPlaceholder, text: $probe.target, keyboard: .URL, identifier: "inspect.probe.target")
+            if probe.kind != .dns {
+                ProbeField(label: texts.probePortLabel, placeholder: "443", text: $probe.port, keyboard: .numberPad, identifier: "inspect.probe.port")
+            }
+
+            Text(protected ? texts.probePathVpn : texts.androidProbePathDirect)
+                .pgText(PgType.caption)
+                .foregroundStyle(Color(PgColor.Text.muted))
+                .padding(.top, PgSpace.s)
+            PgButton(label: texts.probeRun, enabled: !probe.running, identifier: "inspect.probe.run", action: onRun)
+                .padding(.top, PgSpace.m)
+            if let error = probe.error {
+                Text(error == .target ? texts.probeErrorTarget : texts.probeErrorPort)
+                    .pgText(PgType.small)
+                    .foregroundStyle(Color(PgColor.Status.Warning.text))
+                    .padding(.top, PgSpace.s)
+                    .accessibilityIdentifier("inspect.probe.error")
+            }
+
+            if let result = probe.result {
+                ProbeResultView(texts: texts, result: result)
+            }
+        }
+        .pgCard()
+        .accessibilityIdentifier("inspect.probe")
+    }
+}
+
+/// Поле замера с подписью сверху; набор — моноширинный, без автозамены.
+private struct ProbeField: View {
+    let label: String
+    let placeholder: String
+    @Binding var text: String
+    let keyboard: UIKeyboardType
+    let identifier: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PgSpace.xxs) {
+            Text(label).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
+            PgField(placeholder: placeholder, text: $text, style: PgType.mono, identifier: identifier)
+                .keyboardType(keyboard)
+        }
+        .padding(.top, PgSpace.s)
+    }
+}
+
+/// Итог замера строкой и ход по шагам: «1. 203.0.113.10 ответил 12 мс».
+private struct ProbeResultView: View {
+    let texts: PgTexts
+    let result: ProbeResult
+
+    var body: some View {
+        let summary = result.summary()
+        VStack(alignment: .leading, spacing: 2) {
+            Text(texts.text(key: summary.key, summary.arguments) ?? "")
+                .pgText(PgType.bodyStrong)
+                .foregroundStyle(Color(PgColor.Text.primary))
+                .accessibilityIdentifier("inspect.probe.summary")
+            ForEach(Array(result.steps.enumerated()), id: \.offset) { _, step in
+                Text(line(step)).pgText(PgType.mono).foregroundStyle(Color(PgColor.Text.secondary))
+                if let tls = step.tls {
+                    TlsFactsView(texts: texts, tls: tls)
+                }
+            }
+        }
+        .padding(.top, PgSpace.m)
+    }
+
+    private func line(_ step: ProbeStep) -> String {
+        let time = step.timeMs.map { texts.probeMs(String($0)) }
+        return ["\(step.index).", step.address, texts.text(key: TextKeys.probeOutcome(step.outcome)), time].compactMap { $0 }.joined(separator: " ")
+    }
+}
+
+/// Сведения рукопожатия TLS: протокол, шифр, ALPN, кому и кем выдан, срок, имена и проверка по пунктам.
+private struct TlsFactsView: View {
+    let texts: PgTexts
+    let tls: TlsFacts
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Fact(title: texts.probeTlsProtocol, value: tls.protocol)
+            Fact(title: texts.probeTlsCipher, value: tls.cipher)
+            Fact(title: texts.probeTlsAlpn, value: tls.alpn)
+            Fact(title: texts.probeTlsSubject, value: tls.subject)
+            Fact(title: texts.probeTlsIssuer, value: tls.issuer)
+            Fact(title: texts.probeTlsValid, value: valid)
+            Fact(title: texts.probeTlsNames, value: tls.names.isEmpty ? nil : tls.names.joined(separator: "\n"))
+            Fact(
+                title: texts.probeTlsCheck,
+                value: tls.problems.isEmpty ? texts.probeTlsOk : tls.problems.compactMap { texts.text(key: TextKeys.tlsProblem($0)) }.joined(separator: "\n")
+            )
+        }
+    }
+
+    /// «до 12 мар. 2027 г. · осталось 136 дн.» или «истек 1 янв. 2026 г.».
+    private var valid: String? {
+        guard let notAfter = tls.notAfter else {
+            return nil
+        }
+
+        let format = DateFormatter()
+        format.locale = Locale(identifier: texts.language.rawValue)
+        format.dateStyle = .medium
+        format.timeStyle = .none
+        let now = Date()
+        let date = format.string(from: notAfter)
+        return now > notAfter ? texts.probeTlsExpired(date) : texts.probeTlsUntil(date, String(Int(notAfter.timeIntervalSince(now) / 86400)))
     }
 }
 

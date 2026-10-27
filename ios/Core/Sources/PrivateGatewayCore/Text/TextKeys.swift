@@ -75,4 +75,24 @@ public enum TextKeys {
     public static func importErrors(_ count: Int, _ language: String) -> String {
         "import.errors." + Plural.form(count, language)
     }
+
+    /// probe.kind.<вид> — «DNS», «TCP», «TLS».
+    public static func probeKind(_ kind: ProbeKind) -> String {
+        "probe.kind." + kind.rawValue
+    }
+
+    /// probe.method.<вид> — как идет замер.
+    public static func probeMethod(_ kind: ProbeKind) -> String {
+        "probe.method." + kind.rawValue
+    }
+
+    /// probe.outcome.<итог> строчными — «ответил», «нет ответа».
+    public static func probeOutcome(_ outcome: ProbeOutcome) -> String {
+        "probe.outcome." + outcome.rawValue.lowercased()
+    }
+
+    /// probe.tls.problem.<что> строчными — «выдан на другое имя».
+    public static func tlsProblem(_ problem: TlsProblem) -> String {
+        "probe.tls.problem." + problem.rawValue.lowercased()
+    }
 }

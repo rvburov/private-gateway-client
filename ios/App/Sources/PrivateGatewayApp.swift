@@ -143,8 +143,10 @@ struct RootView: View {
         case .check:
             CheckView(
                 texts: model.texts, status: model.home.status, killSwitch: model.settings.killSwitch, core: model.coreVersion, networks: inspector.networks,
-                ip: inspector.ip, log: model.log, onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected) } },
-                onDescribe: { Task { await inspector.describe() } }, onRefreshLog: { Task { await model.reload() } }
+                ip: inspector.ip, log: model.log, probe: $inspector.probe,
+                onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected) } },
+                onDescribe: { Task { await inspector.describe() } }, onProbe: { Task { await inspector.runProbe() } },
+                onRefreshLog: { Task { await model.reload() } }
             )
             .onAppear { inspector.start() }
             .onDisappear { inspector.stop() }

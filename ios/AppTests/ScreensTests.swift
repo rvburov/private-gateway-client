@@ -309,15 +309,44 @@ final class ScreensTests: XCTestCase {
         let ips = [PublicIp(), PublicIp(measuring: true), PublicIp(failed: true), known, PublicIp(address: "192.0.2.1", info: .failed("192.0.2.1", .private))]
         for language in PgTexts.Language.allCases {
             for state in TunnelState.allCases {
-                for ip in ips {
+                for (index, ip) in ips.enumerated() {
                     let status = TunnelStatus(state: state, serverId: "a", error: state == .error ? TunnelErrors.serverNotResponding : nil)
                     let view = CheckView(
                         texts: PgTexts(language), status: status, killSwitch: true, core: "26.3.27", networks: state == .off ? [] : networks, ip: ip,
-                        log: state == .connected ? ["2026-10-27 13:05:42 connected", "2026-10-27 13:07:01 connection lost, attempt 1"] : []
+                        log: state == .connected ? ["2026-10-27 13:05:42 connected", "2026-10-27 13:07:01 connection lost, attempt 1"] : [],
+                        probe: .constant(Self.probes[index % Self.probes.count])
                     )
-                    XCTAssertNotNil(try? render(view, height: 2400), "\(state)")
+                    XCTAssertNotNil(try? render(view, height: 3200), "\(state)")
                 }
             }
         }
     }
+
+    /// Замер в каждом виде: пустой, ошибка ввода, идет, итог DNS, TCP с отказом, TLS в порядке и с ошибками сертификата.
+    private static let probes: [ProbeState] = {
+        let facts = TlsFacts(
+            protocol: "TLS 1.3", cipher: "TLS_AES_128_GCM_SHA256", alpn: "h2", subject: "CN=www.example.com, O=Example, C=NL",
+            issuer: "CN=Example Test CA, O=Example", notBefore: Date(timeIntervalSince1970: 1_767_225_600),
+            notAfter: Date(timeIntervalSince1970: 1_798_806_605), names: ["www.example.com", "*.example.org"], problems: []
+        )
+        var broken = facts
+        broken.problems = [.expired, .nameMismatch, .untrusted]
+        broken.notAfter = Date(timeIntervalSince1970: 1_700_000_000)
+        let dns = ProbeResult(kind: .dns, target: "example.com", port: nil, steps: [
+            ProbeStep(index: 1, address: "192.0.2.10", timeMs: 12, outcome: .ok), ProbeStep(index: 2, address: "2001:db8::10", timeMs: 12, outcome: .ok),
+        ])
+        return [
+            ProbeState(), ProbeState(kind: .tcp, target: "example", error: .target), ProbeState(kind: .tcp, target: "example.com", running: true),
+            ProbeState(target: "example.com", result: dns),
+            ProbeState(kind: .tcp, target: "203.0.113.10", port: "8443", result: ProbeResult(
+                kind: .tcp, target: "203.0.113.10", port: 8443, steps: [ProbeStep(index: 1, address: "203.0.113.10", timeMs: nil, outcome: .refused)]
+            )),
+            ProbeState(kind: .tls, target: "www.example.com", result: ProbeResult(
+                kind: .tls, target: "www.example.com", port: 443, steps: [ProbeStep(index: 1, address: "192.0.2.10", timeMs: 48, outcome: .ok, tls: facts)]
+            )),
+            ProbeState(kind: .tls, target: "example.net", result: ProbeResult(
+                kind: .tls, target: "example.net", port: 443, steps: [ProbeStep(index: 1, address: "198.51.100.7", timeMs: 51, outcome: .ok, tls: broken)]
+            )),
+        ]
+    }()
 }

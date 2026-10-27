@@ -12,13 +12,32 @@ struct PublicIp: Equatable {
     var info: AddressInfo?
 }
 
+/// Почему замер не начался: узел не узел, порт не порт.
+enum ProbeError: Equatable, Sendable {
+    case target
+    case port
+}
+
+/// Замер на «Проверке»: вид, узел и порт как ввел пользователь, идет ли, итог, ошибка ввода.
+struct ProbeState: Equatable, Sendable {
+    var kind = ProbeKind.dns
+    var target = ""
+    var port = "443"
+    var running = false
+    var result: ProbeResult?
+    var error: ProbeError?
+}
+
 /// Инспектор сети на «Проверке» — как `InspectorViewModel` Android, в пределах того, что iOS дает приложению: сети iPhone
 /// (`NWPathMonitor`: вид, имя, по умолчанию ли, дорогая ли, есть ли выход в интернет), внешний IP (Cloudflare trace) и что
-/// о нем знает RIPEstat — только по кнопке. Запросы идут из процесса приложения: при включенной защите — через туннель.
+/// о нем знает RIPEstat — только по кнопке, замеры DNS, TCP и TLS (`ProbeRunner`). Запросы идут из процесса приложения: при
+/// включенной защите — через туннель. Ничего не пишет в журнал: адреса и узлы — на экране и только.
 @MainActor
 final class InspectorModel: ObservableObject {
     @Published private(set) var networks: [PhoneNetwork] = []
     @Published private(set) var ip = PublicIp()
+    /// Поля замера правит экран, итог пишет модель.
+    @Published var probe = ProbeState()
 
     private var monitor: NWPathMonitor?
     private let session: URLSession
@@ -111,6 +130,41 @@ final class InspectorModel: ObservableObject {
         let info = PublicAddress.parse(address, overview: await overview, geo: await geo)
         ip.describing = false
         ip.info = info
+    }
+
+    /// Замер по введенному: узел — имя или IP (правила десктопа), порт — у TCP и TLS. Идет замер — второй не начинается.
+    func runProbe() async {
+        guard !probe.running else {
+            return
+        }
+
+        let target = ProbeTarget.normalize(probe.target)
+        let port = ProbeTarget.port(probe.port)
+        guard let target else {
+            probe.error = .target
+            probe.result = nil
+            return
+        }
+
+        guard probe.kind == .dns || port != nil else {
+            probe.error = .port
+            probe.result = nil
+            return
+        }
+
+        let kind = probe.kind
+        probe.running = true
+        probe.error = nil
+        probe.result = nil
+        let result: ProbeResult
+        switch kind {
+        case .dns: result = await ProbeRunner.dns(target)
+        case .tcp: result = await ProbeRunner.tcp(target, port ?? 0)
+        case .tls: result = await ProbeRunner.tls(target, port ?? 0)
+        }
+
+        probe.running = false
+        probe.result = result
     }
 
     /// Текст ответа 2xx не больше мегабайта; нет ответа — nil.
