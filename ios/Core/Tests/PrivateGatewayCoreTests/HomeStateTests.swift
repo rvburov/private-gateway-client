@@ -44,7 +44,7 @@ final class HomeStateTests: XCTestCase {
     /// Три разных эталонных сервера в хранилище; номера — по порядку.
     private func three() async throws -> [String] {
         try await servers.add([
-            TunnelLaunchTests.fixture("vless/reality-vision"), TunnelLaunchTests.fixture("trojan/ws"), TunnelLaunchTests.fixture("vmess/alter-id"),
+            TunnelLaunchTests.fixture("vless/reality-vision"), TunnelLaunchTests.fixture("trojan/ws"), TunnelLaunchTests.fixture("vmess/ws-tls"),
         ])
         let items = try await servers.servers()
         XCTAssertEqual(items.count, 3)
