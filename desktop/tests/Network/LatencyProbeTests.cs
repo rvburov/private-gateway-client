@@ -28,12 +28,13 @@ public sealed class LatencyProbeTests
         };
 
         // Сервер и сайт теста только что запущены, а у службы сервер давно работает. На Windows в CI первый проход через
-        // свежий сервер бывал дольше 5 с у обоих живых сразу, а тот же замер следом — 21 мс (прогон 291). Прогрев — один
+        // свежий сервер бывал дольше 5 с у обоих живых сразу, а тот же замер следом — 21–26 мс (прогоны 291, 306). Прогрев — один
         // запрос через сервер со сроком в минуту; замер ниже — с ядром замера, запущенным заново, как у службы.
         var warm = await LatencyProbe.MeasureAsync(
             XrayKit.Xray!, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
         warm[0].Failure.ShouldBeNull("сервер теста не ответил и за минуту");
         var started = TimeProvider.System.GetTimestamp();
+        var poolBefore = Pool();
 
         var results = await LatencyProbe.MeasureAsync(
             XrayKit.Xray!, [dead, alive, hysteria, alive], ConnectionSettings.Default, site.Url, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
@@ -43,9 +44,12 @@ public sealed class LatencyProbeTests
             // Живой и прогретый сервер не ответил за срок — тогда медлит само ядро замера, и это задело бы и службу: тот же
             // замер с минутой — медленно или не отвечает вовсе.
             var took = TimeProvider.System.GetElapsedTime(started);
+            // Повторы в прогонах 291 и 306 — в начале прогона, когда тесты стартуют разом: очередь пула потоков покажет,
+            // не ждали ли продолжения запроса свободного потока.
+            var pool = $"пул потоков до замера: {poolBefore}, после: {Pool()}";
             var again = await LatencyProbe.MeasureAsync(
                 XrayKit.Xray!, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
-            Assert.Fail($"Живой сервер не ответил за {Timeout.TotalSeconds:0} с (замер шел {took.TotalSeconds:0.0} с): " +
+            Assert.Fail($"Живой сервер не ответил за {Timeout.TotalSeconds:0} с (замер шел {took.TotalSeconds:0.0} с, {pool}): " +
                 $"{string.Join(", ", results)}; тот же замер с минутой: {again[0]}");
         }
 
@@ -54,6 +58,8 @@ public sealed class LatencyProbeTests
         results[3].Milliseconds.ShouldNotBeNull();
         site.Requests.ShouldBe(3, "до сайта дошли только прогрев и запросы через живой сервер");
     }
+
+    private static string Pool() => $"потоков {ThreadPool.ThreadCount}, в очереди {ThreadPool.PendingWorkItemCount}";
 
     [Fact]
     public async Task Server_that_refuses_the_key_is_no_response_at_once()

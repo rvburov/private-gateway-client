@@ -52,14 +52,24 @@ internal sealed class LocalSite : IDisposable
                 return;
             }
 
-            using (client)
+            // Каждое соединение — своей задачей: соединение, которое молчит или шлет не HTTP (TLS чужой программы), не держит
+            // остальные.
+            _ = AnswerAsync(client);
+        }
+    }
+
+    private async Task AnswerAsync(TcpClient client)
+    {
+        using (client)
+        {
+            try
             {
                 var stream = client.GetStream();
                 var buffer = new byte[4096];
                 var received = new StringBuilder();
                 while (!received.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
                 {
-                    var read = await stream.ReadAsync(buffer).ConfigureAwait(false);
+                    var read = await stream.ReadAsync(buffer, _stop.Token).ConfigureAwait(false);
                     if (read == 0)
                     {
                         break;
@@ -69,7 +79,11 @@ internal sealed class LocalSite : IDisposable
                 }
 
                 Interlocked.Increment(ref _requests);
-                await stream.WriteAsync(_response).ConfigureAwait(false);
+                await stream.WriteAsync(_response, _stop.Token).ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException)
+            {
+                // Соединение оборвалось или сайт закрыт.
             }
         }
     }

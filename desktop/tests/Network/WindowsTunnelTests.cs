@@ -41,12 +41,18 @@ public sealed class WindowsTunnelTests
         using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
         var serverPort = XrayKit.FreePort();
         var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        // На сайт теста — только его имя и адрес. С FakeDNS адреса из пула получает и сама Windows (DNS адаптера —
+        // туннель): ее соединения (WNS, проверка сети) тоже приходят на сервер теста — им блок, а не сайт теста.
         serverConfig["outbounds"] = new JsonArray(
+            new JsonObject { ["tag"] = "block", ["protocol"] = "blackhole" },
             new JsonObject { ["tag"] = "site", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } },
             new JsonObject { ["tag"] = "dns", ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{dns.Port}" } });
         serverConfig["routing"] = new JsonObject
         {
-            ["rules"] = new JsonArray(new JsonObject { ["type"] = "field", ["port"] = "53", ["outboundTag"] = "dns" }),
+            ["rules"] = new JsonArray(
+                new JsonObject { ["type"] = "field", ["port"] = "53", ["outboundTag"] = "dns" },
+                new JsonObject { ["type"] = "field", ["domain"] = new JsonArray("full:example.com"), ["outboundTag"] = "site" },
+                new JsonObject { ["type"] = "field", ["ip"] = new JsonArray(Public + "/32"), ["outboundTag"] = "site" }),
         };
 
         using var server = await XrayKit.Start(serverConfig, serverPort);
