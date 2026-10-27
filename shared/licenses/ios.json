@@ -1,0 +1,21 @@
+// Открытые компоненты приложения iOS — один список для будущего экрана «Лицензии открытых компонентов» и
+// THIRD-PARTY-NOTICES приложения, как shared/licenses/android.json у Android; тексты лицензий — shared/licenses/texts/<SPDX>.txt.
+// Поля — как у android.json; чем компонент приходит в приложение:
+//   swiftpm — пакет Swift Package Manager из ios/Core/Package.swift (имя пакета); версия закреплена там же.
+[
+  {
+    "name": "Yams",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2016 JP Simard",
+    "url": "https://github.com/jpsim/Yams",
+    "swiftpm": "Yams",
+    "source": "https://github.com/jpsim/Yams/tree/5.1.3"
+  },
+  {
+    "name": "libyaml",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2017-2020 Ingy döt Net; Copyright (c) 2006-2016 Kirill Simonov",
+    "url": "https://github.com/yaml/libyaml",
+    "inside": "Yams"
+  }
+]

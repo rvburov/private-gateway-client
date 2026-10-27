@@ -294,6 +294,24 @@ jobs:
             artifacts/android-test-server/*.log
           if-no-files-found: ignore
 
+  # iOS (этап 10): общий модуль Swift — разбор ссылок и подписок на эталонах shared/testdata, как у десктопа и Android.
+  # Пакет без UIKit и NetworkExtension, поэтому идет и на Linux (Swift есть в образе машины CI), и на macOS (Swift из Xcode).
+  ios-core:
+    name: iOS — общий модуль (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Swift
+        run: swift --version
+
+      - name: Сборка и тесты
+        run: swift test --package-path ios/Core
+
   worktree:
     name: Рабочие папки агентов (${{ matrix.os }})
     strategy:

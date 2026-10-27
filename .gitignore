@@ -71,3 +71,10 @@ appsettings.Local.json
 # Ядро для Android собирает scripts/get-libxray.sh (gomobile), в git не хранится.
 /android/app/libs/*.aar
 /android/app/libs/*.jar
+
+# ===== SWIFT / iOS =====
+.build/
+.swiftpm/
+xcuserdata/
+*.xcuserstate
+DerivedData/

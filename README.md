@@ -223,7 +223,7 @@ artifacts/    # ignored
 **Готово когда:** Android проходит security/network и lifecycle тесты.
 
 ## 14. Этап 10 — iOS
-- [ ] Swift/SwiftUI, Network Extension / NEPacketTunnelProvider, entitlements.
+- [ ] Swift/SwiftUI, Network Extension / NEPacketTunnelProvider, entitlements. Ход 2026-10-27: общий пакет Swift `ios/Core` — описание сервера, разбор ссылок, подписок base64, конфигов sing-box и Clash/Mihomo, запись ссылки; тесты на эталонах `shared/testdata` — на Linux и macOS в CI ([docs/architecture/ios.md](docs/architecture/ios.md), решение 455). Дальше — тема и тексты из `shared`, хранение, экраны SwiftUI, расширение Packet Tunnel с libXray, проект и тесты на симуляторе.
 - [ ] Подписки, ручной выход, управление туннелем, DNS, восстановление, логи.
 - [ ] Подпись, provisioning, TestFlight, проверки Apple — когда будет аккаунт Apple Developer; до того — сборка и тесты в CI на симуляторе (решение 2026-10-25).
 - [ ] Ограниченный API диагностики, реальные iPhone.

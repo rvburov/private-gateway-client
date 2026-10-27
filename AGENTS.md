@@ -138,6 +138,8 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `android/` — приложение Android ([docs/architecture/android.md](docs/architecture/android.md)): `core` — общий
   модуль на чистом Kotlin (разбор, конфиг ядра), `build-logic` — тема и тексты из `shared/specifications` при сборке,
   `app` — Compose, VpnService, хранилище; ядро libXray собирает `scripts/get-libxray.sh` (нужны go и NDK);
+- `ios/` — приложение iOS ([docs/architecture/ios.md](docs/architecture/ios.md)): `Core` — общий пакет Swift без UIKit
+  (разбор ссылок и подписок на эталонах `shared/testdata`), собирается и на Linux;
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
@@ -189,6 +191,7 @@ android/gradlew -p android/build-logic test            # генераторы т
 android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug   # приложение: SDK Android и libXray
 scripts/get-xray.sh && scripts/android-test-server.sh  # сервер для проверки туннеля на эмуляторе (Xray и HTTP)
 android/gradlew -p android :app:connectedDebugAndroidTest   # туннель на запущенном эмуляторе или телефоне
+swift test --package-path ios/Core                     # общий модуль iOS — Swift 6 (Linux или macOS)
 ```
 
 - **Тесты гонять всегда.** По ходу работы — `Unit`, перед коммитом — все. В отчете — числа
@@ -253,8 +256,8 @@ android/gradlew -p android :app:connectedDebugAndroidTest   # туннель н�
 - **PRIVATE GATEWAY** (сервер) — источник форматов ссылок и подписок для тестов совместимости.
   Секреты, ключи, реальные адреса подписок, UUID устройств и учетные данные не переносить.
 - sing-box — GPL-3.0: запускать отдельным процессом, в код не встраивать.
-- **Новый пакет, шрифт или ядро — строка в `shared/licenses/components.json`** (десктоп) или
-  **`shared/licenses/android.json`** (Android) — авторство, ссылка, SPDX — и текст лицензии в `shared/licenses/texts`, если
+- **Новый пакет, шрифт или ядро — строка в `shared/licenses/components.json`** (десктоп),
+  **`shared/licenses/android.json`** (Android) или **`shared/licenses/ios.json`** (iOS) — авторство, ссылка, SPDX — и текст лицензии в `shared/licenses/texts`, если
   ее там еще нет. Без строки падают тесты «О программе» и сборка выпуска десктопа, а сборка Android не идет вовсе.
 
 ## Тексты: интерфейс, документация, комментарии
