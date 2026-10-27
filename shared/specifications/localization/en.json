@@ -1411,5 +1411,6 @@
   "ios.import.qr.text": "With the camera or from an image in Photos",
   "ios.import.qr.camera.failed": "The camera is unavailable: allow access in iOS Settings (Private Gateway → Camera) or choose an image",
   "ios.prot.ks.text": "While protection is on, iOS sends traffic only through the tunnel: during a drop, a core failure or a reconnect it waits instead of going direct. When off, traffic may bypass the VPN at those moments.",
-  "ios.settings.language": "as in the system — change it in iOS Settings: Private Gateway → Language"
+  "ios.settings.language": "as in the system — change it in iOS Settings: Private Gateway → Language",
+  "ios.keychain": "Keychain"
 }

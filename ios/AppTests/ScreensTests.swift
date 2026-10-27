@@ -161,7 +161,7 @@ final class ScreensTests: XCTestCase {
         for language in PgTexts.Language.allCases {
             let texts = PgTexts(language)
             for page in [SettingsPage.main, .protection, .licenses] {
-                let view = SettingsView(texts: texts, settings: AppSettings(), about: about, page: page, onTunnel: { _ in }, onKillSwitch: { _ in })
+                let view = SettingsView(texts: texts, settings: AppSettings(), about: about, page: .constant(page)) { _ in EmptyView() }
                 XCTAssertEqual(try render(view).size.width, 393, accuracy: 1)
             }
 
@@ -194,5 +194,68 @@ final class ScreensTests: XCTestCase {
         XCTAssertEqual(AboutInfo.of(core: "26.3.27").version(try XCTUnwrap(about.components.first { $0.name == "Xray-core" })), "26.3.27")
         XCTAssertFalse(about.app.isEmpty)
         XCTAssertTrue(about.system.hasPrefix("iOS "))
+    }
+
+    @MainActor
+    func testSubscriptionsDrawInEveryStateAndLanguage() throws {
+        let now = Date()
+        let groups = [
+            GroupItem(id: "s", name: "Работа", maskedUrl: "https://example.com/sub/••••", servers: 12, updatedAt: now, lastAttemptAt: now, failure: nil, status: nil),
+            GroupItem(id: "f", name: "Провайдер", maskedUrl: "https://example.org/••••", servers: 3, updatedAt: now.addingTimeInterval(-3 * 86400),
+                      lastAttemptAt: now.addingTimeInterval(-300), failure: .status, status: 403),
+            GroupItem(id: "p", name: "Профиль", maskedUrl: nil, servers: 1, updatedAt: nil, lastAttemptAt: nil, failure: nil, status: nil),
+        ]
+        let home = HomeState(status: TunnelStatus(state: .connected, serverId: "a"), servers: servers, selectedId: "a")
+        for language in PgTexts.Language.allCases {
+            let texts = PgTexts(language)
+            for settings in [SubscriptionSettings(), SubscriptionSettings(refresh: .off, onlyViaVpn: false, notifySelected: false)] {
+                let view = SubscriptionsView(
+                    texts: texts, settings: settings, groups: groups, manualCount: 2, updating: ["s"], home: HomeState(), actions: SubscriptionsActions(), onBack: {}
+                )
+                XCTAssertEqual(try render(view, height: 1600).size.width, 393, accuracy: 1)
+            }
+
+            let editing = SubscriptionsView(
+                texts: texts, settings: SubscriptionSettings(), groups: groups, manualCount: 0, home: home, editing: "f", actions: SubscriptionsActions(), onBack: {}
+            )
+            XCTAssertNotNil(try render(editing, height: 1600))
+            let empty = SubscriptionsView(texts: texts, settings: SubscriptionSettings(), groups: [], manualCount: 0, home: HomeState(), actions: SubscriptionsActions(), onBack: {})
+            XCTAssertNotNil(try render(empty))
+        }
+    }
+
+    /// Подписка через модель окна: обновление кнопкой без защиты не грузит и говорит почему, без «только через VPN» —
+    /// загружает и говорит итог; удаление группы снимает выбор и говорит «удалена».
+    @MainActor
+    func testSubscriptionActionsReachTheSharedFolder() async throws {
+        let container = SharedContainer(directory: directory, vault: MemoryVault())
+        let links = Self.links()
+        let model = AppModel(container: container, texts: PgTexts(.russian), source: FixedSource(text: links.joined(separator: "\n")))
+        let parsed = links.compactMap { LinkParser.parse($0).server }
+        _ = try await container.servers.add(Array(parsed.prefix(2)), group: "Мой VPN", url: SubscriptionAddress.parse("https://example.com/sub/0123456789abcdef"))
+        await model.reload()
+        let group = try XCTUnwrap(model.groups.first)
+
+        await model.updateSubscription(group)
+        XCTAssertEqual(model.message, PgTexts(.russian).subsBlockedOff, "только через VPN, а защита выключена")
+
+        await model.setSubscriptionSettings(SubscriptionSettings(onlyViaVpn: false))
+        await model.updateSubscription(group)
+        XCTAssertEqual(model.message?.hasPrefix("«Мой VPN» обновлена"), true, model.message ?? "")
+        XCTAssertGreaterThan(model.groups.first?.servers ?? 0, 2)
+        XCTAssertTrue(model.updating.isEmpty)
+
+        let bad = await model.editSubscription(group, name: "Новое", url: "ftp://example.com/sub")
+        XCTAssertFalse(bad)
+        let renamed = await model.editSubscription(group, name: "Новое", url: "")
+        XCTAssertTrue(renamed)
+        XCTAssertEqual(model.groups.first?.name, "Новое")
+
+        let selected = try XCTUnwrap(model.home.servers.first).id
+        await model.select(selected)
+        await model.removeGroup(group.id, name: "Новое", inUse: false)
+        XCTAssertTrue(model.groups.isEmpty)
+        XCTAssertNil(model.settings.selectedServerId)
+        XCTAssertEqual(model.message, "«Новое» удалена")
     }
 }

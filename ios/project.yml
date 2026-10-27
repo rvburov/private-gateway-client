@@ -52,6 +52,9 @@ targets:
         # Камера — только для QR-кода со ссылкой на сервер; текст по языкам — App/Resources/*.lproj/InfoPlist.strings.
         NSCameraUsageDescription: The camera is used only to read a QR code with a server link. Nothing is saved or sent anywhere.
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        # Обновление подписок без окна (BackgroundRefresh): iOS будит приложение сама, когда сочтет нужным.
+        UIBackgroundModes: [fetch]
+        BGTaskSchedulerPermittedIdentifiers: [com.privategateway.client.refresh]
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
     entitlements:

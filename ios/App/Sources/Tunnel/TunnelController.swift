@@ -149,6 +149,11 @@ final class TunnelController: TunnelControl {
         }
     }
 
+    /// Защита подключена — по профилю VPN в системе; для фоновой работы без окна, когда модели нет.
+    static func systemConnected() async -> Bool {
+        (try? await managers().first)?.connection.status == .connected
+    }
+
     /// Профили приложения в настройках iOS. Список уходит из обработчика завершения в главный поток целиком — его больше
     /// никто не держит.
     private static func managers() async throws -> [NETunnelProviderManager] {

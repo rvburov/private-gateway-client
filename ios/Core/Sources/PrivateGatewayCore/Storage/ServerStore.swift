@@ -23,6 +23,19 @@ public struct GroupItem: Equatable, Sendable {
     public let failure: DownloadFailure?
     public let status: Int?
 
+    public init(
+        id: String, name: String, maskedUrl: String?, servers: Int, updatedAt: Date?, lastAttemptAt: Date?, failure: DownloadFailure?, status: Int?
+    ) {
+        self.id = id
+        self.name = name
+        self.maskedUrl = maskedUrl
+        self.servers = servers
+        self.updatedAt = updatedAt
+        self.lastAttemptAt = lastAttemptAt
+        self.failure = failure
+        self.status = status
+    }
+
     /// Обновляется только подписка с адресом; профиль из ссылок — нет.
     public var canUpdate: Bool { maskedUrl != nil }
 }

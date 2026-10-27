@@ -7,33 +7,24 @@ import UIKit
 enum SettingsPage: Hashable {
     case main
     case protection
+    case subscriptions
     case licenses
 }
 
-/// «Настройки» — как `SettingsScreen` Android: раздел «Защита и утечки», «О программе» с версиями и лицензиями открытых
-/// компонентов, язык — системный или выбранный для приложения в Настройках iOS. Изменения под защитой применяются сразу —
-/// перезапуском ядра или туннеля (`SettingsActions`).
-struct SettingsView: View {
+/// «Настройки» — как `SettingsScreen` Android: разделы «Защита и утечки» и «Профили и подписки» (`subscriptions` — страница
+/// по нажатию «Назад»), «О программе» с версиями и лицензиями открытых компонентов, язык — системный или выбранный для
+/// приложения в Настройках iOS. Изменения под защитой применяются сразу — перезапуском ядра или туннеля (`SettingsActions`).
+/// Открытая страница — у окна: «Добавить» поверх и возврат не сбрасывают ее.
+struct SettingsView<Subscriptions: View>: View {
     let texts: PgTexts
     let settings: AppSettings
     let about: AboutInfo
-    let onTunnel: (TunnelSettings) -> Void
-    let onKillSwitch: (Bool) -> Void
+    @Binding var page: SettingsPage
+    var onTunnel: (TunnelSettings) -> Void = { _ in }
+    var onKillSwitch: (Bool) -> Void = { _ in }
+    let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
-    @State private var page: SettingsPage
     @Environment(\.openURL) private var openURL
-
-    init(
-        texts: PgTexts, settings: AppSettings, about: AboutInfo, page: SettingsPage = .main, onTunnel: @escaping (TunnelSettings) -> Void = { _ in },
-        onKillSwitch: @escaping (Bool) -> Void = { _ in }
-    ) {
-        self.texts = texts
-        self.settings = settings
-        self.about = about
-        self.onTunnel = onTunnel
-        self.onKillSwitch = onKillSwitch
-        _page = State(initialValue: page)
-    }
 
     var body: some View {
         switch page {
@@ -42,6 +33,8 @@ struct SettingsView: View {
                 texts: texts, tunnel: settings.tunnel, killSwitch: settings.killSwitch, onTunnel: onTunnel, onKillSwitch: onKillSwitch,
                 onBack: { page = .main }
             )
+        case .subscriptions:
+            subscriptions { page = .main }
         case .licenses:
             LicensesView(texts: texts, about: about) { page = .main }
         case .main:
@@ -58,6 +51,10 @@ struct SettingsView: View {
                         icon: PgIcons.advProtection, title: texts.settingsAdvProtectionTitle, text: texts.settingsAdvProtectionText,
                         identifier: "settings.protection"
                     ) { page = .protection }
+                    SectionRow(
+                        icon: PgIcons.advProfiles, title: texts.settingsAdvProfilesTitle, text: texts.settingsAdvProfilesText,
+                        identifier: "settings.profiles"
+                    ) { page = .subscriptions }
                 }
                 .pgCard()
 

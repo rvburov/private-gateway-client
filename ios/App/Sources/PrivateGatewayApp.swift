@@ -12,6 +12,9 @@ struct PrivateGatewayApp: App {
         WindowGroup {
             RootView(model: model)
         }
+        .backgroundTask(.appRefresh(BackgroundRefresh.task)) {
+            await BackgroundRefresh.run()
+        }
     }
 }
 
@@ -26,6 +29,8 @@ struct RootView: View {
     /// Открытая карточка сервера (доска 11) — страница поверх списка серверов.
     @State private var card: String?
     @State private var query = ServerListQuery()
+    /// Открытая страница «Настроек».
+    @State private var settingsPage = SettingsPage.main
     @Environment(\.scenePhase) private var phase
 
     init(model: AppModel) {
@@ -45,6 +50,7 @@ struct RootView: View {
                     onTab: { next in
                         tab = next
                         card = nil
+                        settingsPage = .main
                     },
                     onPower: power
                 )
@@ -56,9 +62,38 @@ struct RootView: View {
             }
             await model.start()
         }
+        .overlay(alignment: .top) {
+            if let message = model.message {
+                MessageBanner(text: message) { model.message = nil }
+            }
+        }
+        .task(id: model.message) {
+            // Сообщение висит 4 секунды, как короткое сообщение Android.
+            guard model.message != nil else {
+                return
+            }
+
+            try? await Task.sleep(nanoseconds: 4_000_000_000)
+            if !Task.isCancelled {
+                model.message = nil
+            }
+        }
+        .task(id: phase) {
+            // Пока окно на экране — не пора ли обновить подписки: сразу и раз в 10 минут.
+            guard phase == .active else {
+                return
+            }
+
+            while !Task.isCancelled {
+                await model.checkSubscriptions()
+                try? await Task.sleep(nanoseconds: UInt64(SubscriptionUpdater.checkEvery * 1_000_000_000))
+            }
+        }
         .onChange(of: phase) { phase in
             if phase == .active {
                 Task { await model.reload() }
+            } else if phase == .background {
+                BackgroundRefresh.schedule()
             }
         }
     }
@@ -82,10 +117,25 @@ struct RootView: View {
             }
         case .settings:
             SettingsView(
-                texts: model.texts, settings: model.settings, about: model.about,
+                texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,
                 onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } }
-            )
+            ) { onBack in
+                SubscriptionsView(
+                    texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,
+                    updating: model.updating, home: model.home, actions: subscriptionActions, onBack: onBack
+                )
+            }
         }
+    }
+
+    private var subscriptionActions: SubscriptionsActions {
+        SubscriptionsActions(
+            settings: { next in Task { await model.setSubscriptionSettings(next) } },
+            add: { adding = true },
+            update: { group in Task { await model.updateSubscription(group) } },
+            edit: { group, name, url in await model.editSubscription(group, name: name, url: url) },
+            remove: { id, name, inUse in Task { await model.removeGroup(id, name: name, inUse: inUse) } }
+        )
     }
 
     private var cardActions: CardActions {
