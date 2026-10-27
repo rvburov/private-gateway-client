@@ -55,11 +55,22 @@ class TunnelOnDeviceTest {
         connect()
         assertEquals("pg-tunnel-ok", fetch().trim())
 
-        // На экране блокировки уведомление туннеля — без текста: в нем название сервера.
-        val tunnel = context.getSystemService(NotificationManager::class.java).activeNotifications
-            .single { it.notification.channelId == PrivateGatewayApp.CHANNEL_TUNNEL }.notification
+        // На экране блокировки уведомление туннеля — без текста: в нем название сервера. Уведомление обновляется вслед за
+        // состоянием — ждать, пока в нем появится сервер.
+        val tunnel = withTimeout(10_000) {
+            var found: Notification? = null
+            while (found == null) {
+                found = context.getSystemService(NotificationManager::class.java).activeNotifications
+                    .map { it.notification }
+                    .firstOrNull { it.channelId == PrivateGatewayApp.CHANNEL_TUNNEL && it.extras.getCharSequence(Notification.EXTRA_TEXT) != null }
+                if (found == null) {
+                    delay(200)
+                }
+            }
+
+            checkNotNull(found)
+        }
         assertEquals(Notification.VISIBILITY_PRIVATE, tunnel.visibility)
-        assertNotNull(tunnel.extras.getCharSequence(Notification.EXTRA_TEXT), "в самом уведомлении сервер назван")
         assertNull(assertNotNull(tunnel.publicVersion, "нет версии для экрана блокировки").extras.getCharSequence(Notification.EXTRA_TEXT))
 
         // Проба связи службы (сразу после подключения, через туннель к cp.cloudflare.com) прошла — переподключения нет.

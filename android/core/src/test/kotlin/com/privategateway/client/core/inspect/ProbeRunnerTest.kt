@@ -13,6 +13,8 @@ import java.nio.file.Files
 import java.security.KeyStore
 import java.security.cert.X509Certificate
 import java.time.Instant
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.TimeUnit
 import javax.net.ssl.ExtendedSSLSession
 import javax.net.ssl.KeyManagerFactory
 import javax.net.ssl.SNIHostName
@@ -36,11 +38,9 @@ class ProbeRunnerTest {
     private val dir = Files.createTempDirectory("pg-probe").toFile()
     private lateinit var store: KeyStore
     private lateinit var trusted: X509TrustManager
+    private lateinit var context: SSLContext
     private lateinit var server: SSLServerSocket
     private val loopback = InetAddress.getLoopbackAddress()
-
-    /** Какое имя назвал клиент в рукопожатии (SNI) — по нему сервер с несколькими сайтами выбирает сертификат. */
-    @Volatile private var requested: List<String> = emptyList()
 
     @BeforeAll
     fun start() {
@@ -53,15 +53,13 @@ class ProbeRunnerTest {
             .trustManagers.filterIsInstance<X509TrustManager>().first()
 
         val keys = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm()).apply { init(store, PASS.toCharArray()) }
-        val context = SSLContext.getInstance("TLS").apply { init(keys.keyManagers, null, null) }
-        server = context.serverSocketFactory.createServerSocket(0, 10, loopback) as SSLServerSocket
-        server.sslParameters = server.sslParameters.apply { applicationProtocols = arrayOf("h2") }
+        context = SSLContext.getInstance("TLS").apply { init(keys.keyManagers, null, null) }
+        server = listen(10)
         thread(isDaemon = true) {
             while (!server.isClosed) {
                 try {
                     (server.accept() as SSLSocket).use {
                         it.startHandshake()
-                        requested = (it.session as ExtendedSSLSession).requestedServerNames.filterIsInstance<SNIHostName>().map { name -> name.asciiName }
                         it.inputStream.read()
                     }
                 } catch (_: IOException) {
@@ -69,6 +67,36 @@ class ProbeRunnerTest {
                 }
             }
         }
+    }
+
+    private fun listen(backlog: Int) =
+        (context.serverSocketFactory.createServerSocket(0, backlog, loopback) as SSLServerSocket).apply {
+            sslParameters = sslParameters.apply { applicationProtocols = arrayOf("h2") }
+        }
+
+    /**
+     * Сервер на одно соединение и имена, которые клиент назвал в рукопожатии (SNI), — по ним сервер с несколькими сайтами
+     * выбирает сертификат. Свой на проверку: общий сервер записал бы имя предыдущего соединения уже после того, как клиент
+     * вернулся (CI, прогон 332).
+     */
+    private fun oneHandshake(): Pair<Int, CompletableFuture<List<String>>> {
+        val socket = listen(1)
+        val names = CompletableFuture<List<String>>()
+        thread(isDaemon = true) {
+            socket.use { listening ->
+                try {
+                    (listening.accept() as SSLSocket).use {
+                        it.startHandshake()
+                        names.complete((it.session as ExtendedSSLSession).requestedServerNames.filterIsInstance<SNIHostName>().map { name -> name.asciiName })
+                        it.inputStream.read()
+                    }
+                } catch (e: IOException) {
+                    names.completeExceptionally(e)
+                }
+            }
+        }
+
+        return socket.localPort to names
     }
 
     @AfterAll
@@ -82,7 +110,8 @@ class ProbeRunnerTest {
 
     @Test
     fun `trusted certificate for the name gives the handshake facts and no problems`() {
-        val result = runner().tls("localhost", server.localPort)
+        val (port, sni) = oneHandshake()
+        val result = runner().tls("localhost", port)
         val step = result.steps.single()
         assertEquals(ProbeOutcome.Ok, step.outcome)
         assertEquals("127.0.0.1", step.address)
@@ -93,7 +122,7 @@ class ProbeRunnerTest {
         assertEquals(listOf("localhost", "127.0.0.1"), tls.names)
         assertEquals(emptyList(), tls.problems)
         assertEquals(ProbeSummary("probe.summary.tls", listOf("TLSv1.3")), result.summary())
-        assertEquals(listOf("localhost"), requested, "имя узла уходит в SNI")
+        assertEquals(listOf("localhost"), sni.get(5, TimeUnit.SECONDS), "имя узла уходит в SNI")
     }
 
     @Test
@@ -115,9 +144,10 @@ class ProbeRunnerTest {
 
     @Test
     fun `ip target is checked against ip names`() {
-        val result = runner(names = mapOf("127.0.0.1" to listOf(loopback))).tls("127.0.0.1", server.localPort)
+        val (port, sni) = oneHandshake()
+        val result = runner(names = mapOf("127.0.0.1" to listOf(loopback))).tls("127.0.0.1", port)
         assertEquals(emptyList(), result.steps.single().tls?.problems)
-        assertEquals(emptyList(), requested, "адрес в SNI не отправляется")
+        assertEquals(emptyList(), sni.get(5, TimeUnit.SECONDS), "адрес в SNI не отправляется")
     }
 
     @Test
