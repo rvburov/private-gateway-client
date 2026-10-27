@@ -44,7 +44,7 @@ public sealed class UpdateFinderTests : IDisposable
     [Theory]
     [InlineData("\"version\": \"0.3.0\"", "\"version\": \"v0.3.0\"")]
     [InlineData("\"channel\": \"stable\"", "\"channel\": \"nightly\"")]
-    [InlineData("\"rollout\": 20", "\"rollout\": 0")]
+    [InlineData("\"rollout\": 20", "\"rollout\": -1")]
     [InlineData("\"rollout\": 20", "\"rollout\": 101")]
     [InlineData("https://github.com/rvburov", "http://github.com/rvburov")]
     [InlineData("PrivateGateway-0.3.0-win-x64.msi", "../PrivateGateway-0.3.0-win-x64.msi")]
@@ -162,6 +162,19 @@ public sealed class UpdateFinderTests : IDisposable
         later.Manifest!.Version.ShouldBe("0.3.0", "до 0.4.0 раскатка еще не дошла, а 0.3.0 — у всех");
         later.Skipped.ShouldContain(s => s.Contains("раскатка 20 %", StringComparison.Ordinal));
         (await UpdateFinder.FindAsync(feed, [PublicKey], "0.3.0", UpdateChannel.Stable, bucket: 99, cancellationToken: TestContext.Current.CancellationToken)).State.ShouldBe(UpdateState.UpToDate);
+    }
+
+    [Fact]
+    public async Task Stopped_rollout_offers_the_release_to_nobody_and_the_previous_one_stays()
+    {
+        var feed = new Feed(_key).Add("0.4.0", Manifest("0.4.0", rollout: 0), signed: true).Add("0.3.0", Manifest("0.3.0", rollout: 100), signed: true);
+
+        var search = await UpdateFinder.FindAsync(feed, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0, cancellationToken: TestContext.Current.CancellationToken);
+
+        search.Manifest!.Version.ShouldBe("0.3.0", "остановленный выпуск не получает и установка с номером 0");
+        search.Skipped.ShouldBe(["0.4.0: раскатка остановлена"]);
+        (await UpdateFinder.FindAsync(feed, [PublicKey], "0.3.0", UpdateChannel.Stable, bucket: 0, cancellationToken: TestContext.Current.CancellationToken)).State
+            .ShouldBe(UpdateState.UpToDate);
     }
 
     [Fact]

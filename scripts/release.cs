@@ -39,7 +39,7 @@ if (args is ["rollout", var published, var share])
     // update.json и его подпись входят в SHA256SUMS: новая доля — новые суммы в тех же строках.
     var manifestPath = Path.Combine(published, "update.json");
     var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
-    manifest["rollout"] = Percent(share);
+    manifest["rollout"] = Percent(share, stop: true);
     var signed = File.Exists(manifestPath + ".sig");
     if (signed && SigningKey() is null)
     {
@@ -230,10 +230,11 @@ static string Git(params string[] arguments)
     return process.ExitCode == 0 ? text : string.Empty;
 }
 
-static int Percent(string text) =>
-    int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var percent) && percent is >= 1 and <= 100
+// Доля раскатки: 1–100; rollout принимает и 0 — остановить раскатку опубликованного выпуска (инцидент, docs/operations/support.md).
+static int Percent(string text, bool stop = false) =>
+    int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out var percent) && percent >= (stop ? 0 : 1) && percent <= 100
         ? percent
-        : throw new ArgumentException($"Доля раскатки — целое от 1 до 100, а не «{text}»");
+        : throw new ArgumentException($"Доля раскатки — целое от {(stop ? 0 : 1)} до 100, а не «{text}»");
 
 static string Sha256(string path)
 {

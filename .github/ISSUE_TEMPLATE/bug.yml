@@ -1,0 +1,54 @@
+name: Сообщение о проблеме / Bug report
+description: Программа ведет себя не так, как должна / Something does not work as it should
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **Не вставляйте сюда ключи серверов, ссылки vless:// и другие, адреса подписок и UUID** — для разбора они не нужны,
+        а в Issue их увидят все. Уязвимость — не сюда, а приватно: SECURITY.md.
+
+        **Do not paste server keys, share links, subscription URLs or UUIDs.** Vulnerabilities — privately, see SECURITY.md.
+  - type: input
+    id: version
+    attributes:
+      label: Версия / Version
+      description: «Настройки» → «О программе» / Settings → About
+      placeholder: 0.1.0
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Система / OS
+      options: [Windows, macOS, Linux, Android, iOS]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Режим / Mode
+      options: [VPN, Прокси / Proxy, Не подключено / Not connected]
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Что делали / Steps
+      description: По шагам, с названиями кнопок / Step by step, with button names
+    validations:
+      required: true
+  - type: textarea
+    id: result
+    attributes:
+      label: Что увидели и что ждали / What happened and what you expected
+      description: Код ошибки, если был (PGC-…) / Error code if any (PGC-…)
+    validations:
+      required: true
+  - type: textarea
+    id: report
+    attributes:
+      label: Отчет проверки / Check report
+      description: |
+        «Проверка» → «Экспорт отчета», затем вставьте текст файла. Отчет обезличен, но прочитайте его перед отправкой.
+        Check → Export report, then paste the file. It is anonymized, still read it before sending.
+      render: text

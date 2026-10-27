@@ -2,9 +2,9 @@
 #
 # Проверка scripts/release.cs на собранных здесь «сборках» трех ОС: выпуск собирается с общим SHA256SUMS, манифестом
 # обновления (канал, доля раскатки, главное, файлы ОС с суммами) и заметками; бета-версия — канал beta; порченый файл,
-# сборка без одной ОС и доля вне 1–100 — ошибка; rollout меняет долю и сумму манифеста. Подпись — на ключе, созданном
-# здесь же (keygen): openssl проверяет ее открытым ключом, rollout подписывает заново, ключ не из папки ключей, ключи без
-# секрета и rollout подписанного без ключа — ошибка. Запускается в CI (задание «Стиль и формат») и вручную:
+# сборка без одной ОС и доля вне 1–100 — ошибка; rollout меняет долю и сумму манифеста, 0 — останавливает раскатку.
+# Подпись — на ключе, созданном здесь же (keygen): openssl проверяет ее открытым ключом, rollout подписывает заново, ключ
+# не из папки ключей, ключи без секрета и rollout подписанного без ключа — ошибка. Запускается в CI (задание «Стиль и формат») и вручную:
 #
 #   scripts/tests/release-assembly-smoke.sh
 set -euo pipefail
@@ -54,7 +54,8 @@ check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi 
 check "в заметках — как поставить на macOS без подписи" "grep -q 'Все равно открыть' '$TMP/notes.md'"
 check "заметки рядом, а не в файлах выпуска" "[ -f '$TMP/notes.md' ] && [ ! -e '$TMP/stable-out/notes.md' ]"
 check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
-check "доля 0 — ошибка" "! run rollout '$TMP/stable-out' 0"
+check "доля 0 останавливает раскатку" "run rollout '$TMP/stable-out' 0 && grep -q '\"rollout\": 0' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
+check "доля 101 — ошибка" "! run rollout '$TMP/stable-out' 101"
 
 builds beta 0.4.0-beta.1
 check "бета — канал beta" "run assemble 0.4.0-beta.1 '$TMP/beta' '$TMP/beta-out' && grep -q '\"channel\": \"beta\"' '$TMP/beta-out/update.json'"

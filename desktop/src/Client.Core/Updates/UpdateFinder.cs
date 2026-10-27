@@ -130,6 +130,12 @@ public static class UpdateFinder
                 continue;
             }
 
+            if (parsed.Rollout == 0)
+            {
+                skipped.Add($"{release.Version}: раскатка остановлена");
+                continue;
+            }
+
             if (bucket >= parsed.Rollout)
             {
                 skipped.Add($"{release.Version}: раскатка {parsed.Rollout} %, до этой установки еще не дошла");

@@ -143,7 +143,8 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
 - `shared/licenses/` — открытые компоненты программы (`components.json` десктопа: экран «О программе» и
   THIRD-PARTY-NOTICES выпуска; `android.json` — то же для приложения Android) и полные тексты их лицензий;
-- `docs/` — `design/` (макет v1.0), `architecture/`, `security/`, `roadmap/`, `sources/`;
+- `docs/` — `design/` (макет v1.0), `architecture/`, `security/`, `testing/` (проверки на машинах пользователя),
+  `operations/` (релизный чеклист, поддержка и инциденты), `roadmap/`, `sources/`;
 - `scripts/` — `worktree.sh`, `cloud-session.sh` и скрипты сборки;
 - `artifacts/` — вывод сборки, `packages/` — кеш NuGet, `.localdata/` — данные отладочного
   запуска; все три не в git.

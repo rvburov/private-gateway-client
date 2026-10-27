@@ -10,7 +10,7 @@ on:
         description: Тег выпуска (v1.2.3)
         required: true
       rollout:
-        description: Доля, % (1–100)
+        description: Доля, % (1–100; 0 — остановить раскатку)
         required: true
         default: '100'
 

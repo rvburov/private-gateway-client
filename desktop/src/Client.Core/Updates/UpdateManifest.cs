@@ -48,9 +48,10 @@ public sealed record UpdateManifest(
                 var other => throw new FormatException("Неизвестный канал: " + other),
             };
             var rollout = root.GetProperty("rollout").GetInt32();
-            if (rollout is < 1 or > 100)
+            // 0 — раскатка остановлена (инцидент): выпуск больше никому не предлагается.
+            if (rollout is < 0 or > 100)
             {
-                throw new FormatException("Доля раскатки — от 1 до 100: " + rollout.ToString(CultureInfo.InvariantCulture));
+                throw new FormatException("Доля раскатки — от 0 до 100: " + rollout.ToString(CultureInfo.InvariantCulture));
             }
 
             var published = DateTimeOffset.Parse(Text(root, "published"), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal);
