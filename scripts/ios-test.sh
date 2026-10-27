@@ -29,13 +29,34 @@ result="$root/artifacts/ios-tests.xcresult"
 rm -rf "$result"
 mkdir -p "$root/artifacts"
 # Плагин сборки пакета (тема и тексты) — свой, из этого репозитория: доверие к нему не спрашивается.
+status=0
 xcodebuild -quiet test \
   -project "$root/ios/PrivateGateway.xcodeproj" \
   -scheme PrivateGateway \
   -destination "id=$device" \
   -skipPackagePluginValidation \
   -resultBundlePath "$result" \
-  CODE_SIGNING_ALLOWED=NO
+  CODE_SIGNING_ALLOWED=NO || status=$?
+
+# Упавшие тесты с текстом проверок: -quiet печатает только имена. Не собралось — итога тестов нет, ошибки сборки уже выше.
+if [ "$status" -ne 0 ] && [ -d "$result" ]; then
+  xcrun xcresulttool get test-results tests --path "$result" --compact | python3 -c '
+import json, sys
+def walk(node, suite):
+    kind = node.get("nodeType", "")
+    name = node.get("name", "")
+    if kind == "Test Case" and node.get("result") == "Failed":
+        print("Упал: %s.%s" % (suite, name))
+        for child in node.get("children", []):
+            if child.get("nodeType") == "Failure Message":
+                print("    " + child.get("name", ""))
+    for child in node.get("children", []):
+        walk(child, name if kind == "Test Suite" else suite)
+for node in json.load(sys.stdin).get("testNodes", []):
+    walk(node, "")
+' || true
+  exit "$status"
+fi
 
 # Числа прогона — из итога xcodebuild (-quiet их не печатает); ни одного теста — тоже сбой, а не «прошло».
 xcrun xcresulttool get test-results summary --path "$result" --compact | python3 -c '

@@ -21,13 +21,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
@@ -39,6 +39,7 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.net.URI
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
@@ -60,6 +61,11 @@ class SubscriptionsViewModelTest {
     private val control = FakeControl()
     private val messages = CopyOnWriteArrayList<Message>()
 
+    // Главный поток — настоящий и один, как у Android: продолжения модели идут через него по очереди. С
+    // UnconfinedTestDispatcher они шли прямо в потоках Room и DataStore, и снятие выбора после удаления группы иногда не
+    // доходило до хранилища за 10 секунд (прогоны 358 и 360).
+    private val main = Executors.newSingleThreadExecutor { Thread(it, "test-main") }.asCoroutineDispatcher()
+
     private class FakeControl : TunnelControl {
         @Volatile var disconnects = 0
 
@@ -72,7 +78,7 @@ class SubscriptionsViewModelTest {
 
     @Before
     fun create() {
-        Dispatchers.setMain(UnconfinedTestDispatcher())
+        Dispatchers.setMain(main)
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
         // Сеть не нужна: с «только через VPN» без защиты загрузка не начинается.
         val source = SubscriptionSource { error("в сеть без защиты не ходим") }
@@ -89,6 +95,7 @@ class SubscriptionsViewModelTest {
         scope.cancel()
         database.close()
         Dispatchers.resetMain()
+        main.close()
     }
 
     private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(10_000) { block() } }
