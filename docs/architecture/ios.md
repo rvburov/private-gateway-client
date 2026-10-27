@@ -8,12 +8,18 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 
 | Часть | Что внутри | Как проверяется |
 | --- | --- | --- |
-| `ios/Core` — `PrivateGatewayCore` | без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
+| `ios/Core` — `PrivateGatewayCore` | без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`); конфиг Xray (`XrayConfig`, ответ libXray — `XrayResponse`), настройки туннеля и свой DNS (`TunnelSettings`), строгий разбор адресов IP и частные сети (`IpAddress`, `PrivateNetwork`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
 | `ios/Core` — `PrivateGatewayTheme` | тема, тексты RU/EN и иконки из `shared/specifications` и `Icons.axaml` десктопа — значения без SwiftUI (`PgColor`, `PgType`, `PgSpace`, `PgTexts`, `PgIcons`, разбор контура `SvgPath`); код генерирует плагин сборки `SharedResources` (исполняемый `SharedGen`, логика — `SharedGenKit`) | тот же `swift test`: каждый цвет и длина — как в Tokens.axaml десктопа, каждый текст — как в JSON, каждая иконка разбирается |
 
 Общий модуль — перенос `android/core` один к одному: те же правила, те же коды ошибок, тесты на тех же эталонах
 `shared/testdata` (ссылки, подписки, «туда и обратно» через `LinkWriter`, один сервер из четырех форматов PRIVATE GATEWAY)
 и те же отдельные случаи конфигов (номер строки ошибки, порядок строк, BOM, вложенность и ссылки-«бомбы» YAML).
+
+Конфиг Xray — тот же, что у Android: расширение туннеля собирает его само из описания сервера и настроек (готовый текст
+конфига не принимается — модель угроз, как у службы десктопа); вход — TUN с дескриптором в `env` (`xray.tun.fd`), выход
+сервера — те же поля, что у десктопа, DNS из туннеля — через сервер, локальная сеть и IPv6 — по настройкам, журнал
+соединений выключен. Hysteria2 и TUIC ядро не берет (`unsupportedProtocol`): второго ядра на телефоне нет, а iOS не дает
+приложению запускать отдельные процессы. Тесты — те же случаи, что `XrayConfigTest` и `TunnelSettingsTest` Android.
 
 ## Устройство разбора
 

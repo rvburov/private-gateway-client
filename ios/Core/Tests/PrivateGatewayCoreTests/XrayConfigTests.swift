@@ -1,0 +1,167 @@
+import Foundation
+import XCTest
+@testable import PrivateGatewayCore
+
+/// Конфиг Xray на телефоне — те же случаи, что `XrayConfigTest` Android: выход сервера — те же поля, что у службы десктопа;
+/// вход — TUN с дескриптором; DNS из туннеля — через сервер; локальная сеть и IPv6 — по настройкам; журнал соединений
+/// выключен.
+final class XrayConfigTests: XCTestCase {
+    private let reality = "vless://11111111-2222-3333-4444-555555555555@203.0.113.24:443?type=tcp&security=reality&sni=www.example.com&fp=chrome"
+        + "&pbk=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&sid=0123abcd&flow=xtls-rprx-vision#NL"
+
+    func testVlessRealityGoesOutThroughTheServerAndTheTunnelComesInWithItsFd() throws {
+        let config = try build(server(reality), CoreSettings(), fd: 42)
+
+        XCTAssertEqual(try object(config["env"])["xray.tun.fd"] as? String, "42")
+        let inbounds = try XCTUnwrap(config["inbounds"] as? [[String: Any]])
+        XCTAssertEqual(inbounds.count, 1)
+        XCTAssertEqual(inbounds[0]["protocol"] as? String, "tun")
+        XCTAssertEqual(try object(inbounds[0]["settings"])["mtu"] as? Int, 1500)
+        XCTAssertEqual(try object(config["log"])["access"] as? String, "none", "адреса сайтов в журнал не попадают")
+
+        let proxy = try outbound(config, "proxy")
+        let vnext = try XCTUnwrap(try object(proxy["settings"])["vnext"] as? [[String: Any]])
+        let user = try XCTUnwrap((vnext[0]["users"] as? [[String: Any]])?.first)
+        XCTAssertEqual(user["flow"] as? String, "xtls-rprx-vision")
+        let stream = try object(proxy["streamSettings"])
+        XCTAssertEqual(stream["network"] as? String, "raw")
+        let realitySettings = try object(stream["realitySettings"])
+        XCTAssertEqual(realitySettings["serverName"] as? String, "www.example.com")
+        XCTAssertEqual(realitySettings["fingerprint"] as? String, "chrome")
+        let tags = try XCTUnwrap(config["outbounds"] as? [[String: Any]]).map { $0["tag"] as? String }
+        XCTAssertEqual(tags, ["proxy", "direct", "block", "dns-out"])
+    }
+
+    func testDnsFromTheTunnelAndLocalNetworkAndIpv6FollowTheSettings() throws {
+        let closed = try rules(build(server(reality), CoreSettings()))
+        XCTAssertEqual(closed[0]["outboundTag"] as? String, "dns-out")
+        XCTAssertEqual(closed[0]["port"] as? String, "53")
+        XCTAssertEqual(closed[1]["outboundTag"] as? String, "block", "локальная сеть по умолчанию закрыта")
+        XCTAssertEqual(closed[2]["ip"] as? [String], ["::/0"], "IPv6 без настройки — в блок")
+
+        let open = try build(server(reality), CoreSettings(allowLan: true, ipv6: true))
+        XCTAssertEqual(try rules(open)[1]["outboundTag"] as? String, "direct")
+        XCTAssertEqual(try rules(open).count, 2)
+        XCTAssertEqual(try object(open["dns"])["queryStrategy"] as? String, "UseIP")
+        XCTAssertEqual(try object(build(server(reality), CoreSettings())["dns"])["queryStrategy"] as? String, "UseIPv4")
+    }
+
+    func testOwnDnsInAPrivateNetworkIsAskedDirectlyEvenWithTheLanClosed() throws {
+        for (custom, direct) in [("192.168.1.53", true), ("fd00::53", true), ("9.9.9.9", false), ("https://192.168.1.53/dns-query", false)] {
+            let settings = TunnelSettings(dns: .custom, customDns: custom)
+            let config = try build(server(reality), settings.core())
+            let list = try rules(config)
+            let localBlock = try XCTUnwrap(list.firstIndex { $0["ip"] as? [String] == XrayConfig.localNetworks }, custom)
+            XCTAssertEqual(list[localBlock]["outboundTag"] as? String, "block", custom)
+
+            let own = list.firstIndex { $0["ip"] as? [String] == [custom] }
+            if direct {
+                XCTAssertEqual(own, localBlock - 1, "\(custom): раньше закрытия локальной сети")
+                let rule = list[localBlock - 1]
+                XCTAssertEqual(rule["outboundTag"] as? String, "direct", custom)
+                XCTAssertEqual(rule["port"] as? String, "53", custom)
+                XCTAssertNil(rule["inboundTag"], "\(custom): это запросы самого Xray, не программ из туннеля")
+                XCTAssertEqual(list.firstIndex { $0["outboundTag"] as? String == "dns-out" }, 0, "\(custom): DNS программ — по-прежнему выходом DNS")
+                XCTAssertEqual(try object(config["dns"])["servers"] as? [String], [custom])
+            } else {
+                XCTAssertNil(own, custom)
+                XCTAssertFalse(list.contains { $0["outboundTag"] as? String == "direct" }, custom)
+            }
+        }
+    }
+
+    func testEmptyLanDnsAddsNoRule() throws {
+        let plain = try rules(build(server(reality), CoreSettings()))
+        XCTAssertEqual(try canonical(plain), try canonical(rules(build(server(reality), CoreSettings(lanDns: "")))))
+        XCTAssertEqual(try rules(build(server(reality), CoreSettings(lanDns: "192.168.1.53"))).count, plain.count + 1, "правило добавляется одно")
+    }
+
+    func testEachProtocolBuildsTheSameOutboundAsTheDesktop() throws {
+        let vmessJson = #"{"v":"2","ps":"WS","add":"cdn.example.com","port":"443","id":"11111111-2222-3333-4444-555555555555","aid":"0","net":"ws","path":"/ws","host":"cdn.example.com","tls":"tls","sni":"cdn.example.com","alpn":"h2,http/1.1"}"#
+        let vmess = try outbound(build(server("vmess://" + Data(vmessJson.utf8).base64EncodedString()), CoreSettings(mux: true)), "proxy")
+        XCTAssertEqual(vmess["protocol"] as? String, "vmess")
+        let ws = try object(vmess["streamSettings"])
+        XCTAssertEqual(try object(ws["wsSettings"])["path"] as? String, "/ws")
+        XCTAssertEqual(try object(ws["tlsSettings"])["alpn"] as? [String], ["h2", "http/1.1"])
+        XCTAssertEqual(try object(vmess["mux"])["enabled"] as? Bool, true, "mux без flow включается")
+        XCTAssertNil(try outbound(build(server(reality), CoreSettings(mux: true)), "proxy")["mux"], "mux несовместим с Vision")
+
+        let trojan = try outbound(build(server("trojan://pw@198.51.100.7:8443?type=grpc&serviceName=tunnel&sni=example.org#T"), CoreSettings()), "proxy")
+        XCTAssertEqual(try object(try object(trojan["streamSettings"])["grpcSettings"])["serviceName"] as? String, "tunnel")
+        XCTAssertEqual((try object(trojan["settings"])["servers"] as? [[String: Any]])?.first?["password"] as? String, "pw")
+
+        let ss = try outbound(build(server("ss://2022-blake3-aes-128-gcm:AAAAAAAAAAAAAAAAAAAAAA%3D%3D@[2001:db8::5]:8388#SS"), CoreSettings()), "proxy")
+        XCTAssertEqual((try object(ss["settings"])["servers"] as? [[String: Any]])?.first?["method"] as? String, "2022-blake3-aes-128-gcm")
+
+        let wg = try outbound(build(server("wireguard://aaaa%3D@192.0.2.33:51820?publickey=cccc%3D&address=10.0.0.2/32&mtu=1420#WG"), CoreSettings()), "proxy")
+        let wgSettings = try object(wg["settings"])
+        XCTAssertEqual((wgSettings["peers"] as? [[String: Any]])?.first?["endpoint"] as? String, "192.0.2.33:51820")
+        XCTAssertEqual(wgSettings["mtu"] as? Int, 1420)
+        XCTAssertEqual(wgSettings["address"] as? [String], ["10.0.0.2/32"])
+    }
+
+    func testHysteria2AndTuicAndMissingTransportsAreRefused() throws {
+        XCTAssertEqual(XrayConfig.build(try server("hy2://pw@192.0.2.1:443#H"), CoreSettings(), tunFd: 1).rejection, .unsupportedProtocol)
+        XCTAssertEqual(
+            XrayConfig.build(try server("tuic://11111111-2222-3333-4444-555555555555:pw@192.0.2.1:443#T"), CoreSettings(), tunFd: 1).rejection,
+            .unsupportedProtocol
+        )
+
+        var noUuid = try server(reality)
+        noUuid.credentials.uuid = nil
+        XCTAssertEqual(XrayConfig.build(noUuid, CoreSettings(), tunFd: 1).rejection, .missingCredentials)
+        XCTAssertNil(XrayConfig.build(noUuid, CoreSettings(), tunFd: 1).json)
+
+        var quic = try server(reality)
+        quic.transport = .quic
+        XCTAssertEqual(XrayConfig.build(quic, CoreSettings(), tunFd: 1).rejection, .unsupportedTransport)
+    }
+
+    func testFingerprintSettingOverridesTheProfileAndRequestsAndResponsesSpeakApi3() throws {
+        let tls = try server("trojan://pw@198.51.100.7:443?sni=example.org&fp=firefox#T")
+        let profile = try object(try object(outbound(build(tls, CoreSettings()), "proxy")["streamSettings"])["tlsSettings"])
+        XCTAssertEqual(profile["fingerprint"] as? String, "firefox")
+        XCTAssertEqual(profile["serverName"] as? String, "example.org")
+        let chosen = try object(try object(outbound(build(tls, CoreSettings(fingerprint: "safari")), "proxy")["streamSettings"])["tlsSettings"])
+        XCTAssertEqual(chosen["fingerprint"] as? String, "safari")
+
+        let request = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(XrayConfig.runRequest(#"{"a":1}"#).utf8)) as? [String: Any])
+        XCTAssertEqual(request["apiVersion"] as? Int, 3)
+        XCTAssertEqual(request["method"] as? String, "runXray")
+        XCTAssertEqual(try object(request["payload"])["xrayJson"] as? String, #"{"a":1}"#)
+        XCTAssertEqual(XrayResponse.parse(#"{"success":true,"data":{},"error":""}"#), XrayResponse(success: true, error: nil))
+        XCTAssertEqual(XrayResponse.parse(#"{"success":false,"data":null,"error":"boom"}"#), XrayResponse(success: false, error: "boom"))
+        XCTAssertFalse(XrayResponse.parse("not json").success)
+        XCTAssertFalse(XrayResponse.parse(nil).success)
+    }
+
+    // MARK: Помощники
+
+    private func server(_ link: String) throws -> ServerDefinition {
+        let parsed = LinkParser.parse(link)
+        return try XCTUnwrap(parsed.server, "ссылка не разобралась: \(parsed.error ?? "")")
+    }
+
+    private func build(_ server: ServerDefinition, _ settings: CoreSettings, fd: Int32 = 3) throws -> [String: Any] {
+        let result = XrayConfig.build(server, settings, tunFd: fd)
+        let json = try XCTUnwrap(result.json, "отказ: \(String(describing: result.rejection))")
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
+    }
+
+    private func object(_ value: Any?) throws -> [String: Any] {
+        try XCTUnwrap(value as? [String: Any])
+    }
+
+    private func outbound(_ config: [String: Any], _ tag: String) throws -> [String: Any] {
+        let outbounds = try XCTUnwrap(config["outbounds"] as? [[String: Any]])
+        return try XCTUnwrap(outbounds.first { $0["tag"] as? String == tag }, tag)
+    }
+
+    private func rules(_ config: [String: Any]) throws -> [[String: Any]] {
+        try XCTUnwrap(try object(config["routing"])["rules"] as? [[String: Any]])
+    }
+
+    private func canonical(_ value: Any) throws -> String {
+        String(decoding: try JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]), as: UTF8.self)
+    }
+}

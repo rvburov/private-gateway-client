@@ -121,8 +121,6 @@ enum YamlTree {
             }
 
             return .array(items, line: line, itemLines: lines)
-        default:
-            throw Broken(line: line)
         }
     }
 
