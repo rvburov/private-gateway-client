@@ -260,6 +260,19 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         }
     }
 
+    /**
+     * Ссылка для «Поделиться» — как запечатана: с названием из ссылки, а не своим (как у десктопа). Ключ Keystore
+     * утерян — null. Открывается только по нажатию.
+     */
+    suspend fun shareLink(id: String): String? = withContext(Dispatchers.IO) {
+        val sealed = dao.byId(id)?.sealed ?: return@withContext null
+        try {
+            String(box.open(sealed), Charsets.UTF_8)
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     /** Адрес сервера для карточки — «адрес:порт», IPv6 в скобках; ссылка не открылась — null. */
     suspend fun address(id: String): String? = load(id)?.let { ServerFacts.address(it.host, it.port) }
 

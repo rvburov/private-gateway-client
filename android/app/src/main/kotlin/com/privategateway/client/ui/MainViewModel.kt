@@ -1,5 +1,6 @@
 package com.privategateway.client.ui
 
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -19,6 +20,8 @@ import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.subscriptions.SubscriptionNotice
 import com.privategateway.client.subscriptions.SubscriptionUpdater
+import com.privategateway.client.ui.qr.QrImages
+import com.privategateway.client.ui.qr.QrRead
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.LatencyMeter
 import com.privategateway.client.vpn.MeasureResult
@@ -104,6 +107,8 @@ data class ImportUi(
     val downloading: Boolean = false,
     val failure: FailureReason? = null,
     val name: String = "",
+    val qrReading: Boolean = false,
+    @param:StringRes val qrProblem: Int? = null,
 )
 
 @HiltViewModel
@@ -116,6 +121,7 @@ class MainViewModel @Inject constructor(
     private val control: TunnelControl,
     private val meter: LatencyMeter,
     private val updater: SubscriptionUpdater,
+    private val qr: QrImages,
 ) : ViewModel() {
     val ui: StateFlow<MainUi> = combine(
         monitor.status,
@@ -251,6 +257,9 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    /** Ссылка сервера для «Поделиться» — только по нажатию; ключа нет — null. */
+    suspend fun shareLink(id: String): String? = servers.shareLink(id)
+
     /** Адрес сервера для карточки («адрес:порт»): открывается из запечатанной ссылки только по просьбе карточки. */
     suspend fun address(id: String): String? = servers.address(id)
 
@@ -316,6 +325,27 @@ class MainViewModel @Inject constructor(
                     insecure = SubscriptionAddress.insecure(url),
                     name = it.name.ifBlank { SubscriptionFetch.suggestName(content.title, url) },
                 )
+            }
+        }
+    }
+
+    /**
+     * QR-код с картинки: найденный текст разбирается так же, как введенный (ссылки, подписка по адресу), но в поле не
+     * попадает — в нем мог быть свой текст. Ответ на прежнюю картинку, пришедший после новой, отбрасывается.
+     */
+    fun previewQr(image: Uri) {
+        val attempt = ++previews
+        importState.update { ImportUi(it.text, name = it.name, qrReading = true) }
+        viewModelScope.launch {
+            val read = qr.read(image)
+            if (attempt != previews) {
+                return@launch
+            }
+
+            when (read) {
+                is QrRead.Found -> preview(read.text)
+                QrRead.None -> importState.update { it.copy(qrReading = false, qrProblem = R.string.android_import_qr_none) }
+                QrRead.Failed -> importState.update { it.copy(qrReading = false, qrProblem = R.string.android_import_qr_failed) }
             }
         }
     }

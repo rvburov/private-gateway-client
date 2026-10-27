@@ -45,7 +45,7 @@ class SettingsScreensTest {
     @Test
     fun `settings open protection and come back`() {
         var tunnel by mutableStateOf(TunnelSettings())
-        compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, tunnel) { tunnel = it } } }
+        compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, tunnel, onTunnel = { tunnel = it }) } }
         compose.onNodeWithTag("settings.protection").performClick()
         compose.onNodeWithTag("protection").assertIsDisplayed()
         compose.onNodeWithText(text(R.string.prot_dns_title)).assertIsDisplayed()

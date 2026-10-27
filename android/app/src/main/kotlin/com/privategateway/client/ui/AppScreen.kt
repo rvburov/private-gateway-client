@@ -2,6 +2,9 @@ package com.privategateway.client.ui
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -89,6 +92,10 @@ class AppActions(
     val disconnect: () -> Unit,
     val openVpnSettings: () -> Unit,
     val clipboard: () -> String?,
+    /** Скопировать ссылку сервера: в буфере она помечена как секрет (Android не показывает ее в подсказке). */
+    val copySecret: (String) -> Unit = {},
+    /** Отправить ссылку сервера — системный выбор программы. */
+    val send: (String) -> Unit = {},
 )
 
 @Composable
@@ -130,7 +137,13 @@ fun AppScreen(
     PgBackground {
         if (adding) {
             BackHandler(onBack = closeImport)
-            ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::name, viewModel::add, closeImport)
+            // Системный выбор картинки: приложению — только выбранная, без доступа ко всем фото.
+            val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { image ->
+                image?.let(viewModel::previewQr)
+            }
+            ImportScreen(importing, actions.clipboard, viewModel::edit, viewModel::preview, viewModel::name, viewModel::add, closeImport) {
+                picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+            }
         } else {
             BackHandler(enabled = tab != Tab.Home) {
                 if (tab == Tab.Servers && card != null) {
@@ -164,6 +177,9 @@ fun AppScreen(
                                 viewModel.delete(id)
                             },
                             address = viewModel::address,
+                            share = viewModel::shareLink,
+                            copy = actions.copySecret,
+                            send = actions.send,
                         ),
                     )
                 } else {

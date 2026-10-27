@@ -1367,5 +1367,12 @@
   "android.servers.latency.never": "Latency not measured yet",
   "android.card.core.none": "none: the phone does not connect Hysteria2 or TUIC",
   "android.servers.ping.done": "Latency checked",
-  "android.servers.ping.busy": "Latency is measured while the VPN is off"
+  "android.servers.ping.busy": "Latency is measured while the VPN is off",
+  "android.import.qr.title": "QR code",
+  "android.import.qr.text": "With the camera or from an image in the gallery",
+  "android.import.qr.image": "Choose an image",
+  "android.import.qr.reading": "Looking for a QR code in the image…",
+  "android.import.qr.none": "No QR code found: choose an image where the code is larger and sharper",
+  "android.import.qr.failed": "The image could not be read",
+  "android.share.send": "Send link"
 }

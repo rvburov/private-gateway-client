@@ -1,12 +1,17 @@
 package com.privategateway.client.ui.servers
 
+import android.app.Activity
+import android.os.Build
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -23,27 +28,37 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.privategateway.client.R
+import com.privategateway.client.core.qr.QrCode
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.ServerNames
 import com.privategateway.client.ui.MainUi
 import com.privategateway.client.ui.home.CountryBadge
+import com.privategateway.client.ui.qr.qrBitmap
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgButton
 import com.privategateway.client.ui.theme.PgCard
@@ -55,6 +70,7 @@ import com.privategateway.client.ui.theme.PgPageHeader
 import com.privategateway.client.ui.theme.PgRadius
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
+import kotlinx.coroutines.launch
 
 /** Что умеет карточка сервера. [address] открывает запечатанную ссылку — только когда карточка открыта. */
 class CardActions(
@@ -64,6 +80,9 @@ class CardActions(
     val rename: (String, String) -> Unit,
     val delete: (String) -> Unit,
     val address: suspend (String) -> String?,
+    val share: suspend (String) -> String? = { null },
+    val copy: (String) -> Unit = {},
+    val send: (String) -> Unit = {},
 )
 
 /**
@@ -145,6 +164,8 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
             PgButton(stringResource(R.string.card_connect), enabled = true, tag = "card.connect") { actions.connect(server.id) }
         }
 
+        Spacer(Modifier.size(PgSpace.L))
+        Share(server, actions)
         Spacer(Modifier.size(PgSpace.L))
         Rename(server) { actions.rename(server.id, it) }
         Spacer(Modifier.size(PgSpace.L))
@@ -230,6 +251,96 @@ private fun Detail(label: String, value: String, tag: String) {
     Row(Modifier.fillMaxWidth().padding(vertical = PgSpace.Xs), verticalAlignment = Alignment.Top) {
         Text(label, color = PgColor.Text.Secondary, style = PgType.Small, modifier = Modifier.width(110.dp))
         Text(value, style = PgType.Mono, modifier = Modifier.weight(1f).testTag(tag))
+    }
+}
+
+/**
+ * «Поделиться» (решение 436): ссылка открывается из хранилища только по нажатию и живет, пока QR на экране, — уход окна
+ * в фон его прячет; на Android 13+ снимок окна для «Недавних» на это время выключен. Ссылка — с названием из ссылки, как
+ * у десктопа; копия в буфер помечается как секрет, «Отправить ссылку» — системный выбор программы.
+ */
+@Composable
+private fun Share(server: ServerItem, actions: CardActions) {
+    var link by remember(server.id) { mutableStateOf<String?>(null) }
+    var noKey by remember(server.id) { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { link = null }
+    val shown = link
+    if (shown == null) {
+        Text(
+            stringResource(R.string.card_share),
+            color = PgColor.Accent.Text,
+            style = PgType.BodyStrong,
+            modifier = Modifier
+                .heightIn(min = PgLayout.TouchTarget)
+                .clip(RoundedCornerShape(PgRadius.Button))
+                .clickable(role = Role.Button) {
+                    scope.launch {
+                        val opened = actions.share(server.id)
+                        noKey = opened == null
+                        link = opened
+                    }
+                }
+                .padding(vertical = PgSpace.M)
+                .testTag("card.share"),
+        )
+        if (noKey) {
+            Text(stringResource(R.string.card_share_noKey), color = PgColor.Status.Warning.Text, style = PgType.Small, modifier = Modifier.testTag("card.share.noKey"))
+        }
+
+        return
+    }
+
+    NoRecentsScreenshot()
+    val bitmap = remember(shown) { qrBitmap(QrCode.encode(shown), scale = 6).asImageBitmap() }
+    PgCard(Modifier.fillMaxWidth().testTag("card.share.block")) {
+        Image(
+            bitmap,
+            stringResource(R.string.card_share_qr),
+            modifier = Modifier.fillMaxWidth().aspectRatio(1f).testTag("card.share.qr"),
+            filterQuality = FilterQuality.None,
+        )
+        Spacer(Modifier.size(PgSpace.S))
+        Text(stringResource(R.string.card_share_warning), color = PgColor.Status.Caution.Text, style = PgType.Small)
+        Spacer(Modifier.size(PgSpace.S))
+        Row(horizontalArrangement = Arrangement.spacedBy(PgSpace.M)) {
+            ShareAction(stringResource(R.string.card_share_copy), "card.share.copy") { actions.copy(shown) }
+            ShareAction(stringResource(R.string.android_share_send), "card.share.send") { actions.send(shown) }
+        }
+
+        ShareAction(stringResource(R.string.card_share_hide), "card.share.hide") { link = null }
+    }
+}
+
+@Composable
+private fun ShareAction(label: String, tag: String, onClick: () -> Unit) {
+    Text(
+        label,
+        color = PgColor.Accent.Text,
+        style = PgType.BodyStrong,
+        modifier = Modifier
+            .heightIn(min = PgLayout.TouchTarget)
+            .clip(RoundedCornerShape(PgRadius.Button))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(vertical = PgSpace.M)
+            .testTag(tag),
+    )
+}
+
+/** Пока на экране ключ сервера, Android 13+ не снимает окно для «Недавних». */
+@Composable
+private fun NoRecentsScreenshot() {
+    val activity = LocalContext.current as? Activity ?: return
+    DisposableEffect(activity) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            activity.setRecentsScreenshotEnabled(false)
+        }
+
+        onDispose {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                activity.setRecentsScreenshotEnabled(true)
+            }
+        }
     }
 }
 

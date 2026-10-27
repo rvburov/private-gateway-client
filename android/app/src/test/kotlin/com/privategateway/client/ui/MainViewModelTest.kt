@@ -1,6 +1,7 @@
 package com.privategateway.client.ui
 
 import android.content.Context
+import android.net.Uri
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -9,8 +10,11 @@ import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
+import com.privategateway.client.R
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.subscriptions.SubscriptionUpdater
+import com.privategateway.client.ui.qr.QrImages
+import com.privategateway.client.ui.qr.QrRead
 import com.privategateway.client.core.subscriptions.DownloadFailure
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SubscriptionContent
@@ -43,6 +47,7 @@ import org.junit.runner.RunWith
 import java.net.URI
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -59,6 +64,14 @@ class MainViewModelTest {
     private val servers by lazy { ServerRepository(database, FakeBox()) }
     private val source = FakeSource()
     private val monitor = TunnelMonitor()
+    private val images = FakeImages()
+
+    /** Галерея без галереи: что «нашлось» на картинке, задает тест. */
+    private class FakeImages : QrImages {
+        @Volatile var result: QrRead = QrRead.None
+
+        override suspend fun read(image: Uri): QrRead = result
+    }
     private val control = FakeControl()
 
     /** Команды службе туннеля — только счет. */
@@ -100,7 +113,7 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(monitor, servers, settings, FakeEngine(), source, control, LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() }, SubscriptionUpdater(source, servers, settings, monitor))
+        model = MainViewModel(monitor, servers, settings, FakeEngine(), source, control, LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() }, SubscriptionUpdater(source, servers, settings, monitor), images)
     }
 
     @After
@@ -337,5 +350,39 @@ class MainViewModelTest {
         val link = wait { servers.servers.first() }.single { it.id == first }.linkName
         model.rename(first, link)
         assertNull(wait { servers.servers.first { list -> list.single { it.id == first }.customName == null } }.single { it.id == first }.customName)
+    }
+
+    @Test
+    fun `qr from an image is parsed like typed text and keeps the field`() {
+        val link = com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first())
+        model.edit("свой текст")
+        images.result = QrRead.Found(link)
+        model.previewQr(Uri.parse("content://media/picker/0/1"))
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(1, ready.batch?.found)
+        assertEquals("свой текст", ready.text, "найденное на картинке в поле не попадает")
+        assertEquals(false, ready.qrReading)
+    }
+
+    @Test
+    fun `image without a code says so`() {
+        images.result = QrRead.None
+        model.previewQr(Uri.parse("content://media/picker/0/2"))
+        assertEquals(R.string.android_import_qr_none, wait { model.importing.first { it.qrProblem != null } }.qrProblem)
+
+        images.result = QrRead.Failed
+        model.previewQr(Uri.parse("content://media/picker/0/3"))
+        assertEquals(R.string.android_import_qr_failed, wait { model.importing.first { it.qrProblem == R.string.android_import_qr_failed } }.qrProblem)
+    }
+
+    @Test
+    fun `share link is the stored one with the link name`() {
+        val server = Fixtures.servers().first()
+        wait { servers.add(listOf(server)) }
+        val id = wait { servers.servers.first { it.size == 1 } }.single().id
+        wait { servers.rename(id, "Мой") }
+        val link = assertNotNull(wait { model.shareLink(id) })
+        assertEquals(server.name, assertNotNull(com.privategateway.client.core.links.LinkParser.parse(link).server).name, "своего названия в ссылке нет")
+        assertNull(wait { model.shareLink("gone") })
     }
 }

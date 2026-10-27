@@ -167,6 +167,9 @@ class ServersScreenTest {
         val favorites = mutableListOf<Pair<String, Boolean>>()
         val renamed = mutableListOf<Pair<String, String>>()
         val deleted = mutableListOf<String>()
+        val copied = mutableListOf<String>()
+        val sent = mutableListOf<String>()
+        var link: String? = LINK
         var back = 0
 
         val actions = CardActions(
@@ -176,6 +179,9 @@ class ServersScreenTest {
             rename = { id, name -> renamed += id to name },
             delete = { deleted += it },
             address = { "[2001:db8::1]:443" },
+            share = { link },
+            copy = { copied += it },
+            send = { sent += it },
         )
     }
 
@@ -254,5 +260,38 @@ class ServersScreenTest {
         val card = card(MainUi(servers = listOf(tr)), "nl")
         compose.waitForIdle()
         assertEquals(1, card.back)
+    }
+
+    // Android 12L: снимок для «Недавних» на 13+ выключает система окна, которой в тесте нет.
+    @Test
+    @Config(sdk = [32])
+    fun `share shows the code with a warning, copies and sends the link and hides`() {
+        val card = card(MainUi(servers = listOf(nl), subscriptions = listOf(provider)), "nl")
+        compose.onNodeWithTag("card.share.qr").assertDoesNotExist()
+        compose.onNodeWithTag("card.share").performScrollTo().performClick()
+        compose.onNodeWithTag("card.share.qr").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.card_share_warning)).assertExists()
+
+        compose.onNodeWithTag("card.share.copy").performScrollTo().performClick()
+        compose.onNodeWithTag("card.share.send").performScrollTo().performClick()
+        assertEquals(listOf(LINK), card.copied)
+        assertEquals(listOf(LINK), card.sent)
+
+        compose.onNodeWithTag("card.share.hide").performScrollTo().performClick()
+        compose.onNodeWithTag("card.share.qr").assertDoesNotExist()
+    }
+
+    @Test
+    @Config(sdk = [32])
+    fun `share without the key says the key is gone`() {
+        val card = Card().apply { link = null }
+        compose.setContent { PgTheme { ServerCardScreen(MainUi(servers = listOf(nl)), "nl", card.actions) } }
+        compose.onNodeWithTag("card.share").performScrollTo().performClick()
+        compose.onNodeWithTag("card.share.noKey").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("card.share.qr").assertDoesNotExist()
+    }
+
+    private companion object {
+        const val LINK = "vless://11111111-2222-3333-4444-555555555555@192.0.2.10:443?encryption=none&security=tls&type=tcp#NL"
     }
 }

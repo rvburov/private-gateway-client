@@ -68,6 +68,7 @@ fun ImportScreen(
     onName: (String) -> Unit,
     onAdd: () -> Unit,
     onClose: () -> Unit,
+    onPickImage: () -> Unit = {},
 ) {
     // Текст — в модели окна, а не в сохраненном состоянии: конфиг на сотни КБ в Bundle уронил бы процесс (и VPN с ним),
     // а ключи серверов попали бы в системный процесс.
@@ -125,6 +126,8 @@ fun ImportScreen(
                 Text(stringResource(R.string.import_empty_clipboard), color = PgColor.Status.Warning.Text, style = PgType.Caption, modifier = Modifier.padding(top = PgSpace.S))
             }
         }
+
+        QrCard(state, onPickImage)
 
         PgCard(Modifier.fillMaxWidth()) {
             Overline(stringResource(R.string.import_link_title))
@@ -239,6 +242,40 @@ fun ImportScreen(
         }
 
         Spacer(Modifier.size(PgSpace.L))
+    }
+}
+
+/** QR-код: картинка из галереи (системный выбор — без доступа ко всем фото); найденный текст разбирается как введенный. */
+@Composable
+private fun QrCard(state: ImportUi, onPickImage: () -> Unit) {
+    PgCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            PgIcon(PgIcons.Qr, null, color = PgColor.Accent.Base, size = 22.dp)
+            Spacer(Modifier.width(PgSpace.L))
+            Column(Modifier.weight(1f)) {
+                Text(stringResource(R.string.android_import_qr_title), style = PgType.BodyStrong)
+                Text(stringResource(R.string.android_import_qr_text), color = PgColor.Text.Secondary, style = PgType.Caption)
+            }
+        }
+
+        Spacer(Modifier.size(PgSpace.S))
+        Text(
+            stringResource(R.string.android_import_qr_image),
+            color = if (state.qrReading) PgColor.Text.Muted else PgColor.Accent.Text,
+            style = PgType.BodyStrong,
+            modifier = Modifier
+                .clip(RoundedCornerShape(PgRadius.Button))
+                .clickable(enabled = !state.qrReading, role = Role.Button, onClick = onPickImage)
+                .padding(vertical = PgSpace.S)
+                .testTag("import.qr.image"),
+        )
+        if (state.qrReading) {
+            Text(stringResource(R.string.android_import_qr_reading), color = PgColor.Text.Secondary, style = PgType.Caption, modifier = Modifier.testTag("import.qr.reading"))
+        }
+
+        state.qrProblem?.let {
+            Text(stringResource(it), color = PgColor.Status.Warning.Text, style = PgType.Caption, modifier = Modifier.testTag("import.qr.problem"))
+        }
     }
 }
 

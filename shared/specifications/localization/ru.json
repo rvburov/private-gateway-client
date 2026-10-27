@@ -1367,5 +1367,12 @@
   "android.servers.latency.never": "Задержку еще не мерили",
   "android.card.core.none": "нет: Hysteria2 и TUIC телефон не подключает",
   "android.servers.ping.done": "Задержка проверена",
-  "android.servers.ping.busy": "Задержка меряется, пока VPN выключен"
+  "android.servers.ping.busy": "Задержка меряется, пока VPN выключен",
+  "android.import.qr.title": "QR-код",
+  "android.import.qr.text": "Камерой или с картинки из галереи",
+  "android.import.qr.image": "Выбрать картинку",
+  "android.import.qr.reading": "Ищем QR-код на картинке…",
+  "android.import.qr.none": "QR-код не найден: выберите картинку, где код крупнее и четче",
+  "android.import.qr.failed": "Картинка не прочитана",
+  "android.share.send": "Отправить ссылку"
 }

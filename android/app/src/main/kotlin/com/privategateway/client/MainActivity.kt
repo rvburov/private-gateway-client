@@ -2,6 +2,7 @@ package com.privategateway.client
 
 import android.Manifest
 import android.content.ActivityNotFoundException
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -9,6 +10,7 @@ import android.graphics.Color
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.PersistableBundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -64,6 +66,8 @@ class MainActivity : ComponentActivity() {
             disconnect = { GatewayVpnService.disconnect(this) },
             openVpnSettings = ::openVpnSettings,
             clipboard = ::clipboardText,
+            copySecret = ::copySecret,
+            send = ::send,
         )
         setContent {
             PgTheme {
@@ -133,6 +137,26 @@ class MainActivity : ComponentActivity() {
         /** Раздел, который открыть сразу (из уведомления). */
         const val EXTRA_TAB = "com.privategateway.client.TAB"
         const val TAB_SERVERS = "servers"
+
+        /** ClipDescription.EXTRA_IS_SENSITIVE (Android 13); раньше тот же ключ просто не читается. */
+        private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
+    }
+
+    /** Ссылка сервера в буфер — с пометкой «секрет»: Android 13+ не показывает ее в подсказке буфера. */
+    private fun copySecret(text: String) {
+        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+        val clip = ClipData.newPlainText(getString(R.string.app_title), text)
+        clip.description.extras = PersistableBundle().apply { putBoolean(EXTRA_IS_SENSITIVE, true) }
+        clipboard.setPrimaryClip(clip)
+        // С Android 13 система сама показывает, что скопировано; раньше — свое сообщение.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(this, R.string.card_share_copied, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun send(text: String) {
+        val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
+        startActivity(Intent.createChooser(intent, getString(R.string.android_share_send)))
     }
 
     private fun clipboardText(): String? {
