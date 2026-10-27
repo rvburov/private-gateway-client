@@ -75,12 +75,22 @@ public sealed class CoreLedger(string path)
                     try
                     {
                         process.Kill(entireProcessTree: true);
-                        process.WaitForExit(TimeSpan.FromSeconds(5));
                         killed.Add(entry.Pid);
                     }
                     catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
                     {
-                        // Вышло само или не наше — оставить.
+                        // Уже выходит само: на Windows ядра прошлой службы снимает ее объект задания, когда она умерла, —
+                        // не сразу, и Kill на выходящий процесс отказывает.
+                    }
+
+                    // Дождаться выхода в обоих случаях: иначе новое ядро встает, пока прежнее еще держит порт прокси.
+                    try
+                    {
+                        process.WaitForExit(TimeSpan.FromSeconds(5));
+                    }
+                    catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+                    {
+                        // Ждать нечего — процесса уже нет.
                     }
                 }
             }
