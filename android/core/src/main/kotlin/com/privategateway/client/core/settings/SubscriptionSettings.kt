@@ -11,6 +11,12 @@ data class SubscriptionSettings(
     val onlyViaVpn: Boolean = true,
     val notifySelected: Boolean = true,
 ) {
+    /**
+     * Нужна ли проверка в фоне, когда процесс приложения не живет (WorkManager, решение 443): автообновление включено, а
+     * загрузка не ждет защиты. С «только через VPN» без защиты загрузка не идет, а под защитой процесс жив — служба VPN.
+     */
+    val background: Boolean get() = refresh != RefreshInterval.Off && !onlyViaVpn
+
     companion object {
         /**
          * Из сохраненных значений: нет значения или неизвестное имя промежутка (из будущей версии) — значение по

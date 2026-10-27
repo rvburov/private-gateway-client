@@ -3,6 +3,7 @@ package com.privategateway.client.di
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.notify.ProtectionNotifier
+import com.privategateway.client.subscriptions.SubscriptionBackground
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.EntryPoint
@@ -22,4 +23,6 @@ interface AppEntryPoint {
     fun updater(): SubscriptionUpdater
 
     fun notifier(): ProtectionNotifier
+
+    fun background(): SubscriptionBackground
 }

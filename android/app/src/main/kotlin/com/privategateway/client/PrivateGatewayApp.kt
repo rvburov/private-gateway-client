@@ -15,11 +15,12 @@ class PrivateGatewayApp : Application() {
 
         createChannels(this)
 
-        // Подписки обновляются в процессе приложения: на переходе в «Защищено» и по расписанию (решение 434); уведомления
-        // слушают туннель и подписки там же — и без окна.
+        // Подписки обновляются в процессе приложения: на переходе в «Защищено» и по расписанию (решение 434), без «только
+        // через VPN» — и в фоне через WorkManager (решение 443); уведомления слушают туннель и подписки там же — и без окна.
         val entry = EntryPointAccessors.fromApplication(this, AppEntryPoint::class.java)
         entry.updater().start()
         entry.notifier().start()
+        entry.background().start()
     }
 
     companion object {
