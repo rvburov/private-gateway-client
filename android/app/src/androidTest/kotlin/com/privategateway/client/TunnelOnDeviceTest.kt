@@ -24,6 +24,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /**
  * Настоящий туннель на эмуляторе (пункт 9.4): VpnService, ядро libXray и сервер Xray на машине CI
@@ -46,12 +47,73 @@ class TunnelOnDeviceTest {
 
     @Test
     fun traffic_goes_through_the_server_and_only_while_connected() = runBlocking<Unit> {
-        assumeTrue("нет сервера проверки туннеля на машине (scripts/android-test-server.sh)", reachable(HOST, PORT))
-        // Согласие на VPN за пользователя: системное окно «Запрос на подключение» в проверке не нажать.
-        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
-        assertNull(VpnService.prepare(context), "разрешение на VPN не выдано")
+        prepare()
         assertFailsWith<IOException>("проверочный адрес не должен быть доступен напрямую") { fetch() }
 
+        connect()
+        assertEquals("pg-tunnel-ok", fetch().trim())
+
+        // Проба связи службы (сразу после подключения, через туннель к cp.cloudflare.com) прошла — переподключения нет.
+        delay(12_000)
+        assertEquals(TunnelState.Connected, app.monitor().status.value.state, "служба сочла связь потерянной")
+
+        GatewayVpnService.disconnect(context)
+        withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off } }
+        assertFailsWith<IOException>("после отключения адрес снова недоступен") { fetch() }
+    }
+
+    @Test
+    fun tunnel_survives_doze_sleep_and_app_standby() = runBlocking<Unit> {
+        prepare()
+        connect()
+        // Doze без зарядки, экран выключен, приложение «неактивно»: служба переднего плана держит туннель.
+        shell("dumpsys battery unplug")
+        shell("input keyevent KEYCODE_SLEEP")
+        shell("dumpsys deviceidle force-idle")
+        shell("am set-inactive ${context.packageName} true")
+        try {
+            delay(5_000)
+            assertEquals("pg-tunnel-ok", fetch().trim(), "в Doze трафик идет через туннель")
+            assertEquals(TunnelState.Connected, app.monitor().status.value.state)
+        } finally {
+            shell("am set-inactive ${context.packageName} false")
+            shell("dumpsys deviceidle unforce")
+            shell("input keyevent KEYCODE_WAKEUP")
+            shell("dumpsys battery reset")
+        }
+
+        // Выход из Doze — проба сразу; связь та же, переподключения нет.
+        delay(3_000)
+        assertEquals(TunnelState.Connected, app.monitor().status.value.state, "после сна служба сочла связь потерянной")
+        assertEquals("pg-tunnel-ok", fetch().trim())
+    }
+
+    @Test
+    fun tunnel_follows_a_network_change() = runBlocking<Unit> {
+        prepare()
+        connect()
+        // Wi-Fi выключен — сеть по умолчанию теперь мобильная: служба идет следом (DNS новой сети, проба сразу и, если
+        // соединение с сервером оборвалось, переподключение к тому же серверу).
+        shell("svc wifi disable")
+        try {
+            assertTrue(answersWithin(90_000), "после смены сети трафик через туннель не пошел: ${app.monitor().status.value}")
+        } finally {
+            shell("svc wifi enable")
+        }
+
+        assertTrue(answersWithin(90_000), "после возврата Wi-Fi трафик через туннель не пошел: ${app.monitor().status.value}")
+        assertEquals(TunnelState.Connected, withTimeout(90_000) { app.monitor().status.first { it.state == TunnelState.Connected } }.state)
+    }
+
+    /** Согласие на VPN за пользователя: системное окно «Запрос на подключение» в проверке не нажать. */
+    private fun prepare() {
+        assumeTrue("нет сервера проверки туннеля на машине (scripts/android-test-server.sh)", reachable(HOST, PORT))
+        shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        assertNull(VpnService.prepare(context), "разрешение на VPN не выдано")
+    }
+
+    /** Сервер проверки выбран, защита включена и дошла до «Защищено». */
+    private suspend fun connect() {
         val server = assertNotNull(LinkParser.parse(LINK).server, "ссылка проверки не разобралась")
         app.servers().add(listOf(server))
         val id = app.servers().servers.first().first { it.port == PORT }.id
@@ -62,15 +124,26 @@ class TunnelOnDeviceTest {
             app.monitor().status.first { it.state == TunnelState.Connected || it.state == TunnelState.Error }
         }
         assertEquals(TunnelState.Connected, status.state, "туннель не поднялся: ${status.error}")
-        assertEquals("pg-tunnel-ok", fetch().trim())
+    }
 
-        // Проба связи службы (сразу после подключения, через туннель к cp.cloudflare.com) прошла — переподключения нет.
-        delay(12_000)
-        assertEquals(TunnelState.Connected, app.monitor().status.value.state, "служба сочла связь потерянной")
+    /** Страница проверочного адреса пришла через туннель за [timeoutMs] — пробы раз в 2 с. */
+    private suspend fun answersWithin(timeoutMs: Long): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (System.currentTimeMillis() < deadline) {
+            val answer = try {
+                fetch().trim()
+            } catch (_: IOException) {
+                null
+            }
 
-        GatewayVpnService.disconnect(context)
-        withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off } }
-        assertFailsWith<IOException>("после отключения адрес снова недоступен") { fetch() }
+            if (answer == "pg-tunnel-ok") {
+                return true
+            }
+
+            delay(2_000)
+        }
+
+        return false
     }
 
     /**
