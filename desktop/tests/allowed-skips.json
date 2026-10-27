@@ -47,6 +47,11 @@
     "why": "блок при обрыве Windows; на Windows CI идет от администратора"
   },
   {
+    "reason": "TUN Windows — только на Windows с правами администратора",
+    "os": ["Linux", "macOS"],
+    "why": "адаптер wintun sing-box; на Windows CI идет от администратора, в туннель — только адреса теста"
+  },
+  {
     "reason": "брандмауэр Hyper-V — только на Windows",
     "os": ["Linux", "macOS"],
     "why": "правила виртуальных машин Windows"

@@ -536,12 +536,27 @@ public sealed partial class VpnModeTests
         var request = VpnRequest(rig.Definition, allowLan: allowLan);
         request.Protection.Dns.Servers.Clear();
         request.Protection.Dns.Servers.Add(lanDns.ToString());
+        request.Connection.CoreLog = V1.CoreLogLevel.Debug;
 
         await service.Client.ConnectAsync(request, cancellationToken: Ct);
 
         var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal))[^1];
         // DNS ОС — в туннель, Xray спрашивает свой DNS в сети напрямую.
-        (await rig.Netns.ResolveWithSystemAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns))).ShouldStartWith("192.0.2.77");
+        string answer;
+        try
+        {
+            answer = await rig.Netns.ResolveWithSystemAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns));
+        }
+        catch (InvalidOperationException e)
+        {
+            // Однажды в CI (master, прогон 284) имя не нашлось; здесь не повторялось ни отдельно, ни под нагрузкой. Кто получил
+            // запрос и журнал ядер покажут, на каком звене он потерялся.
+            throw new InvalidOperationException(
+                $"{e.Message}\nзапросы своего DNS: [{string.Join(", ", pihole.Queries)}]; DNS сервера: [{string.Join(", ", rig.Dns!.Queries)}]\n" +
+                string.Join('\n', service.Journal.Tail(ServiceJournal.Capacity).TakeLast(120).Select(x => x.Message)), e);
+        }
+
+        answer.ShouldStartWith("192.0.2.77");
         pihole.Queries.ShouldContain("example.com");
         rig.Dns!.Queries.ShouldBeEmpty("через сервер DNS не спрашивали");
         if (allowLan)
