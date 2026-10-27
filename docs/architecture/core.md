@@ -75,10 +75,19 @@
   сайтов из v2fly/domain-list-community (`scripts/get-geosite.sh`, release.md).
 - `desktop/tests/Network/XrayProxyTests` — контролируемый прокси-тест на 127.0.0.1: свое ядро-сервер,
   свое ядро-клиент с конфигом от `XrayConfigBuilder` и свой сайт. Протоколы и транспорты: VLESS
-  (raw, WebSocket, gRPC, HTTPUpgrade), VMess, Trojan с TLS (самоподписанный сертификат), Shadowsocks
-  (aes-256-gcm). Запрос идет через SOCKS5 и через HTTP на одном порту и доходит до сайта; с правилами
-  по умолчанию сайт в локальной сети через прокси недоступен. В CI тест идет на Windows, macOS и
-  Linux со скачанной сборкой; без сборки тесты с ядром пропускаются.
+  (raw, WebSocket, gRPC, HTTPUpgrade, XHTTP, WebSocket с TLS), VMess (raw, gRPC с TLS), Trojan с TLS
+  (самоподписанный сертификат), Shadowsocks (aes-256-gcm и 2022-blake3-aes-128-gcm), WireGuard (вход
+  wireguard того же Xray, ключи — свежие от `xray wg` на каждый прогон); VLESS, VMess и Trojan — еще с
+  Mux. Запрос идет через SOCKS5 и через HTTP на одном порту и доходит до сайта; с правилами по
+  умолчанию сайт в локальной сети через прокси недоступен. REALITY — `PrivateGatewayCompatibilityTests`,
+  Hysteria2 и TUIC — `RelayTests` через ретранслятор sing-box. В CI тест идет на Windows, macOS и Linux
+  со скачанной сборкой; без сборки тесты с ядром пропускаются.
+- `desktop/tests/Network/ReferenceConfigTests` — конфиг каждой эталонной ссылки `shared/testdata/links` читает само
+  ядро закрепленной версии: `xray run -test` в режимах прокси и VPN — с настройками по умолчанию и со всем, что по
+  умолчанию выключено (FakeDNS, свой DNS или DoH, IPv6, локальная сеть, отпечаток, Mux, фрагментация, раздельный режим
+  с правилами и категорией геобазы), один конфиг замера задержки на все эталоны, `sing-box check` у ретранслятора
+  Hysteria2 и TUIC. Unit-тесты конфига сверяют поля, а этот — что ядро их принимает: неверный тип или значение падает
+  здесь, а не у пользователя на «Подключении».
 
 
 ## TUN режима VPN: sing-box (спайк этапа 3)

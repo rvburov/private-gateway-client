@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
@@ -63,8 +64,52 @@ internal static class XrayKit
             "shadowsocks" => (Definition(ProxyProtocol.Shadowsocks, port, new ServerCredentials(Password: Password),
                     options: new ProtocolOptions(Cipher: "aes-256-gcm")),
                 ServerConfig(port, "shadowsocks", $$"""{ "method": "aes-256-gcm", "password": "{{Password}}", "network": "tcp" }""", raw)),
+            "vless-xhttp" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.Xhttp, Path: "/pg")),
+                ServerConfig(port, "vless", vlessClients, """{ "network": "xhttp", "xhttpSettings": { "path": "/pg" } }""")),
+            "vless-ws-tls" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.WebSocket, Path: "/pg"),
+                    new SecurityOptions(TransportSecurity.Tls, Sni: "example.com", AllowInsecure: true)),
+                ServerConfig(port, "vless", vlessClients,
+                    $$"""{ "network": "ws", "wsSettings": { "path": "/pg" }, "security": "tls", "tlsSettings": { "certificates": [{{SelfSigned("example.com")}}] } }""")),
+            "vmess-grpc-tls" => (Definition(ProxyProtocol.Vmess, port, withUuid, new TransportOptions(TransportKind.Grpc, ServiceName: "pg"),
+                    new SecurityOptions(TransportSecurity.Tls, Sni: "example.com", AllowInsecure: true)),
+                ServerConfig(port, "vmess", $$"""{ "clients": [{ "id": "{{Uuid}}" }] }""",
+                    $$"""{ "network": "grpc", "grpcSettings": { "serviceName": "pg" }, "security": "tls", "tlsSettings": { "certificates": [{{SelfSigned("example.com")}}] } }""")),
+            "shadowsocks-2022" => (Definition(ProxyProtocol.Shadowsocks, port, new ServerCredentials(Password: Ss2022Key),
+                    options: new ProtocolOptions(Cipher: "2022-blake3-aes-128-gcm")),
+                ServerConfig(port, "shadowsocks", $$"""{ "method": "2022-blake3-aes-128-gcm", "password": "{{Ss2022Key}}", "network": "tcp" }""", raw)),
+            "wireguard" => WireGuardPair(port),
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
+    }
+
+    /// <summary>Ключ Shadowsocks 2022 — 16 байт base64, заведомо ненастоящий (байты 0..15).</summary>
+    private static string Ss2022Key { get; } = Convert.ToBase64String([.. Enumerable.Range(0, 16).Select(b => (byte)b)]);
+
+    /// <summary>
+    /// WireGuard: сервер — вход wireguard того же Xray, ключи обеих сторон — свежие от <c>xray wg</c> на каждый тест (в
+    /// репозитории ключей нет). Вход слушает UDP — готовность <see cref="Start"/> узнает по строке запуска ядра.
+    /// </summary>
+    private static (ServerDefinition Server, JsonObject Config) WireGuardPair(int port)
+    {
+        var (clientKey, clientPublic) = WireGuardKeys();
+        var (serverKey, serverPublic) = WireGuardKeys();
+        var definition = Definition(ProxyProtocol.WireGuard, port, new ServerCredentials(PrivateKey: clientKey),
+            options: new ProtocolOptions(PeerPublicKey: serverPublic, Addresses: ["10.0.0.2/32"], Mtu: 1420));
+        // У входа WireGuard нет транспорта Xray — без streamSettings.
+        var config = ServerConfig(port, "wireguard",
+            $$"""{ "secretKey": "{{serverKey}}", "peers": [{ "publicKey": "{{clientPublic}}", "allowedIPs": ["10.0.0.2/32"] }] }""", "{}");
+        config["inbounds"]![0]!.AsObject().Remove("streamSettings");
+        return (definition, config);
+    }
+
+    private static (string Private, string Public) WireGuardKeys()
+    {
+        var start = new ProcessStartInfo(Xray!, "wg") { RedirectStandardOutput = true, UseShellExecute = false };
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEnd();
+        process.WaitForExit();
+        string Value(string name) => output.Split('\n').Select(l => l.Trim()).First(l => l.StartsWith(name + ":", StringComparison.Ordinal))[(name.Length + 1)..].Trim();
+        return (Value("Private key"), Value("Public key"));
     }
 
     /// <summary>
@@ -108,23 +153,38 @@ internal static class XrayKit
     public static async Task<CoreProcess> Start(JsonObject config, int port)
     {
         var output = new List<string>();
-        var xray = CoreProcess.StartXray(Xray!, config);
-        xray.Output += (_, line) =>
+        var xray = CoreProcess.StartXray(Xray!, config, output: line =>
         {
             lock (output)
             {
                 output.Add(line);
             }
-        };
+        });
 
         // Сервер слушает адрес из конфига: 127.0.0.1 или адрес машины на паре veth стенда.
         var listen = IPAddress.Parse(config["inbounds"]?[0]?["listen"]?.GetValue<string>() ?? "127.0.0.1");
+        // Вход WireGuard слушает только UDP — подключиться к нему по TCP нельзя, готовность — по строке «Xray … started».
+        var udp = config["inbounds"]?[0]?["protocol"]?.GetValue<string>() == "wireguard";
         var deadline = DateTime.UtcNow.AddSeconds(20);
         while (DateTime.UtcNow < deadline)
         {
             if (xray.HasExited)
             {
                 break;
+            }
+
+            if (udp)
+            {
+                lock (output)
+                {
+                    if (output.Any(l => l.Contains(" started", StringComparison.Ordinal)))
+                    {
+                        return xray;
+                    }
+                }
+
+                await Task.Delay(100).ConfigureAwait(false);
+                continue;
             }
 
             try

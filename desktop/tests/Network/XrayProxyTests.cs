@@ -17,16 +17,27 @@ public sealed class XrayProxyTests
 {
     private const string Page = "привет через туннель";
 
-    /// <summary>Каждый протокол Xray из этапа 2 и транспорты, которые служба собирает в конфиг.</summary>
+    /// <summary>
+    /// Каждый протокол Xray и каждый транспорт, которые служба собирает в конфиг, — с TLS и без; регрессия этапа 11. REALITY —
+    /// в <see cref="PrivateGatewayCompatibilityTests"/>, Hysteria2 и TUIC — в <see cref="RelayTests"/>.
+    /// </summary>
     [Theory]
-    [InlineData("vless")]
-    [InlineData("vless-ws")]
-    [InlineData("vless-grpc")]
-    [InlineData("vless-httpupgrade")]
-    [InlineData("vmess")]
-    [InlineData("trojan-tls")]
-    [InlineData("shadowsocks")]
-    public async Task Request_goes_through_the_server_by_socks5_and_http_on_one_port(string kind)
+    [InlineData("vless", false)]
+    [InlineData("vless-ws", false)]
+    [InlineData("vless-grpc", false)]
+    [InlineData("vless-httpupgrade", false)]
+    [InlineData("vless-xhttp", false)]
+    [InlineData("vless-ws-tls", false)]
+    [InlineData("vmess", false)]
+    [InlineData("vmess-grpc-tls", false)]
+    [InlineData("trojan-tls", false)]
+    [InlineData("shadowsocks", false)]
+    [InlineData("shadowsocks-2022", false)]
+    [InlineData("wireguard", false)]
+    [InlineData("vless-ws", true)]
+    [InlineData("vmess", true)]
+    [InlineData("trojan-tls", true)]
+    public async Task Request_goes_through_the_server_by_socks5_and_http_on_one_port(string kind, bool mux)
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
         using var site = new LocalSite(Page);
@@ -34,7 +45,8 @@ public sealed class XrayProxyTests
         var (definition, serverConfig) = XrayKit.Pair(kind, serverPort);
         using var server = await XrayKit.Start(serverConfig, serverPort);
         var proxyPort = XrayKit.FreePort();
-        var config = ClientConfig(definition, proxyPort);
+        var config = ClientConfig(definition, proxyPort, mux: mux);
+        (config["outbounds"]![0]!["mux"]?["enabled"]?.GetValue<bool>() ?? false).ShouldBe(mux, "Mux — из настройки «Подключение и ядро»");
         // Сайт теста — на 127.0.0.1, а локальная сеть в конфиге закрыта: для проверки туннеля правило убирается.
         config["routing"]!["rules"]!.AsArray().RemoveAt(0);
         using var client = await XrayKit.Start(config, proxyPort);
@@ -116,10 +128,10 @@ public sealed class XrayProxyTests
         Should.Throw<System.ComponentModel.Win32Exception>(() => CoreProcess.StartXray(missing, new JsonObject()));
     }
 
-    private static JsonObject ClientConfig(ServerDefinition server, int proxyPort, ProtectionSettings? protection = null)
+    private static JsonObject ClientConfig(ServerDefinition server, int proxyPort, ProtectionSettings? protection = null, bool mux = false)
     {
         var request = new CoreRequest(server, ConnectionMode.Proxy, protection ?? ProtectionSettings.Default,
-            ConnectionSettings.Default with { ProxyPort = proxyPort, CoreLog = CoreLogLevel.Info }, RoutingSettings.Default);
+            ConnectionSettings.Default with { ProxyPort = proxyPort, CoreLog = CoreLogLevel.Info, Mux = mux }, RoutingSettings.Default);
         return XrayConfigBuilder.Build(request).Config.ShouldNotBeNull();
     }
 
