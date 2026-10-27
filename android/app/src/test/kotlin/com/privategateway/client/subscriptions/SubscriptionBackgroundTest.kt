@@ -8,8 +8,8 @@ import androidx.work.NetworkType
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.testing.WorkManagerTestInitHelper
-import com.privategateway.client.core.settings.RefreshInterval
 import com.privategateway.client.core.settings.SubscriptionSettings
+import com.privategateway.client.core.subscriptions.RefreshInterval
 import com.privategateway.client.data.SettingsRepository
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
