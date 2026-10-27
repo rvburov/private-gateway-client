@@ -43,6 +43,16 @@ public sealed class XrayProxyTests
         using var site = new LocalSite(Page);
         var serverPort = XrayKit.FreePort();
         var (definition, serverConfig) = XrayKit.Pair(kind, serverPort);
+        var url = site.Url;
+        if (kind == "wireguard")
+        {
+            // Выход WireGuard без CAP_NET_ADMIN (CI, обычный пользователь) — стек gVisor, а он 127.0.0.1 в туннель не шлет:
+            // запрос идет на адрес документации, выход сервера ведет его на сайт теста.
+            serverConfig["outbounds"] = new JsonArray(
+                new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
+            url = new Uri($"http://192.0.2.10:{site.Url.Port}/");
+        }
+
         using var server = await XrayKit.Start(serverConfig, serverPort);
         var proxyPort = XrayKit.FreePort();
         var config = ClientConfig(definition, proxyPort, mux: mux);
@@ -51,8 +61,8 @@ public sealed class XrayProxyTests
         config["routing"]!["rules"]!.AsArray().RemoveAt(0);
         using var client = await XrayKit.Start(config, proxyPort);
 
-        (await Get(site.Url, $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page);
-        (await Get(site.Url, $"http://127.0.0.1:{proxyPort}")).ShouldBe(Page, "HTTP и SOCKS5 — на одном порту");
+        (await Get(url, $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page);
+        (await Get(url, $"http://127.0.0.1:{proxyPort}")).ShouldBe(Page, "HTTP и SOCKS5 — на одном порту");
         site.Requests.ShouldBe(2);
     }
 
