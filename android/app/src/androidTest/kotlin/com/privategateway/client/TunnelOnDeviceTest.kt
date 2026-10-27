@@ -39,14 +39,14 @@ class TunnelOnDeviceTest {
     private val app = EntryPointAccessors.fromApplication(context.applicationContext, AppEntryPoint::class.java)
 
     @After
-    fun disconnect() = runBlocking {
+    fun disconnect() = runBlocking<Unit> {
         GatewayVpnService.disconnect(context)
         withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off || it.state == TunnelState.Error } }
         Unit
     }
 
     @Test
-    fun traffic_goes_through_the_server_and_only_while_connected() = runBlocking {
+    fun traffic_goes_through_the_server_and_only_while_connected() = runBlocking<Unit> {
         assumeTrue("нет сервера проверки туннеля на машине (scripts/android-test-server.sh)", reachable(HOST, PORT))
         // Согласие на VPN за пользователя: системное окно «Запрос на подключение» в проверке не нажать.
         shell("appops set ${context.packageName} ACTIVATE_VPN allow")
