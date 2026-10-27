@@ -21,6 +21,20 @@ public partial class LocalizationTests
     }
 
     [Fact]
+    public void Both_languages_have_the_same_placeholders()
+    {
+        // Подстановки {0}, {1}… общие у десктопа, Android и iOS: перевод без одной из них молча теряет число или имя.
+        Ru.Where(p => !Placeholders(p.Value).SetEquals(Placeholders(En[p.Key])))
+            .Select(p => p.Key)
+            .ShouldBeEmpty("подстановки русского и английского текста разошлись");
+    }
+
+    private static HashSet<string> Placeholders(string text) => [.. Placeholder().Matches(text).Select(m => m.Value)];
+
+    [GeneratedRegex(@"\{\d+\}")]
+    private static partial Regex Placeholder();
+
+    [Fact]
     public void Russian_texts_have_no_yo_letter()
     {
         Ru.Where(p => p.Value.Contains('ё', StringComparison.Ordinal) || p.Value.Contains('Ё', StringComparison.Ordinal))
