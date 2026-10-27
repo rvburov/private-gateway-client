@@ -141,10 +141,11 @@ private fun StatusCard(ui: MainUi, onCheck: () -> Unit) {
                 Text(subtitle(ui), color = PgColor.Text.Secondary, style = PgType.Small, maxLines = 2, overflow = TextOverflow.Ellipsis)
             }
 
-            if (state == TunnelState.Connected && ui.status.since != null) {
+            val since = ui.status.since
+            if (state == TunnelState.Connected && since != null) {
                 Column(horizontalAlignment = Alignment.End) {
                     Text(stringResource(R.string.status_online), color = PgColor.Text.Muted, style = PgType.Caption)
-                    Text(online(ui.status.since), style = PgType.Mono)
+                    Text(online(since), style = PgType.Mono)
                 }
             }
         }
