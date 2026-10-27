@@ -1424,5 +1424,7 @@
   "ios.log.note": "No server addresses, keys or subscription addresses; the last 200 entries, time in UTC.",
   "ios.log.empty": "No entries yet.",
   "ios.log.copy": "Copy log",
-  "ios.log.refresh": "Refresh"
+  "ios.log.refresh": "Refresh",
+  "ios.prot.always.title": "Always-on protection",
+  "ios.prot.always.text": "iOS turns protection back on by itself after an iPhone restart, a network change or an extension failure — until you turn it off with the button in the app. If the server does not answer and the kill switch is off, iOS will keep bringing the tunnel up again."
 }

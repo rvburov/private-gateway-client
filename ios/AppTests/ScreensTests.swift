@@ -166,7 +166,7 @@ final class ScreensTests: XCTestCase {
             }
 
             let custom = TunnelSettings(dns: .custom, customDns: "192.0.2.53", ipv6: true, allowLan: true)
-            let editing = ProtectionView(texts: texts, tunnel: custom, killSwitch: false, editingDns: true, onTunnel: { _ in }, onKillSwitch: { _ in }, onBack: {})
+            let editing = ProtectionView(texts: texts, tunnel: custom, killSwitch: false, alwaysOn: true, editingDns: true, onTunnel: { _ in }, onKillSwitch: { _ in }, onBack: {})
             XCTAssertNotNil(try render(editing))
             for component in about.components {
                 XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, open: component.name, onBack: {}), height: 2000), component.name)

@@ -266,6 +266,12 @@ final class AppModel: ObservableObject {
         await run { try await self.settingsActions.setKillSwitch(on, state: state) }
     }
 
+    /// «Постоянная защита» — под защитой сразу в профиль VPN, туннель не опускается.
+    func setAlwaysOn(_ on: Bool) async {
+        let state = home.status.state
+        await run { try await self.settingsActions.setAlwaysOn(on, state: state) }
+    }
+
     /// Какие уведомления показывать — расширение читает уровень при каждом событии.
     func setNotifications(_ level: NotificationLevel) async {
         await run { try await self.container.settings.setNotifications(level) }

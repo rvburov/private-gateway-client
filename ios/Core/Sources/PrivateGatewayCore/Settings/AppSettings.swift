@@ -28,10 +28,15 @@ public struct AppSettings: Equatable, Sendable {
     public var notifications: NotificationLevel
     /// Что делать при обрыве связи с сервером; по умолчанию «Экспоненц. до 60 с».
     public var reconnect: ReconnectPolicy
+    /// «Постоянная защита» — подключение по требованию iOS (On Demand): после перезагрузки, смены сети и сбоя расширения
+    /// iOS включает защиту сама, пока ее не выключат кнопкой в приложении. По умолчанию выключена, как «Постоянная VPN»
+    /// Android.
+    public var alwaysOn: Bool
 
     public init(
         selectedServerId: String? = nil, tunnel: TunnelSettings = TunnelSettings(), killSwitch: Bool = true,
-        subscriptions: SubscriptionSettings = SubscriptionSettings(), notifications: NotificationLevel = .default, reconnect: ReconnectPolicy = .backoff60Seconds
+        subscriptions: SubscriptionSettings = SubscriptionSettings(), notifications: NotificationLevel = .default, reconnect: ReconnectPolicy = .backoff60Seconds,
+        alwaysOn: Bool = false
     ) {
         self.selectedServerId = selectedServerId
         self.tunnel = tunnel
@@ -39,6 +44,7 @@ public struct AppSettings: Equatable, Sendable {
         self.subscriptions = subscriptions
         self.notifications = notifications
         self.reconnect = reconnect
+        self.alwaysOn = alwaysOn
     }
 }
 
@@ -57,6 +63,7 @@ extension AppSettings: Codable {
         case notifySelected = "subs_notify_selected"
         case notifications = "notify_level"
         case reconnect = "reconnect_policy"
+        case alwaysOn = "always_on"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -80,7 +87,8 @@ extension AppSettings: Codable {
                 onlyViaVpn: read(.onlyViaVpn) ?? defaults.subscriptions.onlyViaVpn,
                 notifySelected: read(.notifySelected) ?? defaults.subscriptions.notifySelected
             ),
-            notifications: NotificationLevel.read(read(.notifications)), reconnect: ReconnectPolicy.read(read(.reconnect))
+            notifications: NotificationLevel.read(read(.notifications)), reconnect: ReconnectPolicy.read(read(.reconnect)),
+            alwaysOn: read(.alwaysOn) ?? defaults.alwaysOn
         )
     }
 
@@ -97,6 +105,7 @@ extension AppSettings: Codable {
         try values.encode(subscriptions.notifySelected, forKey: .notifySelected)
         try values.encode(notifications.rawValue, forKey: .notifications)
         try values.encode(reconnect.rawValue, forKey: .reconnect)
+        try values.encode(alwaysOn, forKey: .alwaysOn)
     }
 }
 
@@ -137,6 +146,10 @@ public actor SettingsStore {
 
     public func setKillSwitch(_ on: Bool) throws {
         try change { $0.killSwitch = on }
+    }
+
+    public func setAlwaysOn(_ on: Bool) throws {
+        try change { $0.alwaysOn = on }
     }
 
     public func setSubscriptions(_ subscriptions: SubscriptionSettings) throws {

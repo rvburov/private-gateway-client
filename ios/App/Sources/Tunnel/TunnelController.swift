@@ -3,8 +3,8 @@ import PrivateGatewayCore
 
 /// Профиль VPN в настройках iOS и команды туннелю — `TunnelControl` для действий окна. Профиль один: создается при первом
 /// подключении (iOS спрашивает разрешение на VPN), дальше перед каждым подключением приводится к настройкам (`VpnProfile`):
-/// блок при обрыве и локальная сеть — свойства профиля, а не конфига ядра. Сервер и остальные настройки расширение туннеля
-/// читает само из общей папки.
+/// блок при обрыве, локальная сеть и «Постоянная защита» (подключение по требованию) — свойства профиля, а не конфига ядра.
+/// Сервер и остальные настройки расширение туннеля читает само из общей папки.
 @MainActor
 final class TunnelController: TunnelControl {
     private let settings: SettingsStore
@@ -50,7 +50,13 @@ final class TunnelController: TunnelControl {
     /// (разрешение не дано или отозвано, VPN занят) — PGC-NET-010; расширение не перезапустило ядро — его код.
     func connect() async throws {
         let profile = try await VpnProfile.of(settings.load())
-        if let manager, Self.running(manager), Self.profile(of: manager) == profile {
+        if let manager, Self.running(manager), let saved = Self.profile(of: manager), saved.sameTunnel(profile) {
+            // «Постоянная защита» меняется на ходу: туннель не опускается.
+            if saved.onDemand != profile.onDemand {
+                Self.onDemand(manager, profile.onDemand)
+                try? await Self.save(manager)
+            }
+
             try await reload(manager)
             return
         }
@@ -62,14 +68,44 @@ final class TunnelController: TunnelControl {
             }
 
             let manager = try await prepared(profile)
-            try manager.connection.startVPNTunnel()
+            // С подключением по требованию iOS могла поднять туннель сама, как только профиль сохранился.
+            do {
+                try manager.connection.startVPNTunnel()
+            } catch {
+                if !Self.running(manager) {
+                    throw error
+                }
+            }
         } catch {
             throw TunnelFailure(TunnelErrors.otherVpn, detail: "\(error)")
         }
     }
 
+    /// Выключить защиту. С «Постоянной защитой» сначала выключается подключение по требованию — иначе iOS сразу подняла бы
+    /// туннель снова; следующее подключение включит его опять.
     func disconnect() async {
+        if let manager, manager.isOnDemandEnabled {
+            manager.isOnDemandEnabled = false
+            try? await Self.save(manager)
+        }
+
         manager?.connection.stopVPNTunnel()
+    }
+
+    /// Подключение по требованию: правило одно — «подключаться всегда» на любой сети.
+    private static func onDemand(_ manager: NETunnelProviderManager, _ on: Bool) {
+        let rule = NEOnDemandRuleConnect()
+        rule.interfaceTypeMatch = .any
+        manager.onDemandRules = [rule]
+        manager.isOnDemandEnabled = on
+    }
+
+    private static func save(_ manager: NETunnelProviderManager) async throws {
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+            manager.saveToPreferences { @Sendable error in
+                Self.resume(continuation, error)
+            }
+        }
     }
 
     private static func running(_ manager: NETunnelProviderManager) -> Bool {
@@ -82,7 +118,10 @@ final class TunnelController: TunnelControl {
             return nil
         }
 
-        return VpnProfile(includeAllNetworks: tunnel.includeAllNetworks, excludeLocalNetworks: tunnel.excludeLocalNetworks, enforceRoutes: tunnel.enforceRoutes)
+        return VpnProfile(
+            includeAllNetworks: tunnel.includeAllNetworks, excludeLocalNetworks: tunnel.excludeLocalNetworks, enforceRoutes: tunnel.enforceRoutes,
+            onDemand: manager.isOnDemandEnabled
+        )
     }
 
     /// Ждать, пока туннель опустится, — не дольше 10 секунд.
@@ -126,12 +165,9 @@ final class TunnelController: TunnelControl {
         manager.protocolConfiguration = tunnel
         manager.localizedDescription = VpnProfile.serverAddress
         manager.isEnabled = true
-        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            // Обработчики — без изоляции главного потока: в каком потоке их вызовет система, не обещано.
-            manager.saveToPreferences { @Sendable error in
-                Self.resume(continuation, error)
-            }
-        }
+        Self.onDemand(manager, profile.onDemand)
+        // Обработчики — без изоляции главного потока: в каком потоке их вызовет система, не обещано.
+        try await Self.save(manager)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
             manager.loadFromPreferences { @Sendable error in
                 Self.resume(continuation, error)

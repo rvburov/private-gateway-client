@@ -22,6 +22,7 @@ struct SettingsView<Subscriptions: View>: View {
     @Binding var page: SettingsPage
     var onTunnel: (TunnelSettings) -> Void = { _ in }
     var onKillSwitch: (Bool) -> Void = { _ in }
+    var onAlwaysOn: (Bool) -> Void = { _ in }
     var onNotifications: (NotificationLevel) -> Void = { _ in }
     var onReconnect: (ReconnectPolicy) -> Void = { _ in }
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
@@ -32,8 +33,8 @@ struct SettingsView<Subscriptions: View>: View {
         switch page {
         case .protection:
             ProtectionView(
-                texts: texts, tunnel: settings.tunnel, killSwitch: settings.killSwitch, onTunnel: onTunnel, onKillSwitch: onKillSwitch,
-                onBack: { page = .main }
+                texts: texts, tunnel: settings.tunnel, killSwitch: settings.killSwitch, alwaysOn: settings.alwaysOn, onTunnel: onTunnel,
+                onKillSwitch: onKillSwitch, onAlwaysOn: onAlwaysOn, onBack: { page = .main }
             )
         case .subscriptions:
             subscriptions { page = .main }

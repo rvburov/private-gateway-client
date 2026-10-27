@@ -155,6 +155,7 @@ struct RootView: View {
             SettingsView(
                 texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,
                 onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } },
+                onAlwaysOn: { on in Task { await model.setAlwaysOn(on) } },
                 onNotifications: { level in Task { await model.setNotifications(level) } }, onReconnect: { policy in Task { await model.setReconnect(policy) } }
             ) { onBack in
                 SubscriptionsView(

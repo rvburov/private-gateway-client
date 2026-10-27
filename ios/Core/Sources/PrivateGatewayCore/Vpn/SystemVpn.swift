@@ -60,18 +60,27 @@ public struct VpnProfile: Equatable, Sendable {
     public let includeAllNetworks: Bool
     public let excludeLocalNetworks: Bool
     public let enforceRoutes: Bool
+    /// Подключение по требованию («Постоянная защита»): правило «подключаться всегда» на любой сети.
+    public let onDemand: Bool
 
-    public init(includeAllNetworks: Bool, excludeLocalNetworks: Bool, enforceRoutes: Bool) {
+    public init(includeAllNetworks: Bool, excludeLocalNetworks: Bool, enforceRoutes: Bool, onDemand: Bool = false) {
         self.includeAllNetworks = includeAllNetworks
         self.excludeLocalNetworks = excludeLocalNetworks
         self.enforceRoutes = enforceRoutes
+        self.onDemand = onDemand
     }
 
     public static func of(_ settings: AppSettings) -> VpnProfile {
         VpnProfile(
             includeAllNetworks: settings.killSwitch, excludeLocalNetworks: settings.tunnel.allowLan,
-            enforceRoutes: !settings.killSwitch && !settings.tunnel.allowLan
+            enforceRoutes: !settings.killSwitch && !settings.tunnel.allowLan, onDemand: settings.alwaysOn
         )
+    }
+
+    /// Тот же туннель: свойства, ради которых туннель надо опустить и поднять заново. Подключение по требованию меняется на
+    /// ходу.
+    public func sameTunnel(_ other: VpnProfile) -> Bool {
+        includeAllNetworks == other.includeAllNetworks && excludeLocalNetworks == other.excludeLocalNetworks && enforceRoutes == other.enforceRoutes
     }
 }
 

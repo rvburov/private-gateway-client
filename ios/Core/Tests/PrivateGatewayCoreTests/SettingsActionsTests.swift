@@ -44,4 +44,16 @@ final class SettingsActionsTests: XCTestCase {
         try await actions.setTunnel(TunnelSettings(allowLan: true), state: .connected)
         XCTAssertEqual(control.connects, 2)
     }
+
+    func testAlwaysOnGoesToTheProfileUnderProtectionAndIsOnlyStoredWithout() async throws {
+        try await actions.setAlwaysOn(true, state: .off)
+        XCTAssertEqual(control.connects, 0, "без защиты — только запись: профиль получит ее следующее подключение")
+        let stored = try await settings.load()
+        XCTAssertTrue(stored.alwaysOn)
+
+        try await actions.setAlwaysOn(false, state: .connected)
+        XCTAssertEqual(control.connects, 1)
+        try await actions.setAlwaysOn(false, state: .connected)
+        XCTAssertEqual(control.connects, 1, "то же значение — профиль тот же")
+    }
 }

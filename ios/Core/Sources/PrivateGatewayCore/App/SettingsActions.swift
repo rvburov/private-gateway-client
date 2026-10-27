@@ -19,6 +19,11 @@ public struct SettingsActions: Sendable {
         try await apply(state) { try await settings.setKillSwitch(on) }
     }
 
+    /// «Постоянная защита» — свойство профиля VPN: под защитой оно сразу уходит в профиль (без перезапуска туннеля).
+    public func setAlwaysOn(_ on: Bool, state: TunnelState) async throws {
+        try await apply(state) { try await settings.setAlwaysOn(on) }
+    }
+
     public func setSubscriptions(_ next: SubscriptionSettings) async throws {
         try await settings.setSubscriptions(next)
     }

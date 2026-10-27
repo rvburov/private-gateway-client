@@ -4,26 +4,32 @@ import SwiftUI
 
 /// «Защита и утечки» для телефона (доска 5 в одну колонку) — как `ProtectionScreen` Android и блок при обрыве: на iOS он —
 /// свойство профиля VPN (`includeAllNetworks`), включить его может само приложение (решение 460). DNS в туннеле, IPv6,
-/// локальная сеть. Под защитой изменения применяются сразу: ядро перечитывает настройки, а профиль VPN — переподключением.
+/// «Постоянная защита» — подключение по требованию iOS (решение 469). DNS в туннеле, IPv6, локальная сеть. Под защитой
+/// изменения применяются сразу: ядро перечитывает настройки, а профиль VPN — переподключением.
 struct ProtectionView: View {
     let texts: PgTexts
     let tunnel: TunnelSettings
     let killSwitch: Bool
+    let alwaysOn: Bool
     let onTunnel: (TunnelSettings) -> Void
     let onKillSwitch: (Bool) -> Void
+    let onAlwaysOn: (Bool) -> Void
     let onBack: () -> Void
 
     @State private var editingDns: Bool
 
     init(
-        texts: PgTexts, tunnel: TunnelSettings, killSwitch: Bool, editingDns: Bool = false, onTunnel: @escaping (TunnelSettings) -> Void,
-        onKillSwitch: @escaping (Bool) -> Void, onBack: @escaping () -> Void
+        texts: PgTexts, tunnel: TunnelSettings, killSwitch: Bool, alwaysOn: Bool = false, editingDns: Bool = false,
+        onTunnel: @escaping (TunnelSettings) -> Void, onKillSwitch: @escaping (Bool) -> Void, onAlwaysOn: @escaping (Bool) -> Void = { _ in },
+        onBack: @escaping () -> Void
     ) {
         self.texts = texts
         self.tunnel = tunnel
         self.killSwitch = killSwitch
+        self.alwaysOn = alwaysOn
         self.onTunnel = onTunnel
         self.onKillSwitch = onKillSwitch
+        self.onAlwaysOn = onAlwaysOn
         self.onBack = onBack
         _editingDns = State(initialValue: editingDns)
     }
@@ -36,6 +42,7 @@ struct ProtectionView: View {
                 VStack(alignment: .leading, spacing: PgSpace.xs) {
                     Overline(text: texts.protGroupKs)
                     PgToggleRow(title: texts.protKsTitle, text: texts.iosProtKsText, isOn: killSwitch, identifier: "killSwitch", onChange: onKillSwitch)
+                    PgToggleRow(title: texts.iosProtAlwaysTitle, text: texts.iosProtAlwaysText, isOn: alwaysOn, identifier: "alwaysOn", onChange: onAlwaysOn)
                 }
                 .pgCard()
 

@@ -127,6 +127,16 @@ final class HomeStateTests: XCTestCase {
         )
     }
 
+    func testAlwaysOnIsOnDemandAndDoesNotChangeTheTunnel() {
+        let always = VpnProfile.of(AppSettings(alwaysOn: true))
+        XCTAssertTrue(always.onDemand)
+        XCTAssertFalse(VpnProfile.of(AppSettings()).onDemand)
+        XCTAssertNotEqual(always, VpnProfile.of(AppSettings()), "другой профиль — его надо сохранить")
+        XCTAssertTrue(always.sameTunnel(VpnProfile.of(AppSettings())), "но туннель тот же: опускать его не нужно")
+        XCTAssertFalse(always.sameTunnel(VpnProfile.of(AppSettings(killSwitch: false, alwaysOn: true))))
+        XCTAssertFalse(always.sameTunnel(VpnProfile.of(AppSettings(tunnel: TunnelSettings(allowLan: true), alwaysOn: true))))
+    }
+
     func testReloadAnswerIsOkOrACode() {
         XCTAssertNil(TunnelMessages.failure(TunnelMessages.ok))
         XCTAssertEqual(TunnelMessages.failure(Data(TunnelErrors.noServer.utf8)), TunnelErrors.noServer)

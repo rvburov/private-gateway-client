@@ -26,6 +26,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertNil(settings.selectedServerId)
         XCTAssertEqual(settings.tunnel, TunnelSettings(dns: .profile, customDns: nil, ipv6: false, allowLan: false))
         XCTAssertTrue(settings.killSwitch, "блок при обрыве включен по умолчанию")
+        XCTAssertFalse(settings.alwaysOn, "постоянная защита выключена по умолчанию, как «Постоянная VPN» Android")
         XCTAssertEqual(settings.subscriptions, SubscriptionSettings(refresh: .every12Hours, onlyViaVpn: true, notifySelected: true))
     }
 
@@ -34,6 +35,7 @@ final class AppSettingsTests: XCTestCase {
         try await store.setTunnel(TunnelSettings(dns: .custom, customDns: "192.168.1.2", ipv6: true, allowLan: true))
         try await store.setKillSwitch(false)
         try await store.setSubscriptions(SubscriptionSettings(refresh: .every6Hours, onlyViaVpn: false, notifySelected: false))
+        try await store.setAlwaysOn(true)
 
         // Второй экземпляр на том же файле — как расширение туннеля.
         let other = try await SettingsStore(file: file).load()
@@ -41,7 +43,7 @@ final class AppSettingsTests: XCTestCase {
             other,
             AppSettings(
                 selectedServerId: "server-1", tunnel: TunnelSettings(dns: .custom, customDns: "192.168.1.2", ipv6: true, allowLan: true),
-                killSwitch: false, subscriptions: SubscriptionSettings(refresh: .every6Hours, onlyViaVpn: false, notifySelected: false)
+                killSwitch: false, subscriptions: SubscriptionSettings(refresh: .every6Hours, onlyViaVpn: false, notifySelected: false), alwaysOn: true
             )
         )
 
@@ -65,7 +67,7 @@ final class AppSettingsTests: XCTestCase {
         try await store.select("server-1")
         let text = String(decoding: try XCTUnwrap(file.read()), as: UTF8.self)
         for key in ["selected_server", "tunnel_dns", "tunnel_ipv6", "tunnel_allow_lan", "kill_switch", "subs_refresh", "subs_only_vpn", "subs_notify_selected",
-                    "notify_level", "reconnect_policy"] {
+                    "notify_level", "reconnect_policy", "always_on"] {
             XCTAssertTrue(text.contains("\"\(key)\""), key)
         }
     }
