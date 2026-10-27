@@ -6,12 +6,15 @@ import SwiftUI
 /// большой палец. Внешний IP и скорость — после замера: показывается только измеренное, без предполагаемых значений.
 struct HomeView: View {
     let texts: PgTexts
-    var status = TunnelStatus()
+    var home = HomeState()
     var killSwitch = true
-    var hasServers = false
     var version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
     var onPower: () -> Void = {}
     var onAdd: () -> Void = {}
+    var onServers: () -> Void = {}
+    var onSelect: (String) -> Void = { _ in }
+    var onRefresh: () -> Void = {}
+    var onCheck: () -> Void = {}
 
     var body: some View {
         ZStack(alignment: .bottom) {
@@ -19,14 +22,14 @@ struct HomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: PgSpace.l) {
                     header
-                    StatusCard(texts: texts, status: status, killSwitch: killSwitch, hasServers: hasServers)
-                    serverCard
+                    StatusCard(texts: texts, home: home, killSwitch: killSwitch, onCheck: onCheck)
+                    ServerCard(texts: texts, home: home, onAdd: onAdd, onServers: onServers, onSelect: onSelect, onRefresh: onRefresh)
                 }
                 .padding(.horizontal, PgSpace.windowSideMobile)
                 .padding(.bottom, PgLayout.scrollBottomPadding)
             }
 
-            PowerButton(look: StateLook.of(status.state, texts), texts: texts, on: status.state != .off && status.state != .error, action: onPower)
+            PowerButton(look: StateLook.of(home.status.state, texts), texts: texts, on: !home.off, action: onPower)
                 .padding(.bottom, PgLayout.Island.bottomMargin)
         }
     }
@@ -52,32 +55,167 @@ struct HomeView: View {
                     .contentShape(Circle())
             }
             .accessibilityLabel(texts.headerAdd)
+            .accessibilityIdentifier("add")
         }
         .padding(.top, PgSpace.l)
     }
+}
 
-    private var serverCard: some View {
+/// Сервер в работе (или выбранный): значок страны, название, протокол и порт. «Сменить ▾» раскрывает быструю смену (доска 25,
+/// решение 431): сервер в работе и два самых быстрых измеренных, «Обновить» — замер задержки, «Все серверы ›».
+struct ServerCard: View {
+    let texts: PgTexts
+    let home: HomeState
+    let onAdd: () -> Void
+    let onServers: () -> Void
+    let onSelect: (String) -> Void
+    let onRefresh: () -> Void
+
+    @State private var quick = false
+
+    var body: some View {
         VStack(alignment: .leading, spacing: PgSpace.s) {
-            Overline(text: texts.serverNone)
-            Button(action: onAdd) {
-                HStack {
-                    Text(texts.serversNone).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary)).multilineTextAlignment(.leading)
-                    Spacer()
-                    PgIcon(data: PgIcons.plus, color: Color(PgColor.Accent.base))
+            if let server = home.inUse {
+                Button {
+                    quick.toggle()
+                } label: {
+                    HStack(spacing: PgSpace.l) {
+                        CountryBadge(code: server.countryCode)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(server.displayName).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
+                            Text(server.summary + " · " + texts.serverPort(server.port))
+                                .pgText(PgType.caption)
+                                .foregroundStyle(Color(PgColor.Text.secondary))
+                        }
+
+                        Spacer(minLength: 0)
+                        Text(texts.serverSwitch).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
+                        PgIcon(data: PgIcons.chevronDown, color: Color(PgColor.Accent.text), size: 16)
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .accessibilityHint(texts.serverQuick)
+                .accessibilityIdentifier("server.switch")
+
+                if quick {
+                    quickList(server)
+                }
+            } else {
+                Overline(text: texts.serverNone)
+                // Серверы есть, но ни один не выбран (выбранный удален): сам сервер не выбирается — ведем к списку.
+                Button(action: home.servers.isEmpty ? onAdd : onServers) {
+                    HStack {
+                        Text(home.servers.isEmpty ? texts.serversNone : texts.androidServerChoose)
+                            .pgText(PgType.small)
+                            .foregroundStyle(Color(PgColor.Text.secondary))
+                            .multilineTextAlignment(.leading)
+                        Spacer()
+                        if home.servers.isEmpty {
+                            PgIcon(data: PgIcons.plus, color: Color(PgColor.Accent.base))
+                        } else {
+                            Text(texts.serverAll).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier(home.servers.isEmpty ? "server.add" : "server.choose")
             }
-            .accessibilityLabel(texts.headerAdd)
         }
         .pgCard()
+    }
+
+    /// Быстрая смена: сервер в работе и самые быстрые измеренные; нажатие — выбор (под защитой — сразу переподключение).
+    @ViewBuilder
+    private func quickList(_ inUse: ServerItem) -> some View {
+        Divider().overlay(Color(PgColor.Line.divider))
+        HStack {
+            Overline(text: texts.serverQuick)
+            Spacer()
+            Button(action: onRefresh) {
+                PgIcon(data: PgIcons.refresh, color: Color(home.measuring ? PgColor.Text.muted : PgColor.Accent.text), size: 20)
+                    .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
+                    .contentShape(Circle())
+            }
+            .disabled(home.measuring)
+            .accessibilityLabel(texts.serverRefresh)
+            .accessibilityIdentifier("quick.refresh")
+        }
+
+        ForEach(QuickSwitch.pick(home.servers, inUse: inUse), id: \.id) { server in
+            Button {
+                quick = false
+                onSelect(server.id)
+            } label: {
+                HStack(spacing: PgSpace.m) {
+                    CountryBadge(code: server.countryCode)
+                    Text(server.displayName).pgText(PgType.body).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
+                    Spacer(minLength: 0)
+                    LatencyText(texts: texts, latency: server.latency)
+                }
+                .padding(.vertical, PgSpace.xs)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("quick.\(server.id)")
+        }
+
+        Button(action: onServers) {
+            Text(texts.serverAll).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("quick.all")
+    }
+}
+
+/// Значок страны: две буквы кода на подложке (цветные флаги шрифт рисует не везде); кода нет — щит.
+struct CountryBadge: View {
+    let code: String
+
+    var body: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(PgColor.Accent.tint))
+            if code.isEmpty {
+                PgIcon(data: PgIcons.shield, color: Color(PgColor.Accent.text), size: 18)
+            } else {
+                Text(code).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
+            }
+        }
+        .frame(width: PgLayout.touchTarget - 4, height: PgLayout.touchTarget - 4)
+        .accessibilityHidden(true)
+    }
+}
+
+/// Задержка: быстрый — зеленым, медленный — серым, нет ответа — «нет» оранжевым, не мерили — «—».
+struct LatencyText: View {
+    let texts: PgTexts
+    let latency: Latency?
+
+    var body: some View {
+        let look = self.look
+        Text(look.text).pgText(PgType.mono).foregroundStyle(Color(look.color)).lineLimit(1).accessibilityLabel(look.hint)
+    }
+
+    private var look: (text: String, color: PgRGBA, hint: String) {
+        let ms = latency?.ms.map { "\($0) \(texts.unitMs)" } ?? ""
+        switch LatencyKind.of(latency) {
+        case .good: return (ms, PgColor.Status.Success.text, ms)
+        case .slow: return (ms, PgColor.Text.muted, ms)
+        case .noAnswer: return (texts.serversLatencyNone, PgColor.Status.Warning.text, texts.serversLatencyNoneHint)
+        case .never: return ("—", PgColor.Text.muted, texts.androidServersLatencyNever)
+        }
     }
 }
 
 /// Карточка состояния: значок щита с отметкой, заголовок и подзаголовок, время в сети, четыре чипа и строка проверки.
 struct StatusCard: View {
     let texts: PgTexts
-    let status: TunnelStatus
+    let home: HomeState
     let killSwitch: Bool
-    let hasServers: Bool
+    var onCheck: () -> Void = {}
+
+    private var status: TunnelStatus { home.status }
 
     var body: some View {
         let look = StateLook.of(status.state, texts)
@@ -118,7 +256,11 @@ struct StatusCard: View {
             HStack {
                 Text(note).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
                 Spacer()
-                Text(texts.actionCheck).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
+                Button(action: onCheck) {
+                    Text(texts.actionCheck).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("check")
             }
         }
         .pgCard()
@@ -127,8 +269,8 @@ struct StatusCard: View {
     /// Под заголовком: шифруется ли трафик, к какому серверу подключаемся, код ошибки.
     private var subtitle: String {
         switch status.state {
-        case .connected: return texts.statusConnectedSub
-        case .connecting, .stopping: return ""
+        case .connected: return home.inUse?.encrypted == false ? texts.statusConnectedSubPlain : texts.statusConnectedSub
+        case .connecting, .stopping: return home.inUse?.displayName ?? ""
         case .reconnecting: return texts.statusReconnectingSub(status.attempt)
         case .error: return texts.statusErrorSubDirect(status.error ?? "")
         case .off: return texts.statusOffSub
@@ -138,7 +280,12 @@ struct StatusCard: View {
     /// Строка под чипами: что сделать, чтобы проверить защиту.
     private var note: String {
         switch status.state {
-        case .off: return hasServers ? texts.checkedOff : texts.serverAddFirst
+        case .off:
+            if home.inUse != nil {
+                return texts.checkedOff
+            }
+
+            return home.servers.isEmpty ? texts.serverAddFirst : texts.androidServerChoose
         case .connecting, .stopping: return texts.checkedConnecting
         case .reconnecting: return texts.checkedReconnecting
         case .error: return status.error.flatMap { texts.text(key: "error.\($0)") } ?? texts.checkedError

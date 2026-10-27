@@ -60,7 +60,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider {
     /// покидают изоляцию вызывающего.
     private nonisolated(nonsending) func apply(_ settings: NEPacketTunnelNetworkSettings) async throws {
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-            setTunnelNetworkSettings(settings) { error in
+            setTunnelNetworkSettings(settings) { @Sendable error in
                 if let error {
                     continuation.resume(throwing: TunnelFailure(TunnelErrors.coreFailed, detail: "network settings: \(error)"))
                 } else {
@@ -76,10 +76,14 @@ extension TunPlan {
     func networkSettings() -> NEPacketTunnelNetworkSettings {
         let settings = NEPacketTunnelNetworkSettings(tunnelRemoteAddress: TunPlan.remoteAddress)
         let v4 = NEIPv4Settings(addresses: [ipv4.address], subnetMasks: [TunPlan.subnetMask(ipv4.length)])
-        v4.includedRoutes = [NEIPv4Route.default()]
+        v4.includedRoutes = routes.filter { !$0.address.contains(":") }.map {
+            NEIPv4Route(destinationAddress: $0.address, subnetMask: TunPlan.subnetMask($0.length))
+        }
         settings.ipv4Settings = v4
         let v6 = NEIPv6Settings(addresses: [ipv6.address], networkPrefixLengths: [NSNumber(value: ipv6.length)])
-        v6.includedRoutes = [NEIPv6Route.default()]
+        v6.includedRoutes = routes.filter { $0.address.contains(":") }.map {
+            NEIPv6Route(destinationAddress: $0.address, networkPrefixLength: NSNumber(value: $0.length))
+        }
         settings.ipv6Settings = v6
         let dns = NEDNSSettings(servers: dnsServers)
         dns.matchDomains = dnsMatchDomains

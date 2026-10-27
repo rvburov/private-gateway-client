@@ -79,13 +79,38 @@ final class HomeTests: XCTestCase {
 
     @MainActor
     func testHomeDrawsInEveryStateAndLanguage() throws {
+        let servers = [
+            ServerItem(id: "a", linkName: "Нидерланды 01", countryCode: "NL", protocol: .vless, security: .reality, transport: .tcp, port: 443, latency: .of(48)),
+            ServerItem(id: "b", linkName: "Германия", countryCode: "DE", protocol: .trojan, security: .tls, transport: .webSocket, port: 443, latency: .of(180)),
+            ServerItem(id: "c", linkName: "Финляндия", countryCode: "", protocol: .vmess, security: .none, transport: .tcp, port: 80, latency: .failed(.noResponse)),
+        ]
+        // Без серверов, серверы без выбора, выбранный сервер.
+        let lists: [(servers: [ServerItem], selected: String?)] = [([], nil), (servers, nil), (servers, "a")]
         for language in PgTexts.Language.allCases {
             for state in TunnelState.allCases {
-                let status = TunnelStatus(state: state, since: Date(), error: state == .error ? TunnelErrors.coreFailed : nil, attempt: 2)
-                let view = HomeView(texts: PgTexts(language), status: status, version: "0.1.0").frame(width: 393, height: 852)
-                let image = try XCTUnwrap(ImageRenderer(content: view).uiImage, "\(language) \(state)")
-                XCTAssertEqual(image.size.width, 393, accuracy: 1)
+                for list in lists {
+                    let status = TunnelStatus(
+                        state: state, serverId: list.selected, since: Date(), error: state == .error ? TunnelErrors.coreFailed : nil, attempt: 2
+                    )
+                    let home = HomeState(status: status, servers: list.servers, selectedId: list.selected)
+                    let view = HomeView(texts: PgTexts(language), home: home, version: "0.1.0").frame(width: 393, height: 852)
+                    let image = try XCTUnwrap(ImageRenderer(content: view).uiImage, "\(language) \(state) \(list.servers.count)")
+                    XCTAssertEqual(image.size.width, 393, accuracy: 1)
+                }
             }
         }
+    }
+
+    @MainActor
+    func testServerCardShowsTheServerInUseAndTheQuickSwitch() throws {
+        let servers = [
+            ServerItem(id: "a", linkName: "Нидерланды 01", countryCode: "NL", protocol: .vless, security: .reality, transport: .tcp, port: 443, latency: .of(48)),
+            ServerItem(id: "b", linkName: "Германия", countryCode: "DE", protocol: .trojan, security: .tls, transport: .webSocket, port: 443, latency: .of(30)),
+        ]
+        let home = HomeState(status: TunnelStatus(state: .connected, serverId: "b"), servers: servers, selectedId: "a")
+        XCTAssertEqual(home.inUse?.id, "b", "под защитой — сервер в работе, а не выбранный")
+        let card = ServerCard(texts: texts, home: home, onAdd: {}, onServers: {}, onSelect: { _ in }, onRefresh: {}).frame(width: 393)
+        XCTAssertNotNil(ImageRenderer(content: card).uiImage)
+        XCTAssertEqual(QuickSwitch.pick(servers, inUse: home.inUse).map(\.id), ["b", "a"])
     }
 }

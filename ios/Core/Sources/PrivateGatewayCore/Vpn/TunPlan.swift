@@ -23,13 +23,19 @@ public struct TunPlan: Equatable, Sendable {
     public static let address6 = "fd66:7067:6763::1"
     public static let prefix6 = 126
 
+    /// Частные сети, которые идут в туннель, когда локальная сеть закрыта: свою подсеть iOS иначе пустила бы мимо туннеля, если
+    /// блок при обрыве выключен (вместе с `VpnProfile.enforceRoutes`), а ядро отправляет их в блок (решение 460).
+    public static let lanRoutes = [
+        TunPrefix("10.0.0.0", 8), TunPrefix("172.16.0.0", 12), TunPrefix("192.168.0.0", 16), TunPrefix("169.254.0.0", 16), TunPrefix("fc00::", 7),
+    ]
+
     /// «Адрес сервера туннеля», который iOS показывает в настройках VPN. Не адрес сервера: тот запечатан в Связке ключей и
     /// в настройки системы не попадает.
     public static let remoteAddress = "127.0.0.1"
 
     public let ipv4: TunPrefix
     public let ipv6: TunPrefix
-    /// Маршруты в туннель: весь IPv4 и весь IPv6.
+    /// Маршруты в туннель: весь IPv4 и весь IPv6, при закрытой локальной сети — еще частные сети.
     public let routes: [TunPrefix]
     public let dnsServers: [String]
     /// Имена, которые идут к DNS туннеля: пустое имя — все.
@@ -39,7 +45,8 @@ public struct TunPlan: Equatable, Sendable {
     public static func of(_ settings: CoreSettings) -> TunPlan {
         TunPlan(
             ipv4: TunPrefix(XrayConfig.tunAddress, XrayConfig.tunPrefix), ipv6: TunPrefix(address6, prefix6),
-            routes: [TunPrefix("0.0.0.0", 0), TunPrefix("::", 0)], dnsServers: [XrayConfig.tunDns], dnsMatchDomains: [""], mtu: settings.mtu
+            routes: [TunPrefix("0.0.0.0", 0), TunPrefix("::", 0)] + (settings.allowLan ? [] : lanRoutes), dnsServers: [XrayConfig.tunDns],
+            dnsMatchDomains: [""], mtu: settings.mtu
         )
     }
 

@@ -8,7 +8,7 @@ final class TunPlanTests: XCTestCase {
         let plan = TunPlan.of(CoreSettings())
         XCTAssertEqual(plan.ipv4.description, "172.19.0.1/30")
         XCTAssertEqual(plan.ipv6.description, "fd66:7067:6763::1/126")
-        XCTAssertEqual(plan.routes.map(\.description), ["0.0.0.0/0", "::/0"])
+        XCTAssertEqual(plan.routes.map(\.description), ["0.0.0.0/0", "::/0", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "169.254.0.0/16", "fc00::/7"])
         XCTAssertEqual(plan.dnsServers, ["172.19.0.2"])
         XCTAssertEqual(plan.dnsMatchDomains, [""], "все имена — к DNS туннеля")
         XCTAssertEqual(plan.mtu, 1500)
@@ -18,6 +18,11 @@ final class TunPlanTests: XCTestCase {
         // Без настройки ядро отправляет IPv6 в блок, но мимо туннеля он не уходит.
         XCTAssertEqual(TunPlan.of(CoreSettings(ipv6: false)), TunPlan.of(CoreSettings(ipv6: true)))
         XCTAssertTrue(TunPlan.of(CoreSettings(ipv6: false)).routes.contains(TunPrefix("::", 0)))
+    }
+
+    func testOpenLocalNetworkHasOnlyTheDefaultRoutes() {
+        // Локальная сеть разрешена — свою подсеть iOS пускает мимо туннеля, частные диапазоны в туннель не идут.
+        XCTAssertEqual(TunPlan.of(CoreSettings(allowLan: true)).routes.map(\.description), ["0.0.0.0/0", "::/0"])
     }
 
     func testMtuComesFromSettings() {
