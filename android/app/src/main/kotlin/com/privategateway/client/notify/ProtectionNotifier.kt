@@ -65,8 +65,10 @@ class ProtectionNotifier @Inject constructor(
         }
 
         started = true
+        // Точка отсчета — состояние в момент запуска, а не когда корутина успеет начать: смена сразу после запуска иначе
+        // терялась бы (первым собранным значением было бы уже новое состояние, и «смены» не было бы).
+        var before = monitor.status.value
         scope.launch {
-            var before = monitor.status.value
             monitor.status.collect { after ->
                 val previous = before
                 before = after
