@@ -100,11 +100,12 @@ struct ImportView: View {
                 }
             }
 
+            // Замыкание подписи PhotosPicker не изолировано главным потоком: текст, шрифт и цвет — готовые значения, без модели и pgText.
+            let label = Text(texts.androidImportQrImage)
+                .font(PgType.bodyStrong.font)
+                .foregroundColor(Color(model.qrReading ? PgColor.Text.muted : PgColor.Accent.text))
             PhotosPicker(selection: $photo, matching: .images) {
-                Text(texts.androidImportQrImage)
-                    .pgText(PgType.bodyStrong)
-                    .foregroundStyle(Color(model.qrReading ? PgColor.Text.muted : PgColor.Accent.text))
-                    .frame(minHeight: PgLayout.touchTarget)
+                label.frame(minHeight: PgLayout.touchTarget)
             }
             .disabled(model.qrReading)
             .accessibilityIdentifier("import.qr.image")

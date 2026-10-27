@@ -230,8 +230,10 @@ struct ShareBlock: View {
                         options: [.localOnly: true, .expirationDate: Date().addingTimeInterval(120)]
                     )
                 }
+                // Подпись — готовым текстом, как у PhotosPicker: замыкание подписи может быть не изолировано главным потоком.
+                let send = Text(texts.androidShareSend).font(PgType.bodyStrong.font).foregroundColor(Color(PgColor.Accent.text))
                 ShareLink(item: link) {
-                    Text(texts.androidShareSend).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text)).frame(minHeight: PgLayout.touchTarget)
+                    send.frame(minHeight: PgLayout.touchTarget)
                 }
                 .accessibilityIdentifier("card.share.send")
             }
