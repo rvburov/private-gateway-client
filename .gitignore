@@ -78,3 +78,9 @@ appsettings.Local.json
 xcuserdata/
 *.xcuserstate
 DerivedData/
+# Проект Xcode и Info.plist/entitlements целей генерирует XcodeGen из ios/project.yml (scripts/ios-project.sh).
+ios/PrivateGateway.xcodeproj/
+ios/App/Info.plist
+ios/App/PrivateGateway.entitlements
+ios/PacketTunnel/Info.plist
+ios/PacketTunnel/PacketTunnel.entitlements

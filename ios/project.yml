@@ -1,0 +1,97 @@
+# Проект Xcode приложения iOS — генерирует XcodeGen (scripts/ios-project.sh), сам проект в git не хранится.
+# Приложение (SwiftUI) и расширение туннеля (Packet Tunnel) берут общий пакет ios/Core: разбор, конфиг ядра — из
+# PrivateGatewayCore, тема и тексты — из PrivateGatewayTheme (их пишет плагин сборки из shared/specifications).
+# Подписи нет (аккаунта Apple Developer нет, решение 2026-10-25): сборка и тесты — на симуляторе.
+name: PrivateGateway
+options:
+  bundleIdPrefix: com.privategateway
+  deploymentTarget:
+    iOS: "16.0"
+  developmentLanguage: en
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    TARGETED_DEVICE_FAMILY: "1"
+packages:
+  PrivateGatewayCore:
+    path: Core
+targets:
+  PrivateGateway:
+    type: application
+    platform: iOS
+    sources:
+      - path: App/Sources
+      - path: App/Resources
+    dependencies:
+      - package: PrivateGatewayCore
+        product: PrivateGatewayCore
+      - package: PrivateGatewayCore
+        product: PrivateGatewayTheme
+      - target: PacketTunnel
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: Private Gateway
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        CFBundleLocalizations: [en, ru]
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+    entitlements:
+      path: App/PrivateGateway.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.com.privategateway.client]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.privategateway.client
+  PacketTunnel:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: PacketTunnel/Sources
+    dependencies:
+      - package: PrivateGatewayCore
+        product: PrivateGatewayCore
+      - sdk: NetworkExtension.framework
+    info:
+      path: PacketTunnel/Info.plist
+      properties:
+        CFBundleDisplayName: Private Gateway
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.networkextension.packet-tunnel
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PacketTunnelProvider
+    entitlements:
+      path: PacketTunnel/PacketTunnel.entitlements
+      properties:
+        com.apple.developer.networking.networkextension: [packet-tunnel-provider]
+        com.apple.security.application-groups: [group.com.privategateway.client]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.privategateway.client.tunnel
+  PrivateGatewayTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: AppTests
+    dependencies:
+      - target: PrivateGateway
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.privategateway.client.tests
+schemes:
+  PrivateGateway:
+    build:
+      targets:
+        PrivateGateway: all
+        PrivateGatewayTests: [test]
+    test:
+      targets:
+        - PrivateGatewayTests

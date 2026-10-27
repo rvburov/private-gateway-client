@@ -140,7 +140,8 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
   `app` — Compose, VpnService, хранилище; ядро libXray собирает `scripts/get-libxray.sh` (нужны go и NDK);
 - `ios/` — приложение iOS ([docs/architecture/ios.md](docs/architecture/ios.md)): `Core` — общий пакет Swift без UIKit
   (разбор ссылок и подписок на эталонах `shared/testdata`; тема, тексты и иконки из `shared/specifications` — плагин сборки
-  `SharedResources`), собирается и на Linux;
+  `SharedResources`), собирается и на Linux; `App` — приложение SwiftUI, `PacketTunnel` — расширение туннеля, `project.yml` —
+  проект XcodeGen (сам проект в git не хранится);
 - `shared/specifications/` — общее для всех платформ: `design-tokens.json`, тексты RU/EN
   (`localization/*.json`), контракт IPC (`ipc/*.proto`);
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
@@ -193,6 +194,7 @@ android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDe
 scripts/get-xray.sh && scripts/android-test-server.sh  # сервер для проверки туннеля на эмуляторе (Xray и HTTP)
 android/gradlew -p android :app:connectedDebugAndroidTest   # туннель на запущенном эмуляторе или телефоне
 swift test --package-path ios/Core                     # общий модуль iOS — Swift 6 (Linux или macOS)
+scripts/ios-test.sh                                    # приложение iOS: проект XcodeGen, сборка и тесты на симуляторе (macOS и Xcode)
 ```
 
 - **Тесты гонять всегда.** По ходу работы — `Unit`, перед коммитом — все. В отчете — числа

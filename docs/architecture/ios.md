@@ -10,6 +10,8 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 | --- | --- | --- |
 | `ios/Core` — `PrivateGatewayCore` | без UIKit и NetworkExtension: описание сервера (`ServerDefinition`), разбор ссылок (`LinkParser`), подписок и конфигов (`ImportParser`: ссылки, base64, sing-box JSON, Clash/Mihomo YAML), запись ссылки (`LinkWriter`), флаг страны (`CountryFlag`); конфиг Xray (`XrayConfig`, ответ libXray — `XrayResponse`), настройки туннеля и свой DNS (`TunnelSettings`), строгий разбор адресов IP и частные сети (`IpAddress`, `PrivateNetwork`) | `swift test --package-path ios/Core` — на Linux и macOS (задание CI «iOS — общий модуль») |
 | `ios/Core` — `PrivateGatewayTheme` | тема, тексты RU/EN и иконки из `shared/specifications` и `Icons.axaml` десктопа — значения без SwiftUI (`PgColor`, `PgType`, `PgSpace`, `PgTexts`, `PgIcons`, разбор контура `SvgPath`); код генерирует плагин сборки `SharedResources` (исполняемый `SharedGen`, логика — `SharedGenKit`) | тот же `swift test`: каждый цвет и длина — как в Tokens.axaml десктопа, каждый текст — как в JSON, каждая иконка разбирается |
+| `ios/App` | приложение SwiftUI: тема SwiftUI из `PrivateGatewayTheme` (`Color`, шрифт, `PgIcon`, карточка, фон), главная по доске 25 — карточка состояния с четырьмя чипами защиты, сервер, кнопка включения внизу | `scripts/ios-test.sh` — тесты XCTest на симуляторе iPhone (задание CI «iOS — приложение (симулятор)», macOS) |
+| `ios/PacketTunnel` | расширение туннеля (`NEPacketTunnelProvider`); пока ядра нет, честно отказывает с кодом PGC-SVC-002, а не поднимается без защиты | собирается вместе с приложением; туннель на симуляторе не поднять — проверка на iPhone, когда будет аккаунт |
 
 Общий модуль — перенос `android/core` один к одному: те же правила, те же коды ошибок, тесты на тех же эталонах
 `shared/testdata` (ссылки, подписки, «туда и обратно» через `LinkWriter`, один сервер из четырех форматов PRIVATE GATEWAY)
@@ -55,7 +57,24 @@ SwiftPM `SharedResources` запускает `SharedGen`, тот читает `d
 - Иконки — данные пути SVG (`PgIcons.navHome`), контур — `SvgPath.parse`: M, L, H, V, C, S, Q, T, A, Z, числа без
   разделителей, флаги дуги слитно; дуги переводятся в кривые Безье не больше четверти оборота (SVG 1.1, F.6.5).
 
+## Проект и сборка
+
+Проект Xcode не хранится в git: его, Info.plist и entitlements целей генерирует XcodeGen из `ios/project.yml`
+(`scripts/ios-project.sh`; версия 2.46.0 закреплена, сумма архива сверяется, сам XcodeGen лежит в `artifacts/tools` и в
+приложение не попадает). `scripts/ios-test.sh` собирает приложение и расширение без подписи и гоняет тесты на первом
+доступном симуляторе iPhone самой новой iOS; итог — `artifacts/ios-tests.xcresult`. Нужны macOS и Xcode (решение 457).
+
+- Идентификаторы: приложение — `com.privategateway.client`, расширение — `com.privategateway.client.tunnel`, общая папка
+  приложения и расширения — App Group `group.com.privategateway.client`; права — `packet-tunnel-provider`. Без подписи
+  права в симуляторе не действуют — они вступят в силу с аккаунтом Apple Developer.
+- Swift 6 и строгая проверка многопоточности — во всех целях. Только iPhone и книжная ориентация, как в макете.
+- Язык: в приложении есть папки `en.lproj` и `ru.lproj`, поэтому iOS предлагает выбор языка приложения (Настройки →
+  Private Gateway → Язык); тексты берутся по `Bundle.main.preferredLocalizations`, затем по языкам iPhone.
+- Блок при обрыве на iOS — системный «весь трафик только через VPN» (`includeAllNetworks`): пока туннель поднят или
+  поднимается, трафик мимо него не уходит; выключенный туннель блока не держит. Так его и показывает чип на главной.
+
 ## Дальше
 
-Хранение (GRDB, Связка ключей и App Group), экраны SwiftUI по доскам 25–26 (цвет, шрифт и контур SwiftUI из
-`PrivateGatewayTheme`), расширение Packet Tunnel с libXray (.xcframework), сборка проекта (XcodeGen) и тесты на симуляторе.
+Ядро libXray для iOS (.xcframework, gomobile) в расширении туннеля, хранение (GRDB, Связка ключей и App Group), остальные
+экраны SwiftUI (серверы, карточка сервера, проверка, настройки, островок навигации) и управление туннелем
+(`NETunnelProviderManager`).

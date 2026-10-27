@@ -328,6 +328,21 @@ jobs:
       - name: Сборка и тесты
         run: swift test --package-path ios/Core
 
+  # iOS (этап 10): приложение SwiftUI и расширение Packet Tunnel — проект из ios/project.yml (XcodeGen), сборка без
+  # подписи и тесты на симуляторе iPhone. Туннель на симуляторе не поднять — он проверяется на iPhone, когда будет аккаунт.
+  ios-app:
+    name: iOS — приложение (симулятор)
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Xcode
+        run: xcodebuild -version
+
+      - name: Сборка и тесты на симуляторе
+        run: scripts/ios-test.sh
+
   worktree:
     name: Рабочие папки агентов (${{ matrix.os }})
     strategy:
