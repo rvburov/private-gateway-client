@@ -17,6 +17,7 @@ struct PrivateGatewayApp: App {
     var body: some Scene {
         WindowGroup {
             RootView(model: model)
+                .dynamicTypeSize(...PgTextStyle.largestSize)
         }
         .backgroundTask(.appRefresh(BackgroundRefresh.task)) {
             await BackgroundRefresh.run()

@@ -1,5 +1,6 @@
 import PrivateGatewayTheme
 import SwiftUI
+import UIKit
 
 /// Тема SwiftUI из значений `PrivateGatewayTheme` (сгенерированы из design-tokens.json при сборке): цвет, шрифт, иконка,
 /// карточка, тень и фон — как `Theme.kt` Android. Только светлая тема, как решено в макете; значения вручную не задаются.
@@ -41,13 +42,44 @@ extension PgTextStyle {
     }
 }
 
+extension PgTextStyle {
+    /// Самый крупный «Размер текста», под который рассчитаны экраны: дальше текст не растет, иначе островок и карточки
+    /// перестают помещаться.
+    static let largestSize = DynamicTypeSize.accessibility2
+
+    /// Во сколько раз «Размер текста» iOS увеличивает текст против обычного — как sp у Android: токен — размер при обычном
+    /// размере текста. Кривая — системная, текста тела (`UIFontMetrics`).
+    @MainActor
+    static func scale(_ size: DynamicTypeSize) -> CGFloat {
+        let traits = UITraitCollection(preferredContentSizeCategory: category(min(size, largestSize)))
+        return UIFontMetrics(forTextStyle: .body).scaledValue(for: 100, compatibleWith: traits) / 100
+    }
+
+    @MainActor
+    private static func category(_ size: DynamicTypeSize) -> UIContentSizeCategory {
+        switch size {
+        case .xSmall: return .extraSmall
+        case .small: return .small
+        case .medium: return .medium
+        case .large: return .large
+        case .xLarge: return .extraLarge
+        case .xxLarge: return .extraExtraLarge
+        case .xxxLarge: return .extraExtraExtraLarge
+        case .accessibility1: return .accessibilityMedium
+        case .accessibility2: return .accessibilityLarge
+        case .accessibility3: return .accessibilityExtraLarge
+        case .accessibility4: return .accessibilityExtraExtraLarge
+        case .accessibility5: return .accessibilityExtraExtraExtraLarge
+        @unknown default: return .large
+        }
+    }
+}
+
 extension View {
-    /// Текст начертанием токена: шрифт, трекинг (доля размера), межстрочный интервал и заглавные.
+    /// Текст начертанием токена: шрифт, трекинг (доля размера), межстрочный интервал и заглавные. Размер растет с «Размером
+    /// текста» iOS (доступность), как у Android.
     func pgText(_ style: PgTextStyle) -> some View {
-        font(style.font)
-            .tracking((style.tracking ?? 0) * style.size)
-            .lineSpacing(style.extraLineSpacing)
-            .textCase(style.uppercase ? .uppercase : nil)
+        modifier(PgTextModifier(style: style))
     }
 
     /// Тень макета (shadow.*): все слои по порядку.
@@ -64,6 +96,22 @@ extension View {
             .background(shape.fill(Color(PgColor.Surface.card)))
             .overlay(shape.stroke(Color(PgColor.Line.border), lineWidth: 1))
             .pgShadow(PgShadow.card)
+    }
+}
+
+/// Начертание токена в размере, выбранном пользователем в «Размере текста».
+struct PgTextModifier: ViewModifier {
+    let style: PgTextStyle
+    @Environment(\.dynamicTypeSize) private var typeSize
+
+    func body(content: Content) -> some View {
+        let scale = PgTextStyle.scale(typeSize)
+        let size = style.size * scale
+        content
+            .font(.system(size: size, weight: style.fontWeight, design: style.mono ? .monospaced : .default))
+            .tracking((style.tracking ?? 0) * size)
+            .lineSpacing(style.extraLineSpacing * scale)
+            .textCase(style.uppercase ? .uppercase : nil)
     }
 }
 

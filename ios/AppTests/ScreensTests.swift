@@ -96,6 +96,25 @@ final class ScreensTests: XCTestCase {
     }
 
     @MainActor
+    func testTextGrowsWithTheIosTextSizeUpToTheLargestTheScreensFit() throws {
+        XCTAssertEqual(PgTextStyle.scale(.large), 1, accuracy: 0.001, "обычный размер — размер токена")
+        XCTAssertLessThan(PgTextStyle.scale(.small), 1)
+        XCTAssertGreaterThan(PgTextStyle.scale(.xxxLarge), 1)
+        XCTAssertGreaterThan(PgTextStyle.scale(.accessibility2), PgTextStyle.scale(.xxxLarge))
+        XCTAssertEqual(PgTextStyle.scale(.accessibility5), PgTextStyle.scale(.accessibility2), "крупнее — не растет: экраны рассчитаны до него")
+
+        let home = HomeState(status: TunnelStatus(state: .connected, serverId: "a"), servers: servers, selectedId: "a")
+        for size in [DynamicTypeSize.xSmall, .large, .accessibility2] {
+            for language in PgTexts.Language.allCases {
+                let list = ServersView(texts: PgTexts(language), home: home, query: .constant(ServerListQuery())).environment(\.dynamicTypeSize, size)
+                XCTAssertEqual(try render(list).size.width, 393, accuracy: 1, "\(size)")
+                let island = Island(texts: PgTexts(language), tab: .check, state: .connected, hasServer: true, onTab: { _ in }, onPower: {})
+                XCTAssertNotNil(try render(island.environment(\.dynamicTypeSize, size), height: 160), "\(size)")
+            }
+        }
+    }
+
+    @MainActor
     func testCardAndIslandDraw() throws {
         let texts = PgTexts(.russian)
         let home = HomeState(status: TunnelStatus(state: .connected, serverId: "a"), servers: servers, selectedId: "a")
