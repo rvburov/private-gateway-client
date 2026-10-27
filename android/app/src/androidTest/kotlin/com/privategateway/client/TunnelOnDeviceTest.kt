@@ -9,6 +9,7 @@ import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.di.AppEntryPoint
 import com.privategateway.client.vpn.GatewayVpnService
 import dagger.hilt.android.EntryPointAccessors
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -17,10 +18,8 @@ import org.junit.Assume.assumeTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import java.io.IOException
-import java.net.HttpURLConnection
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.net.URL
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
@@ -65,20 +64,24 @@ class TunnelOnDeviceTest {
         assertEquals(TunnelState.Connected, status.state, "туннель не поднялся: ${status.error}")
         assertEquals("pg-tunnel-ok", fetch().trim())
 
+        // Проба связи службы (сразу после подключения, через туннель к cp.cloudflare.com) прошла — переподключения нет.
+        delay(12_000)
+        assertEquals(TunnelState.Connected, app.monitor().status.value.state, "служба сочла связь потерянной")
+
         GatewayVpnService.disconnect(context)
         withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off } }
         assertFailsWith<IOException>("после отключения адрес снова недоступен") { fetch() }
     }
 
-    private fun fetch(): String {
-        val connection = URL("http://$PROBE/").openConnection() as HttpURLConnection
-        connection.connectTimeout = 5_000
-        connection.readTimeout = 5_000
-        try {
-            return connection.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            connection.disconnect()
-        }
+    /**
+     * Страница проверочного адреса — HTTP простым сокетом: запрет Android на открытый HTTP (HttpURLConnection) его не
+     * касается, а с ним и проверка «напрямую недоступен» проходила бы сама — отказом политики, а не сети.
+     */
+    private fun fetch(): String = Socket().use { socket ->
+        socket.connect(InetSocketAddress(PROBE, 80), 5_000)
+        socket.soTimeout = 5_000
+        socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: $PROBE\r\nConnection: close\r\n\r\n".toByteArray())
+        socket.getInputStream().bufferedReader().readText().substringAfter("\r\n\r\n")
     }
 
     private fun reachable(host: String, port: Int): Boolean = try {
