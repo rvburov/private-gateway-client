@@ -1,8 +1,10 @@
 package com.privategateway.client
 
+import android.Manifest
 import android.app.Notification
 import android.app.NotificationManager
 import android.net.VpnService
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -125,10 +127,17 @@ class TunnelOnDeviceTest {
         assertEquals(TunnelState.Connected, withTimeout(90_000) { app.monitor().status.first { it.state == TunnelState.Connected } }.state)
     }
 
-    /** Согласие на VPN за пользователя: системное окно «Запрос на подключение» в проверке не нажать. */
+    /**
+     * Согласие на VPN и разрешение на уведомления (Android 13+) за пользователя: системные окна в проверке не нажать, а без
+     * разрешения уведомление туннеля не показывается вовсе.
+     */
     private fun prepare() {
         assumeTrue("нет сервера проверки туннеля на машине (scripts/android-test-server.sh)", reachable(HOST, PORT))
         shell("appops set ${context.packageName} ACTIVATE_VPN allow")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            instrumentation.uiAutomation.grantRuntimePermission(context.packageName, Manifest.permission.POST_NOTIFICATIONS)
+        }
+
         assertNull(VpnService.prepare(context), "разрешение на VPN не выдано")
     }
 

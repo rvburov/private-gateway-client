@@ -284,6 +284,21 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
           script: android/gradlew -p android :app:connectedDebugAndroidTest
 
+      # Отчет лежит в артефакте, но не всякая среда может его скачать — упавшие проверки с ошибкой сразу в журнал задания.
+      - name: Упавшие проверки на эмуляторе
+        if: failure()
+        run: |
+          python3 - <<'EOF'
+          import glob
+          import xml.etree.ElementTree as ET
+          for path in glob.glob('android/app/build/outputs/androidTest-results/connected/**/*.xml', recursive=True):
+              for case in ET.parse(path).getroot().iter('testcase'):
+                  for problem in case.findall('failure') + case.findall('error'):
+                      print(f"УПАЛО: {case.get('classname')}.{case.get('name')}")
+                      print('\n'.join((problem.text or problem.get('message') or '').splitlines()[:60]))
+          EOF
+          tail -n 40 artifacts/android-test-server/*.log 2>/dev/null || true
+
       - name: Отчеты и журнал сервера
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
