@@ -19,9 +19,12 @@ namespace PrivateGateway.Client.Tests.Network;
 /// ничего не уходит. Блок при обрыве (WFP) проверяют свои тесты; тесты идут по одному, без соседей.
 /// </summary>
 [Collection(FirewallSerial.Name)]
-public sealed class WindowsTunnelTests
+public sealed partial class WindowsTunnelTests
 {
     private static readonly IPAddress Public = IPAddress.Parse("1.1.1.1");
+
+    /// <summary>Что идет в TUN на машине CI: адрес теста и пул FakeDNS — остальная сеть машины остается как была.</summary>
+    private static readonly string[] Routes = [Public + "/32", XrayConfigBuilder.FakeDnsPool];
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -66,10 +69,8 @@ public sealed class WindowsTunnelTests
         using var xray = CoreProcess.StartXray(XrayKit.Xray!, xrayConfig, output: line => output.Add("xray", line));
         await WaitAsync(() => Listens(link.Port), "вход Xray", output);
 
-        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(link, [IPAddress.Loopback], request.Protection, request.Connection, new TunIpv6(Kernel: true, Tunnel: false)));
-        var inbound = tun["inbounds"]![0]!.AsObject();
-        inbound["route_address"] = new JsonArray(Public + "/32", XrayConfigBuilder.FakeDnsPool);
-        inbound["strict_route"] = false;
+        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(link, [IPAddress.Loopback], request.Protection, request.Connection,
+            new TunIpv6(Kernel: true, Tunnel: false), Routes: Routes));
         var started = 0;
         using var singBox = CoreProcess.StartSingBox(XrayKit.SingBox!, tun, output: line =>
         {

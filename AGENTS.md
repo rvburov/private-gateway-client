@@ -176,7 +176,7 @@ dotnet run scripts/gen-icons.cs                        # значок прогр
 ```bash
 dotnet test --solution PrivateGateway.slnx            # все тесты (Microsoft.Testing.Platform)
 dotnet test --project desktop/tests/Unit               # быстрый гейт
-scripts/soak.sh 30                                     # долгий прогон (soak), минут на режим; VPN — Linux от root
+scripts/soak.sh 30                                     # долгий прогон (soak), минут на режим; VPN — Linux от root и Windows от администратора
 dotnet format PrivateGateway.slnx                      # стиль и формат по .editorconfig (CI — с --verify-no-changes)
 dotnet test --solution PrivateGateway.slnx --results-directory artifacts/test-results --report-ctrf
 dotnet run scripts/test-report.cs artifacts/test-results   # итог и пропуски по причинам, как в CI

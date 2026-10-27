@@ -146,11 +146,12 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// Открыть UDP входа Xray (порт входа, связь) до TUN — <see cref="SocksUdp"/>; null — <see cref="SocksUdp.AssociateAsync"/>,
     /// а в сетевом пространстве (вход отсюда не виден) — не открывать.
     /// </param>
+    /// <param name="routes">Только эти сети через TUN (<see cref="TunRequest.Routes"/>, тесты Windows в CI); null — весь трафик.</param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
         TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, ProbeLink? probe = null,
         Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, Func<int, TunLink, CancellationToken, Task<bool>>? openUdp = null,
-        CancellationToken cancellationToken = default)
+        IReadOnlyList<string>? routes = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -206,7 +207,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             {
                 var ready = 0;
                 var tun = new TunRequest(link, serverAddresses, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
-                    DirectPrograms(request, xray), FakeIpPrograms(request));
+                    DirectPrograms(request, xray), FakeIpPrograms(request), routes);
                 singBoxCore = CoreProcess.StartSingBox(singBox, SingBoxConfigBuilder.BuildTun(tun), netns,
                     line =>
                     {

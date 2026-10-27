@@ -12,6 +12,8 @@ namespace PrivateGateway.Client.Network.SingBox;
 /// соединения идут мимо туннеля (<see cref="SingBoxConfigBuilder.DirectPrograms"/>); пусто — обхода нет.
 /// <paramref name="FakeIpPrograms"/> — те из них, чьи соединения с адресами FakeDNS идут во вход обхода
 /// Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>, <see cref="TunLink.BypassPort"/>).
+/// <paramref name="Routes"/> — только эти сети через TUN, без строгих маршрутов: тесты Windows в CI (решение 438) —
+/// туннель на весь трафик забрал бы связь машины CI с GitHub; null — весь трафик.
 /// </summary>
 public sealed record TunRequest(
     TunLink Xray,
@@ -20,7 +22,8 @@ public sealed record TunRequest(
     ConnectionSettings Connection,
     TunIpv6 Ipv6,
     IReadOnlyList<string>? DirectPrograms = null,
-    IReadOnlyList<string>? FakeIpPrograms = null);
+    IReadOnlyList<string>? FakeIpPrograms = null,
+    IReadOnlyList<string>? Routes = null);
 
 /// <summary>
 /// IPv6 для TUN — решает служба: <paramref name="Kernel"/> — в ядре ОС есть IPv6 (правила маршрутизации IPv6 ставятся);
@@ -152,6 +155,12 @@ public static class SingBoxConfigBuilder
             tun["route_address"] = Ipv6Tunneled(request)
                 ? new JsonArray("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1")
                 : new JsonArray("0.0.0.0/1", "128.0.0.0/1");
+        }
+
+        if (request.Routes is { } routes)
+        {
+            tun["route_address"] = new JsonArray([.. routes.Select(r => (JsonNode)r)]);
+            tun["strict_route"] = false;
         }
 
         if (InterfaceName is { Length: > 0 } name)

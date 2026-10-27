@@ -216,6 +216,16 @@ public sealed class SingBoxConfigTests
             ["/opt/game/game"]))["route"]!["rules"]!.AsArray().Count.ShouldBe(2, "нет входа обхода — нет и правила");
     }
 
+    [Fact]
+    public void Narrow_routes_of_a_ci_test_take_only_their_networks_and_no_strict_routes()
+    {
+        var tun = Tun(SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
+            ConnectionSettings.Default with { StrictRoutes = true }, Closed, Routes: ["1.1.1.1/32", "198.18.0.0/15"])));
+
+        Strings(tun["route_address"]).ShouldBe(["1.1.1.1/32", "198.18.0.0/15"]);
+        tun["strict_route"]!.GetValue<bool>().ShouldBeFalse("строгие маршруты закрыли бы машине CI все, что мимо узкого маршрута");
+    }
+
     [Theory]
     [InlineData("INFO [3870541312 0ms] inbound/tun[tun-in]: inbound connection to 203.0.113.24:443", CoreLogLevel.Warning, false)]
     [InlineData("INFO [3870541312 0ms] inbound/tun[tun-in]: inbound connection to 203.0.113.24:443", CoreLogLevel.Info, true)]

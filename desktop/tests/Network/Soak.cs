@@ -59,10 +59,11 @@ internal sealed record ResourceSample(int Handles, int Threads, long ManagedByte
 }
 
 /// <summary>
-/// Сторож обхода туннеля: каждые 250 мс запрос из пространства стенда к сайту в локальной сети машины. Через туннель он не
-/// проходит никогда (Xray закрывает частные сети), блок при обрыве его тоже не пропускает — ответил сайт, значит, трафик
-/// ушел мимо туннеля. Вне окон, где это разрешено (<see cref="Allow"/>: защиту выключили, пауза для входа в Wi-Fi, правила
-/// сняла другая программа), — утечка.
+/// Сторож обхода туннеля: каждые 250 мс запрос, ответ на который приходит только мимо туннеля. На Linux — из пространства
+/// стенда к сайту в локальной сети машины: через туннель он не проходит никогда (Xray закрывает частные сети), блок при
+/// обрыве его тоже не пропускает. На Windows — к проверочному адресу: через туннель отвечает сайт теста, а настоящий ответ
+/// приходит только напрямую. Пришел ответ мимо туннеля вне окон, где это разрешено (<see cref="Allow"/>: защиту выключили,
+/// пауза для входа в Wi-Fi, правила сняла другая программа), — утечка.
 /// </summary>
 internal sealed class LeakSentinel : IAsyncDisposable
 {
@@ -72,7 +73,13 @@ internal sealed class LeakSentinel : IAsyncDisposable
     private int _allowed;
     private int _probes;
 
-    public LeakSentinel(NetworkNamespace netns, Uri lan, string page) => _loop = Task.Run(() => LoopAsync(netns, lan, page));
+    public LeakSentinel(NetworkNamespace netns, Uri lan, string page)
+        : this(async _ => await netns.CurlAsync(lan, seconds: 1) == page)
+    {
+    }
+
+    /// <param name="direct">Запрос сторожа: ответ пришел мимо туннеля — true; не пришел или пришел через туннель — false.</param>
+    public LeakSentinel(Func<CancellationToken, Task<bool>> direct) => _loop = Task.Run(() => LoopAsync(direct));
 
     /// <summary>Что сейчас делает прогон — пишется рядом с утечкой.</summary>
     public string Activity { get; set; } = "подключение";
@@ -106,7 +113,7 @@ internal sealed class LeakSentinel : IAsyncDisposable
         _stop.Dispose();
     }
 
-    private async Task LoopAsync(NetworkNamespace netns, Uri lan, string page)
+    private async Task LoopAsync(Func<CancellationToken, Task<bool>> probe)
     {
         while (!_stop.IsCancellationRequested)
         {
@@ -116,7 +123,7 @@ internal sealed class LeakSentinel : IAsyncDisposable
             bool direct;
             try
             {
-                direct = await netns.CurlAsync(lan, seconds: 1) == page;
+                direct = await probe(_stop.Token);
             }
             catch (InvalidOperationException)
             {

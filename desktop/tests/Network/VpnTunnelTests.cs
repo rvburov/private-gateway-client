@@ -396,7 +396,7 @@ public sealed class VpnTunnelTests
             {
                 lines.Enqueue((source, line));
                 output.Add(source, line);
-            }, VpnTunnel.NewProbe(), (_, _) => Task.FromResult(true), netns.OpenSocksUdpAsync, Ct);
+            }, VpnTunnel.NewProbe(), (_, _) => Task.FromResult(true), netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
         tunnel.Ipv6.ShouldBeFalse("сервер открывает IPv6, но адаптеру ОС его не дала");
         lines.ShouldContain(("service", "sing-box не поднял адаптер с IPv6 — на это подключение IPv6 закрыт"));
@@ -427,7 +427,7 @@ public sealed class VpnTunnelTests
             {
                 Interlocked.Increment(ref asked);
                 return Task.FromResult(false);
-            }, netns.OpenSocksUdpAsync, Ct);
+            }, netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
         (tunnel.Ipv6, asked).ShouldBe((true, 0), "с сервером Xray соединяется по IPv6 — IPv6 у него есть, без проверки");
         (await output.TraceAsync(() => netns.CurlAsync(new Uri("http://[2606:4700:4700::1111]/")))).ShouldBe("через туннель", "IPv6 — через TUN и сервер по IPv6");
@@ -462,7 +462,7 @@ public sealed class VpnTunnelTests
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken);
                 return true;
-            }, netns.OpenSocksUdpAsync, Ct);
+            }, netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
         tunnel.Ipv6.ShouldBeFalse();
         lines.ShouldContain(("service", "Проверка IPv6 сервера не уложилась во время подключения — на это подключение IPv6 закрыт"));

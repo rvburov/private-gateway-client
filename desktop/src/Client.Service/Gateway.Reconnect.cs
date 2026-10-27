@@ -395,7 +395,7 @@ public sealed partial class Gateway
         try
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, request, _addresses, timeout, _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), _options.TunnelUdp, starting).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), _options.TunnelUdp, _options.TunnelRoutes, starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {

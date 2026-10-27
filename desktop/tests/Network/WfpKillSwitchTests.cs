@@ -48,8 +48,9 @@ public sealed class WfpKillSwitchTests
     }
 
     /// <summary>Снять наш фильтр так, как это сделала бы другая программа.</summary>
+    /// <summary>Снять один фильтр, как это сделала бы другая программа.</summary>
     [SupportedOSPlatform("windows")]
-    private static void RemoveFilter(Guid key)
+    internal static void RemoveFilter(Guid key)
     {
         Native.FwpmEngineOpen0(IntPtr.Zero, 10, IntPtr.Zero, IntPtr.Zero, out var engine).ShouldBe(0u);
         try
