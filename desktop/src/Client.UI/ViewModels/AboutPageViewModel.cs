@@ -100,6 +100,9 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private readonly TimeProvider _time;
     private ServiceDetails? _details;
 
+    // Коммит файла службы, который поставит «Обновить службу»; null — не узнать.
+    private string? _sourceBuild;
+
     public AboutPageViewModel(
         SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator, IServiceInstaller installer, UpdateWatcher updates,
         IUrlLauncher launcher, TimeProvider time)
@@ -312,6 +315,8 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     public string ServiceNotice => UpdateFailed ? Loc.Instance["about.service.updateFailed"] : ServiceMatch switch
     {
+        ServiceMatch.Same => string.Empty,
+        _ when StaleSource => Loc.Instance.Format("about.service.rebuild", Short(_sourceBuild!), Short(AppInfo.Build)),
         ServiceMatch.Older => Loc.Instance.Format("about.service.older", _details!.Version, AppInfo.Version),
         ServiceMatch.Newer => Loc.Instance.Format("about.service.newer", _details!.Version, AppInfo.Version),
         ServiceMatch.Incompatible => Loc.Instance.Format("about.service.incompatible", _details!.Version, AppInfo.Version),
@@ -319,11 +324,20 @@ public sealed partial class AboutPageViewModel : ObservableObject
         _ => string.Empty,
     };
 
-    // Коммит — первыми 7 знаками, как его показывает git.
-    private static string Short(string build) => build.Length > 7 ? build[..7] : build;
+    /// <summary>
+    /// Файл службы рядом с окном — из других исходников, чем окно: <c>dotnet run</c> окна его не пересобирает, и
+    /// переустановка из него ничего не обновит — сначала собрать программу целиком.
+    /// </summary>
+    private bool StaleSource => AppInfo.Build.Length > 0 && _sourceBuild is { } source
+        && !string.Equals(source, AppInfo.Build, StringComparison.OrdinalIgnoreCase);
+
+    // Коммит — первыми 7 знаками, как его показывает git; нет коммита — словами.
+    private static string Short(string build) =>
+        build.Length == 0 ? Loc.Instance["about.service.build.unknown"] : build.Length > 7 ? build[..7] : build;
 
     /// <summary>Переустановить службу из этой копии программы — та же установка, что «Установить службу».</summary>
-    public bool CanUpdateService => ServiceMatch != ServiceMatch.Same && _installer.IsAvailable && _gateway.Service == ServiceKind.Installed && !IsUpdatingService;
+    public bool CanUpdateService => ServiceMatch != ServiceMatch.Same && !StaleSource && _installer.IsAvailable
+        && _gateway.Service == ServiceKind.Installed && !IsUpdatingService;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanUpdateService))]
@@ -428,6 +442,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private async Task LoadDetailsAsync()
     {
         _details = await _gateway.GetDetailsAsync().ConfigureAwait(true);
+        _sourceBuild = _installer.SourceBuild;
         OnPropertyChanged(string.Empty);
     }
 

@@ -35,14 +35,15 @@ public class ServiceVersionsTests
         ServiceVersions.Compare("0.2.0", new ServiceDetails(service, api, []), "1").ShouldBe(match);
 
     /// <summary>
-    /// Сборки из исходников все одной версии: установленную службу из прежних исходников окно узнает по коммиту. Неизвестный
-    /// коммит с любой стороны — не повод звать обновлять; другая версия и другой контракт важнее коммита.
+    /// Сборки из исходников все одной версии: установленную службу из прежних исходников окно узнает по коммиту. Служба без
+    /// коммита при известном коммите окна — тоже другая сборка (поставлена до того, как стала его называть); окно без коммита
+    /// не сверяет; другая версия и другой контракт важнее коммита.
     /// </summary>
     [Theory]
     [InlineData("0.2.0", "1", "e7ddb17", "9982e44", ServiceMatch.OtherBuild)]
     [InlineData("0.2.0", "1", "e7ddb17", "e7ddb17", ServiceMatch.Same)]
     [InlineData("0.2.0", "1", "E7DDB17", "e7ddb17", ServiceMatch.Same)]
-    [InlineData("0.2.0", "1", "", "e7ddb17", ServiceMatch.Same)]
+    [InlineData("0.2.0", "1", "", "e7ddb17", ServiceMatch.OtherBuild)]
     [InlineData("0.2.0", "1", "e7ddb17", "", ServiceMatch.Same)]
     [InlineData("0.1.0", "1", "e7ddb17", "9982e44", ServiceMatch.Older)]
     [InlineData("0.3.0", "1", "e7ddb17", "9982e44", ServiceMatch.Newer)]

@@ -1,4 +1,6 @@
+using System.Reflection;
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -11,6 +13,18 @@ public class SimulatedGatewayClientTests
 {
     private static readonly ServerProfile Server =
         new("nl", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Reality, "203.0.113.24", 443, "tcp", 42);
+
+    /// <summary>Демо-служба — из той же сборки, что окно: «О программе» в демо-режиме не зовет ее обновлять.</summary>
+    [Fact]
+    public async Task Demo_service_is_the_same_build_as_the_window()
+    {
+        using var gateway = new SimulatedGatewayClient(TimeProvider.System);
+        var details = (await gateway.GetDetailsAsync(TestContext.Current.CancellationToken)).ShouldNotBeNull();
+        var window = typeof(ServiceVersions).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+
+        details.Build.ShouldBe(SemVer.Build(window), "коммит исходников тот же, что у окна");
+        ServiceVersions.Compare(window.Split('+')[0], details, Contracts.ContractMapping.ApiVersion, SemVer.Build(window)).ShouldBe(ServiceMatch.Same);
+    }
 
     [Fact]
     public async Task Connect_goes_through_connecting_to_connected()

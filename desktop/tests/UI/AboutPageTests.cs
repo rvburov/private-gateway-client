@@ -270,7 +270,7 @@ public sealed class AboutPageTests : WindowHarness
         {
             Details = new ServiceDetails("0.0.9", ContractMapping.ApiVersion, [new CoreDetails("xray", "25.8.3", true), new CoreDetails("sing-box", "1.14.3", true)]),
         });
-        Installer.OnInstalled = () => service!.Details = service.Details! with { Version = AppInfo.Version };
+        Installer.OnInstalled = () => service!.Details = service.Details! with { Version = AppInfo.Version, Build = AppInfo.Build };
         shell.NavigateCommand.Execute(Pages.About);
         Dispatcher.UIThread.RunJobs();
         var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
@@ -325,6 +325,53 @@ public sealed class AboutPageTests : WindowHarness
 
         Installer.Installs.ShouldBe(1, "переустановка из этой копии программы");
         page.HasServiceNotice.ShouldBeFalse("после переустановки служба — из тех же исходников");
+    }
+
+    /// <summary>
+    /// Служба, поставленная до того, как стала называть коммит, — тоже другая сборка: у окна коммит есть, а окно и служба
+    /// одной копии собираются вместе. Иначе первая же сборка с этой проверкой не заметила бы уже стоящую службу.
+    /// </summary>
+    [AvaloniaFact]
+    public void Service_that_names_no_build_is_another_build_when_the_window_knows_its_own()
+    {
+        Assert.SkipWhen(AppInfo.Build.Length == 0, "окно собрано не из git — коммита в версии нет");
+        Installer.IsAvailable = true;
+        var (window, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Details = new ServiceDetails(AppInfo.Version, ContractMapping.ApiVersion, []),
+        });
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
+
+        page.ServiceMatch.ShouldBe(ServiceMatch.OtherBuild);
+        page.ServiceNotice.ShouldStartWith("Служба собрана из других исходников (без коммита), чем окно");
+        Find<Button>(window, "UpdateService").IsEffectivelyVisible.ShouldBeTrue();
+    }
+
+    /// <summary>
+    /// Файл службы рядом с окном — из других исходников, чем окно (окно запустили <c>dotnet run</c>, а службу не
+    /// пересобрали): переустановка поставила бы ту же прежнюю службу — вместо кнопки окно просит собрать программу целиком.
+    /// </summary>
+    [AvaloniaFact]
+    public void Update_from_a_service_file_of_other_sources_is_not_offered_and_the_window_asks_to_build_everything()
+    {
+        Assert.SkipWhen(AppInfo.Build.Length == 0, "окно собрано не из git — коммита в версии нет");
+        Installer.IsAvailable = true;
+        Installer.SourceBuild = "0123456789abcdef";
+        var (window, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Details = new ServiceDetails(AppInfo.Version, ContractMapping.ApiVersion, [], "0123456789abcdef"),
+        });
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
+
+        page.ServiceMatch.ShouldBe(ServiceMatch.OtherBuild);
+        page.ServiceNotice.ShouldStartWith("Служба рядом с окном собрана из других исходников (0123456)");
+        page.ServiceNotice.ShouldContain("dotnet build PrivateGateway.slnx");
+        page.CanUpdateService.ShouldBeFalse("переустановка из того же файла ничего не обновит");
+        Find<Button>(window, "UpdateService").IsEffectivelyVisible.ShouldBeFalse();
     }
 
     [Fact]

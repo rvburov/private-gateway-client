@@ -22,5 +22,11 @@ public interface IServiceInstaller
     /// <summary>Установка есть на этой ОС и файл службы рядом с программой.</summary>
     bool IsAvailable { get; }
 
+    /// <summary>
+    /// Сборка службы, которую поставит установка, — коммит из версии ее файла (<see cref="Core.SemVer.Build"/>); пусто —
+    /// файл без коммита; null — не узнать (файла нет, выпуск одним файлом).
+    /// </summary>
+    string? SourceBuild => null;
+
     Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default);
 }

@@ -61,6 +61,22 @@ public sealed class ServiceHostTests : IDisposable
         info.ServiceVersion.ShouldNotContain("+", customMessage: "версия — без метаданных, ее сверяет SemVer");
     }
 
+    /// <summary>
+    /// Установка читает коммит из файла службы, который поставит (окно сверяет его со своим до «Обновить службу»), — на всех
+    /// ОС из версии сборки библиотеки рядом с файлом службы; файла нет — не узнать.
+    /// </summary>
+    [Fact]
+    public void Installer_reads_the_build_of_the_service_file_it_would_install()
+    {
+        Assert.SkipWhen(!Path.Exists(Path.Combine(XrayKit.Root, ".git")), "сборка не из git — коммита в версии нет");
+        static ServiceInstaller For(string executable) =>
+            new(executable, (_, _) => Task.FromResult<int?>(0), () => true, TimeProvider.System);
+
+        For(Path.Combine(AppContext.BaseDirectory, UserServiceLauncher.FileName)).SourceBuild.ShouldBe(ServiceVersion.Build,
+            "библиотека службы лежит рядом с тестами — та же сборка");
+        For(Path.Combine(Folder("empty"), UserServiceLauncher.FileName)).SourceBuild.ShouldBeNull("файла нет — коммит не узнать");
+    }
+
     [Fact]
     public void System_proxy_belongs_to_the_service_that_may_change_it()
     {

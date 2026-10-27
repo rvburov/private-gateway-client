@@ -29,6 +29,11 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
     public const int JournalLimit = 200;
 
     private static readonly NetworkInfo DemoNetwork = new(NetworkKind.WiFi, "Home", false, false);
+
+    // Имитация — из той же сборки, что окно: и версия, и коммит совпадают с окном.
+    private static readonly string? Informational =
+        typeof(SimulatedGatewayClient).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+
     private readonly Lock _gate = new();
     private readonly List<JournalEntry> _journal =
     [
@@ -63,8 +68,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
 
     /// <summary>Имитация — той же версии, что окно (одна сборка), и без настоящих ядер.</summary>
     public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(new ServiceDetails(
-        typeof(SimulatedGatewayClient).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0",
-        Contracts.ContractMapping.ApiVersion, []));
+        Informational?.Split('+')[0] ?? "0.0.0", Contracts.ContractMapping.ApiVersion, [], SemVer.Build(Informational)));
 
     /// <summary>
     /// Сеть машины в демо: адреса из диапазонов документации (RFC 5737, RFC 3849) и MAC документации (RFC 7042). Туннель и его

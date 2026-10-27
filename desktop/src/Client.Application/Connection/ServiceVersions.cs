@@ -19,7 +19,8 @@ public enum ServiceMatch
 
     /// <summary>
     /// Версия та же, а исходники другие: сборка из исходников (у всех одна версия) обновлена через git, а установленная служба
-    /// осталась из прежних. Какая из двух новее, по коммиту не узнать.
+    /// осталась из прежних — или служба коммита не называет (поставлена до того, как стала его называть). Какая из двух
+    /// новее, по коммиту не узнать.
     /// </summary>
     OtherBuild,
 }
@@ -33,7 +34,10 @@ public static class ServiceVersions
     /// <param name="window">Версия окна.</param>
     /// <param name="service">Что служба говорит о себе.</param>
     /// <param name="apiVersion">Контракт IPC окна.</param>
-    /// <param name="windowBuild">Сборка окна — коммит исходников; пусто — сборки не сверяются (так же, если пусто у службы).</param>
+    /// <param name="windowBuild">
+    /// Сборка окна — коммит исходников; пусто — сборки не сверяются. Служба без коммита при известном коммите окна — другая
+    /// сборка: окно и служба одной копии программы собираются вместе, и у обеих коммит есть или нет.
+    /// </param>
     public static ServiceMatch Compare(string window, ServiceDetails service, string apiVersion, string windowBuild = "")
     {
         ArgumentNullException.ThrowIfNull(service);
@@ -46,8 +50,7 @@ public static class ServiceVersions
         {
             < 0 => ServiceMatch.Older,
             > 0 => ServiceMatch.Newer,
-            _ when windowBuild.Length > 0 && service.Build.Length > 0
-                && !string.Equals(service.Build, windowBuild, StringComparison.OrdinalIgnoreCase) => ServiceMatch.OtherBuild,
+            _ when windowBuild.Length > 0 && !string.Equals(service.Build, windowBuild, StringComparison.OrdinalIgnoreCase) => ServiceMatch.OtherBuild,
             _ => ServiceMatch.Same,
         };
     }

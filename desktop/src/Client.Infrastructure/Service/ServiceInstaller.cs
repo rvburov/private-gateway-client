@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Security.Principal;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core;
 
 namespace PrivateGateway.Client.Infrastructure.Service;
 
@@ -45,6 +46,20 @@ public sealed class ServiceInstaller(
     ];
 
     public bool IsAvailable => executable is not null && File.Exists(executable);
+
+    /// <summary>
+    /// Коммит файла службы, который поставит установка: версия сборки библиотеки службы рядом с ее файлом. У сборки из
+    /// исходников его собирает <c>dotnet build PrivateGateway.slnx</c>, а <c>dotnet run</c> окна — нет: файл бывает из
+    /// прежних исходников, и переустановка из него службу не обновит.
+    /// </summary>
+    public string? SourceBuild
+    {
+        get
+        {
+            var library = executable is null ? null : Path.Combine(Path.GetDirectoryName(executable)!, "PrivateGateway.Service.dll");
+            return library is not null && File.Exists(library) ? SemVer.Build(FileVersionInfo.GetVersionInfo(library).ProductVersion) : null;
+        }
+    }
 
     /// <summary>Установка для этого окна: Windows, Linux с pkexec и macOS, файл службы рядом с программой.</summary>
     public static ServiceInstaller ForThisWindow(TimeProvider time) => new(
