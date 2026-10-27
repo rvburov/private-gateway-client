@@ -43,8 +43,25 @@ dotnet run --project desktop/src/Client.UI
 
 `get-xray.sh` и `get-singbox.sh` скачивают ядра Xray и sing-box и сверяют их суммы с закрепленными в репозитории.
 `dotnet build` собирает и окно, и службу (пару минут в первый раз): без собранной службы не будет ни «Установка
-службы», ни режима прокси. Откроется окно — дальше раздел «Первый запуск». Обновиться до свежей версии — в той же
-папке: `git pull`, `dotnet build PrivateGateway.slnx`, `dotnet run --project desktop/src/Client.UI`.
+службы», ни режима прокси. Откроется окно — дальше раздел «Первый запуск».
+
+**Папка репозитория уже есть** (клонировали раньше) — `git clone` не нужен, он откажет: «destination path … already
+exists». Закройте программу, если она запущена (значок в трее → «Выход»): иначе сборка упадет на занятых файлах. Затем
+в терминале (на Windows — в Git Bash; в Проводнике: правой кнопкой по папке → «Open Git Bash here»):
+
+```bash
+cd путь/к/private-gateway-client
+git status
+git checkout master && git pull
+scripts/get-xray.sh && scripts/get-singbox.sh
+dotnet build PrivateGateway.slnx
+dotnet run --project desktop/src/Client.UI
+```
+
+`git status` должен показать «On branch master» и «nothing to commit, working tree clean». Если он перечисляет
+измененные файлы или `git pull` отказывает («Your local changes … would be overwritten») — остановитесь и ничего не
+удаляйте: это ваши правки, их сначала нужно сохранить. Если `git status` пишет «not a git repository» — папка скачана
+архивом ZIP, а не через Git: клонируйте рядом командами выше. Так же обновляться до свежей версии и потом.
 
 ## 2. Первый запуск
 
