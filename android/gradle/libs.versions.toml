@@ -1,11 +1,11 @@
 # Версии библиотек и плагинов Android — только здесь (как Directory.Packages.props у десктопа).
-# Связка проверена вместе: AGP 8.13 + Gradle 8.14 + Kotlin 2.2.21 + KSP 2.2.21-2.0.5 + Hilt 2.57.2 (Hilt 2.59 и новее
-# требует AGP 9 и Gradle 9.1 — переход отдельным пунктом, решение 392).
+# Связка проверена вместе: AGP 9.4 (Kotlin встроен в AGP) + Gradle 9.8 + Kotlin 2.4.21 (KGP — в classpath корневой
+# сборки) + KSP 2.3.12 (KSP2, версия не привязана к Kotlin) + Hilt 2.60.1 (решения 392 и 447).
 [versions]
-agp = "8.13.0"
-kotlin = "2.2.21"
-ksp = "2.2.21-2.0.5"
-hilt = "2.57.2"
+agp = "9.4.0"
+kotlin = "2.4.21"
+ksp = "2.3.12"
+hilt = "2.60.1"
 hilt-navigation-compose = "1.2.0"
 room = "2.7.2"
 datastore = "1.1.7"
@@ -27,6 +27,8 @@ androidx-test-runner = "1.7.0"
 robolectric = "4.16"
 
 [libraries]
+# Kotlin для встроенного Kotlin AGP 9: без него AGP компилировал бы своим KGP (2.2.10).
+kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 snakeyaml-engine = { module = "org.snakeyaml:snakeyaml-engine", version.ref = "snakeyaml-engine" }
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxing" }
 junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
@@ -71,7 +73,6 @@ robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectr
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
