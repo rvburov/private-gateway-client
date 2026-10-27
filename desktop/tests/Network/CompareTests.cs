@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using PrivateGateway.Client.Application.Connection;
@@ -55,9 +56,12 @@ public sealed class CompareTests
             await server.SendAsync(Answer(0x0101, request.Buffer[8..20], Xor(request.RemoteEndPoint, request.Buffer[8..20])), request.RemoteEndPoint, Ct);
         }, Ct);
 
+        var started = Stopwatch.StartNew();
         var mapped = await StunProbe.MappedAsync((IPEndPoint)server.Client.LocalEndPoint!, TimeSpan.FromSeconds(3), Ct);
 
-        mapped.ShouldNotBeNull().Address.ShouldBe(IPAddress.Loopback);
+        // Прогон 319: ответа не было за 7 с при сроке 3 — при новом сбое видно, ждал ли тест пул потоков.
+        mapped.ShouldNotBeNull($"нет ответа за {started.ElapsedMilliseconds} мс; потоков {ThreadPool.ThreadCount}, в очереди {ThreadPool.PendingWorkItemCount}")
+            .Address.ShouldBe(IPAddress.Loopback);
         mapped.Port.ShouldBeGreaterThan(0);
         await serve;
 

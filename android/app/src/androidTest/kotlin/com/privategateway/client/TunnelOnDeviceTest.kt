@@ -43,7 +43,6 @@ class TunnelOnDeviceTest {
     fun disconnect() = runBlocking<Unit> {
         GatewayVpnService.disconnect(context)
         withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off || it.state == TunnelState.Error } }
-        Unit
     }
 
     @Test
