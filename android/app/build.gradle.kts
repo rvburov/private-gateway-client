@@ -1,4 +1,6 @@
+import com.privategateway.build.GeneratePgLicenses
 import com.privategateway.build.GeneratePgResources
+import com.privategateway.build.MavenModules
 import com.privategateway.build.GeneratePgTheme
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -80,9 +82,17 @@ kotlin {
 
 // Тема (Tokens.kt, Icons.kt) и ресурсы (тексты RU/EN, иконка запуска) — из shared/specifications при каждой сборке,
 // через API вариантов AGP: встроенный Kotlin AGP 9 видит сгенерированные папки сам. KSP и Lint читают исходники до
-// компиляции — им генерация темы до начала работы.
+// компиляции — им генерация темы до начала работы. Лицензии открытых компонентов (assets) — из shared/licenses со
+// сверкой с runtime-зависимостями выпуска: модуль без строки в android.json не дает собрать приложение (решение 449).
 val pgTheme = tasks.named<GeneratePgTheme>("generatePgTheme")
 val pgResources = tasks.named<GeneratePgResources>("generatePgResources")
+val pgLicenses = tasks.named<GeneratePgLicenses>("generatePgLicenses") {
+    appVersion.set(android.defaultConfig.versionName.orEmpty())
+}
+configurations.matching { it.name == "releaseRuntimeClasspath" }.configureEach {
+    val graph = incoming.resolutionResult.rootComponent
+    pgLicenses.configure { modules.set(graph.map { MavenModules.of(it) }) }
+}
 tasks.configureEach {
     if (name == "preBuild" || name.startsWith("ksp") || name.contains("Lint")) {
         dependsOn(pgTheme)
@@ -92,6 +102,7 @@ androidComponents {
     onVariants { variant ->
         variant.sources.kotlin?.addGeneratedSourceDirectory(pgTheme, GeneratePgTheme::outputDir)
         variant.sources.res?.addGeneratedSourceDirectory(pgResources, GeneratePgResources::outputDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(pgLicenses, GeneratePgLicenses::outputDir)
     }
 }
 

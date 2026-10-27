@@ -1,0 +1,121 @@
+// Открытые компоненты приложения Android — один список для экрана «Лицензии открытых компонентов» (Настройки → О
+// программе) и THIRD-PARTY-NOTICES.txt в APK. И то и другое собирает android/build-logic (generatePgLicenses) при каждой
+// сборке; тексты лицензий — shared/licenses/texts/<SPDX>.txt, общие с десктопом.
+//
+// Поля — как у components.json десктопа: name — как компонент называется для людей (на всех языках одинаково);
+// license — выражение SPDX; shown — подпись лицензии на экране, если SPDX людям непонятен; copyright, url — авторство и
+// ссылка; source — исходники этой версии; notice — обязательная строка авторства.
+// Чем компонент приходит в приложение (одно из):
+//   maven — модули «группа:имя» из runtime-зависимостей выпуска, «*» в конце — любой хвост; модуль идет к компоненту с
+//           самым длинным подходящим шаблоном. Сборка не идет, если модуль ничем не покрыт или у компонента нет модулей;
+//   aar — свой .aar в android/app/libs, версия — android/<имя строчными>.version;
+//   inside — входит в другой компонент этого списка (Xray-core — внутри libXray).
+[
+  {
+    "name": "libXray",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2023-2025 XTLS",
+    "url": "https://github.com/XTLS/libXray",
+    "aar": "libXray",
+    "source": "https://github.com/XTLS/libXray/tree/{version}"
+  },
+  {
+    "name": "Xray-core",
+    "license": "MPL-2.0",
+    "copyright": "Project X (XTLS) contributors",
+    "url": "https://github.com/XTLS/Xray-core",
+    "inside": "libXray",
+    "notice": "Версия — из go.mod libXray / Version as in the libXray go.mod"
+  },
+  {
+    "name": "Jetpack Compose",
+    "license": "Apache-2.0",
+    "copyright": "Copyright The Android Open Source Project",
+    "url": "https://developer.android.com/jetpack/compose",
+    "maven": ["androidx.compose.*"]
+  },
+  {
+    "name": "AndroidX",
+    "license": "Apache-2.0",
+    "copyright": "Copyright The Android Open Source Project",
+    "url": "https://github.com/androidx/androidx",
+    "maven": ["androidx.*"]
+  },
+  {
+    "name": "Room",
+    "license": "Apache-2.0",
+    "copyright": "Copyright The Android Open Source Project",
+    "url": "https://developer.android.com/jetpack/androidx/releases/room",
+    "maven": ["androidx.room:*", "androidx.sqlite:*"]
+  },
+  {
+    "name": "WorkManager",
+    "license": "Apache-2.0",
+    "copyright": "Copyright The Android Open Source Project",
+    "url": "https://developer.android.com/jetpack/androidx/releases/work",
+    "maven": ["androidx.work:*"]
+  },
+  {
+    "name": "CameraX",
+    "license": "Apache-2.0",
+    "copyright": "Copyright The Android Open Source Project",
+    "url": "https://developer.android.com/jetpack/androidx/releases/camera",
+    "maven": ["androidx.camera:*"]
+  },
+  {
+    "name": "Kotlin",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2010-2025 JetBrains s.r.o. and Kotlin Programming Language contributors",
+    "url": "https://github.com/JetBrains/kotlin",
+    "maven": ["org.jetbrains.kotlin:*", "org.jetbrains:annotations"]
+  },
+  {
+    "name": "kotlinx.coroutines",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2016-2025 JetBrains s.r.o. and contributors",
+    "url": "https://github.com/Kotlin/kotlinx.coroutines",
+    "maven": ["org.jetbrains.kotlinx:kotlinx-coroutines-*"]
+  },
+  {
+    "name": "Dagger, Hilt",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2012 The Dagger Authors",
+    "url": "https://github.com/google/dagger",
+    "maven": ["com.google.dagger:*"]
+  },
+  {
+    "name": "JSR-330, Jakarta Inject",
+    "license": "Apache-2.0",
+    "copyright": "Copyright (C) 2009 The JSR-330 Expert Group; Copyright Contributors to the Eclipse Foundation",
+    "url": "https://github.com/jakartaee/inject",
+    "maven": ["javax.inject:*", "jakarta.inject:*"]
+  },
+  {
+    "name": "Guava",
+    "license": "Apache-2.0",
+    "copyright": "Copyright (C) 2007 The Guava Authors",
+    "url": "https://github.com/google/guava",
+    "maven": ["com.google.guava:*"]
+  },
+  {
+    "name": "JSpecify",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2018-2024 The JSpecify Authors",
+    "url": "https://github.com/jspecify/jspecify",
+    "maven": ["org.jspecify:*"]
+  },
+  {
+    "name": "SnakeYAML Engine",
+    "license": "Apache-2.0",
+    "copyright": "Copyright (c) 2018, SnakeYAML",
+    "url": "https://bitbucket.org/snakeyaml/snakeyaml-engine",
+    "maven": ["org.snakeyaml:*"]
+  },
+  {
+    "name": "ZXing",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2007-2024 ZXing authors",
+    "url": "https://github.com/zxing/zxing",
+    "maven": ["com.google.zxing:*"]
+  }
+]

@@ -31,12 +31,19 @@ import com.privategateway.client.ui.check.InspectorActions
 import com.privategateway.client.ui.check.InspectorSection
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.TunnelMonitor
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
+import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.setMain
 import kotlinx.coroutines.withTimeout
+import org.junit.After
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -50,6 +57,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** Инспектор сети Android без устройства: модель окна с подставными сетью и ответами и то, что видно на «Проверке». */
+@OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
 @Config(qualifiers = "w384dp-h832dp")
 class InspectorTest {
@@ -92,6 +100,13 @@ class InspectorTest {
             monitor,
         )
     }
+
+    // Главный поток Robolectric занят ожиданием теста: viewModelScope (Dispatchers.Main) идет без очереди Looper.
+    @Before
+    fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
+
+    @After
+    fun reset() = Dispatchers.resetMain()
 
     private fun <T> waitFor(read: () -> T, done: (T) -> Boolean): T = runBlocking {
         withTimeout(10_000) {

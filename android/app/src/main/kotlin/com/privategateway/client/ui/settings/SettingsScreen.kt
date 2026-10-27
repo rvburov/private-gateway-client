@@ -25,11 +25,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -42,6 +44,7 @@ import com.privategateway.client.core.vpn.ReconnectPolicy
 import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.SystemVpnSource
 import com.privategateway.client.core.vpn.SystemVpnView
+import com.privategateway.client.licenses.OpenComponents
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgChoiceRow
@@ -58,12 +61,13 @@ enum class SettingsPage {
     Main,
     Protection,
     Subscriptions,
+    Licenses,
 }
 
 /**
  * «Настройки»: разделы («Защита и утечки», «Профили и подписки»), «Уведомления» и «Переподключение» (как у десктопа:
  * главная страница и «Подключение и ядро»), VPN в настройках Android (Постоянная VPN и блок без VPN включает только
- * пользователь) и «О программе». Язык — системный или выбранный для приложения в настройках Android 13+. [requested] —
+ * пользователь) и «О программе» с лицензиями открытых компонентов. Язык — системный или выбранный для приложения в настройках Android 13+. [requested] —
  * открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
  */
 @Composable
@@ -97,6 +101,13 @@ fun SettingsScreen(
         SettingsPage.Subscriptions -> {
             BackHandler { page = SettingsPage.Main }
             subscriptions { page = SettingsPage.Main }
+        }
+
+        SettingsPage.Licenses -> {
+            BackHandler { page = SettingsPage.Main }
+            val assets = LocalContext.current.assets
+            val components = remember(assets) { OpenComponents.read(assets) }
+            LicensesScreen(components, { OpenComponents.text(assets, it) }) { page = SettingsPage.Main }
         }
 
         SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior) { page = it }
@@ -225,6 +236,10 @@ private fun MainSettings(
                 style = PgType.Body,
             )
             Text(stringResource(R.string.card_core) + ": Xray-core " + (core ?: "—"), color = PgColor.Text.Secondary, style = PgType.Small)
+            Spacer(Modifier.size(PgSpace.S))
+            SectionRow(PgIcons.File, R.string.about_licenses, R.string.about_licenses_text, "settings.licenses") {
+                onPage(SettingsPage.Licenses)
+            }
         }
 
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
