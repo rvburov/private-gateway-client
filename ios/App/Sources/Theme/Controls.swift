@@ -171,8 +171,9 @@ struct PgField: View {
         .accessibilityIdentifier(identifier)
     }
 
+    /// Подсказка — `Text`, поэтому цвет — `foregroundColor` (вариант `foregroundStyle` для `Text` — только с iOS 17).
     private var prompt: Text {
-        Text(placeholder).foregroundStyle(Color(PgColor.Text.muted))
+        Text(placeholder).foregroundColor(Color(PgColor.Text.muted))
     }
 }
 

@@ -80,7 +80,7 @@ struct ServersView: View {
         return HStack(spacing: PgSpace.s) {
             HStack(spacing: PgSpace.s) {
                 PgIcon(data: PgIcons.search, color: Color(PgColor.Text.muted), size: 18)
-                TextField("", text: $query.search, prompt: Text(texts.androidServersSearchPlaceholder).foregroundStyle(Color(PgColor.Text.muted)))
+                TextField("", text: $query.search, prompt: Text(texts.androidServersSearchPlaceholder).foregroundColor(Color(PgColor.Text.muted)))
                     .pgText(PgType.body)
                     .foregroundStyle(Color(PgColor.Text.primary))
                     .textInputAutocapitalization(.never)
