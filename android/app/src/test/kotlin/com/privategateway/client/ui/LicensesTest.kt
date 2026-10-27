@@ -16,6 +16,7 @@ import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.licenses.OpenComponents
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.theme.PgTheme
+import org.json.JSONObject
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -56,6 +57,20 @@ class LicensesTest {
         for (name in names) {
             assertTrue(notices.lines().any { it == name || it.startsWith("$name ") }, "$name в THIRD-PARTY-NOTICES")
         }
+
+        // SBOM — те же модули выпуска, каждый со своим purl и лицензией, и libXray с Xray-core внутри.
+        val bom = JSONObject(context.assets.open(OpenComponents.SBOM).bufferedReader().use { it.readText() })
+        assertEquals("CycloneDX", bom.getString("bomFormat"))
+        val listed = bom.getJSONArray("components").let { array -> (0 until array.length()).map { array.getJSONObject(it) } }
+        val purls = listed.map { it.getString("purl") }.toSet()
+        for (module in components.flatMap { it.modules }) {
+            val (key, version) = module.split(' ')
+            assertTrue("pkg:maven/${key.replace(':', '/')}@$version" in purls, "$module в SBOM")
+        }
+
+        val bomXray = listed.single { it.getString("name") == "libXray" }
+        assertEquals("pkg:github/XTLS/libXray@${libxray.version}", bomXray.getString("purl"))
+        assertEquals("Xray-core", bomXray.getJSONArray("components").getJSONObject(0).getString("name"))
     }
 
     @Test

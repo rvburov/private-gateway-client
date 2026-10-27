@@ -203,6 +203,16 @@ jobs:
           if [ -n "$added" ]; then echo "::warning::Новая схема базы — положите в git: $added"; fi
           if [ -n "$changed" ]; then echo "::error::Схема базы в git разошлась с сущностями: $changed"; exit 1; fi
 
+      # SBOM (CycloneDX) — тот, что лежит в APK (assets/sbom.cdx.json), рядом с ним в артефакте: состав приложения для
+      # проверки уязвимостей без распаковки.
+      - name: SBOM из APK
+        if: ${{ !cancelled() }}
+        run: |
+          for apk in android/app/build/outputs/apk/debug/*.apk; do
+            unzip -p "$apk" assets/sbom.cdx.json > "${apk%.apk}.cdx.json"
+            python3 -c 'import json, sys; bom = json.load(open(sys.argv[1])); print(sys.argv[1], len(bom["components"]), "компонентов")' "${apk%.apk}.cdx.json"
+          done
+
       - name: APK и отчеты
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
@@ -210,6 +220,7 @@ jobs:
           name: android-debug
           path: |
             android/app/build/outputs/apk/debug/*.apk
+            android/app/build/outputs/apk/debug/*.cdx.json
             android/app/build/reports/
             android/app/schemas/
           if-no-files-found: ignore

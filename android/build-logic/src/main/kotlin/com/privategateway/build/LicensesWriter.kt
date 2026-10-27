@@ -9,13 +9,17 @@ import org.gradle.api.GradleException
  *   licenses/components.json — список для экрана «Лицензии открытых компонентов»: имя, лицензия и ее подпись,
  *     авторство, ссылки, версия, модули Maven, тексты лицензий;
  *   licenses/<SPDX>.txt — полные тексты лицензий, которые нужны компонентам;
- *   THIRD-PARTY-NOTICES.txt — то же одним файлом, как у выпуска десктопа (scripts/package.cs).
+ *   THIRD-PARTY-NOTICES.txt — то же одним файлом, как у выпуска десктопа (scripts/package.cs);
+ *   sbom.cdx.json — SBOM приложения (CycloneDX 1.6), как `<имя>.cdx.json` выпуска десктопа: каждый модуль Maven с purl и
+ *     лицензией своего компонента, .aar с версией, компонент «внутри» — вложенным. Без времени и серийного номера: две сборки
+ *     одного коммита дают один и тот же файл.
  * Неполное не пишется: модуль из runtime-зависимостей выпуска без компонента, компонент без модулей, .aar без версии,
  * лицензия без текста — ошибка сборки со всем списком, а не пропуск.
  */
 internal object LicensesWriter {
     const val LIST = "licenses/components.json"
     const val NOTICES = "THIRD-PARTY-NOTICES.txt"
+    const val SBOM = "sbom.cdx.json"
 
     /** Строка android.json; приходит ровно одним путем: [maven], [aar] или [inside]. */
     class Component(
@@ -109,7 +113,69 @@ internal object LicensesWriter {
         }
 
         files[NOTICES] = notices(entries, needed, texts, appVersion)
+        files[SBOM] = sbom(components, owned, entries.associate { it["name"] as String to it["version"] as String }, appVersion)
         return files
+    }
+
+    /**
+     * CycloneDX 1.6: модули Maven — `pkg:maven/группа/имя@версия` с лицензией компонента; .aar — `pkg:github/…@версия` по
+     * ссылке компонента; компонент «внутри» — в `components` того, в который входит (версия — его собственная, если известна).
+     */
+    private fun sbom(components: List<Component>, owned: Map<String, List<String>>, versions: Map<String, String>, appVersion: String): String {
+        fun licenses(component: Component) = listOf(mapOf("expression" to component.license))
+        fun github(component: Component, version: String): Map<String, Any> {
+            val purl = "pkg:github/" + component.url.removePrefix("https://github.com/") + (if (version.isEmpty()) "" else "@$version")
+            return linkedMapOf<String, Any>("type" to "library", "bom-ref" to purl, "name" to component.name).apply {
+                if (version.isNotEmpty()) {
+                    put("version", version)
+                }
+
+                put("purl", purl)
+                put("licenses", licenses(component))
+            }
+        }
+
+        val list = mutableListOf<MutableMap<String, Any>>()
+        val byName = LinkedHashMap<String, MutableMap<String, Any>>()
+        for (component in components.filter { it.inside == null }) {
+            if (component.aar != null) {
+                val entry = github(component, versions[component.name].orEmpty()).toMutableMap()
+                byName[component.name] = entry
+                list += entry
+                continue
+            }
+
+            for (module in owned[component.name].orEmpty()) {
+                val (group, name, version) = module.split(':')
+                val purl = "pkg:maven/$group/$name@$version"
+                list += linkedMapOf("type" to "library", "bom-ref" to purl, "group" to group, "name" to name, "version" to version, "purl" to purl,
+                    "licenses" to licenses(component))
+            }
+        }
+
+        for (component in components.filter { it.inside != null }) {
+            val parent = byName[component.inside] ?: continue
+            @Suppress("UNCHECKED_CAST")
+            val nested = parent.getOrPut("components") { mutableListOf<Map<String, Any>>() } as MutableList<Map<String, Any>>
+            nested += github(component, "")
+        }
+
+        val bom = linkedMapOf(
+            "bomFormat" to "CycloneDX",
+            "specVersion" to "1.6",
+            "version" to 1,
+            "metadata" to linkedMapOf(
+                "tools" to mapOf("components" to listOf(mapOf("type" to "application", "name" to "android/build-logic (generatePgLicenses)"))),
+                "component" to linkedMapOf(
+                    "type" to "application",
+                    "bom-ref" to "private-gateway-client-android",
+                    "name" to "Private Gateway Client (Android)",
+                    "version" to appVersion,
+                ),
+            ),
+            "components" to list,
+        )
+        return JsonOutput.prettyPrint(JsonOutput.toJson(bom)) + "\n"
     }
 
     /** Компонент модуля «группа:имя»: самый длинный подходящий шаблон — «androidx.compose.ui:ui» у Compose, а не AndroidX. */

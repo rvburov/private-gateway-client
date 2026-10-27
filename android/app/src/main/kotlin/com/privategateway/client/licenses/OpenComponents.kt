@@ -27,6 +27,9 @@ object OpenComponents {
     const val LIST = "licenses/components.json"
     const val NOTICES = "THIRD-PARTY-NOTICES.txt"
 
+    /** SBOM приложения (CycloneDX 1.6) — состав APK для проверки уязвимостей; экран его не показывает. */
+    const val SBOM = "sbom.cdx.json"
+
     fun read(assets: AssetManager): List<OpenComponent> {
         val json = JSONArray(assets.open(LIST).bufferedReader().use { it.readText() })
         return (0 until json.length()).map { index ->

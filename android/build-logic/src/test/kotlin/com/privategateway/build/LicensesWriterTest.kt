@@ -42,7 +42,8 @@ class LicensesWriterTest {
             assertEquals(texts.getValue(id as String).trimEnd() + "\n", files.getValue("licenses/$id.txt"))
         }
 
-        assertEquals(setOf(LicensesWriter.LIST, LicensesWriter.NOTICES, "licenses/MIT.txt", "licenses/MPL-2.0.txt", "licenses/Apache-2.0.txt"), files.keys)
+        assertEquals(setOf(LicensesWriter.LIST, LicensesWriter.NOTICES, LicensesWriter.SBOM, "licenses/MIT.txt", "licenses/MPL-2.0.txt", "licenses/Apache-2.0.txt"),
+            files.keys)
         val notices = files.getValue(LicensesWriter.NOTICES)
         assertTrue(notices.startsWith("Private Gateway Client 0.1.0 (Android)\n"))
         for (entry in entries) {
@@ -52,6 +53,35 @@ class LicensesWriterTest {
         assertTrue(notices.contains("Исходный код / Source code: https://github.com/XTLS/libXray/tree/$commit"))
         assertTrue(notices.contains("Входит в / Part of: libXray"))
         assertTrue(notices.contains("---------------------------------------- MPL-2.0\nMozilla Public License Version 2.0"))
+    }
+
+    @Test
+    @Suppress("UNCHECKED_CAST")
+    fun `the sbom lists every shipped module with purl and license and the aar with xray inside`() {
+        val shipped = modules + "androidx.core:core:1.17.0"
+        val files = write(shipped)
+
+        val bom = JsonSlurper().parseText(files.getValue(LicensesWriter.SBOM)) as Map<String, Any>
+        assertEquals(listOf("CycloneDX", "1.6"), listOf(bom["bomFormat"], bom["specVersion"]))
+        val app = (bom["metadata"] as Map<String, Any>)["component"] as Map<String, Any>
+        assertEquals(listOf("Private Gateway Client (Android)", "0.1.0"), listOf(app["name"], app["version"]))
+        assertTrue("timestamp" !in (bom["metadata"] as Map<String, Any>) && "serialNumber" !in bom, "сборки одного коммита дают один файл")
+        assertEquals(files.getValue(LicensesWriter.SBOM), write(shipped.reversed()).getValue(LicensesWriter.SBOM))
+
+        val components = bom["components"] as List<Map<String, Any>>
+        val maven = components.filter { (it["purl"] as String).startsWith("pkg:maven/") }
+        assertEquals(shipped.map { it.split(':').let { (g, n, v) -> "pkg:maven/$g/$n@$v" } }.toSet(), maven.map { it["purl"] }.toSet())
+        assertEquals(maven.size, maven.map { it["purl"] }.distinct().size, "модуль — один раз")
+        val core = maven.single { it["purl"] == "pkg:maven/androidx.core/core@1.17.0" }
+        assertEquals(listOf("androidx.core", "core", "1.17.0"), listOf(core["group"], core["name"], core["version"]))
+        assertEquals(listOf(mapOf("expression" to "Apache-2.0")), core["licenses"])
+
+        val commit = versions.getValue("libxray").trim()
+        val libxray = components.single { it["name"] == "libXray" }
+        assertEquals(listOf("pkg:github/XTLS/libXray@$commit", commit), listOf(libxray["purl"], libxray["version"]))
+        val xray = (libxray["components"] as List<Map<String, Any>>).single()
+        assertEquals(listOf("Xray-core", "pkg:github/XTLS/Xray-core", listOf(mapOf("expression" to "MPL-2.0"))), listOf(xray["name"], xray["purl"], xray["licenses"]))
+        assertTrue(components.none { it["name"] == "Xray-core" }, "Xray-core — внутри libXray, а не рядом")
     }
 
     @Test
