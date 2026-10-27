@@ -17,7 +17,7 @@ public sealed record CoreRequest(
 /// <summary>Почему ядро Xray не возьмется за сервер.</summary>
 public enum CoreRejection
 {
-    /// <summary>Hysteria2 и TUIC — для второго ядра (sing-box), после технического спайка.</summary>
+    /// <summary>Hysteria2 и TUIC без ретранслятора sing-box (<see cref="RelayLink"/>): нет сборки sing-box.</summary>
     UnsupportedProtocol,
 
     /// <summary>Нет данных доступа: UUID, пароля или ключа.</summary>
@@ -50,6 +50,13 @@ public sealed record TunLink(int Port, string User, string Password, string Serv
 /// адреса или локальная сеть не обманут пробу).
 /// </summary>
 public sealed record ProbeLink(int Port, string User, string Password);
+
+/// <summary>
+/// Вход ретранслятора sing-box для Hysteria2 и TUIC — их Xray не знает (решение 452): SOCKS5 на 127.0.0.1:<paramref name="Port"/>
+/// с паролем на это подключение. Выход сервера в конфиге Xray — к нему, а дальше sing-box соединяется с сервером сам
+/// (<see cref="SingBox.SingBoxConfigBuilder.BuildRelay"/>). Маршруты, DNS, FakeDNS и правила остаются у Xray.
+/// </summary>
+public sealed record RelayLink(int Port, string User, string Password);
 
 /// <summary>Конфиг проверки задержки и причина отказа для каждого сервера (null — сервер проверяется).</summary>
 public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejection?> Rejections);
@@ -101,16 +108,18 @@ public static class XrayConfigBuilder
     /// <param name="request">Сервер и настройки.</param>
     /// <param name="tun">Режим VPN: вход только для своего TUN и адрес сервера; null — вход прокси из настроек.</param>
     /// <param name="probe">Вход проверки связи с сервером; null — без него.</param>
-    public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null, ProbeLink? probe = null)
+    /// <param name="relay">Ретранслятор sing-box — у Hysteria2 и TUIC (<see cref="NeedsRelay"/>); null — нет.</param>
+    public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null, ProbeLink? probe = null, RelayLink? relay = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var outbound = Outbound(request.Server, request.Connection, out var rejection);
+        var outbound = Outbound(request.Server, request.Connection, relay, out var rejection);
         if (outbound is null)
         {
             return new XrayConfigResult(null, rejection);
         }
 
-        if (tun is not null)
+        // Адрес сервера ретранслятор получает сам: у выхода Xray к нему — 127.0.0.1.
+        if (tun is not null && !NeedsRelay(request.Server))
         {
             Dial(outbound, tun.ServerAddress);
         }
@@ -206,9 +215,11 @@ public static class XrayConfigBuilder
     /// Конфиг проверки задержки: на каждый сервер — свой вход SOCKS5 на 127.0.0.1 (порт из
     /// <paramref name="ports"/> с тем же номером) и свой выход, вход ведет только в свой выход. Без DNS,
     /// правил и журнала соединений — проверяется путь через сервер с настройками подключения
-    /// (фрагментация, Mux, отпечаток). Сервер, за который ядро не возьмется, входа не получает.
+    /// (фрагментация, Mux, отпечаток). Сервер, за который ядро не возьмется, входа не получает. <paramref name="relays"/> —
+    /// ретранслятор sing-box серверу с тем же номером (Hysteria2, TUIC); null — ни одного.
     /// </summary>
-    public static XrayProbeConfig BuildProbe(IReadOnlyList<ServerDefinition> servers, IReadOnlyList<int> ports, ConnectionSettings connection)
+    public static XrayProbeConfig BuildProbe(IReadOnlyList<ServerDefinition> servers, IReadOnlyList<int> ports, ConnectionSettings connection,
+        IReadOnlyList<RelayLink?>? relays = null)
     {
         ArgumentNullException.ThrowIfNull(servers);
         ArgumentNullException.ThrowIfNull(ports);
@@ -224,7 +235,7 @@ public static class XrayConfigBuilder
         var rejections = new CoreRejection?[servers.Count];
         for (var i = 0; i < servers.Count; i++)
         {
-            if (Outbound(servers[i], connection, out rejections[i]) is not { } outbound)
+            if (Outbound(servers[i], connection, relays?[i], out rejections[i]) is not { } outbound)
             {
                 continue;
             }
@@ -511,10 +522,26 @@ public static class XrayConfigBuilder
     private static bool NeedsAddressOfName(CoreRequest request) =>
         request.Protection.AllowLan || request.Routing.Mode == RoutingMode.Split && request.Routing.Rules.Any(r => SitePattern.IsAddress(r.Pattern));
 
-    private static JsonObject? Outbound(ServerDefinition server, ConnectionSettings connection, out CoreRejection? rejection)
+    /// <summary>Hysteria2 и TUIC — через ретранслятор sing-box (<see cref="RelayLink"/>): своих выходов для них у Xray нет.</summary>
+    public static bool NeedsRelay(ServerDefinition server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        return server.Protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic;
+    }
+
+    private static JsonObject? Outbound(ServerDefinition server, ConnectionSettings connection, RelayLink? relay, out CoreRejection? rejection)
     {
         rejection = null;
         var credentials = server.Credentials;
+        if (NeedsRelay(server))
+        {
+            rejection = relay is null ? CoreRejection.UnsupportedProtocol
+                : credentials.Password is not { Length: > 0 } || server.Protocol == ProxyProtocol.Tuic && credentials.Uuid is not { Length: > 0 }
+                    ? CoreRejection.MissingCredentials
+                    : null;
+            return rejection is null ? Relay(relay!) : null;
+        }
+
         JsonObject settings;
         switch (server.Protocol)
         {
@@ -541,9 +568,6 @@ public static class XrayConfigBuilder
                 break;
             case ProxyProtocol.WireGuard when credentials.PrivateKey is { Length: > 0 } key && server.Options.PeerPublicKey is { Length: > 0 } peerKey:
                 return WireGuard(server, key, peerKey);
-            case ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic:
-                rejection = CoreRejection.UnsupportedProtocol;
-                return null;
             default:
                 rejection = CoreRejection.MissingCredentials;
                 return null;
@@ -577,6 +601,19 @@ public static class XrayConfigBuilder
 
         return outbound;
     }
+
+    // Выход к ретранслятору: SOCKS5 с паролем, UDP тоже — через UDP ASSOCIATE.
+    private static JsonObject Relay(RelayLink relay) => new()
+    {
+        ["tag"] = ProxyTag,
+        ["protocol"] = "socks",
+        ["settings"] = Servers(new JsonObject
+        {
+            ["address"] = "127.0.0.1",
+            ["port"] = relay.Port,
+            ["users"] = new JsonArray(new JsonObject { ["user"] = relay.User, ["pass"] = relay.Password }),
+        }),
+    };
 
     private static JsonObject Vnext(ServerDefinition server, JsonObject user) => new()
     {

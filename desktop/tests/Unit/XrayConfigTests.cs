@@ -78,6 +78,12 @@ public sealed class XrayConfigTests
         config["log"]!["access"]!.GetValue<string>().ShouldBe("none");
 
         XrayConfigBuilder.BuildProbe([Link("tuic/bbr")], [20001], ConnectionSettings.Default).Config.ShouldBeNull();
+
+        // Hysteria2 с ретранслятором проверяется: его вход ведет в выход к ретранслятору.
+        var relayed = XrayConfigBuilder.BuildProbe([Link("vless/reality-vision"), Link("hysteria2/hy2-short-scheme")], [20001, 20002],
+            ConnectionSettings.Default, [null, new RelayLink(31500, "relay-user", "relay-pass")]);
+        relayed.Rejections.ShouldBe([null, null]);
+        Outbound(relayed.Config.ShouldNotBeNull(), "probe-out-1")["settings"]!["servers"]![0]!["port"]!.GetValue<int>().ShouldBe(31500);
     }
 
     [Fact]
@@ -122,10 +128,31 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
-    public void Hysteria2_and_tuic_wait_for_the_second_core()
+    public void Hysteria2_and_tuic_go_to_the_sing_box_relay_and_without_it_are_refused()
     {
         XrayConfigBuilder.Build(Request(Link("hysteria2/hy2-short-scheme"))).ShouldBe(new XrayConfigResult(null, CoreRejection.UnsupportedProtocol));
         XrayConfigBuilder.Build(Request(Link("tuic/bbr"))).Rejection.ShouldBe(CoreRejection.UnsupportedProtocol);
+        (XrayConfigBuilder.NeedsRelay(Link("hysteria2/obfs-insecure")), XrayConfigBuilder.NeedsRelay(Link("tuic/bbr")),
+            XrayConfigBuilder.NeedsRelay(Link("vless/reality-vision"))).ShouldBe((true, true, false));
+
+        // С ретранслятором: выход сервера — SOCKS5 с паролем к нему на 127.0.0.1, без адреса сервера (его знает ретранслятор), а
+        // ключи сервера в конфиг Xray не попадают.
+        var relay = new RelayLink(31500, "relay-user", "relay-pass");
+        var config = XrayConfigBuilder.Build(Request(Link("hysteria2/obfs-insecure")), new TunLink(31000, "user-1", "pass-1", "203.0.113.57"), relay: relay)
+            .Config.ShouldNotBeNull();
+        var proxy = Outbound(config, XrayConfigBuilder.ProxyTag);
+        proxy["protocol"]!.GetValue<string>().ShouldBe("socks");
+        var server = proxy["settings"]!["servers"]!.AsArray().ShouldHaveSingleItem()!;
+        (server["address"]!.GetValue<string>(), server["port"]!.GetValue<int>()).ShouldBe(("127.0.0.1", 31500));
+        var user = server["users"]!.AsArray().ShouldHaveSingleItem()!;
+        (user["user"]!.GetValue<string>(), user["pass"]!.GetValue<string>()).ShouldBe(("relay-user", "relay-pass"));
+        proxy["streamSettings"].ShouldBeNull();
+        config.ToJsonString().ShouldNotContain("pw-hy2-1");
+        config.ToJsonString().ShouldNotContain("pw-obfs-1");
+        XrayConfigBuilder.Build(Request(Link("tuic/bbr") with { Credentials = new ServerCredentials(Uuid: "11111111-2222-3333-4444-555555555555") }),
+            relay: relay).Rejection.ShouldBe(CoreRejection.MissingCredentials, "TUIC без пароля");
+        XrayConfigBuilder.Build(Request(Link("tuic/bbr") with { Credentials = new ServerCredentials(Password: "pw-tuic-1") }), relay: relay).Rejection
+            .ShouldBe(CoreRejection.MissingCredentials, "TUIC без UUID");
         var noKey = Link("vless/reality-vision") with { Credentials = new ServerCredentials() };
         XrayConfigBuilder.Build(Request(noKey)).Rejection.ShouldBe(CoreRejection.MissingCredentials);
         var quic = Link("vless/reality-vision") with { Transport = TransportOptions.Quic };
@@ -496,7 +523,7 @@ public sealed class XrayConfigTests
         $"{XrayConfigBuilder.DefaultDns} → domain:msftncsi.com,domain:msftconnecttest.com"
         + (System.Net.IPAddress.TryParse(server.Host.Trim('[', ']'), out _) ? string.Empty : ",full:" + server.Host);
 
-    private static ServerDefinition Link(string name) =>
+    internal static ServerDefinition Link(string name) =>
         LinkParser.Parse(File.ReadAllText(Path.Combine(Links, name + ".txt")).Trim()).Server.ShouldNotBeNull(name);
 
     private static string FindRoot()

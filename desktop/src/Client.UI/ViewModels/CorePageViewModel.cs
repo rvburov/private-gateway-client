@@ -2,7 +2,9 @@ using System.Globalization;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -18,12 +20,14 @@ public sealed partial class CorePageViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly OverlayViewModel _overlay;
     private readonly INavigator _navigator;
+    private ServiceDetails? _details;
 
-    public CorePageViewModel(SettingsService settings, OverlayViewModel overlay, INavigator navigator)
+    public CorePageViewModel(SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator)
     {
         _settings = settings;
         _overlay = overlay;
         _navigator = navigator;
+        _ = LoadDetailsAsync(gateway);
         LogOptions = Options(Enum.GetValues<CoreLogLevel>(), LogLabel, () => C.CoreLog, v => Set(c => c with { CoreLog = v }), () => IsLogOpen = false);
         StackOptions = Options(Enum.GetValues<TunEngine>(), StackLabel, () => C.Stack, v => Set(c => c with { Stack = v }), () => IsStackOpen = false);
         MtuOptions =
@@ -44,11 +48,11 @@ public sealed partial class CorePageViewModel : ObservableObject
 
     // ── Ядро ─────────────────────────────────────────────────────────────────
 
-    /// <summary>Версия Xray-core от службы; пока ее нет — «не установлено».</summary>
-    public string XrayVersion => Loc.Instance["core.version.none"];
+    /// <summary>Версия Xray-core от службы; службы нет или она не ответила — «не установлено».</summary>
+    public string XrayVersion => _details?.Core("xray")?.Version ?? Loc.Instance["core.version.none"];
 
-    /// <summary>Второе ядро (Hysteria2, TUIC) выбирается после технического спайка.</summary>
-    public string SecondCore => Loc.Instance["core.second.none"];
+    /// <summary>Hysteria2 и TUIC ведет sing-box за Xray (решение 452) — его версия от службы.</summary>
+    public string SecondCore => _details?.Core("sing-box") is { } engine ? Loc.Instance.Format("core.second.engine", engine.Version) : Loc.Instance["core.version.none"];
 
     public IReadOnlyList<ChoiceOptionViewModel> LogOptions { get; }
 
@@ -195,6 +199,13 @@ public sealed partial class CorePageViewModel : ObservableObject
 
     private void Set(Func<ConnectionSettings, ConnectionSettings> change) =>
         _settings.Update(s => s with { Connection = change(s.Connection) });
+
+    /// <summary>Сведения службы: версии ядер; не ответила — «не установлено», как без службы.</summary>
+    private async Task LoadDetailsAsync(IGatewayClient gateway)
+    {
+        _details = await gateway.GetDetailsAsync().ConfigureAwait(true);
+        OnPropertyChanged(string.Empty);
+    }
 
     private void Refresh()
     {

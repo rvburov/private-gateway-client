@@ -67,6 +67,13 @@ internal static class XrayKit
         };
     }
 
+    /// <summary>
+    /// Сервер, за который ядро Xray не возьмется при любых сборках: VLESS через QUIC — такого транспорта в Xray нет. (Hysteria2 и
+    /// TUIC для этого не годятся: со сборкой sing-box служба ведет их через ретранслятор.)
+    /// </summary>
+    public static ServerDefinition Refused { get; } =
+        Definition(ProxyProtocol.Vless, 443, new ServerCredentials(Uuid: Uuid)) with { Transport = TransportOptions.Quic };
+
     public static ServerDefinition Definition(ProxyProtocol protocol, int port, ServerCredentials credentials,
         TransportOptions? transport = null, SecurityOptions? security = null, ProtocolOptions? options = null) =>
         new("Тест", string.Empty, protocol, "127.0.0.1", port, transport ?? TransportOptions.Tcp, security ?? SecurityOptions.None,

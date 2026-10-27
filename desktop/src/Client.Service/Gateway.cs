@@ -149,6 +149,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
     // Вход проверки связи с сервером в ядре этого подключения.
     private ProbeLink? _probe;
+
+    // Вход ретранслятора sing-box этого подключения — Hysteria2 и TUIC в режиме прокси (CoreRelay); null — не нужен.
+    private RelayLink? _relay;
     private readonly AddressLookup _addressLookup;
     private readonly ProbeRunner _probes;
 
@@ -420,12 +423,15 @@ public sealed partial class Gateway : IAsyncDisposable
                 .ConfigureAwait(false);
         }
 
-        // Вход проверки связи с сервером — свой на каждое подключение.
+        // Вход проверки связи с сервером — свой на каждое подключение; у Hysteria2 и TUIC — еще вход ретранслятора sing-box.
         var probe = VpnTunnel.NewProbe();
-        var built = XrayConfigBuilder.Build(core, probe: probe);
-        if (built.Config is not { } config)
+        var relay = CoreRelay.LinkFor(core.Server, _options.SingBoxPath);
+        var built = XrayConfigBuilder.Build(core, probe: probe, relay: relay);
+        if (built.Config is null)
         {
-            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, "Ядро Xray не возьмется за сервер: " + built.Rejection,
+            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, built.Rejection == CoreRejection.UnsupportedProtocol
+                    ? "Нет сборки sing-box — Hysteria2 и TUIC идут только через нее"
+                    : "Ядро Xray не возьмется за сервер: " + built.Rejection,
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -521,7 +527,7 @@ public sealed partial class Gateway : IAsyncDisposable
             // Сначала новый номер: выход старого ядра при остановке не должен стать ошибкой нового подключения.
             session = ++_session;
             _request = core;
-            _probe = probe;
+            (_probe, _relay) = (probe, relay);
             _allowOtherVpn = request.AllowOtherVpn;
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
@@ -561,7 +567,7 @@ public sealed partial class Gateway : IAsyncDisposable
             BeginConnecting(core.Mode, serverId);
             _journal.Add(JournalLevel.Info, "service", $"Подключение в режиме прокси: {core.Server.Protocol}, порт {core.Connection.ProxyPort}");
 
-            StartProxy(session, core, xray, config);
+            StartProxy(session, core);
             return new V1.ConnectReply { Accepted = true };
         }
         finally
@@ -574,7 +580,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// Ядро режима прокси — и ждать, пока оно откроет вход (<see cref="WaitReadyAsync"/>): тогда системный прокси и
     /// «Защищено». Порт занят или ядро не запустилось — «Ошибка». Под замком смены подключения.
     /// </summary>
-    private void StartProxy(int session, CoreRequest core, string xray, JsonObject config)
+    private void StartProxy(int session, CoreRequest core)
     {
         // Порт занят другой программой — ядро на нем не откроется, а проверка готовности приняла бы чужой вход за свой.
         if (!PortIsFree(core.Connection.ProxyPort, core.Connection.ProxyAllowLan))
@@ -583,21 +589,34 @@ public sealed partial class Gateway : IAsyncDisposable
             return;
         }
 
+        Func<bool> relayReady;
         try
         {
-            var process = CoreProcess.StartXray(xray, config);
-            process.Output += (_, line) => _journal.Add(JournalLevel.Info, "xray", line);
-            process.Exited += (_, _) => OnCoreExited(session, process);
-            _core = process;
-            _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id);
+            relayReady = StartProxyCore(session, core);
         }
-        catch (System.ComponentModel.Win32Exception e)
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or TunnelException)
         {
             Fail(session, ErrorCodes.CoreFailed, "Ядро не запустилось: " + e.Message);
             return;
         }
 
-        _ = WaitReadyAsync(session, core.Connection.ProxyPort, TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds));
+        _ = WaitReadyAsync(session, core.Connection.ProxyPort, relayReady, TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds));
+    }
+
+    /// <summary>
+    /// Ядро режима прокси этого подключения: Xray, а у Hysteria2 и TUIC перед ним ретранслятор sing-box (<see cref="CoreRelay"/>).
+    /// Возвращает, открыл ли ретранслятор входы. Под замком смены подключения.
+    /// </summary>
+    private Func<bool> StartProxyCore(int session, CoreRequest core)
+    {
+        var process = CoreRelay.StartXray(_options.XrayPath!, XrayConfigBuilder.Build(core, probe: _probe, relay: _relay).Config!, _options.SingBoxPath,
+            _relay is { } relay ? [new RelayRoute(core.Server, relay)] : [], core.Connection.CoreLog, out var relayReady,
+            xrayOutput: line => _journal.Add(JournalLevel.Info, "xray", line), relayOutput: line => _journal.Add(JournalLevel.Info, "sing-box", line));
+        process.Exited += (_, _) => OnCoreExited(session, process);
+        _core = process;
+        _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id
+            + (process.CompanionId is { } relayId ? ", ретранслятор sing-box для Hysteria2 и TUIC — процесс " + relayId : string.Empty));
+        return relayReady;
     }
 
     /// <summary>
@@ -822,7 +841,7 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         IReadOnlyList<LatencyResult> results = _options.XrayPath is { } xray && File.Exists(xray)
-            ? await LatencyProbe.MeasureAsync(xray, servers, ConnectionSettings.Default, _options.LatencyTarget, LatencyTimeout,
+            ? await LatencyProbe.MeasureAsync(xray, _options.SingBoxPath, servers, ConnectionSettings.Default, _options.LatencyTarget, LatencyTimeout,
                 _time, cancellationToken).ConfigureAwait(false)
             : [.. servers.Select(_ => LatencyResult.Failed(LatencyFailure.CoreFailed))];
         reply.Results.AddRange(results.Select((r, i) => r.ToContract(ids[i])));
@@ -986,23 +1005,31 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
-    /// <summary>Готово, когда ядро открыло вход прокси; не открыло за время ожидания — ошибка ядра.</summary>
-    private async Task WaitReadyAsync(int session, int port, TimeSpan timeout)
+    /// <summary>
+    /// Готово, когда ядро открыло вход прокси, а ретранслятор Hysteria2 и TUIC, если он есть, — свои входы (<paramref name="relayReady"/>);
+    /// не открыли за время ожидания — ошибка ядра.
+    /// </summary>
+    private async Task WaitReadyAsync(int session, int port, Func<bool> relayReady, TimeSpan timeout)
     {
         var started = _time.GetTimestamp();
         while (session == Volatile.Read(ref _session) && _time.GetElapsedTime(started) < timeout)
         {
             try
             {
-                using var probe = new TcpClient();
-                await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
-                await ConfirmAsync(session, "Подключено: прокси на 127.0.0.1 готов").ConfigureAwait(false);
-                return;
+                if (relayReady())
+                {
+                    using var probe = new TcpClient();
+                    await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
+                    await ConfirmAsync(session, "Подключено: прокси на 127.0.0.1 готов").ConfigureAwait(false);
+                    return;
+                }
             }
             catch (SocketException)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100), _time).ConfigureAwait(false);
+                // Вход еще не открыт.
             }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), _time).ConfigureAwait(false);
         }
 
         Fail(session, ErrorCodes.CoreFailed, "Ядро не открыло вход прокси за " + timeout.TotalSeconds + " с");
@@ -1211,7 +1238,7 @@ public sealed partial class Gateway : IAsyncDisposable
                 var next = ++_session;
                 BeginConnecting(proxy.Mode, Status.ServerId ?? string.Empty);
                 _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): ядро запускается снова");
-                StartProxy(next, proxy, _options.XrayPath!, XrayConfigBuilder.Build(proxy, probe: _probe).Config!);
+                StartProxy(next, proxy);
                 return;
             }
 
@@ -1445,6 +1472,10 @@ public sealed partial class Gateway : IAsyncDisposable
             _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
             _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
+            if (tunnel.Relay is { } relay)
+            {
+                _journal.Add(JournalLevel.Info, "service", "Ретранслятор sing-box для Hysteria2 и TUIC — процесс " + relay);
+            }
             PointDnsAtTunnel();
             if (tunnel.HasExited)
             {

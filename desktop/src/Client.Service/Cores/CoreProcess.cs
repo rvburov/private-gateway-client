@@ -17,6 +17,7 @@ public sealed class CoreProcess : IDisposable
     private const int SigTerm = 15;
 
     private readonly Process _process;
+    private CoreProcess? _companion;
 
     private CoreProcess(Process process, CoreLedger? ledger)
     {
@@ -28,6 +29,7 @@ public sealed class CoreProcess : IDisposable
         process.Exited += (_, _) =>
         {
             ledger?.Remove(id);
+            Volatile.Read(ref _companion)?.Kill();
             Exited?.Invoke(this, EventArgs.Empty);
         };
     }
@@ -50,6 +52,25 @@ public sealed class CoreProcess : IDisposable
     public int Id => _process.Id;
 
     public int ExitCode => _process.ExitCode;
+
+    /// <summary>Номер процесса ретранслятора (<see cref="Attach"/>) — для журнала; null — его нет.</summary>
+    public int? CompanionId => Volatile.Read(ref _companion)?.Id;
+
+    /// <summary>
+    /// Связать с процессом, без которого это ядро не работает, — ретранслятором sing-box для Hysteria2 и TUIC за Xray
+    /// (<see cref="CoreRelay"/>): он вышел — ядро снимается, и его <see cref="Exited"/> — как любой выход ядра (переподключение);
+    /// ядро вышло или остановлено — снимается и он.
+    /// </summary>
+    public void Attach(CoreProcess companion)
+    {
+        ArgumentNullException.ThrowIfNull(companion);
+        Volatile.Write(ref _companion, companion);
+        companion.Exited += (_, _) => Kill();
+        if (_process.HasExited)
+        {
+            companion.Kill();
+        }
+    }
 
     /// <summary>
     /// Xray (<c>run -config stdin:</c>); geoip.dat и geosite.dat ядро ищет рядом с собой. Путь — из папки
@@ -94,16 +115,33 @@ public sealed class CoreProcess : IDisposable
         }
 
         await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        if (Volatile.Read(ref _companion) is { } companion)
+        {
+            await companion.StopAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
     }
 
     public void Dispose()
     {
-        if (!_process.HasExited)
-        {
-            _process.Kill(entireProcessTree: true);
-        }
-
+        Kill();
         _process.Dispose();
+        Volatile.Read(ref _companion)?.Dispose();
+    }
+
+    // Снять, если еще работает; уже вышел или освобожден — ничего.
+    private void Kill()
+    {
+        try
+        {
+            if (!_process.HasExited)
+            {
+                _process.Kill(entireProcessTree: true);
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            // Вышел между проверкой и снятием или процесс уже освобожден.
+        }
     }
 
     private static CoreProcess Start(string executable, IReadOnlyList<string> arguments, JsonObject config, string folder,

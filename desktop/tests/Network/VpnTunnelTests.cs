@@ -278,11 +278,7 @@ public sealed class VpnTunnelTests
     public async Task Server_the_core_refuses_does_not_start_a_tunnel()
     {
         Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
-        var hysteria = XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password)) with
-        {
-            Transport = TransportOptions.Quic,
-        };
-        var request = new CoreRequest(hysteria, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default, RoutingSettings.Default);
+        var request = new CoreRequest(XrayKit.Refused, ConnectionMode.Vpn, ProtectionSettings.Default, ConnectionSettings.Default, RoutingSettings.Default);
 
         var error = await Should.ThrowAsync<TunnelException>(() =>
             VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [IPAddress.Parse("192.0.2.10")], TimeSpan.FromSeconds(5), TimeProvider.System,

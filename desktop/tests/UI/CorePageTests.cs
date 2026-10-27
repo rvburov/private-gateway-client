@@ -1,7 +1,11 @@
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
@@ -19,7 +23,7 @@ public sealed class CorePageTests : WindowHarness
 
         shell.IsSettings.ShouldBeTrue();
         Text(window, "XrayVersion").ShouldBe("не установлено");
-        Text(window, "SecondCore").ShouldBe("не выбрано");
+        Text(window, "SecondCore").ShouldBe("не установлено", "имитация службы ядер не сообщает");
         Text(window, "LogChoiceText").ShouldBe("Предупреждения");
         Text(window, "StackChoiceText").ShouldBe("Системный");
         Text(window, "MtuChoiceText").ShouldBe("Авто");
@@ -125,6 +129,21 @@ public sealed class CorePageTests : WindowHarness
         page.ProxyAllowLan = false;
         shell.Overlay.HasDialog.ShouldBeFalse("закрыть можно без вопроса");
         page.ProxyAllowLan.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public void Core_versions_come_from_the_service()
+    {
+        var (window, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Details = new ServiceDetails(AppInfo.Version, ContractMapping.ApiVersion, [new CoreDetails("xray", "25.8.3", true), new CoreDetails("sing-box", "1.14.3", true)]),
+        });
+
+        shell.NavigateCommand.Execute(Pages.Core);
+        Dispatcher.UIThread.RunJobs();
+
+        Text(window, "XrayVersion").ShouldBe("25.8.3");
+        Text(window, "SecondCore").ShouldBe("sing-box 1.14.3", "Hysteria2 и TUIC ведет ретранслятор sing-box за Xray");
     }
 
     private (MainWindow Window, ShellViewModel Shell, CorePageViewModel Page) OpenCore()

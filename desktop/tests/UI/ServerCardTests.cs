@@ -108,7 +108,7 @@ public sealed class ServerCardTests : WindowHarness
 
         var se = OpenCard(page, "Швеция 01");
         se.Details.Single(d => d.Label == "Защита").Value.ShouldBe("шифрует протокол", "WireGuard шифрует сам");
-        se.Details.Single(d => d.Label == "Ядро").Value.ShouldBe("sing-box");
+        se.Details.Single(d => d.Label == "Ядро").Value.ShouldBe("Xray-core", "WireGuard ведет Xray, sing-box — только Hysteria2 и TUIC");
         se.Details.Single(d => d.Label == "Транспорт").Value.ShouldBe("UDP");
         se.StatusText.ShouldBeNull("не выбран — без отметки");
     }

@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text.Json.Nodes;
+using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.Xray;
 
@@ -24,6 +26,12 @@ public sealed record TunRequest(
     IReadOnlyList<string>? DirectPrograms = null,
     IReadOnlyList<string>? FakeIpPrograms = null,
     IReadOnlyList<string>? Routes = null);
+
+/// <summary>
+/// Сервер Hysteria2 или TUIC за ретранслятором (<see cref="SingBoxConfigBuilder.BuildRelay"/>): вход для Xray и адрес, к которому
+/// соединяться — разрешенный службой заранее (режим VPN: он же выведен из маршрутов TUN и открыт блоком); null — имя из описания.
+/// </summary>
+public sealed record RelayRoute(ServerDefinition Server, RelayLink Link, string? Address = null);
 
 /// <summary>
 /// IPv6 для TUN — решает служба: <paramref name="Kernel"/> — в ядре ОС есть IPv6 (правила маршрутизации IPv6 ставятся);
@@ -257,6 +265,94 @@ public static class SingBoxConfigBuilder
             ["outbounds"] = outbounds,
             ["route"] = route,
         };
+    }
+
+    /// <summary>
+    /// Ретранслятор Hysteria2 и TUIC за Xray (решение 452): на каждый сервер — вход SOCKS5 на 127.0.0.1 с паролем на это
+    /// подключение (выход сервера в конфиге Xray, <see cref="RelayLink"/>) и выход hysteria2 или tuic к серверу; вход ведет
+    /// только в свой выход. Ни DNS, ни правил, ни TUN — их держат Xray и TUN. Журнал — как у TUN: «sing-box started» —
+    /// признак готовности, строки ниже уровня «Журнала ядра» служба в журнал не пускает (<see cref="ShownLine"/>).
+    /// </summary>
+    public static JsonObject BuildRelay(IReadOnlyList<RelayRoute> routes, CoreLogLevel log = CoreLogLevel.Warning)
+    {
+        ArgumentNullException.ThrowIfNull(routes);
+        if (routes.Count == 0)
+        {
+            throw new ArgumentException("Ретранслятору нужен хотя бы один сервер", nameof(routes));
+        }
+
+        var inbounds = new JsonArray();
+        var outbounds = new JsonArray();
+        var rules = new JsonArray();
+        for (var i = 0; i < routes.Count; i++)
+        {
+            var (server, link, address) = routes[i];
+            inbounds.Add(new JsonObject
+            {
+                ["type"] = "socks",
+                ["tag"] = $"relay-in-{i}",
+                ["listen"] = "127.0.0.1",
+                ["listen_port"] = link.Port,
+                ["users"] = new JsonArray(new JsonObject { ["username"] = link.User, ["password"] = link.Password }),
+            });
+            outbounds.Add(RelayOutbound(server, address, $"relay-out-{i}"));
+            rules.Add(new JsonObject { ["inbound"] = new JsonArray($"relay-in-{i}"), ["outbound"] = $"relay-out-{i}" });
+        }
+
+        return new JsonObject
+        {
+            ["log"] = new JsonObject { ["level"] = log == CoreLogLevel.Debug ? "debug" : "info", ["timestamp"] = false },
+            ["inbounds"] = inbounds,
+            ["outbounds"] = outbounds,
+            ["route"] = new JsonObject { ["rules"] = rules, ["final"] = "relay-out-0" },
+        };
+    }
+
+    // Выход к серверу: TLS — с именем из ссылки (без него — имя сервера) и ALPN ссылки; у TUIC без ALPN — h3, как у его
+    // серверов. Неизвестный алгоритм управления перегрузкой не передается — sing-box с ним не запустился бы.
+    private static JsonObject RelayOutbound(ServerDefinition server, string? address, string tag)
+    {
+        var security = server.Security;
+        var tls = new JsonObject
+        {
+            ["enabled"] = true,
+            ["server_name"] = security.Sni is { Length: > 0 } sni ? sni : server.Host,
+            ["insecure"] = security.AllowInsecure,
+        };
+        IReadOnlyList<string>? alpn = security.Alpn is { Count: > 0 } list ? list : server.Protocol == ProxyProtocol.Tuic ? ["h3"] : null;
+        if (alpn is not null)
+        {
+            tls["alpn"] = new JsonArray([.. alpn.Select(a => (JsonNode)a)]);
+        }
+
+        var credentials = server.Credentials;
+        var outbound = new JsonObject
+        {
+            ["type"] = server.Protocol == ProxyProtocol.Tuic ? "tuic" : "hysteria2",
+            ["tag"] = tag,
+            ["server"] = address ?? server.Host,
+            ["server_port"] = server.Port,
+        };
+        if (server.Protocol == ProxyProtocol.Tuic)
+        {
+            outbound["uuid"] = credentials.Uuid;
+            outbound["password"] = credentials.Password;
+            if (server.Options.CongestionControl is "cubic" or "new_reno" or "bbr")
+            {
+                outbound["congestion_control"] = server.Options.CongestionControl;
+            }
+        }
+        else
+        {
+            outbound["password"] = credentials.Password;
+            if (server.Options.Obfs == "salamander" && credentials.ObfsPassword is { Length: > 0 } obfs)
+            {
+                outbound["obfs"] = new JsonObject { ["type"] = "salamander", ["password"] = obfs };
+            }
+        }
+
+        outbound["tls"] = tls;
+        return outbound;
     }
 
     /// <summary>Строка вывода sing-box, после которой все его части запущены и туннель пропускает трафик.</summary>

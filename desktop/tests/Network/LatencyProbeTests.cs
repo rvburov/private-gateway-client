@@ -31,13 +31,13 @@ public sealed class LatencyProbeTests
         // свежий сервер бывал дольше 5 с у обоих живых сразу, а тот же замер следом — 21–26 мс (прогоны 291, 306). Прогрев — один
         // запрос через сервер со сроком в минуту; замер ниже — с ядром замера, запущенным заново, как у службы.
         var warm = await LatencyProbe.MeasureAsync(
-            XrayKit.Xray!, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
+            XrayKit.Xray!, null, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
         warm[0].Failure.ShouldBeNull("сервер теста не ответил и за минуту");
         var started = TimeProvider.System.GetTimestamp();
         var poolBefore = Pool();
 
         var results = await LatencyProbe.MeasureAsync(
-            XrayKit.Xray!, [dead, alive, hysteria, alive], ConnectionSettings.Default, site.Url, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
+            XrayKit.Xray!, null, [dead, alive, hysteria, alive], ConnectionSettings.Default, site.Url, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
 
         if (results[1].Failure is not null || results[3].Failure is not null)
         {
@@ -48,7 +48,7 @@ public sealed class LatencyProbeTests
             // не ждали ли продолжения запроса свободного потока.
             var pool = $"пул потоков до замера: {poolBefore}, после: {Pool()}";
             var again = await LatencyProbe.MeasureAsync(
-                XrayKit.Xray!, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
+                XrayKit.Xray!, null, [alive], ConnectionSettings.Default, site.Url, TimeSpan.FromMinutes(1), TimeProvider.System, TestContext.Current.CancellationToken);
             Assert.Fail($"Живой сервер не ответил за {Timeout.TotalSeconds:0} с (замер шел {took.TotalSeconds:0.0} с, {pool}): " +
                 $"{string.Join(", ", results)}; тот же замер с минутой: {again[0]}");
         }
@@ -75,7 +75,7 @@ public sealed class LatencyProbeTests
         var started = TimeProvider.System.GetTimestamp();
 
         var results = await LatencyProbe.MeasureAsync(
-            XrayKit.Xray!, [wrongKey], ConnectionSettings.Default, site.Url, timeout, TimeProvider.System, TestContext.Current.CancellationToken);
+            XrayKit.Xray!, null, [wrongKey], ConnectionSettings.Default, site.Url, timeout, TimeProvider.System, TestContext.Current.CancellationToken);
 
         results.ShouldBe([LatencyResult.Failed(LatencyFailure.NoResponse)]);
         TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(timeout / 2, "обрыв, а не ожидание до таймаута");
@@ -88,7 +88,7 @@ public sealed class LatencyProbeTests
         var hysteria = XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password));
         var missing = Path.Combine(Path.GetTempPath(), "pg-no-xray-" + Guid.NewGuid().ToString("N"), "xray");
 
-        var results = await LatencyProbe.MeasureAsync(missing, [hysteria], ConnectionSettings.Default, LatencyProbe.DefaultTarget, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
+        var results = await LatencyProbe.MeasureAsync(missing, null, [hysteria], ConnectionSettings.Default, LatencyProbe.DefaultTarget, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
 
         results.ShouldBe([LatencyResult.Failed(LatencyFailure.Unsupported)]);
     }
@@ -105,7 +105,7 @@ public sealed class LatencyProbeTests
         var started = TimeProvider.System.GetTimestamp();
 
         var results = await LatencyProbe.MeasureAsync(
-            XrayKit.Xray!, [broken], ConnectionSettings.Default, LatencyProbe.DefaultTarget, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
+            XrayKit.Xray!, null, [broken], ConnectionSettings.Default, LatencyProbe.DefaultTarget, Timeout, TimeProvider.System, TestContext.Current.CancellationToken);
 
         results.ShouldBe([LatencyResult.Failed(LatencyFailure.CoreFailed)]);
         TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(TimeSpan.FromSeconds(10), "ядро вышло — ждать входов незачем");

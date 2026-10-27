@@ -347,6 +347,7 @@ public sealed partial class Gateway
     {
         CoreRequest request;
         CancellationToken starting;
+        Func<bool> relayReady = static () => true;
         await _switch.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -367,13 +368,9 @@ public sealed partial class Gateway
             {
                 try
                 {
-                    var process = CoreProcess.StartXray(_options.XrayPath!, XrayConfigBuilder.Build(request, probe: _probe).Config!);
-                    process.Output += (_, line) => _journal.Add(JournalLevel.Info, "xray", line);
-                    process.Exited += (_, _) => OnCoreExited(session, process);
-                    _core = process;
-                    _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id);
+                    relayReady = StartProxyCore(session, request);
                 }
-                catch (System.ComponentModel.Win32Exception e)
+                catch (Exception e) when (e is System.ComponentModel.Win32Exception or TunnelException)
                 {
                     _journal.Add(JournalLevel.Error, "service", "Ядро не запустилось: " + e.Message);
                     return (false, ErrorCodes.CoreFailed);
@@ -388,7 +385,7 @@ public sealed partial class Gateway
         var timeout = TimeSpan.FromSeconds(request.Connection.ConnectTimeoutSeconds);
         if (request.Mode == ConnectionMode.Proxy)
         {
-            return (await OpensAsync(request.Connection.ProxyPort, timeout).ConfigureAwait(false), ErrorCodes.CoreFailed);
+            return (await OpensAsync(request.Connection.ProxyPort, relayReady, timeout).ConfigureAwait(false), ErrorCodes.CoreFailed);
         }
 
         VpnTunnel tunnel;
@@ -420,6 +417,10 @@ public sealed partial class Gateway
             _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
             _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
+            if (tunnel.Relay is { } relay)
+            {
+                _journal.Add(JournalLevel.Info, "service", "Ретранслятор sing-box для Hysteria2 и TUIC — процесс " + relay);
+            }
             PointDnsAtTunnel();
             if (tunnel.HasExited)
             {
@@ -436,8 +437,8 @@ public sealed partial class Gateway
         }
     }
 
-    /// <summary>Ядро открыло вход прокси за отведенное время.</summary>
-    private async Task<bool> OpensAsync(int port, TimeSpan timeout)
+    /// <summary>Ядро открыло вход прокси, а ретранслятор Hysteria2 и TUIC, если он есть, — свои (<paramref name="relayReady"/>), за отведенное время.</summary>
+    private async Task<bool> OpensAsync(int port, Func<bool> relayReady, TimeSpan timeout)
     {
         var started = _time.GetTimestamp();
         while (_time.GetElapsedTime(started) < timeout)
@@ -449,14 +450,19 @@ public sealed partial class Gateway
 
             try
             {
-                using var probe = new TcpClient();
-                await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
-                return true;
+                if (relayReady())
+                {
+                    using var probe = new TcpClient();
+                    await probe.ConnectAsync(IPAddress.Loopback, port).ConfigureAwait(false);
+                    return true;
+                }
             }
             catch (SocketException)
             {
-                await Task.Delay(TimeSpan.FromMilliseconds(100), _time).ConfigureAwait(false);
+                // Вход еще не открыт.
             }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(100), _time).ConfigureAwait(false);
         }
 
         return false;

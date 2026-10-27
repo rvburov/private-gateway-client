@@ -54,6 +54,9 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <summary>Номера процессов ядер — для журнала.</summary>
     public (int Xray, int SingBox) Processes => (_xray.Id, _singBox.Id);
 
+    /// <summary>Номер процесса ретранслятора sing-box для Hysteria2 и TUIC (<see cref="CoreRelay"/>) — для журнала; null — его нет.</summary>
+    public int? Relay => _xray.CompanionId;
+
     /// <summary>IPv6 идет через туннель: у адаптера есть адрес IPv6 и сервер открывает IPv6.</summary>
     public bool Ipv6 { get; }
 
@@ -161,7 +164,11 @@ public sealed class VpnTunnel : IAsyncDisposable
         }
 
         var link = NewLink(serverAddresses[0], bypass: XrayConfigBuilder.NeedsBypassInbound(request));
-        var built = XrayConfigBuilder.Build(request, link, probe);
+
+        // Hysteria2 и TUIC — через ретранслятор sing-box (CoreRelay): к серверу он соединяется по тому же адресу, что выведен из
+        // маршрутов TUN и открыт блоком.
+        var relay = CoreRelay.LinkFor(request.Server, singBox);
+        var built = XrayConfigBuilder.Build(request, link, probe, relay);
         if (built.Config is not { } xrayConfig)
         {
             throw new TunnelException("Ядро Xray не возьмется за сервер: " + built.Rejection);
@@ -169,21 +176,24 @@ public sealed class VpnTunnel : IAsyncDisposable
 
         var started = time.GetTimestamp();
         var xrayStarted = 0;
-        var xrayCore = CoreProcess.StartXray(xray, xrayConfig, netns, line =>
-        {
-            if (XrayStarted(line))
+        var xrayCore = CoreRelay.StartXray(xray, xrayConfig, singBox,
+            relay is null ? [] : [new RelayRoute(request.Server, relay, serverAddresses[0].ToString())], request.Connection.CoreLog, out var relayReady, netns,
+            line =>
             {
-                Volatile.Write(ref xrayStarted, 1);
-            }
+                if (XrayStarted(line))
+                {
+                    Volatile.Write(ref xrayStarted, 1);
+                }
 
-            output?.Invoke("xray", line);
-        });
+                output?.Invoke("xray", line);
+            },
+            line => output?.Invoke("sing-box", line));
         CoreProcess? singBoxCore = null;
         try
         {
             // Вход Xray в своем сетевом пространстве отсюда не виден — тогда по строке «Xray … started»: ее ядро
-            // печатает, когда входы уже слушают.
-            await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : Volatile.Read(ref xrayStarted) == 1),
+            // печатает, когда входы уже слушают. Ретранслятор — тоже по строке готовности.
+            await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : Volatile.Read(ref xrayStarted) == 1) && relayReady(),
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
 
             // UDP входов — до TUN: иначе первый пакет sing-box (запрос DNS сразу после «Подключено») мог пропасть.
@@ -435,5 +445,5 @@ public sealed class VpnTunnel : IAsyncDisposable
         }
     }
 
-    private static string Secret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
+    internal static string Secret() => Convert.ToHexString(RandomNumberGenerator.GetBytes(16)).ToLowerInvariant();
 }

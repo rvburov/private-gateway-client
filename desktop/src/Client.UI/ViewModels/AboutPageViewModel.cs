@@ -297,8 +297,8 @@ public sealed partial class AboutPageViewModel : ObservableObject
     /// <summary>Версии ядер — то, что служба нашла рядом с собой и запустила.</summary>
     public string XrayVersion => _details?.Core("xray")?.Version ?? Loc.Instance["core.version.none"];
 
-    /// <summary>Второе ядро для Hysteria2 и TUIC пока не выбрано: sing-box в программе — движок TUN режима VPN.</summary>
-    public string SecondCore => Loc.Instance["core.second.none"];
+    /// <summary>Hysteria2 и TUIC ведет sing-box за Xray (решение 452) — его версия от службы.</summary>
+    public string SecondCore => _details?.Core("sing-box") is { } engine ? Loc.Instance.Format("core.second.engine", engine.Version) : Loc.Instance["core.version.none"];
 
     /// <summary>Служба другой версии, чем окно: программу обновили, а службу нет (или наоборот).</summary>
     public ServiceMatch ServiceMatch => _details is { } details ? ServiceVersions.Compare(AppInfo.Version, details, ContractMapping.ApiVersion) : ServiceMatch.Same;

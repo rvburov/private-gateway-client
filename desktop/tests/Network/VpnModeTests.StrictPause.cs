@@ -67,11 +67,9 @@ public sealed partial class VpnModeTests
         (await rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"))).ShouldBe("через туннель");
 
         // Строгий режим: другой сервер, за который ядро не возьмется, — подключение прежнее остановлено, а сеть закрыта.
-        var hysteria = VpnRequest(XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password))
-            with
-        { Transport = TransportOptions.Quic });
-        hysteria.Protection.StrictMode = true;
-        (await service.Client.ConnectAsync(hysteria, cancellationToken: Ct)).Error.Code.ShouldBe(ErrorCodes.UnsupportedServer);
+        var other = VpnRequest(XrayKit.Refused);
+        other.Protection.StrictMode = true;
+        (await service.Client.ConnectAsync(other, cancellationToken: Ct)).Error.Code.ShouldBe(ErrorCodes.UnsupportedServer);
 
         var refused = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Blocked))[^1];
         (refused.StrictBlock, refused.Error?.Code).ShouldBe((true, ErrorCodes.UnsupportedServer));

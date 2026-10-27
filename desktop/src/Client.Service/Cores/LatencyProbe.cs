@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Network.Xray;
 
 namespace PrivateGateway.Client.Service.Cores;
@@ -41,8 +42,13 @@ public static class LatencyProbe
 
     private static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(15);
 
+    /// <summary>
+    /// Задержка каждого из <paramref name="servers"/>. Hysteria2 и TUIC — через ретранслятор <paramref name="singBox"/>
+    /// (<see cref="CoreRelay"/>); null или нет сборки — у них «не поддерживается».
+    /// </summary>
     public static async Task<IReadOnlyList<LatencyResult>> MeasureAsync(
         string xray,
+        string? singBox,
         IReadOnlyList<ServerDefinition> servers,
         ConnectionSettings connection,
         Uri target,
@@ -53,7 +59,8 @@ public static class LatencyProbe
         ArgumentNullException.ThrowIfNull(servers);
         ArgumentNullException.ThrowIfNull(time);
         var ports = servers.Select(_ => FreePort()).ToList();
-        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection);
+        var relays = servers.Select(server => CoreRelay.LinkFor(server, singBox)).ToList();
+        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays);
         var results = probe.Rejections
             .Select(r => r is null ? null : LatencyResult.Failed(LatencyFailure.Unsupported))
             .ToArray();
@@ -63,10 +70,11 @@ public static class LatencyProbe
         }
 
         var checkedIndexes = Enumerable.Range(0, servers.Count).Where(i => results[i] is null).ToList();
-        using var core = CoreProcess.StartXray(xray, config);
+        using var core = CoreRelay.StartXray(xray, config, singBox,
+            [.. checkedIndexes.Where(i => relays[i] is not null).Select(i => new RelayRoute(servers[i], relays[i]!))], CoreLogLevel.Warning, out var relayReady);
         try
         {
-            if (!await WaitForPortsAsync(core, [.. checkedIndexes.Select(i => ports[i])], time, cancellationToken).ConfigureAwait(false))
+            if (!await WaitForPortsAsync(core, [.. checkedIndexes.Select(i => ports[i])], relayReady, time, cancellationToken).ConfigureAwait(false))
             {
                 foreach (var i in checkedIndexes)
                 {
@@ -262,27 +270,35 @@ public static class LatencyProbe
     private static LatencyResult[] Done(LatencyResult?[] results) => [.. results.Select(r => r!)];
 
     /// <summary>Ждать, пока ядро откроет все входы; false — ядро вышло или не успело.</summary>
-    private static async Task<bool> WaitForPortsAsync(CoreProcess core, IReadOnlyList<int> ports, TimeProvider time, CancellationToken cancellationToken)
+    // Входы Xray открыты, а ретранслятор Hysteria2 и TUIC, если он есть, сказал, что готов.
+    private static async Task<bool> WaitForPortsAsync(CoreProcess core, IReadOnlyList<int> ports, Func<bool> relayReady, TimeProvider time,
+        CancellationToken cancellationToken)
     {
         var started = time.GetTimestamp();
         var pending = new Queue<int>(ports);
-        while (pending.TryPeek(out var port))
+        while (pending.Count > 0 || !relayReady())
         {
             if (core.HasExited || time.GetElapsedTime(started) > StartTimeout)
             {
                 return false;
             }
 
-            try
+            if (pending.TryPeek(out var port))
             {
-                using var client = new TcpClient();
-                await client.ConnectAsync(IPAddress.Loopback, port, cancellationToken).ConfigureAwait(false);
-                pending.Dequeue();
+                try
+                {
+                    using var client = new TcpClient();
+                    await client.ConnectAsync(IPAddress.Loopback, port, cancellationToken).ConfigureAwait(false);
+                    pending.Dequeue();
+                    continue;
+                }
+                catch (SocketException)
+                {
+                    // Еще не открыт.
+                }
             }
-            catch (SocketException)
-            {
-                await Task.Delay(TimeSpan.FromMilliseconds(50), time, cancellationToken).ConfigureAwait(false);
-            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(50), time, cancellationToken).ConfigureAwait(false);
         }
 
         return true;

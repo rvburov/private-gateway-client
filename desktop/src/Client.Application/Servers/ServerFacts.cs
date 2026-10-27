@@ -63,12 +63,12 @@ public static class ServerFacts
     };
 
     /// <summary>
-    /// Каким ядром служба подключается к серверу (docs/roadmap/DECISIONS.md): Xray-core — основное,
-    /// Hysteria2, TUIC и WireGuard — через sing-box.
+    /// Каким ядром служба соединяется с сервером: Xray-core — основное (и WireGuard), Hysteria2 и TUIC — ретранслятор
+    /// sing-box за Xray (решение 452).
     /// </summary>
     public static string CoreName(ProxyProtocol protocol) => protocol switch
     {
-        ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic or ProxyProtocol.WireGuard => "sing-box",
+        ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic => "sing-box",
         _ => "Xray-core",
     };
 

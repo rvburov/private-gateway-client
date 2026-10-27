@@ -342,7 +342,8 @@ public sealed class ServiceIpcTests
         throw new InvalidOperationException("Поток состояния закрылся: " + string.Join(", ", seen.Select(s => s.State)));
     }
 
-    private static async Task<string> Get(Uri url, int proxyPort)
+    /// <summary>Страница через вход SOCKS5 службы — и для адресов петли (<see cref="WebProxy"/> их пускает мимо прокси).</summary>
+    internal static async Task<string> Get(Uri url, int proxyPort)
     {
         using var handler = new SocketsHttpHandler { Proxy = new FixedProxy(new Uri($"socks5://127.0.0.1:{proxyPort}")), UseProxy = true };
         using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
