@@ -69,6 +69,8 @@ HERE=$(git rev-parse --show-toplevel)
 # Список папок: путь, ветка, признаки (locked, prunable) — через знак-разделитель US (\037).
 # Табуляция не годится: для read она пробельная, и пустая ветка (папка без ветки) схлопнулась бы.
 SEP=$'\037'
+# Циклы ниже читают готовый вывод (done <<< "$(…)"), а не поток процесса (done < <(…)): процесс-источник, завершаясь,
+# прерывал запись echo в канал — bash на macOS падал с «echo: write error: Interrupted system call» (CI, прогон 347).
 worktrees() {
   git worktree list --porcelain | awk '
     /^worktree / { if (p != "") print p "\037" br "\037" fl; p = substr($0, 10); br = ""; fl = "" }
@@ -169,6 +171,7 @@ others_report() {
   git rev-parse -q --verify "$remote" > /dev/null || return 0
 
   while IFS="$SEP" read -r ref when; do
+    [[ -n "$ref" ]] || continue
     name=${ref#"$REMOTE"/}
     [[ "$name" != "$BASE" && "$name" != HEAD ]] || continue
     if in_list "$name" "$@"; then continue; fi
@@ -189,8 +192,8 @@ others_report() {
       printf '%s\n' "$common" | first 10
       cross=$((cross + 1))
     fi
-  done < <(git for-each-ref "refs/remotes/$REMOTE" --sort=-committerdate \
-             --format="%(refname:short)$SEP%(committerdate:unix)")
+  done <<< "$(git for-each-ref "refs/remotes/$REMOTE" --sort=-committerdate \
+                --format="%(refname:short)$SEP%(committerdate:unix)")"
 
   if (( stale > 0 )); then
     note "и еще веток, не влитых в $BASE: $stale (старше $OTHERS_DAYS дней или сверх $OTHERS_MAX) — git branch -r --no-merged $remote"
@@ -288,7 +291,7 @@ cmd_check() {
 
   # Рабочие папки, где бы они ни лежали.
   while IFS="$SEP" read -r path branch flags; do
-    if [[ "$path" == "$MAIN" ]]; then continue; fi
+    if [[ -z "$path" || "$path" == "$MAIN" ]]; then continue; fi
     echo
     echo "[папка] $path"
     echo "  ветка ${branch:-(без ветки)}"
@@ -334,11 +337,11 @@ cmd_check() {
         note "все в $BASE — папку можно убрать (remove ${path##*/}), если пользователь согласен"
       fi
     fi
-  done < <(worktrees)
+  done <<< "$(worktrees)"
 
   # Ветки без папки: их работу легко забыть.
   while read -r branch; do
-    if [[ "$branch" == "$BASE" || -n "$(path_of_branch "$branch")" ]]; then continue; fi
+    if [[ -z "$branch" || "$branch" == "$BASE" || -n "$(path_of_branch "$branch")" ]]; then continue; fi
     a=$(ahead "$branch")
     if [[ "$a" == 0 ]]; then continue; fi
     echo
@@ -346,19 +349,19 @@ cmd_check() {
     note "НЕ В $BASE коммитов: $a"
     git log -n 10 --format='%h %s' "$BASE..$branch" | first 10
     problems=$((problems + 1))
-  done < <(git for-each-ref refs/heads --format='%(refname:short)')
+  done <<< "$(git for-each-ref refs/heads --format='%(refname:short)')"
 
   # Чужие ветки на GitHub против нашей работы: всех локальных веток вне main и правок в папках.
   local mine
   mine=$(mktemp)
   while IFS="$SEP" read -r path branch flags; do
-    [[ "$flags" != *prunable* ]] || continue
+    [[ -n "$path" && "$flags" != *prunable* ]] || continue
     { git -C "$path" diff --name-only HEAD; git -C "$path" ls-files --others --exclude-standard; } >> "$mine"
-  done < <(worktrees)
+  done <<< "$(worktrees)"
   while read -r branch; do
-    [[ "$branch" != "$BASE" ]] || continue
+    [[ -n "$branch" && "$branch" != "$BASE" ]] || continue
     git log --name-only --format= "$BASE..$branch" >> "$mine"
-  done < <(git for-each-ref refs/heads --format='%(refname:short)')
+  done <<< "$(git for-each-ref refs/heads --format='%(refname:short)')"
   # Свои ветки — локальные с тем же именем: их копия на GitHub — это наша же работа.
   others_report "$mine" $(git for-each-ref refs/heads --format='%(refname:short)') || problems=$((problems + 1))
   rm -f "$mine"
