@@ -16,6 +16,12 @@ public enum ServiceMatch
 
     /// <summary>Другой контракт IPC: окно и служба друг друга не поймут.</summary>
     Incompatible,
+
+    /// <summary>
+    /// Версия та же, а исходники другие: сборка из исходников (у всех одна версия) обновлена через git, а установленная служба
+    /// осталась из прежних. Какая из двух новее, по коммиту не узнать.
+    /// </summary>
+    OtherBuild,
 }
 
 /// <summary>
@@ -24,7 +30,11 @@ public enum ServiceMatch
 /// </summary>
 public static class ServiceVersions
 {
-    public static ServiceMatch Compare(string window, ServiceDetails service, string apiVersion)
+    /// <param name="window">Версия окна.</param>
+    /// <param name="service">Что служба говорит о себе.</param>
+    /// <param name="apiVersion">Контракт IPC окна.</param>
+    /// <param name="windowBuild">Сборка окна — коммит исходников; пусто — сборки не сверяются (так же, если пусто у службы).</param>
+    public static ServiceMatch Compare(string window, ServiceDetails service, string apiVersion, string windowBuild = "")
     {
         ArgumentNullException.ThrowIfNull(service);
         if (!string.Equals(service.ApiVersion, apiVersion, StringComparison.Ordinal))
@@ -36,6 +46,8 @@ public static class ServiceVersions
         {
             < 0 => ServiceMatch.Older,
             > 0 => ServiceMatch.Newer,
+            _ when windowBuild.Length > 0 && service.Build.Length > 0
+                && !string.Equals(service.Build, windowBuild, StringComparison.OrdinalIgnoreCase) => ServiceMatch.OtherBuild,
             _ => ServiceMatch.Same,
         };
     }

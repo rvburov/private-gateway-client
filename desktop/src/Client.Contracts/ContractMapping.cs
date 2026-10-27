@@ -170,7 +170,8 @@ public static partial class ContractMapping
     public static PrivateGateway.Client.Core.ServiceDetails ToCore(this V1.ServiceInfo info)
     {
         ArgumentNullException.ThrowIfNull(info);
-        return new(info.ServiceVersion, info.ApiVersion, [.. info.Cores.Select(c => new PrivateGateway.Client.Core.CoreDetails(c.Name, c.Version, c.Available))]);
+        return new(info.ServiceVersion, info.ApiVersion, [.. info.Cores.Select(c => new PrivateGateway.Client.Core.CoreDetails(c.Name, c.Version, c.Available))],
+            info.ServiceBuild);
     }
 
     public static V1.Protocol ToContract(this CoreProtocol protocol) => protocol switch

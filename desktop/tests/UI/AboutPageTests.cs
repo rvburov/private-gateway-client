@@ -297,6 +297,36 @@ public sealed class AboutPageTests : WindowHarness
         page.ServiceNotice.ShouldStartWith("Службу обновить не удалось", customMessage: "неудача — словами, а не молча");
     }
 
+    /// <summary>
+    /// Сборка из исходников: окно и служба — обе 0.1.0, а установленная служба осталась из прежних исходников (git pull и
+    /// сборка ее копию в папке службы не трогают). Окно узнает ее по коммиту и предлагает ту же переустановку.
+    /// </summary>
+    [AvaloniaFact]
+    public void Service_of_the_same_version_from_other_sources_is_offered_the_update()
+    {
+        Assert.SkipWhen(AppInfo.Build.Length == 0, "окно собрано не из git — коммита в версии нет");
+        ScriptedService? service = null;
+        Installer.IsAvailable = true;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Details = new ServiceDetails(AppInfo.Version, ContractMapping.ApiVersion, [], "0123456789abcdef"),
+        });
+        Installer.OnInstalled = () => service!.Details = service.Details! with { Build = AppInfo.Build };
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
+
+        page.ServiceMatch.ShouldBe(ServiceMatch.OtherBuild);
+        page.ServiceNotice.ShouldStartWith($"Служба собрана из других исходников (0123456), чем окно ({AppInfo.Build[..Math.Min(7, AppInfo.Build.Length)]})");
+        Find<Button>(window, "UpdateService").IsEffectivelyVisible.ShouldBeTrue("та же кнопка, что у службы прежней версии");
+
+        Press(window, "UpdateService");
+        Dispatcher.UIThread.RunJobs();
+
+        Installer.Installs.ShouldBe(1, "переустановка из этой копии программы");
+        page.HasServiceNotice.ShouldBeFalse("после переустановки служба — из тех же исходников");
+    }
+
     [Fact]
     public void License_list_covers_every_package_the_app_ships()
     {

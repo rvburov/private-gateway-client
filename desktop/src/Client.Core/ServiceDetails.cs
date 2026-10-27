@@ -4,7 +4,8 @@ namespace PrivateGateway.Client.Core;
 /// <param name="Version">Версия службы (SemVer, без метаданных сборки).</param>
 /// <param name="ApiVersion">Версия контракта IPC: «1».</param>
 /// <param name="Cores">Ядра, которые служба нашла рядом с собой.</param>
-public sealed record ServiceDetails(string Version, string ApiVersion, IReadOnlyList<CoreDetails> Cores)
+/// <param name="Build">Сборка службы — коммит исходников (<see cref="SemVer.Build"/>); неизвестна — пусто.</param>
+public sealed record ServiceDetails(string Version, string ApiVersion, IReadOnlyList<CoreDetails> Cores, string Build = "")
 {
     /// <summary>Ядро по имени (xray, sing-box), если оно есть и запускается.</summary>
     public CoreDetails? Core(string name) => Cores.FirstOrDefault(c => c.Name == name && c.Available);

@@ -10,6 +10,16 @@ public static partial class SemVer
     public static bool IsValid(string? version) => version is not null && Pattern().IsMatch(version);
 
     /// <summary>
+    /// Метаданные сборки — то, что после «+»: у сборки из git .NET кладет туда коммит исходников («0.1.0+e7ddb17…»); нет — пусто.
+    /// По ним окно узнает службу из других исходников той же версии (<see cref="Compare"/> их не учитывает).
+    /// </summary>
+    public static string Build(string? version)
+    {
+        var plus = version?.IndexOf('+', StringComparison.Ordinal) ?? -1;
+        return plus < 0 ? string.Empty : version![(plus + 1)..].Trim();
+    }
+
+    /// <summary>
     /// Порядок версий SemVer 2.0: числа «1.2.3» по значению, выпуск старше своей предварительной версии («1.2.3-beta»),
     /// метаданные сборки («+abc») не в счет. Части предварительной версии: числа по значению и младше слов.
     /// </summary>

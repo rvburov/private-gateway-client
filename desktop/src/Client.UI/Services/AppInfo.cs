@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using PrivateGateway.Client.Core;
 
 namespace PrivateGateway.Client.UI.Services;
 
@@ -12,6 +13,13 @@ public static class AppInfo
     /// </summary>
     public static string Version { get; } =
         typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
+
+    /// <summary>
+    /// Коммит исходников окна (<see cref="SemVer.Build"/>): сборки из исходников — все 0.1.0, и установленную службу из
+    /// прежних исходников окно узнает по нему.
+    /// </summary>
+    public static string Build { get; } =
+        SemVer.Build(typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);
 
     /// <summary>Имя ОС для подписей («Запуск вместе с Windows»): программа одна на три ОС.</summary>
     public static string OsName =>

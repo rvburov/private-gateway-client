@@ -49,6 +49,18 @@ public sealed class ServiceHostTests : IDisposable
         }
     }
 
+    /// <summary>Служба называет коммит своих исходников — по нему окно узнает установленную службу из прежних исходников.</summary>
+    [Fact]
+    public void Service_info_names_the_build_of_its_sources()
+    {
+        Assert.SkipWhen(!Path.Exists(Path.Combine(XrayKit.Root, ".git")), "сборка не из git — коммита в версии нет");
+        var info = ServiceHost.Info(null);
+
+        info.ServiceBuild.ShouldBe(ServiceVersion.Build);
+        info.ServiceBuild.ShouldMatch("^[0-9a-f]{7,40}$", "сборка из git — коммит в метаданных версии");
+        info.ServiceVersion.ShouldNotContain("+", customMessage: "версия — без метаданных, ее сверяет SemVer");
+    }
+
     [Fact]
     public void System_proxy_belongs_to_the_service_that_may_change_it()
     {

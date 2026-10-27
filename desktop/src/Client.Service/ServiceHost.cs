@@ -135,6 +135,7 @@ public static partial class ServiceHost
         var info = new V1.ServiceInfo
         {
             ServiceVersion = ServiceVersion.Current,
+            ServiceBuild = ServiceVersion.Build,
             ApiVersion = ContractMapping.ApiVersion,
             Os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
         };

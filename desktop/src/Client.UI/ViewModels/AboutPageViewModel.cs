@@ -300,8 +300,13 @@ public sealed partial class AboutPageViewModel : ObservableObject
     /// <summary>Hysteria2 и TUIC ведет sing-box за Xray (решение 452) — его версия от службы.</summary>
     public string SecondCore => _details?.Core("sing-box") is { } engine ? Loc.Instance.Format("core.second.engine", engine.Version) : Loc.Instance["core.version.none"];
 
-    /// <summary>Служба другой версии, чем окно: программу обновили, а службу нет (или наоборот).</summary>
-    public ServiceMatch ServiceMatch => _details is { } details ? ServiceVersions.Compare(AppInfo.Version, details, ContractMapping.ApiVersion) : ServiceMatch.Same;
+    /// <summary>
+    /// Служба другой версии, чем окно: программу обновили, а службу нет (или наоборот); у сборки из исходников — той же
+    /// версии, но из других исходников (коммит).
+    /// </summary>
+    public ServiceMatch ServiceMatch => _details is { } details
+        ? ServiceVersions.Compare(AppInfo.Version, details, ContractMapping.ApiVersion, AppInfo.Build)
+        : ServiceMatch.Same;
 
     public bool HasServiceNotice => ServiceMatch != ServiceMatch.Same || UpdateFailed;
 
@@ -310,8 +315,12 @@ public sealed partial class AboutPageViewModel : ObservableObject
         ServiceMatch.Older => Loc.Instance.Format("about.service.older", _details!.Version, AppInfo.Version),
         ServiceMatch.Newer => Loc.Instance.Format("about.service.newer", _details!.Version, AppInfo.Version),
         ServiceMatch.Incompatible => Loc.Instance.Format("about.service.incompatible", _details!.Version, AppInfo.Version),
+        ServiceMatch.OtherBuild => Loc.Instance.Format("about.service.otherBuild", Short(_details!.Build), Short(AppInfo.Build)),
         _ => string.Empty,
     };
+
+    // Коммит — первыми 7 знаками, как его показывает git.
+    private static string Short(string build) => build.Length > 7 ? build[..7] : build;
 
     /// <summary>Переустановить службу из этой копии программы — та же установка, что «Установить службу».</summary>
     public bool CanUpdateService => ServiceMatch != ServiceMatch.Same && _installer.IsAvailable && _gateway.Service == ServiceKind.Installed && !IsUpdatingService;
