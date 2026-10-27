@@ -1412,5 +1412,17 @@
   "ios.import.qr.camera.failed": "The camera is unavailable: allow access in iOS Settings (Private Gateway → Camera) or choose an image",
   "ios.prot.ks.text": "While protection is on, iOS sends traffic only through the tunnel: during a drop, a core failure or a reconnect it waits instead of going direct. When off, traffic may bypass the VPN at those moments.",
   "ios.settings.language": "as in the system — change it in iOS Settings: Private Gateway → Language",
-  "ios.keychain": "Keychain"
+  "ios.keychain": "Keychain",
+  "ios.inspect.title": "iPhone network",
+  "ios.inspect.note": "Read only: this is how iOS sees the networks. iOS does not show apps network addresses, gateways or DNS, and there is no ping or path — ICMP is unavailable to apps; DNS, TCP and TLS probes check a host.",
+  "ios.inspect.none": "iOS reported no networks",
+  "ios.inspect.online": "internet access",
+  "ios.inspect.offline": "no internet access",
+  "ios.inspect.constrained": "Low Data Mode",
+  "ios.inspect.supports": "Supports: {0}",
+  "ios.log.title": "Tunnel log",
+  "ios.log.note": "No server addresses, keys or subscription addresses; the last 200 entries, time in UTC.",
+  "ios.log.empty": "No entries yet.",
+  "ios.log.copy": "Copy log",
+  "ios.log.refresh": "Refresh"
 }

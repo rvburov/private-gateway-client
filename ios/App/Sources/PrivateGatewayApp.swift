@@ -24,12 +24,13 @@ struct PrivateGatewayApp: App {
     }
 }
 
-/// Окно — как `AppScreen` Android: разделы островка (главная, серверы, настройки), карточка сервера поверх списка, «Добавить» поверх
+/// Окно — как `AppScreen` Android: разделы островка (главная, серверы, проверка, настройки), карточка сервера поверх списка, «Добавить» поверх
 /// всего. Вернулись в приложение — серверы, настройки и состояние перечитываются: их мог поменять «Пункт управления» или
 /// расширение туннеля.
 struct RootView: View {
     @ObservedObject var model: AppModel
     @StateObject private var importing: ImportModel
+    @StateObject private var inspector = InspectorModel()
     @State private var tab = AppTab.home
     @State private var adding = false
     /// Открытая карточка сервера (доска 11) — страница поверх списка серверов.
@@ -139,6 +140,14 @@ struct RootView: View {
                     onAdd: { adding = true }
                 )
             }
+        case .check:
+            CheckView(
+                texts: model.texts, status: model.home.status, killSwitch: model.settings.killSwitch, core: model.coreVersion, networks: inspector.networks,
+                ip: inspector.ip, log: model.log, onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected) } },
+                onDescribe: { Task { await inspector.describe() } }, onRefreshLog: { Task { await model.reload() } }
+            )
+            .onAppear { inspector.start() }
+            .onDisappear { inspector.stop() }
         case .settings:
             SettingsView(
                 texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,

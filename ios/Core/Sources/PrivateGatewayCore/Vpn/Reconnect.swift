@@ -181,11 +181,28 @@ public protocol GuardTimer: Sendable {
     func wait(until at: Int) async throws -> Bool
 }
 
-/// Куда идет проба связи через туннель — тот же адрес, что у Android и десктопа (`PingBatch.TARGET`): TLS к нему проходит
-/// только через ядро и сервер защиты.
+/// Проба связи через туннель из расширения: запрос HEAD к Cloudflare по адресу, а не по имени — проба не спрашивает DNS
+/// мимо туннеля (свои запросы расширения iOS в туннель не пускает). Ответ приходит только через ядро и сервер защиты; любая
+/// строка состояния HTTP — связь есть, как у `TunnelProbe` Android и десктопа.
 public enum TunnelProbe {
-    public static let host = "cp.cloudflare.com"
-    public static let port = 443
+    public static let host = "1.1.1.1"
+    public static let port = 80
+    public static let request = "HEAD / HTTP/1.1\r\nHost: \(host)\r\nConnection: close\r\n\r\n"
+    /// Сколько байт ответа достаточно: «HTTP/1.1 301».
+    public static let headLength = 12
+
+    /// Начало ответа — строка состояния «HTTP/1.x NNN»: версия, пробел, три цифры, дальше пробел, конец строки или конец
+    /// прочитанного.
+    public static func answered(_ head: [UInt8]) -> Bool {
+        let digit = { (byte: UInt8) in (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte) }
+        guard head.count >= headLength, head.starts(with: "HTTP/1.".utf8), digit(head[7]), head[8] == UInt8(ascii: " "),
+              head[9..<12].allSatisfy(digit)
+        else {
+            return false
+        }
+
+        return head.count == headLength || [UInt8(ascii: " "), UInt8(ascii: "\r"), UInt8(ascii: "\n")].contains(head[12])
+    }
 }
 
 /// Часы наблюдения на настоящем времени: монотонные (`ContinuousClock` идет и во сне iPhone, перевод часов его не сдвигает);

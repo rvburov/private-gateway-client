@@ -25,6 +25,8 @@ final class AppModel: ObservableObject {
     @Published var message: String?
     /// Нажали уведомление, которое ведет на свой экран; окно переходит туда и сбрасывает.
     @Published var route: AppRoute?
+    /// Журнал расширения туннеля для «Проверки».
+    @Published private(set) var log: [String] = []
 
     let texts: PgTexts
     let container: SharedContainer
@@ -107,6 +109,7 @@ final class AppModel: ObservableObject {
         }
 
         coreVersion = container.coreVersion.read()
+        log = container.log.lines()
         refreshStatus()
     }
 

@@ -28,6 +28,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private var path: NWPathMonitor?
     private var reported = TunnelStatus()
     private var serverName: String?
+    private var probeNote: String?
     private let desk = NoticeDesk()
 
     // В изоляции вызывающего, как метод суперкласса: словарь параметров (NSObject — не Sendable) никуда не пересылается.
@@ -49,6 +50,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             return nil
         }
 
+        container.log.add("reload")
         do {
             try await work.run { try await self.bringUp(reporting: true) }
             reasserting = false
@@ -62,6 +64,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     }
 
     override func stopTunnel(with reason: NEProviderStopReason) async {
+        container.log.add("stopped, reason \(reason.rawValue)")
         stopWatching()
         await work.run { self.stopCore() }
         report(TunnelStatus())
@@ -92,6 +95,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         try TunnelLaunch.started(LibXrayInvoke(XrayConfig.runRequest(launch.config(tunFd: fd))))
         if reporting {
             report(TunnelStatus(state: .connected, serverId: launch.serverId, since: Date()))
+            container.log.add("connected")
         }
 
         reportCoreVersion()
@@ -135,27 +139,34 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         previous.1?.cancel()
     }
 
-    /// Проба связи через туннель — как `TunnelProbe` Android: TLS к проверочному адресу через сам туннель (свои соединения
-    /// расширения iOS иначе пускает мимо). Рукопожатие TLS доходит до сервера сайта только через ядро и сервер защиты:
-    /// удалось за 10 секунд — связь есть.
+    /// Проба связи через туннель — как `TunnelProbe` Android: запрос к проверочному адресу через сам туннель (сокет привязан
+    /// к интерфейсу utun — свои соединения расширения iOS иначе пускает мимо), ответ доходит только через ядро и сервер защиты.
+    /// Пробу не удалось даже начать (нет интерфейса, система не дала привязать сокет) — это не обрыв: наблюдение считает
+    /// связь живой, причина — в журнал туннеля, один раз.
     private func probe() async -> Bool {
-        let connection = createTCPConnectionThroughTunnel(
-            to: NWHostEndpoint(hostname: TunnelProbe.host, port: String(TunnelProbe.port)), enableTLS: true, tlsParameters: nil, delegate: nil
-        )
-        defer { connection.cancel() }
-        let deadline = timer.now() + ReconnectTiming().probeTimeout
-        while timer.now() < deadline {
-            switch connection.state {
-            case .connected:
-                return true
-            case .disconnected, .cancelled, .invalid:
-                return false
-            default:
-                try? await Task.sleep(nanoseconds: 100_000_000)
+        let timeout = ReconnectTiming().probeTimeout
+        let answer = await withCheckedContinuation { (continuation: CheckedContinuation<ProbeAnswer, Never>) in
+            DispatchQueue.global(qos: .utility).async {
+                continuation.resume(returning: TunnelInterface.name().map { SocketProbe.run(interface: $0, timeout: timeout) } ?? .unavailable("no utun"))
             }
         }
 
-        return false
+        switch answer {
+        case .answered:
+            return true
+        case .silent:
+            return false
+        case let .unavailable(reason):
+            let first = locked { () -> Bool in
+                defer { probeNote = reason }
+                return probeNote != reason
+            }
+            if first {
+                log.error("probe unavailable: \(reason, privacy: .public)")
+                container.log.add("probe unavailable: \(reason)")
+            }
+            return true
+        }
     }
 
     /// Попытка переподключения: новые маршруты и ядро к тому же серверу; nil — удалось, иначе код ошибки.
@@ -166,6 +177,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         } catch {
             let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
             log.error("reconnect \(attempt, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
+            container.log.add("reconnect \(attempt): \(failure.code) \(failure.detail ?? "")")
             return failure.code
         }
     }
@@ -174,16 +186,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     /// «Ошибка». Сдались с блоком при обрыве — туннель остается без ядра: трафик заблокирован, пока пользователь не повторит
     /// или не выберет другой сервер; без блока — туннель закрывается, трафик идет напрямую.
     fileprivate func reconnecting(_ attempt: Int) {
+        container.log.add("connection lost, attempt \(attempt)")
         reasserting = true
         report(TunnelStatus(state: .reconnecting, serverId: currentServer, attempt: attempt))
     }
 
     fileprivate func protectedAgain() {
+        container.log.add("connection restored")
         reasserting = false
         report(TunnelStatus(state: .connected, serverId: currentServer, since: Date()))
     }
 
     fileprivate func gaveUp(_ error: String) async {
+        container.log.add("gave up: \(error)")
         await work.run { self.stopCore() }
         reasserting = false
         report(TunnelStatus(state: .error, serverId: currentServer, error: error))
@@ -201,6 +216,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private func failed(_ error: any Error, _ step: String) -> TunnelFailure {
         let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
         log.error("\(step, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
+        container.log.add("\(step): \(failure.code) \(failure.detail ?? "")")
         stopWatching()
         stopCore()
         report(TunnelStatus(state: .error, error: failure.code))
@@ -211,6 +227,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         let response = XrayResponse.parse(LibXrayInvoke(XrayConfig.invoke("stopXray")))
         if !response.success {
             log.error("stop: \(SecretMasker.mask(response.error), privacy: .public)")
+            container.log.add("core stop: \(response.error ?? "")")
         }
     }
 
@@ -364,6 +381,15 @@ enum TunnelInterface {
     private static let utunOptIfname: Int32 = 2
 
     static func descriptor() -> Int32? {
+        find()?.fd
+    }
+
+    /// Имя интерфейса туннеля (utunN) — к нему привязывается сокет пробы.
+    static func name() -> String? {
+        find()?.name
+    }
+
+    private static func find() -> (fd: Int32, name: String)? {
         var name = [UInt8](repeating: 0, count: 16) // IFNAMSIZ
         for fd: Int32 in 0...1024 {
             var length = socklen_t(name.count)
@@ -371,11 +397,124 @@ enum TunnelInterface {
                 continue
             }
 
-            if String(decoding: name.prefix { $0 != 0 }, as: UTF8.self).hasPrefix("utun") {
-                return fd
+            let text = String(decoding: name.prefix { $0 != 0 }, as: UTF8.self)
+            if text.hasPrefix("utun") {
+                return (fd, text)
             }
         }
 
         return nil
+    }
+}
+
+/// Итог пробы: ответил сервер сайта, промолчал (обрыв, если дважды подряд) или пробу не удалось начать.
+enum ProbeAnswer: Sendable {
+    case answered
+    case silent
+    case unavailable(String)
+}
+
+/// Проба на сокетах BSD: TCP к `TunnelProbe.host` через интерфейс туннеля (IP_BOUND_IF), запрос HEAD, ждать строку
+/// состояния HTTP не дольше `timeout`. Соединение с интерфейсом туннеля принимает само ядро, поэтому молчание после него —
+/// нет связи дальше ядра. Отказ системы сразу (нет прав, нет маршрута) — пробу начать не удалось. Блокирует поток.
+enum SocketProbe {
+    /// Параметр setsockopt из <netinet/in.h>: IP_BOUND_IF — привязать сокет к интерфейсу по номеру.
+    private static let ipBoundIf: Int32 = 25
+
+    static func run(interface: String, timeout: Int) -> ProbeAnswer {
+        let index = if_nametoindex(interface)
+        guard index != 0 else {
+            return .unavailable("no interface \(interface)")
+        }
+
+        let fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+        guard fd >= 0 else {
+            return .unavailable("socket errno \(errno)")
+        }
+
+        defer { close(fd) }
+        var bound = Int32(bitPattern: index)
+        guard setsockopt(fd, IPPROTO_IP, ipBoundIf, &bound, socklen_t(MemoryLayout<Int32>.size)) == 0 else {
+            return .unavailable("bind errno \(errno)")
+        }
+
+        var on: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) | O_NONBLOCK)
+
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(TunnelProbe.port).bigEndian
+        guard inet_pton(AF_INET, TunnelProbe.host, &address.sin_addr) == 1 else {
+            return .unavailable("address")
+        }
+
+        let deadline = DispatchTime.now().uptimeNanoseconds + UInt64(timeout) * 1_000_000
+        let started = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        if started != 0 {
+            let code = errno
+            guard code == EINPROGRESS else {
+                return refused(code)
+            }
+        }
+
+        guard ready(fd, Int16(POLLOUT), deadline) else {
+            return .silent
+        }
+
+        var failure: Int32 = 0
+        var length = socklen_t(MemoryLayout<Int32>.size)
+        _ = getsockopt(fd, SOL_SOCKET, SO_ERROR, &failure, &length)
+        if failure != 0 {
+            return refused(failure)
+        }
+
+        let request = Array(TunnelProbe.request.utf8)
+        let sent = request.withUnsafeBytes { send(fd, $0.baseAddress, $0.count, 0) }
+        guard sent == request.count else {
+            return .silent
+        }
+
+        var head: [UInt8] = []
+        var buffer = [UInt8](repeating: 0, count: 256)
+        while head.count < TunnelProbe.headLength, ready(fd, Int16(POLLIN), deadline) {
+            let count = buffer.withUnsafeMutableBytes { recv(fd, $0.baseAddress, $0.count, 0) }
+            guard count > 0 else {
+                break
+            }
+
+            head += buffer[0..<count]
+        }
+
+        return TunnelProbe.answered(head) ? .answered : .silent
+    }
+
+    /// Отказ при соединении: запрет и «нет маршрута» дает система (сокет не пустили в туннель) — пробу начать не удалось;
+    /// сброс и прочее — ответ ядра: дальше него связи нет.
+    private static func refused(_ code: Int32) -> ProbeAnswer {
+        [EPERM, EACCES, ENETUNREACH, EHOSTUNREACH, ENETDOWN, EADDRNOTAVAIL].contains(code) ? .unavailable("connect errno \(code)") : .silent
+    }
+
+    /// Ждать готовности сокета до срока (закрытие и ошибка — тоже готовность: их покажут SO_ERROR и recv); false — срок вышел.
+    private static func ready(_ fd: Int32, _ events: Int16, _ deadline: UInt64) -> Bool {
+        while true {
+            let now = DispatchTime.now().uptimeNanoseconds
+            guard now < deadline else {
+                return false
+            }
+
+            var descriptor = pollfd(fd: fd, events: events, revents: 0)
+            let count = poll(&descriptor, 1, Int32(min((deadline - now) / 1_000_000 + 1, 1000)))
+            if count > 0 {
+                return descriptor.revents & (events | Int16(POLLHUP) | Int16(POLLERR)) != 0
+            }
+
+            if count < 0, errno != EINTR {
+                return false
+            }
+        }
     }
 }

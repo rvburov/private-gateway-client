@@ -6,6 +6,7 @@ import SwiftUI
 enum AppTab: Hashable {
     case home
     case servers
+    case check
     case settings
 }
 
@@ -23,7 +24,7 @@ struct Island: View {
         let lift = PgLayout.PowerButton.size / 2
         let shape = RoundedRectangle(cornerRadius: PgLayout.Island.cornerRadius, style: .continuous)
         ZStack(alignment: .top) {
-            // Половины по обе стороны кнопки — равной ширины: подпись под кнопкой остается посередине при любом числе разделов.
+            // Половины по обе стороны кнопки — равной ширины: подпись под кнопкой остается посередине.
             HStack(spacing: 0) {
                 HStack(spacing: 0) {
                     NavItem(texts: texts, icon: PgIcons.navHome, detail: nil, label: texts.navHome, active: tab == .home) { onTab(.home) }
@@ -36,6 +37,10 @@ struct Island: View {
                 .frame(maxWidth: .infinity)
                 powerLabel.frame(width: PgLayout.PowerButton.size)
                 HStack(spacing: 0) {
+                    NavItem(texts: texts, icon: PgIcons.navCheck, detail: PgIcons.navCheckDetail, label: texts.navCheck, active: tab == .check) {
+                        onTab(.check)
+                    }
+                    .accessibilityIdentifier("nav.check")
                     NavItem(texts: texts, icon: PgIcons.navSettings, detail: PgIcons.navSettingsDetail, label: texts.navSettings, active: tab == .settings) {
                         onTab(.settings)
                     }

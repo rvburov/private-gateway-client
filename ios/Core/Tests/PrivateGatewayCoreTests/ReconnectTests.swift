@@ -34,6 +34,25 @@ final class ReconnectTests: XCTestCase {
         XCTAssertEqual(ReconnectPolicy.read("Sometimes"), backoff, "имя из будущей версии")
     }
 
+    func testProbeAsksAnAddressSoNoDnsLeavesTheTunnel() {
+        let octets = TunnelProbe.host.split(separator: ".")
+        XCTAssertEqual(octets.count, 4)
+        XCTAssertTrue(octets.allSatisfy { UInt8($0) != nil }, "адрес, а не имя")
+        XCTAssertTrue(TunnelProbe.request.hasPrefix("HEAD / HTTP/1.1\r\n"))
+        XCTAssertTrue(TunnelProbe.request.contains("\r\nHost: \(TunnelProbe.host)\r\n"))
+        XCTAssertTrue(TunnelProbe.request.hasSuffix("\r\n\r\n"), "конец заголовков, иначе сервер ждет")
+    }
+
+    func testAnyHttpStatusLineIsAnAnswer() {
+        for head in ["HTTP/1.1 301 Moved Permanently\r\n", "HTTP/1.1 204", "HTTP/1.0 403 Forbidden\r\nServer: x", "HTTP/1.1 500\r\n"] {
+            XCTAssertTrue(TunnelProbe.answered(Array(head.utf8)), head)
+        }
+        for head in ["", "HTTP/1.1", "HTTP/1.1 ", "HTTP/1.1 30", "HTTP/1.1 3O1", "HTTP/1.1 2041", "HTTP/2 200", "SSH-2.0-OpenSSH_9.6\r\n", "\u{16}\u{3}\u{3}"] {
+            XCTAssertFalse(TunnelProbe.answered(Array(head.utf8)), head)
+        }
+        XCTAssertGreaterThanOrEqual(TunnelProbe.headLength, "HTTP/1.1 301".utf8.count)
+    }
+
     func testServerIsProbedOnceAMinuteWhileItAnswers() {
         let watch = HealthWatch(now: 5 * minute)
         XCTAssertEqual(watch.nextProbeAt, 6 * minute)

@@ -104,7 +104,7 @@ final class ScreensTests: XCTestCase {
         }
 
         for state in TunnelState.allCases {
-            for tab in [AppTab.home, .servers, .settings] {
+            for tab in [AppTab.home, .servers, .check, .settings] {
                 let island = Island(texts: texts, tab: tab, state: state, hasServer: state != .off, onTab: { _ in }, onPower: {})
                 XCTAssertNotNil(try render(island, height: 160))
             }
@@ -295,5 +295,29 @@ final class ScreensTests: XCTestCase {
             TunnelStatus(state: .connecting), TunnelStatus(state: .error, error: TunnelErrors.coreFailed), server: nil, killSwitch: false
         ))
         XCTAssertTrue(Notifications.words(failed, PgTexts(.russian)).body.contains(TunnelErrors.coreFailed), "код ошибки — в тексте")
+    }
+
+    @MainActor
+    func testCheckDrawsInEveryStateAndLanguage() {
+        let networks = PhoneNetworks.order([
+            PhoneNetwork(kind: .vpn, name: "utun4", isDefault: true, expensive: true, constrained: true, ipv6: true),
+            PhoneNetwork(kind: .wifi, name: "en0", isDefault: false), PhoneNetwork(kind: .cellular, name: "pdp_ip0", isDefault: false),
+        ])
+        let known = PublicIp(address: "203.0.113.24", viaServer: true, info: AddressInfo(
+            address: "203.0.113.24", asn: 64500, holder: "EXAMPLE-AS", prefix: "203.0.113.0/24", country: "NL", city: "Amsterdam", failure: nil
+        ))
+        let ips = [PublicIp(), PublicIp(measuring: true), PublicIp(failed: true), known, PublicIp(address: "192.0.2.1", info: .failed("192.0.2.1", .private))]
+        for language in PgTexts.Language.allCases {
+            for state in TunnelState.allCases {
+                for ip in ips {
+                    let status = TunnelStatus(state: state, serverId: "a", error: state == .error ? TunnelErrors.serverNotResponding : nil)
+                    let view = CheckView(
+                        texts: PgTexts(language), status: status, killSwitch: true, core: "26.3.27", networks: state == .off ? [] : networks, ip: ip,
+                        log: state == .connected ? ["2026-10-27 13:05:42 connected", "2026-10-27 13:07:01 connection lost, attempt 1"] : []
+                    )
+                    XCTAssertNotNil(try? render(view, height: 2400), "\(state)")
+                }
+            }
+        }
     }
 }
