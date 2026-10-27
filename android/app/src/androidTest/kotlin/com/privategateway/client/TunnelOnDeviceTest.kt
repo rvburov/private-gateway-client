@@ -28,9 +28,10 @@ import kotlin.test.assertTrue
 
 /**
  * Настоящий туннель на эмуляторе (пункт 9.4): VpnService, ядро libXray и сервер Xray на машине CI
- * (scripts/android-test-server.sh; эмулятор видит машину как 10.0.2.2). Проверочный адрес 198.51.100.7 — из диапазона
- * документации: напрямую его нет, сервер отправляет все соединения на свой HTTP с ответом «pg-tunnel-ok». Ответ пришел —
- * трафик шел через туннель; после отключения адрес снова недоступен.
+ * (scripts/android-test-server.sh; эмулятор видит машину как 10.0.2.2). Проверочный адрес 1.1.1.1:18081 напрямую не
+ * отвечает (на этом порту там ничего нет), а сервер отправляет соединения на порт 18081 на свой HTTP с ответом
+ * «pg-tunnel-ok». Ответ пришел — трафик шел через туннель; после отключения адрес снова недоступен. Адрес публичный:
+ * диапазоны документации клиент сам закрывает как особые сети (решение 446).
  */
 @RunWith(AndroidJUnit4::class)
 class TunnelOnDeviceTest {
@@ -151,9 +152,9 @@ class TunnelOnDeviceTest {
      * касается, а с ним и проверка «напрямую недоступен» проходила бы сама — отказом политики, а не сети.
      */
     private fun fetch(): String = Socket().use { socket ->
-        socket.connect(InetSocketAddress(PROBE, 80), 5_000)
+        socket.connect(InetSocketAddress(PROBE, PROBE_PORT), 5_000)
         socket.soTimeout = 5_000
-        socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: $PROBE\r\nConnection: close\r\n\r\n".toByteArray())
+        socket.getOutputStream().write("GET / HTTP/1.1\r\nHost: $PROBE:$PROBE_PORT\r\nConnection: close\r\n\r\n".toByteArray())
         socket.getInputStream().bufferedReader().readText().substringAfter("\r\n\r\n")
     }
 
@@ -171,7 +172,8 @@ class TunnelOnDeviceTest {
     private companion object {
         const val HOST = "10.0.2.2"
         const val PORT = 10086
-        const val PROBE = "198.51.100.7"
+        const val PROBE = "1.1.1.1"
+        const val PROBE_PORT = 18081
 
         /** VLESS без TLS к серверу на машине CI; UUID — заведомо ненастоящий, из примеров. */
         const val LINK = "vless://11111111-2222-3333-4444-555555555555@$HOST:$PORT?encryption=none&security=none&type=tcp#Emulator"
