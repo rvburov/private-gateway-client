@@ -6,7 +6,7 @@ import VisionKit
 import SwiftUI
 
 /// QR-код на устройстве, без сети: картинка из ссылки — CoreImage (как `QrCode` Android на ZXing: уровень коррекции M, поле
-/// в четыре модуля), текст с картинки — Vision.
+/// в четыре модуля), текст с картинки — Vision, а если он кода не нашел — детектор CoreImage (решение 461).
 enum QrCode {
     /// Поле вокруг кода в модулях — по стандарту QR, иначе камеры и Vision находят код хуже.
     static let quietZone: CGFloat = 4
@@ -36,12 +36,23 @@ enum QrCode {
         }
     }
 
-    /// Текст первого QR-кода на картинке; кода нет — nil.
-    static func read(_ image: CGImage) throws -> String? {
+    /// Текст первого QR-кода на картинке; кода нет — nil. Vision лучше находит код на фото (наклон, мелкий код), но без
+    /// нейронного ускорителя (симулятор) ничего не находит — тогда детектор CoreImage, ему ускоритель не нужен.
+    static func read(_ image: CGImage) -> String? {
+        vision(image) ?? coreImage(image)
+    }
+
+    private static func vision(_ image: CGImage) -> String? {
         let request = VNDetectBarcodesRequest()
         request.symbologies = [.qr]
-        try VNImageRequestHandler(cgImage: image).perform([request])
+        try? VNImageRequestHandler(cgImage: image).perform([request])
         return request.results?.compactMap(\.payloadStringValue).first
+    }
+
+    private static func coreImage(_ image: CGImage) -> String? {
+        let detector = CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh])
+        let features = detector?.features(in: CIImage(cgImage: image)) ?? []
+        return features.compactMap { ($0 as? CIQRCodeFeature)?.messageString }.first
     }
 
     /// Текст QR-кода с картинки из Фото; картинку не открыть — ошибка, кода нет — nil.
@@ -50,7 +61,7 @@ enum QrCode {
             throw QrFailure.unreadable
         }
 
-        return try read(image)
+        return read(image)
     }
 
     /// Умеет ли iPhone сканировать камерой: VisionKit на этом устройстве и камера доступна (разрешение не отозвано).

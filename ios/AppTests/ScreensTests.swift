@@ -66,7 +66,7 @@ final class ScreensTests: XCTestCase {
         for link in links {
             let image = try XCTUnwrap(QrCode.image(link), link)
             let cg = try XCTUnwrap(image.cgImage)
-            XCTAssertEqual(try QrCode.read(cg), link)
+            XCTAssertEqual(QrCode.read(cg), link)
         }
     }
 
