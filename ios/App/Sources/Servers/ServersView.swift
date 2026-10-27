@@ -12,6 +12,8 @@ struct ServersView: View {
     var onSelect: (String) -> Void = { _ in }
     var onOpen: (String) -> Void = { _ in }
     var onAdd: () -> Void = {}
+    /// «Обновить»: задержка серверов через ядро — только без защиты; пока идет замер, кнопка гаснет (решение 430).
+    var onRefresh: () -> Void = {}
 
     @State private var filterOpen = false
 
@@ -23,6 +25,10 @@ struct ServersView: View {
                 HStack {
                     Text(texts.navServers).pgText(PgType.h1).foregroundStyle(Color(PgColor.Text.primary))
                     Spacer()
+                    if !home.servers.isEmpty {
+                        PgRoundButton(icon: PgIcons.refresh, label: texts.serverRefresh, enabled: !home.measuring, identifier: "servers.refresh", action: onRefresh)
+                    }
+
                     PgRoundButton(icon: PgIcons.plus, label: texts.headerAdd, identifier: "servers.add", action: onAdd)
                 }
                 .padding(.top, PgSpace.l)

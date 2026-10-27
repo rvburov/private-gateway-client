@@ -40,6 +40,12 @@ final class AppModel: ObservableObject {
     /// Отказ самого приложения (iOS не дала сохранить профиль VPN): показывается как ошибка, пока туннель не поднимется.
     private var appError: String?
 
+    /// Замер задержки серверов через ядро в процессе приложения — только без защиты (решения 430 и 468).
+    private lazy var meter = LatencyMeter(
+        servers: container.servers, settings: container.settings, off: { [weak self] in await self?.protectionOff ?? false },
+        ping: { await LatencyEngine.ping($0) }
+    )
+
     init(container: SharedContainer = .current(), texts: PgTexts = .current, source: any SubscriptionSource = SubscriptionDownloader()) {
         self.container = container
         self.texts = texts
@@ -127,6 +133,28 @@ final class AppModel: ObservableObject {
     }
 
     private var connected: Bool { home.status.state == .connected }
+
+    private var protectionOff: Bool { home.status.state == .off }
+
+    /// «Обновить» на главной и в «Серверах»: задержка всех серверов через ядро — только без защиты. Замер уже идет — нажатие
+    /// не считается; защита включена или включилась во время замера — сообщение, почему не мерили. Список перечитывается
+    /// после каждой порции.
+    func refreshLatency() async {
+        home.measuring = true
+        let result = await meter.measure { [weak self] in
+            await self?.reload()
+        }
+        if result != .running {
+            home.measuring = false
+        }
+
+        await reload()
+        switch result {
+        case .done: message = texts.androidServersPingDone
+        case .busy: message = texts.androidServersPingBusy
+        case .running: break
+        }
+    }
 
     /// Не пора ли обновить подписки — окно открыто, защита подключилась, раз в 10 минут, пока окно на экране.
     func checkSubscriptions() async {

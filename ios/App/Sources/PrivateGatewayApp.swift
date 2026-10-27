@@ -129,7 +129,8 @@ struct RootView: View {
         case .home:
             HomeView(
                 texts: model.texts, home: model.home, killSwitch: model.settings.killSwitch, onAdd: { adding = true }, onServers: { tab = .servers },
-                onSelect: { id in Task { await model.select(id) } }
+                onSelect: { id in Task { await model.select(id) } }, onRefresh: { Task { await model.refreshLatency() } },
+                onCheck: { tab = .check }
             )
         case .servers:
             if let card {
@@ -137,7 +138,7 @@ struct RootView: View {
             } else {
                 ServersView(
                     texts: model.texts, home: model.home, query: $query, onSelect: { id in Task { await model.select(id) } }, onOpen: { card = $0 },
-                    onAdd: { adding = true }
+                    onAdd: { adding = true }, onRefresh: { Task { await model.refreshLatency() } }
                 )
             }
         case .check:

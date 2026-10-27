@@ -43,6 +43,11 @@ targets:
       - package: PrivateGatewayCore
         product: PrivateGatewayTheme
       - target: PacketTunnel
+      # Ядро в приложении — только для замера задержки без защиты (pingBatch, решение 468): тот же libXray, что в
+      # расширении туннеля, вшивается в приложение отдельно.
+      - framework: Frameworks/LibXray.xcframework
+        embed: false
+      - sdk: libresolv.tbd
     info:
       path: App/Info.plist
       properties:
