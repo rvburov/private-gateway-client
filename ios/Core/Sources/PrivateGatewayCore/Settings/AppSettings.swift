@@ -15,7 +15,8 @@ public struct SubscriptionSettings: Equatable, Sendable {
 }
 
 /// Настройки приложения, общие с расширением туннеля, — как `SettingsRepository` Android: выбранный сервер (меняется только
-/// нажатием пользователя), туннель — DNS, IPv6 через сервер, локальная сеть, — блок при обрыве и подписки.
+/// нажатием пользователя), туннель — DNS, IPv6 через сервер, локальная сеть, — блок при обрыве, подписки, уведомления и
+/// переподключение.
 public struct AppSettings: Equatable, Sendable {
     public var selectedServerId: String?
     public var tunnel: TunnelSettings
@@ -23,15 +24,21 @@ public struct AppSettings: Equatable, Sendable {
     /// для защиты.
     public var killSwitch: Bool
     public var subscriptions: SubscriptionSettings
+    /// Какие уведомления показывать; по умолчанию «Только важные».
+    public var notifications: NotificationLevel
+    /// Что делать при обрыве связи с сервером; по умолчанию «Экспоненц. до 60 с».
+    public var reconnect: ReconnectPolicy
 
     public init(
         selectedServerId: String? = nil, tunnel: TunnelSettings = TunnelSettings(), killSwitch: Bool = true,
-        subscriptions: SubscriptionSettings = SubscriptionSettings()
+        subscriptions: SubscriptionSettings = SubscriptionSettings(), notifications: NotificationLevel = .default, reconnect: ReconnectPolicy = .backoff60Seconds
     ) {
         self.selectedServerId = selectedServerId
         self.tunnel = tunnel
         self.killSwitch = killSwitch
         self.subscriptions = subscriptions
+        self.notifications = notifications
+        self.reconnect = reconnect
     }
 }
 
@@ -48,6 +55,8 @@ extension AppSettings: Codable {
         case refresh = "subs_refresh"
         case onlyViaVpn = "subs_only_vpn"
         case notifySelected = "subs_notify_selected"
+        case notifications = "notify_level"
+        case reconnect = "reconnect_policy"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -70,7 +79,8 @@ extension AppSettings: Codable {
                 refresh: refresh.flatMap(RefreshInterval.init(rawValue:)) ?? defaults.subscriptions.refresh,
                 onlyViaVpn: read(.onlyViaVpn) ?? defaults.subscriptions.onlyViaVpn,
                 notifySelected: read(.notifySelected) ?? defaults.subscriptions.notifySelected
-            )
+            ),
+            notifications: NotificationLevel.read(read(.notifications)), reconnect: ReconnectPolicy.read(read(.reconnect))
         )
     }
 
@@ -85,6 +95,8 @@ extension AppSettings: Codable {
         try values.encode(subscriptions.refresh.rawValue, forKey: .refresh)
         try values.encode(subscriptions.onlyViaVpn, forKey: .onlyViaVpn)
         try values.encode(subscriptions.notifySelected, forKey: .notifySelected)
+        try values.encode(notifications.rawValue, forKey: .notifications)
+        try values.encode(reconnect.rawValue, forKey: .reconnect)
     }
 }
 
@@ -99,6 +111,11 @@ public actor SettingsStore {
     }
 
     public func load() throws -> AppSettings {
+        try loadNow()
+    }
+
+    /// То же, что `load`, без очереди актора — для синхронного кода расширения туннеля; только чтение.
+    public nonisolated func loadNow() throws -> AppSettings {
         guard let data = try file.read() else {
             return AppSettings()
         }
@@ -124,6 +141,14 @@ public actor SettingsStore {
 
     public func setSubscriptions(_ subscriptions: SubscriptionSettings) throws {
         try change { $0.subscriptions = subscriptions }
+    }
+
+    public func setNotifications(_ level: NotificationLevel) throws {
+        try change { $0.notifications = level }
+    }
+
+    public func setReconnect(_ policy: ReconnectPolicy) throws {
+        try change { $0.reconnect = policy }
     }
 
     private func change(_ body: (inout AppSettings) -> Void) throws {

@@ -107,6 +107,13 @@ final class HomeStateTests: XCTestCase {
         XCTAssertEqual(TunnelView.status(system: .connected, report: nil, appError: TunnelErrors.otherVpn).state, .connected, "туннель поднят — отказа нет")
     }
 
+    func testGivenUpUnderKillSwitchIsAnErrorWhileTheTunnelStays() {
+        let gaveUp = TunnelStatus(state: .error, serverId: "a", error: TunnelErrors.serverNotResponding)
+        XCTAssertEqual(TunnelView.status(system: .connected, report: gaveUp), gaveUp, "туннель без ядра держит трафик — это не «Защищено»")
+        XCTAssertEqual(TunnelView.status(system: .reasserting, report: gaveUp), gaveUp)
+        XCTAssertEqual(TunnelView.status(system: .connecting, report: gaveUp).state, .connecting, "повтор кнопкой — уже подключение")
+    }
+
     func testVpnProfileFollowsKillSwitchAndLocalNetwork() {
         XCTAssertEqual(VpnProfile.of(AppSettings()), VpnProfile(includeAllNetworks: true, excludeLocalNetworks: false, enforceRoutes: false))
         XCTAssertEqual(

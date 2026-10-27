@@ -38,8 +38,15 @@ final class SharedContainerTests: XCTestCase {
         try tunnel.coreVersion.write("26.10.21\n")
         XCTAssertEqual(app.coreVersion.read(), "26.10.21")
 
+        try app.language.write("ru")
+        XCTAssertEqual(tunnel.language.read(), "ru")
+
         let files = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
-        XCTAssertEqual(files, [SharedContainer.serversFile, SharedContainer.settingsFile, SharedContainer.statusFile, SharedContainer.coreVersionFile].sorted())
+        XCTAssertEqual(
+            files,
+            [SharedContainer.serversFile, SharedContainer.settingsFile, SharedContainer.statusFile, SharedContainer.coreVersionFile, SharedContainer.languageFile]
+                .sorted()
+        )
         let uuid = try XCTUnwrap(server.credentials.uuid)
         for file in files {
             let text = try String(contentsOf: directory.appendingPathComponent(file), encoding: .utf8)

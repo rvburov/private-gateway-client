@@ -1,12 +1,18 @@
 import PrivateGatewayCore
 import PrivateGatewayTheme
 import SwiftUI
+import UserNotifications
 
 /// Приложение iOS (этап 10): окно — главная по доске 25; туннель — расширение PacketTunnel (NEPacketTunnelProvider), им
 /// управляет профиль VPN в настройках iOS (`TunnelController`).
 @main
 struct PrivateGatewayApp: App {
     @StateObject private var model = AppModel()
+
+    init() {
+        // До конца запуска: нажатие на уведомление, которое запустило приложение, приходит сразу.
+        UNUserNotificationCenter.current().delegate = AppNotifications.shared
+    }
 
     var body: some Scene {
         WindowGroup {
@@ -89,6 +95,24 @@ struct RootView: View {
                 try? await Task.sleep(nanoseconds: UInt64(SubscriptionUpdater.checkEvery * 1_000_000_000))
             }
         }
+        .onChange(of: model.route) { route in
+            // Нажали уведомление: «Серверы» или «Профили и подписки».
+            guard let route else {
+                return
+            }
+
+            adding = false
+            card = nil
+            switch route {
+            case .servers:
+                tab = .servers
+            case .subscriptions:
+                tab = .settings
+                settingsPage = .subscriptions
+            }
+
+            model.route = nil
+        }
         .onChange(of: phase) { phase in
             if phase == .active {
                 Task { await model.reload() }
@@ -118,7 +142,8 @@ struct RootView: View {
         case .settings:
             SettingsView(
                 texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,
-                onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } }
+                onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } },
+                onNotifications: { level in Task { await model.setNotifications(level) } }, onReconnect: { policy in Task { await model.setReconnect(policy) } }
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,

@@ -64,7 +64,8 @@ final class AppSettingsTests: XCTestCase {
     func testFileKeysAreTheAndroidNames() async throws {
         try await store.select("server-1")
         let text = String(decoding: try XCTUnwrap(file.read()), as: UTF8.self)
-        for key in ["selected_server", "tunnel_dns", "tunnel_ipv6", "tunnel_allow_lan", "kill_switch", "subs_refresh", "subs_only_vpn", "subs_notify_selected"] {
+        for key in ["selected_server", "tunnel_dns", "tunnel_ipv6", "tunnel_allow_lan", "kill_switch", "subs_refresh", "subs_only_vpn", "subs_notify_selected",
+                    "notify_level", "reconnect_policy"] {
             XCTAssertTrue(text.contains("\"\(key)\""), key)
         }
     }
@@ -72,7 +73,7 @@ final class AppSettingsTests: XCTestCase {
     func testUnknownOrWrongValuesFallBackOneByOne() async throws {
         try file.write(Data("""
         {"selected_server": "server-1", "tunnel_dns": "future", "tunnel_ipv6": true, "kill_switch": "yes",
-         "subs_refresh": "every1Hour", "subs_only_vpn": false, "future_setting": 1}
+         "subs_refresh": "every1Hour", "subs_only_vpn": false, "future_setting": 1, "notify_level": "Silent", "reconnect_policy": "UpTo5Minutes"}
         """.utf8))
         let settings = try await store.load()
         XCTAssertEqual(settings.selectedServerId, "server-1")
@@ -81,6 +82,8 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertTrue(settings.killSwitch)
         XCTAssertEqual(settings.subscriptions.refresh, .every12Hours)
         XCTAssertFalse(settings.subscriptions.onlyViaVpn)
+        XCTAssertEqual(settings.notifications, .importantOnly, "уровень из будущей версии — по умолчанию")
+        XCTAssertEqual(settings.reconnect, .upTo5Minutes)
 
         // Запись не теряет то, что прочиталось.
         try await store.setKillSwitch(false)

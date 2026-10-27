@@ -2,6 +2,12 @@ import Foundation
 import PrivateGatewayCore
 import PrivateGatewayTheme
 
+/// Куда вести окно по нажатию на уведомление.
+enum AppRoute: Equatable {
+    case servers
+    case subscriptions
+}
+
 /// Состояние окна и действия — как `MainViewModel` Android: серверы, группы и выбор — из общей папки (их же читает расширение
 /// туннеля), состояние туннеля — от системы и из отчета расширения (`TunnelView`). Файлы читаются заново на каждое действие и
 /// при каждой смене состояния VPN.
@@ -17,6 +23,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var updating: Set<String> = []
     /// Короткое сообщение окна — итог действия, выбранный сервер пропал или изменился; окно показывает его и убирает.
     @Published var message: String?
+    /// Нажали уведомление, которое ведет на свой экран; окно переходит туда и сбрасывает.
+    @Published var route: AppRoute?
 
     let texts: PgTexts
     let container: SharedContainer
@@ -46,10 +54,33 @@ final class AppModel: ObservableObject {
         }
     }
 
-    /// Окно открылось: профиль VPN, серверы, настройки.
+    /// Окно открылось: язык текстов и кнопки уведомлений (расширению туннеля iOS язык приложения не говорит), профиль VPN,
+    /// серверы, настройки.
     func start() async {
+        try? container.language.write(texts.language.rawValue)
+        Notifications.register(texts)
+        AppNotifications.shared.attach(self)
         await tunnel.load()
         await reload()
+    }
+
+    /// Нажатие на уведомление или его кнопку: «Сменить сервер», «Выбрать сервер», «Выбрать другой» — «Серверы», «Открыть» у
+    /// подписок — «Профили и подписки», «Повторить» и «Подключить» — включить защиту; остальное — просто окно.
+    func notificationTapped(_ action: String) {
+        switch NoticeAction(rawValue: action) {
+        case .changeServer?, .chooseServer?, .chooseOther?:
+            route = .servers
+        case .openSubscriptions?:
+            route = .subscriptions
+        case .retry?, .connect?:
+            Task {
+                if home.off {
+                    await togglePower()
+                }
+            }
+        default:
+            break
+        }
     }
 
     /// «О программе»: пакет приложения и версия ядра от расширения туннеля.
@@ -158,6 +189,11 @@ final class AppModel: ObservableObject {
     /// Кнопка включения: включить или выключить защиту. Подключаться не к чему — `home.power` скажет окну, куда вести.
     func togglePower() async {
         if home.off {
+            // Разрешение на уведомления — при первом включении защиты: тогда понятно, о чем они.
+            if settings.notifications != .off {
+                await Notifications.requestPermission()
+            }
+
             await run { try await self.tunnel.connect() }
         } else {
             await tunnel.disconnect()
@@ -197,6 +233,16 @@ final class AppModel: ObservableObject {
     func setKillSwitch(_ on: Bool) async {
         let state = home.status.state
         await run { try await self.settingsActions.setKillSwitch(on, state: state) }
+    }
+
+    /// Какие уведомления показывать — расширение читает уровень при каждом событии.
+    func setNotifications(_ level: NotificationLevel) async {
+        await run { try await self.container.settings.setNotifications(level) }
+    }
+
+    /// Что делать при обрыве — расширение читает правило на каждой неудаче, переподключаться не нужно.
+    func setReconnect(_ policy: ReconnectPolicy) async {
+        await run { try await self.container.settings.setReconnect(policy) }
     }
 
     /// Адрес сервера для карточки («адрес:порт») — из ссылки в Связке ключей, только по просьбе открытой карточки.

@@ -14,6 +14,7 @@ public struct SharedContainer: Sendable {
     public static let settingsFile = "settings.json"
     public static let statusFile = "tunnel-status.json"
     public static let coreVersionFile = "core-version.txt"
+    public static let languageFile = "language.txt"
 
     public let directory: URL
     public let servers: ServerStore
@@ -21,6 +22,9 @@ public struct SharedContainer: Sendable {
     public let status: TunnelStatusFile
     /// Версия Xray-core — ее пишет расширение туннеля после запуска ядра: в процессе приложения ядра нет.
     public let coreVersion: TextFile
+    /// Язык текстов приложения («ru», «en») — его пишет приложение: расширению туннеля iOS язык приложения не говорит, а
+    /// уведомления расширения должны быть на нем.
+    public let language: TextFile
 
     public init(directory: URL, vault: any SecretVault) {
         self.directory = directory
@@ -28,6 +32,7 @@ public struct SharedContainer: Sendable {
         settings = SettingsStore(file: DiskFile(url: directory.appendingPathComponent(Self.settingsFile)))
         status = TunnelStatusFile(file: DiskFile(url: directory.appendingPathComponent(Self.statusFile)))
         coreVersion = TextFile(file: DiskFile(url: directory.appendingPathComponent(Self.coreVersionFile)))
+        language = TextFile(file: DiskFile(url: directory.appendingPathComponent(Self.languageFile)))
     }
 
     #if canImport(Security)

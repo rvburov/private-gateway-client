@@ -26,6 +26,8 @@ targets:
     sources:
       - path: App/Sources
       - path: App/Resources
+      # Общее с расширением туннеля: уведомления (тексты, кнопки, показ).
+      - path: Shared
       # «Лицензии открытых компонентов»: список и тексты лицензий — те же файлы, что сверяют тесты; коммит libXray — общий
       # с Android. Тексты — папкой (texts/<SPDX>.txt в пакете приложения).
       - path: ../shared/licenses/ios.json
@@ -70,9 +72,12 @@ targets:
     platform: iOS
     sources:
       - path: PacketTunnel/Sources
+      - path: Shared
     dependencies:
       - package: PrivateGatewayCore
         product: PrivateGatewayCore
+      - package: PrivateGatewayCore
+        product: PrivateGatewayTheme
       - sdk: NetworkExtension.framework
       # Ядро Xray — libXray, собранный gomobile (scripts/get-libxray-ios.sh): статическая библиотека, вшивается в расширение,
       # отдельно не встраивается. libresolv — для разрешения имен Go (адрес сервера).

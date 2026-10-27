@@ -258,4 +258,42 @@ final class ScreensTests: XCTestCase {
         XCTAssertNil(model.settings.selectedServerId)
         XCTAssertEqual(model.message, "«Новое» удалена")
     }
+
+    /// Каждое уведомление — на обоих языках, без незаполненных «{N}», и его кнопки зарегистрированы.
+    @MainActor
+    func testNotificationsSpeakBothLanguagesAndTheirButtonsAreRegistered() throws {
+        var notices: [Notice] = []
+        let states = TunnelState.allCases.flatMap { state in
+            [nil, TunnelErrors.coreFailed, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn].map { TunnelStatus(state: state, serverId: "a", error: $0) }
+        }
+        for before in states {
+            for after in states {
+                for killSwitch in [false, true] {
+                    if let notice = NotificationPolicy.forChange(before, after, server: "Нидерланды 01", killSwitch: killSwitch) {
+                        notices.append(notice)
+                    }
+                }
+            }
+        }
+
+        notices += [SubscriptionNotice.gone(server: "Германия 02", subscription: "Основная"), .changed(server: "Германия 02", subscription: "Основная"),
+                    .stale(subscription: "Основная", reason: .forbidden(403)), .stale(subscription: "Основная", reason: .timeout)]
+            .compactMap(NotificationPolicy.forSubscription)
+        XCTAssertEqual(Set(notices.map(\.kind)), Set(NoticeKind.allCases))
+        let registered = Set(Notifications.actionSets.map(Notifications.category))
+        for notice in notices {
+            XCTAssertTrue(registered.contains(Notifications.category(notice.actions)), "\(notice.actions)")
+            for language in PgTexts.Language.allCases {
+                let words = Notifications.words(notice, PgTexts(language))
+                XCTAssertFalse(words.title.isEmpty, "\(notice.kind)")
+                XCTAssertFalse(words.body.isEmpty, "\(notice.textKey)")
+                XCTAssertFalse(words.body.contains("{"), words.body)
+            }
+        }
+
+        let failed = try XCTUnwrap(NotificationPolicy.forChange(
+            TunnelStatus(state: .connecting), TunnelStatus(state: .error, error: TunnelErrors.coreFailed), server: nil, killSwitch: false
+        ))
+        XCTAssertTrue(Notifications.words(failed, PgTexts(.russian)).body.contains(TunnelErrors.coreFailed), "код ошибки — в тексте")
+    }
 }

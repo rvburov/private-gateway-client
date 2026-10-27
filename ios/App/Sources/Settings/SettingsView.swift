@@ -12,7 +12,7 @@ enum SettingsPage: Hashable {
 }
 
 /// «Настройки» — как `SettingsScreen` Android: разделы «Защита и утечки» и «Профили и подписки» (`subscriptions` — страница
-/// по нажатию «Назад»), «О программе» с версиями и лицензиями открытых компонентов, язык — системный или выбранный для
+/// по нажатию «Назад»), уведомления и переподключение, «О программе» с версиями и лицензиями открытых компонентов, язык — системный или выбранный для
 /// приложения в Настройках iOS. Изменения под защитой применяются сразу — перезапуском ядра или туннеля (`SettingsActions`).
 /// Открытая страница — у окна: «Добавить» поверх и возврат не сбрасывают ее.
 struct SettingsView<Subscriptions: View>: View {
@@ -22,6 +22,8 @@ struct SettingsView<Subscriptions: View>: View {
     @Binding var page: SettingsPage
     var onTunnel: (TunnelSettings) -> Void = { _ in }
     var onKillSwitch: (Bool) -> Void = { _ in }
+    var onNotifications: (NotificationLevel) -> Void = { _ in }
+    var onReconnect: (ReconnectPolicy) -> Void = { _ in }
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
@@ -55,6 +57,25 @@ struct SettingsView<Subscriptions: View>: View {
                         icon: PgIcons.advProfiles, title: texts.settingsAdvProfilesTitle, text: texts.settingsAdvProfilesText,
                         identifier: "settings.profiles"
                     ) { page = .subscriptions }
+                }
+                .pgCard()
+
+                VStack(alignment: .leading, spacing: PgSpace.xs) {
+                    Text(texts.settingsNotificationsTitle).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary))
+                    ForEach([(NotificationLevel.all, texts.settingsNotificationsAll), (.importantOnly, texts.settingsNotificationsImportant),
+                             (.off, texts.settingsNotificationsOff)], id: \.0) { item in
+                        PgChoiceRow(title: item.1, selected: settings.notifications == item.0, identifier: "notify.\(item.0.rawValue)") { onNotifications(item.0) }
+                    }
+                }
+                .pgCard()
+
+                VStack(alignment: .leading, spacing: PgSpace.xs) {
+                    Text(texts.coreReconnectTitle).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary))
+                    Text(texts.coreReconnectText).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary))
+                    ForEach([(ReconnectPolicy.backoff60Seconds, texts.coreReconnectBackoff), (.upTo5Minutes, texts.coreReconnect5min),
+                             (.never, texts.coreReconnectNever)], id: \.0) { item in
+                        PgChoiceRow(title: item.1, selected: settings.reconnect == item.0, identifier: "reconnect.\(item.0.rawValue)") { onReconnect(item.0) }
+                    }
                 }
                 .pgCard()
 

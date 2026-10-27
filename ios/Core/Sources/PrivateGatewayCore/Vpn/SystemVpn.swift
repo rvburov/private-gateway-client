@@ -16,6 +16,11 @@ public enum SystemVpnStatus: Sendable {
 public enum TunnelView {
     public static func status(system: SystemVpnStatus, report: TunnelStatus?, appError: String? = nil) -> TunnelStatus {
         let serverId = report?.serverId
+        // Расширение сдалось при блоке при обрыве: туннель оставлен без ядра — трафик заблокирован, на экране «Ошибка».
+        if system == .connected || system == .reasserting, report?.state == .error, let error = report?.error {
+            return TunnelStatus(state: .error, serverId: serverId, error: error)
+        }
+
         switch system {
         case .connecting:
             return TunnelStatus(state: .connecting, serverId: serverId)
