@@ -69,13 +69,13 @@ class LicensesTest {
         compose.onNodeWithTag("license.url").assertTextEquals("https://github.com/XTLS/Xray-core")
         compose.onNodeWithTag("license.text.MPL-2.0").performScrollTo().assertTextContains("Mozilla Public License", substring = true)
 
-        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
         compose.onNodeWithTag("licenses.ZXing").performScrollTo().performClick()
         compose.onNodeWithTag("license.modules").performScrollTo().assertTextContains("com.google.zxing:core", substring = true)
         compose.onNodeWithTag("license.text.Apache-2.0").performScrollTo().assertTextContains("Apache License", substring = true)
 
-        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performClick()
-        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
         compose.onNodeWithTag("settings.licenses").performScrollTo().assertIsDisplayed()
     }
 }
