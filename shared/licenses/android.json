@@ -77,6 +77,20 @@
     "maven": ["org.jetbrains.kotlinx:kotlinx-coroutines-*"]
   },
   {
+    "name": "kotlinx.serialization",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2017-2024 JetBrains s.r.o. and Kotlin Programming Language contributors",
+    "url": "https://github.com/Kotlin/kotlinx.serialization",
+    "maven": ["org.jetbrains.kotlinx:kotlinx-serialization-*"]
+  },
+  {
+    "name": "Okio",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2013 Square, Inc.",
+    "url": "https://github.com/square/okio",
+    "maven": ["com.squareup.okio:*"]
+  },
+  {
     "name": "Dagger, Hilt",
     "license": "Apache-2.0",
     "copyright": "Copyright 2012 The Dagger Authors",
@@ -96,6 +110,20 @@
     "copyright": "Copyright (C) 2007 The Guava Authors",
     "url": "https://github.com/google/guava",
     "maven": ["com.google.guava:*"]
+  },
+  {
+    "name": "AutoValue",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2013 Google LLC",
+    "url": "https://github.com/google/auto",
+    "maven": ["com.google.auto.value:*"]
+  },
+  {
+    "name": "JSR 305",
+    "license": "Apache-2.0",
+    "copyright": "JSR 305 Expert Group and contributors",
+    "url": "https://github.com/findbugsproject/findbugs",
+    "maven": ["com.google.code.findbugs:*"]
   },
   {
     "name": "JSpecify",
