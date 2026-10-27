@@ -63,15 +63,25 @@ final class ServerStoreTests: XCTestCase {
     func testAddressAndKeysAreStoredOnlyInTheVault() async throws {
         try await store.add(Self.fixtures)
         let open = try state()
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .millisecondsSince1970
+        let stored = try decoder.decode(StoredState.self, from: XCTUnwrap(file.read()))
         let items = try await store.servers()
         XCTAssertEqual(vault.all.count, items.count, "ссылка каждого сервера — в Связке ключей")
         for item in items {
             let loaded = try await store.load(item.id)
             let server = try XCTUnwrap(loaded)
-            // Адрес открыт только в названии, если названия в ссылке не было: тогда сервер называется адресом. Ключи и пароли
-            // не открыты никогда.
-            let secrets = [server.host == item.linkName ? nil : server.host, server.credentials.uuid, server.credentials.password,
-                           server.credentials.privateKey, server.credentials.presharedKey].compactMap { $0 }.filter { $0.count >= 4 }
+            // Адрес открыт только в названии, если названия в ссылке не было: тогда сервер называется адресом (как на
+            // десктопе и Android). Поэтому адрес ищется в открытой записи самого сервера — в файле он может быть названием
+            // другого сервера. Ключи и пароли не открыты нигде в файле.
+            let record = try XCTUnwrap(stored.servers.first { $0.id == item.id })
+            let own = try String(decoding: JSONEncoder().encode(record), as: UTF8.self)
+            if server.host != item.linkName {
+                XCTAssertFalse(own.contains(server.host), "\(item.linkName): адрес «\(server.host)» лежит открыто")
+            }
+
+            let secrets = [server.credentials.uuid, server.credentials.password, server.credentials.privateKey, server.credentials.presharedKey]
+                .compactMap { $0 }.filter { $0.count >= 4 }
             for secret in secrets {
                 XCTAssertFalse(open.contains(secret), "\(item.linkName): «\(secret)» лежит открыто")
             }

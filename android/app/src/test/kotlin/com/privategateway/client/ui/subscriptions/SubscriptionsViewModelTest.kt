@@ -2,6 +2,7 @@ package com.privategateway.client.ui.subscriptions
 
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.lifecycle.viewModelScope
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -22,7 +23,9 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -79,6 +82,10 @@ class SubscriptionsViewModelTest {
 
     @After
     fun close() {
+        // Сначала — работа модели, до конца: ее продолжения идут через Dispatchers.Main, и resetMain() рядом с ними падает
+        // («Dispatchers.Main is used concurrently with setting it» — отмена хранилища будила их из потока IO). Потом —
+        // хранилище и база.
+        runBlocking { model.viewModelScope.coroutineContext.job.cancelAndJoin() }
         scope.cancel()
         database.close()
         Dispatchers.resetMain()
