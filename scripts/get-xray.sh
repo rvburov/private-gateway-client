@@ -39,8 +39,9 @@ fi
 
 base="https://github.com/XTLS/Xray-core/releases/download/$version"
 
-curl -fsSL --retry 3 -o "$tmp/$asset" "$base/$asset"
-curl -fsSL --retry 3 -o "$tmp/$asset.dgst" "$base/$asset.dgst"
+. "$root/scripts/download.sh"
+download "$base/$asset" "$tmp/$asset"
+download "$base/$asset.dgst" "$tmp/$asset.dgst"
 
 if command -v sha256sum > /dev/null; then
   actual=$(sha256sum "$tmp/$asset" | cut -d' ' -f1)

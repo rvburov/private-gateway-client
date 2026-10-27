@@ -12,7 +12,8 @@ xcodegen="$tools/xcodegen/bin/xcodegen"
 
 if [ ! -x "$xcodegen" ]; then
   mkdir -p "$tools"
-  curl -fsSL -o "$tools/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$version/xcodegen.zip"
+  . "$root/scripts/download.sh"
+  download "https://github.com/yonaskolb/XcodeGen/releases/download/$version/xcodegen.zip" "$tools/xcodegen.zip"
   if ! echo "$sha256  $tools/xcodegen.zip" | shasum -a 256 -c - > /dev/null; then
     echo "Сумма архива XcodeGen $version не совпала — архив не используется" >&2
     rm -f "$tools/xcodegen.zip"

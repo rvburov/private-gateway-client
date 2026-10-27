@@ -384,6 +384,9 @@ jobs:
       - name: scripts/worktree.sh на временном репозитории
         run: scripts/tests/worktree-smoke.sh
 
+      - name: Загрузка ядер — докачка после обрыва (scripts/download.sh)
+        run: scripts/tests/download-smoke.sh
+
   secrets:
     name: Секреты в репозитории
     runs-on: ubuntu-latest

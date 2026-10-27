@@ -26,7 +26,8 @@ dest="$root/artifacts/cores/sing-box"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-curl -fsSL --retry 3 -o "$tmp/$asset" "https://github.com/SagerNet/sing-box/releases/download/$version/$asset"
+. "$root/scripts/download.sh"
+download "https://github.com/SagerNet/sing-box/releases/download/$version/$asset" "$tmp/$asset"
 if command -v sha256sum > /dev/null; then
   actual=$(sha256sum "$tmp/$asset" | cut -d' ' -f1)
 else
