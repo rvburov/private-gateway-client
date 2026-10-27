@@ -153,7 +153,8 @@ final class LatencyMeterTests: XCTestCase {
     func testASecondTapWhileMeasuringIsNotCounted() async throws {
         _ = try await fill()
         core.hold()
-        let first = Task { await meter.measure() }
+        let shared = self.meter
+        let first = Task { await shared.measure() }
         for _ in 0..<500 where !core.waits {
             try await Task.sleep(nanoseconds: 10_000_000)
         }
