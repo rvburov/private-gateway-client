@@ -117,11 +117,18 @@ class ServerListTest {
         assertEquals(listOf("Нидерланды 01", "Финляндия 01"), favorites.single().servers.map { it.displayName })
 
         // Без учета регистра и по алфавиту языка: при сравнении по кодам «бета» встала бы после «Яблоко», а «е» с точками
-        // (escape-ом: в текстах проекта этой буквы нет) — в начало, перед «А».
-        val names = listOf("Яблоко", "бета", "Жук", "\u0401лка", "Альфа", "Дом", "Beta", "alpha")
-        val servers = names.mapIndexed { index, name -> us.copy(id = "s$index", linkName = name) }
-        val sorted = ServerList.build(servers, emptyList(), ServerListQuery(sort = ServerSort.Name), ru).single().servers
-        assertEquals(listOf("alpha", "Beta", "Альфа", "бета", "Дом", "\u0401лка", "Жук", "Яблоко"), sorted.map { it.displayName })
+        // (escape-ом: в текстах проекта этой буквы нет) — в начало, перед «А». Порядок между письменностями (латиница
+        // перед кириллицей или после) задают данные CLDR платформы, поэтому проверяется внутри одной письменности.
+        fun byName(vararg names: String) = ServerList.build(
+            names.mapIndexed { index, name -> us.copy(id = "s$index", linkName = name) },
+            emptyList(),
+            ServerListQuery(sort = ServerSort.Name),
+            ru,
+        ).single().servers.map { it.displayName }
+
+        assertEquals(listOf("Альфа", "бета", "Дом", "\u0401лка", "Жук", "Яблоко"), byName("Яблоко", "бета", "Жук", "\u0401лка", "Альфа", "Дом"))
+        assertEquals(listOf("alpha", "Beta"), byName("Beta", "alpha"))
+        assertEquals(listOf("Cafe", "Caf\u00e9"), byName("Caf\u00e9", "Cafe"))
 
         // Названия, которые различаются только регистром, равны — остаются в порядке списка, как у десктопа.
         val twins = listOf(us.copy(id = "upper", linkName = "США 01"), us.copy(id = "lower", linkName = "сша 01"))
@@ -166,7 +173,7 @@ class ServerListTest {
             .single().servers
 
         assertEquals(10, ServerList.RECENT_LIMIT)
-        assertEquals((0 until 10).map { "s$it" }, rows.map { it.id }, "свежие сверху; задержка и название порядок не меняют (решение 419)")
+        assertEquals((0 until 10).map { "s$it" }, rows.map { it.id }, "свежие сверху; задержка и название порядок не меняют (решение 421)")
     }
 
     @Test
@@ -209,6 +216,9 @@ class ServerListTest {
         assertEquals(ServerListEmpty.NoFavorites, empty(listOf(us), ServerListQuery(tab = ServerListTab.Favorites)))
         val favoritesByName = ServerListQuery(tab = ServerListTab.Favorites, sort = ServerSort.Name)
         assertEquals(ServerListEmpty.NoFavorites, empty(listOf(us), favoritesByName), "порядок строк ничего не скрывает")
+        assertEquals(ServerListEmpty.NoFavorites, empty(listOf(us), ServerListQuery(tab = ServerListTab.Favorites, search = "   ")), "пробелы — не поиск")
+        val tuicHidden = ServerListQuery(tab = ServerListTab.Favorites, hiddenProtocols = setOf(ProxyProtocol.Tuic))
+        assertEquals(ServerListEmpty.NoFavorites, empty(listOf(us), tuicHidden), "скрыт протокол, которого в списке нет")
         assertEquals(ServerListEmpty.NoRecent, empty(listOf(us), ServerListQuery(tab = ServerListTab.Recent)))
         assertEquals(ServerListEmpty.NothingFound, empty(all, ServerListQuery(search = "Польша")))
         assertEquals(ServerListEmpty.NothingFound, empty(all, ServerListQuery(tab = ServerListTab.Favorites, search = "США")))

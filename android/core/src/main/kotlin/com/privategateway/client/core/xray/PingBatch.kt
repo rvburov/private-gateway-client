@@ -17,6 +17,10 @@ class PingChunk(val ids: List<String>, val request: String) {
     /** Замер каждого сервера порции по ответу libXray на [request]. */
     fun results(response: String?): Map<String, Latency> = ids.zip(PingBatch.parse(response, ids.size)).toMap()
 
+    /** Текст ошибок libXray по серверам порции, у которых он есть, — только для журнала через маскировку. */
+    fun errors(response: String?): Map<String, String> =
+        ids.zip(PingBatch.errors(response, ids.size)).mapNotNull { (id, error) -> error?.let { id to it } }.toMap()
+
     override fun toString(): String = "PingChunk($ids)"
 }
 
@@ -113,6 +117,27 @@ object PingBatch {
         }
 
         return results.map { item(it as? Map<*, *>) }
+    }
+
+    /**
+     * Текст ошибки каждого сервера из ответа на [count] конфигов (в том же порядке), пустой — null. В нем бывают адреса
+     * серверов, поэтому он не входит в [parse] и в журнал идет только через маскировку. Отказ всего вызова здесь не
+     * повторяется — его текст в самом ответе (`XrayResponse`); тогда у всех null.
+     */
+    fun errors(response: String?, count: Int): List<String?> {
+        val none = List<String?>(count) { null }
+        val root = try {
+            JsonTree.parse(response ?: "").value as? Map<*, *>
+        } catch (_: JsonTree.SyntaxError) {
+            null
+        }
+
+        val results = (root?.get("data") as? Map<*, *>)?.get("results") as? List<*>
+        if (root?.get("success") != true || results?.size != count) {
+            return none
+        }
+
+        return results.map { ((it as? Map<*, *>)?.get("error") as? String)?.takeIf { text -> text.isNotBlank() } }
     }
 
     private fun item(result: Map<*, *>?): Latency {

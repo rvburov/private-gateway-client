@@ -6,7 +6,7 @@ import org.junit.jupiter.params.provider.CsvSource
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-// Окраска задержки десктопа (ServersPageViewModel.Row, ServersPageTests: 148 мс — серым) и «—» для не измеренных (решение 418).
+// Окраска задержки десктопа (ServersPageViewModel.Row, ServersPageTests: 148 мс — серым) и «—» для не измеренных (решение 428).
 class LatencyTest {
     @ParameterizedTest
     @CsvSource("1, Good", "42, Good", "120, Good", "121, Slow", "148, Slow")

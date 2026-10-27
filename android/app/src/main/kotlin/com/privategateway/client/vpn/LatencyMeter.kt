@@ -93,6 +93,8 @@ class LatencyMeter @Inject constructor(
                     Log.w(TAG, "pingBatch: " + SecretMasker.mask(failure.error ?: "нет ответа"))
                 }
 
+                chunk.errors(response).forEach { (id, error) -> Log.i(TAG, "pingBatch $id: " + SecretMasker.mask(error)) }
+
                 servers.setLatency(chunk.results(response))
             }
 

@@ -53,6 +53,7 @@ class ServerFactsTest {
         "example.com, 8443, example.com:8443",
         "2001:db8::10, 8443, [2001:db8::10]:8443",
         "::1, 1, [::1]:1",
+        "2001:db8:0:0:0:0:0:1, 443, [2001:db8:0:0:0:0:0:1]:443",
     )
     fun `address puts ipv6 in brackets`(host: String, port: Int, expected: String) {
         assertEquals(expected, ServerFacts.address(host, port))

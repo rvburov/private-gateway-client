@@ -135,6 +135,29 @@ class PingBatchTest {
     }
 
     @Test
+    fun `error texts of servers come only through errors`() {
+        val refused = "dial tcp 203.0.113.24:443: connection refused"
+        val response = """{"success":true,"data":{"results":[""" +
+            """{"success":true,"delay":41,"error":""},{"success":false,"delay":11000,"error":"timeout"},""" +
+            """{"success":false,"delay":10000,"error":"$refused"},{"success":false,"delay":10000}""" +
+            """]},"error":""}"""
+
+        assertEquals(listOf(null, "timeout", refused, null), PingBatch.errors(response, 4))
+        assertFalse(PingBatch.parse(response, 4).toString().contains("203.0.113.24"), "адрес из ошибки — не в замере")
+
+        val chunk = PingBatch.plan(listOf(PingTarget("a", reality), PingTarget("b", trojan)), CoreSettings()).chunks.single()
+        val two = """{"success":true,"data":{"results":[{"success":true,"delay":30},{"success":false,"delay":10000,"error":"$refused"}]}}"""
+        assertEquals(mapOf("b" to refused), chunk.errors(two))
+        assertFalse(chunk.results(two).toString().contains("203.0.113.24"))
+
+        val busy = """{"success":false,"data":{"results":[{"success":false,"error":"$refused"}]},"error":"busy"}"""
+        assertEquals(listOf<String?>(null), PingBatch.errors(busy, 1), "отказ вызова — в самом ответе, не у серверов")
+        assertEquals(listOf<String?>(null, null), PingBatch.errors(response, 2), "не столько результатов — ничего")
+        assertEquals(listOf<String?>(null), PingBatch.errors("not json", 1))
+        assertEquals(emptyMap(), chunk.errors(null))
+    }
+
+    @Test
     fun `sentinel delays are never a latency and the success flag decides`() {
         fun one(item: String) = PingBatch.parse("""{"success":true,"data":{"results":[$item]},"error":""}""", 1).single()
 
