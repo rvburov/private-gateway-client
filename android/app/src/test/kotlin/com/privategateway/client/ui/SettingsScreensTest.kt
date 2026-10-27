@@ -13,6 +13,7 @@ import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsNotSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -28,6 +29,9 @@ import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
+import com.privategateway.client.core.vpn.SystemVpn
+import com.privategateway.client.core.vpn.SystemVpnSource
+import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.ui.settings.Behavior
 import com.privategateway.client.ui.settings.ProtectionScreen
 import com.privategateway.client.ui.settings.SettingsPage
@@ -59,6 +63,27 @@ class SettingsScreensTest {
         compose.onNodeWithText(text(R.string.prot_dns_title)).assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
         compose.onNodeWithTag("settings.protection").assertIsDisplayed()
+    }
+
+    @Test
+    fun `android vpn card shows what android said and when`() {
+        var system by mutableStateOf(SystemVpnView(SystemVpn(), SystemVpnSource.Unknown))
+        var opened = 0
+        compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, { opened++ }, TunnelSettings(), {}, system = system) } }
+        compose.onNodeWithTag("settings.vpn.alwaysOn").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_unknown))
+        compose.onNodeWithTag("settings.vpn.source").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_never))
+
+        system = SystemVpnView(SystemVpn(alwaysOn = true, lockdown = false), SystemVpnSource.Now)
+        compose.onNodeWithTag("settings.vpn.alwaysOn").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_on))
+        compose.onNodeWithTag("settings.vpn.lockdown").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_off))
+        compose.onNodeWithTag("settings.vpn.source").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_now))
+
+        system = SystemVpnView(SystemVpn(alwaysOn = true, lockdown = true), SystemVpnSource.LastConnection)
+        compose.onNodeWithTag("settings.vpn.lockdown").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_on))
+        compose.onNodeWithTag("settings.vpn.source").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_last))
+
+        compose.onNodeWithTag("settings.vpn").performScrollTo().performClick()
+        assertEquals(1, opened)
     }
 
     @Test

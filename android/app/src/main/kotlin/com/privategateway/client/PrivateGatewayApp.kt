@@ -17,10 +17,12 @@ class PrivateGatewayApp : Application() {
 
         // Подписки обновляются в процессе приложения: на переходе в «Защищено» и по расписанию (решение 434), без «только
         // через VPN» — и в фоне через WorkManager (решение 443); уведомления слушают туннель и подписки там же — и без окна.
+        // Закрыл ли Android сеть приложению без туннеля — для окна и замера задержки (решение 445).
         val entry = EntryPointAccessors.fromApplication(this, AppEntryPoint::class.java)
         entry.updater().start()
         entry.notifier().start()
         entry.background().start()
+        entry.access().start()
     }
 
     companion object {

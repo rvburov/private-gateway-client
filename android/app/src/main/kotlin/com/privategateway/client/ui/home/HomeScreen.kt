@@ -151,7 +151,7 @@ private fun StatusCard(ui: MainUi, onCheck: () -> Unit) {
         }
 
         Spacer(Modifier.height(PgSpace.L))
-        val chips = ProtectionChips.of(state, ui.status.lockdown)
+        val chips = ProtectionChips.of(state, ui.status.lockdown, ui.closedWithoutTunnel)
         for (row in chips.chunked(2)) {
             Row(horizontalArrangement = Arrangement.spacedBy(PgSpace.S)) {
                 for (chip in row) {
@@ -196,8 +196,9 @@ private fun subtitle(ui: MainUi): String {
         TunnelState.Connected -> stringResource(if (server?.encrypted == false) R.string.status_connected_subPlain else R.string.status_connected_sub)
         TunnelState.Connecting, TunnelState.Stopping -> server?.displayName ?: ""
         TunnelState.Reconnecting -> stringResource(R.string.status_reconnecting_sub, ui.status.attempt.toString())
-        TunnelState.Error -> stringResource(R.string.status_error_sub_direct, ui.status.error ?: "")
-        TunnelState.Off -> stringResource(R.string.status_off_sub)
+        // Android закрыл интернет без туннеля — трафик не идет напрямую (решение 445).
+        TunnelState.Error -> stringResource(if (ui.closedWithoutTunnel) R.string.status_error_sub else R.string.status_error_sub_direct, ui.status.error ?: "")
+        TunnelState.Off -> stringResource(if (ui.closedWithoutTunnel) R.string.android_status_off_closed else R.string.status_off_sub)
     }
 }
 

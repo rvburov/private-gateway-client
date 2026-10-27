@@ -31,6 +31,7 @@ import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CoreDnsFollower
 import com.privategateway.client.core.vpn.GuardEvents
+import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.TunPlan
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelGuard
@@ -235,6 +236,8 @@ class GatewayVpnService : VpnService() {
         val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
         val since = SystemClock.elapsedRealtime()
         monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id, since = since, alwaysOn = alwaysOn, lockdown = lockdown))
+        // Без туннеля Android этих флагов не сообщает — окно покажет их «по последнему подключению» (решение 445).
+        scope.launch { settings.setSystemVpn(SystemVpn(alwaysOn, lockdown)) }
         foreground(
             notification(
                 getString(R.string.status_connected_title) + " · " + current.name,

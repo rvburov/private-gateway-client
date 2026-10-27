@@ -7,6 +7,7 @@ import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.subscriptions.RefreshInterval
+import com.privategateway.client.core.vpn.SystemVpn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -50,6 +51,21 @@ class SettingsRepositoryTest {
         } finally {
             again.cancel()
         }
+    }
+
+    @Test
+    fun `android vpn flags are remembered and android 9 keeps the previous ones`() = runBlocking<Unit> {
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
+        assertEquals(SystemVpn(), settings.systemVpn.first(), "еще не подключались — неизвестно")
+
+        settings.setSystemVpn(SystemVpn(alwaysOn = true, lockdown = true))
+        assertEquals(SystemVpn(alwaysOn = true, lockdown = true), settings.systemVpn.first())
+
+        settings.setSystemVpn(SystemVpn())
+        assertEquals(SystemVpn(alwaysOn = true, lockdown = true), settings.systemVpn.first(), "Android 9 не сообщает — прежнее остается")
+
+        settings.setSystemVpn(SystemVpn(alwaysOn = false, lockdown = false))
+        assertEquals(SystemVpn(alwaysOn = false, lockdown = false), settings.systemVpn.first())
     }
 
     @Test

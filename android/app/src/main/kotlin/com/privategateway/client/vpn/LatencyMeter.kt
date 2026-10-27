@@ -36,11 +36,15 @@ class SystemNetworkDns @Inject constructor(@param:ApplicationContext private val
     }
 }
 
-/** Итог замера: все порции замерены; защита включена (или включилась во время замера); замер уже идет. */
+/**
+ * Итог замера: все порции замерены; защита включена (или включилась во время замера); замер уже идет; Android закрыл
+ * сеть приложению без туннеля («Блокировать подключения без VPN») — серверы не мерятся, их прежние задержки остаются.
+ */
 enum class MeasureResult {
     Done,
     Busy,
     Running,
+    Blocked,
 }
 
 /**
@@ -68,6 +72,10 @@ class LatencyMeter @Inject constructor(
             return MeasureResult.Busy
         }
 
+        if (monitor.blocked.value) {
+            return MeasureResult.Blocked
+        }
+
         if (!running.tryLock()) {
             return MeasureResult.Running
         }
@@ -84,9 +92,14 @@ class LatencyMeter @Inject constructor(
                 }
 
                 val response = withContext(Dispatchers.IO) { engine.ping(chunk.request, dns) }
-                // Подключение началось во время порции: libXray мерил рядом с ядром туннеля — итогам не верить.
+                // Подключение началось во время порции: libXray мерил рядом с ядром туннеля — итогам не верить. Android
+                // закрыл сеть во время порции — серверы «не ответили» из-за блока, а не сами.
                 if (!off()) {
                     return MeasureResult.Busy
+                }
+
+                if (monitor.blocked.value) {
+                    return MeasureResult.Blocked
                 }
 
                 val failure = XrayResponse.parse(response)

@@ -39,6 +39,9 @@ import com.privategateway.client.R
 import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
+import com.privategateway.client.core.vpn.SystemVpn
+import com.privategateway.client.core.vpn.SystemVpnSource
+import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgChoiceRow
@@ -74,6 +77,7 @@ fun SettingsScreen(
     onBehavior: (Behavior) -> Unit = {},
     requested: SettingsPage? = null,
     onRequested: () -> Unit = {},
+    system: SystemVpnView = SystemVpnView(SystemVpn(), SystemVpnSource.Unknown),
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -95,7 +99,22 @@ fun SettingsScreen(
             subscriptions { page = SettingsPage.Main }
         }
 
-        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, behavior, onBehavior) { page = it }
+        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior) { page = it }
+    }
+}
+
+/** Строка флага Android: название и «вкл», «выкл» или «неизвестно». */
+@Composable
+private fun SystemFlag(@StringRes title: Int, value: Boolean?, tag: String) {
+    Row(Modifier.fillMaxWidth().padding(vertical = PgSpace.Xs), verticalAlignment = Alignment.CenterVertically) {
+        Text(stringResource(title), style = PgType.Body, modifier = Modifier.weight(1f))
+        Spacer(Modifier.width(PgSpace.S))
+        val (text, color) = when (value) {
+            true -> R.string.android_settings_vpn_on to PgColor.Status.Success.Text
+            false -> R.string.android_settings_vpn_off to PgColor.Text.Secondary
+            null -> R.string.android_settings_vpn_unknown to PgColor.Text.Muted
+        }
+        Text(stringResource(text), color = color, style = PgType.BodyStrong, modifier = Modifier.testTag(tag))
     }
 }
 
@@ -110,6 +129,7 @@ private fun MainSettings(
     core: String?,
     loadCore: () -> Unit,
     openVpnSettings: () -> Unit,
+    system: SystemVpnView,
     behavior: Behavior,
     onBehavior: (Behavior) -> Unit,
     onPage: (SettingsPage) -> Unit,
@@ -172,6 +192,15 @@ private fun MainSettings(
             Text(stringResource(R.string.android_settings_vpn_title), style = PgType.Title)
             Spacer(Modifier.size(PgSpace.Xs))
             Text(stringResource(R.string.android_settings_vpn_text), color = PgColor.Text.Secondary, style = PgType.Small)
+            Spacer(Modifier.size(PgSpace.S))
+            SystemFlag(R.string.android_settings_vpn_alwaysOn, system.flags.alwaysOn, "settings.vpn.alwaysOn")
+            SystemFlag(R.string.android_settings_vpn_lockdown, system.flags.lockdown, "settings.vpn.lockdown")
+            val source = when (system.source) {
+                SystemVpnSource.Now -> R.string.android_settings_vpn_now
+                SystemVpnSource.LastConnection -> R.string.android_settings_vpn_last
+                SystemVpnSource.Unknown -> R.string.android_settings_vpn_never
+            }
+            Text(stringResource(source), color = PgColor.Text.Muted, style = PgType.Caption, modifier = Modifier.testTag("settings.vpn.source"))
             Spacer(Modifier.size(PgSpace.M))
             val shape = RoundedCornerShape(PgRadius.Button)
             Box(

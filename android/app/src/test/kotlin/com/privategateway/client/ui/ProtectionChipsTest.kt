@@ -37,6 +37,20 @@ class ProtectionChipsTest {
     }
 
     @Test
+    fun `android closing the internet without the tunnel is a kill switch that went off`() {
+        // «Блокировать подключения без VPN»: туннеля нет, Android закрыл сеть — трафик остановлен, утечки нет.
+        for (state in listOf(TunnelState.Off, TunnelState.Error)) {
+            val chips = ProtectionChips.of(state, lockdown = null, closed = true)
+            assertEquals(listOf(R.string.check_all_stopped, R.string.check_dns_stopped, R.string.check_ipv6_stopped, R.string.check_ks_stopped), chips.map { it.value }, state.name)
+            assertEquals(listOf(ChipLook.Warning, ChipLook.Ok, ChipLook.Ok, ChipLook.Ok), chips.map { it.look }, state.name)
+        }
+
+        // Туннель поднимается или работает — его чипы, а не блок Android.
+        assertEquals(ProtectionChips.of(TunnelState.Connecting, lockdown = null), ProtectionChips.of(TunnelState.Connecting, lockdown = null, closed = true))
+        assertEquals(ProtectionChips.of(TunnelState.Connected, lockdown = true), ProtectionChips.of(TunnelState.Connected, lockdown = true, closed = true))
+    }
+
+    @Test
     fun `connecting waits`() {
         val chips = ProtectionChips.of(TunnelState.Connecting, lockdown = null)
         assertEquals(listOf(ChipLook.Waiting, ChipLook.Waiting, ChipLook.Waiting, ChipLook.Warning), chips.map { it.look })

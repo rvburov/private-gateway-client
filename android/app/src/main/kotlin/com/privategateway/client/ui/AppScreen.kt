@@ -252,6 +252,7 @@ fun AppScreen(
                     val tunnel by settings.tunnel.collectAsStateWithLifecycle()
                     val behavior by settings.behavior.collectAsStateWithLifecycle()
                     val page by settings.requestedPage.collectAsStateWithLifecycle()
+                    val system by settings.systemVpn.collectAsStateWithLifecycle()
                     SettingsScreen(
                         core,
                         viewModel::loadCoreVersion,
@@ -262,6 +263,7 @@ fun AppScreen(
                         settings::setBehavior,
                         page,
                         settings::pageShown,
+                        system,
                     ) { back ->
                         val state by subscriptions.ui.collectAsStateWithLifecycle()
                         SubscriptionsScreen(

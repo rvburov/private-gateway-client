@@ -10,6 +10,7 @@ import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
+import com.privategateway.client.core.vpn.SystemVpn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
@@ -85,6 +86,21 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         store.edit { it[RECONNECT] = policy.name }
     }
 
+    /** «Постоянная VPN» и блок без VPN, как их сообщил Android при последнем подключении (решение 445). */
+    val systemVpn: Flow<SystemVpn> = store.data.map { SystemVpn(it[SYSTEM_ALWAYS_ON], it[SYSTEM_LOCKDOWN]) }
+
+    /** Запомнить то, что Android сообщил туннелю; Android 9 не сообщает ничего — прежнее остается. */
+    suspend fun setSystemVpn(flags: SystemVpn) {
+        if (!flags.known) {
+            return
+        }
+
+        store.edit { preferences ->
+            flags.alwaysOn?.let { preferences[SYSTEM_ALWAYS_ON] = it }
+            flags.lockdown?.let { preferences[SYSTEM_LOCKDOWN] = it }
+        }
+    }
+
     private companion object {
         val SELECTED = stringPreferencesKey("selected_server")
         val SUBS_REFRESH = stringPreferencesKey("subs_refresh")
@@ -96,5 +112,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val ALLOW_LAN = booleanPreferencesKey("tunnel_allow_lan")
         val NOTIFY_LEVEL = stringPreferencesKey("notify_level")
         val RECONNECT = stringPreferencesKey("reconnect_policy")
+        val SYSTEM_ALWAYS_ON = booleanPreferencesKey("system_always_on")
+        val SYSTEM_LOCKDOWN = booleanPreferencesKey("system_lockdown")
     }
 }

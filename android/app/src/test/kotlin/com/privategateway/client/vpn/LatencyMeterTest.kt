@@ -115,6 +115,22 @@ class LatencyMeterTest {
     }
 
     @Test
+    fun `android closing the internet without vpn measures nothing and drops a chunk`() {
+        // «Блокировать подключения без VPN»: все серверы «не ответили» бы из-за блока, а не сами (решение 445).
+        val (supported, _) = fill()
+        monitor.setBlocked(true)
+        assertEquals(MeasureResult.Blocked, wait { meter.measure() })
+        assertTrue(engine.calls.isEmpty())
+
+        monitor.setBlocked(false)
+        engine.during = { monitor.setBlocked(true) }
+        assertEquals(MeasureResult.Blocked, wait { meter.measure() })
+        assertEquals(listOf(5), engine.calls, "блок пришел во время порции — дальше порции не идут")
+        val items = wait { servers.servers.first() }.associateBy { it.id }
+        assertTrue(supported.all { items.getValue(it).latency == null }, "итоги порции под блоком не записаны")
+    }
+
+    @Test
     fun `a chunk measured while protection came up is dropped`() {
         val (supported, _) = fill()
         engine.during = { monitor.set(TunnelStatus(TunnelState.Connecting, serverId = supported.first())) }

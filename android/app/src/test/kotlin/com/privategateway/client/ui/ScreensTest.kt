@@ -75,6 +75,23 @@ class ScreensTest {
     }
 
     @Test
+    fun `home without vpn says android closed the internet`() {
+        // «Блокировать подключения без VPN»: без туннеля трафик не идет напрямую — Android его остановил (решение 445).
+        var ui by mutableStateOf(MainUi(servers = listOf(nl), selectedId = "nl", blocked = true))
+        compose.setContent { PgTheme { HomeScreen(ui, {}, {}, {}) } }
+        compose.onNodeWithText(text(R.string.android_status_off_closed)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.check_all_stopped)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.check_ks_stopped)).assertIsDisplayed()
+
+        ui = ui.copy(status = TunnelStatus(TunnelState.Error, error = "PGC-SVC-002"))
+        compose.onNodeWithText(text(R.string.status_error_sub, "PGC-SVC-002")).assertIsDisplayed()
+
+        ui = ui.copy(status = TunnelStatus(), blocked = false)
+        compose.onNodeWithText(text(R.string.status_off_sub)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.check_all_off)).assertIsDisplayed()
+    }
+
+    @Test
     fun `home error names the code and its meaning`() {
         val status = TunnelStatus(TunnelState.Error, error = "PGC-NET-010")
         compose.setContent { PgTheme { HomeScreen(MainUi(status, listOf(nl), "nl"), {}, {}, {}) } }

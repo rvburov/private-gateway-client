@@ -63,7 +63,7 @@ fun CheckScreen(ui: MainUi, core: String?, loadCore: () -> Unit) {
         }
 
         PgCard(Modifier.fillMaxWidth()) {
-            val chips = ProtectionChips.of(ui.status.state, ui.status.lockdown)
+            val chips = ProtectionChips.of(ui.status.state, ui.status.lockdown, ui.closedWithoutTunnel)
             for ((index, chip) in chips.withIndex()) {
                 if (index > 0) {
                     Spacer(Modifier.size(PgSpace.L))

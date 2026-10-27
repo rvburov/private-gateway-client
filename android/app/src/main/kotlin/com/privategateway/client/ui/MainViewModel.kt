@@ -16,6 +16,7 @@ import com.privategateway.client.core.subscriptions.SubscriptionAddress
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionFetch
 import com.privategateway.client.core.subscriptions.SubscriptionSource
+import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.ServerRepository
@@ -57,7 +58,11 @@ data class MainUi(
     val selectedId: String? = null,
     val subscriptions: List<SubscriptionRef> = emptyList(),
     val measuring: Boolean = false,
+    val blocked: Boolean = false,
 ) {
+    /** Android закрыл интернет без туннеля — «Блокировать подключения без VPN» (решение 445). */
+    val closedWithoutTunnel: Boolean get() = SystemVpnView.closedWithoutTunnel(status.state, blocked)
+
     /** Защита идет или поднимается через этот сервер (строка «активен», «Используется сейчас» в карточке). */
     fun active(id: String): Boolean = status.state != TunnelState.Off && status.state != TunnelState.Error && status.serverId == id
 
@@ -124,13 +129,13 @@ class MainViewModel @Inject constructor(
     private val qr: QrImages,
 ) : ViewModel() {
     val ui: StateFlow<MainUi> = combine(
-        monitor.status,
+        monitor.status.combine(monitor.blocked) { status, blocked -> status to blocked },
         servers.servers,
         settings.selectedServerId,
         servers.subscriptionRefs,
         meter.measuring,
-    ) { status, list, selected, groups, measuring ->
-        MainUi(status, list, selected, groups, measuring)
+    ) { (status, blocked), list, selected, groups, measuring ->
+        MainUi(status, list, selected, groups, measuring, blocked)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MainUi())
 
     private val notices = MutableSharedFlow<Message>(extraBufferCapacity = 8)
@@ -252,6 +257,7 @@ class MainViewModel @Inject constructor(
             when (meter.measure()) {
                 MeasureResult.Done -> notices.emit(Message(R.string.android_servers_ping_done))
                 MeasureResult.Busy -> notices.emit(Message(R.string.android_servers_ping_busy))
+                MeasureResult.Blocked -> notices.emit(Message(R.string.android_servers_ping_blocked))
                 MeasureResult.Running -> Unit
             }
         }

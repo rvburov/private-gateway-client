@@ -96,23 +96,26 @@ data class ProtectionChip(
 /**
  * Четыре чипа главной (доска 25): весь трафик, DNS, IPv6, блок при обрыве — по состоянию туннеля. IPv6 закрыт самим
  * Android: у туннеля нет адреса IPv6 (TunPlan). Блок при обрыве на Android — системный: Android сообщает о нем только
- * работающему туннелю, без туннеля — «в настройках Android».
+ * работающему туннелю, без туннеля — «в настройках Android». [closed] — туннеля нет, а Android закрыл интернет
+ * («Блокировать подключения без VPN», решение 445): как сработавший блок десктопа — трафик остановлен, утечки нет.
  */
 object ProtectionChips {
-    fun of(state: TunnelState, lockdown: Boolean?): List<ProtectionChip> {
+    fun of(state: TunnelState, lockdown: Boolean?, closed: Boolean = false): List<ProtectionChip> {
         val connected = state == TunnelState.Connected
         // Переподключение: карта туннеля осталась, трафик ждет — «поднимается», а не «идет напрямую».
         val waiting = state == TunnelState.Connecting || state == TunnelState.Reconnecting || state == TunnelState.Stopping
-        fun pick(ok: Int, wait: Int, off: Int) = when {
+        fun pick(ok: Int, wait: Int, off: Int, stopped: Int, stoppedLook: ChipLook) = when {
             connected -> ok to ChipLook.Ok
             waiting -> wait to ChipLook.Waiting
+            closed -> stopped to stoppedLook
             else -> off to ChipLook.Off
         }
 
-        val (all, allLook) = pick(R.string.check_all_ok, R.string.check_all_waiting, R.string.check_all_off)
-        val (dns, dnsLook) = pick(R.string.check_dns_ok, R.string.check_dns_waiting, R.string.check_dns_off)
-        val (ipv6, ipv6Look) = pick(R.string.check_ipv6_ok, R.string.check_ipv6_waiting, R.string.check_ipv6_off)
+        val (all, allLook) = pick(R.string.check_all_ok, R.string.check_all_waiting, R.string.check_all_off, R.string.check_all_stopped, ChipLook.Warning)
+        val (dns, dnsLook) = pick(R.string.check_dns_ok, R.string.check_dns_waiting, R.string.check_dns_off, R.string.check_dns_stopped, ChipLook.Ok)
+        val (ipv6, ipv6Look) = pick(R.string.check_ipv6_ok, R.string.check_ipv6_waiting, R.string.check_ipv6_off, R.string.check_ipv6_stopped, ChipLook.Ok)
         val (ks, ksLook) = when {
+            closed && !connected && !waiting -> R.string.check_ks_stopped to ChipLook.Ok
             !connected && state != TunnelState.Reconnecting -> R.string.android_check_ks_system to ChipLook.Warning
             lockdown == true -> R.string.check_ks_ok to ChipLook.Ok
             lockdown == false -> R.string.check_ks_off to ChipLook.Off
