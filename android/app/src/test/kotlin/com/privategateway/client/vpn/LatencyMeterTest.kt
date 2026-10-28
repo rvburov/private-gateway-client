@@ -12,6 +12,7 @@ import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
+import com.privategateway.client.core.xray.XrayConfig
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
@@ -82,10 +83,13 @@ class LatencyMeterTest {
 
     private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(10_000) { block() } }
 
-    /** Семь серверов, что ядро умеет, и один Hysteria2 — его ядро не меряет. */
+    /**
+     * Семь серверов, что ядро умеет (VLESS и Trojan, кроме тех, что без шифрования к открытому адресу, — их ядро не
+     * берет), и один Hysteria2 — его ядро не меряет.
+     */
     private fun fill(): Pair<List<String>, String> {
         val all = Fixtures.servers().distinctBy { Fixtures.identity(it) }
-        val supported = all.filter { it.protocol == ProxyProtocol.Vless || it.protocol == ProxyProtocol.Trojan }.take(7)
+        val supported = all.filter { (it.protocol == ProxyProtocol.Vless || it.protocol == ProxyProtocol.Trojan) && !XrayConfig.unencrypted(it) }.take(7)
         val hysteria = all.first { it.protocol == ProxyProtocol.Hysteria2 }
         wait { servers.add(supported + hysteria) }
         val items = wait { servers.servers.first { it.size == 8 } }

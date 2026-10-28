@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Новый коммит в ветку отменяет ее незаконченную проверку: та проверяет уже прежний код и держит машины CI, которых мало
+# (macOS — меньше всего). Проверки master не отменяются: по каждой видно, зеленый ли этот коммит master.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
 jobs:
   style:
     name: Стиль и формат

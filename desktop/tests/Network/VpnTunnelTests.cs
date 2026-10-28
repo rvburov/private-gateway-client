@@ -444,7 +444,8 @@ public sealed class VpnTunnelTests
         var (host6, _) = netns.LinkIpv6();
         using var site = new LocalSite("через туннель");
         var serverPort = XrayKit.FreePort();
-        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host6);
+        // С TLS: адрес документации IPv6 для Xray открытый, а VLESS без TLS к открытому адресу служба не подключает (решение 474).
+        var (definition, serverConfig) = XrayKit.Pair("vless-ws-tls", serverPort, host6);
         serverConfig["outbounds"] = new JsonArray(
             new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
         using var server = await XrayKit.Start(serverConfig, serverPort);
