@@ -58,7 +58,7 @@ public static class LatencyProbe
     {
         ArgumentNullException.ThrowIfNull(servers);
         ArgumentNullException.ThrowIfNull(time);
-        var ports = servers.Select(_ => FreePort()).ToList();
+        var ports = servers.Select(_ => LocalPort.FreeForTcpAndUdp()).ToList();
         var relays = servers.Select(server => CoreRelay.LinkFor(server, singBox)).ToList();
 
         // Входы замера — с паролем на этот замер: служба работает от SYSTEM или root, и без пароля любая программа на машине,
@@ -309,13 +309,6 @@ public static class LatencyProbe
         }
 
         return true;
-    }
-
-    private static int FreePort()
-    {
-        using var listener = new TcpListener(IPAddress.Loopback, 0);
-        listener.Start();
-        return ((IPEndPoint)listener.LocalEndpoint).Port;
     }
 
     /// <summary>Прокси для всех адресов: WebProxy пропускает localhost мимо прокси, а проверке нужен только вход ядра.</summary>
