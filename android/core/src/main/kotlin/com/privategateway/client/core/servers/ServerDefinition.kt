@@ -45,7 +45,11 @@ data class TransportOptions(
     }
 }
 
-/** Защита: TLS или REALITY с именем, отпечатком, ALPN и ключами REALITY. */
+/**
+ * Защита: TLS или REALITY с именем, отпечатком, ALPN и ключами REALITY. Сертификат TLS можно закрепить (решение 480):
+ * [pinnedPeerCertSha256] — SHA-256 сертификата сервера или его центра (64 знака hex, строчные; из ссылки — «pcs»),
+ * [verifyPeerCertByName] — имена, на которые проверяется сертификат вместо SNI («vcn»). [allowInsecure] ядро не берет (решение 477).
+ */
 data class SecurityOptions(
     val kind: TransportSecurity,
     val sni: String? = null,
@@ -55,6 +59,8 @@ data class SecurityOptions(
     val realityPublicKey: String? = null,
     val realityShortId: String? = null,
     val realitySpiderX: String? = null,
+    val pinnedPeerCertSha256: List<String>? = null,
+    val verifyPeerCertByName: List<String>? = null,
 ) {
     companion object {
         val None = SecurityOptions(TransportSecurity.None)

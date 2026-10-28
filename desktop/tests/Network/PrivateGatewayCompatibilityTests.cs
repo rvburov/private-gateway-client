@@ -85,10 +85,7 @@ public sealed class PrivateGatewayCompatibilityTests
         })!;
         var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
-        // v25.8: «Public key: …»; новые версии пишут его как «Password: …».
-        return output.Split('\n').Select(l => l.Trim())
-            .First(l => l.StartsWith("Public key:", StringComparison.Ordinal) || l.StartsWith("Password:", StringComparison.Ordinal))
-            .Split(':', 2)[1].Trim();
+        return XrayKit.KeyLine(output, isPublic: true);
     }
 
     private sealed class FixedProxy(Uri proxy) : IWebProxy

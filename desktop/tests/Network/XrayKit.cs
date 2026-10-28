@@ -29,10 +29,6 @@ internal static class XrayKit
             ? path
             : null;
 
-    /// <summary>
-    /// Описание сервера для клиента и конфиг того же сервера в Xray. Без шифрования транспорта — только
-    /// для теста на localhost; у Trojan — TLS с самоподписанным сертификатом на example.com.
-    /// </summary>
     /// <summary>Как <see cref="Pair(string, int)"/>, но сервер слушает <paramref name="listen"/>, а не 127.0.0.1.</summary>
     public static (ServerDefinition Server, JsonObject Config) Pair(string kind, int port, IPAddress listen)
     {
@@ -41,6 +37,10 @@ internal static class XrayKit
         return (definition with { Host = listen.ToString() }, config);
     }
 
+    /// <summary>
+    /// Описание сервера для клиента и конфиг того же сервера в Xray. Без шифрования транспорта — только
+    /// для теста на localhost; с TLS — сертификат <see cref="Certificate"/>, клиент закрепляет его SHA-256.
+    /// </summary>
     public static (ServerDefinition Server, JsonObject Config) Pair(string kind, int port)
     {
         var withUuid = new ServerCredentials(Uuid: Uuid);
@@ -58,22 +58,22 @@ internal static class XrayKit
             "vmess" => (Definition(ProxyProtocol.Vmess, port, withUuid),
                 ServerConfig(port, "vmess", $$"""{ "clients": [{ "id": "{{Uuid}}" }] }""", raw)),
             "trojan-tls" => (Definition(ProxyProtocol.Trojan, port, new ServerCredentials(Password: Password),
-                    security: new SecurityOptions(TransportSecurity.Tls, Sni: "example.com", AllowInsecure: true)),
+                    security: Pinned),
                 ServerConfig(port, "trojan", $$"""{ "clients": [{ "password": "{{Password}}" }] }""",
-                    $$"""{ "network": "raw", "security": "tls", "tlsSettings": { "certificates": [{{SelfSigned("example.com")}}] } }""")),
+                    $$"""{ "network": "raw", "security": "tls", "tlsSettings": { "certificates": [{{Certificate.Json}}] } }""")),
             "shadowsocks" => (Definition(ProxyProtocol.Shadowsocks, port, new ServerCredentials(Password: Password),
                     options: new ProtocolOptions(Cipher: "aes-256-gcm")),
                 ServerConfig(port, "shadowsocks", $$"""{ "method": "aes-256-gcm", "password": "{{Password}}", "network": "tcp" }""", raw)),
             "vless-xhttp" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.Xhttp, Path: "/pg")),
                 ServerConfig(port, "vless", vlessClients, """{ "network": "xhttp", "xhttpSettings": { "path": "/pg" } }""")),
             "vless-ws-tls" => (Definition(ProxyProtocol.Vless, port, withUuid, new TransportOptions(TransportKind.WebSocket, Path: "/pg"),
-                    new SecurityOptions(TransportSecurity.Tls, Sni: "example.com", AllowInsecure: true)),
+                    Pinned),
                 ServerConfig(port, "vless", vlessClients,
-                    $$"""{ "network": "ws", "wsSettings": { "path": "/pg" }, "security": "tls", "tlsSettings": { "certificates": [{{SelfSigned("example.com")}}] } }""")),
+                    $$"""{ "network": "ws", "wsSettings": { "path": "/pg" }, "security": "tls", "tlsSettings": { "certificates": [{{Certificate.Json}}] } }""")),
             "vmess-grpc-tls" => (Definition(ProxyProtocol.Vmess, port, withUuid, new TransportOptions(TransportKind.Grpc, ServiceName: "pg"),
-                    new SecurityOptions(TransportSecurity.Tls, Sni: "example.com", AllowInsecure: true)),
+                    Pinned),
                 ServerConfig(port, "vmess", $$"""{ "clients": [{ "id": "{{Uuid}}" }] }""",
-                    $$"""{ "network": "grpc", "grpcSettings": { "serviceName": "pg" }, "security": "tls", "tlsSettings": { "certificates": [{{SelfSigned("example.com")}}] } }""")),
+                    $$"""{ "network": "grpc", "grpcSettings": { "serviceName": "pg" }, "security": "tls", "tlsSettings": { "certificates": [{{Certificate.Json}}] } }""")),
             "shadowsocks-2022" => (Definition(ProxyProtocol.Shadowsocks, port, new ServerCredentials(Password: Ss2022Key),
                     options: new ProtocolOptions(Cipher: "2022-blake3-aes-128-gcm")),
                 ServerConfig(port, "shadowsocks", $$"""{ "method": "2022-blake3-aes-128-gcm", "password": "{{Ss2022Key}}", "network": "tcp" }""", raw)),
@@ -81,6 +81,17 @@ internal static class XrayKit
             _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, null),
         };
     }
+
+    /// <summary>
+    /// Самоподписанный сертификат example.com на сутки — один на прогон — и его SHA-256. Проверку сертификата Xray-core 26.x не
+    /// выключает (allowInsecure удален), поэтому клиент теста закрепляет его, как пользователь — сертификат своего сервера
+    /// («pcs» в ссылке, решение 480).
+    /// </summary>
+    public static (string Json, string Sha256) Certificate { get; } = Create("example.com");
+
+    /// <summary>TLS на example.com с закрепленным <see cref="Certificate"/>.</summary>
+    public static SecurityOptions Pinned { get; } =
+        new(TransportSecurity.Tls, Sni: "example.com", PinnedPeerCertSha256: [Certificate.Sha256]);
 
     /// <summary>Ключ Shadowsocks 2022 — 16 байт base64, заведомо ненастоящий (байты 0..15).</summary>
     private static string Ss2022Key { get; } = Convert.ToBase64String([.. Enumerable.Range(0, 16).Select(b => (byte)b)]);
@@ -108,8 +119,31 @@ internal static class XrayKit
         using var process = Process.Start(start)!;
         var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
-        string Value(string name) => output.Split('\n').Select(l => l.Trim()).First(l => l.StartsWith(name + ":", StringComparison.Ordinal))[(name.Length + 1)..].Trim();
-        return (Value("Private key"), Value("Public key"));
+        return (KeyLine(output, isPublic: false), KeyLine(output, isPublic: true));
+    }
+
+    /// <summary>
+    /// Ключ из вывода <c>xray wg</c> или <c>xray x25519</c>. Метки менялись от версии к версии: v25.8 — «Private key» и
+    /// «Public key», v26 — «PrivateKey» и «Password (PublicKey)».
+    /// </summary>
+    public static string KeyLine(string output, bool isPublic)
+    {
+        foreach (var line in output.Split('\n'))
+        {
+            var colon = line.IndexOf(':', StringComparison.Ordinal);
+            if (colon < 0)
+            {
+                continue;
+            }
+
+            var label = line[..colon].Replace(" ", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+            if (isPublic ? label is "publickey" || label.StartsWith("password", StringComparison.Ordinal) : label == "privatekey")
+            {
+                return line[(colon + 1)..].Trim();
+            }
+        }
+
+        throw new InvalidOperationException("Нет ключа в выводе ядра:\n" + output);
     }
 
     /// <summary>
@@ -133,7 +167,9 @@ internal static class XrayKit
         """)!.AsObject();
 
     /// <summary>Самоподписанный сертификат на сутки — строками PEM, как их принимает Xray.</summary>
-    public static string SelfSigned(string host)
+    public static string SelfSigned(string host) => Create(host).Json;
+
+    private static (string Json, string Sha256) Create(string host)
     {
         using var key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
         var request = new CertificateRequest("CN=" + host, key, HashAlgorithmName.SHA256);
@@ -141,17 +177,19 @@ internal static class XrayKit
         names.AddDnsName(host);
         request.CertificateExtensions.Add(names.Build());
         using var certificate = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddHours(-1), DateTimeOffset.UtcNow.AddDays(1));
-        return new JsonObject
+        var json = new JsonObject
         {
             ["certificate"] = Lines(certificate.ExportCertificatePem()),
             ["key"] = Lines(key.ExportPkcs8PrivateKeyPem()),
         }.ToJsonString();
+        return (json, certificate.GetCertHashString(HashAlgorithmName.SHA256).ToLowerInvariant());
 
         static JsonArray Lines(string pem) => new([.. pem.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => JsonValue.Create(l.TrimEnd('\r')))]);
     }
 
     public static async Task<CoreProcess> Start(JsonObject config, int port)
     {
+        AllowLocalSites(config);
         var output = new List<string>();
         var xray = CoreProcess.StartXray(Xray!, config, output: line =>
         {
@@ -160,6 +198,7 @@ internal static class XrayKit
                 output.Add(line);
             }
         });
+        Outputs.AddOrUpdate(xray, output);
 
         // Сервер слушает адрес из конфига: 127.0.0.1 или адрес машины на паре veth стенда.
         var listen = IPAddress.Parse(config["inbounds"]?[0]?["listen"]?.GetValue<string>() ?? "127.0.0.1");
@@ -213,6 +252,51 @@ internal static class XrayKit
     /// получал «bind: … forbidden by its access permissions» (soak 5, 2026-10-28).
     /// </summary>
     public static int FreePort() => LocalPort.FreeForTcpAndUdp();
+
+    /// <summary>Вывод ядра, запущенного <see cref="Start"/>, — для сообщения об ошибке теста; последние 40 строк.</summary>
+    public static string Log(CoreProcess core)
+    {
+        if (!Outputs.TryGetValue(core, out var output))
+        {
+            return "(вывода нет)";
+        }
+
+        lock (output)
+        {
+            return string.Join('\n', output.TakeLast(40));
+        }
+    }
+
+    private static readonly System.Runtime.CompilerServices.ConditionalWeakTable<CoreProcess, List<string>> Outputs = [];
+
+    /// <summary>
+    /// Xray-core 26.x у сервера по умолчанию не выпускает трафик входов VLESS, VMess, Trojan, Shadowsocks и WireGuard на частные
+    /// адреса (finalRules выхода freedom), а сайты и DNS тестов — на 127.0.0.1. Серверу теста выход freedom разрешает все. Клиенту
+    /// это не нужно: такого правила у его входов (SOCKS, HTTP) нет.
+    /// </summary>
+    private static void AllowLocalSites(JsonObject config)
+    {
+        var server = config["inbounds"]?.AsArray().Any(i => i?["protocol"]?.GetValue<string>() is "vless" or "vmess" or "trojan" or "shadowsocks" or "wireguard")
+            ?? false;
+        if (!server)
+        {
+            return;
+        }
+
+        foreach (var outbound in config["outbounds"]?.AsArray().OfType<JsonObject>() ?? [])
+        {
+            if (outbound["protocol"]?.GetValue<string>() == "freedom")
+            {
+                if (outbound["settings"] is not JsonObject settings)
+                {
+                    settings = [];
+                    outbound["settings"] = settings;
+                }
+
+                settings["finalRules"] ??= new JsonArray(new JsonObject { ["action"] = "allow" });
+            }
+        }
+    }
 
     private static string? FindXray()
     {

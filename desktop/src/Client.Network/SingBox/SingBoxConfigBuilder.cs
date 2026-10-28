@@ -193,16 +193,7 @@ public static class SingBoxConfigBuilder
         }
 
         var xray = request.Xray;
-        var outbounds = new JsonArray(new JsonObject
-        {
-            ["type"] = "socks",
-            ["tag"] = XrayTag,
-            ["server"] = "127.0.0.1",
-            ["server_port"] = xray.Port,
-            ["version"] = "5",
-            ["username"] = xray.User,
-            ["password"] = xray.Password,
-        });
+        var outbounds = new JsonArray(ToXray(XrayTag, xray.Port, xray));
         var route = new JsonObject
         {
             ["final"] = XrayTag,
@@ -221,16 +212,7 @@ public static class SingBoxConfigBuilder
         // имя знает только Xray — он и соединит напрямую. Раньше правила «программа — напрямую».
         if (request.FakeIpPrograms is { Count: > 0 } fake && xray.BypassPort > 0)
         {
-            outbounds.Add(new JsonObject
-            {
-                ["type"] = "socks",
-                ["tag"] = BypassTag,
-                ["server"] = "127.0.0.1",
-                ["server_port"] = xray.BypassPort,
-                ["version"] = "5",
-                ["username"] = xray.User,
-                ["password"] = xray.Password,
-            });
+            outbounds.Add(ToXray(BypassTag, xray.BypassPort, xray));
             rules.Add(new JsonObject
             {
                 ["process_path"] = new JsonArray([.. fake.Select(p => (JsonNode)p)]),
@@ -315,6 +297,20 @@ public static class SingBoxConfigBuilder
 
     // Выход к серверу: TLS — с именем из ссылки (без него — имя сервера) и ALPN ссылки; у TUIC без ALPN — h3, как у его
     // серверов. Неизвестный алгоритм управления перегрузкой не передается — sing-box с ним не запустился бы.
+    /// <summary>
+    /// Выход в Xray: Shadowsocks 2022 с ключом связи на 127.0.0.1 (<see cref="TunLink.Method"/>, решение 481) — UDP датаграммами на
+    /// тот же порт, без UDP ASSOCIATE.
+    /// </summary>
+    private static JsonObject ToXray(string tag, int port, TunLink link) => new()
+    {
+        ["type"] = "shadowsocks",
+        ["tag"] = tag,
+        ["server"] = "127.0.0.1",
+        ["server_port"] = port,
+        ["method"] = TunLink.Method,
+        ["password"] = link.Key,
+    };
+
     private static JsonObject RelayOutbound(ServerDefinition server, string? address, string tag)
     {
         var security = server.Security;

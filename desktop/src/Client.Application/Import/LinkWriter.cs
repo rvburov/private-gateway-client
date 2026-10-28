@@ -106,6 +106,8 @@ public static class LinkWriter
             ("fp", security.Fingerprint),
             ("alpn", security.Alpn is { Count: > 0 } alpn ? string.Join(',', alpn) : null),
             ("allowInsecure", security.AllowInsecure ? "1" : null),
+            ("pcs", security.PinnedPeerCertSha256 is { Count: > 0 } pinned ? string.Join(',', pinned) : null),
+            ("vcn", security.VerifyPeerCertByName is { Count: > 0 } names ? string.Join(',', names) : null),
             ("pbk", security.RealityPublicKey),
             ("sid", security.RealityShortId),
             ("spx", security.RealitySpiderX),
@@ -117,7 +119,7 @@ public static class LinkWriter
     {
         var transport = server.Transport;
         var security = server.Security;
-        return new JsonObject
+        var json = new JsonObject
         {
             ["v"] = "2",
             ["ps"] = NameWithFlag(server),
@@ -143,6 +145,18 @@ public static class LinkWriter
             ["fp"] = security.Fingerprint ?? string.Empty,
             ["alpn"] = security.Alpn is { Count: > 0 } alpn ? string.Join(',', alpn) : string.Empty,
         };
+        // Закрепленный сертификат (решение 480) — только когда он есть: у v2rayN таких полей нет.
+        if (security.PinnedPeerCertSha256 is { Count: > 0 } pinned)
+        {
+            json["pcs"] = string.Join(',', pinned);
+        }
+
+        if (security.VerifyPeerCertByName is { Count: > 0 } names)
+        {
+            json["vcn"] = string.Join(',', names);
+        }
+
+        return json;
     }
 
     private static string Query(List<(string Key, string? Value)> parameters)

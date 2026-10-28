@@ -40,7 +40,9 @@ public sealed class XrayProxyTests
     public async Task Request_goes_through_the_server_by_socks5_and_http_on_one_port(string kind, bool mux)
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
-        using var site = new LocalSite(Page);
+        // Соединение закрывает клиент: здесь проверяется путь через сервер на каждом транспорте, а закрытие WebSocket сервером
+        // Xray 26.x сразу за сайтом — его недостаток для любого клиента (LocalSite, clientCloses).
+        using var site = new LocalSite(Page, clientCloses: true);
         var serverPort = XrayKit.FreePort();
         var (definition, serverConfig) = XrayKit.Pair(kind, serverPort);
         var url = site.Url;
@@ -53,16 +55,33 @@ public sealed class XrayProxyTests
             url = new Uri($"http://192.0.2.10:{site.Url.Port}/");
         }
 
+        // Соединения обоих ядер — в журнал: не дошел запрос — в сообщении об ошибке видно, на каком ядре и почему.
+        serverConfig["log"] = new JsonObject { ["loglevel"] = "info" };
         using var server = await XrayKit.Start(serverConfig, serverPort);
         var proxyPort = XrayKit.FreePort();
         var config = ClientConfig(definition, proxyPort, mux: mux);
         (config["outbounds"]![0]!["mux"]?["enabled"]?.GetValue<bool>() ?? false).ShouldBe(mux, "Mux — из настройки «Подключение и ядро»");
         // Сайт теста — на 127.0.0.1, а локальная сеть в конфиге закрыта: для проверки туннеля правило убирается.
         config["routing"]!["rules"]!.AsArray().RemoveAt(0);
+        config["log"] = new JsonObject { ["loglevel"] = "info" };
         using var client = await XrayKit.Start(config, proxyPort);
 
-        (await Get(url, $"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page);
-        (await Get(url, $"http://127.0.0.1:{proxyPort}")).ShouldBe(Page, "HTTP и SOCKS5 — на одном порту");
+        async Task<string> Through(string proxy)
+        {
+            try
+            {
+                return await Get(url, proxy);
+            }
+            catch (HttpRequestException e)
+            {
+                // Ядра дописывают журнал после ответа — полсекунды на последние строки.
+                await Task.Delay(500);
+                throw new InvalidOperationException($"{proxy}: {e.Message}\nклиент:\n{XrayKit.Log(client)}\nсервер:\n{XrayKit.Log(server)}\nконфиг клиента:\n{config.ToJsonString()}", e);
+            }
+        }
+
+        (await Through($"socks5://127.0.0.1:{proxyPort}")).ShouldBe(Page);
+        (await Through($"http://127.0.0.1:{proxyPort}")).ShouldBe(Page, "HTTP и SOCKS5 — на одном порту");
         site.Requests.ShouldBe(2);
     }
 

@@ -165,7 +165,7 @@ public sealed class RelayTests
         var output = new CoreOutput(netns);
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], Timeout, TimeProvider.System, netns.Path, output.Add,
-            openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            cancellationToken: Ct);
         int relay;
         try
         {

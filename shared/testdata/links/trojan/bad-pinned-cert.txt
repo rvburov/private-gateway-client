@@ -1,0 +1,1 @@
+trojan://pw-trojan-3@198.51.100.211:443?security=tls&sni=example.com&pcs=0123456789#Bad

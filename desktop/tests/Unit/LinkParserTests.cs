@@ -180,6 +180,8 @@ public class LinkParserTests
         Put(security, "realityPublicKey", s.Security.RealityPublicKey);
         Put(security, "realityShortId", s.Security.RealityShortId);
         Put(security, "realitySpiderX", s.Security.RealitySpiderX);
+        Put(security, "pinnedPeerCertSha256", s.Security.PinnedPeerCertSha256);
+        Put(security, "verifyPeerCertByName", s.Security.VerifyPeerCertByName);
         json["security"] = security;
 
         var options = new JsonObject();

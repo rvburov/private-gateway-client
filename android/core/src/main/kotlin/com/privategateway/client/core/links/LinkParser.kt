@@ -170,6 +170,8 @@ object LinkParser {
         query["sni"] = ConfigTree.text(root, "sni") ?: ""
         query["fp"] = ConfigTree.text(root, "fp") ?: ""
         query["alpn"] = ConfigTree.text(root, "alpn") ?: ""
+        query["pcs"] = ConfigTree.text(root, "pcs") ?: ""
+        query["vcn"] = ConfigTree.text(root, "vcn") ?: ""
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"]!!
         return vmessFrom(
@@ -469,6 +471,9 @@ object LinkParser {
 
         val alpn = query(query, "alpn")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }
         val reality = kind == TransportSecurity.Reality
+        val tls = kind == TransportSecurity.Tls
+        val pinned = if (tls) pinned(query(query, "pcs")) else emptyList()
+        val names = if (tls) query(query, "vcn")?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() } else null
         val security = if (kind == TransportSecurity.None) {
             SecurityOptions.None
         } else {
@@ -481,11 +486,36 @@ object LinkParser {
                 if (reality) query(query, "pbk") else null,
                 if (reality) query(query, "sid") else null,
                 if (reality) query(query, "spx") else null,
+                pinned?.takeIf { it.isNotEmpty() },
+                names?.takeIf { it.isNotEmpty() },
             )
+        }
+
+        // Закрепленный сертификат с ошибкой: без него сервер проверялся бы иначе, чем задумано (решение 480).
+        if (pinned == null) {
+            return Checked(security, ImportErrors.UNSUPPORTED_PARAMETER)
         }
 
         // REALITY без открытого ключа сервера не подключится.
         return Checked(security, if (reality && security.realityPublicKey == null) ImportErrors.NO_CREDENTIALS else null)
+    }
+
+    /**
+     * «pcs» — SHA-256 сертификатов через запятую, как у Xray: 64 знака hex, двоеточия OpenSSL допустимы. Результат — строчные
+     * без двоеточий; пусто — пустой список; хоть одно значение не SHA-256 — null.
+     */
+    internal fun pinned(text: String?): List<String>? {
+        val hashes = mutableListOf<String>()
+        for (part in (text ?: "").split(',').map { it.trim() }.filter { it.isNotEmpty() }) {
+            val hash = part.replace(":", "").lowercase(Locale.ROOT)
+            if (hash.length != 64 || !hash.all { it in '0'..'9' || it in 'a'..'f' }) {
+                return null
+            }
+
+            hashes += hash
+        }
+
+        return hashes
     }
 
     // ── Мелочи ───────────────────────────────────────────────────────────────

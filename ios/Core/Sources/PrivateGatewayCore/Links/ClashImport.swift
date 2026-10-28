@@ -33,6 +33,8 @@ enum ClashImport {
         ConfigTree.put(&query, "alpn", ConfigTree.joined(node, "alpn"))
         ConfigTree.put(&query, "allowInsecure", ConfigTree.flag(node, "skip-cert-verify") ? "1" : nil)
         ConfigTree.put(&query, "fp", ConfigTree.text(node, "client-fingerprint"))
+        // fingerprint у Mihomo — SHA-256 сертификата сервера, тот же смысл, что «pcs» у Xray (решение 480).
+        ConfigTree.put(&query, "pcs", ConfigTree.text(node, "fingerprint"))
         let reality = ConfigTree.object(node, "reality-opts")
         ConfigTree.put(&query, "pbk", ConfigTree.text(reality, "public-key"))
         ConfigTree.put(&query, "sid", ConfigTree.text(reality, "short-id"))

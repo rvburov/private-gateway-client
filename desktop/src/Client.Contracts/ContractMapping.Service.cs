@@ -90,6 +90,8 @@ public static partial class ContractMapping
             RealitySpiderX = server.Security.RealitySpiderX ?? string.Empty,
         };
         security.Alpn.AddRange(server.Security.Alpn ?? []);
+        security.PinnedPeerCertSha256.AddRange(server.Security.PinnedPeerCertSha256 ?? []);
+        security.VerifyPeerCertByName.AddRange(server.Security.VerifyPeerCertByName ?? []);
         var endpoint = new V1.ServerEndpoint
         {
             Id = id,
@@ -237,7 +239,9 @@ public static partial class ContractMapping
                     security.AllowInsecure,
                     Empty(security.RealityPublicKey),
                     Empty(security.RealityShortId),
-                    Empty(security.RealitySpiderX)),
+                    Empty(security.RealitySpiderX),
+                    security.PinnedPeerCertSha256.Count > 0 ? [.. security.PinnedPeerCertSha256] : null,
+                    security.VerifyPeerCertByName.Count > 0 ? [.. security.VerifyPeerCertByName] : null),
             options,
             credentials);
     }

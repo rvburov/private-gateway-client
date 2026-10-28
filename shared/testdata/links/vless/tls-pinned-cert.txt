@@ -1,0 +1,1 @@
+vless://11111111-2222-3333-4444-555555555555@198.51.100.210:443?security=tls&sni=example.com&type=ws&path=%2Fws&pcs=A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90:A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90%2C0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0&vcn=example.com%2C%20example.org#Pinned

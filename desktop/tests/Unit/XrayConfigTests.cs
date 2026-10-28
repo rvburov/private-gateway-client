@@ -10,6 +10,9 @@ namespace PrivateGateway.Client.Tests.Unit;
 /// <summary>Конфиг Xray-core из эталонных ссылок shared/testdata и настроек.</summary>
 public sealed class XrayConfigTests
 {
+    /// <summary>Ключ связи с TUN — заведомо ненастоящий: 16 байт 0x11 в base64.</summary>
+    private const string TunKey = "EREREREREREREREREREREQ==";
+
     private static readonly string Links = Path.Combine(FindRoot(), "shared", "testdata", "links");
 
     [Fact]
@@ -115,6 +118,21 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Pinned_certificate_goes_to_the_core_and_allow_insecure_does_not()
+    {
+        var pinned = Outbound(Build(Link("vless/tls-pinned-cert")), XrayConfigBuilder.ProxyTag)["streamSettings"]!["tlsSettings"]!;
+        pinned["pinnedPeerCertSha256"]!.GetValue<string>().ShouldBe("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90,0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0");
+        pinned["verifyPeerCertByName"]!.GetValue<string>().ShouldBe("example.com,example.org");
+
+        var trojan = Link("trojan/ws");
+        var insecure = Outbound(Build(trojan with { Security = trojan.Security with { AllowInsecure = true } }), XrayConfigBuilder.ProxyTag);
+        var tls = insecure["streamSettings"]!["tlsSettings"]!.AsObject();
+        tls.ContainsKey("allowInsecure").ShouldBeFalse("Xray-core 26.x конфиг с allowInsecure не запускает (решение 480)");
+        tls.ContainsKey("pinnedPeerCertSha256").ShouldBeFalse();
+        tls.ContainsKey("verifyPeerCertByName").ShouldBeFalse();
+    }
+
+    [Fact]
     public void Vmess_shadowsocks_and_wireguard_have_their_own_settings()
     {
         var vmess = Outbound(Build(Link("vmess/ws-tls")), XrayConfigBuilder.ProxyTag);
@@ -149,7 +167,7 @@ public sealed class XrayConfigTests
         // С ретранслятором: выход сервера — SOCKS5 с паролем к нему на 127.0.0.1, без адреса сервера (его знает ретранслятор), а
         // ключи сервера в конфиг Xray не попадают.
         var relay = new RelayLink(31500, "relay-user", "relay-pass");
-        var config = XrayConfigBuilder.Build(Request(Link("hysteria2/obfs-insecure")), new TunLink(31000, "user-1", "pass-1", "203.0.113.57"), relay: relay)
+        var config = XrayConfigBuilder.Build(Request(Link("hysteria2/obfs-insecure")), new TunLink(31000, TunKey, "203.0.113.57"), relay: relay)
             .Config.ShouldNotBeNull();
         var proxy = Outbound(config, XrayConfigBuilder.ProxyTag);
         proxy["protocol"]!.GetValue<string>().ShouldBe("socks");
@@ -339,7 +357,7 @@ public sealed class XrayConfigTests
         foreach (var config in new[]
         {
             XrayConfigBuilder.Build(request, probe: probe).Config!,
-            XrayConfigBuilder.Build(request, new TunLink(31000, "user-1", "pass-1", "198.51.100.20"), probe).Config!,
+            XrayConfigBuilder.Build(request, new TunLink(31000, TunKey, "198.51.100.20"), probe).Config!,
         })
         {
             var inbound = config["inbounds"]!.AsArray().Single(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.ProbeTag)!;
@@ -357,16 +375,18 @@ public sealed class XrayConfigTests
     [Fact]
     public void Tun_link_takes_only_its_own_tun_and_dials_the_resolved_address()
     {
-        var tun = new TunLink(31000, "user-1", "pass-1", "198.51.100.20");
+        var tun = new TunLink(31000, TunKey, "198.51.100.20");
         var server = Link("vless/reality-vision");
 
         var config = XrayConfigBuilder.Build(Request(server), tun).Config.ShouldNotBeNull();
 
         var inbound = config["inbounds"]!.AsArray().ShouldHaveSingleItem()!;
-        (inbound["listen"]!.GetValue<string>(), inbound["port"]!.GetValue<int>(), inbound["settings"]!["auth"]!.GetValue<string>())
-            .ShouldBe(("127.0.0.1", 31000, "password"), "вход только для своего TUN: на 127.0.0.1 и с паролем на подключение");
-        var account = inbound["settings"]!["accounts"]![0]!;
-        (account["user"]!.GetValue<string>(), account["pass"]!.GetValue<string>()).ShouldBe(("user-1", "pass-1"));
+        (inbound["listen"]!.GetValue<string>(), inbound["port"]!.GetValue<int>(), inbound["protocol"]!.GetValue<string>())
+            .ShouldBe(("127.0.0.1", 31000, "shadowsocks"), "вход только для своего TUN: на 127.0.0.1 и с ключом на подключение");
+        (inbound["settings"]!["method"]!.GetValue<string>(), inbound["settings"]!["password"]!.GetValue<string>(), inbound["settings"]!["network"]!.GetValue<string>())
+            .ShouldBe((TunLink.Method, TunKey, "tcp,udp"), "UDP — датаграммами на тот же порт, без UDP ASSOCIATE (решение 481)");
+        Outbound(config, XrayConfigBuilder.DirectTag)["settings"]!["finalRules"]![0]!["action"]!.GetValue<string>()
+            .ShouldBe("allow", "Xray-core 26.x у входа Shadowsocks закрывает частные адреса — куда можно, решают правила конфига");
         var proxy = Outbound(config, XrayConfigBuilder.ProxyTag);
         proxy["settings"]!["vnext"]![0]!["address"]!.GetValue<string>().ShouldBe("198.51.100.20");
         proxy["streamSettings"]!["realitySettings"]!["serverName"]!.GetValue<string>()
@@ -392,7 +412,7 @@ public sealed class XrayConfigTests
     [Fact]
     public void Fake_dns_answers_tun_queries_from_its_pool_and_restores_names()
     {
-        var tun = new TunLink(31000, "user-1", "pass-1", "198.51.100.20");
+        var tun = new TunLink(31000, TunKey, "198.51.100.20");
         var server = Link("vless/reality-vision");
         var fake = ProtectionSettings.Default with { FakeDns = true };
 
@@ -453,21 +473,19 @@ public sealed class XrayConfigTests
         XrayConfigBuilder.NeedsBypassInbound(request with { Routing = RoutingSettings.Default }).ShouldBeFalse("«Весь трафик» — обхода нет");
         XrayConfigBuilder.NeedsBypassInbound(request with { Mode = ConnectionMode.Proxy }).ShouldBeFalse();
 
-        var config = XrayConfigBuilder.Build(request, new TunLink(31000, "user-1", "pass-1", "198.51.100.20", BypassPort: 31001)).Config!;
+        var config = XrayConfigBuilder.Build(request, new TunLink(31000, TunKey, "198.51.100.20", BypassPort: 31001)).Config!;
 
         var bypass = config["inbounds"]!.AsArray().Single(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag)!;
-        (bypass["listen"]!.GetValue<string>(), bypass["port"]!.GetValue<int>(), bypass["settings"]!["auth"]!.GetValue<string>())
-            .ShouldBe(("127.0.0.1", 31001, "password"));
-        var account = bypass["settings"]!["accounts"]![0]!;
-        (account["user"]!.GetValue<string>(), account["pass"]!.GetValue<string>()).ShouldBe(("user-1", "pass-1"));
+        (bypass["listen"]!.GetValue<string>(), bypass["port"]!.GetValue<int>(), bypass["protocol"]!.GetValue<string>(), bypass["settings"]!["password"]!.GetValue<string>())
+            .ShouldBe(("127.0.0.1", 31001, "shadowsocks", TunKey));
         bypass["sniffing"]!["destOverride"]!.AsArray().Select(d => d!.GetValue<string>()).ShouldContain("fakedns", "имя по адресу из пула");
         var first = config["routing"]!["rules"]![0]!;
         (first["inboundTag"]![0]!.GetValue<string>(), first["outboundTag"]!.GetValue<string>())
             .ShouldBe((XrayConfigBuilder.BypassTag, XrayConfigBuilder.DirectTag), "первым правилом: программа мимо туннеля — напрямую");
 
-        XrayConfigBuilder.Build(request, new TunLink(31000, "user-1", "pass-1", "198.51.100.20")).Config!["inbounds"]!.AsArray()
+        XrayConfigBuilder.Build(request, new TunLink(31000, TunKey, "198.51.100.20")).Config!["inbounds"]!.AsArray()
             .ShouldNotContain(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag, "нет порта — нет входа");
-        XrayConfigBuilder.Build(request with { Protection = ProtectionSettings.Default }, new TunLink(31000, "user-1", "pass-1", "198.51.100.20", BypassPort: 31001))
+        XrayConfigBuilder.Build(request with { Protection = ProtectionSettings.Default }, new TunLink(31000, TunKey, "198.51.100.20", BypassPort: 31001))
             .Config!["inbounds"]!.AsArray().ShouldNotContain(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag, "без FakeDNS — не нужен");
     }
 
@@ -527,9 +545,9 @@ public sealed class XrayConfigTests
     {
         var byName = Link("vless/ipv6-no-name") with { Host = "vpn.example.com" };
 
-        XrayConfigBuilder.Build(Request(byName), new TunLink(31000, "user-1", "pass-1", "10.0.0.5")).Rejection
+        XrayConfigBuilder.Build(Request(byName), new TunLink(31000, TunKey, "10.0.0.5")).Rejection
             .ShouldBeNull("имя открытое, но Xray соединяется с адресом в своей сети — как у Xray, решает адрес в конфиге");
-        XrayConfigBuilder.Build(Request(Link("vless/ipv6-no-name") with { Host = "nas.lan" }), new TunLink(31000, "user-1", "pass-1", "2001:db8::20"))
+        XrayConfigBuilder.Build(Request(Link("vless/ipv6-no-name") with { Host = "nas.lan" }), new TunLink(31000, TunKey, "2001:db8::20"))
             .Rejection.ShouldBe(CoreRejection.Unencrypted, "имя частное, а разрешилось в открытый адрес");
     }
 

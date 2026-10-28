@@ -48,7 +48,9 @@ public struct TransportOptions: Equatable, Hashable, Sendable {
     public static let udp = TransportOptions(.udp)
 }
 
-/// Защита: TLS или REALITY с именем, отпечатком, ALPN и ключами REALITY.
+/// Защита: TLS или REALITY с именем, отпечатком, ALPN и ключами REALITY. Сертификат TLS можно закрепить (решение 480):
+/// `pinnedPeerCertSha256` — SHA-256 сертификата сервера или его центра (64 знака hex, строчные; из ссылки — «pcs»),
+/// `verifyPeerCertByName` — имена, на которые проверяется сертификат вместо SNI («vcn»). `allowInsecure` ядро не берет (решение 477).
 public struct SecurityOptions: Equatable, Hashable, Sendable {
     public var kind: TransportSecurity
     public var sni: String?
@@ -58,6 +60,8 @@ public struct SecurityOptions: Equatable, Hashable, Sendable {
     public var realityPublicKey: String?
     public var realityShortId: String?
     public var realitySpiderX: String?
+    public var pinnedPeerCertSha256: [String]?
+    public var verifyPeerCertByName: [String]?
 
     public init(
         _ kind: TransportSecurity,
@@ -67,7 +71,9 @@ public struct SecurityOptions: Equatable, Hashable, Sendable {
         allowInsecure: Bool = false,
         realityPublicKey: String? = nil,
         realityShortId: String? = nil,
-        realitySpiderX: String? = nil
+        realitySpiderX: String? = nil,
+        pinnedPeerCertSha256: [String]? = nil,
+        verifyPeerCertByName: [String]? = nil
     ) {
         self.kind = kind
         self.sni = sni
@@ -77,6 +83,8 @@ public struct SecurityOptions: Equatable, Hashable, Sendable {
         self.realityPublicKey = realityPublicKey
         self.realityShortId = realityShortId
         self.realitySpiderX = realitySpiderX
+        self.pinnedPeerCertSha256 = pinnedPeerCertSha256
+        self.verifyPeerCertByName = verifyPeerCertByName
     }
 
     public static let none = SecurityOptions(.none)

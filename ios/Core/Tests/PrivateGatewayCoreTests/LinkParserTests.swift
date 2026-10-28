@@ -203,6 +203,8 @@ final class LinkParserTests: XCTestCase {
         put(&security, "realityPublicKey", s.security.realityPublicKey)
         put(&security, "realityShortId", s.security.realityShortId)
         put(&security, "realitySpiderX", s.security.realitySpiderX)
+        put(&security, "pinnedPeerCertSha256", s.security.pinnedPeerCertSha256)
+        put(&security, "verifyPeerCertByName", s.security.verifyPeerCertByName)
         json["security"] = security
 
         var options: [String: Any] = [:]

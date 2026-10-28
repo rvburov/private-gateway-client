@@ -55,7 +55,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
         try
         {
             (await output.TraceAsync(() => netns.CurlAsync(new Uri("http://1.1.1.1/")))).ShouldBe("через туннель", "публичный адрес — через TUN, Xray и сервер");
@@ -97,24 +97,15 @@ public sealed class VpnTunnelTests
         var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
             ConnectionSettings.Default with { Stack = stack, CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
         var output = new CoreOutput(netns);
-        var opened = new ConcurrentQueue<bool>();
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: async (port, link, cancellationToken) =>
-            {
-                var ok = await netns.OpenSocksUdpAsync(port, link, cancellationToken);
-                opened.Enqueue(ok);
-                return ok;
-            }, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
-        // Этот адрес sing-box прописывает ОС: Windows — DNS адаптера, Linux — systemd-resolved.
+        // Этот адрес sing-box прописывает ОС: Windows — DNS адаптера, Linux — systemd-resolved. Первый же запрос после подъема
+        // доходит: UDP от sing-box к Xray — датаграммы Shadowsocks 2022 на порт входа, без UDP ASSOCIATE (решение 481).
         (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), tcp: tcp)))
             .ShouldBe("203.0.113.7", "DNS ОС отвечает Xray через сервер, а не sing-box своим DNS мимо туннеля");
         dns.Queries.ShouldContain("example.com");
-
-        // UDP входа открыт до TUN: первый запрос DNS после подъема не может прийти раньше, чем вход запомнил адрес (CI, прогон 322).
-        opened.ShouldBe([true]);
-        output.Lines.ShouldNotContain(line => line.Contains("Unauthorized UDP access", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -140,7 +131,7 @@ public sealed class VpnTunnelTests
         VpnTunnel.MachineNetworks(netns.Path).ShouldContain((IPAddress.Parse("172.19.0.1"), 20), "сети адаптеров — из пространства, где встанет TUN");
         VpnTunnel.MachineNetworks(netns.Path).ShouldContain((IPAddress.Parse("192.168.253.253"), 32), "адрес «точка-точка» — занят он сам");
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         tunnel.Subnet.ShouldBe(TunSubnet.Candidates[1]);
         output.Lines.ShouldContain("service: Адрес TUN 172.19.0.1/30 занят другим адаптером — туннель на 10.255.253.1/30");
@@ -170,7 +161,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), seconds: 5)))
             .ShouldBe("203.0.113.7", "адрес DNS туннеля есть только в TUN — запрос к нему идет в Xray и от программы мимо туннеля");
@@ -196,7 +187,7 @@ public sealed class VpnTunnelTests
         var killSwitch = new NftablesKillSwitch((arguments, input) => netns.Run(input, ["nft", .. arguments]));
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
         killSwitch.Enable(new KillSwitchPolicy(SingBoxConfigBuilder.InterfaceName, [new(host, definition.Port)], AllowLan: true,
             BlockOutsideDns: true, TunnelDns: IPAddress.Parse(SingBoxConfigBuilder.TunDns)));
 
@@ -225,7 +216,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         var fake = IPAddress.Parse(await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53")));
         IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool).Contains(fake).ShouldBeTrue($"{fake} — адрес из пула FakeDNS");
@@ -257,7 +248,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
-            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         // DNS за программу спросила другая (как служба DNS ОС) — через туннель, и ответ — из пула.
         var fake = await netns.ResolveAsync("example.com", IPAddress.Parse("192.0.2.53"));
@@ -297,15 +288,15 @@ public sealed class VpnTunnelTests
     }
 
     [Fact]
-    public void Each_connection_gets_its_own_port_and_password()
+    public void Each_connection_gets_its_own_port_and_key()
     {
         var first = VpnTunnel.NewLink(IPAddress.Parse("198.51.100.20"));
         var second = VpnTunnel.NewLink(IPAddress.Parse("198.51.100.20"));
 
         first.ServerAddress.ShouldBe("198.51.100.20");
-        new[] { first.User, first.Password, second.User, second.Password }.ShouldAllBe(s => s.Length == 32 && s.All(Uri.IsHexDigit),
-            "128 случайных бит — пароль не угадать");
-        new[] { first.User, first.Password, second.User, second.Password }.Distinct().Count().ShouldBe(4);
+        new[] { first.Key, second.Key }.ShouldAllBe(k => Convert.FromBase64String(k).Length == 16,
+            "ключ Shadowsocks 2022 с AES-128 — 16 байт, 128 случайных бит: не угадать");
+        first.Key.ShouldNotBe(second.Key);
         first.Port.ShouldBeGreaterThan(0);
     }
 
@@ -427,7 +418,7 @@ public sealed class VpnTunnelTests
             {
                 lines.Enqueue((source, line));
                 output.Add(source, line);
-            }, VpnTunnel.NewProbe(), (_, _) => Task.FromResult(true), netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            }, VpnTunnel.NewProbe(), (_, _) => Task.FromResult(true), cancellationToken: Ct);
 
         tunnel.Ipv6.ShouldBeFalse("сервер открывает IPv6, но адаптеру ОС его не дала");
         lines.ShouldContain(("service", "sing-box не поднял адаптер с IPv6 — на это подключение IPv6 закрыт"));
@@ -442,7 +433,8 @@ public sealed class VpnTunnelTests
         using var netns = NetworkNamespace.Create();
         netns.LinkAsMachine();
         var (host6, _) = netns.LinkIpv6();
-        using var site = new LocalSite("через туннель");
+        // Соединение закрывает клиент: сервер Xray 26.x закрывает WebSocket сразу за сайтом, и хвост ответа мог пропасть (LocalSite).
+        using var site = new LocalSite("через туннель", clientCloses: true);
         var serverPort = XrayKit.FreePort();
         // С TLS: адрес документации IPv6 для Xray открытый, а VLESS без TLS к открытому адресу служба не подключает (решение 474).
         var (definition, serverConfig) = XrayKit.Pair("vless-ws-tls", serverPort, host6);
@@ -459,7 +451,7 @@ public sealed class VpnTunnelTests
             {
                 Interlocked.Increment(ref asked);
                 return Task.FromResult(false);
-            }, netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            }, cancellationToken: Ct);
 
         (tunnel.Ipv6, asked).ShouldBe((true, 0), "с сервером Xray соединяется по IPv6 — IPv6 у него есть, без проверки");
         (await output.TraceAsync(() => netns.CurlAsync(new Uri("http://[2606:4700:4700::1111]/")))).ShouldBe("через туннель", "IPv6 — через TUN и сервер по IPv6");
@@ -494,7 +486,7 @@ public sealed class VpnTunnelTests
             {
                 await Task.Delay(Timeout.Infinite, cancellationToken);
                 return true;
-            }, netns.OpenSocksUdpAsync, cancellationToken: Ct);
+            }, cancellationToken: Ct);
 
         tunnel.Ipv6.ShouldBeFalse();
         lines.ShouldContain(("service", "Проверка IPv6 сервера не уложилась во время подключения — на это подключение IPv6 закрыт"));

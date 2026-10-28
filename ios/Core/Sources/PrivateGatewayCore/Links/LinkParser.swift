@@ -167,6 +167,8 @@ public enum LinkParser {
         query["sni"] = ConfigTree.text(root, "sni") ?? ""
         query["fp"] = ConfigTree.text(root, "fp") ?? ""
         query["alpn"] = ConfigTree.text(root, "alpn") ?? ""
+        query["pcs"] = ConfigTree.text(root, "pcs") ?? ""
+        query["vcn"] = ConfigTree.text(root, "vcn") ?? ""
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"]
         return vmessFrom(
@@ -499,6 +501,11 @@ public enum LinkParser {
 
         let alpn = value(query, "alpn").map { $0.split(separator: ",", omittingEmptySubsequences: false).map { TextKit.trim(String($0)) }.filter { !$0.isEmpty } }
         let reality = kind == .reality
+        let tls = kind == .tls
+        let pinned = tls ? LinkParser.pinned(value(query, "pcs")) : []
+        let names = tls
+            ? value(query, "vcn").map { $0.split(separator: ",", omittingEmptySubsequences: false).map { TextKit.trim(String($0)) }.filter { !$0.isEmpty } }
+            : nil
         let security = kind == .none
             ? SecurityOptions.none
             : SecurityOptions(
@@ -509,11 +516,34 @@ public enum LinkParser {
                 allowInsecure: isTrue(value(query, "allowInsecure") ?? value(query, "insecure") ?? value(query, "allow_insecure")),
                 realityPublicKey: reality ? value(query, "pbk") : nil,
                 realityShortId: reality ? value(query, "sid") : nil,
-                realitySpiderX: reality ? value(query, "spx") : nil
+                realitySpiderX: reality ? value(query, "spx") : nil,
+                pinnedPeerCertSha256: (pinned?.isEmpty ?? true) ? nil : pinned,
+                verifyPeerCertByName: (names?.isEmpty ?? true) ? nil : names
             )
+
+        // Закрепленный сертификат с ошибкой: без него сервер проверялся бы иначе, чем задумано (решение 480).
+        if pinned == nil {
+            return Checked(value: security, error: ImportErrors.unsupportedParameter)
+        }
 
         // REALITY без открытого ключа сервера не подключится.
         return Checked(value: security, error: reality && security.realityPublicKey == nil ? ImportErrors.noCredentials : nil)
+    }
+
+    /// «pcs» — SHA-256 сертификатов через запятую, как у Xray: 64 знака hex, двоеточия OpenSSL допустимы. Результат — строчные
+    /// без двоеточий; пусто — пустой список; хоть одно значение не SHA-256 — nil.
+    static func pinned(_ text: String?) -> [String]? {
+        var hashes: [String] = []
+        for part in (text ?? "").split(separator: ",", omittingEmptySubsequences: false).map({ TextKit.trim(String($0)) }) where !part.isEmpty {
+            let hash = part.replacingOccurrences(of: ":", with: "").lowercased()
+            guard hash.count == 64, hash.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) else {
+                return nil
+            }
+
+            hashes.append(hash)
+        }
+
+        return hashes
     }
 
     // MARK: Мелочи

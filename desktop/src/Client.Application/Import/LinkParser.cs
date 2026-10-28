@@ -180,6 +180,8 @@ public static class LinkParser
             ["sni"] = Field(root, "sni") ?? string.Empty,
             ["fp"] = Field(root, "fp") ?? string.Empty,
             ["alpn"] = Field(root, "alpn") ?? string.Empty,
+            ["pcs"] = Field(root, "pcs") ?? string.Empty,
+            ["vcn"] = Field(root, "vcn") ?? string.Empty,
         };
         // В vmess-ссылке имя сервиса gRPC лежит в path.
         query["serviceName"] = query["path"];
@@ -490,6 +492,9 @@ public static class LinkParser
         }
 
         var alpn = Query(query, "alpn")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var tls = known == TransportSecurity.Tls;
+        var pinned = tls ? Pinned(Query(query, "pcs")) : [];
+        var names = tls ? Query(query, "vcn")?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : null;
         security = known == TransportSecurity.None
             ? SecurityOptions.None
             : new SecurityOptions(
@@ -500,10 +505,39 @@ public static class LinkParser
                 IsTrue(Query(query, "allowInsecure") ?? Query(query, "insecure") ?? Query(query, "allow_insecure")),
                 known == TransportSecurity.Reality ? Query(query, "pbk") : null,
                 known == TransportSecurity.Reality ? Query(query, "sid") : null,
-                known == TransportSecurity.Reality ? Query(query, "spx") : null);
+                known == TransportSecurity.Reality ? Query(query, "spx") : null,
+                pinned is { Count: > 0 } ? pinned : null,
+                names is { Length: > 0 } ? names : null);
+
+        // Закрепленный сертификат с ошибкой: без него сервер проверялся бы иначе, чем задумано (решение 480).
+        if (pinned is null)
+        {
+            return ImportErrors.UnsupportedParameter;
+        }
 
         // REALITY без открытого ключа сервера не подключится.
         return known == TransportSecurity.Reality && security.RealityPublicKey is null ? ImportErrors.NoCredentials : null;
+    }
+
+    /// <summary>
+    /// «pcs» — SHA-256 сертификатов через запятую, как у Xray: 64 знака hex, двоеточия OpenSSL допустимы. Результат — строчные
+    /// без двоеточий; пусто — пустой список; хоть одно значение не SHA-256 — null.
+    /// </summary>
+    internal static List<string>? Pinned(string? text)
+    {
+        var hashes = new List<string>();
+        foreach (var part in (text ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            var hash = part.Replace(":", string.Empty, StringComparison.Ordinal).ToLowerInvariant();
+            if (hash.Length != 64 || !hash.All(char.IsAsciiHexDigit))
+            {
+                return null;
+            }
+
+            hashes.Add(hash);
+        }
+
+        return hashes;
     }
 
     // ── Мелочи ───────────────────────────────────────────────────────────────

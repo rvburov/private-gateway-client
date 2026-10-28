@@ -43,6 +43,8 @@ internal object ClashImport {
         put(query, "alpn", joined(node, "alpn"))
         put(query, "allowInsecure", if (flag(node, "skip-cert-verify")) "1" else null)
         put(query, "fp", text(node, "client-fingerprint"))
+        // fingerprint у Mihomo — SHA-256 сертификата сервера, тот же смысл, что «pcs» у Xray (решение 480).
+        put(query, "pcs", text(node, "fingerprint"))
         val reality = obj(node, "reality-opts")
         put(query, "pbk", text(reality, "public-key"))
         put(query, "sid", text(reality, "short-id"))

@@ -1,0 +1,25 @@
+{
+  "name": "VMess Pinned",
+  "protocol": "vmess",
+  "host": "198.51.100.212",
+  "port": 443,
+  "transport": {
+    "kind": "tcp"
+  },
+  "security": {
+    "kind": "tls",
+    "sni": "example.com",
+    "pinnedPeerCertSha256": [
+      "0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"
+    ],
+    "verifyPeerCertByName": [
+      "example.org"
+    ]
+  },
+  "options": {
+    "cipher": "auto"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

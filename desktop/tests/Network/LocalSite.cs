@@ -10,14 +10,21 @@ internal sealed class LocalSite : IDisposable
     private readonly TcpListener _listener;
     private readonly byte[] _response;
     private readonly CancellationTokenSource _stop = new();
+    private readonly bool _clientCloses;
     private int _requests;
 
     /// <param name="page">Текст страницы.</param>
     /// <param name="address">Где слушать; null — 127.0.0.1.</param>
     /// <param name="port">Порт; 0 — свободный.</param>
     /// <param name="status">Строка ответа: код и текст.</param>
-    public LocalSite(string page, IPAddress? address = null, int port = 0, string status = "200 OK")
+    /// <param name="clientCloses">
+    /// Соединение после ответа закрывает клиент, как у сервера HTTP/1.1 с keep-alive; false — сайт закрывает сразу. Сервер Xray-core
+    /// 26.x закрывает WebSocket, как только сайт закрыл соединение, и клиент Xray (любой версии) считает такое закрытие ошибкой и
+    /// бросает непрочитанный хвост ответа — простой HTTP через HTTP-прокси получал 503 (пункт ROADMAP этапа 11).
+    /// </param>
+    public LocalSite(string page, IPAddress? address = null, int port = 0, string status = "200 OK", bool clientCloses = false)
     {
+        _clientCloses = clientCloses;
         _listener = new TcpListener(address ?? IPAddress.Loopback, port);
         var body = Encoding.UTF8.GetBytes(page);
         _response = [.. Encoding.ASCII.GetBytes(
@@ -80,6 +87,15 @@ internal sealed class LocalSite : IDisposable
 
                 Interlocked.Increment(ref _requests);
                 await stream.WriteAsync(_response, _stop.Token).ConfigureAwait(false);
+                if (_clientCloses)
+                {
+                    // Ответ отдан — закрытия ждем от клиента (не дольше минуты).
+                    using var wait = CancellationTokenSource.CreateLinkedTokenSource(_stop.Token);
+                    wait.CancelAfter(TimeSpan.FromMinutes(1));
+                    while (await stream.ReadAsync(buffer, wait.Token).ConfigureAwait(false) > 0)
+                    {
+                    }
+                }
             }
             catch (Exception e) when (e is IOException or OperationCanceledException or ObjectDisposedException)
             {

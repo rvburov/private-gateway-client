@@ -50,6 +50,8 @@ internal static class ClashImport
         Put(query, "alpn", Joined(node, "alpn"));
         Put(query, "allowInsecure", Flag(node, "skip-cert-verify") ? "1" : null);
         Put(query, "fp", Text(node, "client-fingerprint"));
+        // fingerprint у Mihomo — SHA-256 сертификата сервера, тот же смысл, что «pcs» у Xray (решение 480).
+        Put(query, "pcs", Text(node, "fingerprint"));
         var reality = Object(node, "reality-opts");
         Put(query, "pbk", Text(reality, "public-key"));
         Put(query, "sid", Text(reality, "short-id"));

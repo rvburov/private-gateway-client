@@ -50,7 +50,8 @@ public sealed class ReferenceConfigTests
         Accepted(Xray(proxy.Config!), fixture + ", режим прокси");
         Accepted(Xray(XrayConfigBuilder.Build(Everything(plain, DnsChoice.CloudflareDoh), relay: relay).Config.ShouldNotBeNull()),
             fixture + ", режим прокси, все включено");
-        var tun = new TunLink(31000, "tun-user", "tun-pass", "198.51.100.20");
+        // Ключ связи с TUN — заведомо ненастоящий (16 байт 0x11); ядро сверяет его длину с шифром Shadowsocks 2022.
+        var tun = new TunLink(31000, "EREREREREREREREREREREQ==", "198.51.100.20");
         var probe = new ProbeLink(31001, "probe-user", "probe-pass");
         var vpn = plain with { Mode = ConnectionMode.Vpn };
         Accepted(Xray(XrayConfigBuilder.Build(vpn, tun, probe, relay).Config.ShouldNotBeNull()), fixture + ", режим VPN");

@@ -40,14 +40,21 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
 }
 
 /// <summary>
-/// Связь Xray с TUN в режиме VPN: вход SOCKS5 на 127.0.0.1:<paramref name="Port"/> с паролем на это
-/// подключение — другие программы машины в него не войдут; выход — к <paramref name="ServerAddress"/>,
-/// адресу сервера, который служба разрешила заранее и вывела из маршрутов TUN (иначе соединение с
-/// сервером ушло бы в сам туннель). Имя сервера для TLS и заголовков остается прежним.
-/// <paramref name="BypassPort"/> — вход с тем же паролем для программ мимо туннеля, пришедших на адрес
-/// FakeDNS (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>): Xray узнает имя и соединяет напрямую; 0 — входа нет.
+/// Связь Xray с TUN в режиме VPN: вход Shadowsocks 2022 на 127.0.0.1:<paramref name="Port"/> с ключом на это подключение
+/// (<paramref name="Key"/> — 16 случайных байт в base64) — другие программы машины в него не войдут; UDP идет датаграммами на
+/// тот же порт (решение 481). Выход — к <paramref name="ServerAddress"/>, адресу сервера, который служба разрешила заранее и
+/// вывела из маршрутов TUN (иначе соединение с сервером ушло бы в сам туннель). Имя сервера для TLS и заголовков остается
+/// прежним. <paramref name="BypassPort"/> — вход с тем же ключом для программ мимо туннеля, пришедших на адрес FakeDNS
+/// (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>): Xray узнает имя и соединяет напрямую; 0 — входа нет.
 /// </summary>
-public sealed record TunLink(int Port, string User, string Password, string ServerAddress, int BypassPort = 0);
+public sealed record TunLink(int Port, string Key, string ServerAddress, int BypassPort = 0)
+{
+    /// <summary>
+    /// Шифр связи: Shadowsocks 2022 с AES-128-GCM. SOCKS5 Xray-core 26.x для UDP открывает на каждый UDP ASSOCIATE свой порт и
+    /// ждет датаграммы только с адреса из запроса, а sing-box пишет в запрос адрес назначения — UDP через туннель пропадал.
+    /// </summary>
+    public const string Method = "2022-blake3-aes-128-gcm";
+}
 
 /// <summary>
 /// Вход проверки связи с сервером: SOCKS5 на 127.0.0.1:<paramref name="Port"/> с паролем на это
@@ -146,6 +153,7 @@ public static class XrayConfigBuilder
                 ["protocol"] = "freedom",
                 ["settings"] = new JsonObject
                 {
+                    ["finalRules"] = AllowAll(),
                     // Имя из FakeDNS разрешает DNS этого конфига (через туннель), а не DNS ОС мимо него — с семейством по
                     // «Приоритету адресов» и запасным вторым: при UseIP Xray берет случайный адрес из A и AAAA, и без IPv6
                     // у провайдера часть соединений рвалась бы.
@@ -310,9 +318,16 @@ public static class XrayConfigBuilder
         ["protocol"] = "freedom",
         ["settings"] = new JsonObject
         {
+            ["finalRules"] = AllowAll(),
             ["fragment"] = new JsonObject { ["packets"] = "tlshello", ["length"] = "100-200", ["interval"] = "10-20" },
         },
     };
+
+    /// <summary>
+    /// Выходу freedom можно все: куда трафик идет, решают правила этого конфига. Xray-core 26.x у трафика входа Shadowsocks (связь с
+    /// TUN) по умолчанию закрывает частные адреса — разрешенная локальная сеть и сервер в ней иначе были бы недоступны.
+    /// </summary>
+    private static JsonArray AllowAll() => new(new JsonObject { ["action"] = "allow" });
 
     private static JsonObject Inbound(CoreRequest request) => new()
     {
@@ -336,12 +351,12 @@ public static class XrayConfigBuilder
         ["tag"] = tag,
         ["listen"] = "127.0.0.1",
         ["port"] = port,
-        ["protocol"] = "socks",
+        ["protocol"] = "shadowsocks",
         ["settings"] = new JsonObject
         {
-            ["auth"] = "password",
-            ["accounts"] = new JsonArray(new JsonObject { ["user"] = tun.User, ["pass"] = tun.Password }),
-            ["udp"] = true,
+            ["method"] = TunLink.Method,
+            ["password"] = tun.Key,
+            ["network"] = "tcp,udp",
         },
         ["sniffing"] = TunSniffing(request),
     };
@@ -758,9 +773,16 @@ public static class XrayConfigBuilder
                     tls["alpn"] = new JsonArray([.. alpn.Select(a => JsonValue.Create(a))]);
                 }
 
-                if (security.AllowInsecure)
+                // Сертификат проверяется всегда: allowInsecure Xray-core 26.x не принимает (конфиг с ним не запускается), а
+                // самоподписанный сертификат сервера закрепляется в ссылке — «pcs» и «vcn» (решение 480).
+                if (security.PinnedPeerCertSha256 is { Count: > 0 } pinned)
                 {
-                    tls["allowInsecure"] = true;
+                    tls["pinnedPeerCertSha256"] = string.Join(',', pinned);
+                }
+
+                if (security.VerifyPeerCertByName is { Count: > 0 } names)
+                {
+                    tls["verifyPeerCertByName"] = string.Join(',', names);
                 }
 
                 stream["security"] = "tls";

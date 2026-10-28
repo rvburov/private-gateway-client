@@ -2,8 +2,8 @@
 # этой строкой, и с .dgst выпуска. Новая строка — из вывода scripts/get-xray.sh в CI (сумма уже сверена
 # с .dgst); следующий прогон CI проверяет ее на чистых машинах. Сборки без строки скрипт берет только
 # с предупреждением.
-v25.8.3 Xray-linux-64.zip f3f69cdccdf3443f25248f65bec0f621a7bd05c9d6fbbd5d9f064a8fce70f0fc
-v25.8.3 Xray-macos-arm64-v8a.zip e665c7db644fa2e07ccd93a61202127711cc1e3e90d84ac809d041a15b88d493
-v25.8.3 Xray-windows-64.zip fb3298dfccac67ed8f2355096f9f67475fa6135477229886478d84f337c21bdb
-v25.8.3 Xray-linux-arm64-v8a.zip 7bcc35d375398c0df4b53ee004fb5b42402fcc0d331db5f2e6ac86cfc12b6a33
-v25.8.3 Xray-macos-64.zip 60cb704460b80449afeea2dc5c9f3ea864c60e0a897ca5be7a4c590c2fcf20e8
+v26.10.21 Xray-linux-64.zip 0eec3ed4163c273d8c8bf821f7d219e257921cf584aa3fb970715e458e631978
+v26.10.21 Xray-macos-arm64-v8a.zip 926cc55fda2a8757dabe4f22dc98772f218ace025f101bd0b68aee232e59d5dc
+v26.10.21 Xray-windows-64.zip fc58c39ee2f2717b4c54d28d374362389e5319b20ae44aea76ea45a5243ec827
+v26.10.21 Xray-linux-arm64-v8a.zip d1304946c486d98e6b886e9b931eaaaebb23835b30e217638037b7f2721d4e9c
+v26.10.21 Xray-macos-64.zip 8e5169b429e76ce5f550c8294db465bc259f30c158ba900aa40802b76ad2f66e

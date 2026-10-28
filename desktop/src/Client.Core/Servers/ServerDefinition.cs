@@ -26,7 +26,10 @@ public sealed record TransportOptions(TransportKind Kind, string? Path = null, s
 
 /// <summary>
 /// Защита транспорта: TLS или REALITY с маскировкой (SNI) и отпечатком uTLS. Открытый ключ REALITY
-/// — не секрет: он есть у каждого клиента сервера.
+/// — не секрет: он есть у каждого клиента сервера. Сертификат TLS можно закрепить (решение 480):
+/// <see cref="PinnedPeerCertSha256"/> — SHA-256 сертификата сервера или его центра сертификации (64 знака hex, строчные, без
+/// двоеточий; из ссылки — «pcs»), <see cref="VerifyPeerCertByName"/> — имена, на которые проверяется сертификат вместо SNI
+/// (из ссылки — «vcn»). <see cref="AllowInsecure"/> Xray-core 26.x не принимает — его берет только ретранслятор sing-box.
 /// </summary>
 public sealed record SecurityOptions(
     TransportSecurity Kind,
@@ -36,7 +39,9 @@ public sealed record SecurityOptions(
     bool AllowInsecure = false,
     string? RealityPublicKey = null,
     string? RealityShortId = null,
-    string? RealitySpiderX = null)
+    string? RealitySpiderX = null,
+    IReadOnlyList<string>? PinnedPeerCertSha256 = null,
+    IReadOnlyList<string>? VerifyPeerCertByName = null)
 {
     public static SecurityOptions None { get; } = new(TransportSecurity.None);
 }

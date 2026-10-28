@@ -185,6 +185,23 @@ class XrayConfigTest {
     }
 
     @Test
+    fun `pinned certificate goes to the core and allow insecure does not`() {
+        val pinned = server(
+            "vless://11111111-2222-3333-4444-555555555555@198.51.100.210:443?security=tls&sni=example.com" +
+                "&pcs=A1B2C3D4E5F60718293A4B5C6D7E8F90A1B2C3D4E5F60718293A4B5C6D7E8F90%2C0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0&vcn=example.com%2Cexample.org#P",
+        )
+        val tls = outbound(build(pinned, CoreSettings(), 1), "proxy")["streamSettings"]!!.jsonObject["tlsSettings"]!!.jsonObject
+        assertEquals("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90,0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0", tls["pinnedPeerCertSha256"]!!.jsonPrimitive.content)
+        assertEquals("example.com,example.org", tls["verifyPeerCertByName"]!!.jsonPrimitive.content)
+
+        val insecure = server("trojan://pw@198.51.100.7:443?sni=example.org&allowInsecure=1#T")
+        val plain = outbound(build(insecure, CoreSettings(), 1), "proxy")["streamSettings"]!!.jsonObject["tlsSettings"]!!.jsonObject
+        assertFalse("allowInsecure" in plain, "Xray-core 26.x конфиг с allowInsecure не запускает (решение 477)")
+        assertFalse("pinnedPeerCertSha256" in plain)
+        assertFalse("verifyPeerCertByName" in plain)
+    }
+
+    @Test
     fun `fingerprint setting overrides the profile and requests and responses speak api 3`() {
         val tls = server("trojan://pw@198.51.100.7:443?sni=example.org&fp=firefox#T")
         val profile = outbound(build(tls, CoreSettings(), 1), "proxy")["streamSettings"]!!.jsonObject["tlsSettings"]!!.jsonObject

@@ -4,7 +4,8 @@
 # Соединения на порт 18081 любого адреса Xray отправляет на этот HTTP: проверочный 1.1.1.1:18081 напрямую не отвечает,
 # а через туннель — отвечает (адрес публичный: диапазоны документации клиент сам закрывает как особые сети, решение 446).
 # Остальное — в интернет машины CI, как у настоящего сервера: DNS и проба связи службы (cp.cloudflare.com) идут через
-# туннель по-настоящему. Эмулятор видит машину как 10.0.2.2. Нужен Xray: scripts/get-xray.sh.
+# туннель по-настоящему. Эмулятор видит машину как 10.0.2.2. Нужен Xray: scripts/get-xray.sh. Выходу freedom разрешено все
+# (finalRules): Xray-core 26.x по умолчанию не пускает трафик входа VLESS на частные адреса, а HTTP проверки — на 127.0.0.1.
 # Запуск: scripts/android-test-server.sh — сервер остается работать в фоне до конца задания CI.
 set -euo pipefail
 
@@ -27,8 +28,8 @@ cat > "$dir/xray.json" <<'JSON'
     }
   ],
   "outbounds": [
-    { "tag": "direct", "protocol": "freedom" },
-    { "tag": "site", "protocol": "freedom", "settings": { "redirect": "127.0.0.1:18080" } }
+    { "tag": "direct", "protocol": "freedom", "settings": { "finalRules": [{ "action": "allow" }] } },
+    { "tag": "site", "protocol": "freedom", "settings": { "redirect": "127.0.0.1:18080", "finalRules": [{ "action": "allow" }] } }
   ],
   "routing": { "rules": [{ "type": "field", "port": "18081", "outboundTag": "site" }] }
 }

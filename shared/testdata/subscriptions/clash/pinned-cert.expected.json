@@ -1,0 +1,32 @@
+{
+  "format": "clash",
+  "lines": [
+    {
+      "line": 3,
+      "server": {
+        "name": "Trojan pinned",
+        "protocol": "trojan",
+        "host": "198.51.100.213",
+        "port": 443,
+        "transport": {
+          "kind": "tcp"
+        },
+        "security": {
+          "kind": "tls",
+          "sni": "example.com",
+          "fingerprint": "chrome",
+          "pinnedPeerCertSha256": [
+            "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+          ]
+        },
+        "credentials": {
+          "password": "not-a-real-password"
+        }
+      }
+    },
+    {
+      "line": 11,
+      "error": "unsupported_parameter"
+    }
+  ]
+}

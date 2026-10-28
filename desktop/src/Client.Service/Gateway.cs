@@ -44,8 +44,7 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="NetworkDetails"/> — маршруты и DHCP этой ОС для сетевого инспектора; null — без них;
 /// <paramref name="AddressFetch"/> — запрос к RIPEstat о провайдере адреса (тесты); null — <see cref="AddressLookup.FetchAsync"/>;
 /// <paramref name="Webrtc"/> — замер STUN обычным путем службы (<see cref="StunProbe"/>): какой адрес видит WebRTC; null — не мерить;
-/// <paramref name="TunnelUdp"/> — открыть UDP входа Xray до TUN (тесты: вход в сетевом пространстве отсюда не виден); null —
-/// <see cref="SocksUdp.AssociateAsync"/>; <paramref name="TunnelRoutes"/> — только эти сети через TUN (тесты Windows в CI,
+/// <paramref name="TunnelRoutes"/> — только эти сети через TUN (тесты Windows в CI,
 /// <see cref="TunRequest.Routes"/>); null — весь трафик.
 /// </summary>
 public sealed record GatewayOptions(
@@ -76,7 +75,6 @@ public sealed record GatewayOptions(
     INetworkDetails? NetworkDetails = null,
     Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null,
     Func<CancellationToken, Task<IPEndPoint?>>? Webrtc = null,
-    Func<int, TunLink, CancellationToken, Task<bool>>? TunnelUdp = null,
     IReadOnlyList<string>? TunnelRoutes = null);
 
 /// <summary>
@@ -1453,7 +1451,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelUdp, _options.TunnelRoutes,
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelRoutes,
                 cancellationToken: starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)

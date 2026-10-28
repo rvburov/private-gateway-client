@@ -352,6 +352,10 @@ message Security {
   string reality_public_key = 6;
   string reality_short_id = 7;
   string reality_spider_x = 8;
+  // Закрепленный сертификат TLS (решение 480): SHA-256 сертификата сервера или его центра — 64 знака hex, строчные.
+  repeated string pinned_peer_cert_sha256 = 9;
+  // Имена, на которые проверяется сертификат вместо SNI.
+  repeated string verify_peer_cert_by_name = 10;
 }
 
 message VlessSettings {

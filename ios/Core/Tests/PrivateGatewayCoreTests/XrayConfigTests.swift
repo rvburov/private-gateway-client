@@ -154,6 +154,22 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual(XrayConfig.build(quic, CoreSettings(), tunFd: 1).rejection, .unsupportedTransport)
     }
 
+    func testPinnedCertificateGoesToTheCoreAndAllowInsecureDoesNot() throws {
+        let pinned = try server(
+            "vless://11111111-2222-3333-4444-555555555555@198.51.100.210:443?security=tls&sni=example.com"
+                + "&pcs=A1B2C3D4E5F60718293A4B5C6D7E8F90A1B2C3D4E5F60718293A4B5C6D7E8F90%2C0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0&vcn=example.com%2Cexample.org#P"
+        )
+        let tls = try object(try object(outbound(build(pinned, CoreSettings()), "proxy")["streamSettings"])["tlsSettings"])
+        XCTAssertEqual(tls["pinnedPeerCertSha256"] as? String, "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90,0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0")
+        XCTAssertEqual(tls["verifyPeerCertByName"] as? String, "example.com,example.org")
+
+        let insecure = try server("trojan://pw@198.51.100.7:443?sni=example.org&allowInsecure=1#T")
+        let plain = try object(try object(outbound(build(insecure, CoreSettings()), "proxy")["streamSettings"])["tlsSettings"])
+        XCTAssertNil(plain["allowInsecure"], "Xray-core 26.x конфиг с allowInsecure не запускает (решение 477)")
+        XCTAssertNil(plain["pinnedPeerCertSha256"])
+        XCTAssertNil(plain["verifyPeerCertByName"])
+    }
+
     func testFingerprintSettingOverridesTheProfileAndRequestsAndResponsesSpeakApi3() throws {
         let tls = try server("trojan://pw@198.51.100.7:443?sni=example.org&fp=firefox#T")
         let profile = try object(try object(outbound(build(tls, CoreSettings()), "proxy")["streamSettings"])["tlsSettings"])

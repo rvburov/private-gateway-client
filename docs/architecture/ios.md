@@ -23,7 +23,8 @@ iOS 16+ (решения в [DECISIONS.md](../roadmap/DECISIONS.md), «Android / 
 соединений выключен. Hysteria2 и TUIC ядро не берет (`unsupportedProtocol`): второго ядра на телефоне нет, а iOS не дает
 приложению запускать отдельные процессы. VLESS и Trojan без TLS к открытому адресу — `unencrypted` (ядро libXray такой
 выход не строит, решение 474), WireGuard — своим стеком Xray (`noKernelTun`, решение 475), сертификат TLS проверяется всегда —
-`allowInsecure` из ссылки ядру не передается (в Xray-core 26.x флаг удален, решение 477). Тесты — те же случаи, что
+`allowInsecure` из ссылки ядру не передается (в Xray-core 26.x флаг удален, решение 477); самоподписанный сертификат
+закрепляется в ссылке — «pcs» и «vcn» идут в `pinnedPeerCertSha256` и `verifyPeerCertByName` (решение 480). Тесты — те же случаи, что
 `XrayConfigTest` и `TunnelSettingsTest` Android; конфиг каждой эталонной ссылки читает само ядро той версии, что в libXray
 (`ReferenceConfigTests`, `scripts/get-xray-mobile.sh` — на Linux и macOS; в CI без сборки тест падает).
 

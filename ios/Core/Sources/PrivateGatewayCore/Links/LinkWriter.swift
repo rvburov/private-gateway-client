@@ -93,6 +93,8 @@ public enum LinkWriter {
             ("sni", security.sni),
             ("fp", security.fingerprint),
             ("alpn", security.alpn.flatMap { $0.isEmpty ? nil : $0.joined(separator: ",") }),
+            ("pcs", security.pinnedPeerCertSha256.flatMap { $0.isEmpty ? nil : $0.joined(separator: ",") }),
+            ("vcn", security.verifyPeerCertByName.flatMap { $0.isEmpty ? nil : $0.joined(separator: ",") }),
             ("allowInsecure", security.allowInsecure ? "1" : nil),
             ("pbk", security.realityPublicKey),
             ("sid", security.realityShortId),
@@ -104,7 +106,7 @@ public enum LinkWriter {
     private static func vmess(_ server: ServerDefinition) -> String {
         let transport = server.transport
         let security = server.security
-        return JsonText.object([
+        var fields: [(String, String)] = [
             ("v", "2"),
             ("ps", nameWithFlag(server)),
             ("add", server.host),
@@ -121,7 +123,17 @@ public enum LinkWriter {
             ("sni", security.sni ?? ""),
             ("fp", security.fingerprint ?? ""),
             ("alpn", security.alpn?.joined(separator: ",") ?? ""),
-        ])
+        ]
+        // Закрепленный сертификат (решение 480) — только когда он есть: у v2rayN таких полей нет.
+        if let pinned = security.pinnedPeerCertSha256, !pinned.isEmpty {
+            fields.append(("pcs", pinned.joined(separator: ",")))
+        }
+
+        if let names = security.verifyPeerCertByName, !names.isEmpty {
+            fields.append(("vcn", names.joined(separator: ",")))
+        }
+
+        return JsonText.object(fields)
     }
 
     private static func query(_ parameters: [(String, String?)]) -> String {

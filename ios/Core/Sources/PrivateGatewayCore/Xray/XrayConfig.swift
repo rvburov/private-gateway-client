@@ -340,7 +340,15 @@ public enum XrayConfig {
             }
 
             // Сертификат проверяется всегда: allowInsecure из ссылки ядро libXray (Xray-core 26.x) не принимает вовсе — конфиг
-            // с ним не запускается, — а без проверки подключение можно перехватить (решение 477).
+            // с ним не запускается, — а без проверки подключение можно перехватить (решение 477). Самоподписанный сертификат
+            // сервера закрепляется в ссылке — «pcs» и «vcn» (решение 480).
+            if let pinned = security.pinnedPeerCertSha256, !pinned.isEmpty {
+                tls.append(("pinnedPeerCertSha256", .string(pinned.joined(separator: ","))))
+            }
+
+            if let names = security.verifyPeerCertByName, !names.isEmpty {
+                tls.append(("verifyPeerCertByName", .string(names.joined(separator: ","))))
+            }
 
             stream.append(("security", .string("tls")))
             stream.append(("tlsSettings", .object(tls)))

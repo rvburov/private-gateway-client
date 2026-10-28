@@ -9,7 +9,8 @@ namespace PrivateGateway.Client.Tests.Unit;
 /// <summary>Конфиг sing-box для TUN режима VPN: весь трафик и DNS — в Xray, сервер — мимо туннеля.</summary>
 public sealed class SingBoxConfigTests
 {
-    private static readonly TunLink Link = new(31000, "user-1", "pass-1", "198.51.100.20");
+    /// <summary>Ключ связи с Xray — заведомо ненастоящий: 16 байт 0x11 в base64.</summary>
+    private static readonly TunLink Link = new(31000, "EREREREREREREREREREREQ==", "198.51.100.20");
 
     /// <summary>IPv6 есть в ядре, через туннель не идет — сервер его не открывает.</summary>
     private static readonly TunIpv6 Closed = new(Kernel: true, Tunnel: false);
@@ -39,8 +40,9 @@ public sealed class SingBoxConfigTests
         }
 
         var xray = config["outbounds"]!.AsArray().ShouldHaveSingleItem()!;
-        (xray["type"]!.GetValue<string>(), xray["server"]!.GetValue<string>(), xray["server_port"]!.GetValue<int>()).ShouldBe(("socks", "127.0.0.1", 31000));
-        (xray["username"]!.GetValue<string>(), xray["password"]!.GetValue<string>()).ShouldBe(("user-1", "pass-1"));
+        (xray["type"]!.GetValue<string>(), xray["server"]!.GetValue<string>(), xray["server_port"]!.GetValue<int>()).ShouldBe(("shadowsocks", "127.0.0.1", 31000));
+        (xray["method"]!.GetValue<string>(), xray["password"]!.GetValue<string>()).ShouldBe((TunLink.Method, Link.Key), "связь с Xray — Shadowsocks 2022 (решение 481)");
+        xray.AsObject().ContainsKey("udp_over_tcp").ShouldBeFalse("UDP — датаграммами");
         var route = config["route"]!.AsObject();
         route["final"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag);
         route["auto_detect_interface"]!.GetValue<bool>().ShouldBeTrue();
@@ -209,8 +211,8 @@ public sealed class SingBoxConfigTests
                 "адрес FakeDNS у программы мимо туннеля — во вход обхода Xray, раньше правила «напрямую»");
         rules[2]!["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
         var bypass = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.BypassTag)!;
-        (bypass["server"]!.GetValue<string>(), bypass["server_port"]!.GetValue<int>(), bypass["username"]!.GetValue<string>(), bypass["password"]!.GetValue<string>())
-            .ShouldBe(("127.0.0.1", 31001, "user-1", "pass-1"));
+        (bypass["type"]!.GetValue<string>(), bypass["server"]!.GetValue<string>(), bypass["server_port"]!.GetValue<int>(), bypass["password"]!.GetValue<string>())
+            .ShouldBe(("shadowsocks", "127.0.0.1", 31001, Link.Key));
 
         SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"],
             ["/opt/game/game"]))["route"]!["rules"]!.AsArray().Count.ShouldBe(2, "нет входа обхода — нет и правила");

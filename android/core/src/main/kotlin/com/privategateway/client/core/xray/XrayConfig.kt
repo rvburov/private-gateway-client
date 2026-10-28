@@ -287,7 +287,10 @@ object XrayConfig {
                 fingerprint?.takeIf { it.isNotEmpty() }?.let { tls["fingerprint"] = it }
                 security.alpn?.takeIf { it.isNotEmpty() }?.let { tls["alpn"] = it }
                 // Сертификат проверяется всегда: allowInsecure из ссылки ядро libXray (Xray-core 26.x) не принимает вовсе —
-                // конфиг с ним не запускается, — а без проверки подключение можно перехватить (решение 477).
+                // конфиг с ним не запускается, — а без проверки подключение можно перехватить (решение 477). Самоподписанный
+                // сертификат сервера закрепляется в ссылке — «pcs» и «vcn» (решение 480).
+                security.pinnedPeerCertSha256?.takeIf { it.isNotEmpty() }?.let { tls["pinnedPeerCertSha256"] = it.joinToString(",") }
+                security.verifyPeerCertByName?.takeIf { it.isNotEmpty() }?.let { tls["verifyPeerCertByName"] = it.joinToString(",") }
 
                 stream["security"] = "tls"
                 stream["tlsSettings"] = tls

@@ -1,0 +1,11 @@
+# Mihomo: fingerprint — SHA-256 сертификата сервера (закрепление), client-fingerprint — отпечаток uTLS
+proxies:
+  - name: Trojan pinned
+    type: trojan
+    server: 198.51.100.213
+    port: 443
+    password: not-a-real-password
+    sni: example.com
+    fingerprint: "A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90:A1:B2:C3:D4:E5:F6:07:18:29:3A:4B:5C:6D:7E:8F:90"
+    client-fingerprint: chrome
+  - {name: bad pin, type: trojan, server: 198.51.100.214, port: 443, password: x, fingerprint: not-a-hash}

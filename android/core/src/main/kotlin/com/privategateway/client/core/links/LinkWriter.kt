@@ -100,6 +100,8 @@ object LinkWriter {
             "fp" to security.fingerprint,
             "alpn" to security.alpn?.takeIf { it.isNotEmpty() }?.joinToString(","),
             "allowInsecure" to if (security.allowInsecure) "1" else null,
+            "pcs" to security.pinnedPeerCertSha256?.takeIf { it.isNotEmpty() }?.joinToString(","),
+            "vcn" to security.verifyPeerCertByName?.takeIf { it.isNotEmpty() }?.joinToString(","),
             "pbk" to security.realityPublicKey,
             "sid" to security.realityShortId,
             "spx" to security.realitySpiderX,
@@ -110,7 +112,7 @@ object LinkWriter {
     private fun vmess(server: ServerDefinition): String {
         val transport = server.transport
         val security = server.security
-        return JsonText.obj(
+        val fields = mutableListOf<Pair<String, Any?>>(
             "v" to "2",
             "ps" to nameWithFlag(server),
             "add" to server.host,
@@ -128,6 +130,10 @@ object LinkWriter {
             "fp" to (security.fingerprint ?: ""),
             "alpn" to (security.alpn?.joinToString(",") ?: ""),
         )
+        // Закрепленный сертификат (решение 480) — только когда он есть: у v2rayN таких полей нет.
+        security.pinnedPeerCertSha256?.takeIf { it.isNotEmpty() }?.let { fields += "pcs" to it.joinToString(",") }
+        security.verifyPeerCertByName?.takeIf { it.isNotEmpty() }?.let { fields += "vcn" to it.joinToString(",") }
+        return JsonText.obj(*fields.toTypedArray())
     }
 
     private fun query(parameters: List<Pair<String, String?>>): String {
