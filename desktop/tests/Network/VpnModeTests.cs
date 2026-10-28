@@ -380,9 +380,11 @@ public sealed partial class VpnModeTests
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "a.example.com" }), cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
-        await service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition with { Host = "b.example.com" }, XrayKit.FreePort()), cancellationToken: Ct);
+        // Сервер b — в частной зоне имен (.test): VLESS без TLS к открытому имени служба не подключает и в режиме прокси.
+        (await service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition with { Host = "b.test" }, XrayKit.FreePort()), cancellationToken: Ct))
+            .Accepted.ShouldBeTrue("режим прокси для сервера b подключился — иначе тест ничего не проверяет");
 
-        var reply = await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "b.example.com" }), cancellationToken: Ct);
+        var reply = await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "b.test" }), cancellationToken: Ct);
 
         (reply.Accepted, reply.Error?.Code).ShouldBe((false, ErrorCodes.ServerNotFound), "адреса прежнего подключения VPN — сервера a, а не b");
     }

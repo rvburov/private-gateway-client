@@ -109,6 +109,7 @@ final class XrayConfigTests: XCTestCase {
             ("vless", "192.0.2.1", "none", false), ("vless", "::ffff:192.168.1.5", "none", false), ("vless", "fd00::5", "none", false), ("vless", "[fd00::5]", "none", false),
             ("vless", "nas.lan", "none", false), ("vless", "nas.lan.", "none", false), ("vless", "router.home.arpa", "none", false), ("vless", "printer.local", "none", false),
             ("vless", "NAS", "none", false), ("vless", "lan.example.com", "none", true), ("vless", "mylan", "none", false),
+            ("vless", "010.0.0.1", "none", true), ("vless", "0177.0.0.1", "none", true), ("vless", "1:2:3", "none", true),
         ]
         let vmess = "vmess://" + Data(
             #"{"v":"2","ps":"V","add":"cdn.example.com","port":"443","id":"11111111-2222-3333-4444-555555555555","aid":"0","net":"tcp"}"#.utf8

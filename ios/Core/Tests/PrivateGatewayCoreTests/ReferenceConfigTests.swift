@@ -37,7 +37,14 @@ final class ReferenceConfigTests: XCTestCase {
         }
     }
 
-    /// Эталонные ссылки — файлы .txt в shared/testdata/links, текст без пробелов по краям, как у `PingBatchTests`.
+    /// То, чего в эталонах нет, а в подписках бывает: TLS с allowInsecure (его Xray-core 26.x не принимает, решение 477).
+    private let extra = [
+        ("extra/trojan-allow-insecure", "trojan://pw-trojan-2@198.51.100.202:443?security=tls&sni=example.com&allowInsecure=1#T"),
+        ("extra/vless-ws-insecure",
+         "vless://11111111-2222-3333-4444-555555555555@198.51.100.203:443?security=tls&sni=example.com&type=ws&path=%2Fws&insecure=1#V"),
+    ]
+
+    /// Эталонные ссылки — файлы .txt в shared/testdata/links, текст без пробелов по краям, как у `PingBatchTests`, и `extra`.
     private func fixtures() throws -> [(String, String)] {
         let links = LinkParserTests.testData.appendingPathComponent("links")
         let enumerator = try XCTUnwrap(FileManager.default.enumerator(at: links, includingPropertiesForKeys: nil))
@@ -49,7 +56,7 @@ final class ReferenceConfigTests: XCTestCase {
             found.append(("links/\(folder)/\(name)", text))
         }
 
-        return found.sorted { $0.0 < $1.0 }
+        return found.sorted { $0.0 < $1.0 } + extra
     }
 
     /// Xray libXray: artifacts/cores/xray-mobile. Нет файла — тест пропускается с причиной, а в CI (`PG_REQUIRE_XRAY_MOBILE=1`)

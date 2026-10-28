@@ -339,9 +339,8 @@ public enum XrayConfig {
                 tls.append(("alpn", .array(alpn.map { .string($0) })))
             }
 
-            if security.allowInsecure {
-                tls.append(("allowInsecure", .bool(true)))
-            }
+            // Сертификат проверяется всегда: allowInsecure из ссылки ядро libXray (Xray-core 26.x) не принимает вовсе — конфиг
+            // с ним не запускается, — а без проверки подключение можно перехватить (решение 477).
 
             stream.append(("security", .string("tls")))
             stream.append(("tlsSettings", .object(tls)))

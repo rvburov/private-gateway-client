@@ -144,6 +144,9 @@ class XrayConfigTest {
         "vless, NAS, none, false",
         "vless, lan.example.com, none, true",
         "vless, mylan, none, false",
+        "vless, 010.0.0.1, none, true",
+        "vless, 0177.0.0.1, none, true",
+        "vless, 1:2:3, none, true",
     )
     fun `server without encryption on an open address is refused as libXray does`(protocol: String, host: String, security: String, refused: Boolean) {
         val base = when (protocol) {

@@ -53,11 +53,20 @@ class ReferenceConfigTest {
         }
     }
 
-    /** Эталонные ссылки — файлы .txt в shared/testdata/links, текст целиком, как у `LinkParserTest`. */
+    /**
+     * Эталонные ссылки — файлы .txt в shared/testdata/links, текст целиком, как у `LinkParserTest`, — и то, чего в эталонах
+     * нет, а в подписках бывает: TLS с allowInsecure (его Xray-core 26.x не принимает, решение 477).
+     */
     private fun fixtures(): List<Pair<String, String>> =
         testData.resolve("links").walkTopDown().filter { it.isFile && it.name.endsWith(".txt") }
             .map { it.relativeTo(testData).invariantSeparatorsPath.removeSuffix(".txt") to it.readText() }
-            .sortedBy { it.first }.toList()
+            .sortedBy { it.first }.toList() + extra
+
+    private val extra = listOf(
+        "extra/trojan-allow-insecure" to "trojan://pw-trojan-2@198.51.100.202:443?security=tls&sni=example.com&allowInsecure=1#T",
+        "extra/vless-ws-insecure" to
+            "vless://11111111-2222-3333-4444-555555555555@198.51.100.203:443?security=tls&sni=example.com&type=ws&path=%2Fws&insecure=1#V",
+    )
 
     /**
      * Xray libXray: путь — свойство `xrayMobile` (его задает сборка, artifacts/cores/xray-mobile). Нет файла — тест

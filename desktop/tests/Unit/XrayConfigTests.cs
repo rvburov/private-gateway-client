@@ -493,6 +493,8 @@ public sealed class XrayConfigTests
     [InlineData("vless", "NAS", "none", false)]
     [InlineData("vless", "lan.example.com", "none", true)]
     [InlineData("vless", "mylan", "none", false)]
+    [InlineData("vless", "010.0.0.1", "none", true)]
+    [InlineData("vless", "0177.0.0.1", "none", true)]
     public void Server_without_encryption_on_an_open_address_is_refused_as_xray_does(string protocol, string host, string security, bool refused)
     {
         var server = (protocol switch

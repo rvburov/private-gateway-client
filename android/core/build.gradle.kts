@@ -40,7 +40,11 @@ tasks.test {
     systemProperty("testdata", rootDir.resolve("../../shared/testdata").canonicalPath)
     // Xray-core той версии, что в libXray (scripts/get-xray-mobile.sh): конфиги ядра читает само ядро (ReferenceConfigTest).
     val exe = if (System.getProperty("os.name").startsWith("Windows")) ".exe" else ""
-    systemProperty("xrayMobile", rootDir.resolve("../../artifacts/cores/xray-mobile/xray$exe").canonicalPath)
+    val xrayMobile = rootDir.resolve("../../artifacts/cores/xray-mobile/xray$exe")
+    systemProperty("xrayMobile", xrayMobile.canonicalPath)
+    // Ядро и флаг CI — входы задачи: пересобранное или появившееся ядро и PG_REQUIRE_XRAY_MOBILE запускают тесты заново.
+    inputs.files(xrayMobile).withPropertyName("xrayMobile").withPathSensitivity(org.gradle.api.tasks.PathSensitivity.NONE)
+    inputs.property("requireXrayMobile", providers.environmentVariable("PG_REQUIRE_XRAY_MOBILE").orElse(""))
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

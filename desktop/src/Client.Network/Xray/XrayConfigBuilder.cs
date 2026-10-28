@@ -562,8 +562,9 @@ public static class XrayConfigBuilder
             return false;
         }
 
-        // TryParse снимает квадратные скобки IPv6, а IPNetwork считает ::ffff:a.b.c.d адресом IPv4.
-        if (IPAddress.TryParse(address, out var ip))
+        // TryParse снимает квадратные скобки IPv6, а IPNetwork считает ::ffff:a.b.c.d адресом IPv4. IPv4 — только в обычной
+        // записи, как net.ParseIP у Xray: «0177.0.0.1» TryParse читает восьмеричным 127.0.0.1, а Xray — именем.
+        if (IPAddress.TryParse(address, out var ip) && (ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetworkV6 || ip.ToString() == address))
         {
             return !LocalNetworks.Any(n => IPNetwork.Parse(n).Contains(ip));
         }

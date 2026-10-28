@@ -5,8 +5,7 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
-import java.net.InetAddress
-import java.net.UnknownHostException
+import com.privategateway.client.core.settings.IpAddress
 import java.util.Locale
 
 /** Почему ядро Xray не возьмется за сервер — как у десктопа (`CoreRejection`). */
@@ -225,23 +224,12 @@ object XrayConfig {
         return privateZones.none { name == it || name.endsWith(".$it") } && !dotless.matches(name)
     }
 
-    // Адрес-литерал без DNS: IPv4 из четырех чисел или IPv6 (текст с двоеточием InetAddress разбирает как адрес, не имя);
+    // Адрес-литерал — строгий разбор без DNS (IpAddress), как net.ParseIP у Xray: «010.0.0.1» — имя, а не адрес;
     // IPv4 внутри IPv6 (::ffff:a.b.c.d) — как IPv4. Имя — null.
     private fun literal(text: String): ByteArray? {
-        val parts = text.split('.')
-        if (parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() <= 255 }) {
-            return parts.map { it.toInt().toByte() }.toByteArray()
-        }
-
-        if (':' !in text || !text.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == ':' || it == '.' }) {
-            return null
-        }
-
-        return try {
-            InetAddress.getByName(text).address
-        } catch (_: UnknownHostException) {
-            null
-        }
+        val bytes = IpAddress.parse(text) ?: return null
+        val mapped = bytes.size == 16 && (0 until 10).all { bytes[it] == 0.toByte() } && bytes[10] == 0xFF.toByte() && bytes[11] == 0xFF.toByte()
+        return if (mapped) bytes.copyOfRange(12, 16) else bytes
     }
 
     private fun inNetwork(address: ByteArray, cidr: String): Boolean {
@@ -298,9 +286,8 @@ object XrayConfig {
                 val tls = linkedMapOf<String, Any?>("serverName" to (security.sni ?: server.host))
                 fingerprint?.takeIf { it.isNotEmpty() }?.let { tls["fingerprint"] = it }
                 security.alpn?.takeIf { it.isNotEmpty() }?.let { tls["alpn"] = it }
-                if (security.allowInsecure) {
-                    tls["allowInsecure"] = true
-                }
+                // Сертификат проверяется всегда: allowInsecure из ссылки ядро libXray (Xray-core 26.x) не принимает вовсе —
+                // конфиг с ним не запускается, — а без проверки подключение можно перехватить (решение 477).
 
                 stream["security"] = "tls"
                 stream["tlsSettings"] = tls
