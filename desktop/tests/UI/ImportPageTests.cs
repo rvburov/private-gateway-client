@@ -215,6 +215,27 @@ public sealed class ImportPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Preview_counts_again_when_the_saved_servers_change()
+    {
+        const string pin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        var (_, _, page) = OpenImport();
+        Clipboard.Text = "trojan://pw-re@198.51.100.32:443?sni=example.com&allowInsecure=1#Self-signed";
+        await page.FromClipboardCommand.ExecuteAsync(null);
+        page.AddCommand.Execute(null);
+        Clipboard.Text = $"trojan://pw-re@198.51.100.32:443?sni=example.com&pcs={pin}#Self-signed";
+        await page.FromClipboardCommand.ExecuteAsync(null);
+        page.AddText.ShouldBe("Обновить защиту 1 сервера");
+
+        // Сервер удалили, пока предпросмотр открыт: кнопка говорит то, что сделает импорт, — добавит его.
+        var store = Service<IServerStore>();
+        store.Remove(store.Servers.Single().Id);
+        Dispatcher.UIThread.RunJobs();
+
+        page.NewText.ShouldBe("1");
+        page.AddText.ShouldBe("Добавить 1 сервер");
+    }
+
+    [AvaloniaFact]
     public async Task Subscription_address_is_downloaded_named_by_host_and_kept_as_a_secret()
     {
         var (window, shell, page) = OpenImport();

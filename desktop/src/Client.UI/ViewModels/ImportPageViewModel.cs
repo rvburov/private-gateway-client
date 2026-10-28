@@ -1,4 +1,5 @@
 using System.Globalization;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Import;
@@ -57,6 +58,9 @@ public sealed partial class ImportPageViewModel : ObservableObject
         _navigator = navigator;
         _toast = toast;
         Loc.Instance.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
+        // Список серверов изменился, пока предпросмотр открыт (обновление подписки, удаление, страница оставлена и открыта
+        // снова): числа — заново, иначе кнопка обещала бы не то, что сделает импорт.
+        store.Changed += (_, _) => Dispatcher.UIThread.Post(Recount);
     }
 
     [ObservableProperty]
@@ -299,11 +303,22 @@ public sealed partial class ImportPageViewModel : ObservableObject
             return;
         }
 
-        _toast.Show(outcome is { Added: 0, Renewed: > 0 }
-            ? Loc.Instance.Plural("import.renewed", outcome.Renewed)
-            : Loc.Instance.Plural("import.added", outcome.Added));
+        _toast.Show(outcome switch
+        {
+            { Added: > 0 } => Loc.Instance.Plural("import.added", outcome.Added),
+            { Renewed: > 0 } => Loc.Instance.Plural("import.renewed", outcome.Renewed),
+            _ => Loc.Instance["import.nothing"],
+        });
         Reset();
         _navigator.Navigate(Pages.Servers);
+    }
+
+    private void Recount()
+    {
+        if (Preview is { } preview)
+        {
+            Preview = preview with { Duplicates = _store.CountDuplicates(preview.Servers), Renewals = _store.CountRenewals(preview.Servers) };
+        }
     }
 
     [RelayCommand]

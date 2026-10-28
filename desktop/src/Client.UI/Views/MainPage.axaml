@@ -159,7 +159,7 @@
 
           <Grid ColumnDefinitions="*,Auto">
             <TextBlock Classes="caption" Text="{Binding CheckedText}" VerticalAlignment="Center" />
-            <Button Grid.Column="1" Classes="link" IsVisible="{Binding HasCheckAction}"
+            <Button x:Name="CheckAction" Grid.Column="1" Classes="link tone" IsVisible="{Binding HasCheckAction}"
                     Command="{Binding CheckActionCommand}" Content="{Binding CheckActionText}"
                     Foreground="{Binding CheckActionTone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}" />
           </Grid>

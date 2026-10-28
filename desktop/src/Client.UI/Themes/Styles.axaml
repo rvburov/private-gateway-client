@@ -77,7 +77,7 @@
 
   <!-- Наведение и нажатие (решение 485): кнопка не заливается серым темы Fluent — фон, рамка и цвет остаются ее
        собственными. Синими становятся текст и значки кнопок без своего цвета (классы ниже); у кнопок со своим цветом —
-       корзина «danger», звезда избранного, полоса паузы — он остается -->
+       корзина «danger», звезда избранного, ссылка-действие цвета состояния «tone», полоса паузы — он остается -->
   <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
     <Setter Property="BorderBrush" Value="{Binding $parent[Button].BorderBrush}" />
@@ -94,6 +94,7 @@
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
   </Style>
   <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.tone:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.tone:pressed /template/ ContentPresenter#PART_ContentPresenter,
                    Button.favorite.on:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.favorite.on:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
   </Style>

@@ -124,6 +124,25 @@ interface ServerDao {
     /** Только описание сервера (решение 484): название, избранное, задержку и выбор, записанные тем временем, не затирает. */
     @Query("UPDATE servers SET sealed = :sealed WHERE id = :id")
     suspend fun setSealed(id: String, sealed: ByteArray)
+
+    /**
+     * Свой сервер подписки после обновления — описание из нового списка. Избранное, свое название, задержку и время выбора,
+     * записанные, пока обновление запечатывало, не затирает (строка целиком вернула бы прочитанные до того).
+     */
+    @Query(
+        "UPDATE servers SET name = :name, countryCode = :countryCode, protocol = :protocol, security = :security, " +
+            "transport = :transport, port = :port, sealed = :sealed, missingSince = NULL WHERE id = :id",
+    )
+    suspend fun refresh(
+        id: String,
+        name: String,
+        countryCode: String,
+        protocol: String,
+        security: String,
+        transport: String,
+        port: Int,
+        sealed: ByteArray,
+    )
 }
 
 /** Подписка и число ее серверов — для «Профили и подписки». */

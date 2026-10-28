@@ -40,6 +40,7 @@ public sealed class HoverTests : WindowHarness
         var edge = Named<Border>(tile, "Edge");
         edge.IsVisible.ShouldBeTrue("рамка плитки при наведении");
         ColorOf(edge.BorderBrush).ShouldBe(ColorOf(Check(state, "Dot")), "рамка — цвета плитки, а не серая или синяя");
+        ColorOf(edge.BorderBrush).ShouldBe(ColorOf(Resource("PgBrush.Status.Danger.Base")), "защита выключена — красным");
         var fill = tile.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("hover"));
         fill.IsVisible.ShouldBeTrue();
         ColorOf(fill.Background).ShouldBe(ColorOf(Check(state, "Hover")), "фон — тот же цвет, ярче");
@@ -59,13 +60,21 @@ public sealed class HoverTests : WindowHarness
         var main = (MainPageViewModel)shell.CurrentPage!;
         main.Chips.ShouldContain(c => c.State == CheckState.Ok, "после подключения у плиток другое состояние, чем у выключенной защиты");
 
-        foreach (var tile in Buttons(window).Where(b => b.Classes.Contains("chip")).ToArray())
+        var tiles = Buttons(window).Where(b => b.Classes.Contains("chip")).ToArray();
+        foreach (var tile in tiles)
         {
             var state = ((CheckChipViewModel)tile.DataContext!).State;
             Hover(window, tile);
-            ColorOf(Named<Border>(tile, "Edge").BorderBrush).ShouldBe(ColorOf(Check(state, "Dot")), state.ToString());
-            ColorOf(tile.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("hover")).Background)
-                .ShouldBe(ColorOf(Check(state, "Hover")), state.ToString());
+            var edge = Named<Border>(tile, "Edge");
+            var fill = tile.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("hover"));
+            (edge.IsVisible, fill.IsVisible).ShouldBe((true, true), state.ToString());
+            ColorOf(edge.BorderBrush).ShouldBe(ColorOf(Check(state, "Dot")), state.ToString());
+            ColorOf(fill.Background).ShouldBe(ColorOf(Check(state, "Hover")), state.ToString());
+            tiles.Where(t => t != tile).ShouldAllBe(t => !Named<Border>(t, "Edge").IsVisible, "остальные — без рамки");
+            if (state == CheckState.Ok)
+            {
+                ColorOf(edge.BorderBrush).ShouldBe(ColorOf(Resource("PgBrush.Status.Success.Base")), "защищено — зеленым");
+            }
         }
     }
 
@@ -171,6 +180,55 @@ public sealed class HoverTests : WindowHarness
         ColorOf(star.GetVisualDescendants().OfType<Icon>().Single().Foreground).ShouldBe(ColorOf(Resource("PgBrush.Favorite.Stroke")));
     }
 
+    [AvaloniaTheory]
+    [InlineData("icon")]
+    [InlineData("plain")]
+    [InlineData("option")]
+    [InlineData("nav")]
+    [InlineData("select")]
+    [InlineData("small")]
+    [InlineData("link")]
+    [InlineData("secondary")]
+    public void Button_without_its_own_color_turns_blue_under_the_pointer_without_a_gray_fill(string kind)
+    {
+        var (window, button) = Lone(kind, own: null);
+
+        Hover(window, button);
+
+        ColorOf(Presenter(button).Foreground).ShouldBe(ColorOf(Resource("PgBrush.Accent.Base")));
+        ColorOf(Presenter(button).Background).ShouldBe(ColorOf(button.Background), "фон кнопки свой, без серой заливки");
+    }
+
+    [AvaloniaTheory]
+    [InlineData("icon danger")]
+    [InlineData("link tone")]
+    [InlineData("icon favorite on")]
+    [InlineData("")]
+    public void Button_with_its_own_color_keeps_it_under_the_pointer(string classes)
+    {
+        // Корзина, ссылка-действие цвета состояния, звезда избранного и кнопка без класса (полоса паузы).
+        var own = (IBrush)Resource("PgBrush.Status.Danger.Text");
+        var (window, button) = Lone(classes, own);
+
+        Hover(window, button);
+
+        ColorOf(Presenter(button).Foreground).ShouldBe(ColorOf(own));
+    }
+
+    [AvaloniaFact]
+    public void Source_card_of_the_import_page_turns_blue_under_the_pointer()
+    {
+        var (window, shell) = Open();
+        shell.NavigateCommand.Execute(Pages.Add);
+        Dispatcher.UIThread.RunJobs();
+        var card = Buttons(window).First(b => b.Classes.Contains("source") && b.IsEffectivelyVisible);
+
+        Hover(window, card);
+
+        ColorOf(Presenter(card).Foreground).ShouldBe(ColorOf(Resource("PgBrush.Accent.Base")));
+        ColorOf(Presenter(card).BorderBrush).ShouldBe(ColorOf(Resource("PgBrush.Accent.Line")));
+    }
+
     [Fact]
     public void Drop_downs_take_the_width_of_their_text_everywhere()
     {
@@ -247,7 +305,23 @@ public sealed class HoverTests : WindowHarness
         Snapshot(window, "island-" + language);
     }
 
-    private static void Hover(MainWindow window, Control control)
+    /// <summary>Одна кнопка с классами <paramref name="classes"/> в своем окне — проверить правила наведения без страниц.</summary>
+    private static (Window Window, Button Button) Lone(string classes, IBrush? own)
+    {
+        var button = new Button { Content = new TextBlock { Text = "Кнопка" }, Width = 160, Height = 44 };
+        button.Classes.AddRange(classes.Split(' ', StringSplitOptions.RemoveEmptyEntries));
+        if (own is not null)
+        {
+            button.Foreground = own;
+        }
+
+        var window = new Window { Width = 300, Height = 200, Content = button };
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        return (window, button);
+    }
+
+    private static void Hover(Window window, Control control)
     {
         var center = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
         window.MouseMove(center);

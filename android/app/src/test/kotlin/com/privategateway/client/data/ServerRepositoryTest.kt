@@ -10,6 +10,8 @@ import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
 import java.net.URI
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -128,7 +130,8 @@ class ServerRepositoryTest {
 
     @Test
     fun `renewal keeps a favorite set while the import was sealing`() = runBlocking<Unit> {
-        val slow = ServerRepository(database, FakeBox(delayMillis = 300))
+        val box = GatedBox()
+        val slow = ServerRepository(database, box)
         val insecure = assertNotNull(LinkParser.parse("trojan://pw-f@198.51.100.5:443?sni=example.com&allowInsecure=1#F").server)
         slow.add(listOf(insecure))
         val id = slow.servers.first().single().id
@@ -136,13 +139,60 @@ class ServerRepositoryTest {
         // Импорт прочитал строки и запечатывает новое описание; тем временем пользователь отметил сервер избранным. Обновляется
         // только описание — отметка остается.
         val pinned = assertNotNull(LinkParser.parse("trojan://pw-f@198.51.100.5:443?sni=example.com&pcs=${"ab".repeat(32)}#F").server)
+        box.gate = true
         val import = async(Dispatchers.Default) { slow.add(listOf(pinned)) }
-        Thread.sleep(100)
+        assertTrue(box.sealing.await(5, TimeUnit.SECONDS), "импорт дошел до запечатывания")
         slow.setFavorite(id, true)
+        box.release.countDown()
 
         assertEquals(AddResult(0, 1), import.await())
         assertTrue(slow.servers.first().single().favorite)
         assertEquals(listOf("ab".repeat(32)), assertNotNull(slow.load(id)).security.pinnedPeerCertSha256)
+    }
+
+    @Test
+    fun `subscription refresh keeps a favorite and own name set while it was sealing`() = runBlocking<Unit> {
+        val box = GatedBox()
+        val slow = ServerRepository(database, box)
+        val server = assertNotNull(LinkParser.parse("trojan://pw-s@198.51.100.6:443?sni=example.com#S").server)
+        slow.add(listOf(server), "Провайдер", URI("https://example.com/sub/not-a-real-token"))
+        val group = slow.groups.first().single().id
+        val id = slow.servers.first().single().id
+
+        // Обновление подписки прочитало строки и запечатывает новое описание; тем временем — избранное и свое название.
+        box.gate = true
+        val refresh = async(Dispatchers.Default) { slow.applyUpdate(group, listOf(server.copy(name = "S2")), selectedId = null) }
+        assertTrue(box.sealing.await(5, TimeUnit.SECONDS), "обновление дошло до запечатывания")
+        slow.setFavorite(id, true)
+        slow.rename(id, "Мой")
+        box.release.countDown()
+        refresh.await()
+
+        val item = slow.servers.first().single()
+        assertTrue(item.favorite)
+        assertEquals("Мой", item.displayName)
+        assertEquals("S2", item.linkName, "описание — из нового списка")
+    }
+
+    /** Ящик, который по команде останавливается на запечатывании, пока тест не отпустит: гонка — без расчета на время. */
+    private class GatedBox : SecretBox {
+        private val box = FakeBox()
+        val sealing = CountDownLatch(1)
+        val release = CountDownLatch(1)
+
+        @Volatile
+        var gate = false
+
+        override fun seal(plain: ByteArray): ByteArray {
+            if (gate) {
+                sealing.countDown()
+                release.await(5, TimeUnit.SECONDS)
+            }
+
+            return box.seal(plain)
+        }
+
+        override fun open(sealed: ByteArray): ByteArray = box.open(sealed)
     }
 
     @Test

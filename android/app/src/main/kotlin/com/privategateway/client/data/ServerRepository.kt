@@ -187,24 +187,26 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
 
             val merge = SubscriptionMerge.merge(own, incoming, elsewhere, selectedId, unreadable)
             val byId = all.associateBy { it.id }
-            // Запечатывание — до транзакции: Keystore не держит базу.
-            val kept = merge.kept.map { (keptId, server) ->
-                byId.getValue(keptId).copy(
-                    name = server.name,
-                    countryCode = server.countryCode,
-                    protocol = server.protocol.name,
-                    security = server.security.kind.name,
-                    transport = server.transport.kind.name,
-                    port = server.port,
-                    sealed = seal(server),
-                    missingSince = null,
-                )
-            }
+            // Запечатывание — до транзакции: Keystore не держит базу. Пишется только описание сервера: избранное, свое название,
+            // задержка и время выбора, записанные тем временем, остаются.
+            val kept = merge.kept.map { (keptId, server) -> Triple(keptId, server, seal(server)) }
 
             var position = dao.lastPosition()
             val added = merge.added.map { entity(it, ++position, now, id) }
             database.withTransaction {
-                dao.updateAll(kept)
+                for ((keptId, server, sealed) in kept) {
+                    dao.refresh(
+                        keptId,
+                        server.name,
+                        server.countryCode,
+                        server.protocol.name,
+                        server.security.kind.name,
+                        server.transport.kind.name,
+                        server.port,
+                        sealed,
+                    )
+                }
+
                 dao.insertAll(added)
                 if (merge.removed.isNotEmpty()) {
                     dao.deleteIds(merge.removed)
