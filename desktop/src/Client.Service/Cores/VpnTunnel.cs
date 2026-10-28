@@ -123,9 +123,10 @@ public sealed class VpnTunnel : IAsyncDisposable
                     .Split('\n', StringSplitOptions.RemoveEmptyEntries)
                     .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                     .Where(words => words.Length > 3 && words[1] != SingBoxConfigBuilder.InterfaceName && words[2] == "inet")
+                    // Адрес «точка-точка» («inet A peer B/P») — без длины: занят сам адрес.
                     .Select(words => words[3].Split('/'))
-                    .Where(parts => parts.Length == 2 && IPAddress.TryParse(parts[0], out _) && int.TryParse(parts[1], out _))
-                    .Select(parts => (IPAddress.Parse(parts[0]), int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture)))];
+                    .Where(parts => parts.Length <= 2 && IPAddress.TryParse(parts[0], out _) && (parts.Length == 1 || int.TryParse(parts[1], out _)))
+                    .Select(parts => (IPAddress.Parse(parts[0]), parts.Length == 1 ? 32 : int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture)))];
             }
             catch (IOException)
             {

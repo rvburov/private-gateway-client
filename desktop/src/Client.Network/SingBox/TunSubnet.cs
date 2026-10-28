@@ -21,8 +21,9 @@ public sealed record TunSubnet(IPAddress Address, IPAddress Dns)
     public static TunSubnet Default { get; } = From("172.19.0.0");
 
     /// <summary>
-    /// Подсети по порядку: прежняя, затем редкие — по одной в каждом частном диапазоне. 198.18.0.0/15 (FakeDNS) и
-    /// 100.64.0.0/10 (CGNAT, Tailscale) не берутся.
+    /// Подсети по порядку: прежняя, затем редкие — во всех трех частных диапазонах (в 10.0.0.0/8 и 172.16.0.0/12 — по две, в
+    /// разных /16), чтобы одна сеть адаптера, даже /8, не заняла все. 198.18.0.0/15 (FakeDNS) и 100.64.0.0/10 (CGNAT,
+    /// Tailscale) не берутся.
     /// </summary>
     public static IReadOnlyList<TunSubnet> Candidates { get; } =
         [Default, From("10.255.253.0"), From("192.168.253.252"), From("172.29.253.252"), From("10.199.199.0")];

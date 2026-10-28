@@ -128,6 +128,7 @@ public sealed class VpnTunnelTests
         using var netns = NetworkNamespace.Create();
         var (host, _, _) = netns.LinkAsMachine();
         netns.Run(null, "ip", "addr", "add", "172.19.0.1/20", "dev", "pgnet0");
+        netns.Run(null, "ip", "addr", "add", "192.168.253.253", "peer", "192.168.253.254/32", "dev", "pgnet0");
         using var site = new LocalSite("через туннель по имени");
         using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
         var (definition, server) = await NameOnlyServerAsync(host, site, dns);
@@ -137,6 +138,7 @@ public sealed class VpnTunnelTests
         var output = new CoreOutput(netns);
 
         VpnTunnel.MachineNetworks(netns.Path).ShouldContain((IPAddress.Parse("172.19.0.1"), 20), "сети адаптеров — из пространства, где встанет TUN");
+        VpnTunnel.MachineNetworks(netns.Path).ShouldContain((IPAddress.Parse("192.168.253.253"), 32), "адрес «точка-точка» — занят он сам");
         await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
             TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
 
