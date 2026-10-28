@@ -103,6 +103,9 @@ public sealed partial class AboutPageViewModel : ObservableObject
     // Коммит файла службы, который поставит «Обновить службу»; null — не узнать.
     private string? _sourceBuild;
 
+    // Причина, по которой не вышло «Обновить службу», словами установки; не назвала — null.
+    private string? _updateError;
+
     public AboutPageViewModel(
         SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator, IServiceInstaller installer, UpdateWatcher updates,
         IUrlLauncher launcher, TimeProvider time)
@@ -313,16 +316,18 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     public bool HasServiceNotice => ServiceMatch != ServiceMatch.Same || UpdateFailed;
 
-    public string ServiceNotice => UpdateFailed ? Loc.Instance["about.service.updateFailed"] : ServiceMatch switch
-    {
-        ServiceMatch.Same => string.Empty,
-        _ when StaleSource => Loc.Instance.Format("about.service.rebuild", Short(_sourceBuild!), Short(AppInfo.Build)),
-        ServiceMatch.Older => Loc.Instance.Format("about.service.older", _details!.Version, AppInfo.Version),
-        ServiceMatch.Newer => Loc.Instance.Format("about.service.newer", _details!.Version, AppInfo.Version),
-        ServiceMatch.Incompatible => Loc.Instance.Format("about.service.incompatible", _details!.Version, AppInfo.Version),
-        ServiceMatch.OtherBuild => Loc.Instance.Format("about.service.otherBuild", Short(_details!.Build), Short(AppInfo.Build)),
-        _ => string.Empty,
-    };
+    public string ServiceNotice => UpdateFailed
+        ? _updateError is { } reason ? Loc.Instance.Format("about.service.updateFailedBecause", reason) : Loc.Instance["about.service.updateFailed"]
+        : ServiceMatch switch
+        {
+            ServiceMatch.Same => string.Empty,
+            _ when StaleSource => Loc.Instance.Format("about.service.rebuild", Short(_sourceBuild!), Short(AppInfo.Build)),
+            ServiceMatch.Older => Loc.Instance.Format("about.service.older", _details!.Version, AppInfo.Version),
+            ServiceMatch.Newer => Loc.Instance.Format("about.service.newer", _details!.Version, AppInfo.Version),
+            ServiceMatch.Incompatible => Loc.Instance.Format("about.service.incompatible", _details!.Version, AppInfo.Version),
+            ServiceMatch.OtherBuild => Loc.Instance.Format("about.service.otherBuild", Short(_details!.Build), Short(AppInfo.Build)),
+            _ => string.Empty,
+        };
 
     /// <summary>
     /// Файл службы рядом с окном — из других исходников, чем окно: <c>dotnet run</c> окна его не пересобирает, и
@@ -429,6 +434,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         try
         {
             var result = await _installer.InstallAsync().ConfigureAwait(true);
+            _updateError = _installer.LastError;
             UpdateFailed = result == ServiceInstallResult.Failed;
             await LoadDetailsAsync().ConfigureAwait(true);
         }

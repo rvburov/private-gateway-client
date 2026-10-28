@@ -1,6 +1,8 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Principal;
 using System.Text.Json;
+using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Platform.MacOS;
@@ -196,6 +198,97 @@ public static class ServiceSetup
         : OperatingSystem.IsLinux() ? new SystemdOsService(SystemdService.ForThisMachine() ?? throw new PlatformNotSupportedException("Нет systemd"))
         : OperatingSystem.IsMacOS() ? new LaunchdOsService(LaunchdService.ForThisMachine() ?? throw new PlatformNotSupportedException("Нет launchctl"))
         : throw new PlatformNotSupportedException("Установка службы на этой ОС еще не готова");
+
+    /// <summary>
+    /// Запустится ли служба из папки <paramref name="serviceFolder"/> от имени системы (LocalSystem, root): ее файл с
+    /// <c>--version</c> без переменных DOTNET_ROOT — так .NET ищет и служба. Сборка из исходников зависит от .NET машины, а
+    /// .NET, поставленный только для учетной записи, системе не виден: служба упала бы при запуске, и ОС сказала бы лишь
+    /// «не ответила вовремя». null — запускается; иначе — причина словами, что сделать.
+    /// </summary>
+    /// <param name="serviceFolder">Папка сборки службы, из которой ее поставят.</param>
+    /// <param name="run">Запуск процесса (тесты); null — настоящий: код выхода и вывод ошибок.</param>
+    public static string? RunsAsSystem(string serviceFolder, Func<ProcessStartInfo, (int Code, string Errors)>? run = null)
+    {
+        var start = new ProcessStartInfo(Path.Combine(serviceFolder, Executable))
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            ArgumentList = { "--version" },
+        };
+        foreach (var name in start.Environment.Keys.Where(k => k.StartsWith("DOTNET_ROOT", StringComparison.OrdinalIgnoreCase)).ToList())
+        {
+            start.Environment.Remove(name);
+        }
+
+        var (code, errors) = (run ?? Run)(start);
+        if (code == 0)
+        {
+            return null;
+        }
+
+        // Хост .NET: «You must install .NET to run this application» или «…install or update .NET…».
+        if (errors.Contains("You must install", StringComparison.OrdinalIgnoreCase))
+        {
+            return (OperatingSystem.IsWindows() ? "служба работает от имени системы" : "служба работает от root")
+                + ", а ей не виден .NET 10: он поставлен только для вашей учетной записи. Поставьте .NET 10 для всей машины ("
+                + (OperatingSystem.IsWindows() ? "PowerShell от администратора: winget install Microsoft.DotNet.SDK.10"
+                    : OperatingSystem.IsMacOS() ? "установщик .NET 10 SDK с dotnet.microsoft.com или brew install --cask dotnet-sdk"
+                    : "пакет dotnet-sdk-10.0 или aspnetcore-runtime-10.0 из репозитория ОС")
+                + ") и установите службу снова";
+        }
+
+        var line = errors.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault() ?? $"код выхода {code}";
+        return "служба не запускается: " + (line.Length > 300 ? line[..300] : line);
+
+        static (int, string) Run(ProcessStartInfo start)
+        {
+            try
+            {
+                using var process = Process.Start(start)!;
+                var output = process.StandardOutput.ReadToEndAsync();
+                var errors = process.StandardError.ReadToEndAsync();
+                if (!process.WaitForExit(TimeSpan.FromSeconds(60)))
+                {
+                    // Медленная машина: не отказывать в установке из-за долгого запуска — ОС подождет сама.
+                    process.Kill();
+                    return (0, string.Empty);
+                }
+
+                _ = output.Result;
+                return (process.ExitCode, errors.Result);
+            }
+            catch (System.ComponentModel.Win32Exception e)
+            {
+                return (-1, e.Message);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Итог установки — для окна (<see cref="SetupResult"/>): причина отказа в файл рядом с папкой службы; удалась — файла
+    /// нет. Не вышло записать — окно скажет, что причина неизвестна.
+    /// </summary>
+    public static void WriteResult(string folder, string? failure)
+    {
+        try
+        {
+            var file = SetupResult.For(folder);
+            if (failure is null)
+            {
+                File.Delete(file);
+                return;
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+            File.WriteAllText(file, failure);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Console.Error.WriteLine("Итог установки для окна не записан: " + e.Message);
+        }
+    }
 
     /// <summary>Поставить службу или заменить работающую атомарно (см. описание класса).</summary>
     /// <exception cref="IOException">Новая служба не запустилась; прежняя, если была, возвращена и работает.</exception>

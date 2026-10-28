@@ -330,6 +330,8 @@ public abstract class WindowHarness : IDisposable
 
         public string? SourceBuild { get; set; }
 
+        public string? LastError { get; set; }
+
         public ServiceInstallResult Result { get; set; } = ServiceInstallResult.Installed;
 
         public Action? OnInstalled { get; set; }

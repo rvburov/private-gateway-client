@@ -264,6 +264,115 @@ public sealed class ServiceSetupTests : IDisposable
         os.Calls.ShouldBeEmpty();
     }
 
+    /// <summary>
+    /// До установки — запустится ли служба от имени системы: ее файл с --version без DOTNET_ROOT. Отказ хоста .NET — что
+    /// поставить словами, другой отказ — первая строка вывода; запустилась — установке не мешает.
+    /// </summary>
+    [Fact]
+    public void Install_first_checks_that_the_system_can_run_the_service()
+    {
+        ProcessStartInfo? seen = null;
+        Environment.SetEnvironmentVariable("DOTNET_ROOT_PG_TEST", null);
+        var previous = Environment.GetEnvironmentVariable("DOTNET_ROOT");
+        Environment.SetEnvironmentVariable("DOTNET_ROOT", "/home/user/.dotnet");
+        try
+        {
+            ServiceSetup.RunsAsSystem(_root, start =>
+            {
+                seen = start;
+                return (0, string.Empty);
+            }).ShouldBeNull("запустилась — установке не мешает");
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("DOTNET_ROOT", previous);
+        }
+
+        seen.ShouldNotBeNull();
+        seen.FileName.ShouldBe(Path.Combine(_root, Exe));
+        seen.ArgumentList.ShouldBe(["--version"]);
+        seen.Environment.Keys.ShouldNotContain(k => k.StartsWith("DOTNET_ROOT", StringComparison.OrdinalIgnoreCase),
+            "система DOTNET_ROOT пользователя не видит — и проверка без него");
+
+        var missing = ServiceSetup.RunsAsSystem(_root, _ => (-2147450730, "You must install .NET to run this application.\n\nApp: ...\n"));
+        missing.ShouldNotBeNull().ShouldContain("не виден .NET 10");
+        missing.ShouldContain(OperatingSystem.IsWindows() ? "winget install Microsoft.DotNet.SDK.10" : OperatingSystem.IsMacOS() ? "dotnet.microsoft.com" : "dotnet-sdk-10.0");
+        ServiceSetup.RunsAsSystem(_root, _ => (1, "\n  Unhandled exception. boom\n   at Main\n")).ShouldBe("служба не запускается: Unhandled exception. boom");
+    }
+
+    /// <summary>
+    /// Настоящий хост .NET: служба, которой нужен .NET, которого нет ни у кого (99.0.0), — отказ «You must install …» и
+    /// причина словами. Так проверка видит и .NET, поставленный только для учетной записи пользователя.
+    /// </summary>
+    [Fact]
+    public void Real_dotnet_host_that_finds_no_runtime_is_told_in_words()
+    {
+        var build = Path.Combine(XrayKit.Root, "artifacts", "bin", "Client.Service", new DirectoryInfo(AppContext.BaseDirectory).Name);
+        Assert.SkipWhen(!File.Exists(Path.Combine(build, Exe)), "нет сборки службы рядом с тестами");
+        var copy = Directory.CreateDirectory(Path.Combine(_root, "service")).FullName;
+        foreach (var file in Directory.EnumerateFiles(build))
+        {
+            File.Copy(file, Path.Combine(copy, Path.GetFileName(file)));
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(Path.Combine(copy, Exe), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
+        ServiceSetup.RunsAsSystem(copy).ShouldBeNull("та же служба с .NET этой машины запускается");
+        var config = Path.Combine(copy, "PrivateGateway.Service.runtimeconfig.json");
+        File.WriteAllText(config, System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(config), "\"version\": \"10\\.[^\"]*\"", "\"version\": \"99.0.0\""));
+
+        ServiceSetup.RunsAsSystem(copy).ShouldNotBeNull().ShouldContain("не виден .NET 10");
+    }
+
+    /// <summary>
+    /// Настоящий --install, который отказал (владелец не SID и не uid — до любых действий с правами): причина — в файле итога
+    /// рядом с папкой службы, окно ее покажет; в выводе — она же.
+    /// </summary>
+    [Fact]
+    public async Task Refused_install_leaves_its_reason_for_the_window()
+    {
+        var build = Path.Combine(XrayKit.Root, "artifacts", "bin", "Client.Service", new DirectoryInfo(AppContext.BaseDirectory).Name);
+        Assert.SkipWhen(!File.Exists(Path.Combine(build, Exe)), "нет сборки службы рядом с тестами");
+        var folder = Path.Combine(_root, "Private Gateway", "Service");
+        var start = new ProcessStartInfo(Path.Combine(build, Exe))
+        {
+            UseShellExecute = false,
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            ArgumentList = { "--install", "--owner", "not an owner", "--install-dir", folder, "--state-dir", Path.Combine(_root, "state") },
+        };
+        using var process = Process.Start(start)!;
+        var errors = await process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+
+        process.ExitCode.ShouldBe(1);
+        // Причина — какая выйдет раньше: «Владелец — SID…» или, без systemd, «Нет systemd»; главное — она та же, что в выводе.
+        var reason = File.ReadAllText(PrivateGateway.Client.Contracts.SetupResult.For(folder));
+        reason.ShouldNotBeNullOrWhiteSpace();
+        errors.ShouldContain("Служба не установлена: " + reason);
+        Directory.Exists(folder).ShouldBeFalse("отказ — до копирования");
+    }
+
+    /// <summary>Итог установки — рядом с папкой службы: причина отказа для окна; удалась — файла нет.</summary>
+    [Fact]
+    public void Result_of_the_install_is_written_next_to_the_service_folder()
+    {
+        var folder = Path.Combine(_root, "Private Gateway", "Service");
+        var file = Path.Combine(_root, "Private Gateway", PrivateGateway.Client.Contracts.SetupResult.FileName);
+
+        ServiceSetup.WriteResult(folder, "служба не запускается: boom");
+        File.ReadAllText(file).ShouldBe("служба не запускается: boom");
+        PrivateGateway.Client.Contracts.SetupResult.For(folder).ShouldBe(file);
+        PrivateGateway.Client.Contracts.SetupResult.For(ServiceSetup.DefaultFolder).ShouldBe(PrivateGateway.Client.Contracts.SetupResult.DefaultFile,
+            "окно читает тот же файл, что пишет установка в папке по умолчанию");
+
+        ServiceSetup.WriteResult(folder, null);
+        File.Exists(file).ShouldBeFalse("установка удалась — прежней причины нет");
+    }
+
     [Fact]
     public void Systemd_unit_runs_the_service_as_root_and_restarts_it()
     {

@@ -19,11 +19,13 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// <param name="elevate">Запуск с правами: файл и аргументы → код выхода; пользователь отказал в правах — null.</param>
 /// <param name="installedAnswers">Отвечает ли установленная служба.</param>
 /// <param name="time">Часы для ожидания ответа.</param>
+/// <param name="resultFile">Файл итога установки (<see cref="SetupResult"/>): причина отказа; null — не читать.</param>
 public sealed class ServiceInstaller(
     string? executable,
     Func<string, IReadOnlyList<string>, Task<int?>> elevate,
     Func<bool> installedAnswers,
-    TimeProvider time) : IServiceInstaller
+    TimeProvider time,
+    string? resultFile = null) : IServiceInstaller
 {
     /// <summary>Сколько ждать ответа службы после установки.</summary>
     public static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
@@ -47,6 +49,9 @@ public sealed class ServiceInstaller(
 
     public bool IsAvailable => executable is not null && File.Exists(executable);
 
+    /// <summary>Причина, по которой не вышла последняя установка, — из файла итога; неизвестна — null.</summary>
+    public string? LastError { get; private set; }
+
     /// <summary>
     /// Коммит файла службы, который поставит установка: версия сборки библиотеки службы рядом с ее файлом. У сборки из
     /// исходников его собирает <c>dotnet build PrivateGateway.slnx</c>, а <c>dotnet run</c> окна — нет: файл бывает из
@@ -67,7 +72,8 @@ public sealed class ServiceInstaller(
             ? UserServiceLauncher.Find(AppContext.BaseDirectory) : null,
         ElevateAsync,
         () => IpcChannel.Answers(IpcEndpoints.System, system: true, ServiceLocator.ProbeTimeout),
-        time);
+        time,
+        SetupResult.DefaultFile);
 
     /// <summary>Пользователь окна для службы: SID на Windows, uid на Linux и macOS.</summary>
     public static string Owner() => OperatingSystem.IsWindows()
@@ -76,16 +82,20 @@ public sealed class ServiceInstaller(
 
     public async Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default)
     {
+        LastError = null;
         if (!IsAvailable)
         {
             return ServiceInstallResult.Failed;
         }
 
+        // Время файла — настоящее, файловой системы: прежний итог (старше этой попытки) — не про нее.
+        var attempt = DateTime.UtcNow.AddSeconds(-2);
         switch (await elevate(executable!, ["--install", "--owner", Owner()]).ConfigureAwait(false))
         {
             case null:
                 return ServiceInstallResult.Cancelled;
             case not 0:
+                LastError = Reason(attempt);
                 return ServiceInstallResult.Failed;
         }
 
@@ -101,6 +111,25 @@ public sealed class ServiceInstaller(
         }
 
         return ServiceInstallResult.Installed;
+    }
+
+    // Причина отказа из файла итога этой попытки; файла нет или он прежний — null.
+    private string? Reason(DateTime attempt)
+    {
+        try
+        {
+            if (resultFile is null || !File.Exists(resultFile) || File.GetLastWriteTimeUtc(resultFile) < attempt)
+            {
+                return null;
+            }
+
+            var text = File.ReadAllText(resultFile).Trim();
+            return text.Length == 0 ? null : text.Length > 500 ? text[..500] : text;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>Параметры osascript для запуска <paramref name="executable"/> от администратора на macOS.</summary>

@@ -44,9 +44,16 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
             return 0;
         }
 
+        // Сначала — запустится ли она от имени системы: иначе ОС после регистрации скажет лишь «не ответила вовремя».
+        if (ServiceSetup.RunsAsSystem(AppContext.BaseDirectory) is { } reason)
+        {
+            throw new IOException(reason);
+        }
+
         ServiceSetup.Install(new SetupOptions(name, folder, Option("--owner") ?? string.Empty, Option("--ipc"), stateDir), AppContext.BaseDirectory,
             Option("--xray") ?? ServiceHost.DefaultXray(), Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory),
             ServiceSetup.ForThisMachine());
+        ServiceSetup.WriteResult(folder, null);
         Console.WriteLine($"Служба {name} установлена в {folder} и запущена");
         return 0;
     }
@@ -54,6 +61,12 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
         or System.ComponentModel.Win32Exception)
     {
         Console.Error.WriteLine((args.Contains("--uninstall") ? "Служба не удалена: " : "Служба не установлена: ") + e.Message);
+        if (!args.Contains("--uninstall"))
+        {
+            // Окно запускает установку в окне ОС, вывод которого не видит: причину — в файл, окно ее покажет.
+            ServiceSetup.WriteResult(folder, e.Message);
+        }
+
         return 1;
     }
 }

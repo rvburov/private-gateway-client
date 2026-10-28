@@ -159,7 +159,7 @@ public sealed partial class WelcomePageViewModel : ObservableObject
                     InstallError = Loc.Instance["problem.install.cancelled"];
                     break;
                 default:
-                    InstallError = Loc.Instance["problem.install.failed"];
+                    InstallError = InstallFailure(_installer);
                     break;
             }
         }
@@ -168,6 +168,14 @@ public sealed partial class WelcomePageViewModel : ObservableObject
             IsInstalling = false;
         }
     }
+
+    /// <summary>
+    /// Почему не вышла установка: словами самой установки (окно ОС с правами свой вывод не показывает — она пишет причину
+    /// в файл итога), не назвала — общая строка.
+    /// </summary>
+    public static string InstallFailure(IServiceInstaller installer) => installer.LastError is { } reason
+        ? Loc.Instance.Format("problem.install.reason", reason)
+        : Loc.Instance["problem.install.failed"];
 
     /// <summary>«Без службы — только режим прокси»: режим запоминается, дальше — как без шага.</summary>
     [RelayCommand(CanExecute = nameof(CanWork))]

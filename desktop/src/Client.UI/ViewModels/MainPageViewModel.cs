@@ -138,6 +138,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         { Kind: NetworkKind.Ethernet } => Loc.Instance["network.ethernet"],
         { Kind: NetworkKind.UsbModem } => Loc.Instance["network.usb"],
         { Kind: NetworkKind.Mobile } => Loc.Instance["network.mobile"],
+        // Сеть машины называет служба: ее нет — сеть не известна, а не «нет сети».
+        _ when _gateway.Service == ServiceKind.None => Loc.Instance["network.unknown"],
         _ => Loc.Instance["network.none"],
     };
 

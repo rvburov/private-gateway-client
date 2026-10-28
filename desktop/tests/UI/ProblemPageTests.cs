@@ -153,12 +153,15 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaTheory]
-    [InlineData(ServiceInstallResult.Cancelled, "Установка отменена: права администратора не даны")]
-    [InlineData(ServiceInstallResult.Failed, "Служба не установлена — подробности в журнале")]
-    public async Task Refused_or_failed_install_keeps_the_screen_and_says_why(ServiceInstallResult result, string toast)
+    [InlineData(ServiceInstallResult.Cancelled, null, "Установка отменена: права администратора не даны")]
+    [InlineData(ServiceInstallResult.Failed, null, "Служба не установлена: установка не назвала причину — попробуйте еще раз")]
+    [InlineData(ServiceInstallResult.Failed, "служба работает от имени системы, а ей не виден .NET 10",
+        "Служба не установлена: служба работает от имени системы, а ей не виден .NET 10")]
+    public async Task Refused_or_failed_install_keeps_the_screen_and_says_why(ServiceInstallResult result, string? reason, string toast)
     {
         Installer.IsAvailable = true;
         Installer.Result = result;
+        Installer.LastError = reason;
         var (window, shell) = OpenWithServer();
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.CurrentKey == Pages.Problem);

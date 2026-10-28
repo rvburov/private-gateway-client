@@ -28,5 +28,11 @@ public interface IServiceInstaller
     /// </summary>
     string? SourceBuild => null;
 
+    /// <summary>
+    /// Причина, по которой не вышла последняя установка, словами установки (окно ОС с правами свой вывод окну не
+    /// показывает — установка пишет причину в файл); неизвестна — null.
+    /// </summary>
+    string? LastError => null;
+
     Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default);
 }

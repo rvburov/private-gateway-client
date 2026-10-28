@@ -123,6 +123,13 @@ public sealed class WelcomePageTests : WindowHarness
         Text(window, "InstallError").ShouldBe("Установка отменена: права администратора не даны");
         (page.IsService, Find<Button>(window, "InstallService").Content).ShouldBe((true, "Установить"));
 
+        // Установка не вышла и назвала причину (окно ОС с правами свой вывод не показывает — причина из файла итога).
+        Installer.Result = ServiceInstallResult.Failed;
+        Installer.LastError = "служба работает от имени системы, а ей не виден .NET 10";
+        Press(window, "InstallService");
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "InstallError").ShouldBe("Служба не установлена: служба работает от имени системы, а ей не виден .NET 10");
+
         Press(window, "WithoutService");
         Dispatcher.UIThread.RunJobs();
 

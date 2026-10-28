@@ -295,6 +295,11 @@ public sealed class AboutPageTests : WindowHarness
         page.UpdateServiceCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         page.ServiceNotice.ShouldStartWith("Службу обновить не удалось", customMessage: "неудача — словами, а не молча");
+
+        Installer.LastError = "служба не запускается: boom";
+        page.UpdateServiceCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        page.ServiceNotice.ShouldBe("Службу обновить не удалось: служба не запускается: boom", "причина — словами установки");
     }
 
     /// <summary>

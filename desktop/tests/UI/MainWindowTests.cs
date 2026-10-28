@@ -41,6 +41,20 @@ public sealed class MainWindowTests : WindowHarness
         Snapshot(window, "main-off");
     }
 
+    /// <summary>
+    /// Сеть машины называет служба: без службы сеть не известна, а не «Нет сети» — интернет у человека при этом есть.
+    /// </summary>
+    [AvaloniaTheory]
+    [InlineData(ServiceKind.None, "Сеть не известна — служба не запущена")]
+    [InlineData(ServiceKind.Installed, "Нет сети")]
+    public void Network_line_without_a_service_says_the_network_is_unknown(ServiceKind kind, string line)
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, kind));
+        var main = (MainPageViewModel)shell.CurrentPage!;
+
+        main.NetworkText.ShouldBe(line);
+    }
+
     [AvaloniaFact]
     public void Shield_connects_through_connecting_to_connected()
     {

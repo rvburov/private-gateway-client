@@ -56,6 +56,42 @@ public sealed class ServiceInstallerTests : IDisposable
         (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
     }
 
+    /// <summary>
+    /// Установка с правами идет в окне ОС, вывод которого окну не виден (UAC на Windows): причину отказа она пишет в файл
+    /// итога, окно берет ее оттуда. Файл прежней попытки — не про эту: причины нет.
+    /// </summary>
+    [Fact]
+    public async Task Reason_of_a_failed_install_comes_from_the_result_file_of_this_attempt()
+    {
+        var result = _executable + "-result.txt";
+        try
+        {
+            var installer = new ServiceInstaller(_executable, (_, _) =>
+            {
+                File.WriteAllText(result, "служба работает от имени системы, а ей не виден .NET 10\n");
+                return Task.FromResult<int?>(1);
+            }, () => true, _time, result);
+
+            (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
+            installer.LastError.ShouldBe("служба работает от имени системы, а ей не виден .NET 10");
+
+            File.SetLastWriteTimeUtc(result, DateTime.UtcNow.AddMinutes(-10));
+            var stale = new ServiceInstaller(_executable, (_, _) => Task.FromResult<int?>(1), () => true, _time, result);
+            (await stale.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
+            stale.LastError.ShouldBeNull("итог прежней попытки — не причина этой");
+
+            (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
+            File.Delete(result);
+            var cancelled = new ServiceInstaller(_executable, (_, _) => Task.FromResult<int?>(null), () => true, _time, result);
+            (await cancelled.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Cancelled);
+            cancelled.LastError.ShouldBeNull("права не дали — причина и так ясна");
+        }
+        finally
+        {
+            File.Delete(result);
+        }
+    }
+
     [Fact]
     public void Mac_elevation_passes_the_command_as_arguments_not_inside_the_script()
     {

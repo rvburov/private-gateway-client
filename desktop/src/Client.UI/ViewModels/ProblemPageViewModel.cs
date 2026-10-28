@@ -157,12 +157,12 @@ public sealed partial class ProblemPageViewModel : ObservableObject
             IsWorking = false;
         }
 
-        _toast.Show(Loc.Instance[result switch
+        _toast.Show(result switch
         {
-            ServiceInstallResult.Installed => "problem.install.done",
-            ServiceInstallResult.Cancelled => "problem.install.cancelled",
-            _ => "problem.install.failed",
-        }], ToastViewModel.LongDuration);
+            ServiceInstallResult.Installed => Loc.Instance["problem.install.done"],
+            ServiceInstallResult.Cancelled => Loc.Instance["problem.install.cancelled"],
+            _ => WelcomePageViewModel.InstallFailure(_installer),
+        }, ToastViewModel.LongDuration);
         if (result == ServiceInstallResult.Installed)
         {
             _navigator.Navigate(_catalog.Selected is null ? Pages.Add : Pages.Home);
