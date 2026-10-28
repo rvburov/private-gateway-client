@@ -77,7 +77,7 @@
   Linux, чтобы sing-box успел убрать свои маршруты, и только потом принудительно.
 - Сборку ядра кладет `scripts/get-xray.sh` в `artifacts/cores/xray/`: версия — `shared/cores/xray.version`,
   SHA-256 архива сверяется с `.dgst` выпуска и с закрепленной суммой `shared/cores/xray.sha256`
-  (Windows x64, macOS arm64, Linux x64; сборка без закрепленной суммы — с предупреждением). Загрузка — `scripts/download.sh`:
+  (Windows x64, macOS arm64 и x64, Linux x64 и arm64; сборка без закрепленной суммы — с предупреждением). Загрузка — `scripts/download.sh`:
   обрыв посреди файла (curl 18) — до 6 попыток, каждая докачивает с места обрыва; проверка — `scripts/tests/download-smoke.sh`
   в CI на трех ОС. В облаке
   агента выпуски GitHub закрыты: `scripts/get-xray.sh --build` собирает ядро из исходников тега через
@@ -211,7 +211,9 @@ TUN-адаптера у Xray на десктопе нет, поэтому пак
   номерам после остановки туннеля и при запуске ([service.md](service.md), «Аварии и перезагрузка»).
 - Сборку кладет `scripts/get-singbox.sh` в `artifacts/cores/sing-box/` вместе с `LICENSE`: версия —
   `shared/cores/sing-box.version`, архив берется только с закрепленной суммой из
-  `shared/cores/sing-box.sha256` (Windows x64, macOS arm64, Linux x64). На Windows Wintun встроен в
+  `shared/cores/sing-box.sha256` (Windows x64, macOS arm64 и x64, Linux x64 и arm64; каждая сумма сверена на второй
+  машине — `scripts/check-singbox-sums.sh` в CI). Сборку из исходников на Linux ARM и Mac с Intel с обоими ядрами
+  проверяет задание CI «Другие процессоры» (решение 479). На Windows Wintun встроен в
   сборку sing-box — отдельный драйвер не ставится. Служба ищет sing-box рядом с собой или в
   `artifacts/cores/sing-box`, `--sing-box <путь>` — для разработки; версию отдает `GetServiceInfo`.
 - Тест `desktop/tests/Network/VpnTunnelTests` — на Linux под root в своем сетевом пространстве

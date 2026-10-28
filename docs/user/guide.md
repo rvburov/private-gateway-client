@@ -83,9 +83,8 @@ dotnet run --project desktop/src/Client.UI
 коммиту, поэтому и обновление, менявшее только документацию, попросит обновить службу: это быстро и ничего не ломает.
 
 Команды одни на всех ОС: на Windows — в Git Bash (в PowerShell и cmd скрипты `scripts/…` не запустятся), на macOS и
-Linux — в Терминале. Ядро sing-box скрипт берет только со сверенной суммой, а она пока есть для Windows x64, macOS на
-Apple M1 и новее и Linux x64; на Mac с Intel и Linux на ARM `get-singbox.sh` откажет — тогда работает режим прокси, а
-режима VPN и Hysteria2/TUIC нет.
+Linux — в Терминале. Ядра скрипты берут только со сверенной суммой: она есть для Windows x64, macOS (Apple M1 и новее
+и Intel) и Linux (x64 и ARM).
 
 ## 2. Первый запуск
 

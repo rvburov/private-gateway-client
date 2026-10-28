@@ -46,6 +46,10 @@ jobs:
       - name: Сборка выпуска на собранных сборках
         run: scripts/tests/release-assembly-smoke.sh
 
+      # Каждая закрепленная сумма sing-box — и тех машин, где CI его не берет, — сверена здесь второй раз.
+      - name: Суммы sing-box на второй машине
+        run: scripts/check-singbox-sums.sh
+
   build-test:
     name: Сборка и тесты (${{ matrix.os }})
     strategy:
@@ -133,6 +137,54 @@ jobs:
 
       # Итог всех запусков в сводку задания: упавшие и пропущенные — каждый с причиной. Пропуск, не разрешенный для этой ОС в
       # desktop/tests/allowed-skips.json, роняет проверку: тест не может тихо перестать идти в CI.
+      - name: Отчет о тестах и пропусках
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+        run: dotnet run scripts/test-report.cs artifacts/test-results
+
+  # Linux на ARM и Mac с Intel: выпуска для них нет, а сборка из исходников (docs/user/guide.md) — есть. Здесь — сборка, оба
+  # ядра по закрепленным суммам этих машин и тесты, которые гоняют настоящие ядра: прокси через Xray, конфиги эталонов,
+  # ретранслятор sing-box, замер задержки (решение 479). Права root, TUN и служба — в основном задании на трех ОС.
+  other-cpu:
+    name: Другие процессоры (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04-arm, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      - uses: actions/checkout@v5
+
+      - id: dotnet
+        uses: actions/setup-dotnet@v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 10.0.402
+
+      - name: Сборка
+        id: build
+        run: dotnet build PrivateGateway.slnx -c Release
+
+      - name: Ядро Xray
+        run: scripts/get-xray.sh
+
+      - name: Ядро sing-box
+        run: scripts/get-singbox.sh
+
+      - name: Тесты
+        run: |
+          dotnet test --project desktop/tests/Unit -c Release --no-build --results-directory artifacts/test-results --report-ctrf
+          dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
+            --filter-class '*.XrayProxyTests' --filter-class '*.ReferenceConfigTests' --filter-class '*.RelayTests' \
+            --filter-class '*.LatencyProbeTests' --filter-class '*.LocalPortTests'
+
       - name: Отчет о тестах и пропусках
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet run scripts/test-report.cs artifacts/test-results
