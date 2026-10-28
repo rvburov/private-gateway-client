@@ -185,6 +185,22 @@ jobs:
             --filter-class '*.XrayProxyTests' --filter-class '*.ReferenceConfigTests' --filter-class '*.RelayTests' \
             --filter-class '*.LatencyProbeTests' --filter-class '*.LocalPortTests'
 
+      # Как в основном задании: хранилище секретов Linux — в своей сессии GNOME Keyring, туннель ретранслятора — от root в
+      # своем сетевом пространстве (TUN sing-box этой машины на настоящем пути трафика).
+      - name: Хранилище секретов Linux (Secret Service)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gnome-keyring libsecret-1-0 dbus
+          dbus-run-session -- scripts/tests/secret-service.sh -c Release --no-build --results-directory artifacts/test-results --report-ctrf
+
+      - name: Туннель ретранслятора в сетевом пространстве Linux (root)
+        if: runner.os == 'Linux'
+        run: |
+          sudo env "PATH=$PATH" "DOTNET_ROOT=$DOTNET_ROOT" "HOME=$HOME" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
+            dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
+            --filter-class '*.RelayTests'
+
       - name: Отчет о тестах и пропусках
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet run scripts/test-report.cs artifacts/test-results
