@@ -30,6 +30,15 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual(realitySettings["fingerprint"] as? String, "chrome")
         let tags = try XCTUnwrap(config["outbounds"] as? [[String: Any]]).map { $0["tag"] as? String }
         XCTAssertEqual(tags, ["proxy", "direct", "block", "dns-out"])
+        // Выход DNS: A и AAAA отвечает DNS конфига, остальное — REFUSED; «nonIPQuery» Xray-core 26.x объявил к удалению.
+        let dns = try object(outbound(config, "dns-out")["settings"])
+        XCTAssertNil(dns["nonIPQuery"])
+        let dnsRules = try XCTUnwrap(dns["rules"] as? [[String: Any]])
+        XCTAssertEqual(dnsRules.count, 2)
+        XCTAssertEqual(dnsRules[0]["action"] as? String, "hijack")
+        XCTAssertEqual(dnsRules[0]["qType"] as? String, "1,28")
+        XCTAssertEqual(dnsRules[1]["action"] as? String, "return")
+        XCTAssertEqual(dnsRules[1]["rCode"] as? Int, 5)
     }
 
     func testDnsFromTheTunnelAndLocalNetworkAndIpv6FollowTheSettings() throws {

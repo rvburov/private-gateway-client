@@ -120,6 +120,10 @@ interface ServerDao {
 
     @Query("UPDATE servers SET latencyMs = :ms, latencyFailure = :failure WHERE id = :id")
     suspend fun setLatency(id: String, ms: Int?, failure: String?)
+
+    /** Только описание сервера (решение 484): название, избранное, задержку и выбор, записанные тем временем, не затирает. */
+    @Query("UPDATE servers SET sealed = :sealed WHERE id = :id")
+    suspend fun setSealed(id: String, sealed: ByteArray)
 }
 
 /** Подписка и число ее серверов — для «Профили и подписки». */

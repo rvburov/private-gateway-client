@@ -14,6 +14,12 @@ public sealed class ServerCatalogStorageTests : IDisposable
 {
     private const string Uuid = "11111111-2222-3333-4444-555555555555";
 
+    private const string Pin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+
+    private const string SelfSigned = "trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#Self-signed";
+
+    private const string Pinned = "trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=" + Pin + "#Pinned";
+
     private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "pg-tests-" + Guid.NewGuid().ToString("N")));
     private readonly FakeSecrets _secrets = new();
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 24, 15, 42, 0, TimeSpan.Zero));
@@ -108,17 +114,80 @@ public sealed class ServerCatalogStorageTests : IDisposable
         catalog.Rename(id, "Мой сервер");
 
         // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484).
-        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned"), null).ShouldBe(new ImportOutcome(0, 1));
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned"), null).ShouldBe(new ImportOutcome(0, 1, 1));
 
         var server = catalog.Definition(id).ShouldNotBeNull();
         server.Security.PinnedPeerCertSha256.ShouldBe(["a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"]);
         server.Security.AllowInsecure.ShouldBeFalse();
         catalog.Servers.ShouldHaveSingleItem().Name.ShouldBe("Мой сервер", "свое название, группа и выбор остаются");
 
-        // Сертификат сменился — новая ссылка заменяет закрепление; та же ссылка еще раз ничего не меняет.
-        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0#Pinned"), null).ShouldBe(new ImportOutcome(0, 1));
+        // Сертификат сменился — новая ссылка заменяет закрепление.
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0#Pinned"), null).ShouldBe(new ImportOutcome(0, 1, 1));
         catalog.Definition(id)!.Security.PinnedPeerCertSha256.ShouldBe(["0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"]);
         Catalog().Definition(id)!.Security.PinnedPeerCertSha256.ShouldBe(["0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"], "записано в базу");
+    }
+
+    [Fact]
+    public void Renewal_is_counted_before_import_and_notifies_once_while_the_same_link_again_changes_nothing()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse(SelfSigned), null);
+        var changes = 0;
+        catalog.Changed += (_, _) => changes++;
+
+        catalog.CountRenewals(Parse(Pinned)).ShouldBe(1, "предпросмотр видит, что у сохраненного обновится защита");
+        catalog.Add(Parse(Pinned), null).ShouldBe(new ImportOutcome(0, 1, 1));
+        changes.ShouldBe(1);
+
+        catalog.CountRenewals(Parse(Pinned)).ShouldBe(0);
+        catalog.Add(Parse(Pinned), null).ShouldBe(new ImportOutcome(0, 1, 0), "та же ссылка еще раз ничего не меняет");
+        changes.ShouldBe(1);
+    }
+
+    [Fact]
+    public void Same_server_twice_in_one_import_takes_the_first_one_that_differs_like_the_phones()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse(SelfSigned), null);
+
+        catalog.Add(Parse(SelfSigned, Pinned), null).ShouldBe(new ImportOutcome(0, 2, 1));
+
+        catalog.Definition(catalog.Servers[0].Id)!.Security.PinnedPeerCertSha256.ShouldBe([Pin]);
+    }
+
+    [Fact]
+    public void Server_of_a_subscription_with_an_address_takes_its_protection_only_from_the_refresh()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse(SelfSigned), "Провайдер", new Uri("https://example.com/sub/not-a-real-token"));
+        catalog.Add(Parse("trojan://pw-b@198.51.100.2:443?sni=example.com&allowInsecure=1#B"), "Из файла");
+        var subscribed = catalog.Servers.Single(s => s.Name == "Self-signed").Id;
+        var fromFile = catalog.Servers.Single(s => s.Name == "B").Id;
+
+        // Сервер подписки с адресом ведет ее обновление, иначе импорт и обновление переписывали бы защиту по очереди;
+        // группа без адреса (профиль из файла) не обновляется — ее сервер берет защиту из импорта, как «Мои серверы».
+        var outcome = catalog.Add(Parse(Pinned, $"trojan://pw-b@198.51.100.2:443?sni=example.com&pcs={Pin}#B"), null);
+
+        outcome.ShouldBe(new ImportOutcome(0, 2, 1));
+        catalog.Definition(subscribed)!.Security.PinnedPeerCertSha256.ShouldBeNull();
+        catalog.Definition(subscribed)!.Security.AllowInsecure.ShouldBeTrue();
+        catalog.Definition(fromFile)!.Security.PinnedPeerCertSha256.ShouldBe([Pin]);
+    }
+
+    [Fact]
+    public void Failed_import_leaves_the_protection_of_saved_servers_as_it_was()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse(SelfSigned), null);
+        var id = catalog.Servers[0].Id;
+
+        // Защита обновляется в той же транзакции, что и новые серверы: хранилище секретов отказало — не меняется ничего.
+        _secrets.SavesLeft = 0;
+        Should.Throw<InvalidOperationException>(() => catalog.Add(Parse(Pinned, "trojan://pw-new@198.51.100.3:443#New"), null));
+
+        catalog.Servers.ShouldHaveSingleItem();
+        catalog.Definition(id)!.Security.PinnedPeerCertSha256.ShouldBeNull();
+        Catalog().Definition(id)!.Security.AllowInsecure.ShouldBeTrue("и в базе");
     }
 
     [Fact]

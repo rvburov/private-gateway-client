@@ -2,8 +2,11 @@ using PrivateGateway.Client.Core.Servers;
 
 namespace PrivateGateway.Client.Application.Servers;
 
-/// <summary>Итог сохранения: сколько серверов добавлено и сколько пропущено как дубли.</summary>
-public sealed record ImportOutcome(int Added, int Duplicates);
+/// <summary>Итог сохранения: сколько серверов добавлено, сколько пропущено как дубли и у скольких обновлена защита.</summary>
+/// <param name="Added">Сколько серверов добавлено.</param>
+/// <param name="Duplicates">Сколько уже было (тот же сервер) и пропущено.</param>
+/// <param name="Renewed">Сколько уже сохраненных серверов взяли защиту TLS из импорта (решение 484); они же — среди дублей.</param>
+public sealed record ImportOutcome(int Added, int Duplicates, int Renewed = 0);
 
 /// <summary>Что стало с выбранным сервером после обновления его подписки.</summary>
 public enum SelectedServerChange
@@ -52,7 +55,13 @@ public interface IServerStore : IServerCatalog
     int CountDuplicates(IReadOnlyList<ServerDefinition> servers);
 
     /// <summary>
-    /// Сохранить серверы, дубли пропустить. С названием — отдельной группой (профилем), без —
+    /// Сколько уже сохраненных серверов возьмут при импорте защиту TLS из этих (решение 484): тот же сервер, но другое закрепление
+    /// сертификата, отпечаток или ALPN. Серверы подписки с адресом не считаются — их обновляет подписка.
+    /// </summary>
+    int CountRenewals(IReadOnlyList<ServerDefinition> servers);
+
+    /// <summary>
+    /// Сохранить серверы, дубли пропустить (а их защиту TLS — обновить, см. <see cref="CountRenewals"/>). С названием — отдельной группой (профилем), без —
     /// в «Мои серверы». Адрес подписки (в нем токен доступа) — секрет группы в хранилище ОС.
     /// Если выбранного сервера нет, выбирается первый добавленный.
     /// </summary>

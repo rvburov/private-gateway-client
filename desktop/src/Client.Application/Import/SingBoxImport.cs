@@ -64,6 +64,11 @@ internal static class SingBoxImport
         var host = Text(node, "server");
         var port = Text(node, "server_port");
         var query = Query();
+        if (type is "vless" or "vmess" or "trojan" or "hysteria2" or "tuic" && OwnCertificate(Object(node, "tls")))
+        {
+            return Fail(ImportErrors.UnsupportedParameter);
+        }
+
         Tls(Object(node, "tls"), query);
         Transport(Object(node, "transport"), query);
         switch (type)
@@ -133,6 +138,14 @@ internal static class SingBoxImport
         Put(query, "pbk", Text(reality, "public_key"));
         Put(query, "sid", Text(reality, "short_id"));
     }
+
+    /// <summary>
+    /// Свой сертификат сервера или закрепленный ключ (certificate, certificate_path, certificate_public_key_sha256) ссылкой не передать:
+    /// «pcs» — SHA-256 всего сертификата, а не PEM и не ключа. Подключить с обычной проверкой вместо закрепленной — молча ослабить
+    /// защиту, поэтому такой выход — ошибка, как ссылка Hysteria2 или TUIC с закреплением (решение 483).
+    /// </summary>
+    private static bool OwnCertificate(JsonObject? tls) =>
+        List(tls, "certificate").Count > 0 || List(tls, "certificate_path").Count > 0 || List(tls, "certificate_public_key_sha256").Count > 0;
 
     /// <summary>transport → параметры ссылки; «http» и «quic» разбор ссылок не принимает — так и задумано.</summary>
     private static void Transport(JsonObject? transport, Dictionary<string, string> query)

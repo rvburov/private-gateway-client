@@ -51,6 +51,13 @@ class XrayConfigTest {
         assertEquals("www.example.com", realitySettings["serverName"]!!.jsonPrimitive.content)
         assertEquals("chrome", realitySettings["fingerprint"]!!.jsonPrimitive.content)
         assertEquals(listOf("proxy", "direct", "block", "dns-out"), config["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content })
+        // Выход DNS: A и AAAA отвечает DNS конфига, остальное — REFUSED; «nonIPQuery» Xray-core 26.x объявил к удалению.
+        val dns = outbound(config, "dns-out")["settings"]!!.jsonObject
+        assertEquals(null, dns["nonIPQuery"])
+        val dnsRules = dns["rules"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(2, dnsRules.size)
+        assertEquals(listOf("hijack", "1,28"), listOf(dnsRules[0]["action"]!!.jsonPrimitive.content, dnsRules[0]["qType"]!!.jsonPrimitive.content))
+        assertEquals(listOf("return", "5"), listOf(dnsRules[1]["action"]!!.jsonPrimitive.content, dnsRules[1]["rCode"]!!.jsonPrimitive.content))
     }
 
     @Test

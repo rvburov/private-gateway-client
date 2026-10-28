@@ -157,11 +157,15 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
     public bool HasErrors => ErrorLines.Count > 0;
 
-    public string AddText => Preview is { New: > 0 } p
-        ? Loc.Instance.Plural("import.add", p.New)
-        : Loc.Instance["import.nothing"];
+    /// <summary>Новых нет, но у сохраненных обновится защита (решение 484) — кнопка так и называется.</summary>
+    public string AddText => Preview switch
+    {
+        { New: > 0 } p => Loc.Instance.Plural("import.add", p.New),
+        { Renewals: > 0 } p => Loc.Instance.Plural("import.renew", p.Renewals),
+        _ => Loc.Instance["import.nothing"],
+    };
 
-    public bool CanAdd => Preview is { New: > 0 } && _store.CanStoreSecrets && !IsBusy;
+    public bool CanAdd => (Preview is { New: > 0 } or { Renewals: > 0 }) && _store.CanStoreSecrets && !IsBusy;
 
     // ── Источники ────────────────────────────────────────────────────────────
 
@@ -295,7 +299,9 @@ public sealed partial class ImportPageViewModel : ObservableObject
             return;
         }
 
-        _toast.Show(Loc.Instance.Plural("import.added", outcome.Added));
+        _toast.Show(outcome is { Added: 0, Renewed: > 0 }
+            ? Loc.Instance.Plural("import.renewed", outcome.Renewed)
+            : Loc.Instance.Plural("import.added", outcome.Added));
         Reset();
         _navigator.Navigate(Pages.Servers);
     }

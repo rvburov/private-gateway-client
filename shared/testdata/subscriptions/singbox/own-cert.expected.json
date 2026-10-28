@@ -1,0 +1,36 @@
+{
+  "format": "singbox",
+  "lines": [
+    {
+      "line": 4,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 9,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 14,
+      "error": "unsupported_parameter"
+    },
+    {
+      "line": 19,
+      "server": {
+        "name": "Trojan plain TLS",
+        "protocol": "trojan",
+        "host": "198.51.100.224",
+        "port": 443,
+        "transport": {
+          "kind": "tcp"
+        },
+        "security": {
+          "kind": "tls",
+          "sni": "example.com"
+        },
+        "credentials": {
+          "password": "not-a-real-password"
+        }
+      }
+    }
+  ]
+}

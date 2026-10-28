@@ -180,15 +180,23 @@ public actor ServerStore {
         var state = try read()
         let groupName = group?.trimmingCharacters(in: .whitespacesAndNewlines)
         let named = groupName.flatMap { $0.isEmpty ? nil : $0 }
-        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484).
+        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484). Серверы
+        // подписки с адресом — нет: их защиту ведет обновление подписки, иначе импорт и обновление переписывали бы ее по очереди.
+        let refreshed = Set(state.subscriptions.filter { $0.maskedUrl != nil }.map(\.id))
+        var known = Set<String>()
         var stored: [String: (id: String, server: ServerDefinition)] = [:]
         for record in state.servers {
-            if let server = try open(record), stored[ServerKeys.key(server)] == nil {
-                stored[ServerKeys.key(server)] = (record.id, server)
+            guard let server = try open(record) else {
+                continue
+            }
+
+            let key = ServerKeys.key(server)
+            known.insert(key)
+            if stored[key] == nil, record.subscriptionId.map({ !refreshed.contains($0) }) ?? true {
+                stored[key] = (record.id, server)
             }
         }
 
-        var known = Set(stored.keys)
         var position = state.servers.map(\.position).max() ?? -1
         let now = clock()
         let groupId = named.map { _ in newId() }

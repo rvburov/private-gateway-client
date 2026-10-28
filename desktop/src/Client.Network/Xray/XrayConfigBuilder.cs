@@ -177,8 +177,8 @@ public static class XrayConfigBuilder
 
         if (tun is not null)
         {
-            // Запросы не A и AAAA (PTR, SRV, MX, TXT, HTTPS) — сразу отказ (REFUSED): по умолчанию Xray их молча бросает, и
-            // программа ждет тайм-аут DNS ОС на каждый. Правилами `rules`: прежний «nonIPQuery» Xray-core 26.x объявил к удалению.
+            // Запросы не A и AAAA (PTR, SRV, MX, TXT, HTTPS) — сразу отказ (REFUSED), как раньше давал «nonIPQuery: reject»: его
+            // Xray-core 26.x объявил к удалению, а без правил он отвечает на такие запросы пустым NOERROR. Правилами `rules`.
             outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns", ["settings"] = new JsonObject { ["rules"] = DnsRules() } });
         }
 

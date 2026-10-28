@@ -5,10 +5,10 @@ using PrivateGateway.Client.Core.Servers;
 namespace PrivateGateway.Client.Application.Import;
 
 /// <summary>
-/// Предпросмотр импорта (экран 3): что разобрано, сколько новых, дублей и ошибок. Ничего не
-/// сохраняет — только считает.
+/// Предпросмотр импорта (экран 3): что разобрано, сколько новых, дублей и ошибок, у скольких
+/// сохраненных обновится защита (<paramref name="Renewals"/>, решение 484). Ничего не сохраняет — только считает.
 /// </summary>
-public sealed record ImportPreview(ImportBatch Batch, int Duplicates)
+public sealed record ImportPreview(ImportBatch Batch, int Duplicates, int Renewals = 0)
 {
     public IReadOnlyList<ServerDefinition> Servers { get; } =
         [.. Batch.Lines.Where(l => l.Result.IsOk).Select(l => l.Result.Server!)];
@@ -31,7 +31,7 @@ public sealed record ImportPreview(ImportBatch Batch, int Duplicates)
         ArgumentNullException.ThrowIfNull(store);
         var batch = ImportParser.Parse(text);
         var servers = batch.Lines.Where(l => l.Result.IsOk).Select(l => l.Result.Server!).ToList();
-        return new ImportPreview(batch, store.CountDuplicates(servers));
+        return new ImportPreview(batch, store.CountDuplicates(servers), store.CountRenewals(servers));
     }
 }
 

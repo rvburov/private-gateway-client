@@ -127,7 +127,7 @@ object XrayConfig {
                     "settings" to linkedMapOf("domainStrategy" to if (settings.ipv6) "AsIs" else "UseIPv4"),
                 ),
                 linkedMapOf("tag" to BLOCK_TAG, "protocol" to "blackhole"),
-                // Запросы не A и AAAA — сразу отказ: иначе Xray молча их бросает, и программа ждет тайм-аут на каждый (DNS_RULES).
+                // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (DNS_RULES); без правил Xray 26 — пустой NOERROR.
                 linkedMapOf("tag" to DNS_TAG, "protocol" to "dns", "settings" to linkedMapOf("rules" to DNS_RULES)),
             ),
             "routing" to linkedMapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules(settings)),

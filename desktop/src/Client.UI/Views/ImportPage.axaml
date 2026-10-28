@@ -25,6 +25,7 @@
     </Style>
     <Style Selector="Button.source:pointerover /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
     </Style>
     <Style Selector="Button.source.chosen /template/ ContentPresenter#PART_ContentPresenter">
       <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />

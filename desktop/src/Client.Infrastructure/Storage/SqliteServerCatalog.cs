@@ -199,6 +199,15 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
     }
 
+    public int CountRenewals(IReadOnlyList<ServerDefinition> servers)
+    {
+        ArgumentNullException.ThrowIfNull(servers);
+        lock (_gate)
+        {
+            return Renewals(servers).Count;
+        }
+    }
+
     public ImportOutcome Add(IReadOnlyList<ServerDefinition> servers, string? groupName, Uri? subscriptionUrl = null)
     {
         ArgumentNullException.ThrowIfNull(servers);
@@ -209,13 +218,11 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
 
         var added = 0;
         var duplicates = 0;
-        var renewed = false;
+        var renewed = 0;
         lock (_gate)
         {
             var known = Known(servers);
-            var stored = StoredByKey(servers);
             var fresh = new List<ServerDefinition>();
-            var again = new Dictionary<string, ServerDefinition>(StringComparer.Ordinal);
             foreach (var server in servers)
             {
                 if (known.Add(Key(server)))
@@ -225,16 +232,12 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 else
                 {
                     duplicates++;
-                    if (stored.TryGetValue(Key(server), out var id))
-                    {
-                        again.TryAdd(id, server);
-                    }
                 }
             }
 
-            renewed = RenewSecurity(again);
-
-            if (fresh.Count > 0)
+            // Обновление защиты и новые серверы — одной транзакцией: при сбое не остается ни того, ни другого.
+            var renewals = Renewals(servers);
+            if (fresh.Count > 0 || renewals.Count > 0)
             {
                 var now = _time.GetUtcNow();
                 using var connection = _database.Open();
@@ -246,7 +249,13 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 string? select = null;
                 try
                 {
-                    if (!string.IsNullOrWhiteSpace(groupName))
+                    foreach (var (id, definition) in renewals)
+                    {
+                        Run(connection, transaction, "UPDATE servers SET definition = $definition WHERE id = $id",
+                            ("$definition", JsonSerializer.Serialize(definition, Json)), ("$id", id));
+                    }
+
+                    if (fresh.Count > 0 && !string.IsNullOrWhiteSpace(groupName))
                     {
                         groupId = "sub-" + Guid.NewGuid().ToString("N");
                         if (subscriptionUrl is not null)
@@ -277,7 +286,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                         added++;
                     }
 
-                    if (_selectedId is null)
+                    if (_selectedId is null && newRows.Count > 0)
                     {
                         select = newRows[0].Profile.Id;
                         Run(connection, transaction,
@@ -293,6 +302,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                     throw;
                 }
 
+                renewed = renewals.Count;
                 _selectedId ??= select;
                 Rows.AddRange(newRows);
                 if (groupId is not null)
@@ -303,24 +313,32 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             }
         }
 
-        if (added > 0 || renewed)
+        if (added > 0 || renewed > 0)
         {
             Changed?.Invoke(this, EventArgs.Empty);
         }
 
-        return new ImportOutcome(added, duplicates);
+        return new ImportOutcome(added, duplicates, renewed);
     }
 
     /// <summary>
     /// Тот же сервер импортирован снова (решение 484): защита — закрепленный сертификат, отпечаток, ALPN — берется из новой ссылки, а
     /// название, группа, избранное и выбор остаются. Так сервер с самоподписанным сертификатом, сохраненный до закрепления, чинится
-    /// той же ссылкой с «pcs», а смена сертификата — новой. true — хоть один сервер изменился.
+    /// той же ссылкой с «pcs», а смена сертификата — новой. Для каждого сохраненного — первый из импорта, чья защита отличается (как на
+    /// Android и iOS). Серверы подписки с адресом не трогаются: их защиту ведет обновление подписки, иначе импорт и обновление
+    /// переписывали бы ее по очереди. Ничего не пишет — только считает.
     /// </summary>
-    private bool RenewSecurity(Dictionary<string, ServerDefinition> again)
+    private List<(string Id, Stored Definition)> Renewals(IReadOnlyList<ServerDefinition> servers)
     {
+        var renewable = RenewableByKey(servers);
         var changes = new List<(string Id, Stored Definition)>();
-        foreach (var (id, server) in again)
+        foreach (var server in servers)
         {
+            if (!renewable.TryGetValue(Key(server), out var id) || changes.Exists(c => c.Id == id))
+            {
+                continue;
+            }
+
             var definition = Scalar("SELECT definition FROM servers WHERE id = $id", ("$id", id)) as string;
             var stored = definition is null ? null : JsonSerializer.Deserialize<Stored>(definition, Json);
             if (stored is not null
@@ -330,21 +348,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             }
         }
 
-        if (changes.Count == 0)
-        {
-            return false;
-        }
-
-        using var connection = _database.Open();
-        using var transaction = connection.BeginTransaction();
-        foreach (var (id, definition) in changes)
-        {
-            Run(connection, transaction, "UPDATE servers SET definition = $definition WHERE id = $id",
-                ("$definition", JsonSerializer.Serialize(definition, Json)), ("$id", id));
-        }
-
-        transaction.Commit();
-        return true;
+        return changes;
     }
 
     public bool Contains(string serverId)
@@ -933,11 +937,14 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
     }
 
     /// <summary>Сохраненные серверы по ключу (<see cref="Key"/>) среди тех, чей адрес есть в <paramref name="candidates"/>: ключ — номер.</summary>
-    private Dictionary<string, string> StoredByKey(IReadOnlyList<ServerDefinition> candidates)
+    /// <summary>Сохраненные серверы, чью защиту может обновить импорт (не из подписки с адресом), по ключу дубля.</summary>
+    private Dictionary<string, string> RenewableByKey(IReadOnlyList<ServerDefinition> candidates)
     {
         var endpoints = candidates.Select(Endpoint).ToHashSet(StringComparer.Ordinal);
+        var refreshed = Subscriptions.Where(s => s.CanUpdate).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
         var stored = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (var row in Rows.Where(r => endpoints.Contains(r.Endpoint)))
+        foreach (var row in Rows.Where(r => endpoints.Contains(r.Endpoint)
+                     && (r.Profile.SubscriptionId is null || !refreshed.Contains(r.Profile.SubscriptionId))))
         {
             var secret = _secrets.IsAvailable ? _secrets.Read(SecretKey(row.Profile.Id)) : null;
             stored.TryAdd(row.Endpoint + "|" + secret, row.Profile.Id);

@@ -9,6 +9,8 @@ using Avalonia.Media;
 using Avalonia.Styling;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Converters;
@@ -49,7 +51,26 @@ public sealed class HoverTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public void Chosen_tile_keeps_the_frame_of_its_own_color()
+    public async Task Tiles_of_a_protected_connection_light_up_in_their_own_green()
+    {
+        var (window, shell) = Open();
+        await Connect(shell);
+        Dispatcher.UIThread.RunJobs();
+        var main = (MainPageViewModel)shell.CurrentPage!;
+        main.Chips.ShouldContain(c => c.State == CheckState.Ok, "после подключения у плиток другое состояние, чем у выключенной защиты");
+
+        foreach (var tile in Buttons(window).Where(b => b.Classes.Contains("chip")).ToArray())
+        {
+            var state = ((CheckChipViewModel)tile.DataContext!).State;
+            Hover(window, tile);
+            ColorOf(Named<Border>(tile, "Edge").BorderBrush).ShouldBe(ColorOf(Check(state, "Dot")), state.ToString());
+            ColorOf(tile.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("hover")).Background)
+                .ShouldBe(ColorOf(Check(state, "Hover")), state.ToString());
+        }
+    }
+
+    [AvaloniaFact]
+    public void Chosen_tile_keeps_the_frame_and_the_brighter_fill_of_its_own_color()
     {
         var (window, shell) = Open();
         var main = (MainPageViewModel)shell.CurrentPage!;
@@ -57,9 +78,13 @@ public sealed class HoverTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         var tile = Buttons(window).Where(b => b.Classes.Contains("chip")).ElementAt(3);
+        tile.IsPointerOver.ShouldBeFalse();
         var edge = Named<Border>(tile, "Edge");
         edge.IsVisible.ShouldBeTrue();
         ColorOf(edge.BorderBrush).ShouldBe(ColorOf(Check(main.Chips[3].State, "Dot")));
+        var fill = tile.GetVisualDescendants().OfType<Border>().Single(b => b.Classes.Contains("hover"));
+        fill.IsVisible.ShouldBeTrue("выбранная — как под указателем");
+        ColorOf(fill.Background).ShouldBe(ColorOf(Check(main.Chips[3].State, "Hover")));
     }
 
     [AvaloniaFact]
@@ -116,6 +141,63 @@ public sealed class HoverTests : WindowHarness
         ColorOf(presenter.BorderBrush).ShouldBe(ColorOf(Resource("PgBrush.Accent.Base")));
         ColorOf(presenter.Foreground).ShouldBe(ColorOf(Resource("PgBrush.Accent.Base")));
         Snapshot(window, "main-switch-hover");
+    }
+
+    [AvaloniaFact]
+    public void Buttons_with_their_own_color_keep_it_under_the_pointer()
+    {
+        var (window, shell) = Open();
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-h@198.51.100.41:443#H").Server!], "Профиль");
+        shell.NavigateCommand.Execute(Pages.Profiles);
+        Dispatcher.UIThread.RunJobs();
+
+        // Корзина красная и под указателем: синий — знак «можно нажать», а не «удалить».
+        var remove = Buttons(window).First(b => b.Name == "RemoveButton");
+        Hover(window, remove);
+        ColorOf(remove.GetVisualDescendants().OfType<Icon>().Single().Foreground).ShouldBe(ColorOf(Resource("PgBrush.Status.Danger.Text")));
+
+        // Звезда избранного — своего цвета, иначе контур синий, а заливка золотая.
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        var servers = (ServersPageViewModel)shell.CurrentPage!;
+        var row = servers.Groups.SelectMany(g => g.Rows).First();
+        row.OpenCommand.Execute(row.Id);
+        Dispatcher.UIThread.RunJobs();
+        Press(window, "FavoriteButton");
+        Dispatcher.UIThread.RunJobs();
+        var star = Buttons(window).Single(b => b.Name == "FavoriteButton");
+        star.Classes.ShouldContain("on");
+        Hover(window, star);
+        ColorOf(star.GetVisualDescendants().OfType<Icon>().Single().Foreground).ShouldBe(ColorOf(Resource("PgBrush.Favorite.Stroke")));
+    }
+
+    [Fact]
+    public void Drop_downs_take_the_width_of_their_text_everywhere()
+    {
+        // Ширина и наименьшая ширина у списков не задаются — по тексту; у «Сменить» — только предел MaxWidth.
+        var popups = Directory.EnumerateFiles(System.IO.Path.Combine(Repo.UiSource, "Views"), "*.axaml")
+            .SelectMany(f => System.Text.RegularExpressions.Regex.Matches(File.ReadAllText(f), "<Popup\\b[^>]*>")
+                .Select(m => (File: System.IO.Path.GetFileName(f), Tag: m.Value)))
+            .ToArray();
+
+        popups.Length.ShouldBeGreaterThanOrEqualTo(11);
+        popups.Where(p => System.Text.RegularExpressions.Regex.IsMatch(p.Tag, "\\s(Min)?Width=")).Select(p => p.File).ShouldBeEmpty();
+    }
+
+    [AvaloniaFact]
+    public void Server_switch_list_takes_the_width_of_the_server_names()
+    {
+        var (window, shell) = Open();
+        var main = (MainPageViewModel)shell.CurrentPage!;
+        main.ToggleSwitchCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        var list = window.GetVisualDescendants().OfType<Popup>().Single(p => p.PlacementTarget?.Name == "SwitchButton");
+        list.IsOpen.ShouldBeTrue();
+        list.Width.ShouldBe(double.NaN);
+        list.MinWidth.ShouldBe(0);
+        list.MaxWidth.ShouldBe(380);
+        list.Child!.Bounds.Width.ShouldBeLessThan(380, "уже, чем прежняя ширина 380: по названиям серверов");
     }
 
     [AvaloniaFact]

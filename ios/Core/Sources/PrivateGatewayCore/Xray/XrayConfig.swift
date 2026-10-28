@@ -130,7 +130,7 @@ public enum XrayConfig {
             ("settings", .object([("domainStrategy", .string(settings.ipv6 ? "AsIs" : "UseIPv4"))])),
         ])
         let block: Json = .object([("tag", .string(blockTag)), ("protocol", .string("blackhole"))])
-        // Запросы не A и AAAA — сразу отказ: иначе Xray молча их бросает, и программа ждет тайм-аут на каждый.
+        // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (dnsRules); без правил Xray 26 — пустой NOERROR.
         let dnsOut: Json = .object([("tag", .string(dnsTag)), ("protocol", .string("dns")), ("settings", .object([("rules", dnsRules)]))])
         let routing: Json = .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(rules(settings)))])
         let config: Json = .object([

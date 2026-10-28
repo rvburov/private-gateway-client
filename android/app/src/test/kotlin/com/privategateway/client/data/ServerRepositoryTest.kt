@@ -9,6 +9,7 @@ import com.privategateway.client.Fixtures
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
+import java.net.URI
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -102,6 +103,46 @@ class ServerRepositoryTest {
         assertEquals(listOf("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"), loaded.security.pinnedPeerCertSha256)
         assertFalse(loaded.security.allowInsecure)
         assertEquals("Мой сервер", repository.servers.first().single().displayName, "свое название остается")
+    }
+
+    @Test
+    fun `a server of a subscription with an address takes its protection only from the refresh`() = runBlocking<Unit> {
+        val pin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        val subscribed = assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#A").server)
+        val fromFile = assertNotNull(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&allowInsecure=1#B").server)
+        repository.add(listOf(subscribed), "Провайдер", URI("https://example.com/sub/not-a-real-token"))
+        repository.add(listOf(fromFile), "Из файла")
+        val ids = repository.servers.first().associate { it.linkName to it.id }
+
+        // Сервер подписки с адресом ведет ее обновление, иначе импорт и обновление переписывали бы защиту по очереди; группа без
+        // адреса (профиль из файла) не обновляется — ее сервер берет защиту из импорта, как «Мои серверы» (как у десктопа).
+        val pinned = listOf(
+            assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=$pin#A").server),
+            assertNotNull(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&pcs=$pin#B").server),
+        )
+        assertEquals(AddResult(0, 2), repository.add(pinned))
+
+        assertNull(assertNotNull(repository.load(ids.getValue("A"))).security.pinnedPeerCertSha256)
+        assertEquals(listOf(pin), assertNotNull(repository.load(ids.getValue("B"))).security.pinnedPeerCertSha256)
+    }
+
+    @Test
+    fun `renewal keeps a favorite set while the import was sealing`() = runBlocking<Unit> {
+        val slow = ServerRepository(database, FakeBox(delayMillis = 300))
+        val insecure = assertNotNull(LinkParser.parse("trojan://pw-f@198.51.100.5:443?sni=example.com&allowInsecure=1#F").server)
+        slow.add(listOf(insecure))
+        val id = slow.servers.first().single().id
+
+        // Импорт прочитал строки и запечатывает новое описание; тем временем пользователь отметил сервер избранным. Обновляется
+        // только описание — отметка остается.
+        val pinned = assertNotNull(LinkParser.parse("trojan://pw-f@198.51.100.5:443?sni=example.com&pcs=${"ab".repeat(32)}#F").server)
+        val import = async(Dispatchers.Default) { slow.add(listOf(pinned)) }
+        Thread.sleep(100)
+        slow.setFavorite(id, true)
+
+        assertEquals(AddResult(0, 1), import.await())
+        assertTrue(slow.servers.first().single().favorite)
+        assertEquals(listOf("ab".repeat(32)), assertNotNull(slow.load(id)).security.pinnedPeerCertSha256)
     }
 
     @Test

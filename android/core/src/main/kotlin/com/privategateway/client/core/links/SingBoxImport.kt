@@ -49,6 +49,10 @@ internal object SingBoxImport {
         val host = text(node, "server")
         val port = text(node, "server_port")
         val query = query()
+        if (type in PINNABLE && ownCertificate(obj(node, "tls"))) {
+            return ConfigTree.fail(ImportErrors.UNSUPPORTED_PARAMETER)
+        }
+
         tls(obj(node, "tls"), query)
         transport(obj(node, "transport"), query)
         return when (type) {
@@ -107,6 +111,16 @@ internal object SingBoxImport {
     }
 
     /** tls → параметры ссылки: без tls или enabled=false — явно без защиты. */
+    /**
+     * Свой сертификат сервера или закрепленный ключ (certificate, certificate_path, certificate_public_key_sha256) ссылкой не
+     * передать: «pcs» — SHA-256 всего сертификата, а не PEM и не ключа. Подключить с обычной проверкой вместо закрепленной —
+     * молча ослабить защиту, поэтому такой выход — ошибка, как у десктопа (решение 483).
+     */
+    private fun ownCertificate(tls: Map<*, *>?): Boolean =
+        listOf("certificate", "certificate_path", "certificate_public_key_sha256").any { ConfigTree.list(tls, it).isNotEmpty() }
+
+    private val PINNABLE = setOf("vless", "vmess", "trojan", "hysteria2", "tuic")
+
     private fun tls(tls: Map<*, *>?, query: Query) {
         val reality = obj(tls, "reality")
         query["security"] = if (flag(reality, "enabled")) "reality" else if (flag(tls, "enabled")) "tls" else "none"

@@ -169,7 +169,7 @@
                     </Button>
                     <Button Grid.Column="1" Classes="small" IsVisible="{Binding CanEdit}" Command="{Binding EditCommand}"
                             Content="{l:L subs.edit}" />
-                    <Button Grid.Column="3" Classes="icon" Width="36" Height="36" Command="{Binding RemoveCommand}"
+                    <Button x:Name="RemoveButton" Grid.Column="3" Classes="icon danger" Width="36" Height="36" Command="{Binding RemoveCommand}"
                             Foreground="{StaticResource PgBrush.Status.Danger.Text}"
                             ToolTip.Tip="{Binding RemoveLabel}" AutomationProperties.Name="{Binding RemoveLabel}">
                       <c:Icon Data="{StaticResource Icon.Trash}" Width="18" Height="18" StrokeThickness="1.9" />

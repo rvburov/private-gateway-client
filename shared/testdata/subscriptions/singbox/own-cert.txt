@@ -1,0 +1,26 @@
+{
+  // Свой сертификат сервера или закрепленный ключ ссылкой не передать — такие выходы отклоняются (решение 483)
+  "outbounds": [
+    {
+      "type": "trojan", "tag": "Trojan own key", "server": "198.51.100.221", "server_port": 443,
+      "password": "not-a-real-password",
+      "tls": { "enabled": true, "server_name": "example.com", "certificate_public_key_sha256": ["AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="] }
+    },
+    {
+      "type": "hysteria2", "tag": "Hy2 own cert", "server": "198.51.100.222", "server_port": 443,
+      "password": "not-a-real-password",
+      "tls": { "enabled": true, "server_name": "example.com", "certificate": "-----BEGIN CERTIFICATE-----\nnot-a-real-certificate\n-----END CERTIFICATE-----" }
+    },
+    {
+      "type": "vless", "tag": "VLESS own cert file", "server": "198.51.100.223", "server_port": 443,
+      "uuid": "11111111-2222-3333-4444-555555555555",
+      "tls": { "enabled": true, "server_name": "example.com", "certificate_path": "/etc/ssl/example.pem" }
+    },
+    {
+      "type": "trojan", "tag": "Trojan plain TLS", "server": "198.51.100.224", "server_port": 443,
+      "password": "not-a-real-password",
+      "tls": { "enabled": true, "server_name": "example.com", "certificate": [] }
+    },
+    { "type": "direct", "tag": "direct" }
+  ]
+}

@@ -87,19 +87,24 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         withContext(Dispatchers.IO) { writes.withLock { insert(servers, group?.trim()?.takeIf { it.isNotEmpty() }, url) } }
 
     private suspend fun insert(servers: List<ServerDefinition>, group: String?, url: URI?): AddResult {
-        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484).
+        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484). Серверы
+        // подписки с адресом — нет: их защиту ведет обновление подписки, иначе импорт и обновление переписывали бы ее по очереди.
+        val refreshed = subscriptions.all().filter { it.sealedUrl != null }.map { it.id }.toSet()
+        val known = HashSet<String>()
         val stored = HashMap<String, Pair<ServerEntity, ServerDefinition>>()
         for (entity in dao.all()) {
             val server = open(entity) ?: continue
-            stored.putIfAbsent(ServerKeys.key(server), entity to server)
+            known.add(ServerKeys.key(server))
+            if (entity.subscriptionId == null || entity.subscriptionId !in refreshed) {
+                stored.putIfAbsent(ServerKeys.key(server), entity to server)
+            }
         }
 
-        val known = stored.keys.toMutableSet()
         var position = dao.lastPosition()
         val now = System.currentTimeMillis()
         val groupId = group?.let { UUID.randomUUID().toString() }
         val fresh = ArrayList<ServerEntity>()
-        val renewed = LinkedHashMap<String, ServerEntity>()
+        val renewed = LinkedHashMap<String, ByteArray>()
         var duplicates = 0
         for (server in servers) {
             val key = ServerKeys.key(server)
@@ -108,7 +113,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
                 val (entity, saved) = stored[key] ?: continue
                 if (saved.security != server.security && entity.id !in renewed) {
                     // Название, группа, избранное — прежние; защита (закрепленный сертификат, отпечаток, ALPN) — из новой ссылки.
-                    renewed[entity.id] = entity.copy(sealed = seal(saved.copy(security = server.security)))
+                    renewed[entity.id] = seal(saved.copy(security = server.security))
                 }
 
                 continue
@@ -134,9 +139,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
 
         database.withTransaction {
             subscription?.let { subscriptions.insert(it) }
-            if (renewed.isNotEmpty()) {
-                dao.updateAll(renewed.values.toList())
-            }
+            renewed.forEach { (id, sealed) -> dao.setSealed(id, sealed) }
 
             dao.insertAll(fresh)
         }

@@ -44,6 +44,10 @@ enum SingBoxImport {
         let host = ConfigTree.text(node, "server")
         let port = ConfigTree.text(node, "server_port")
         var query = Query()
+        if let type, ["vless", "vmess", "trojan", "hysteria2", "tuic"].contains(type), ownCertificate(ConfigTree.object(node, "tls")) {
+            return LinkParser.fail(ImportErrors.unsupportedParameter)
+        }
+
         tls(ConfigTree.object(node, "tls"), &query)
         transport(ConfigTree.object(node, "transport"), &query)
         switch type {
@@ -113,6 +117,13 @@ enum SingBoxImport {
     }
 
     /// tls → параметры ссылки: без tls или enabled=false — явно без защиты.
+    /// Свой сертификат сервера или закрепленный ключ (certificate, certificate_path, certificate_public_key_sha256) ссылкой не
+    /// передать: «pcs» — SHA-256 всего сертификата, а не PEM и не ключа. Подключить с обычной проверкой вместо закрепленной — молча
+    /// ослабить защиту, поэтому такой выход — ошибка, как у десктопа (решение 483).
+    private static func ownCertificate(_ tls: ConfigNode?) -> Bool {
+        ["certificate", "certificate_path", "certificate_public_key_sha256"].contains { !ConfigTree.list(tls, $0).isEmpty }
+    }
+
     private static func tls(_ tls: ConfigNode?, _ query: inout Query) {
         let reality = ConfigTree.object(tls, "reality")
         query["security"] = ConfigTree.flag(reality, "enabled") ? "reality" : ConfigTree.flag(tls, "enabled") ? "tls" : "none"

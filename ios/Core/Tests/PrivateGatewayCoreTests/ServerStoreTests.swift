@@ -151,6 +151,31 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertEqual(item.displayName, "Мой сервер", "свое название остается")
     }
 
+    func testServerOfASubscriptionWithAnAddressTakesItsProtectionOnlyFromTheRefresh() async throws {
+        let pin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        let subscribed = try XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#A").server)
+        let fromFile = try XCTUnwrap(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&allowInsecure=1#B").server)
+        try await store.add([subscribed], group: "Провайдер", url: URLComponents(string: "https://example.com/sub/not-a-real-token"))
+        try await store.add([fromFile], group: "Из файла")
+        let items = try await store.servers()
+        let a = try XCTUnwrap(items.first { $0.linkName == "A" }).id
+        let b = try XCTUnwrap(items.first { $0.linkName == "B" }).id
+
+        // Сервер подписки с адресом ведет ее обновление, иначе импорт и обновление переписывали бы защиту по очереди; группа без
+        // адреса (профиль из файла) не обновляется — ее сервер берет защиту из импорта, как «Мои серверы» (как у десктопа).
+        let pinned = try [
+            XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=\(pin)#A").server),
+            XCTUnwrap(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&pcs=\(pin)#B").server),
+        ]
+        let result = try await store.add(pinned)
+        XCTAssertEqual(result, AddResult(added: 0, duplicates: 2))
+
+        let loadedA = try await store.load(a)
+        let loadedB = try await store.load(b)
+        XCTAssertNil(loadedA?.security.pinnedPeerCertSha256)
+        XCTAssertEqual(loadedB?.security.pinnedPeerCertSha256, [pin])
+    }
+
     func testOwnNameIsShownInTheListWhileTheLinkKeepsItsName() async throws {
         let server = try XCTUnwrap(Self.unique.first)
         try await store.add([server])

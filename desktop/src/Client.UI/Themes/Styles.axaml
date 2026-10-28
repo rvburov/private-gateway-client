@@ -75,12 +75,27 @@
     <Setter Property="Background" Value="{StaticResource PgBrush.Line.Divider}" />
   </Style>
 
-  <!-- Наведение и нажатие (решение 485): кнопка не заливается серым темы Fluent — фон и рамка остаются ее
-       собственными, а текст и значки, у которых нет своего цвета, становятся синими -->
+  <!-- Наведение и нажатие (решение 485): кнопка не заливается серым темы Fluent — фон, рамка и цвет остаются ее
+       собственными. Синими становятся текст и значки кнопок без своего цвета (классы ниже); у кнопок со своим цветом —
+       корзина «danger», звезда избранного, полоса паузы — он остается -->
   <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
     <Setter Property="BorderBrush" Value="{Binding $parent[Button].BorderBrush}" />
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
+  </Style>
+  <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.icon:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.plain:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.plain:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.option:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.option:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.nav:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.select:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.select:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.small:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.small:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.link:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.secondary:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
+  </Style>
+  <Style Selector="Button.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.danger:pressed /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.favorite.on:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.favorite.on:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Foreground" Value="{Binding $parent[Button].Foreground}" />
   </Style>
 
   <!-- Кнопки: общий сброс фона темы Fluent -->

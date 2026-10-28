@@ -2,6 +2,7 @@ using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -184,6 +185,33 @@ public sealed class ImportPageTests : WindowHarness
         page.DuplicatesText.ShouldBe("3");
         page.AddText.ShouldBe("Новых серверов нет");
         page.CanAdd.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public async Task Same_server_with_a_pinned_certificate_updates_the_saved_one_from_the_import_page()
+    {
+        const string pin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90";
+        var (_, shell, page) = OpenImport();
+        Clipboard.Text = "trojan://pw-pin@198.51.100.31:443?sni=example.com&allowInsecure=1#Self-signed";
+        await page.FromClipboardCommand.ExecuteAsync(null);
+        page.AddCommand.Execute(null);
+
+        // Тот же сервер с «pcs»: новых нет, но у сохраненного обновится защита (решение 484) — кнопка не гаснет.
+        Clipboard.Text = $"trojan://pw-pin@198.51.100.31:443?sni=example.com&pcs={pin}#Self-signed";
+        await page.FromClipboardCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.NewText.ShouldBe("0");
+        page.DuplicatesText.ShouldBe("1");
+        page.AddText.ShouldBe("Обновить защиту 1 сервера");
+        page.CanAdd.ShouldBeTrue();
+
+        page.AddCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        shell.Toast.Text.ShouldBe("Защита обновлена у 1 сервера");
+        var store = Service<IServerStore>();
+        store.Definition(store.Servers.ShouldHaveSingleItem().Id)!.Security.PinnedPeerCertSha256.ShouldBe([pin]);
     }
 
     [AvaloniaFact]
