@@ -1,6 +1,8 @@
 package com.privategateway.client.core.xray
 
 import com.privategateway.client.core.links.LinkParser
+import com.privategateway.client.core.servers.SecurityOptions
+import com.privategateway.client.core.servers.TransportSecurity
 import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.TunnelSettings
 import kotlinx.serialization.json.Json
@@ -117,6 +119,53 @@ class XrayConfigTest {
         val wg = outbound(build(server("wireguard://aaaa%3D@192.0.2.33:51820?publickey=cccc%3D&address=10.0.0.2/32&mtu=1420#WG"), CoreSettings(), 1), "proxy")
         assertEquals("192.0.2.33:51820", wg["settings"]!!.jsonObject["peers"]!!.jsonArray[0].jsonObject["endpoint"]!!.jsonPrimitive.content)
         assertEquals(1420, wg["settings"]!!.jsonObject["mtu"]!!.jsonPrimitive.int)
+        assertTrue(wg["settings"]!!.jsonObject["noKernelTun"]!!.jsonPrimitive.boolean, "свой стек Xray, а не адаптер wgN — как у десктопа")
+    }
+
+    @ParameterizedTest
+    @CsvSource(
+        "vless, 2001:db8::1, none, true",
+        "vless, [2001:db8::1], none, true",
+        "vless, vpn.example.com, none, true",
+        "vless, vpn.example.com., none, true",
+        "trojan, vpn.example.com, none, true",
+        "vless, vpn.example.com, tls, false",
+        "vless, vpn.example.com, reality, false",
+        "vmess, vpn.example.com, none, false",
+        "vless, 10.0.0.5, none, false",
+        "vless, 192.0.2.1, none, false",
+        "vless, ::ffff:192.168.1.5, none, false",
+        "vless, fd00::5, none, false",
+        "vless, [fd00::5], none, false",
+        "vless, nas.lan, none, false",
+        "vless, nas.lan., none, false",
+        "vless, router.home.arpa, none, false",
+        "vless, printer.local, none, false",
+        "vless, NAS, none, false",
+        "vless, lan.example.com, none, true",
+        "vless, mylan, none, false",
+    )
+    fun `server without encryption on an open address is refused as libXray does`(protocol: String, host: String, security: String, refused: Boolean) {
+        val base = when (protocol) {
+            "trojan" -> server("trojan://pw@198.51.100.7:8443?sni=example.org#T")
+            "vmess" -> server("vmess://" + java.util.Base64.getEncoder().encodeToString(
+                """{"v":"2","ps":"V","add":"cdn.example.com","port":"443","id":"11111111-2222-3333-4444-555555555555","aid":"0","net":"tcp"}""".toByteArray()))
+            else -> server("vless://11111111-2222-3333-4444-555555555555@203.0.113.24:443?security=none#V")
+        }
+        val tested = base.copy(
+            host = host,
+            security = when (security) {
+                "tls" -> SecurityOptions(TransportSecurity.Tls, sni = "vpn.example.com")
+                "reality" -> reality.security
+                else -> SecurityOptions.None
+            },
+        )
+
+        assertEquals(refused, XrayConfig.unencrypted(tested), host)
+        val expected = if (refused) CoreRejection.Unencrypted else null
+        assertEquals(expected, XrayConfig.build(tested, CoreSettings(), 1).rejection,
+            "VLESS и Trojan без TLS к открытому адресу — трафик шел бы открытым; ядро libXray такой выход не строит")
+        assertEquals(expected, PingBatch.outbounds(tested, CoreSettings()).rejection, "и замер задержки")
     }
 
     @Test

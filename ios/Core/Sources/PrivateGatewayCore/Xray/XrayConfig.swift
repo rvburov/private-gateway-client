@@ -8,6 +8,10 @@ public enum CoreRejection: Sendable {
 
     /// Транспорт, которого у протокола в Xray нет (например, QUIC у VLESS).
     case unsupportedTransport
+
+    /// VLESS или Trojan без TLS и REALITY на открытом адресе (`XrayConfig.unencrypted`): трафик шел бы к серверу открытым.
+    /// Ядро libXray такой выход не строит («vless without TLS … is prohibited»).
+    case unencrypted
 }
 
 /// Конфиг Xray (текст JSON) или причина отказа.
@@ -199,6 +203,10 @@ public enum XrayConfig {
             return .failure(Refusal(reason: .unsupportedTransport))
         }
 
+        if unencrypted(server) {
+            return .failure(Refusal(reason: .unencrypted))
+        }
+
         var outbound: [(String, Json)] = [
             ("tag", .string(proxyTag)), ("protocol", .string(name)), ("settings", protocolSettings), ("streamSettings", streamSettings),
         ]
@@ -209,6 +217,56 @@ public enum XrayConfig {
         }
 
         return .success(.object(outbound))
+    }
+
+    /// Частные зоны имен — те же, что у Xray-core (`geodata.GetPrivateDomainMatcher`).
+    private static let privateZones = ["lan", "localdomain", "example", "invalid", "localhost", "test", "local", "home.arpa", "internal"]
+
+    /// Сервер без шифрования до него: VLESS (шифрование «none») или Trojan без TLS и REALITY, а адрес сервера — не частный:
+    /// ни адрес из `localNetworks`, ни имя в частной зоне (lan, local, internal, home.arpa и другие) или без точки. То же
+    /// правило, что у Xray-core в libXray (`validateOutboundTransportSecurity`), у Android и десктопа.
+    public static func unencrypted(_ server: ServerDefinition) -> Bool {
+        guard server.protocol == .vless || server.protocol == .trojan, server.security.kind == .none else {
+            return false
+        }
+
+        let address = server.host.hasPrefix("[") && server.host.hasSuffix("]") ? String(server.host.dropFirst().dropLast()) : server.host
+        if var bytes = IpAddress.parse(address) {
+            // IPv4 внутри IPv6 (::ffff:a.b.c.d) — как IPv4.
+            if bytes.count == 16, bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xFF, bytes[11] == 0xFF {
+                bytes = Array(bytes[12..<16])
+            }
+
+            return !localNetworks.contains { inNetwork(bytes, $0) }
+        }
+
+        var name = address.lowercased()
+        while name.hasSuffix(".") {
+            name.removeLast()
+        }
+
+        return !privateZones.contains { name == $0 || name.hasSuffix("." + $0) } && !dotless(name)
+    }
+
+    /// Имя без точки — как у Xray: буква, затем до 62 букв, цифр и дефисов, в конце не дефис.
+    private static func dotless(_ name: String) -> Bool {
+        guard (1...63).contains(name.count), let first = name.first, first.isASCII, first.isLetter, name.last != "-" else {
+            return false
+        }
+
+        return name.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+    }
+
+    private static func inNetwork(_ address: [UInt8], _ cidr: String) -> Bool {
+        let parts = cidr.split(separator: "/")
+        guard parts.count == 2, let base = IpAddress.parse(String(parts[0])), base.count == address.count, let bits = Int(parts[1]) else {
+            return false
+        }
+
+        return (0..<bits).allSatisfy { bit in
+            let mask = UInt8(0x80) >> UInt8(bit % 8)
+            return address[bit / 8] & mask == base[bit / 8] & mask
+        }
     }
 
     private static func vnext(_ server: ServerDefinition, _ user: [(String, Json)]) -> Json {
@@ -226,7 +284,10 @@ public enum XrayConfig {
             peer.append(("preSharedKey", .string(preshared)))
         }
 
-        var settings: [(String, Json)] = [("secretKey", .string(server.credentials.privateKey ?? "")), ("peers", .array([.object(peer)]))]
+        // Свой стек TCP/IP Xray, а не адаптер wgN: у расширения прав на него нет, а так конфиг тот же, что у десктопа и Android.
+        var settings: [(String, Json)] = [
+            ("secretKey", .string(server.credentials.privateKey ?? "")), ("peers", .array([.object(peer)])), ("noKernelTun", .bool(true)),
+        ]
         if let addresses = server.options.addresses, !addresses.isEmpty {
             settings.append(("address", .array(addresses.map { .string($0) })))
         }

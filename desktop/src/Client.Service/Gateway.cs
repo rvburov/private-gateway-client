@@ -108,6 +108,10 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>Адреса FakeDNS: ни один сервер на них не живет — такой ответ DNS ОС дал Xray в туннеле.</summary>
     private static readonly IPNetwork FakeDnsPool = IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool);
 
+    /// <summary>Причина отказа <see cref="CoreRejection.Unencrypted"/> — в журнал.</summary>
+    private const string UnencryptedServer =
+        "Сервер VLESS или Trojan без TLS на открытом адресе: трафик шел бы до него открытым — нужен TLS или REALITY";
+
     /// <summary>
     /// Открыт ли правилами IPv6 мимо туннеля: только без блока при обрыве, только если пользователь сам разрешил («Блокировать
     /// IPv6 вне туннеля» выключено, не «Только IPv4») и только если туннель сам его мимо себя пропускает.
@@ -424,11 +428,17 @@ public sealed partial class Gateway : IAsyncDisposable
         var probe = VpnTunnel.NewProbe();
         var relay = CoreRelay.LinkFor(core.Server, _options.SingBoxPath);
         var built = XrayConfigBuilder.Build(core, probe: probe, relay: relay);
-        if (built.Config is null)
+        // В режиме VPN Xray соединяется не с именем сервера, а с адресом, найденным заранее: сервер без шифрования по имени
+        // решается по этому адресу (ниже), — в своей сети ядро его пускает.
+        var byName = vpn && !IPAddress.TryParse(core.Server.Host, out _);
+        if (built.Config is null && !(built.Rejection == CoreRejection.Unencrypted && byName))
         {
-            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, built.Rejection == CoreRejection.UnsupportedProtocol
-                    ? "Нет сборки sing-box — Hysteria2 и TUIC идут только через нее"
-                    : "Ядро Xray не возьмется за сервер: " + built.Rejection,
+            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, built.Rejection switch
+            {
+                CoreRejection.UnsupportedProtocol => "Нет сборки sing-box — Hysteria2 и TUIC идут только через нее",
+                CoreRejection.Unencrypted => UnencryptedServer,
+                _ => "Ядро Xray не возьмется за сервер: " + built.Rejection,
+            },
                 cancellationToken).ConfigureAwait(false);
         }
 
@@ -515,6 +525,11 @@ public sealed partial class Gateway : IAsyncDisposable
             // Под блоком при обрыве отказ его не снимает: адрес найдется после отключения. Без блока повторное подключение
             // найдет адрес само.
             return await RejectAsync(request, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", cancellationToken).ConfigureAwait(false);
+        }
+
+        if (vpn && XrayConfigBuilder.Unencrypted(core.Server, addresses[0].ToString()))
+        {
+            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, UnencryptedServer, cancellationToken).ConfigureAwait(false);
         }
 
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);

@@ -38,6 +38,9 @@ tasks.test {
     useJUnitPlatform()
     // Эталоны разбора — общие для десктопа, Android и iOS.
     systemProperty("testdata", rootDir.resolve("../../shared/testdata").canonicalPath)
+    // Xray-core той версии, что в libXray (scripts/get-xray-mobile.sh): конфиги ядра читает само ядро (ReferenceConfigTest).
+    val exe = if (System.getProperty("os.name").startsWith("Windows")) ".exe" else ""
+    systemProperty("xrayMobile", rootDir.resolve("../../artifacts/cores/xray-mobile/xray$exe").canonicalPath)
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

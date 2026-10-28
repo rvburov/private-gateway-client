@@ -1063,6 +1063,48 @@ public sealed partial class VpnModeTests
     }
 
     /// <summary>
+    /// VLESS без TLS по имени в режиме VPN: Xray соединяется с найденным адресом, и решает он. Открытый адрес — отказ
+    /// PGC-SVC-005 до блока и ядер (адрес в своей сети пускают тесты с сервером по имени выше).
+    /// </summary>
+    [Fact]
+    public async Task Server_without_encryption_by_name_is_refused_when_its_address_is_open()
+    {
+        await using var rig = await Rig.CreateAsync();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>([IPAddress.Parse("2001:db8::20")]),
+        });
+
+        var reply = await service.Client.ConnectAsync(VpnRequest(rig.Definition with { Host = "vpn.example.com" }), cancellationToken: Ct);
+
+        (reply.Accepted, reply.Error.Code).ShouldBe((false, ErrorCodes.UnsupportedServer));
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.Contains("без TLS на открытом адресе", StringComparison.Ordinal));
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldNotContain(e => e.Source == "xray", "ядра не запускались");
+        rig.KillSwitch.IsEnabled.ShouldBeFalse("отказ — до блока");
+    }
+
+    /// <summary>
+    /// WireGuard в режиме VPN за блоком при обрыве: Xray службы идет к серверу своим стеком TCP/IP (noKernelTun), а не
+    /// адаптером wgN ОС — служба работает от root, и с CAP_NET_ADMIN Xray поднял бы в системе свой адаптер с правилами
+    /// маршрутов, а трафик через него блок не пропускает.
+    /// </summary>
+    [Fact]
+    public async Task Wireguard_server_carries_the_tunnel_behind_the_block_without_an_adapter_of_its_own()
+    {
+        await using var rig = await Rig.CreateAsync(kind: "wireguard");
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o));
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        (await rig.Netns.CurlAsync(Rig.Trace)).ShouldBe("через туннель", "через TUN, Xray и сервер WireGuard");
+        rig.KillSwitch.IsEnabled.ShouldBeTrue();
+        (await rig.Netns.RunAsync("ip", "-o", "link", "show")).Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(line => line.Split(':', 3)[1].Trim().Split('@')[0])
+            .ShouldNotContain(name => name.StartsWith("wg", StringComparison.Ordinal), "своего адаптера WireGuard в системе Xray не ставит");
+    }
+
+    /// <summary>
     /// 172.19.0.1 держит другой адаптер машины (soak #4, Windows CI: «set ipv4 address: The object already exists»): служба
     /// поднимает туннель на свободной подсети, и с ней же — DNS ОС и перенаправление DNS роутера в туннель правилами блока.
     /// </summary>
@@ -1703,7 +1745,9 @@ public sealed partial class VpnModeTests
         /// <param name="page6">Страница сайта сервера для адресов IPv6; null — тот же сайт.</param>
         /// <param name="serverIpv6">Сервер открывает IPv6; false — соединения с адресами IPv6 он закрывает.</param>
         /// <param name="services">За сервером еще DNS (порт 53, ответ — 1.1.1.1) и эхо UDP на <see cref="Public"/>:443.</param>
-        public static async Task<Rig> CreateAsync(string page = "через туннель", string? page6 = null, bool serverIpv6 = true, bool services = false)
+        /// <param name="kind">Протокол сервера (<see cref="XrayKit.Pair(string, int)"/>).</param>
+        public static async Task<Rig> CreateAsync(
+            string page = "через туннель", string? page6 = null, bool serverIpv6 = true, bool services = false, string kind = "vless")
         {
             NetworkNamespace.SkipUnlessAvailable("nft", "ip", "curl");
             Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
@@ -1719,7 +1763,7 @@ public sealed partial class VpnModeTests
                 var site = new LocalSite(page);
                 owned.Add(site);
                 var serverPort = XrayKit.FreePort();
-                var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, host);
+                var (definition, serverConfig) = XrayKit.Pair(kind, serverPort, host);
                 // Выход сервера теста — на свой сайт: из машины ничего не уходит.
                 serverConfig["outbounds"] = new JsonArray(
                     new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });

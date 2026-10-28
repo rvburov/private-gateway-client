@@ -39,10 +39,11 @@ public sealed class ReferenceConfigTests
         var relay = XrayConfigBuilder.NeedsRelay(server) ? new RelayLink(31500, "relay-user", "relay-pass") : null;
         var plain = new CoreRequest(server, ConnectionMode.Proxy, ProtectionSettings.Default, ConnectionSettings.Default, RoutingSettings.Default);
         var proxy = XrayConfigBuilder.Build(plain, relay: relay);
-        // Транспорт, которого у протокола в Xray нет, — отказ до ядра, и он должен быть единственной причиной.
+        // Транспорт, которого у протокола в Xray нет, или сервер без шифрования на открытом адресе — отказ до ядра, и он должен
+        // быть единственной причиной.
         if (proxy.Rejection is { } rejection)
         {
-            rejection.ShouldBe(CoreRejection.UnsupportedTransport, fixture);
+            rejection.ShouldBe(XrayConfigBuilder.Unencrypted(server, server.Host) ? CoreRejection.Unencrypted : CoreRejection.UnsupportedTransport, fixture);
             return;
         }
 

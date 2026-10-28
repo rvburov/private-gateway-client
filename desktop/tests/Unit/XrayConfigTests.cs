@@ -135,6 +135,7 @@ public sealed class XrayConfigTests
         settings["peers"]![0]!["endpoint"]!.GetValue<string>().ShouldBe("192.0.2.33:51820");
         settings["address"]!.AsArray().Select(a => a!.GetValue<string>()).ShouldBe(["10.0.0.2/32", "fd00::2/128"]);
         settings["mtu"]!.GetValue<int>().ShouldBe(1420);
+        settings["noKernelTun"]!.GetValue<bool>().ShouldBeTrue("свой стек Xray, а не адаптер wgN ОС: служба от root его бы подняла, а блок его не пропускает");
     }
 
     [Fact]
@@ -468,6 +469,66 @@ public sealed class XrayConfigTests
             .ShouldNotContain(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag, "нет порта — нет входа");
         XrayConfigBuilder.Build(request with { Protection = ProtectionSettings.Default }, new TunLink(31000, "user-1", "pass-1", "198.51.100.20", BypassPort: 31001))
             .Config!["inbounds"]!.AsArray().ShouldNotContain(i => i!["tag"]!.GetValue<string>() == XrayConfigBuilder.BypassTag, "без FakeDNS — не нужен");
+    }
+
+    [Theory]
+    [InlineData("vless", "2001:db8::1", "none", true)]
+    [InlineData("vless", "[2001:db8::1]", "none", true)]
+    [InlineData("vless", "vpn.example.com", "none", true)]
+    [InlineData("vless", "vpn.example.com.", "none", true)]
+    [InlineData("trojan", "vpn.example.com", "none", true)]
+    [InlineData("vless", "vpn.example.com", "tls", false)]
+    [InlineData("vless", "vpn.example.com", "reality", false)]
+    [InlineData("vmess", "vpn.example.com", "none", false)]
+    [InlineData("shadowsocks", "vpn.example.com", "none", false)]
+    [InlineData("vless", "10.0.0.5", "none", false)]
+    [InlineData("vless", "192.0.2.1", "none", false)]
+    [InlineData("vless", "::ffff:192.168.1.5", "none", false)]
+    [InlineData("vless", "fd00::5", "none", false)]
+    [InlineData("vless", "[fd00::5]", "none", false)]
+    [InlineData("vless", "nas.lan", "none", false)]
+    [InlineData("vless", "nas.lan.", "none", false)]
+    [InlineData("vless", "router.home.arpa", "none", false)]
+    [InlineData("vless", "printer.local", "none", false)]
+    [InlineData("vless", "NAS", "none", false)]
+    [InlineData("vless", "lan.example.com", "none", true)]
+    [InlineData("vless", "mylan", "none", false)]
+    public void Server_without_encryption_on_an_open_address_is_refused_as_xray_does(string protocol, string host, string security, bool refused)
+    {
+        var server = (protocol switch
+        {
+            "trojan" => Link("trojan/ws"),
+            "vmess" => Link("vmess/ws-tls") with { Security = SecurityOptions.None },
+            "shadowsocks" => Link("shadowsocks/sip002"),
+            _ => Link("vless/ipv6-no-name"),
+        }) with
+        { Host = host };
+        server = server with
+        {
+            Security = security switch
+            {
+                "tls" => new SecurityOptions(TransportSecurity.Tls, Sni: "vpn.example.com"),
+                "reality" => Link("vless/reality-vision").Security,
+                _ => SecurityOptions.None,
+            },
+        };
+
+        XrayConfigBuilder.Unencrypted(server, host).ShouldBe(refused);
+        var built = XrayConfigBuilder.Build(Request(server, ConnectionMode.Proxy));
+        built.Rejection.ShouldBe(refused ? CoreRejection.Unencrypted : null,
+            "VLESS и Trojan без TLS к открытому адресу — трафик шел бы открытым; Xray-core с 26.x такой выход не строит");
+        XrayConfigBuilder.BuildProbe([server], [31500], ConnectionSettings.Default).Rejections.ShouldBe([built.Rejection], "и замер задержки");
+    }
+
+    [Fact]
+    public void In_vpn_mode_the_rule_looks_at_the_address_xray_dials()
+    {
+        var byName = Link("vless/ipv6-no-name") with { Host = "vpn.example.com" };
+
+        XrayConfigBuilder.Build(Request(byName), new TunLink(31000, "user-1", "pass-1", "10.0.0.5")).Rejection
+            .ShouldBeNull("имя открытое, но Xray соединяется с адресом в своей сети — как у Xray, решает адрес в конфиге");
+        XrayConfigBuilder.Build(Request(Link("vless/ipv6-no-name") with { Host = "nas.lan" }), new TunLink(31000, "user-1", "pass-1", "2001:db8::20"))
+            .Rejection.ShouldBe(CoreRejection.Unencrypted, "имя частное, а разрешилось в открытый адрес");
     }
 
     private static JsonObject Build(

@@ -191,6 +191,7 @@ public sealed class ServiceIpcTests
     [Theory]
     [InlineData("vpn", ErrorCodes.AdminRequired)]
     [InlineData("hysteria2", ErrorCodes.UnsupportedServer)]
+    [InlineData("unencrypted", ErrorCodes.UnsupportedServer)]
     [InlineData("unspecified", ErrorCodes.BadRequest)]
     public async Task Refused_request_says_why_and_is_an_error_for_everyone(string kind, string code)
     {
@@ -198,9 +199,13 @@ public sealed class ServiceIpcTests
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await ReadUntilAsync(watch, _ => true);
         var (definition, _) = XrayKit.Pair("vless", 443);
-        var request = Request(kind == "hysteria2"
-            ? XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password)) with { Transport = TransportOptions.Quic }
-            : definition, 10808);
+        var request = Request(kind switch
+        {
+            "hysteria2" => XrayKit.Definition(ProxyProtocol.Hysteria2, 443, new ServerCredentials(Password: XrayKit.Password)) with { Transport = TransportOptions.Quic },
+            // VLESS без TLS к открытому имени: трафик шел бы до сервера открытым.
+            "unencrypted" => definition with { Host = "vpn.example.com" },
+            _ => definition,
+        }, 10808);
         request.Mode = kind switch
         {
             "vpn" => V1.Mode.Vpn,
@@ -216,6 +221,10 @@ public sealed class ServiceIpcTests
             .ShouldBe([(V1.ConnectionState.Connecting, "srv-1", null), (V1.ConnectionState.Error, "srv-1", code)],
                 "отказ видят все окна, а не только то, что просило");
         states[^1].ToCore().Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off), "подключения нет — проверки не обещают блок");
+        if (kind == "unencrypted")
+        {
+            service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.Contains("без TLS на открытом адресе", StringComparison.Ordinal));
+        }
     }
 
     [Fact]

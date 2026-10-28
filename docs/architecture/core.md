@@ -26,7 +26,15 @@
   TUIC — через ретранслятор sing-box (раздел ниже): выход `proxy` для них — SOCKS5 с паролем к ретранслятору
   на 127.0.0.1 (`RelayLink`); без ретранслятора (нет сборки sing-box) — отказ `UnsupportedProtocol`.
   Нет ключей — `MissingCredentials`; транспорт, которого у протокола в Xray нет (QUIC у VLESS), —
-  `UnsupportedTransport`.
+  `UnsupportedTransport`. VLESS и Trojan без TLS и REALITY к открытому адресу — `Unencrypted` (`XrayConfigBuilder.Unencrypted`,
+  решение 474): трафик шел бы до сервера открытым, а Xray-core с 26.x (он уже в libXray телефонов) такой выход не строит
+  («vless without TLS … is prohibited»). Правило — как у ядра: смотрит адрес, с которым соединяется Xray (в режиме VPN —
+  разрешенный заранее), и пропускает частные — адреса из `LocalNetworks`, имена в зонах lan, localdomain, example,
+  invalid, localhost, test, local, home.arpa, internal и имена без точки. Отказ — `PGC-SVC-005` до запуска ядер.
+- **WireGuard** — всегда своим стеком TCP/IP Xray (`noKernelTun`, решение 475): служба работает от root, и с
+  CAP_NET_ADMIN Xray поднял бы в системе адаптер `wgN` со своими таблицами и правилами маршрутов — мимо TUN, и трафик
+  через него блок при обрыве не пропускает (служба показывала «Защищено», а страницы не открывались). У телефонов прав
+  на адаптер нет, и конфиг тот же.
 - **Транспорты** — `raw` (TCP), `ws`, `grpc`, `httpupgrade`, `xhttp` с путем, Host и именем сервиса.
 - **Защита** — TLS (SNI, ALPN, отпечаток uTLS, «небезопасный» только если так в ссылке) и REALITY
   (SNI, открытый ключ, short id, spiderX; отпечаток обязателен — из профиля или настройки, иначе
@@ -89,7 +97,11 @@
   умолчанию выключено (FakeDNS, свой DNS или DoH, IPv6, локальная сеть, отпечаток, Mux, фрагментация, раздельный режим
   с правилами и категорией геобазы), один конфиг замера задержки на все эталоны, `sing-box check` у ретранслятора
   Hysteria2 и TUIC. Unit-тесты конфига сверяют поля, а этот — что ядро их принимает: неверный тип или значение падает
-  здесь, а не у пользователя на «Подключении».
+  здесь, а не у пользователя на «Подключении». То же для телефонов — `ReferenceConfigTest` Android и `ReferenceConfigTests`
+  iOS: ядро той версии, что внутри libXray (`scripts/get-xray-mobile.sh` собирает `xray` из Xray-core по go.mod и go.sum
+  закрепленного коммита libXray, решение 476), туннель и замер задержки с настройками по умолчанию и со всем включенным.
+- `VpnModeTests.Wireguard_server_carries_the_tunnel_behind_the_block_without_an_adapter_of_its_own` — сервер WireGuard
+  в режиме VPN за блоком при обрыве: страница через туннель, адаптера `wg*` в системе нет.
 
 
 ## TUN режима VPN: sing-box (спайк этапа 3)

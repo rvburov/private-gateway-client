@@ -148,9 +148,37 @@ jobs:
             android/gradle/libs.versions.toml
             android/gradle/wrapper/gradle-wrapper.properties
 
+      # Ядро той же версии, что в libXray телефонов (Xray-core из go.mod закрепленного коммита, scripts/get-xray-mobile.sh):
+      # конфиги ядра на эталонных ссылках читает оно само (ReferenceConfigTest). Кешируется по коммиту libXray и скрипту и
+      # сохраняется сразу после сборки.
+      - id: xray-mobile
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/cores/xray-mobile
+          key: xray-mobile-${{ runner.os }}-${{ hashFiles('android/libxray.version', 'scripts/get-xray-mobile.sh') }}
+
+      - if: steps.xray-mobile.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Xray libXray для проверки конфигов
+        if: steps.xray-mobile.outputs.cache-hit != 'true'
+        run: scripts/get-xray-mobile.sh
+
+      - if: steps.xray-mobile.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/cores/xray-mobile
+          key: ${{ steps.xray-mobile.outputs.cache-primary-key }}
+
       # Общий модуль (разбор ссылок и подписок на эталонах shared/testdata, конфиг ядра) и генераторы темы и текстов —
-      # без SDK Android: так же их гоняют локально (android/gradlew -p android/core test).
+      # без SDK Android: так же их гоняют локально (android/gradlew -p android/core test). Без Xray libXray тест конфигов
+      # здесь падает, а не пропускается.
       - name: Общий модуль и генераторы ресурсов
+        env:
+          PG_REQUIRE_XRAY_MOBILE: "1"
         run: |
           android/gradlew -p android/core test
           android/gradlew -p android/build-logic test
@@ -325,7 +353,35 @@ jobs:
       - name: Swift
         run: swift --version
 
+      # Ядро той же версии, что в libXray телефонов (Xray-core из go.mod закрепленного коммита, scripts/get-xray-mobile.sh):
+      # конфиги ядра на эталонных ссылках читает оно само (ReferenceConfigTests). Кешируется по коммиту libXray и скрипту и
+      # сохраняется сразу после сборки.
+      - id: xray-mobile
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/cores/xray-mobile
+          key: xray-mobile-${{ runner.os }}-${{ hashFiles('android/libxray.version', 'scripts/get-xray-mobile.sh') }}
+
+      - if: steps.xray-mobile.outputs.cache-hit != 'true'
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Xray libXray для проверки конфигов
+        if: steps.xray-mobile.outputs.cache-hit != 'true'
+        run: scripts/get-xray-mobile.sh
+
+      - if: steps.xray-mobile.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/cores/xray-mobile
+          key: ${{ steps.xray-mobile.outputs.cache-primary-key }}
+
+      # Без Xray libXray тест конфигов здесь падает, а не пропускается.
       - name: Сборка и тесты
+        env:
+          PG_REQUIRE_XRAY_MOBILE: "1"
         run: swift test --package-path ios/Core
 
   # iOS (этап 10): приложение SwiftUI и расширение Packet Tunnel — проект из ios/project.yml (XcodeGen), сборка без

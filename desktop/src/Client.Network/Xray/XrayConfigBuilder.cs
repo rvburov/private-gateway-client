@@ -25,6 +25,12 @@ public enum CoreRejection
 
     /// <summary>Транспорт, которого у протокола в Xray нет (например, QUIC у VLESS).</summary>
     UnsupportedTransport,
+
+    /// <summary>
+    /// VLESS или Trojan без TLS и REALITY на открытом адресе (<see cref="XrayConfigBuilder.Unencrypted"/>): трафик шел бы к
+    /// серверу открытым. Xray-core с 26.x такой выход не строит («vless without TLS … is prohibited»), и у телефонов его нет.
+    /// </summary>
+    Unencrypted,
 }
 
 /// <summary>Конфиг Xray или причина отказа.</summary>
@@ -115,7 +121,8 @@ public static class XrayConfigBuilder
     public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null, ProbeLink? probe = null, RelayLink? relay = null)
     {
         ArgumentNullException.ThrowIfNull(request);
-        var outbound = Outbound(request.Server, request.Connection, relay, out var rejection);
+        var outbound = Outbound(request.Server, request.Connection, relay, out var rejection,
+            tun is not null && !NeedsRelay(request.Server) ? tun.ServerAddress : null);
         if (outbound is null)
         {
             return new XrayConfigResult(null, rejection);
@@ -540,7 +547,38 @@ public static class XrayConfigBuilder
         return server.Protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic;
     }
 
-    private static JsonObject? Outbound(ServerDefinition server, ConnectionSettings connection, RelayLink? relay, out CoreRejection? rejection)
+    /// <summary>
+    /// Сервер без шифрования до него: VLESS (шифрование «none») или Trojan без TLS и REALITY, а адрес, с которым соединяется
+    /// Xray (<paramref name="address"/>), — не частный: ни адрес из <see cref="LocalNetworks"/>, ни имя в частной зоне (lan,
+    /// local, internal, home.arpa и другие) или без точки. То же правило, что у Xray-core с 26.x
+    /// (<c>validateOutboundTransportSecurity</c>): у сервера в своей сети трафик дальше нее не уходит.
+    /// </summary>
+    public static bool Unencrypted(ServerDefinition server, string address)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(address);
+        if (server.Protocol is not (ProxyProtocol.Vless or ProxyProtocol.Trojan) || server.Security.Kind != TransportSecurity.None)
+        {
+            return false;
+        }
+
+        // TryParse снимает квадратные скобки IPv6, а IPNetwork считает ::ffff:a.b.c.d адресом IPv4.
+        if (IPAddress.TryParse(address, out var ip))
+        {
+            return !LocalNetworks.Any(n => IPNetwork.Parse(n).Contains(ip));
+        }
+
+        var name = address.TrimEnd('.').ToLowerInvariant();
+        return !PrivateZones.Any(zone => name == zone || name.EndsWith("." + zone, StringComparison.Ordinal))
+            && !System.Text.RegularExpressions.Regex.IsMatch(name, "^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$");
+    }
+
+    /// <summary>Частные зоны имен — те же, что у Xray-core (<c>geodata.GetPrivateDomainMatcher</c>).</summary>
+    private static readonly string[] PrivateZones = ["lan", "localdomain", "example", "invalid", "localhost", "test", "local", "home.arpa", "internal"];
+
+    // dial — адрес, с которым соединяется выход (режим VPN — разрешенный заранее); null — адрес из описания сервера.
+    private static JsonObject? Outbound(ServerDefinition server, ConnectionSettings connection, RelayLink? relay, out CoreRejection? rejection,
+        string? dial = null)
     {
         rejection = null;
         var credentials = server.Credentials;
@@ -587,6 +625,12 @@ public static class XrayConfigBuilder
         if (Stream(server, connection) is not { } stream)
         {
             rejection = CoreRejection.UnsupportedTransport;
+            return null;
+        }
+
+        if (Unencrypted(server, dial ?? server.Host))
+        {
+            rejection = CoreRejection.Unencrypted;
             return null;
         }
 
@@ -641,7 +685,10 @@ public static class XrayConfigBuilder
             peer["preSharedKey"] = preshared;
         }
 
-        var settings = new JsonObject { ["secretKey"] = privateKey, ["peers"] = new JsonArray(peer) };
+        // Свой стек TCP/IP Xray, а не адаптер wgN ОС: служба работает от root, и с CAP_NET_ADMIN Xray поднял бы в системе
+        // свой адаптер с таблицами и правилами маршрутов — мимо TUN, и трафик через него блок при обрыве не пропускает.
+        // Так же у телефонов: там прав на адаптер нет вовсе.
+        var settings = new JsonObject { ["secretKey"] = privateKey, ["peers"] = new JsonArray(peer), ["noKernelTun"] = true };
         if (server.Options.Addresses is { Count: > 0 } addresses)
         {
             settings["address"] = new JsonArray([.. addresses.Select(a => JsonValue.Create(a))]);

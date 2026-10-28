@@ -5,6 +5,8 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import java.net.InetAddress
+import java.net.UnknownHostException
 import java.util.Locale
 
 /** Почему ядро Xray не возьмется за сервер — как у десктопа (`CoreRejection`). */
@@ -17,6 +19,12 @@ enum class CoreRejection {
 
     /** Транспорт, которого у протокола в Xray нет (например, QUIC у VLESS). */
     UnsupportedTransport,
+
+    /**
+     * VLESS или Trojan без TLS и REALITY на открытом адресе ([XrayConfig.unencrypted]): трафик шел бы к серверу открытым.
+     * Ядро libXray такой выход не строит («vless without TLS … is prohibited»).
+     */
+    Unencrypted,
 }
 
 /** Конфиг Xray (текст JSON) или причина отказа. */
@@ -172,6 +180,10 @@ object XrayConfig {
         }
 
         val stream = stream(server, settings) ?: return Outbound(null, CoreRejection.UnsupportedTransport)
+        if (unencrypted(server)) {
+            return Outbound(null, CoreRejection.Unencrypted)
+        }
+
         val outbound = linkedMapOf(
             "tag" to PROXY_TAG,
             "protocol" to when (server.protocol) {
@@ -192,6 +204,54 @@ object XrayConfig {
         return Outbound(outbound, null)
     }
 
+    /** Частные зоны имен — те же, что у Xray-core (`geodata.GetPrivateDomainMatcher`). */
+    private val privateZones = listOf("lan", "localdomain", "example", "invalid", "localhost", "test", "local", "home.arpa", "internal")
+
+    private val dotless = Regex("^[a-z]([a-z0-9-]{0,61}[a-z0-9])?$")
+
+    /**
+     * Сервер без шифрования до него: VLESS (шифрование «none») или Trojan без TLS и REALITY, а адрес сервера — не частный: ни
+     * адрес из [localNetworks], ни имя в частной зоне (lan, local, internal, home.arpa и другие) или без точки. То же
+     * правило, что у Xray-core в libXray (`validateOutboundTransportSecurity`) и у десктопа (`XrayConfigBuilder.Unencrypted`).
+     */
+    fun unencrypted(server: ServerDefinition): Boolean {
+        if (server.protocol != ProxyProtocol.Vless && server.protocol != ProxyProtocol.Trojan || server.security.kind != TransportSecurity.None) {
+            return false
+        }
+
+        val address = server.host.trim('[', ']')
+        literal(address)?.let { ip -> return localNetworks.none { inNetwork(ip, it) } }
+        val name = address.trimEnd('.').lowercase(Locale.ROOT)
+        return privateZones.none { name == it || name.endsWith(".$it") } && !dotless.matches(name)
+    }
+
+    // Адрес-литерал без DNS: IPv4 из четырех чисел или IPv6 (текст с двоеточием InetAddress разбирает как адрес, не имя);
+    // IPv4 внутри IPv6 (::ffff:a.b.c.d) — как IPv4. Имя — null.
+    private fun literal(text: String): ByteArray? {
+        val parts = text.split('.')
+        if (parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() <= 255 }) {
+            return parts.map { it.toInt().toByte() }.toByteArray()
+        }
+
+        if (':' !in text || !text.all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' || it == ':' || it == '.' }) {
+            return null
+        }
+
+        return try {
+            InetAddress.getByName(text).address
+        } catch (_: UnknownHostException) {
+            null
+        }
+    }
+
+    private fun inNetwork(address: ByteArray, cidr: String): Boolean {
+        val (base, bits) = cidr.split('/').let { (literal(it[0]) ?: return false) to it[1].toInt() }
+        return base.size == address.size && (0 until bits).all { bit ->
+            val mask = 0x80 ushr (bit % 8)
+            (address[bit / 8].toInt() and mask) == (base[bit / 8].toInt() and mask)
+        }
+    }
+
     private fun vnext(server: ServerDefinition, user: Map<String, Any?>) =
         linkedMapOf("vnext" to listOf(linkedMapOf("address" to server.host, "port" to server.port, "users" to listOf(user))))
 
@@ -201,7 +261,8 @@ object XrayConfig {
         val endpoint = if (server.host.contains(':')) "[${server.host}]:${server.port}" else "${server.host}:${server.port}"
         val peer = linkedMapOf<String, Any?>("publicKey" to server.options.peerPublicKey, "endpoint" to endpoint)
         server.credentials.presharedKey?.takeIf { it.isNotEmpty() }?.let { peer["preSharedKey"] = it }
-        val settings = linkedMapOf<String, Any?>("secretKey" to server.credentials.privateKey, "peers" to listOf(peer))
+        // Свой стек TCP/IP Xray, а не адаптер wgN: у приложения прав на него нет, а так конфиг тот же, что у десктопа.
+        val settings = linkedMapOf<String, Any?>("secretKey" to server.credentials.privateKey, "peers" to listOf(peer), "noKernelTun" to true)
         server.options.addresses?.takeIf { it.isNotEmpty() }?.let { settings["address"] = it }
         server.options.mtu?.let { settings["mtu"] = it }
         return linkedMapOf("tag" to PROXY_TAG, "protocol" to "wireguard", "settings" to settings)

@@ -189,6 +189,7 @@ dotnet run scripts/test-report.cs artifacts/test-results   # итог и про�
 
 ```bash
 android/gradlew -p android/core test                   # общий модуль Android — нужен только JDK 17+
+scripts/get-xray-mobile.sh                             # Xray той версии, что в libXray: тест конфигов Android и iOS (нужен go)
 android/gradlew -p android/build-logic test            # генераторы темы и текстов
 android/gradlew -p android :app:assembleDebug :app:testDebugUnitTest :app:lintDebug   # приложение: SDK Android и libXray
 scripts/get-xray.sh && scripts/android-test-server.sh  # сервер для проверки туннеля на эмуляторе (Xray и HTTP)

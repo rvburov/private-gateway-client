@@ -98,6 +98,42 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual((wgSettings["peers"] as? [[String: Any]])?.first?["endpoint"] as? String, "192.0.2.33:51820")
         XCTAssertEqual(wgSettings["mtu"] as? Int, 1420)
         XCTAssertEqual(wgSettings["address"] as? [String], ["10.0.0.2/32"])
+        XCTAssertEqual(wgSettings["noKernelTun"] as? Bool, true, "свой стек Xray, а не адаптер wgN — как у десктопа и Android")
+    }
+
+    func testServerWithoutEncryptionOnAnOpenAddressIsRefusedAsLibXrayDoes() throws {
+        let cases: [(protocol: String, host: String, security: String, refused: Bool)] = [
+            ("vless", "2001:db8::1", "none", true), ("vless", "[2001:db8::1]", "none", true), ("vless", "vpn.example.com", "none", true),
+            ("vless", "vpn.example.com.", "none", true), ("trojan", "vpn.example.com", "none", true), ("vless", "vpn.example.com", "tls", false),
+            ("vless", "vpn.example.com", "reality", false), ("vmess", "vpn.example.com", "none", false), ("vless", "10.0.0.5", "none", false),
+            ("vless", "192.0.2.1", "none", false), ("vless", "::ffff:192.168.1.5", "none", false), ("vless", "fd00::5", "none", false), ("vless", "[fd00::5]", "none", false),
+            ("vless", "nas.lan", "none", false), ("vless", "nas.lan.", "none", false), ("vless", "router.home.arpa", "none", false), ("vless", "printer.local", "none", false),
+            ("vless", "NAS", "none", false), ("vless", "lan.example.com", "none", true), ("vless", "mylan", "none", false),
+        ]
+        let vmess = "vmess://" + Data(
+            #"{"v":"2","ps":"V","add":"cdn.example.com","port":"443","id":"11111111-2222-3333-4444-555555555555","aid":"0","net":"tcp"}"#.utf8
+        ).base64EncodedString()
+        for item in cases {
+            var tested: ServerDefinition
+            switch item.protocol {
+            case "trojan": tested = try server("trojan://pw@198.51.100.7:8443?sni=example.org#T")
+            case "vmess": tested = try server(vmess)
+            default: tested = try server("vless://11111111-2222-3333-4444-555555555555@203.0.113.24:443?security=none#V")
+            }
+
+            tested.host = item.host
+            switch item.security {
+            case "tls": tested.security = SecurityOptions(.tls, sni: "vpn.example.com")
+            case "reality": tested.security = try server(reality).security
+            default: tested.security = .none
+            }
+
+            let what = "\(item.protocol) \(item.host) \(item.security)"
+            XCTAssertEqual(XrayConfig.unencrypted(tested), item.refused, what)
+            let expected: CoreRejection? = item.refused ? .unencrypted : nil
+            XCTAssertEqual(XrayConfig.build(tested, CoreSettings(), tunFd: 1).rejection, expected, what)
+            XCTAssertEqual(PingBatch.outbounds(tested, CoreSettings()).rejection, expected, "замер задержки: " + what)
+        }
     }
 
     func testHysteria2AndTuicAndMissingTransportsAreRefused() throws {
