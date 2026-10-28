@@ -7,7 +7,7 @@
              x:DataType="vm:MainPageViewModel">
   <!-- Главный экран — docs/design, доска 1. -->
   <UserControl.Styles>
-    <!-- Полоса «…идут мимо VPN» — баннер дизайн-системы (доска 24); при наведении рамка ярче -->
+    <!-- Полоса «…идут мимо VPN» — баннер дизайн-системы (доска 24); при наведении рамка и фон ярче -->
     <Style Selector="Button.bypass">
       <Setter Property="HorizontalAlignment" Value="Stretch" />
       <Setter Property="HorizontalContentAlignment" Value="Stretch" />
@@ -19,7 +19,7 @@
       <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
     </Style>
     <Style Selector="Button.bypass:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.bypass:pressed /template/ ContentPresenter#PART_ContentPresenter">
-      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Hover}" />
       <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Base}" />
     </Style>
   </UserControl.Styles>
@@ -119,24 +119,29 @@
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:CheckChipViewModel">
                 <Button Classes="chip" Classes.selected="{Binding IsSelected}" Margin="3" Height="46"
-                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                        HorizontalAlignment="Stretch"
                         Command="{Binding ToggleCommand}"
                         Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}"
+                        BorderBrush="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}"
                         AutomationProperties.Name="{Binding Title}">
-                  <Grid ColumnDefinitions="Auto,*" Margin="10,0">
-                    <Border Width="22" Height="22" CornerRadius="11"
-                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
-                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="14" Height="14"
-                              StrokeThickness="2.6" Foreground="{StaticResource PgBrush.Surface.Solid}" />
-                    </Border>
-                    <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
-                      <TextBlock Text="{Binding Title}" FontSize="{StaticResource PgFontSize.Small}"
-                                 FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
-                      <TextBlock Text="{Binding Value}" FontSize="{StaticResource PgFontSize.Overline}"
-                                 TextTrimming="CharacterEllipsis"
-                                 Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
-                    </StackPanel>
-                  </Grid>
+                  <Panel>
+                    <Border Classes="hover"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Hover}" />
+                    <Grid ColumnDefinitions="Auto,*" Margin="10,0" VerticalAlignment="Center">
+                      <Border Width="22" Height="22" CornerRadius="11"
+                              Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
+                        <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="14" Height="14"
+                                StrokeThickness="2.6" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                      </Border>
+                      <StackPanel Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding Title}" FontSize="{StaticResource PgFontSize.Small}"
+                                   FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                        <TextBlock Text="{Binding Value}" FontSize="{StaticResource PgFontSize.Overline}"
+                                   TextTrimming="CharacterEllipsis"
+                                   Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+                      </StackPanel>
+                    </Grid>
+                  </Panel>
                 </Button>
               </DataTemplate>
             </ItemsControl.ItemTemplate>
@@ -186,29 +191,28 @@
             </TextBlock>
           </StackPanel>
           <Border Classes="divider" Margin="16,0" />
-          <Grid x:Name="ServerRow" ColumnDefinitions="Auto,*" Margin="10,8,10,10">
+          <!-- Сервер: слева обновить, справа «Сменить» — выпадающий список, как в «Подключении и ядре» -->
+          <Grid x:Name="ServerRow" ColumnDefinitions="Auto,*,Auto" Margin="10,8,10,10">
             <Button Classes="icon" Command="{Binding RefreshServersCommand}"
                     Background="{StaticResource PgBrush.Accent.Tint}"
                     Foreground="{StaticResource PgBrush.Accent.Text}"
                     ToolTip.Tip="{l:L server.refresh}" AutomationProperties.Name="{l:L server.refresh}">
               <c:Icon Data="{StaticResource Icon.Refresh}" Width="20" Height="20" StrokeThickness="2" />
             </Button>
-            <Button x:Name="SwitchButton" Grid.Column="1" Classes="plain" Margin="6,0,0,0" Padding="6,0"
+            <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
+              <TextBlock x:Name="ServerTitle" Classes="title" Text="{Binding ServerTitle}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="small" Text="{Binding ServerMeta}" TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+            <Button x:Name="SwitchButton" Grid.Column="2" Classes="select" VerticalAlignment="Center"
                     Command="{Binding ToggleSwitchCommand}" AutomationProperties.Name="{l:L server.switch}">
-              <Grid ColumnDefinitions="*,Auto,Auto">
-                <StackPanel Spacing="2" VerticalAlignment="Center">
-                  <TextBlock Classes="title" Text="{Binding ServerTitle}" TextTrimming="CharacterEllipsis" />
-                  <TextBlock Classes="small" Text="{Binding ServerMeta}" TextTrimming="CharacterEllipsis" />
-                </StackPanel>
-                <TextBlock Grid.Column="1" Text="{l:L server.switch}" VerticalAlignment="Center" Margin="8,0,4,0"
-                           FontSize="{StaticResource PgFontSize.Small}" FontWeight="SemiBold"
-                           Foreground="{StaticResource PgBrush.Accent.Text}" />
-                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronDown}" Width="16" Height="16"
-                        StrokeThickness="2.2" Foreground="{StaticResource PgBrush.Accent.Text}" />
+              <Grid ColumnDefinitions="Auto,Auto">
+                <TextBlock Text="{l:L server.switch}" VerticalAlignment="Center" />
+                <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
+                        Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
               </Grid>
             </Button>
-            <Popup Grid.Column="1" PlacementTarget="{Binding #ServerRow}" Placement="BottomEdgeAlignedRight"
-                   IsOpen="{Binding IsSwitchOpen, Mode=TwoWay}" IsLightDismissEnabled="True" Width="380">
+            <Popup Grid.Column="2" PlacementTarget="{Binding #SwitchButton}" Placement="BottomEdgeAlignedRight"
+                   IsOpen="{Binding IsSwitchOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MaxWidth="380">
               <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6"
                       BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                       CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}" Margin="8">

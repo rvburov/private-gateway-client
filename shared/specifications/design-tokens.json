@@ -1,6 +1,6 @@
 {
   "name": "Private Gateway design tokens",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "source": "docs/design (макет v1.0, согласован 2026-10-23)",
   "theme": "light",
   "targets": {
@@ -37,7 +37,8 @@
       "text": "#1D4ED8",
       "tint": "rgba(37, 99, 235, 0.10)",
       "navActiveFill": "rgba(37, 99, 235, 0.16)",
-      "line": "rgba(37, 99, 235, 0.16)"
+      "line": "rgba(37, 99, 235, 0.16)",
+      "hover": "rgba(37, 99, 235, 0.18)"
     },
     "focus": {
       "ring": "#93C5FD"
@@ -63,21 +64,21 @@
       "blob3": "rgba(196, 181, 253, 0.45)"
     },
     "status": {
-      "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)", "badge": "#166534", "line": "rgba(22, 163, 74, 0.35)" },
-      "warning": { "base": "#EA580C", "text": "#C2410C", "tint": "rgba(234, 88, 12, 0.12)", "badge": "#9A3412", "line": "rgba(234, 88, 12, 0.18)" },
-      "caution": { "base": "#F59E0B", "text": "#B45309", "tint": "rgba(245, 158, 11, 0.14)", "badge": "#92400E", "line": "rgba(245, 158, 11, 0.32)" },
-      "danger":  { "base": "#DC2626", "text": "#B91C1C", "tint": "rgba(185, 28, 28, 0.08)", "badge": "#991B1B", "line": "rgba(220, 38, 38, 0.35)" }
+      "success": { "base": "#16A34A", "text": "#15803D", "tint": "rgba(22, 163, 74, 0.12)", "badge": "#166534", "line": "rgba(22, 163, 74, 0.35)", "hover": "rgba(22, 163, 74, 0.22)" },
+      "warning": { "base": "#EA580C", "text": "#C2410C", "tint": "rgba(234, 88, 12, 0.12)", "badge": "#9A3412", "line": "rgba(234, 88, 12, 0.18)", "hover": "rgba(234, 88, 12, 0.22)" },
+      "caution": { "base": "#F59E0B", "text": "#B45309", "tint": "rgba(245, 158, 11, 0.14)", "badge": "#92400E", "line": "rgba(245, 158, 11, 0.32)", "hover": "rgba(245, 158, 11, 0.26)" },
+      "danger":  { "base": "#DC2626", "text": "#B91C1C", "tint": "rgba(185, 28, 28, 0.08)", "badge": "#991B1B", "line": "rgba(220, 38, 38, 0.35)", "hover": "rgba(220, 38, 38, 0.18)" }
     }
   },
 
   "state": {
-    "connected":    { "label": "Защищено",    "ring": "#16A34A", "icon": "#15803D", "glow": "rgba(22, 163, 74, 0.25)" },
-    "connecting":   { "label": "Подключение", "ring": "#BFDBFE", "icon": "#2563EB", "glow": "rgba(37, 99, 235, 0.22)", "spinner": "#2563EB" },
-    "reconnecting": { "label": "Подключение", "ring": "#BFDBFE", "icon": "#2563EB", "glow": "rgba(37, 99, 235, 0.22)", "spinner": "#2563EB" },
-    "blocked":      { "label": "Блокировка",  "ring": "#EA580C", "icon": "#C2410C", "glow": "rgba(234, 88, 12, 0.22)" },
-    "partial":      { "label": "Прокси / Пауза", "ring": "#F59E0B", "icon": "#B45309", "glow": "rgba(245, 158, 11, 0.28)" },
-    "error":        { "label": "Ошибка",      "ring": "#DC2626", "icon": "#DC2626", "glow": "rgba(220, 38, 38, 0.20)" },
-    "off":          { "label": "Выключено",   "ring": "#DC2626", "icon": "#DC2626", "glow": "rgba(220, 38, 38, 0.20)" }
+    "connected":    { "label": "Защищено",    "ring": "#16A34A", "icon": "#15803D", "glow": "rgba(22, 163, 74, 0.25)", "fill": "rgba(22, 163, 74, 0.14)" },
+    "connecting":   { "label": "Подключение", "ring": "#BFDBFE", "icon": "#2563EB", "glow": "rgba(37, 99, 235, 0.22)", "spinner": "#2563EB", "fill": "rgba(37, 99, 235, 0.12)" },
+    "reconnecting": { "label": "Подключение", "ring": "#BFDBFE", "icon": "#2563EB", "glow": "rgba(37, 99, 235, 0.22)", "spinner": "#2563EB", "fill": "rgba(37, 99, 235, 0.12)" },
+    "blocked":      { "label": "Блокировка",  "ring": "#EA580C", "icon": "#C2410C", "glow": "rgba(234, 88, 12, 0.22)", "fill": "rgba(234, 88, 12, 0.14)" },
+    "partial":      { "label": "Прокси / Пауза", "ring": "#F59E0B", "icon": "#B45309", "glow": "rgba(245, 158, 11, 0.28)", "fill": "rgba(245, 158, 11, 0.16)" },
+    "error":        { "label": "Ошибка",      "ring": "#DC2626", "icon": "#DC2626", "glow": "rgba(220, 38, 38, 0.20)", "fill": "rgba(220, 38, 38, 0.12)" },
+    "off":          { "label": "Выключено",   "ring": "#DC2626", "icon": "#DC2626", "glow": "rgba(220, 38, 38, 0.20)", "fill": "rgba(220, 38, 38, 0.12)" }
   },
 
   "font": {
@@ -146,7 +147,7 @@
     "mobileWidth": { "min": 360, "max": 440 },
     "scrollBottomPadding": 160,
     "island": {
-      "sideMargin": 24,
+      "sideMargin": 12,
       "sideMarginMobile": 14,
       "bottomMargin": 12,
       "height": 68,

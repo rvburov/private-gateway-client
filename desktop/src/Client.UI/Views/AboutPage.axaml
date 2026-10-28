@@ -183,7 +183,7 @@
                 </StackPanel>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #ChannelChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsChannelOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsChannelOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">

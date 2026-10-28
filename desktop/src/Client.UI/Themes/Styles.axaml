@@ -75,8 +75,16 @@
     <Setter Property="Background" Value="{StaticResource PgBrush.Line.Divider}" />
   </Style>
 
-  <!-- Кнопки: общий сброс фона темы Fluent, наведение — линия 8 % -->
-  <Style Selector="Button.icon, Button.plain, Button.link, Button.nav, Button.option, Button.chip">
+  <!-- Наведение и нажатие (решение 485): кнопка не заливается серым темы Fluent — фон и рамка остаются ее
+       собственными, а текст и значки, у которых нет своего цвета, становятся синими -->
+  <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+    <Setter Property="BorderBrush" Value="{Binding $parent[Button].BorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
+  </Style>
+
+  <!-- Кнопки: общий сброс фона темы Fluent -->
+  <Style Selector="Button.icon, Button.plain, Button.link, Button.nav, Button.option">
     <Setter Property="Background" Value="Transparent" />
     <Setter Property="BorderThickness" Value="0" />
     <Setter Property="Padding" Value="0" />
@@ -90,9 +98,6 @@
     <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Button}" />
     <Setter Property="HorizontalContentAlignment" Value="Center" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
-  </Style>
-  <Style Selector="Button.icon:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.plain:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.option:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource PgBrush.Line.Border}" />
   </Style>
   <Style Selector="Button.icon:pressed, Button.plain:pressed, Button.link:pressed, Button.nav:pressed, Button.option:pressed, Button.chip:pressed">
     <Setter Property="RenderTransform" Value="scale(0.98)" />
@@ -113,10 +118,6 @@
     <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
     <Setter Property="HorizontalContentAlignment" Value="Right" />
   </Style>
-  <Style Selector="Button.link:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
-  </Style>
 
   <!-- Кнопка выбора из списка (доски 5, 6, 12): белая, с рамкой и синей галочкой вниз -->
   <Style Selector="Button.select">
@@ -129,6 +130,9 @@
     <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
     <Setter Property="FontWeight" Value="Medium" />
     <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.select:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.select:pressed /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
   </Style>
 
   <!-- Небольшая кнопка в строке (доски 5, 12): белая с рамкой; soft — синяя мягкая («Обновить», «Открыть»).
@@ -156,28 +160,54 @@
     <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Line}" />
   </Style>
 
-  <Style Selector="Button.small.soft:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
-    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
-  </Style>
 
   <Style Selector="Button.option">
     <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
     <Setter Property="MinHeight" Value="{StaticResource PgLayout.TouchTarget}" />
   </Style>
-  <Style Selector="Button.option.current /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+  <!-- Выбранный пункт выпадающего списка — синим полужирным, без заливки -->
+  <Style Selector="Button.option.current">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
+    <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
+
+  <!-- Плитка проверки (главная): фон — оттенок ее цвета; при наведении и выборе — рамка того же цвета
+       (BorderBrush плитки) и фон ярче (элемент .hover внутри плитки, цвет — status.*.hover) -->
   <Style Selector="Button.chip">
     <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Button}" />
     <Setter Property="BorderThickness" Value="1.5" />
-    <Setter Property="BorderBrush" Value="Transparent" />
+    <Setter Property="Padding" Value="0" />
+    <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}" />
+          <ContentPresenter x:Name="Content" Content="{TemplateBinding Content}"
+                            ContentTemplate="{TemplateBinding ContentTemplate}" Padding="{TemplateBinding Padding}"
+                            HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                            VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          <Border x:Name="Edge" IsVisible="False" CornerRadius="{TemplateBinding CornerRadius}"
+                  BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}" />
+          <Border x:Name="Focus" IsVisible="False" CornerRadius="{TemplateBinding CornerRadius}"
+                  BorderBrush="{StaticResource PgBrush.Focus.Ring}" BorderThickness="2" />
+        </Panel>
+      </ControlTemplate>
+    </Setter>
   </Style>
-  <Style Selector="Button.chip:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Border}" />
+  <Style Selector="Button.chip Border.hover">
+    <Setter Property="IsVisible" Value="False" />
+    <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Button}" />
   </Style>
-  <Style Selector="Button.chip.selected /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
+  <Style Selector="Button.chip:pointerover Border.hover, Button.chip.selected Border.hover">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Button.chip:pointerover /template/ Border#Edge, Button.chip.selected /template/ Border#Edge">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Button.chip:focus-visible /template/ Border#Focus">
+    <Setter Property="IsVisible" Value="True" />
   </Style>
 
   <!-- Фокус с клавиатуры — рамка токена Focus.Ring, после щелчка мышью рамки нет -->
@@ -186,16 +216,13 @@
     <Setter Property="BorderThickness" Value="2" />
   </Style>
 
-  <!-- Пункт островка: иконка и подпись, активный — акцентом с заливкой иконки -->
+  <!-- Пункт островка: иконка и подпись по центру своей колонки, активный — акцентом с заливкой иконки -->
   <Style Selector="Button.nav">
+    <Setter Property="HorizontalAlignment" Value="Stretch" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
     <Setter Property="FontSize" Value="{StaticResource PgFontSize.Nav}" />
     <Setter Property="FontWeight" Value="{StaticResource PgFontWeight.Nav}" />
     <Setter Property="VerticalContentAlignment" Value="Bottom" />
-  </Style>
-  <Style Selector="Button.nav:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="Transparent" />
-    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
   </Style>
   <Style Selector="Button.nav.active">
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
@@ -208,19 +235,41 @@
     <Setter Property="Fill" Value="{StaticResource PgBrush.Accent.NavActiveFill}" />
   </Style>
 
-  <!-- Кнопка-щит: белый круг, кольцо цвета состояния -->
+  <!-- Кнопка-щит: белый круг, кольцо цвета состояния. Своя разметка, без состояний темы Fluent: при
+       наведении, нажатии и фокусе кольцо и знак остаются цвета состояния, а круг внутри заливается тем же
+       цветом, прозрачным (элемент .fill внутри кнопки, цвет — state.*.fill) -->
   <Style Selector="Button.power">
     <Setter Property="Width" Value="{StaticResource PgLayout.PowerButton.Size}" />
     <Setter Property="Height" Value="{StaticResource PgLayout.PowerButton.Size}" />
     <Setter Property="Padding" Value="0" />
     <Setter Property="CornerRadius" Value="40" />
     <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
-    <Setter Property="HorizontalContentAlignment" Value="Center" />
-    <Setter Property="VerticalContentAlignment" Value="Center" />
+    <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+    <Setter Property="VerticalContentAlignment" Value="Stretch" />
     <Setter Property="Cursor" Value="Hand" />
+    <Setter Property="Template">
+      <ControlTemplate>
+        <Panel>
+          <Border x:Name="Focus" IsVisible="False" Margin="-5" CornerRadius="45" BorderThickness="2"
+                  BorderBrush="{StaticResource PgBrush.Focus.Ring}" />
+          <Border Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}"
+                  BorderThickness="{TemplateBinding BorderThickness}" CornerRadius="{TemplateBinding CornerRadius}">
+            <ContentPresenter x:Name="Content" Content="{TemplateBinding Content}" Padding="{TemplateBinding Padding}"
+                              HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                              VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+          </Border>
+        </Panel>
+      </ControlTemplate>
+    </Setter>
   </Style>
-  <Style Selector="Button.power:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
+  <Style Selector="Button.power Ellipse.fill">
+    <Setter Property="IsVisible" Value="False" />
+  </Style>
+  <Style Selector="Button.power:pointerover Ellipse.fill, Button.power:pressed Ellipse.fill, Button.power:focus-visible Ellipse.fill">
+    <Setter Property="IsVisible" Value="True" />
+  </Style>
+  <Style Selector="Button.power:focus-visible /template/ Border#Focus">
+    <Setter Property="IsVisible" Value="True" />
   </Style>
   <Style Selector="Button.power:pressed">
     <Setter Property="RenderTransform" Value="scale(0.96)" />
@@ -295,6 +344,9 @@
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>
+  <Style Selector="RadioButton.segment:pointerover:not(:checked)">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
+  </Style>
   <Style Selector="RadioButton.segment:checked /template/ Border#Plate">
     <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
     <Setter Property="BoxShadow" Value="{StaticResource PgShadow.Card}" />
@@ -347,8 +399,11 @@
       </ControlTemplate>
     </Setter>
   </Style>
-  <Style Selector="CheckBox.check:pointerover /template/ Border#Plate">
-    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
+  <Style Selector="CheckBox.check:pointerover">
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Base}" />
+  </Style>
+  <Style Selector="CheckBox.check:pointerover /template/ Border#Box">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
   </Style>
   <Style Selector="CheckBox.check:focus-visible /template/ Border#Plate">
     <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Focus.Ring}" />
@@ -377,7 +432,7 @@
     <Setter Property="FontWeight" Value="{StaticResource PgFontWeight.BodyStrong}" />
     <Setter Property="BorderThickness" Value="0" />
   </Style>
-  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+  <Style Selector="Button.primary:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.primary:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Text}" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Surface.Solid}" />
   </Style>
@@ -389,9 +444,7 @@
     <Setter Property="Padding" Value="14,0" />
   </Style>
   <Style Selector="Button.secondary:pointerover /template/ ContentPresenter#PART_ContentPresenter">
-    <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
-    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Control.TrackOff}" />
-    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Primary}" />
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Accent.Base}" />
   </Style>
   <Style Selector="Button.primary:pressed, Button.secondary:pressed">
     <Setter Property="RenderTransform" Value="scale(0.98)" />
@@ -412,14 +465,14 @@
   <Style Selector="Button.primary.danger">
     <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Base}" />
   </Style>
-  <Style Selector="Button.primary.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+  <Style Selector="Button.primary.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.primary.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource PgBrush.Status.Danger.Text}" />
   </Style>
   <Style Selector="Button.secondary.danger">
     <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Danger.Line}" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
   </Style>
-  <Style Selector="Button.secondary.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+  <Style Selector="Button.secondary.danger:pointerover /template/ ContentPresenter#PART_ContentPresenter, Button.secondary.danger:pressed /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Danger.Base}" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Status.Danger.Text}" />
   </Style>

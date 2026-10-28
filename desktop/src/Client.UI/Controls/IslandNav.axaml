@@ -69,10 +69,16 @@
               Command="{Binding Protection.ToggleCommand}"
               ToolTip.Tip="{Binding Protection.ActionText}"
               AutomationProperties.Name="{Binding Protection.ActionText}">
-        <c:Icon Data="{StaticResource Icon.Shield}"
-                Detail="{Binding Protection.Mark, Converter={StaticResource IconKey}}"
-                Width="{StaticResource PgLayout.PowerButton.IconSize}"
-                Height="{StaticResource PgLayout.PowerButton.IconSize}" StrokeThickness="1.9" />
+        <Panel>
+          <!-- При наведении, нажатии и фокусе круг внутри кольца — цветом состояния, прозрачным (Styles.axaml) -->
+          <Ellipse x:Name="PowerFill" Classes="fill"
+                   Fill="{Binding Protection.Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Fill}" />
+          <c:Icon Data="{StaticResource Icon.Shield}"
+                  Detail="{Binding Protection.Mark, Converter={StaticResource IconKey}}"
+                  Width="{StaticResource PgLayout.PowerButton.IconSize}"
+                  Height="{StaticResource PgLayout.PowerButton.IconSize}" StrokeThickness="1.9"
+                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+        </Panel>
       </Button>
       <Arc Classes="spin" IsVisible="{Binding Protection.IsBusy}" IsHitTestVisible="False"
            StartAngle="-90" SweepAngle="100"

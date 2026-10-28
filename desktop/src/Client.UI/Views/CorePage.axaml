@@ -71,7 +71,7 @@
                 </Grid>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #LogChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsLogOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsLogOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
@@ -106,7 +106,7 @@
                 </Grid>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #StackChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsStackOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsStackOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
@@ -136,7 +136,7 @@
                 </Grid>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #MtuChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsMtuOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsMtuOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
@@ -189,7 +189,7 @@
                 </Grid>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #FingerprintChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsFingerprintOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsFingerprintOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
@@ -237,7 +237,7 @@
                 </Grid>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #TimeoutChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsTimeoutOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsTimeoutOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
@@ -267,7 +267,7 @@
                 </Grid>
               </Button>
               <Popup Grid.Column="1" PlacementTarget="{Binding #ReconnectChoice}" Placement="BottomEdgeAlignedRight"
-                     IsOpen="{Binding IsReconnectOpen, Mode=TwoWay}" IsLightDismissEnabled="True" MinWidth="180">
+                     IsOpen="{Binding IsReconnectOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
                         CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">

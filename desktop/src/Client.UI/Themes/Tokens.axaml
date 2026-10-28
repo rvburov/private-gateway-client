@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: f6c752d024edd73e736e231200ed67ec50210760066b2d6e96d3a313019d7bf6
+  tokens-sha256: aac55c3e719853f8118064b86ec05affa489a791d77613aa1d809e61a092ad2b
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -41,6 +41,8 @@
   <SolidColorBrush x:Key="PgBrush.Accent.NavActiveFill" Color="{StaticResource PgColor.Accent.NavActiveFill}" />
   <Color x:Key="PgColor.Accent.Line">#292563EB</Color>
   <SolidColorBrush x:Key="PgBrush.Accent.Line" Color="{StaticResource PgColor.Accent.Line}" />
+  <Color x:Key="PgColor.Accent.Hover">#2E2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.Accent.Hover" Color="{StaticResource PgColor.Accent.Hover}" />
   <Color x:Key="PgColor.Focus.Ring">#FF93C5FD</Color>
   <SolidColorBrush x:Key="PgBrush.Focus.Ring" Color="{StaticResource PgColor.Focus.Ring}" />
   <Color x:Key="PgColor.Control.TrackOff">#FFCBD5E1</Color>
@@ -77,6 +79,8 @@
   <SolidColorBrush x:Key="PgBrush.Status.Success.Badge" Color="{StaticResource PgColor.Status.Success.Badge}" />
   <Color x:Key="PgColor.Status.Success.Line">#5916A34A</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Success.Line" Color="{StaticResource PgColor.Status.Success.Line}" />
+  <Color x:Key="PgColor.Status.Success.Hover">#3816A34A</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Success.Hover" Color="{StaticResource PgColor.Status.Success.Hover}" />
   <Color x:Key="PgColor.Status.Warning.Base">#FFEA580C</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Warning.Base" Color="{StaticResource PgColor.Status.Warning.Base}" />
   <Color x:Key="PgColor.Status.Warning.Text">#FFC2410C</Color>
@@ -87,6 +91,8 @@
   <SolidColorBrush x:Key="PgBrush.Status.Warning.Badge" Color="{StaticResource PgColor.Status.Warning.Badge}" />
   <Color x:Key="PgColor.Status.Warning.Line">#2EEA580C</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Warning.Line" Color="{StaticResource PgColor.Status.Warning.Line}" />
+  <Color x:Key="PgColor.Status.Warning.Hover">#38EA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Warning.Hover" Color="{StaticResource PgColor.Status.Warning.Hover}" />
   <Color x:Key="PgColor.Status.Caution.Base">#FFF59E0B</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Caution.Base" Color="{StaticResource PgColor.Status.Caution.Base}" />
   <Color x:Key="PgColor.Status.Caution.Text">#FFB45309</Color>
@@ -97,6 +103,8 @@
   <SolidColorBrush x:Key="PgBrush.Status.Caution.Badge" Color="{StaticResource PgColor.Status.Caution.Badge}" />
   <Color x:Key="PgColor.Status.Caution.Line">#52F59E0B</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Caution.Line" Color="{StaticResource PgColor.Status.Caution.Line}" />
+  <Color x:Key="PgColor.Status.Caution.Hover">#42F59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Caution.Hover" Color="{StaticResource PgColor.Status.Caution.Hover}" />
   <Color x:Key="PgColor.Status.Danger.Base">#FFDC2626</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Base" Color="{StaticResource PgColor.Status.Danger.Base}" />
   <Color x:Key="PgColor.Status.Danger.Text">#FFB91C1C</Color>
@@ -107,6 +115,8 @@
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Badge" Color="{StaticResource PgColor.Status.Danger.Badge}" />
   <Color x:Key="PgColor.Status.Danger.Line">#59DC2626</Color>
   <SolidColorBrush x:Key="PgBrush.Status.Danger.Line" Color="{StaticResource PgColor.Status.Danger.Line}" />
+  <Color x:Key="PgColor.Status.Danger.Hover">#2EDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.Status.Danger.Hover" Color="{StaticResource PgColor.Status.Danger.Hover}" />
 
   <!-- Состояния защиты -->
   <Color x:Key="PgColor.State.Connected.Ring">#FF16A34A</Color>
@@ -115,6 +125,8 @@
   <SolidColorBrush x:Key="PgBrush.State.Connected.Icon" Color="{StaticResource PgColor.State.Connected.Icon}" />
   <Color x:Key="PgColor.State.Connected.Glow">#4016A34A</Color>
   <SolidColorBrush x:Key="PgBrush.State.Connected.Glow" Color="{StaticResource PgColor.State.Connected.Glow}" />
+  <Color x:Key="PgColor.State.Connected.Fill">#2416A34A</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connected.Fill" Color="{StaticResource PgColor.State.Connected.Fill}" />
   <Color x:Key="PgColor.State.Connecting.Ring">#FFBFDBFE</Color>
   <SolidColorBrush x:Key="PgBrush.State.Connecting.Ring" Color="{StaticResource PgColor.State.Connecting.Ring}" />
   <Color x:Key="PgColor.State.Connecting.Icon">#FF2563EB</Color>
@@ -123,6 +135,8 @@
   <SolidColorBrush x:Key="PgBrush.State.Connecting.Glow" Color="{StaticResource PgColor.State.Connecting.Glow}" />
   <Color x:Key="PgColor.State.Connecting.Spinner">#FF2563EB</Color>
   <SolidColorBrush x:Key="PgBrush.State.Connecting.Spinner" Color="{StaticResource PgColor.State.Connecting.Spinner}" />
+  <Color x:Key="PgColor.State.Connecting.Fill">#1F2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Connecting.Fill" Color="{StaticResource PgColor.State.Connecting.Fill}" />
   <Color x:Key="PgColor.State.Reconnecting.Ring">#FFBFDBFE</Color>
   <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Ring" Color="{StaticResource PgColor.State.Reconnecting.Ring}" />
   <Color x:Key="PgColor.State.Reconnecting.Icon">#FF2563EB</Color>
@@ -131,30 +145,40 @@
   <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Glow" Color="{StaticResource PgColor.State.Reconnecting.Glow}" />
   <Color x:Key="PgColor.State.Reconnecting.Spinner">#FF2563EB</Color>
   <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Spinner" Color="{StaticResource PgColor.State.Reconnecting.Spinner}" />
+  <Color x:Key="PgColor.State.Reconnecting.Fill">#1F2563EB</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Reconnecting.Fill" Color="{StaticResource PgColor.State.Reconnecting.Fill}" />
   <Color x:Key="PgColor.State.Blocked.Ring">#FFEA580C</Color>
   <SolidColorBrush x:Key="PgBrush.State.Blocked.Ring" Color="{StaticResource PgColor.State.Blocked.Ring}" />
   <Color x:Key="PgColor.State.Blocked.Icon">#FFC2410C</Color>
   <SolidColorBrush x:Key="PgBrush.State.Blocked.Icon" Color="{StaticResource PgColor.State.Blocked.Icon}" />
   <Color x:Key="PgColor.State.Blocked.Glow">#38EA580C</Color>
   <SolidColorBrush x:Key="PgBrush.State.Blocked.Glow" Color="{StaticResource PgColor.State.Blocked.Glow}" />
+  <Color x:Key="PgColor.State.Blocked.Fill">#24EA580C</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Blocked.Fill" Color="{StaticResource PgColor.State.Blocked.Fill}" />
   <Color x:Key="PgColor.State.Partial.Ring">#FFF59E0B</Color>
   <SolidColorBrush x:Key="PgBrush.State.Partial.Ring" Color="{StaticResource PgColor.State.Partial.Ring}" />
   <Color x:Key="PgColor.State.Partial.Icon">#FFB45309</Color>
   <SolidColorBrush x:Key="PgBrush.State.Partial.Icon" Color="{StaticResource PgColor.State.Partial.Icon}" />
   <Color x:Key="PgColor.State.Partial.Glow">#47F59E0B</Color>
   <SolidColorBrush x:Key="PgBrush.State.Partial.Glow" Color="{StaticResource PgColor.State.Partial.Glow}" />
+  <Color x:Key="PgColor.State.Partial.Fill">#29F59E0B</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Partial.Fill" Color="{StaticResource PgColor.State.Partial.Fill}" />
   <Color x:Key="PgColor.State.Error.Ring">#FFDC2626</Color>
   <SolidColorBrush x:Key="PgBrush.State.Error.Ring" Color="{StaticResource PgColor.State.Error.Ring}" />
   <Color x:Key="PgColor.State.Error.Icon">#FFDC2626</Color>
   <SolidColorBrush x:Key="PgBrush.State.Error.Icon" Color="{StaticResource PgColor.State.Error.Icon}" />
   <Color x:Key="PgColor.State.Error.Glow">#33DC2626</Color>
   <SolidColorBrush x:Key="PgBrush.State.Error.Glow" Color="{StaticResource PgColor.State.Error.Glow}" />
+  <Color x:Key="PgColor.State.Error.Fill">#1FDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Error.Fill" Color="{StaticResource PgColor.State.Error.Fill}" />
   <Color x:Key="PgColor.State.Off.Ring">#FFDC2626</Color>
   <SolidColorBrush x:Key="PgBrush.State.Off.Ring" Color="{StaticResource PgColor.State.Off.Ring}" />
   <Color x:Key="PgColor.State.Off.Icon">#FFDC2626</Color>
   <SolidColorBrush x:Key="PgBrush.State.Off.Icon" Color="{StaticResource PgColor.State.Off.Icon}" />
   <Color x:Key="PgColor.State.Off.Glow">#33DC2626</Color>
   <SolidColorBrush x:Key="PgBrush.State.Off.Glow" Color="{StaticResource PgColor.State.Off.Glow}" />
+  <Color x:Key="PgColor.State.Off.Fill">#1FDC2626</Color>
+  <SolidColorBrush x:Key="PgBrush.State.Off.Fill" Color="{StaticResource PgColor.State.Off.Fill}" />
 
   <!-- Стекло -->
   <Color x:Key="PgColor.Glass.Fill">#B3F6F8FC</Color>
@@ -246,7 +270,7 @@
   <x:Double x:Key="PgLayout.MobileWidth.Min">360</x:Double>
   <x:Double x:Key="PgLayout.MobileWidth.Max">440</x:Double>
   <x:Double x:Key="PgLayout.ScrollBottomPadding">160</x:Double>
-  <x:Double x:Key="PgLayout.Island.SideMargin">24</x:Double>
+  <x:Double x:Key="PgLayout.Island.SideMargin">12</x:Double>
   <x:Double x:Key="PgLayout.Island.SideMarginMobile">14</x:Double>
   <x:Double x:Key="PgLayout.Island.BottomMargin">12</x:Double>
   <x:Double x:Key="PgLayout.Island.Height">68</x:Double>

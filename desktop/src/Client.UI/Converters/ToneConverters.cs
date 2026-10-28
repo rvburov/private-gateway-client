@@ -19,7 +19,8 @@ internal static class ThemeResources
 
 /// <summary>
 /// Цвет состояния защиты: <c>{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Ring}</c>.
-/// Части: Ring (кольцо), Icon (знак и заголовок), Tint (фон плашки), Glow (тень-свечение кнопки).
+/// Части: Ring (кольцо), Icon (знак и заголовок), Tint (фон плашки), Fill (круг кнопки при наведении),
+/// Glow (тень-свечение кнопки).
 /// </summary>
 public sealed class ToneBrushConverter : IValueConverter
 {
@@ -34,6 +35,7 @@ public sealed class ToneBrushConverter : IValueConverter
         {
             "Ring" => ThemeResources.Get($"PgBrush.State.{tone}.Ring"),
             "Icon" => ThemeResources.Get($"PgBrush.State.{tone}.Icon"),
+            "Fill" => ThemeResources.Get($"PgBrush.State.{tone}.Fill"),
             "Tint" => ThemeResources.Get(TintKey(tone)),
             "Glow" => new BoxShadows(new BoxShadow
             {
@@ -41,7 +43,7 @@ public sealed class ToneBrushConverter : IValueConverter
                 Blur = 12,
                 Color = (Color)ThemeResources.Get($"PgColor.State.{tone}.Glow"),
             }),
-            _ => throw new ArgumentOutOfRangeException(nameof(parameter), parameter, "Ring, Icon, Tint или Glow"),
+            _ => throw new ArgumentOutOfRangeException(nameof(parameter), parameter, "Ring, Icon, Tint, Fill или Glow"),
         };
     }
 
@@ -58,7 +60,7 @@ public sealed class ToneBrushConverter : IValueConverter
     };
 }
 
-/// <summary>Цвета чипа проверки: Tint (фон), Text (подпись), Dot (кружок).</summary>
+/// <summary>Цвета чипа проверки: Tint (фон), Hover (фон при наведении и выборе), Text (подпись), Dot (кружок и рамка).</summary>
 public sealed class CheckBrushConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -79,9 +81,10 @@ public sealed class CheckBrushConverter : IValueConverter
         return (parameter as string) switch
         {
             "Tint" => ThemeResources.Get($"PgBrush.{palette}.Tint"),
+            "Hover" => ThemeResources.Get($"PgBrush.{palette}.Hover"),
             "Text" => ThemeResources.Get(palette == "Accent" ? "PgBrush.Accent.Text" : $"PgBrush.{palette}.Text"),
             "Dot" => ThemeResources.Get(palette == "Accent" ? "PgBrush.Accent.Base" : $"PgBrush.{palette}.Base"),
-            _ => throw new ArgumentOutOfRangeException(nameof(parameter), parameter, "Tint, Text или Dot"),
+            _ => throw new ArgumentOutOfRangeException(nameof(parameter), parameter, "Tint, Hover, Text или Dot"),
         };
     }
 
