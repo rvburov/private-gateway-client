@@ -1,0 +1,1 @@
+hysteria2://pw-hy2-2@203.0.113.58:8443?sni=example.com&insecure=1&pinSHA256=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned%20Hy2

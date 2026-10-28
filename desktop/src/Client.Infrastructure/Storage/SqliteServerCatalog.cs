@@ -209,10 +209,13 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
 
         var added = 0;
         var duplicates = 0;
+        var renewed = false;
         lock (_gate)
         {
             var known = Known(servers);
+            var stored = StoredByKey(servers);
             var fresh = new List<ServerDefinition>();
+            var again = new Dictionary<string, ServerDefinition>(StringComparer.Ordinal);
             foreach (var server in servers)
             {
                 if (known.Add(Key(server)))
@@ -222,8 +225,14 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 else
                 {
                     duplicates++;
+                    if (stored.TryGetValue(Key(server), out var id))
+                    {
+                        again.TryAdd(id, server);
+                    }
                 }
             }
+
+            renewed = RenewSecurity(again);
 
             if (fresh.Count > 0)
             {
@@ -294,12 +303,48 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             }
         }
 
-        if (added > 0)
+        if (added > 0 || renewed)
         {
             Changed?.Invoke(this, EventArgs.Empty);
         }
 
         return new ImportOutcome(added, duplicates);
+    }
+
+    /// <summary>
+    /// Тот же сервер импортирован снова (решение 484): защита — закрепленный сертификат, отпечаток, ALPN — берется из новой ссылки, а
+    /// название, группа, избранное и выбор остаются. Так сервер с самоподписанным сертификатом, сохраненный до закрепления, чинится
+    /// той же ссылкой с «pcs», а смена сертификата — новой. true — хоть один сервер изменился.
+    /// </summary>
+    private bool RenewSecurity(Dictionary<string, ServerDefinition> again)
+    {
+        var changes = new List<(string Id, Stored Definition)>();
+        foreach (var (id, server) in again)
+        {
+            var definition = Scalar("SELECT definition FROM servers WHERE id = $id", ("$id", id)) as string;
+            var stored = definition is null ? null : JsonSerializer.Deserialize<Stored>(definition, Json);
+            if (stored is not null
+                && JsonSerializer.Serialize(stored.Security, Json) != JsonSerializer.Serialize(server.Security, Json))
+            {
+                changes.Add((id, stored with { Security = server.Security }));
+            }
+        }
+
+        if (changes.Count == 0)
+        {
+            return false;
+        }
+
+        using var connection = _database.Open();
+        using var transaction = connection.BeginTransaction();
+        foreach (var (id, definition) in changes)
+        {
+            Run(connection, transaction, "UPDATE servers SET definition = $definition WHERE id = $id",
+                ("$definition", JsonSerializer.Serialize(definition, Json)), ("$id", id));
+        }
+
+        transaction.Commit();
+        return true;
     }
 
     public bool Contains(string serverId)
@@ -885,6 +930,20 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
 
         return known;
+    }
+
+    /// <summary>Сохраненные серверы по ключу (<see cref="Key"/>) среди тех, чей адрес есть в <paramref name="candidates"/>: ключ — номер.</summary>
+    private Dictionary<string, string> StoredByKey(IReadOnlyList<ServerDefinition> candidates)
+    {
+        var endpoints = candidates.Select(Endpoint).ToHashSet(StringComparer.Ordinal);
+        var stored = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (var row in Rows.Where(r => endpoints.Contains(r.Endpoint)))
+        {
+            var secret = _secrets.IsAvailable ? _secrets.Read(SecretKey(row.Profile.Id)) : null;
+            stored.TryAdd(row.Endpoint + "|" + secret, row.Profile.Id);
+        }
+
+        return stored;
     }
 
     /// <summary>Ключ сервера для поиска дублей: адрес и данные доступа.</summary>

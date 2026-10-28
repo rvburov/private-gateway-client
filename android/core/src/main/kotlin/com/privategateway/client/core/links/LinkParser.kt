@@ -290,7 +290,7 @@ object LinkParser {
     private fun hysteria2(parts: LinkParts): LinkResult {
         val endpoint = endpoint(parts)
         val security = security(parts.query, TransportSecurity.Tls)
-        firstError(endpoint.error, security.error)?.let { return fail(it) }
+        firstError(endpoint.error, security.error, unpinned(parts.query))?.let { return fail(it) }
 
         val obfs = query(parts.query, "obfs")
         val obfsPassword = query(parts.query, "obfs-password")
@@ -313,7 +313,7 @@ object LinkParser {
     private fun tuic(parts: LinkParts): LinkResult {
         val endpoint = endpoint(parts)
         val security = security(parts.query, TransportSecurity.Tls)
-        firstError(endpoint.error, security.error)?.let { return fail(it) }
+        firstError(endpoint.error, security.error, unpinned(parts.query))?.let { return fail(it) }
 
         val userInfo = parts.userInfo
         val colon = userInfo.indexOf(':')
@@ -499,6 +499,13 @@ object LinkParser {
         // REALITY без открытого ключа сервера не подключится.
         return Checked(security, if (reality && security.realityPublicKey == null) ImportErrors.NO_CREDENTIALS else null)
     }
+
+    /**
+     * Hysteria2 и TUIC у десктопа идут через ретранслятор sing-box, а закрепить сертификат по SHA-256 он не умеет: «pcs», «vcn»
+     * и «pinSHA256» были бы молча отброшены. Такая ссылка — ошибка на всех платформах, как у десктопа (решение 483).
+     */
+    private fun unpinned(query: Query): String? =
+        if ((query(query, "pcs") ?: query(query, "vcn") ?: query(query, "pinSHA256")) != null) ImportErrors.UNSUPPORTED_PARAMETER else null
 
     /**
      * «pcs» — SHA-256 сертификатов через запятую, как у Xray: 64 знака hex, двоеточия OpenSSL допустимы. Результат — строчные

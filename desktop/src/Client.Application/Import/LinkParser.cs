@@ -299,7 +299,8 @@ public static class LinkParser
 
     private static LinkResult Hysteria2(LinkParts parts)
     {
-        if (FirstError(Endpoint(parts, out var host, out var port), Security(parts.Query, TransportSecurity.Tls, out var security)) is { } error)
+        if (FirstError(Endpoint(parts, out var host, out var port), Security(parts.Query, TransportSecurity.Tls, out var security), Unpinned(parts.Query))
+            is { } error)
         {
             return Fail(error);
         }
@@ -321,7 +322,8 @@ public static class LinkParser
 
     private static LinkResult Tuic(LinkParts parts)
     {
-        if (FirstError(Endpoint(parts, out var host, out var port), Security(parts.Query, TransportSecurity.Tls, out var security)) is { } error)
+        if (FirstError(Endpoint(parts, out var host, out var port), Security(parts.Query, TransportSecurity.Tls, out var security), Unpinned(parts.Query))
+            is { } error)
         {
             return Fail(error);
         }
@@ -518,6 +520,14 @@ public static class LinkParser
         // REALITY без открытого ключа сервера не подключится.
         return known == TransportSecurity.Reality && security.RealityPublicKey is null ? ImportErrors.NoCredentials : null;
     }
+
+    /// <summary>
+    /// Hysteria2 и TUIC идут через ретранслятор sing-box, а закрепить сертификат по SHA-256 он не умеет: «pcs», «vcn» и
+    /// «pinSHA256» (так закрепляет ссылка Hysteria2) были бы молча отброшены, а с «insecure» сертификат не проверялся бы
+    /// совсем. Поэтому такая ссылка — ошибка (решение 483).
+    /// </summary>
+    private static string? Unpinned(Dictionary<string, string> query) =>
+        (Query(query, "pcs") ?? Query(query, "vcn") ?? Query(query, "pinSHA256")) is null ? null : ImportErrors.UnsupportedParameter;
 
     /// <summary>
     /// «pcs» — SHA-256 сертификатов через запятую, как у Xray: 64 знака hex, двоеточия OpenSSL допустимы. Результат — строчные

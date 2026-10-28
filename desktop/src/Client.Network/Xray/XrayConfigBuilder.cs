@@ -40,20 +40,22 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
 }
 
 /// <summary>
-/// Связь Xray с TUN в режиме VPN: вход Shadowsocks 2022 на 127.0.0.1:<paramref name="Port"/> с ключом на это подключение
-/// (<paramref name="Key"/> — 16 случайных байт в base64) — другие программы машины в него не войдут; UDP идет датаграммами на
-/// тот же порт (решение 481). Выход — к <paramref name="ServerAddress"/>, адресу сервера, который служба разрешила заранее и
+/// Связь Xray с TUN в режиме VPN: вход Shadowsocks на 127.0.0.1:<paramref name="Port"/> с паролем на это подключение
+/// (<paramref name="Password"/> — 128 случайных бит) — другие программы машины в него не войдут; UDP идет датаграммами на тот
+/// же порт (решение 481). Выход — к <paramref name="ServerAddress"/>, адресу сервера, который служба разрешила заранее и
 /// вывела из маршрутов TUN (иначе соединение с сервером ушло бы в сам туннель). Имя сервера для TLS и заголовков остается
-/// прежним. <paramref name="BypassPort"/> — вход с тем же ключом для программ мимо туннеля, пришедших на адрес FakeDNS
+/// прежним. <paramref name="BypassPort"/> — вход с тем же паролем для программ мимо туннеля, пришедших на адрес FakeDNS
 /// (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>): Xray узнает имя и соединяет напрямую; 0 — входа нет.
 /// </summary>
-public sealed record TunLink(int Port, string Key, string ServerAddress, int BypassPort = 0)
+public sealed record TunLink(int Port, string Password, string ServerAddress, int BypassPort = 0)
 {
     /// <summary>
-    /// Шифр связи: Shadowsocks 2022 с AES-128-GCM. SOCKS5 Xray-core 26.x для UDP открывает на каждый UDP ASSOCIATE свой порт и
+    /// Шифр связи: Shadowsocks AEAD с AES-128-GCM. SOCKS5 Xray-core 26.x для UDP открывает на каждый UDP ASSOCIATE свой порт и
     /// ждет датаграммы только с адреса из запроса, а sing-box пишет в запрос адрес назначения — UDP через туннель пропадал.
+    /// Не Shadowsocks 2022: XUDP GlobalID (тот же внешний порт UDP у сервера после переподключения — игры, звонки) Xray дает
+    /// только входам dokodemo-door, socks, shadowsocks и tun, а у входа 2022 имя другое.
     /// </summary>
-    public const string Method = "2022-blake3-aes-128-gcm";
+    public const string Method = "aes-128-gcm";
 }
 
 /// <summary>
@@ -176,8 +178,8 @@ public static class XrayConfigBuilder
         if (tun is not null)
         {
             // Запросы не A и AAAA (PTR, SRV, MX, TXT, HTTPS) — сразу отказ (REFUSED): по умолчанию Xray их молча бросает, и
-            // программа ждет тайм-аут DNS ОС на каждый.
-            outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns", ["settings"] = new JsonObject { ["nonIPQuery"] = "reject" } });
+            // программа ждет тайм-аут DNS ОС на каждый. Правилами `rules`: прежний «nonIPQuery» Xray-core 26.x объявил к удалению.
+            outbounds.Add(new JsonObject { ["tag"] = DnsTag, ["protocol"] = "dns", ["settings"] = new JsonObject { ["rules"] = DnsRules() } });
         }
 
         var inbounds = new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun, InboundTag, tun.Port) };
@@ -323,6 +325,11 @@ public static class XrayConfigBuilder
         },
     };
 
+    /// <summary>Выход DNS: A и AAAA (типы 1 и 28) отвечает сам по DNS этого конфига, остальное — отказ REFUSED (код 5).</summary>
+    private static JsonArray DnsRules() => new(
+        new JsonObject { ["action"] = "hijack", ["qType"] = "1,28" },
+        new JsonObject { ["action"] = "return", ["rCode"] = 5 });
+
     /// <summary>
     /// Выходу freedom можно все: куда трафик идет, решают правила этого конфига. Xray-core 26.x у трафика входа Shadowsocks (связь с
     /// TUN) по умолчанию закрывает частные адреса — разрешенная локальная сеть и сервер в ней иначе были бы недоступны.
@@ -355,7 +362,7 @@ public static class XrayConfigBuilder
         ["settings"] = new JsonObject
         {
             ["method"] = TunLink.Method,
-            ["password"] = tun.Key,
+            ["password"] = tun.Password,
             ["network"] = "tcp,udp",
         },
         ["sniffing"] = TunSniffing(request),

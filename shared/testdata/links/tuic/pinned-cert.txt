@@ -1,0 +1,1 @@
+tuic://11111111-2222-3333-4444-555555555555:pw-tuic-2@203.0.113.59:443?sni=example.com&congestion_control=bbr&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned%20TUIC

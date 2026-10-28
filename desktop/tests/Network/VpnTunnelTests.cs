@@ -102,10 +102,12 @@ public sealed class VpnTunnelTests
             TimeProvider.System, netns.Path, output.Add, cancellationToken: Ct);
 
         // Этот адрес sing-box прописывает ОС: Windows — DNS адаптера, Linux — systemd-resolved. Первый же запрос после подъема
-        // доходит: UDP от sing-box к Xray — датаграммы Shadowsocks 2022 на порт входа, без UDP ASSOCIATE (решение 481).
+        // доходит: UDP от sing-box к Xray — датаграммы Shadowsocks на порт входа, без UDP ASSOCIATE (решение 481).
         (await output.TraceAsync(() => netns.ResolveAsync("example.com", IPAddress.Parse(SingBoxConfigBuilder.TunDns), tcp: tcp)))
             .ShouldBe("203.0.113.7", "DNS ОС отвечает Xray через сервер, а не sing-box своим DNS мимо туннеля");
         dns.Queries.ShouldContain("example.com");
+        output.Lines.ShouldNotContain(line => line.Contains("Shadowsocks (with no Forward Secrecy", StringComparison.Ordinal),
+            "совет Xray про вход связи с TUN — не в журнал пользователя");
     }
 
     /// <summary>
@@ -270,6 +272,17 @@ public sealed class VpnTunnelTests
         VpnTunnel.XrayStarted(line).ShouldBe(started);
     }
 
+    [Theory]
+    [InlineData("2026/10/28 16:50:54.289315 [Warning] common/errors: The feature Shadowsocks (with no Forward Secrecy, etc.) is deprecated, "
+        + "not recommended for using and might be removed. Please migrate to VLESS Encryption as soon as possible.", true)]
+    [InlineData("2026/10/28 16:50:54.289315 [Warning] common/errors: The feature WebSocket transport (with ALPN http/1.1, etc.) is deprecated, "
+        + "not recommended for using and might be removed. Please migrate to XHTTP H2 & H3 as soon as possible.", false)]
+    [InlineData("2026/10/28 16:50:54.413018 [Warning] core: Xray 26.10.21 started", false)]
+    public void Shadowsocks_notice_of_the_tun_link_stays_out_of_the_journal(string line, bool hidden)
+    {
+        VpnTunnel.LinkNotice(line).ShouldBe(hidden);
+    }
+
     [Fact]
     public async Task Xray_that_dies_at_start_gives_no_tunnel()
     {
@@ -288,15 +301,14 @@ public sealed class VpnTunnelTests
     }
 
     [Fact]
-    public void Each_connection_gets_its_own_port_and_key()
+    public void Each_connection_gets_its_own_port_and_password()
     {
         var first = VpnTunnel.NewLink(IPAddress.Parse("198.51.100.20"));
         var second = VpnTunnel.NewLink(IPAddress.Parse("198.51.100.20"));
 
         first.ServerAddress.ShouldBe("198.51.100.20");
-        new[] { first.Key, second.Key }.ShouldAllBe(k => Convert.FromBase64String(k).Length == 16,
-            "ключ Shadowsocks 2022 с AES-128 — 16 байт, 128 случайных бит: не угадать");
-        first.Key.ShouldNotBe(second.Key);
+        new[] { first.Password, second.Password }.ShouldAllBe(s => s.Length == 32 && s.All(Uri.IsHexDigit), "128 случайных бит — пароль не угадать");
+        first.Password.ShouldNotBe(second.Password);
         first.Port.ShouldBeGreaterThan(0);
     }
 

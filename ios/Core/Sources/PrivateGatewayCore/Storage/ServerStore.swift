@@ -180,20 +180,41 @@ public actor ServerStore {
         var state = try read()
         let groupName = group?.trimmingCharacters(in: .whitespacesAndNewlines)
         let named = groupName.flatMap { $0.isEmpty ? nil : $0 }
-        var known = Set(try state.servers.compactMap { try open($0) }.map(ServerKeys.key))
+        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484).
+        var stored: [String: (id: String, server: ServerDefinition)] = [:]
+        for record in state.servers {
+            if let server = try open(record), stored[ServerKeys.key(server)] == nil {
+                stored[ServerKeys.key(server)] = (record.id, server)
+            }
+        }
+
+        var known = Set(stored.keys)
         var position = state.servers.map(\.position).max() ?? -1
         let now = clock()
         let groupId = named.map { _ in newId() }
         var fresh: [(ServerRecord, ServerDefinition)] = []
+        var renewed: [String: ServerDefinition] = [:]
         var duplicates = 0
         for server in servers {
-            if !known.insert(ServerKeys.key(server)).inserted {
+            let key = ServerKeys.key(server)
+            if !known.insert(key).inserted {
                 duplicates += 1
+                // Название, группа, избранное — прежние; защита (закрепленный сертификат, отпечаток, ALPN) — из новой ссылки.
+                if let saved = stored[key], saved.server.security != server.security, renewed[saved.id] == nil {
+                    var updated = saved.server
+                    updated.security = server.security
+                    renewed[saved.id] = updated
+                }
+
                 continue
             }
 
             position += 1
             fresh.append((record(server, id: newId(), position: position, now: now, group: groupId), server))
+        }
+
+        for (id, server) in renewed {
+            try vault.store(LinkWriter.write(server), for: Self.serverKey(id))
         }
 
         // Секреты — раньше открытой записи: запись без ссылки была бы сервером, который не открыть.

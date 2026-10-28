@@ -293,7 +293,7 @@ public enum LinkParser {
     private static func hysteria2(_ parts: LinkParts) -> LinkResult {
         let endpoint = Self.endpoint(parts)
         let security = Self.security(parts.query, byDefault: .tls)
-        if let error = firstError(endpoint.error, security.error) {
+        if let error = firstError(endpoint.error, security.error, unpinned(parts.query)) {
             return fail(error)
         }
 
@@ -319,7 +319,7 @@ public enum LinkParser {
     private static func tuic(_ parts: LinkParts) -> LinkResult {
         let endpoint = Self.endpoint(parts)
         let security = Self.security(parts.query, byDefault: .tls)
-        if let error = firstError(endpoint.error, security.error) {
+        if let error = firstError(endpoint.error, security.error, unpinned(parts.query)) {
             return fail(error)
         }
 
@@ -530,17 +530,24 @@ public enum LinkParser {
         return Checked(value: security, error: reality && security.realityPublicKey == nil ? ImportErrors.noCredentials : nil)
     }
 
+    /// Hysteria2 и TUIC у десктопа идут через ретранслятор sing-box, а закрепить сертификат по SHA-256 он не умеет: «pcs», «vcn»
+    /// и «pinSHA256» были бы молча отброшены. Такая ссылка — ошибка на всех платформах, как у десктопа (решение 483).
+    private static func unpinned(_ query: Query) -> String? {
+        (value(query, "pcs") ?? value(query, "vcn") ?? value(query, "pinSHA256")) == nil ? nil : ImportErrors.unsupportedParameter
+    }
+
     /// «pcs» — SHA-256 сертификатов через запятую, как у Xray: 64 знака hex, двоеточия OpenSSL допустимы. Результат — строчные
-    /// без двоеточий; пусто — пустой список; хоть одно значение не SHA-256 — nil.
+    /// без двоеточий; пусто — пустой список; хоть одно значение не SHA-256 — nil. Знаки — скаляры Unicode, как у десктопа и
+    /// Android: цифра с комбинирующим знаком — один Character, но два скаляра, и hex ее не считает.
     static func pinned(_ text: String?) -> [String]? {
         var hashes: [String] = []
         for part in (text ?? "").split(separator: ",", omittingEmptySubsequences: false).map({ TextKit.trim(String($0)) }) where !part.isEmpty {
-            let hash = part.replacingOccurrences(of: ":", with: "").lowercased()
-            guard hash.count == 64, hash.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) else {
+            let scalars = part.lowercased().unicodeScalars.filter { $0 != ":" }
+            guard scalars.count == 64, scalars.allSatisfy({ ("0"..."9").contains($0) || ("a"..."f").contains($0) }) else {
                 return nil
             }
 
-            hashes.append(hash)
+            hashes.append(String(String.UnicodeScalarView(scalars)))
         }
 
         return hashes

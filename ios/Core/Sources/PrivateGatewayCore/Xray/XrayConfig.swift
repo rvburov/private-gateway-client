@@ -71,6 +71,16 @@ public enum XrayConfig {
     public static let blockTag = "block"
     public static let dnsTag = "dns-out"
 
+    /// Выход DNS: A и AAAA (типы 1 и 28) отвечает сам, остальное — отказ REFUSED (код 5). Правилами `rules`: прежний
+    /// «nonIPQuery» Xray-core 26.x объявил к удалению. Как у десктопа и Android. Вычисляемое: хранимое статическое значение
+    /// типа без Sendable Swift 6 не пропустит.
+    static var dnsRules: Json {
+        .array([
+            .object([("action", .string("hijack")), ("qType", .string("1,28"))]),
+            .object([("action", .string("return")), ("rCode", .int(5))]),
+        ])
+    }
+
     /// Адрес TUN телефона и адрес, на который ОС шлет DNS: тот же план, что у десктопа и Android.
     public static let tunAddress = "172.19.0.1"
     public static let tunPrefix = 30
@@ -121,7 +131,7 @@ public enum XrayConfig {
         ])
         let block: Json = .object([("tag", .string(blockTag)), ("protocol", .string("blackhole"))])
         // Запросы не A и AAAA — сразу отказ: иначе Xray молча их бросает, и программа ждет тайм-аут на каждый.
-        let dnsOut: Json = .object([("tag", .string(dnsTag)), ("protocol", .string("dns")), ("settings", .object([("nonIPQuery", .string("reject"))]))])
+        let dnsOut: Json = .object([("tag", .string(dnsTag)), ("protocol", .string("dns")), ("settings", .object([("rules", dnsRules)]))])
         let routing: Json = .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(rules(settings)))])
         let config: Json = .object([
             ("log", log),

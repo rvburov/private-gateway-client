@@ -10,8 +10,8 @@ namespace PrivateGateway.Client.Tests.Unit;
 /// <summary>Конфиг Xray-core из эталонных ссылок shared/testdata и настроек.</summary>
 public sealed class XrayConfigTests
 {
-    /// <summary>Ключ связи с TUN — заведомо ненастоящий: 16 байт 0x11 в base64.</summary>
-    private const string TunKey = "EREREREREREREREREREREQ==";
+    /// <summary>Пароль связи с TUN — заведомо ненастоящий.</summary>
+    private const string TunKey = "tun-password-1";
 
     private static readonly string Links = Path.Combine(FindRoot(), "shared", "testdata", "links");
 
@@ -382,7 +382,7 @@ public sealed class XrayConfigTests
 
         var inbound = config["inbounds"]!.AsArray().ShouldHaveSingleItem()!;
         (inbound["listen"]!.GetValue<string>(), inbound["port"]!.GetValue<int>(), inbound["protocol"]!.GetValue<string>())
-            .ShouldBe(("127.0.0.1", 31000, "shadowsocks"), "вход только для своего TUN: на 127.0.0.1 и с ключом на подключение");
+            .ShouldBe(("127.0.0.1", 31000, "shadowsocks"), "вход только для своего TUN: на 127.0.0.1 и с паролем на подключение");
         (inbound["settings"]!["method"]!.GetValue<string>(), inbound["settings"]!["password"]!.GetValue<string>(), inbound["settings"]!["network"]!.GetValue<string>())
             .ShouldBe((TunLink.Method, TunKey, "tcp,udp"), "UDP — датаграммами на тот же порт, без UDP ASSOCIATE (решение 481)");
         Outbound(config, XrayConfigBuilder.DirectTag)["settings"]!["finalRules"]![0]!["action"]!.GetValue<string>()
@@ -418,8 +418,11 @@ public sealed class XrayConfigTests
 
         var config = XrayConfigBuilder.Build(Request(server, protection: fake), tun).Config.ShouldNotBeNull();
 
-        Outbound(config, XrayConfigBuilder.DnsTag)["settings"]!["nonIPQuery"]!.GetValue<string>()
-            .ShouldBe("reject", "PTR, SRV, MX, TXT — сразу отказ, а не тайм-аут DNS ОС на каждый");
+        var dnsRules = Outbound(config, XrayConfigBuilder.DnsTag)["settings"]!["rules"]!.AsArray();
+        (dnsRules[0]!["action"]!.GetValue<string>(), dnsRules[0]!["qType"]!.GetValue<string>()).ShouldBe(("hijack", "1,28"), "A и AAAA отвечает DNS конфига");
+        (dnsRules[1]!["action"]!.GetValue<string>(), dnsRules[1]!["rCode"]!.GetValue<int>())
+            .ShouldBe(("return", 5), "PTR, SRV, MX, TXT — сразу отказ REFUSED, а не тайм-аут DNS ОС на каждый");
+        dnsRules.Count.ShouldBe(2);
         var pool = config["fakedns"]!.AsArray().ShouldHaveSingleItem()!;
         (pool["ipPool"]!.GetValue<string>(), pool["poolSize"]!.GetValue<int>()).ShouldBe(("198.18.0.0/15", 65535));
         Servers(config).ShouldBe([NcsiNames(server), "fakedns", XrayConfigBuilder.DefaultDns],

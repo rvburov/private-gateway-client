@@ -44,7 +44,7 @@ public sealed record RelayRoute(ServerDefinition Server, RelayLink Link, string?
 public sealed record TunIpv6(bool Kernel, bool Tunnel);
 
 /// <summary>
-/// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда в SOCKS5 Xray на
+/// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда во вход Shadowsocks Xray на
 /// 127.0.0.1 (основное ядро — Xray, sing-box лишь переводит пакеты в соединения). DNS — такой же
 /// трафик: запросы к любому адресу уходят в Xray, и там их отвечает выход DNS по настройкам DNS Xray —
 /// один DNS в режимах прокси и VPN; DNS ОС — адрес <see cref="TunDns"/>, его sing-box прописывает ОС. Адреса сервера — мимо туннеля, иначе соединение с ним ушло бы в
@@ -298,8 +298,8 @@ public static class SingBoxConfigBuilder
     // Выход к серверу: TLS — с именем из ссылки (без него — имя сервера) и ALPN ссылки; у TUIC без ALPN — h3, как у его
     // серверов. Неизвестный алгоритм управления перегрузкой не передается — sing-box с ним не запустился бы.
     /// <summary>
-    /// Выход в Xray: Shadowsocks 2022 с ключом связи на 127.0.0.1 (<see cref="TunLink.Method"/>, решение 481) — UDP датаграммами на
-    /// тот же порт, без UDP ASSOCIATE.
+    /// Выход в Xray: Shadowsocks с паролем связи на 127.0.0.1 (<see cref="TunLink.Method"/>, решение 481) — UDP датаграммами на тот
+    /// же порт, без UDP ASSOCIATE.
     /// </summary>
     private static JsonObject ToXray(string tag, int port, TunLink link) => new()
     {
@@ -308,7 +308,7 @@ public static class SingBoxConfigBuilder
         ["server"] = "127.0.0.1",
         ["server_port"] = port,
         ["method"] = TunLink.Method,
-        ["password"] = link.Key,
+        ["password"] = link.Password,
     };
 
     private static JsonObject RelayOutbound(ServerDefinition server, string? address, string tag)

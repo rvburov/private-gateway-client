@@ -87,15 +87,30 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         withContext(Dispatchers.IO) { writes.withLock { insert(servers, group?.trim()?.takeIf { it.isNotEmpty() }, url) } }
 
     private suspend fun insert(servers: List<ServerDefinition>, group: String?, url: URI?): AddResult {
-        val known = dao.all().mapNotNull { open(it) }.map { ServerKeys.key(it) }.toMutableSet()
+        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484).
+        val stored = HashMap<String, Pair<ServerEntity, ServerDefinition>>()
+        for (entity in dao.all()) {
+            val server = open(entity) ?: continue
+            stored.putIfAbsent(ServerKeys.key(server), entity to server)
+        }
+
+        val known = stored.keys.toMutableSet()
         var position = dao.lastPosition()
         val now = System.currentTimeMillis()
         val groupId = group?.let { UUID.randomUUID().toString() }
         val fresh = ArrayList<ServerEntity>()
+        val renewed = LinkedHashMap<String, ServerEntity>()
         var duplicates = 0
         for (server in servers) {
-            if (!known.add(ServerKeys.key(server))) {
+            val key = ServerKeys.key(server)
+            if (!known.add(key)) {
                 duplicates++
+                val (entity, saved) = stored[key] ?: continue
+                if (saved.security != server.security && entity.id !in renewed) {
+                    // Название, группа, избранное — прежние; защита (закрепленный сертификат, отпечаток, ALPN) — из новой ссылки.
+                    renewed[entity.id] = entity.copy(sealed = seal(saved.copy(security = server.security)))
+                }
+
                 continue
             }
 
@@ -119,6 +134,10 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
 
         database.withTransaction {
             subscription?.let { subscriptions.insert(it) }
+            if (renewed.isNotEmpty()) {
+                dao.updateAll(renewed.values.toList())
+            }
+
             dao.insertAll(fresh)
         }
 

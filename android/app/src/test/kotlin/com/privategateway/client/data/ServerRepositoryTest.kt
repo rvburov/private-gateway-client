@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
+import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
 import kotlinx.coroutines.Dispatchers
@@ -84,6 +85,23 @@ class ServerRepositoryTest {
         assertEquals(AddResult(1, 0), repository.add(listOf(server)))
         assertEquals(AddResult(0, 1), repository.add(listOf(server.copy(name = "Другое название"))))
         assertEquals(AddResult(1, 0), repository.add(listOf(server.copy(port = server.port % 65535 + 1))))
+    }
+
+    @Test
+    fun `the same server imported again takes the pinned certificate and keeps its name`() = runBlocking<Unit> {
+        val insecure = assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#Self-signed").server)
+        assertEquals(AddResult(1, 0), repository.add(listOf(insecure)))
+        val id = repository.servers.first().single().id
+        repository.rename(id, "Мой сервер")
+
+        // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484).
+        val pinned = assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned").server)
+        assertEquals(AddResult(0, 1), repository.add(listOf(pinned)))
+
+        val loaded = assertNotNull(repository.load(id))
+        assertEquals(listOf("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"), loaded.security.pinnedPeerCertSha256)
+        assertFalse(loaded.security.allowInsecure)
+        assertEquals("Мой сервер", repository.servers.first().single().displayName, "свое название остается")
     }
 
     @Test

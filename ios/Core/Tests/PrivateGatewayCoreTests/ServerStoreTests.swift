@@ -132,6 +132,25 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertEqual(stored.map(\.linkName), servers.map(\.name))
     }
 
+    func testTheSameServerImportedAgainTakesThePinnedCertificateAndKeepsItsName() async throws {
+        let insecure = try XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#Self-signed").server)
+        let first = try await store.add([insecure])
+        XCTAssertEqual(first, AddResult(added: 1, duplicates: 0))
+        let id = try await store.servers()[0].id
+        try await store.rename(id, "Мой сервер")
+
+        // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484).
+        let pinned = try XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned").server)
+        let again = try await store.add([pinned])
+        XCTAssertEqual(again, AddResult(added: 0, duplicates: 1))
+
+        let loaded = try await store.load(id)
+        XCTAssertEqual(loaded?.security.pinnedPeerCertSha256, ["a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"])
+        XCTAssertEqual(loaded?.security.allowInsecure, false)
+        let item = try await store.servers()[0]
+        XCTAssertEqual(item.displayName, "Мой сервер", "свое название остается")
+    }
+
     func testOwnNameIsShownInTheListWhileTheLinkKeepsItsName() async throws {
         let server = try XCTUnwrap(Self.unique.first)
         try await store.add([server])

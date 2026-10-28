@@ -225,7 +225,10 @@ public sealed class VpnTunnel : IAsyncDisposable
                     Volatile.Write(ref xrayStarted, 1);
                 }
 
-                output?.Invoke("xray", line);
+                if (!LinkNotice(line))
+                {
+                    output?.Invoke("xray", line);
+                }
             },
             line => output?.Invoke("sing-box", line));
         CoreProcess? singBoxCore = null;
@@ -313,15 +316,14 @@ public sealed class VpnTunnel : IAsyncDisposable
     public static ProbeLink NewProbe() => new(LocalPort.FreeForTcpAndUdp(), Secret(), Secret());
 
     /// <summary>
-    /// Связь Xray с TUN на одно подключение: порт на 127.0.0.1, свободный для TCP и UDP, ключ Shadowsocks 2022 — 128
+    /// Связь Xray с TUN на одно подключение: порт на 127.0.0.1, свободный для TCP и UDP, пароль Shadowsocks — 128
     /// случайных бит; Xray соединяется с <paramref name="server"/>. <paramref name="bypass"/> — еще порт входа
     /// обхода для FakeDNS (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>).
     /// </summary>
     public static TunLink NewLink(IPAddress server, bool bypass = false)
     {
         ArgumentNullException.ThrowIfNull(server);
-        return new TunLink(LocalPort.FreeForTcpAndUdp(), Convert.ToBase64String(RandomNumberGenerator.GetBytes(16)), server.ToString(),
-            bypass ? LocalPort.FreeForTcpAndUdp() : 0);
+        return new TunLink(LocalPort.FreeForTcpAndUdp(), Secret(), server.ToString(), bypass ? LocalPort.FreeForTcpAndUdp() : 0);
     }
 
     /// <summary>
@@ -433,6 +435,14 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// </summary>
     public static bool XrayStarted(string line) =>
         line.Contains("core: Xray ", StringComparison.Ordinal) && line.EndsWith(" started", StringComparison.Ordinal);
+
+    /// <summary>
+    /// Предупреждение Xray-core 26.x о Shadowsocks, которое он печатает при каждом запуске из-за входа связи с TUN
+    /// (<see cref="TunLink"/>): пользователь Shadowsocks не выбирал, и в журнале оно только сбивает с толку. Сервер Shadowsocks
+    /// пользователя дает ту же строку — в режиме VPN она тоже не пишется: это совет Xray, а не ошибка.
+    /// </summary>
+    public static bool LinkNotice(string line) =>
+        line.Contains("The feature Shadowsocks (with no Forward Secrecy, etc.) is deprecated", StringComparison.Ordinal);
 
     /// <summary>
     /// Открывает ли сервер IPv6 — не дольше <paramref name="budget"/> (половина оставшегося времени подключения: остальное —

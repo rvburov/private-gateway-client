@@ -69,6 +69,15 @@ object XrayConfig {
     const val BLOCK_TAG = "block"
     const val DNS_TAG = "dns-out"
 
+    /**
+     * Выход DNS: A и AAAA (типы 1 и 28) отвечает сам, остальное — отказ REFUSED (код 5). Правилами `rules`: прежний
+     * «nonIPQuery» Xray-core 26.x объявил к удалению. Как у десктопа.
+     */
+    private val DNS_RULES = listOf(
+        linkedMapOf("action" to "hijack", "qType" to "1,28"),
+        linkedMapOf("action" to "return", "rCode" to 5),
+    )
+
     /** Адрес TUN телефона и адрес, на который ОС шлет DNS: тот же план, что у десктопа. */
     const val TUN_ADDRESS = "172.19.0.1"
     const val TUN_PREFIX = 30
@@ -118,8 +127,8 @@ object XrayConfig {
                     "settings" to linkedMapOf("domainStrategy" to if (settings.ipv6) "AsIs" else "UseIPv4"),
                 ),
                 linkedMapOf("tag" to BLOCK_TAG, "protocol" to "blackhole"),
-                // Запросы не A и AAAA — сразу отказ: иначе Xray молча их бросает, и программа ждет тайм-аут на каждый.
-                linkedMapOf("tag" to DNS_TAG, "protocol" to "dns", "settings" to linkedMapOf("nonIPQuery" to "reject")),
+                // Запросы не A и AAAA — сразу отказ: иначе Xray молча их бросает, и программа ждет тайм-аут на каждый (DNS_RULES).
+                linkedMapOf("tag" to DNS_TAG, "protocol" to "dns", "settings" to linkedMapOf("rules" to DNS_RULES)),
             ),
             "routing" to linkedMapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules(settings)),
         )

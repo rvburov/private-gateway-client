@@ -100,6 +100,28 @@ public sealed class ServerCatalogStorageTests : IDisposable
     }
 
     [Fact]
+    public void Same_server_imported_again_takes_the_pinned_certificate_and_keeps_its_name()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#Self-signed"), null).ShouldBe(new ImportOutcome(1, 0));
+        var id = catalog.Servers.ShouldHaveSingleItem().Id;
+        catalog.Rename(id, "Мой сервер");
+
+        // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484).
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned"), null).ShouldBe(new ImportOutcome(0, 1));
+
+        var server = catalog.Definition(id).ShouldNotBeNull();
+        server.Security.PinnedPeerCertSha256.ShouldBe(["a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"]);
+        server.Security.AllowInsecure.ShouldBeFalse();
+        catalog.Servers.ShouldHaveSingleItem().Name.ShouldBe("Мой сервер", "свое название, группа и выбор остаются");
+
+        // Сертификат сменился — новая ссылка заменяет закрепление; та же ссылка еще раз ничего не меняет.
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0#Pinned"), null).ShouldBe(new ImportOutcome(0, 1));
+        catalog.Definition(id)!.Security.PinnedPeerCertSha256.ShouldBe(["0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"]);
+        Catalog().Definition(id)!.Security.PinnedPeerCertSha256.ShouldBe(["0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0"], "записано в базу");
+    }
+
+    [Fact]
     public void Removing_a_server_deletes_its_secret_and_selection()
     {
         var catalog = Catalog();
