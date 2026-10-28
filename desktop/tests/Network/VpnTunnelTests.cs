@@ -117,6 +117,39 @@ public sealed class VpnTunnelTests
         output.Lines.ShouldNotContain(line => line.Contains("Unauthorized UDP access", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// 172.19.0.1 уже держит другой адаптер (Hyper-V, WSL, Docker берут /20 из 172.16.0.0/12; TUN другого клиента — тот же
+    /// адрес по умолчанию sing-box): туннель встает на следующей свободной подсети, и DNS ОС у него — свой.
+    /// </summary>
+    [Fact]
+    public async Task Tunnel_address_taken_by_another_adapter_moves_the_tunnel_to_a_free_subnet()
+    {
+        SkipWithoutNamespaces();
+        using var netns = NetworkNamespace.Create();
+        var (host, _, _) = netns.LinkAsMachine();
+        netns.Run(null, "ip", "addr", "add", "172.19.0.1/20", "dev", "pgnet0");
+        using var site = new LocalSite("через туннель по имени");
+        using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
+        var (definition, server) = await NameOnlyServerAsync(host, site, dns);
+        using var _ = server;
+        var request = new CoreRequest(definition, ConnectionMode.Vpn, ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
+            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
+        var output = new CoreOutput(netns);
+
+        VpnTunnel.MachineNetworks(netns.Path).ShouldContain((IPAddress.Parse("172.19.0.1"), 20), "сети адаптеров — из пространства, где встанет TUN");
+        await using var tunnel = await VpnTunnel.StartAsync(XrayKit.Xray!, XrayKit.SingBox!, request, [host], TimeSpan.FromSeconds(20),
+            TimeProvider.System, netns.Path, output.Add, openUdp: netns.OpenSocksUdpAsync, cancellationToken: Ct);
+
+        tunnel.Subnet.ShouldBe(TunSubnet.Candidates[1]);
+        output.Lines.ShouldContain("service: Адрес TUN 172.19.0.1/30 занят другим адаптером — туннель на 10.255.253.1/30");
+        (await netns.RunAsync("ip", "-o", "-4", "addr", "show", "dev", SingBoxConfigBuilder.InterfaceName)).ShouldContain("inet 10.255.253.1/30");
+        VpnTunnel.MachineNetworks(netns.Path).ShouldNotContain(n => n.Address.Equals(IPAddress.Parse("10.255.253.1")),
+            "свой TUN не в счет: переподключение встанет на ту же подсеть");
+        (await output.TraceAsync(() => netns.ResolveAsync("example.com", tunnel.Subnet.Dns)))
+            .ShouldBe("203.0.113.7", "DNS ОС на новом адресе туннеля отвечает Xray через сервер");
+        dns.Queries.ShouldContain("example.com");
+    }
+
     [Fact]
     public async Task Program_around_the_tunnel_gets_answers_from_the_tunnel_dns_address()
     {

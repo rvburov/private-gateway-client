@@ -1062,6 +1062,38 @@ public sealed partial class VpnModeTests
         dns.Calls[^1].ShouldBe("restore", "туннеля нет — DNS ОС как был");
     }
 
+    /// <summary>
+    /// 172.19.0.1 держит другой адаптер машины (soak #4, Windows CI: «set ipv4 address: The object already exists»): служба
+    /// поднимает туннель на свободной подсети, и с ней же — DNS ОС и перенаправление DNS роутера в туннель правилами блока.
+    /// </summary>
+    [Fact]
+    public async Task Tunnel_address_taken_on_the_machine_moves_the_tunnel_with_its_dns()
+    {
+        NetworkNamespace.SkipUnlessAvailable("getent");
+        await using var rig = await Rig.CreateAsync(services: true);
+        rig.Netns.Run(null, "ip", "addr", "add", "172.19.0.1/20", "dev", "pgnet0");
+        var dns = new FakeSystemDns();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { SystemDns = dns });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        // Локальная сеть разрешена: DNS к роутеру блок перенаправляет на DNS туннеля — на новый адрес.
+        var request = VpnRequest(rig.Definition, allowLan: true);
+        request.Protection.Dns.Servers.Clear();
+        request.Protection.Dns.Servers.Add("8.8.8.8");
+        await service.Client.ConnectAsync(request, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
+
+        var tunnelDns = IPAddress.Parse("10.255.253.2");
+        service.Journal.Tail(ServiceJournal.Capacity).Select(e => e.Message)
+            .ShouldContain("Адрес TUN 172.19.0.1/30 занят другим адаптером — туннель на 10.255.253.1/30");
+        (await rig.Netns.CurlAsync(Rig.Trace)).ShouldBe("через туннель");
+        dns.Calls.ShouldBe(["apply 10.255.253.2"], "DNS ОС — на DNS туннеля новой подсети");
+        rig.KillSwitch.Last!.TunnelDns.ShouldBe(tunnelDns, "блок пропускает и перенаправляет DNS на адрес этого туннеля");
+        (await rig.Netns.ResolveWithSystemAsync("example.org", tunnelDns)).ShouldStartWith("1.1.1.1", customMessage: "DNS туннеля отвечает Xray через сервер");
+        (await rig.Netns.ResolveWithSystemAsync("example.com", IPAddress.Parse(rig.Lan.Url.Host))).ShouldStartWith("1.1.1.1",
+            customMessage: "DNS к роутеру разрешенной сети — в туннель, на его новый адрес");
+        rig.Dns!.Queries.ShouldBe(["example.org", "example.com"], ignoreOrder: true);
+    }
+
     [Fact]
     public async Task Other_vpn_that_only_adds_routes_is_found_by_the_regular_check()
     {

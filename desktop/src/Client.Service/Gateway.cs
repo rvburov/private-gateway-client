@@ -108,9 +108,6 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>Адреса FakeDNS: ни один сервер на них не живет — такой ответ DNS ОС дал Xray в туннеле.</summary>
     private static readonly IPNetwork FakeDnsPool = IPNetwork.Parse(XrayConfigBuilder.FakeDnsPool);
 
-    /// <summary>Адрес DNS туннеля: туда блок на Linux перенаправляет DNS к разрешенной локальной сети.</summary>
-    private static readonly IPAddress TunnelDns = IPAddress.Parse(SingBoxConfigBuilder.TunDns);
-
     /// <summary>
     /// Открыт ли правилами IPv6 мимо туннеля: только без блока при обрыве, только если пользователь сам разрешил («Блокировать
     /// IPv6 вне туннеля» выключено, не «Только IPv4») и только если туннель сам его мимо себя пропускает.
@@ -1344,11 +1341,11 @@ public sealed partial class Gateway : IAsyncDisposable
     /// Туннель поднят или сменилась сеть: DNS ОС — на DNS туннеля (macOS, <see cref="GatewayOptions.SystemDns"/>). Не вышло —
     /// в журнал: туннель работает, а запросы к DNS роутера мимо него закрыты блоком или идут как есть.
     /// </summary>
-    private void PointDnsAtTunnel()
+    private void PointDnsAtTunnel(VpnTunnel tunnel)
     {
         try
         {
-            _options.SystemDns?.Apply(TunnelDns);
+            _options.SystemDns?.Apply(tunnel.Subnet.Dns);
         }
         catch (IOException e)
         {
@@ -1441,7 +1438,8 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelUdp, _options.TunnelRoutes, starting).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelUdp, _options.TunnelRoutes,
+                cancellationToken: starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -1476,7 +1474,7 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 _journal.Add(JournalLevel.Info, "service", "Ретранслятор sing-box для Hysteria2 и TUIC — процесс " + relay);
             }
-            PointDnsAtTunnel();
+            PointDnsAtTunnel(tunnel);
             if (tunnel.HasExited)
             {
                 Fail(session, ErrorCodes.CoreFailed, "Ядро туннеля остановилось");
@@ -1672,7 +1670,7 @@ public sealed partial class Gateway : IAsyncDisposable
             core.Protection.BlockOutsideDns,
             direct ? new DirectExit(VpnTunnel.RealPath(_options.SingBoxPath!), SingBoxConfigBuilder.DirectMark) : null,
             core.Protection.BootProtection && _killSwitchOn,
-            tunnel ? TunnelDns : null,
+            tunnel ? (Volatile.Read(ref _tunnel)?.Subnet ?? TunSubnet.Default).Dns : null,
             Ipv6OutsideOpen(_killSwitchOn, core.Protection, Volatile.Read(ref _tunnel) is { Ipv6Outside: true }),
             core.Protection.LanDns);
         if (!Try(() => { killSwitch.Enable(policy); return true; }, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))

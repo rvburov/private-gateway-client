@@ -35,6 +35,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     private VpnTunnel(CoreProcess xray, CoreProcess singBox, string? netns, Action<string, string>? output, TunRequest tun)
     {
         Ipv6 = SingBoxConfigBuilder.Ipv6Tunneled(tun);
+        Subnet = tun.Subnet ?? TunSubnet.Default;
         Ipv6Outside = SingBoxConfigBuilder.Ipv6Outside(tun) && MachineIpv6(netns);
         _xray = xray;
         _singBox = singBox;
@@ -59,6 +60,9 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     /// <summary>IPv6 идет через туннель: у адаптера есть адрес IPv6 и сервер открывает IPv6.</summary>
     public bool Ipv6 { get; }
+
+    /// <summary>Адреса TUN этого туннеля: адрес адаптера и DNS туннеля (его служба дает DNS ОС и правилам блока).</summary>
+    public TunSubnet Subnet { get; }
 
     /// <summary>
     /// IPv6 программ идет мимо туннеля: сервер его не открывает, а «Блокировать IPv6 вне туннеля» и «Строгие маршруты»
@@ -101,6 +105,45 @@ public sealed class VpnTunnel : IAsyncDisposable
         catch (NetworkInformationException)
         {
             return true;
+        }
+    }
+
+    /// <summary>
+    /// Сети IPv4 адаптеров машины, кроме своего TUN, — адрес и длина префикса: из них <see cref="TunSubnet.Choose"/> узнает,
+    /// какие подсети TUN заняты. Свой TUN не в счет: его адрес уходит вместе с ним, а подсеть между переподключениями не скачет.
+    /// <paramref name="netns"/> — сеть пространства Linux (тесты): спрашивается ip внутри него. Узнать не вышло — пусто.
+    /// </summary>
+    public static IReadOnlyList<(IPAddress Address, int Prefix)> MachineNetworks(string? netns = null)
+    {
+        if (netns is not null)
+        {
+            try
+            {
+                return IpCommand.ForThisMachine(netns) is not { } ip ? [] : [.. ip(["-o", "-4", "addr", "show"])
+                    .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line => line.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+                    .Where(words => words.Length > 3 && words[1] != SingBoxConfigBuilder.InterfaceName && words[2] == "inet")
+                    .Select(words => words[3].Split('/'))
+                    .Where(parts => parts.Length == 2 && IPAddress.TryParse(parts[0], out _) && int.TryParse(parts[1], out _))
+                    .Select(parts => (IPAddress.Parse(parts[0]), int.Parse(parts[1], System.Globalization.CultureInfo.InvariantCulture)))];
+            }
+            catch (IOException)
+            {
+                return [];
+            }
+        }
+
+        try
+        {
+            return [.. NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.Name != SingBoxConfigBuilder.InterfaceName)
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
+                .Select(a => (a.Address, a.PrefixLength))];
+        }
+        catch (NetworkInformationException)
+        {
+            return [];
         }
     }
 
@@ -150,11 +193,15 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// а в сетевом пространстве (вход отсюда не виден) — не открывать.
     /// </param>
     /// <param name="routes">Только эти сети через TUN (<see cref="TunRequest.Routes"/>, тесты Windows в CI); null — весь трафик.</param>
+    /// <param name="subnet">
+    /// Адреса TUN (тесты); null — первая подсеть, не занятая адаптерами машины (<see cref="MachineNetworks"/>,
+    /// <see cref="TunSubnet.Choose"/>).
+    /// </param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
         TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, ProbeLink? probe = null,
         Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, Func<int, TunLink, CancellationToken, Task<bool>>? openUdp = null,
-        IReadOnlyList<string>? routes = null, CancellationToken cancellationToken = default)
+        IReadOnlyList<string>? routes = null, TunSubnet? subnet = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -213,11 +260,23 @@ public sealed class VpnTunnel : IAsyncDisposable
             var ipv6 = request.Protection.Ipv6Allowed && AdapterIpv6()
                 && (serverOverIpv6 || (probe is not null && serverIpv6 is not null
                     && await AskAsync(serverIpv6, probe, (timeout - time.GetElapsedTime(started)) / 2, time, output, cancellationToken).ConfigureAwait(false)));
+
+            // Адреса TUN — в подсети, которую не держит ни один адаптер: 172.19.0.1 бывает занят (Hyper-V, WSL, Docker, TUN
+            // других клиентов), и Windows второй раз его не ставит — sing-box выходит при запуске.
+            if (subnet is null)
+            {
+                subnet = TunSubnet.Choose(MachineNetworks(netns));
+                if (!subnet.Equals(TunSubnet.Default))
+                {
+                    output?.Invoke("service", $"Адрес TUN {TunSubnet.Default.Cidr} занят другим адаптером — туннель на {subnet.Cidr}");
+                }
+            }
+
             while (true)
             {
                 var ready = 0;
                 var tun = new TunRequest(link, serverAddresses, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
-                    DirectPrograms(request, xray), FakeIpPrograms(request), routes);
+                    DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
                 singBoxCore = CoreProcess.StartSingBox(singBox, SingBoxConfigBuilder.BuildTun(tun), netns,
                     line =>
                     {

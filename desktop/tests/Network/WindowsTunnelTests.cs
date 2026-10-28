@@ -69,8 +69,10 @@ public sealed partial class WindowsTunnelTests
         using var xray = CoreProcess.StartXray(XrayKit.Xray!, xrayConfig, output: line => output.Add("xray", line));
         await WaitAsync(() => Listens(link.Port), "вход Xray", output);
 
+        // Подсеть TUN — как ее берет служба: 172.19.0.1 на машине CI бывает занят адаптером Hyper-V (soak #4).
+        var subnet = TunSubnet.Choose(VpnTunnel.MachineNetworks());
         var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(link, [IPAddress.Loopback], request.Protection, request.Connection,
-            new TunIpv6(Kernel: true, Tunnel: false), Routes: Routes));
+            new TunIpv6(Kernel: true, Tunnel: false), Routes: Routes, Subnet: subnet));
         var started = 0;
         using var singBox = CoreProcess.StartSingBox(XrayKit.SingBox!, tun, output: line =>
         {
@@ -85,11 +87,11 @@ public sealed partial class WindowsTunnelTests
         {
             await WaitAsync(() => Volatile.Read(ref started) == 1 && Adapter() is not null, "sing-box и адаптер", output);
             var properties = Adapter()!.GetIPProperties();
-            properties.UnicastAddresses.Select(a => a.Address).ShouldContain(IPAddress.Parse(SingBoxConfigBuilder.TunAddress.Split('/')[0]));
-            properties.DnsAddresses.ShouldContain(IPAddress.Parse(SingBoxConfigBuilder.TunDns), "DNS адаптера — адрес DNS туннеля, его спрашивает Windows");
+            properties.UnicastAddresses.Select(a => a.Address).ShouldContain(subnet.Address);
+            properties.DnsAddresses.ShouldContain(subnet.Dns, "DNS адаптера — адрес DNS туннеля, его спрашивает Windows");
 
             // Запрос DNS к адресу DNS туннеля — как его шлет DNS ОС через адаптер: отвечает Xray.
-            var answer = await output.TraceAsync(() => ResolveAsync(new IPEndPoint(IPAddress.Parse(SingBoxConfigBuilder.TunDns), 53), "example.com"));
+            var answer = await output.TraceAsync(() => ResolveAsync(new IPEndPoint(subnet.Dns, 53), "example.com"));
             Uri page;
             if (fakeDns)
             {

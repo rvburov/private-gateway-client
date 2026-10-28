@@ -16,6 +16,8 @@ namespace PrivateGateway.Client.Network.SingBox;
 /// Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>, <see cref="TunLink.BypassPort"/>).
 /// <paramref name="Routes"/> — только эти сети через TUN, без строгих маршрутов: тесты Windows в CI (решение 438) —
 /// туннель на весь трафик забрал бы связь машины CI с GitHub; null — весь трафик.
+/// <paramref name="Subnet"/> — адреса TUN, свободные на этой машине (<see cref="TunSubnet.Choose"/>); null —
+/// <see cref="TunSubnet.Default"/>.
 /// </summary>
 public sealed record TunRequest(
     TunLink Xray,
@@ -25,7 +27,8 @@ public sealed record TunRequest(
     TunIpv6 Ipv6,
     IReadOnlyList<string>? DirectPrograms = null,
     IReadOnlyList<string>? FakeIpPrograms = null,
-    IReadOnlyList<string>? Routes = null);
+    IReadOnlyList<string>? Routes = null,
+    TunSubnet? Subnet = null);
 
 /// <summary>
 /// Сервер Hysteria2 или TUIC за ретранслятором (<see cref="SingBoxConfigBuilder.BuildRelay"/>): вход для Xray и адрес, к которому
@@ -63,14 +66,14 @@ public static class SingBoxConfigBuilder
     /// <summary>Метка пакетов выхода мимо туннеля (Linux): «PG».</summary>
     public const uint DirectMark = 0x5047;
 
-    /// <summary>Адрес TUN.</summary>
+    /// <summary>Адрес TUN по умолчанию (<see cref="TunSubnet.Default"/>); занят на машине — служба берет другую подсеть.</summary>
     public const string TunAddress = "172.19.0.1/30";
 
     public const string TunAddress6 = "fdfe:dcba:9876::1/126";
 
     /// <summary>
-    /// Адрес DNS туннеля — следующий за адресом TUN. Его sing-box прописывает ОС (Windows — DNS адаптера, Linux —
-    /// systemd-resolved), и запросы к нему идут в Xray, как к любому адресу.
+    /// Адрес DNS туннеля по умолчанию — следующий за адресом TUN (<see cref="TunSubnet.Dns"/>). Его sing-box прописывает ОС
+    /// (Windows — DNS адаптера, Linux — systemd-resolved), и запросы к нему идут в Xray, как к любому адресу.
     /// </summary>
     public const string TunDns = "172.19.0.2";
 
@@ -131,15 +134,17 @@ public static class SingBoxConfigBuilder
         ArgumentNullException.ThrowIfNull(request);
         var connection = request.Connection;
         var protection = request.Protection;
+        var subnet = request.Subnet ?? TunSubnet.Default;
+        var dns = subnet.Dns.ToString();
         var tun = new JsonObject
         {
             ["type"] = "tun",
             ["tag"] = TunTag,
-            ["address"] = Ipv6Tunneled(request) ? new JsonArray(TunAddress, TunAddress6) : new JsonArray(TunAddress),
+            ["address"] = Ipv6Tunneled(request) ? new JsonArray(subnet.Cidr, TunAddress6) : new JsonArray(subnet.Cidr),
 
             // Адрес DNS ОС задан явно: без него sing-box перехватывает запросы к нему и отвечает своим DNS (системный,
             // мимо Xray и сервера). С ним это обычный трафик TUN — в Xray, как DNS к любому адресу.
-            ["dns_address"] = Ipv6Tunneled(request) ? new JsonArray(TunDns, TunDns6) : new JsonArray(TunDns),
+            ["dns_address"] = Ipv6Tunneled(request) ? new JsonArray(dns, TunDns6) : new JsonArray(dns),
             ["auto_route"] = true,
             ["strict_route"] = StrictRoutes(request),
             ["stack"] = connection.Stack switch
@@ -207,7 +212,7 @@ public static class SingBoxConfigBuilder
         // через карту на него ответа нет (программа со своим DNS-клиентом берет DNS адаптера, как Chromium на Windows).
         var rules = new JsonArray(new JsonObject
         {
-            ["ip_cidr"] = Ipv6Tunneled(request) ? new JsonArray(TunDns + "/32", TunDns6 + "/128") : new JsonArray(TunDns + "/32"),
+            ["ip_cidr"] = Ipv6Tunneled(request) ? new JsonArray(dns + "/32", TunDns6 + "/128") : new JsonArray(dns + "/32"),
             ["port"] = 53,
             ["outbound"] = XrayTag,
         });

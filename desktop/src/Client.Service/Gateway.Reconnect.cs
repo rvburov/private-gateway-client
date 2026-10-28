@@ -118,9 +118,9 @@ public sealed partial class Gateway
         Update(s => s with { Exit = s.Exit with { DirectIp = null }, NetworkChangedAt = now });
 
         // Другая основная сеть (macOS): ее DNS — тоже на туннель, прежней — свой.
-        if (Volatile.Read(ref _tunnel) is not null)
+        if (Volatile.Read(ref _tunnel) is { } tunnel)
         {
-            PointDnsAtTunnel();
+            PointDnsAtTunnel(tunnel);
         }
 
         CheckAtOnce("Сеть машины сменилась");
@@ -392,7 +392,8 @@ public sealed partial class Gateway
         try
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, request, _addresses, timeout, _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), _options.TunnelUdp, _options.TunnelRoutes, starting).ConfigureAwait(false);
+                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(request, reuse: true), _options.TunnelUdp, _options.TunnelRoutes,
+                cancellationToken: starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -421,7 +422,7 @@ public sealed partial class Gateway
             {
                 _journal.Add(JournalLevel.Info, "service", "Ретранслятор sing-box для Hysteria2 и TUIC — процесс " + relay);
             }
-            PointDnsAtTunnel();
+            PointDnsAtTunnel(tunnel);
             if (tunnel.HasExited)
             {
                 return (false, ErrorCodes.CoreFailed);

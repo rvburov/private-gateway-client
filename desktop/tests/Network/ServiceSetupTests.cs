@@ -302,7 +302,8 @@ public sealed class ServiceSetupTests : IDisposable
 
     /// <summary>
     /// Настоящий хост .NET: служба, которой нужен .NET, которого нет ни у кого (99.0.0), — отказ «You must install …» и
-    /// причина словами. Так проверка видит и .NET, поставленный только для учетной записи пользователя.
+    /// причина словами. Так проверка видит и .NET, поставленный только для учетной записи пользователя, — как на машине CI
+    /// macOS до шага root (.NET в ~/.dotnet, /etc/dotnet/install_location нет): там отказ — уже у той же службы.
     /// </summary>
     [Fact]
     public void Real_dotnet_host_that_finds_no_runtime_is_told_in_words()
@@ -320,7 +321,12 @@ public sealed class ServiceSetupTests : IDisposable
             File.SetUnixFileMode(Path.Combine(copy, Exe), UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
         }
 
-        ServiceSetup.RunsAsSystem(copy).ShouldBeNull("та же служба с .NET этой машины запускается");
+        if (ServiceSetup.RunsAsSystem(copy) is { } userOnly)
+        {
+            userOnly.ShouldContain("не виден .NET 10", customMessage: ".NET этой машины не виден системе — отказ хоста словами");
+            return;
+        }
+
         var config = Path.Combine(copy, "PrivateGateway.Service.runtimeconfig.json");
         File.WriteAllText(config, System.Text.RegularExpressions.Regex.Replace(File.ReadAllText(config), "\"version\": \"10\\.[^\"]*\"", "\"version\": \"99.0.0\""));
 

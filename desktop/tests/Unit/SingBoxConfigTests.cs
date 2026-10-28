@@ -241,6 +241,55 @@ public sealed class SingBoxConfigTests
         SingBoxConfigBuilder.ShownLine(line, level).ShouldBe(shown);
     }
 
+    [Theory]
+    [InlineData("", "172.19.0.1")]
+    [InlineData("192.168.1.10/24 10.0.0.5/8", "172.19.0.1")]
+    [InlineData("172.19.0.1/20", "10.255.253.1")]
+    [InlineData("172.19.0.2/30", "10.255.253.1")]
+    [InlineData("172.19.3.1/16 10.255.0.1/16", "192.168.253.253")]
+    [InlineData("172.16.0.1/12 10.0.0.1/8 192.168.0.1/16", "172.19.0.1")]
+    [InlineData("172.16.0.1/12 10.0.0.1/8 192.168.0.1/17", "192.168.253.253")]
+    [InlineData("0.0.0.0/0 172.16.0.0/7 172.19.0.1/20", "10.255.253.1")]
+    [InlineData("ac13:1::1/32 2001:db8::1/64", "172.19.0.1")]
+    public void Tun_takes_the_first_subnet_no_adapter_of_the_machine_holds(string taken, string address)
+    {
+        var networks = taken.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Select(n => (IPAddress.Parse(n.Split('/')[0]), int.Parse(n.Split('/')[1], System.Globalization.CultureInfo.InvariantCulture)));
+
+        TunSubnet.Choose(networks).Address.ShouldBe(IPAddress.Parse(address),
+            "172.19.0.1 занят (Hyper-V, WSL, Docker, TUN другого клиента) — следующая свободная; сети короче /8 и IPv6 не в счет; заняты все — прежняя");
+    }
+
+    [Fact]
+    public void Default_subnet_is_the_former_constant_and_every_candidate_is_its_own_slash_30()
+    {
+        (TunSubnet.Default.Cidr, TunSubnet.Default.Dns.ToString()).ShouldBe((SingBoxConfigBuilder.TunAddress, SingBoxConfigBuilder.TunDns));
+        TunSubnet.Candidates.Select(c => (c.Cidr, c.Dns.ToString())).ShouldBe(
+        [
+            ("172.19.0.1/30", "172.19.0.2"), ("10.255.253.1/30", "10.255.253.2"), ("192.168.253.253/30", "192.168.253.254"),
+            ("172.29.253.253/30", "172.29.253.254"), ("10.199.199.1/30", "10.199.199.2"),
+        ]);
+        foreach (var candidate in TunSubnet.Candidates)
+        {
+            TunSubnet.Choose(TunSubnet.Candidates.Where(c => c != candidate).Select(c => (c.Address, 30))).ShouldBe(candidate,
+                "подсети кандидатов не пересекаются друг с другом");
+        }
+    }
+
+    [Fact]
+    public void Tun_on_another_subnet_gives_the_os_and_xray_its_own_dns_address()
+    {
+        var subnet = TunSubnet.Candidates[1];
+        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
+            ConnectionSettings.Default, Closed, Subnet: subnet));
+
+        var tun = Tun(config);
+        Strings(tun["address"]).ShouldBe(["10.255.253.1/30"]);
+        Strings(tun["dns_address"]).ShouldBe(["10.255.253.2"], "этот адрес sing-box дает DNS ОС");
+        Strings(config["route"]!["rules"]!.AsArray().ShouldHaveSingleItem()!["ip_cidr"]).ShouldBe(["10.255.253.2/32"],
+            "DNS к адресу туннеля — в Xray, а не к прежнему 172.19.0.2");
+    }
+
     private static JsonObject Build(
         IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null, TunIpv6? ipv6 = null) =>
         SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default,
