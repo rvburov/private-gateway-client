@@ -207,7 +207,41 @@ internal static class XrayKit
     }
 
     /// <summary>Порт, свободный для TCP и UDP: вход SOCKS5 ядра занимает оба.</summary>
-    public static int FreePort() => LocalPort.FreeForTcpAndUdp();
+    /// <summary>
+    /// Порт для сервера и сайтов теста — вне диапазона временных портов ОС (Windows 49152–65535, Linux 32768–60999),
+    /// свободный для TCP и UDP. Сервер, который тест останавливает и запускает снова на том же порту (сбои долгого
+    /// прогона), иначе застал бы свой порт у чужого исходящего соединения: на Windows такое соединение держит порт
+    /// исключительно, и Xray получал «bind: … forbidden by its access permissions» (soak 5, 2026-10-28).
+    /// </summary>
+    public static int FreePort()
+    {
+        for (var attempt = 0; attempt < 200; attempt++)
+        {
+            var port = Random.Shared.Next(20000, 32000);
+            if (Free(port))
+            {
+                return port;
+            }
+        }
+
+        return LocalPort.FreeForTcpAndUdp();
+
+        static bool Free(int port)
+        {
+            try
+            {
+                using var tcp = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+                tcp.Bind(new IPEndPoint(IPAddress.Loopback, port));
+                using var udp = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
+                udp.Bind(new IPEndPoint(IPAddress.Loopback, port));
+                return true;
+            }
+            catch (SocketException)
+            {
+                return false;
+            }
+        }
+    }
 
     private static string? FindXray()
     {
