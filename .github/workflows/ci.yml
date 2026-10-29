@@ -390,7 +390,7 @@ jobs:
           target: google_apis
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none -camera-front none
-          script: android/gradlew -p android :app:connectedDebugAndroidTest
+          script: android/gradlew -p android :app:connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.requireTunnelServer=true
 
       # Отчет лежит в артефакте, но не всякая среда может его скачать — упавшие проверки с ошибкой сразу в журнал задания.
       - name: Упавшие проверки на эмуляторе
