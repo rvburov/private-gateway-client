@@ -111,11 +111,18 @@ public sealed class ServersPageTests : WindowHarness
         PressAt(window, panel.TranslatePoint(new Point(panel.Bounds.Width / 2, 6), window)!.Value);
         page.IsFilterOpen.ShouldBeTrue("нажатие в самой панели ее не закрывает");
 
-        // Под панелью — строка сервера: нажатие закрывает фильтр и дальше не идет, карточка не открывается.
-        PressAt(window, panel.TranslatePoint(new Point(panel.Bounds.Width / 2, panel.Bounds.Height + 20), window)!.Value);
+        // Под панелью — строка другого сервера: нажатие закрывает фильтр и дальше не идет — сервер не переключается.
+        var chosen = Service<IServerCatalog>().Selected?.Id;
+        var bottom = panel.TranslatePoint(new Point(0, panel.Bounds.Height), window)!.Value.Y;
+        var row = Buttons(window)
+            .Where(b => b.DataContext is ServerRowViewModel r && r.Id != chosen && b.Classes.Contains("plain"))
+            .First(b => b.TranslatePoint(default, window)!.Value.Y > bottom);
+        var below = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
+        PressAt(window, below);
         page.IsFilterOpen.ShouldBeFalse("нажатие мимо панели закрывает ее");
         panel.IsVisible.ShouldBeFalse();
-        shell.Overlay.HasSheet.ShouldBeFalse("нажатие, закрывшее фильтр, не открывает сервер под ним");
+        Service<IServerCatalog>().Selected?.Id.ShouldBe(chosen, "нажатие, закрывшее фильтр, не выбирает сервер под ним");
+        shell.Overlay.HasSheet.ShouldBeFalse();
 
         Press(window, "FilterButton");
         page.IsFilterOpen.ShouldBeTrue();

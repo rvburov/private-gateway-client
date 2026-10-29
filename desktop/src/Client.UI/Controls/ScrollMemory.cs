@@ -60,8 +60,19 @@ public static class ScrollMemory
             return;
         }
 
+        // Содержимое с прошлой попытки не выросло — запомненное место недостижимо (страница стала короче, пока ее не
+        // было): возврат кончается, не трогая смещение, иначе он перебивал бы прокрутку пользователя.
+        if (restoring.Attempts > 0 && viewer.Extent == restoring.Extent)
+        {
+            Pending.Remove(viewer);
+            return;
+        }
+
+        restoring.Extent = viewer.Extent;
+        var before = viewer.Offset;
         viewer.Offset = restoring.Target;
-        if (viewer.Offset.Y >= restoring.Target.Y - 0.5 || ++restoring.Attempts >= RestoreAttempts)
+        // Не сдвинулось — новой раскладки от этой попытки не будет, ждать нечего.
+        if (viewer.Offset.Y >= restoring.Target.Y - 0.5 || viewer.Offset == before || ++restoring.Attempts >= RestoreAttempts)
         {
             Pending.Remove(viewer);
         }
@@ -81,5 +92,8 @@ public static class ScrollMemory
         public Vector Target { get; } = target;
 
         public int Attempts { get; set; }
+
+        /// <summary>Размер содержимого при прошлой попытке.</summary>
+        public Size Extent { get; set; }
     }
 }

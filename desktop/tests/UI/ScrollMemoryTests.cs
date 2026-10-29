@@ -47,6 +47,31 @@ public sealed class ScrollMemoryTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Unreachable_place_does_not_undo_the_users_scrolling()
+    {
+        var (window, shell) = Open();
+        shell.NavigateCommand.Execute(Pages.Settings);
+        Dispatcher.UIThread.RunJobs();
+        var bottom = ScrollTo(window, 10_000);
+
+        // Пока «Настроек» не было, их место стало недостижимым: окно выше — страница прокручивается меньше.
+        shell.NavigateCommand.Execute(Pages.Protection);
+        Dispatcher.UIThread.RunJobs();
+        window.Height += 200;
+        Dispatcher.UIThread.RunJobs();
+        Press(window, "BackButton");
+        var page = Page(window);
+        page.Offset.Y.ShouldBeLessThan(bottom, "дальше нового низа страницы не прокрутить");
+        page.Offset.Y.ShouldBeGreaterThan(0, "насколько можно — ближе к прежнему месту");
+
+        page.Offset = new Vector(0, 10);
+        Dispatcher.UIThread.RunJobs();
+        Dispatcher.UIThread.RunJobs();
+
+        page.Offset.Y.ShouldBe(10, "прокрутку пользователя возврат не перебивает");
+    }
+
+    [AvaloniaFact]
     public void Sub_page_opens_from_the_top_again()
     {
         var (window, shell) = Open();
