@@ -10,8 +10,10 @@ private final class FakeSource: SubscriptionSource, @unchecked Sendable {
     private var holding = false
     private var waiting: CheckedContinuation<Void, Never>?
     private var count = 0
+    private var protectedCount = 0
 
     var calls: Int { locked { count } }
+    var protectedCalls: Int { locked { protectedCount } }
     var waits: Bool { locked { waiting != nil } }
 
     func serve(_ text: String, failure: SubscriptionDownloadError? = nil) {
@@ -51,6 +53,11 @@ private final class FakeSource: SubscriptionSource, @unchecked Sendable {
         }
 
         return content
+    }
+
+    func downloadProtected(_ url: URLComponents) async throws -> SubscriptionContent {
+        locked { protectedCount += 1 }
+        return try await download(url)
     }
 
     private func locked<T>(_ body: () -> T) -> T {
@@ -129,6 +136,7 @@ final class SubscriptionUpdaterTests: XCTestCase {
         let direct = await updater.update(group, connected: false)
         XCTAssertEqual(direct.outcome, .updated(added: 0, removed: 0), "настройку выключили — грузится напрямую")
         XCTAssertEqual(source.calls, 1)
+        XCTAssertEqual(source.protectedCalls, 0)
     }
 
     func testUpdateUnderProtectionReplacesTheListAndKeepsTheSelectedServerMarked() async throws {
@@ -137,6 +145,7 @@ final class SubscriptionUpdaterTests: XCTestCase {
         serve([Self.catalog[0], Self.catalog[3]])
 
         let report = await updater.update(group, connected: true)
+        XCTAssertEqual(source.protectedCalls, 1, "snapshot connected не дает права грузить обычным download")
         XCTAssertEqual(report.outcome, .updated(added: 1, removed: 1))
         XCTAssertEqual(report.notices, [.gone(server: Self.catalog[1].name, subscription: "Провайдер")])
         let after = try await servers.servers()
@@ -161,6 +170,25 @@ final class SubscriptionUpdaterTests: XCTestCase {
         XCTAssertEqual(subscription.failure, .status)
         XCTAssertEqual(subscription.status, 403)
         XCTAssertNotNil(subscription.lastAttemptAt)
+    }
+
+    func testCancelledBackgroundUpdateDoesNotApplyALateResultOrMarkFailure() async throws {
+        let (group, ids) = try await subscribe()
+        let before = try await servers.groups()
+        serve([Self.catalog[3]])
+        source.hold()
+        let updater = self.updater
+        let action = Task { await updater.update(group, connected: true, scheduled: true) }
+        for _ in 0..<1000 where !source.waits { try await Task.sleep(nanoseconds: 1_000_000) }
+        XCTAssertTrue(source.waits)
+        action.cancel()
+        source.release()
+        let report = await action.value
+        XCTAssertEqual(report.outcome, .unavailable)
+        let afterIds = try await servers.servers().map(\.id)
+        let after = try await servers.groups()
+        XCTAssertEqual(afterIds, ids)
+        XCTAssertEqual(after, before)
     }
 
     func testScheduledFailureIsReportedAndATapIsNot() async throws {

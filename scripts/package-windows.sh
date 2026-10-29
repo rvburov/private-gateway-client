@@ -8,10 +8,14 @@
 # (мастер установки) скрипт ставит сам. Версия MSI — только цифры: 1.2.3-beta.1 → 1.2.3.
 # Своя версия MSI — для проверки обновления (windows-installer-smoke.sh): та же сборка, установщик «новее»; он кладется в
 # artifacts/msi-<версия MSI>.msi, не в выпуск.
+# PGC_MSI_SMOKE_FAIL_AFTER_SERVICE=1 — только с отдельной версией MSI: тестовая ошибка после успешной замены службы.
 set -euo pipefail
 
 version=${1:?версия выпуска}
 msi_version=${2:-${version%%-*}}
+smoke_fail=${PGC_MSI_SMOKE_FAIL_AFTER_SERVICE:-0}
+[[ "$smoke_fail" = 0 || ( "$smoke_fail" = 1 && -n "${2:-}" ) ]] \
+  || { echo "Ошибка после замены службы разрешена только у тестового MSI с отдельной версией" >&2; exit 1; }
 cd "$(dirname "$0")/.."
 build="artifacts/publish/PrivateGateway-$version-win-x64"
 [ -d "$build" ] || { echo "Нет сборки $build — сначала scripts/publish.sh $version" >&2; exit 1; }
@@ -27,7 +31,7 @@ done
 out="artifacts/release/PrivateGateway-$version-win-x64.msi"
 [ -z "${2:-}" ] || out="artifacts/msi-$msi_version.msi"
 wix build desktop/packaging/windows/Product.wxs -arch x64 -wx -ext WixToolset.Util.wixext -ext WixToolset.UI.wixext -culture ru-RU \
-  -d "Version=$msi_version" -d "Icon=$(cygpath -m "$PWD")/shared/specifications/icons/app.ico" -bindpath "App=$(cygpath -m "$PWD")/$build" \
+  -d "Version=$msi_version" -d "SmokeFailAfterService=$smoke_fail" -d "Icon=$(cygpath -m "$PWD")/shared/specifications/icons/app.ico" -bindpath "App=$(cygpath -m "$PWD")/$build" \
   -o "$out"
 rm -f artifacts/release/*.wixpdb artifacts/*.wixpdb
 [ -z "${2:-}" ] || { echo "$out"; exit 0; }

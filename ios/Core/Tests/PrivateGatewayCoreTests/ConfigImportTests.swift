@@ -95,6 +95,19 @@ final class ConfigImportTests: XCTestCase {
         XCTAssertEqual(batch.lines.map { $0.result.error }, [ImportErrors.badEncoding])
     }
 
+    func testEscapedBackslashBeforeAQuoteCannotHideDeepYaml() {
+        // Валидная первая строка: две косые черты в YAML — одна черта в значении, кавычка закрывает строку. Раньше
+        // сканер считал ее экранированной и не видел следующие 100 уровней, до рекурсивного Parser.nextRoot.
+        for slashes in [2, 4, 6] {
+            let prefix = "note: \"" + String(repeating: "\\", count: slashes) + "\"\n"
+            let text = prefix + "proxies: " + String(repeating: "[", count: 100) + "0" + String(repeating: "]", count: 100)
+            XCTAssertEqual(YamlTree.tooDeep(text), 2)
+            XCTAssertEqual(ImportParser.parse(text).lines.map { $0.result.error }, [ImportErrors.badEncoding])
+        }
+        // Нечетное число черт действительно экранирует кавычку: скобки внутри строки не считаются.
+        XCTAssertNil(YamlTree.tooDeep("note: \"a\\\"" + String(repeating: "[", count: 100) + "\"\nproxies: []"))
+    }
+
     func testYamlMergeKeepsExplicitKeys() throws {
         let batch = ImportParser.parse(
             """

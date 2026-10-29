@@ -49,6 +49,32 @@ final class TunnelLaunchTests: XCTestCase {
         XCTAssertTrue(config.contains(TunnelSettings.quad9Doh))
     }
 
+    func testWireGuardWithAnExplicitLanDnsDoesNotExposeAProtectedSubscriptionProxy() async throws {
+        let wireguard = try Self.fixture("wireguard/basic")
+        _ = try await select(wireguard)
+        try await settings.setTunnel(TunnelSettings(dns: .custom, customDns: "192.168.1.53"))
+        let launch = try await TunnelLaunch.prepare(settings: settings, servers: servers)
+        XCTAssertFalse(launch.protectedSubscriptionsAllowed)
+        let proxy = SubscriptionProxy(port: 32123, user: "test-user", password: "test-password")
+        let config = try launch.config(tunFd: 42, subscriptionProxy: proxy)
+        XCTAssertFalse(config.contains(XrayConfig.subscriptionTag), "локальный DNS WireGuard не должен получить имя защищенной подписки")
+        // PrivateNetwork не считает петлю/CGN локальной сетью, а правило Xray AllowLan считает. DoH не имеет lanDns:
+        // его порт 443, но он тоже попадает в это правило напрямую.
+        for dns in ["127.0.0.53", "100.64.0.53", "https://127.0.0.53/dns-query", "https://[::ffff:100.64.0.53]/dns-query", "https://[fd00::53]/dns-query"] {
+            try await settings.setTunnel(TunnelSettings(dns: .custom, customDns: dns, allowLan: true))
+            let unsafe = try await TunnelLaunch.prepare(settings: settings, servers: servers)
+            XCTAssertFalse(unsafe.protectedSubscriptionsAllowed, dns)
+            XCTAssertFalse(try unsafe.config(tunFd: 42, subscriptionProxy: proxy).contains(XrayConfig.subscriptionTag), dns)
+        }
+        try await settings.setTunnel(TunnelSettings(dns: .quad9Doh))
+        let safeWireguard = try await TunnelLaunch.prepare(settings: settings, servers: servers)
+        XCTAssertTrue(safeWireguard.protectedSubscriptionsAllowed)
+        _ = try await select(Self.fixture("vless/reality-vision"))
+        try await settings.setTunnel(TunnelSettings(dns: .custom, customDns: "192.168.1.53"))
+        let vless = try await TunnelLaunch.prepare(settings: settings, servers: servers)
+        XCTAssertTrue(vless.protectedSubscriptionsAllowed, "VLESS передает имя серверу, локальный DNS не нужен")
+    }
+
     func testNoSelectedServer() async throws {
         try await servers.add([Self.fixture("vless/reality-vision")])
         let error = await failure { _ = try await TunnelLaunch.prepare(settings: self.settings, servers: self.servers) }

@@ -114,6 +114,10 @@ public sealed record ConnectionStatus(
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;
 
+    /// <summary>Замер службы нашел реальный IPv4 вне туннеля; вычисляется и в окне из того же снимка IPC.</summary>
+    public bool HasExitIpLeak => Mode == ConnectionMode.Vpn && State == ConnectionState.Connected && !IsPaused
+        && Protection.AllTraffic == CheckState.Warning && Exit.Ip is not null && Exit.Ip == Exit.DirectIp;
+
     /// <summary>Подключено в режиме «Только прокси»: защищен не весь трафик (доска 17).</summary>
     public bool IsProxy => Mode == ConnectionMode.Proxy && State == ConnectionState.Connected;
 

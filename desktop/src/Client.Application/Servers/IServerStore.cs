@@ -90,6 +90,10 @@ public interface IServerStore : IServerCatalog
     /// <exception cref="InvalidOperationException">Хранилище секретов недоступно — ничего не изменено.</exception>
     SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers);
 
+    /// <summary>Применить ответ только к тому же адресу существующей подписки; старый ответ после удаления/правки отбрасывается.</summary>
+    SubscriptionUpdate? TryApplyUpdate(string subscriptionId, Uri expectedUrl, IReadOnlyList<ServerDefinition> servers) =>
+        SubscriptionUrl(subscriptionId) == expectedUrl ? ApplyUpdate(subscriptionId, servers) : null;
+
     /// <summary>Обновить не удалось: запомнить причину и время, прошлый список не трогать.</summary>
     void MarkUpdateFailed(string subscriptionId, DownloadFailure failure, int? statusCode = null);
 

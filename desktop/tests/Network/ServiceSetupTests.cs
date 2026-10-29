@@ -389,7 +389,8 @@ public sealed class ServiceSetupTests : IDisposable
             Before=network-pre.target
 
             [Service]
-            Type=simple
+            Type=notify
+            NotifyAccess=main
             ExecStart="/opt/private gateway/svc" "--owner" "1000" "50%%"
             Restart=on-failure
             RestartSec=5

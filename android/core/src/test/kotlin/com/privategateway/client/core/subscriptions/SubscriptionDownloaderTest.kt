@@ -8,6 +8,14 @@ import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.URI
+import java.net.HttpURLConnection
+import java.io.ByteArrayInputStream
+import java.io.InputStream
+import java.io.IOException
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.async
+import kotlinx.coroutines.runBlocking
 import java.util.zip.GZIPOutputStream
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -93,5 +101,54 @@ class SubscriptionDownloaderTest {
         serve("/plain", body = "ss://x".toByteArray())
         assertNull(SubscriptionDownloader().download(URI("$base/plain")).title)
         assertFailsWith<IllegalArgumentException> { SubscriptionDownloader().download(URI("file:///etc/hosts")) }
+    }
+
+    @Test
+    fun `every redirect uses the captured connection factory and losing it never falls back`() {
+        serve("/redirect", 302, mapOf("Location" to "/plain"))
+        serve("/plain", body = "server".toByteArray())
+        val opened = mutableListOf<URI>()
+        val downloader = SubscriptionDownloader(openConnection = {
+            opened += it
+            it.toURL().openConnection() as HttpURLConnection
+        })
+        assertEquals("server", downloader.download(URI("$base/redirect")).text)
+        assertEquals(listOf(URI("$base/redirect"), URI("$base/plain")), opened)
+
+        var calls = 0
+        val lost = SubscriptionDownloader(openConnection = {
+            if (++calls == 2) throw IOException("Сеть VPN потеряна")
+            it.toURL().openConnection() as HttpURLConnection
+        })
+        assertEquals(DownloadFailure.Network, assertFailsWith<SubscriptionDownloadException> { lost.download(URI("$base/redirect")) }.failure)
+        assertEquals(2, calls)
+    }
+
+    @Test
+    fun `cancellation closes a request blocked before the response and prevents its next hop`() = runBlocking {
+        val waiting = CountDownLatch(1)
+        val closed = CountDownLatch(1)
+        val request = SubscriptionRequest()
+        var opens = 0
+        val connection = object : HttpURLConnection(URI("$base/blocked").toURL()) {
+            override fun connect() = Unit
+            override fun usingProxy() = false
+            override fun disconnect() { closed.countDown() }
+            override fun getResponseCode(): Int {
+                waiting.countDown()
+                check(closed.await(3, TimeUnit.SECONDS))
+                return 302
+            }
+            override fun getHeaderField(name: String): String? = if (name == "Location") "/next" else null
+            override fun getInputStream(): InputStream = ByteArrayInputStream(ByteArray(0))
+        }
+        val downloader = SubscriptionDownloader(openConnection = { opens++; connection }, request = request)
+        val work = async { request.execute { downloader.download(URI("$base/blocked")) } }
+        kotlinx.coroutines.yield()
+        check(waiting.await(3, TimeUnit.SECONDS))
+        work.cancel()
+        assertEquals(0L, closed.count, "отмена закрывает соединение сразу, а не после сетевого таймаута")
+        work.join()
+        assertEquals(1, opens, "после отмены перенаправление не открывается")
     }
 }

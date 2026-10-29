@@ -26,6 +26,11 @@ public static class ToneOf
             return Tone.Partial;
         }
 
+        if (status.HasExitIpLeak)
+        {
+            return Tone.Error;
+        }
+
         var partial = status.Mode == ConnectionMode.Proxy;
         return status.State switch
         {

@@ -24,6 +24,10 @@ public struct TunnelLaunch: Sendable {
     public let core: CoreSettings
     public let plan: TunPlan
 
+    /// Проверяется и явный lanDns, и DNS/DoH в сетях правила AllowLan. При AllowLan неизвестный DNS-hostname не разрешаем
+    /// для проверки: вход не создается, пока путь DNS WireGuard нельзя доказать; остальные протоколы передают имя серверу.
+    public var protectedSubscriptionsAllowed: Bool { SubscriptionProxy.isAllowed(protocol: server.protocol, settings: core) }
+
     /// Сервер не выбран или удален, его ссылки нет в Связке ключей — PGC-SVC-003; ядро не умеет с ним работать — PGC-SVC-005;
     /// файлы не прочитать (данные под защитой до первой разблокировки) — PGC-SVC-002.
     public static func prepare(settings: SettingsStore, servers: ServerStore) async throws -> TunnelLaunch {
@@ -58,8 +62,10 @@ public struct TunnelLaunch: Sendable {
     }
 
     /// Конфиг Xray с дескриптором интерфейса туннеля.
-    public func config(tunFd: Int32) throws -> String {
-        guard let json = XrayConfig.build(server, core, tunFd: tunFd).json else {
+    public func config(tunFd: Int32, subscriptionProxy: SubscriptionProxy? = nil) throws -> String {
+        guard let json = XrayConfig.build(
+            server, core, tunFd: tunFd, subscriptionProxy: protectedSubscriptionsAllowed ? subscriptionProxy : nil
+        ).json else {
             throw TunnelFailure(TunnelErrors.unsupported)
         }
 

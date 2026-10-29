@@ -39,6 +39,10 @@ import com.privategateway.client.core.vpn.TunnelProbe
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.core.xray.XrayConfig
+import com.privategateway.client.core.xray.SubscriptionProxy
+import java.net.ServerSocket
+import java.net.InetAddress
+import java.util.UUID
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -76,6 +80,8 @@ class GatewayVpnService : VpnService() {
     @Inject lateinit var engine: CoreEngine
 
     @Inject lateinit var monitor: TunnelMonitor
+
+    @Inject lateinit var subscriptionNetwork: OwnVpnNetwork
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
@@ -157,11 +163,13 @@ class GatewayVpnService : VpnService() {
 
     override fun onRevoke() {
         // Разрешение отозвано: VPN другой программы занял место или пользователь отключил нас в настройках Android.
+        subscriptionNetwork.clear()
         disconnect(lastStart)
     }
 
     override fun onDestroy() {
         destroyed = true
+        subscriptionNetwork.clear()
         work?.cancel()
         stopGuard()
         unregisterReceiver(wake)
@@ -315,11 +323,15 @@ class GatewayVpnService : VpnService() {
         // Переподключение без окна утечки: новая карта поднимается, пока прежняя еще держит трафик (Android меняет одну на
         // другую сам), и только потом останавливается прежнее ядро. Пока новое не запущено, пакеты ждут в карте, а не
         // уходят мимо туннеля.
+        val networksBefore = subscriptionNetwork.beforeEstablish()
         val descriptor = establish(builder) ?: return TunnelErrors.OTHER_VPN
         stopCore()
         tun = descriptor
 
-        val config = XrayConfig.build(server, core, descriptor.fd)
+        // Порт резервируется только для выбора; endpoint публикуется после успешного bind самим ядром. Если порт успела
+        // занять другая программа, runXray откажет, и запросы с секретами туда не отправятся.
+        val proxy = SubscriptionProxy(ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }, UUID.randomUUID().toString(), UUID.randomUUID().toString())
+        val config = XrayConfig.build(server, core, descriptor.fd, proxy)
         val json = config.json ?: return TunnelErrors.UNSUPPORTED
         // Ядро считается запущенным и при отказе: остановка снимет то, что успело запуститься (DNS, контроллер сокетов).
         coreRunning = true
@@ -333,6 +345,7 @@ class GatewayVpnService : VpnService() {
         dns = follower
         applied.value = tunnel
         watchNetwork()
+        subscriptionNetwork.established(networksBefore, plan, proxy, SubscriptionProxy.hasPrivateDns(server.protocol, core))
         up = Up(id, name, ServerFacts.isEncrypted(server.protocol, server.security.kind))
         return null
     }
@@ -365,6 +378,7 @@ class GatewayVpnService : VpnService() {
 
     /** Ядро — до карты: ядро читает свою копию дескриптора, а карту закрывает только приложение. */
     private fun stopCore() {
+        subscriptionNetwork.clear()
         underlying?.let { callback -> runCatching { getSystemService(ConnectivityManager::class.java)?.unregisterNetworkCallback(callback) } }
         underlying = null
         applied.value = null
@@ -443,7 +457,7 @@ class GatewayVpnService : VpnService() {
     private fun notification(title: String, text: String?, onlineSince: Long? = null): Notification {
         val lockScreen = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
             .setSmallIcon(R.drawable.pg_notification)
-            .setContentTitle(title)
+            .setContentTitle(if (onlineSince != null) getString(R.string.status_connected_title) else title)
             .build()
         val builder = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
             .setSmallIcon(R.drawable.pg_notification)

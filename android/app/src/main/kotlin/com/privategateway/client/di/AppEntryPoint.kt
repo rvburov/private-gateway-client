@@ -5,6 +5,7 @@ import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.notify.ProtectionNotifier
 import com.privategateway.client.subscriptions.SubscriptionBackground
 import com.privategateway.client.subscriptions.SubscriptionUpdater
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.vpn.NetworkAccess
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.EntryPoint
@@ -22,6 +23,7 @@ interface AppEntryPoint {
     fun monitor(): TunnelMonitor
 
     fun updater(): SubscriptionUpdater
+    fun subscriptionTransport(): SubscriptionTransport
 
     fun notifier(): ProtectionNotifier
 

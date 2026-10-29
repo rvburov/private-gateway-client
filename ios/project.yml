@@ -56,6 +56,10 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleLocalizations: [en, ru]
         UILaunchScreen: {}
+        # Пользователь может явно добавить HTTP-подписку (с предупреждением в импорте). Это исключение только для
+        # URLSession приложения; доверие сертификатам HTTPS остается системным, challenge TLS не переопределяется.
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
         # Камера — только для QR-кода со ссылкой на сервер; текст по языкам — App/Resources/*.lproj/InfoPlist.strings.
         NSCameraUsageDescription: The camera is used only to read a QR code with a server link. Nothing is saved or sent anywhere.
         UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
@@ -111,6 +115,9 @@ targets:
     platform: iOS
     sources:
       - path: AppTests
+      # Тот же настоящий URLSession-прокси на macOS и iOS: CFNetwork на iPhone должен доказать HTTP/CONNECT, 407 и отказ
+      # без прямого пути. В симуляторе это не требует NetworkExtension, аккаунта разработчика или настоящего VPN.
+      - path: Core/Tests/PrivateGatewayCoreTests/ProtectedSubscriptionTests.swift
     dependencies:
       - target: PrivateGateway
     settings:

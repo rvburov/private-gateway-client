@@ -46,7 +46,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public Tone Tone => ToneOf.State(Status);
 
     /// <summary>Ключ текстов состояния: «paused», «proxy», «strict» или имя состояния — для главного экрана и трея.</summary>
-    public string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.StrictBlock ? "strict" : Status.State.ToString().ToLowerInvariant();
+    public string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.HasExitIpLeak ? "leak" : Status.StrictBlock ? "strict" : Status.State.ToString().ToLowerInvariant();
 
     /// <summary>Заголовок состояния: «IP скрыт», «Прокси включен», «Защита на паузе».</summary>
     public string Title => Loc.Instance[$"status.{StateKey}.title"];
@@ -54,13 +54,14 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public bool HasServer => _catalog.Selected is not null;
 
     /// <summary>Подпись под кнопкой.</summary>
-    public string Label => Status.IsPaused ? Loc.Instance["power.label.paused"]
+    public string Label => Status.HasExitIpLeak ? Loc.Instance["power.label.leak"]
+        : Status.IsPaused ? Loc.Instance["power.label.paused"]
         : Status.IsProxy ? Loc.Instance["power.label.proxy"]
         : !HasServer && Status.State == ConnectionState.Off ? Loc.Instance["power.label.noServer"]
         : Loc.Instance["power.label." + Status.State.ToString().ToLowerInvariant()];
 
     /// <summary>Знак внутри щита: ключ иконки Icon.Mark.*.</summary>
-    public string Mark => Status.IsPaused || Status.IsProxy ? "Icon.Mark.Alert" : Status.State switch
+    public string Mark => Status.IsPaused || Status.IsProxy || Status.HasExitIpLeak ? "Icon.Mark.Alert" : Status.State switch
     {
         ConnectionState.Connected => "Icon.Mark.Ok",
         ConnectionState.Connecting or ConnectionState.Reconnecting => "Icon.Mark.Wait",

@@ -23,6 +23,7 @@ kotlin {
 dependencies {
     implementation(libs.snakeyaml.engine)
     implementation(libs.zxing.core)
+    implementation(libs.okhttp)
     // Наблюдение за связью и переподключение (TunnelGuard) — ожидания и сигналы на корутинах, как в приложении.
     implementation(libs.kotlinx.coroutines.core)
     testImplementation(platform(libs.junit.bom))

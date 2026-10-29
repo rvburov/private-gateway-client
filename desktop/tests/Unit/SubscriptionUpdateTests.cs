@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Connection;
@@ -355,6 +356,69 @@ public sealed class SubscriptionUpdateTests : IDisposable
         (await Updater(catalog).UpdateAsync(catalog.Subscriptions.Single().Id, Ct)).Failure.ShouldBe(DownloadFailure.NoAddress);
     }
 
+    [Fact]
+    public async Task Vpn_only_uses_the_service_transport_and_never_falls_back_to_the_system_proxy()
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        using var updater = Updater(catalog);
+        var protectedCalls = 0;
+        _gateway.ProtectedDownload = (url, _) =>
+        {
+            url.ShouldBe(Url);
+            protectedCalls++;
+            return Task.FromResult(SubscriptionDownload.Failed(DownloadFailure.Connection));
+        };
+
+        (await updater.UpdateAsync(id, Ct)).Failure.ShouldBe(DownloadFailure.Connection);
+        protectedCalls.ShouldBe(1);
+        _downloads.Requested.ShouldBeEmpty("ошибка ядра не разрешает прямой повтор");
+
+        _gateway.Mode = ConnectionMode.Proxy;
+        (await updater.UpdateAsync(id, Ct)).Block.ShouldBe(UpdateBlock.ProtectionOff);
+        protectedCalls.ShouldBe(1, "одного Connected без режима VPN недостаточно");
+        _downloads.Requested.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_late_subscription_answer_is_discarded_after_deletion_or_address_change(bool remove)
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        Settings().Update(s => s with { UpdateOnlyViaVpn = false });
+        _downloads.Pending = new TaskCompletionSource<SubscriptionContent>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var updater = Updater(catalog);
+        var pending = updater.UpdateAsync(id, Ct);
+        updater.IsUpdating(id).ShouldBeTrue();
+
+        if (remove)
+        {
+            catalog.RemoveSubscription(id);
+        }
+        else
+        {
+            catalog.EditSubscription(id, "Другой адрес", new Uri("https://example.org/sub/another-fake-token"));
+        }
+
+        _downloads.Pending.SetResult(new SubscriptionContent("trojan://pw-b@198.51.100.2:443#B", null));
+        (await pending).Block.ShouldBe(UpdateBlock.Superseded);
+        updater.IsUpdating(id).ShouldBeFalse();
+        catalog.Servers.Any(s => s.Name == "B").ShouldBeFalse("ответ прежней операции не попадает в базу");
+        catalog.Subscriptions.Any(s => s.LastFailure is not null).ShouldBeFalse("ошибка старого адреса не записывается новому");
+    }
+
+    [Fact]
+    public void Atomic_update_rejects_an_old_subscription_address()
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        catalog.EditSubscription(id, "Новая", new Uri("https://example.org/sub/new-fake-token"));
+        catalog.TryApplyUpdate(id, Url, Parse("trojan://pw-b@198.51.100.2:443#B")).ShouldBeNull();
+        catalog.Servers.ShouldHaveSingleItem().Name.ShouldBe("A");
+    }
+
     // ── Подпись адреса ───────────────────────────────────────────────────────
 
     [Theory]
@@ -379,8 +443,22 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
     private SettingsService Settings() => _settings ??= new SettingsService(_settingsStore);
 
-    private SubscriptionUpdater Updater(SqliteServerCatalog catalog) =>
-        new(catalog, _downloads, _gateway, Settings(), _time, NullLogger<SubscriptionUpdater>.Instance);
+    private SubscriptionUpdater Updater(SqliteServerCatalog catalog)
+    {
+        _gateway.ProtectedDownload = async (url, token) =>
+        {
+            try
+            {
+                var content = await _downloads.DownloadAsync(url, token);
+                return new SubscriptionDownload(Encoding.UTF8.GetBytes(content.Text));
+            }
+            catch (SubscriptionDownloadException e)
+            {
+                return SubscriptionDownload.Failed(e.Failure, e.StatusCode);
+            }
+        };
+        return new(catalog, _downloads, _gateway, Settings(), _time, NullLogger<SubscriptionUpdater>.Instance);
+    }
 
     private string Import(SqliteServerCatalog catalog, params string[] links)
     {
@@ -412,9 +490,16 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
         public List<Uri> Requested { get; } = [];
 
+        public TaskCompletionSource<SubscriptionContent>? Pending { get; set; }
+
         public Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
         {
             Requested.Add(url);
+            if (Pending is { } pending)
+            {
+                // Намеренно не слушает отмену: поздний ответ все равно должен отбрасываться.
+                return pending.Task;
+            }
             return Failure is { } failure
                 ? Task.FromException<SubscriptionContent>(failure)
                 : Task.FromResult(new SubscriptionContent(Text ?? string.Empty, null));
@@ -428,6 +513,13 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
         public ServiceKind Service { get; set; } = ServiceKind.Installed;
 
+        public ConnectionMode Mode { get; set; } = ConnectionMode.Vpn;
+
+        public Func<Uri, CancellationToken, Task<SubscriptionDownload>>? ProtectedDownload { get; set; }
+
+        public Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default) =>
+            ProtectedDownload!(address, cancellationToken);
+
         public ConnectionState State
         {
             get => _state;
@@ -438,7 +530,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
             }
         }
 
-        public ConnectionStatus Status => ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = _state };
+        public ConnectionStatus Status => ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { State = _state, Mode = Mode };
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
 

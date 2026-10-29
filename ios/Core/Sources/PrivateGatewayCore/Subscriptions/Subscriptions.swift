@@ -99,6 +99,8 @@ public enum DownloadFailure: String, CaseIterable, Sendable {
 
     /// Адрес подписки не открылся: запечатанный адрес не расшифровать (запись Связки ключей пропала).
     case noAddress = "NoAddress"
+    /// Ядро туннеля не дало защищенный вход: напрямую при «только через VPN» не загружаем.
+    case protectedPathUnavailable = "ProtectedPathUnavailable"
 
     /// Причина, сохраненная у подписки: nil — неудачи не было; неизвестное имя (из будущей версии) — сеть, как у десктопа.
     public static func parse(_ name: String?) -> DownloadFailure? {
@@ -129,6 +131,7 @@ public enum FailureReason: Equatable, Sendable {
     case noServers
     case noAddress
     case network
+    case protectedPathUnavailable
 
     /// Причина и код ответа, как их дает загрузка или хранит подписка. Код важен только для `.status`; без кода сказать
     /// «сервер ответил» нечего — «ошибка сети».
@@ -149,6 +152,7 @@ public enum FailureReason: Equatable, Sendable {
         case .noServers: return .noServers
         case .noAddress: return .noAddress
         case .network: return .network
+        case .protectedPathUnavailable: return .protectedPathUnavailable
         }
     }
 }
@@ -252,6 +256,15 @@ public struct SubscriptionDownloadError: Error, Equatable, Sendable {
 public protocol SubscriptionSource: Sendable {
     /// Текст и название подписки; не загрузилась — `SubscriptionDownloadError` с причиной.
     func download(_ url: URLComponents) async throws -> SubscriptionContent
+    /// Только через аутентифицированный вход ядра выбранного сервера; прямого запасного пути нет.
+    func downloadProtected(_ url: URLComponents) async throws -> SubscriptionContent
+}
+
+extension SubscriptionSource {
+    /// Источник должен явно реализовать защищенную загрузку: обычный download не является безопасным запасным путем.
+    public func downloadProtected(_ url: URLComponents) async throws -> SubscriptionContent {
+        throw SubscriptionDownloadError(.protectedPathUnavailable)
+    }
 }
 
 /// Итог загрузки подписки для обновления: серверы и название либо почему не вышло. Адреса подписки здесь нет.
@@ -266,10 +279,16 @@ public enum FetchResult: Equatable, Sendable {
 /// Загрузка и разбор подписки при обновлении — как `SubscriptionFetch` Android: загрузить, разобрать, оставить строки,
 /// которые разобрались; ни одного сервера — `.noServers`, и прошлый список не трогается.
 public enum SubscriptionFetch {
-    public static func fetch(_ url: URLComponents, from source: some SubscriptionSource) async -> FetchResult {
+    public static func fetch(_ url: URLComponents, from source: some SubscriptionSource, protected: Bool = false) async -> FetchResult {
         let content: SubscriptionContent
         do {
-            content = try await source.download(url)
+            try Task.checkCancellation()
+            if protected {
+                content = try await source.downloadProtected(url)
+            } else {
+                content = try await source.download(url)
+            }
+            try Task.checkCancellation()
         } catch let error as SubscriptionDownloadError {
             return .failed(error.failure, status: error.status)
         } catch {

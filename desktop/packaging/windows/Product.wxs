@@ -19,6 +19,9 @@
     смоук CI) идет без мастера, как раньше.
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <?ifndef SmokeFailAfterService ?>
+    <?define SmokeFailAfterService = 0 ?>
+  <?endif ?>
   <Package Name="Private Gateway" Manufacturer="Private Gateway" Version="$(Version)" UpgradeCode="b3f677bb-fd84-4ddd-b04c-8cf67f3ea5c3"
            Scope="perMachine" Compressed="yes" Language="1049" Codepage="1251">
     <!-- Понижение версии разрешено: откат на прежнюю версию из «О программе» ставит ее MSI поверх новой. -->
@@ -77,7 +80,7 @@
 
     <!-- Служба: команды самой службы без окна консоли (WixQuietExec), от SYSTEM. Владелец — OWNER, иначе тот, кто ставит. -->
     <Property Id="OWNER" Secure="yes" />
-    <SetProperty Id="OWNER" Value="[UserSID]" Before="SetInstallService" Sequence="execute" Condition="NOT OWNER" />
+    <SetProperty Id="OWNER" Value="[UserSID]" Before="InstallInitialize" Sequence="execute" Condition="NOT OWNER" />
     <SetProperty Id="InstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --install --owner [OWNER]"
                  Before="InstallService" Sequence="execute" />
     <CustomAction Id="InstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="check" />
@@ -86,13 +89,31 @@
                  Before="RollbackInstallService" Sequence="execute" />
     <CustomAction Id="RollbackInstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="rollback" Impersonate="no" Return="ignore" />
 
+    <!-- Регистрируется до удаления прежнего MSI, поэтому при обратном выполнении старые файлы уже восстановлены.
+         Возвращает службу из них даже если новая успела запуститься и MSI упал позднее. Состояние не удаляется. -->
+    <SetProperty Id="RollbackUpgradeService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --install --owner [OWNER]"
+                 Before="RollbackUpgradeService" Sequence="execute" />
+    <CustomAction Id="RollbackUpgradeService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="rollback" Impersonate="no" Return="check" />
+
     <SetProperty Id="UninstallService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --uninstall"
                  Before="UninstallService" Sequence="execute" />
-    <CustomAction Id="UninstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="ignore" />
+    <CustomAction Id="UninstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="check" />
+
+    <?if $(SmokeFailAfterService) = 1 ?>
+    <!-- Только тестовая сборка: ошибка deferred-action, то есть ПОСЛЕ настоящего запуска новой службы. -->
+    <SetProperty Id="SmokeFailAfterInstallService"
+                 Value="&quot;[SystemFolder]cmd.exe&quot; /d /c findstr /c:SMOKE_NEW_SERVICE &quot;[INSTALLFOLDER]Service\PrivateGateway.Service.runtimeconfig.json&quot; &amp; exit /b 1"
+                 Before="SmokeFailAfterInstallService" Sequence="execute" />
+    <CustomAction Id="SmokeFailAfterInstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="deferred" Impersonate="no" Return="check" />
+    <?endif ?>
 
     <InstallExecuteSequence>
+      <Custom Action="RollbackUpgradeService" Before="RemoveExistingProducts" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
       <Custom Action="RollbackInstallService" After="InstallFiles" Condition="NOT REMOVE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="InstallService" After="RollbackInstallService" Condition="NOT REMOVE" />
+      <?if $(SmokeFailAfterService) = 1 ?>
+      <Custom Action="SmokeFailAfterInstallService" After="InstallService" Condition="NOT REMOVE" />
+      <?endif ?>
       <Custom Action="UninstallService" Before="RemoveFiles" Condition="REMOVE=&quot;ALL&quot; AND NOT UPGRADINGPRODUCTCODE" />
     </InstallExecuteSequence>
   </Package>

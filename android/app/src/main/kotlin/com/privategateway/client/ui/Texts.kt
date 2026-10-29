@@ -67,6 +67,7 @@ object Texts {
         FailureReason.NoServers -> R.string.import_download_no_servers to null
         FailureReason.NoAddress -> R.string.import_download_no_address to null
         FailureReason.Network -> R.string.import_download_network to null
+        FailureReason.PrivateDns -> R.string.android_subs_private_dns to null
     }
 
     /** «Добавить 3 сервера». */

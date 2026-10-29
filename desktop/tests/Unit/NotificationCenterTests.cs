@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
@@ -7,6 +8,7 @@ using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
+using PrivateGateway.Client.Infrastructure.Storage;
 using static PrivateGateway.Client.Tests.Unit.ConnectionControllerTests;
 
 namespace PrivateGateway.Client.Tests.Unit;
@@ -21,13 +23,15 @@ public sealed class NotificationCenterTests : IDisposable
     private readonly SettingsService _settings = new(new MemorySettings());
     private readonly SubscriptionUpdater _updater;
     private readonly NotificationCenter _center;
+    private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "pg-notice-" + Guid.NewGuid().ToString("N")));
 
     public NotificationCenterTests()
     {
         var catalog = new FakeCatalog(new ServerProfile("srv-1", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Tls,
             "203.0.113.10", 443, "tcp", null))
         { SelectedId = "srv-1" };
-        _updater = new SubscriptionUpdater(null!, null!, _gateway, _settings, _time, NullLogger<SubscriptionUpdater>.Instance);
+        var store = new SqliteServerCatalog(new SqliteDatabase(_paths), new FakeSecrets(), _time);
+        _updater = new SubscriptionUpdater(store, new UnusedDownloader(), _gateway, _settings, _time, NullLogger<SubscriptionUpdater>.Instance);
         _center = new NotificationCenter(_gateway, catalog, _updater, _settings, _notifier, _window, new PlainTexts(), _time);
 
         // Без контекста окна центр работает сразу в потоке события.
@@ -41,6 +45,10 @@ public sealed class NotificationCenterTests : IDisposable
     {
         _center.Dispose();
         _updater.Dispose();
+        if (Directory.Exists(_paths.DataDirectory))
+        {
+            Directory.Delete(_paths.DataDirectory, recursive: true);
+        }
     }
 
     private void Move(ConnectionState state, string? code = null)
@@ -241,5 +249,11 @@ public sealed class NotificationCenterTests : IDisposable
         public AppSettings Load() => _value;
 
         public void Save(AppSettings settings) => _value = settings;
+    }
+
+    private sealed class UnusedDownloader : ISubscriptionDownloader
+    {
+        public Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Тест уведомлений не должен загружать подписки");
     }
 }

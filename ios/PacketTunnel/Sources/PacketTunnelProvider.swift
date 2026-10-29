@@ -30,44 +30,78 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     private var serverName: String?
     private var probeNote: String?
     private let desk = NoticeDesk()
+    private var generation: UInt64 = 0
+    private var stopping = false
+    private var subscriptionProxy: SubscriptionProxy?
 
     // В изоляции вызывающего, как метод суперкласса: словарь параметров (NSObject — не Sendable) никуда не пересылается.
     override nonisolated(nonsending) func startTunnel(options: [String: NSObject]?) async throws {
+        var session: UInt64?
+        var failure: TunnelFailure?
         do {
-            try await work.run { try await self.bringUp(reporting: true) }
+            try await work.run({
+                let active = try self.beginSession(starting: true)
+                session = active
+                try await self.bringUp(reporting: true, session: active)
+                self.watch(session: active)
+            }, onFailure: { error in
+                // Cleanup остается в той же очереди: ошибка прежнего запуска не остановит следующее ядро.
+                if let session { failure = self.failed(error, "start", session: session) }
+            })
         } catch {
-            throw failed(error, "start")
+            if let failure { throw failure }
+            throw error
         }
-
-        watch()
     }
 
     /// Сообщение приложения: «перечитать сервер и настройки» — другой сервер под защитой, новые настройки или повтор после
     /// «Ошибки». Туннель не опускается: новые маршруты ставятся поверх, прежнее ядро останавливается, новое запускается —
     /// трафик ждет в туннеле. Не вышло — туннель закрывается с ошибкой: держать его без ядра незачем.
     override func handleAppMessage(_ messageData: Data) async -> Data? {
+        if messageData == TunnelMessages.subscriptionProxy {
+            return await work.run {
+                guard let proxy = self.locked({ self.subscriptionProxy }), self.locked({ !self.stopping }),
+                      self.locked({ self.reported.state == .connected }) else { return nil }
+                return try? JSONEncoder().encode(proxy)
+            }
+        }
         guard messageData == TunnelMessages.reload else {
             return nil
         }
 
         container.log.add("reload")
-        do {
-            try await work.run { try await self.bringUp(reporting: true) }
-            reasserting = false
-            watch()
-            return TunnelMessages.ok
-        } catch {
-            let failure = failed(error, "reload")
-            cancelTunnelWithError(failure)
-            return Data(failure.code.utf8)
+        return await work.run {
+            do {
+                let session = try self.beginSession()
+                do {
+                    try await self.bringUp(reporting: true, session: session)
+                    self.reasserting = false
+                    self.watch(session: session)
+                    return TunnelMessages.ok
+                } catch {
+                    let failure = self.failed(error, "reload", session: session)
+                    if self.current(session) { self.cancelTunnelWithError(failure) }
+                    return Data(failure.code.utf8)
+                }
+            } catch {
+                return Data(TunnelErrors.coreFailed.utf8)
+            }
         }
     }
 
     override func stopTunnel(with reason: NEProviderStopReason) async {
         container.log.add("stopped, reason \(reason.rawValue)")
+        locked {
+            stopping = true
+            generation &+= 1
+            subscriptionProxy = nil
+        }
         stopWatching()
-        await work.run { self.stopCore() }
-        report(TunnelStatus())
+        await work.run {
+            self.stopWatching()
+            self.stopCore()
+            self.report(TunnelStatus())
+        }
     }
 
     /// iPhone проснулся — проба связи сразу, а не через минуту.
@@ -78,21 +112,27 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     /// Сервер и настройки из общей папки, маршруты и DNS, ядро на дескрипторе utun. Ядро запускается после маршрутов: до него
     /// пакеты ждут в туннеле, а не уходят мимо; прежнее ядро (перезапуск) останавливается тоже после новых маршрутов.
     /// `reporting` — сообщать «Подключение» и «Защищено»; при переподключении состояние ведет наблюдение.
-    private nonisolated(nonsending) func bringUp(reporting: Bool) async throws {
+    private nonisolated(nonsending) func bringUp(reporting: Bool, session: UInt64) async throws {
         let launch = try await TunnelLaunch.prepare(settings: container.settings, servers: container.servers)
+        try requireCurrent(session)
         let name = try? await container.servers.servers().first { $0.id == launch.serverId }?.displayName
+        try requireCurrent(session)
         locked { serverName = name }
         if reporting {
             report(TunnelStatus(state: .connecting, serverId: launch.serverId))
         }
 
         try await apply(launch.plan.networkSettings())
+        try requireCurrent(session)
         guard let fd = TunnelInterface.descriptor() else {
             throw TunnelFailure(TunnelErrors.coreFailed, detail: "utun descriptor not found")
         }
 
         stopCore()
-        try TunnelLaunch.started(LibXrayInvoke(XrayConfig.runRequest(launch.config(tunFd: fd))))
+        let proxy = launch.protectedSubscriptionsAllowed ? try TunnelInterface.proxy() : nil
+        try TunnelLaunch.started(LibXrayInvoke(XrayConfig.runRequest(launch.config(tunFd: fd, subscriptionProxy: proxy))))
+        try requireCurrent(session)
+        locked { subscriptionProxy = proxy }
         if reporting {
             report(TunnelStatus(state: .connected, serverId: launch.serverId, since: Date()))
             container.log.add("connected")
@@ -104,13 +144,14 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     // MARK: Наблюдение
 
     /// Наблюдение за связью заново (после подъема или перезапуска) и подгон на смену сети.
-    private func watch() {
+    private func watch(session: UInt64) {
+        guard current(session) else { return }
         let guarded = TunnelGuard(
             timer: timer,
             policy: { [container] in (try? await container.settings.load().reconnect) ?? .backoff60Seconds },
             probe: { [weak self] in await self?.probe() ?? false },
-            restart: { [weak self] attempt in await self?.restart(attempt) },
-            events: GuardReport(provider: self)
+            restart: { [weak self] attempt in await self?.restart(attempt, session: session) },
+            events: GuardReport(provider: self, session: session)
         )
         let task = Task { await guarded.run() }
         let monitor = NWPathMonitor()
@@ -170,41 +211,63 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     }
 
     /// Попытка переподключения: новые маршруты и ядро к тому же серверу; nil — удалось, иначе код ошибки.
-    private func restart(_ attempt: Int) async -> String? {
-        do {
-            try await work.run { try await self.bringUp(reporting: false) }
-            return nil
-        } catch {
-            let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
-            log.error("reconnect \(attempt, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
-            container.log.add("reconnect \(attempt): \(failure.code) \(failure.detail ?? "")")
-            return failure.code
+    private func restart(_ attempt: Int, session: UInt64) async -> String? {
+        return await work.run {
+            guard self.current(session), !Task.isCancelled else { return TunnelErrors.coreFailed }
+            do {
+                try await self.bringUp(reporting: false, session: session)
+                return nil
+            } catch {
+                self.stopCore()
+                guard self.current(session) else { return TunnelErrors.coreFailed }
+                let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
+                self.log.error("reconnect \(attempt, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
+                self.container.log.add("reconnect \(attempt): \(failure.code) \(failure.detail ?? "")")
+                return failure.code
+            }
         }
     }
 
     /// События наблюдения: «Переподключение» с номером попытки (iOS показывает его сама — `reasserting`), снова «Защищено»,
     /// «Ошибка». Сдались с блоком при обрыве — туннель остается без ядра: трафик заблокирован, пока пользователь не повторит
     /// или не выберет другой сервер; без блока — туннель закрывается, трафик идет напрямую.
-    fileprivate func reconnecting(_ attempt: Int) {
+    fileprivate func reconnecting(_ attempt: Int, session: UInt64) async {
+        await work.run {
+            guard self.current(session), !Task.isCancelled else { return }
+            self.markReconnecting(attempt)
+        }
+    }
+
+    private func markReconnecting(_ attempt: Int) {
         container.log.add("connection lost, attempt \(attempt)")
         reasserting = true
         report(TunnelStatus(state: .reconnecting, serverId: currentServer, attempt: attempt))
     }
 
-    fileprivate func protectedAgain() {
+    fileprivate func protectedAgain(session: UInt64) async {
+        await work.run {
+            guard self.current(session), !Task.isCancelled else { return }
+            self.markProtectedAgain()
+        }
+    }
+
+    private func markProtectedAgain() {
         container.log.add("connection restored")
         reasserting = false
         report(TunnelStatus(state: .connected, serverId: currentServer, since: Date()))
     }
 
-    fileprivate func gaveUp(_ error: String) async {
-        container.log.add("gave up: \(error)")
-        await work.run { self.stopCore() }
-        reasserting = false
-        report(TunnelStatus(state: .error, serverId: currentServer, error: error))
-        let killSwitch = (try? await container.settings.load().killSwitch) ?? true
-        if !killSwitch {
-            cancelTunnelWithError(TunnelFailure(error))
+    fileprivate func gaveUp(_ error: String, session: UInt64) async {
+        await work.run {
+            guard self.current(session), !Task.isCancelled else { return }
+            self.container.log.add("gave up: \(error)")
+            self.stopCore()
+            self.reasserting = false
+            self.report(TunnelStatus(state: .error, serverId: self.currentServer, error: error))
+            let killSwitch = (try? await self.container.settings.load().killSwitch) ?? true
+            if !killSwitch, self.current(session) {
+                self.cancelTunnelWithError(TunnelFailure(error))
+            }
         }
     }
 
@@ -213,17 +276,19 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     // MARK: Ядро, состояние, уведомления
 
     /// Отказ: в журнал — код и подробность без секретов (SecretMasker), ядро — остановить, приложению — «Ошибка» с кодом.
-    private func failed(_ error: any Error, _ step: String) -> TunnelFailure {
+    private func failed(_ error: any Error, _ step: String, session: UInt64) -> TunnelFailure {
         let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
+        stopCore()
+        guard current(session) else { return failure }
         log.error("\(step, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
         container.log.add("\(step): \(failure.code) \(failure.detail ?? "")")
         stopWatching()
-        stopCore()
         report(TunnelStatus(state: .error, error: failure.code))
         return failure
     }
 
     private func stopCore() {
+        locked { subscriptionProxy = nil }
         let response = XrayResponse.parse(LibXrayInvoke(XrayConfig.invoke("stopXray")))
         if !response.success {
             log.error("stop: \(SecretMasker.mask(response.error), privacy: .public)")
@@ -272,6 +337,29 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         }
     }
 
+    /// Вызывается в очереди ядра. Старый watcher может еще завершать пробу, но его callbacks с прежним поколением уже
+    /// ничего не меняют. Stop инвалидирует поколение сразу, в том числе пока setTunnelNetworkSettings еще отвечает.
+    private func beginSession(starting: Bool = false) throws -> UInt64 {
+        let session = locked { () -> UInt64? in
+            guard starting || !stopping else { return nil }
+            stopping = false
+            generation &+= 1
+            return generation
+        }
+        guard let session else { throw CancellationError() }
+        stopWatching()
+        return session
+    }
+
+    private func current(_ session: UInt64) -> Bool {
+        locked { !stopping && generation == session }
+    }
+
+    private func requireCurrent(_ session: UInt64) throws {
+        try Task.checkCancellation()
+        guard current(session) else { throw CancellationError() }
+    }
+
     /// Маршруты и DNS туннеля. Через обработчик завершения, а не async-вариант: так провайдер и настройки (не Sendable) не
     /// покидают изоляцию вызывающего.
     private nonisolated(nonsending) func apply(_ settings: NEPacketTunnelNetworkSettings) async throws {
@@ -296,57 +384,18 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
 /// События наблюдения — расширению; слабая ссылка: закрытый туннель задачу наблюдения не держит.
 private struct GuardReport: GuardEvents {
     weak var provider: PacketTunnelProvider?
+    let session: UInt64
 
     func reconnecting(_ attempt: Int) async {
-        provider?.reconnecting(attempt)
+        await provider?.reconnecting(attempt, session: session)
     }
 
     func protectedAgain() async {
-        provider?.protectedAgain()
+        await provider?.protectedAgain(session: session)
     }
 
     func gaveUp(_ error: String) async {
-        await provider?.gaveUp(error)
-    }
-}
-
-/// Одно действие с ядром за раз: подъем, перезапуск и остановка приходят из разных потоков — от системы, от приложения и от
-/// наблюдения; без очереди два ядра запустились бы на одном дескрипторе.
-final class SerialWork: @unchecked Sendable {
-    private let lock = NSLock()
-    private var busy = false
-    private var waiting: [CheckedContinuation<Void, Never>] = []
-
-    nonisolated(nonsending) func run<T>(_ body: () async throws -> T) async rethrows -> T {
-        await acquire()
-        defer { release() }
-        return try await body()
-    }
-
-    private func acquire() async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            lock.lock()
-            if busy {
-                waiting.append(continuation)
-                lock.unlock()
-            } else {
-                busy = true
-                lock.unlock()
-                continuation.resume()
-            }
-        }
-    }
-
-    private func release() {
-        lock.lock()
-        if waiting.isEmpty {
-            busy = false
-            lock.unlock()
-        } else {
-            let next = waiting.removeFirst()
-            lock.unlock()
-            next.resume()
-        }
+        await provider?.gaveUp(error, session: session)
     }
 }
 
@@ -379,6 +428,27 @@ enum TunnelInterface {
     /// Параметры getsockopt из <sys/kern_control.h> и <net/if_utun.h>: SYSPROTO_CONTROL и UTUN_OPT_IFNAME.
     private static let sysprotoControl: Int32 = 2
     private static let utunOptIfname: Int32 = 2
+
+    /// Случайный свободный порт петли и учетные данные на один запуск ядра. Если порт заняли между проверкой и запуском,
+    /// Xray откажет в запуске целиком; входа для защищенной загрузки тогда приложению не выдаем.
+    static func proxy() throws -> SubscriptionProxy {
+        let fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
+        guard fd >= 0 else { throw TunnelFailure(TunnelErrors.coreFailed, detail: "proxy socket") }
+        defer { close(fd) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr(SubscriptionProxy.host)
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let named = withUnsafeMutablePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(fd, $0, &length) }
+        }
+        guard bound == 0, named == 0 else { throw TunnelFailure(TunnelErrors.coreFailed, detail: "proxy port") }
+        return SubscriptionProxy(port: Int(UInt16(bigEndian: address.sin_port)), user: UUID().uuidString, password: UUID().uuidString)
+    }
 
     static func descriptor() -> Int32? {
         find()?.fd

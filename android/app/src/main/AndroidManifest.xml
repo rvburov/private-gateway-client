@@ -14,6 +14,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+    <!-- HTTP-подписки поддерживаются с явным предупреждением. Проверка TLS для HTTPS остается системной. -->
     <application
         android:name=".PrivateGatewayApp"
         android:allowBackup="false"
@@ -24,6 +25,7 @@
         android:label="@string/app_title"
         android:localeConfig="@xml/pg_locales"
         android:supportsRtl="true"
+        android:usesCleartextTraffic="true"
         android:theme="@style/Theme.PrivateGateway"
         tools:targetApi="36">
 

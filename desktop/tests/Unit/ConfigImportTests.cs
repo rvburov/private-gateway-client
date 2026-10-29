@@ -12,6 +12,18 @@ public sealed class ConfigImportTests
 {
     private const string Vless = """{ "type": "vless", "tag": "A", "server": "192.0.2.1", "server_port": 443, "uuid": "11111111-2222-3333-4444-555555555555" }""";
 
+    [Theory]
+    [InlineData("{\"outbounds\":[],\"outbounds\":[]}")]
+    [InlineData("{\"outbounds\":[{\"type\":\"vless\",\"type\":\"trojan\"}]}")]
+    [InlineData("{\"outbounds\":[{\"type\":\"trojan\",\"tls\":{\"enabled\":true,\"enabled\":false}}]}")]
+    [InlineData("{\"outbounds\":[{\"type\":\"trojan\",\"tls\":{\"enabled\":true,\"\\u0065nabled\":false}}]}")]
+    public void Duplicate_json_properties_are_a_regular_import_error(string text)
+    {
+        var batch = ImportParser.Parse(text);
+
+        batch.Lines.ShouldHaveSingleItem().Result.Error.ShouldBe(ImportErrors.BadEncoding);
+    }
+
     [Fact]
     public void Broken_json_is_one_error_on_its_line()
     {

@@ -32,62 +32,82 @@ fun interface SubscriptionSource {
 class SubscriptionDownloader(
     private val timeoutMs: Int = DownloadLimits.TIMEOUT_MS,
     private val maxBytes: Int = DownloadLimits.MAX_BYTES,
+    private val openConnection: (URI) -> HttpURLConnection = { it.toURL().openConnection() as HttpURLConnection },
+    private val request: SubscriptionRequest = SubscriptionRequest(),
 ) : SubscriptionSource {
     override fun download(url: URI): SubscriptionContent {
         require(SubscriptionAddress.parse(url.toString()) != null) { "Подписка загружается только по http(s)" }
         val started = System.nanoTime()
-        val connection = try {
-            url.toURL().openConnection() as HttpURLConnection
-        } catch (e: IOException) {
-            throw failure(e)
-        }
-
-        try {
-            connection.connectTimeout = timeoutMs
-            connection.readTimeout = timeoutMs
-            connection.instanceFollowRedirects = true
-            connection.setRequestProperty("User-Agent", USER_AGENT)
-            connection.setRequestProperty("Accept-Encoding", "gzip")
-            val status = connection.responseCode
-            if (status !in 200..299) {
-                throw SubscriptionDownloadException(DownloadFailure.Status, status)
+        var target = url
+        var redirects = 0
+        while (true) {
+            request.check()
+            val connection = try {
+                openConnection(target).also { request.attach(it) }
+            } catch (e: IOException) {
+                throw failure(e)
             }
 
-            if (connection.contentLengthLong > maxBytes && connection.contentEncoding.isNullOrEmpty()) {
-                throw SubscriptionDownloadException(DownloadFailure.TooLarge)
-            }
-
-            val raw = connection.inputStream
-            val body = if (connection.contentEncoding.equals("gzip", ignoreCase = true)) GZIPInputStream(raw) else raw
-            val buffer = ByteArrayOutputStream()
-            body.use { stream ->
-                val chunk = ByteArray(64 * 1024)
-                while (true) {
-                    val read = stream.read(chunk)
-                    if (read < 0) {
-                        break
+            try {
+                connection.connectTimeout = timeoutMs
+                connection.readTimeout = timeoutMs
+                // Каждый переход открывается тем же способом: закрепленная VPN Network не заменяется сетью по умолчанию.
+                connection.instanceFollowRedirects = false
+                connection.setRequestProperty("User-Agent", USER_AGENT)
+                connection.setRequestProperty("Accept-Encoding", "gzip")
+                val status = connection.responseCode
+                if (status in listOf(301, 302, 303, 307, 308)) {
+                    val next = connection.getHeaderField("Location")?.let { target.resolve(it) }
+                    if (next == null || SubscriptionAddress.parse(next.toString()) == null ||
+                        !next.scheme.equals(target.scheme, ignoreCase = true) || ++redirects > 10
+                    ) {
+                        throw SubscriptionDownloadException(DownloadFailure.Status, status)
                     }
-
-                    if (buffer.size() + read > maxBytes) {
-                        throw SubscriptionDownloadException(DownloadFailure.TooLarge)
-                    }
-
-                    // Медленный сервер, который отдает по байту, не держит загрузку дольше общего предела.
-                    if ((System.nanoTime() - started) / 1_000_000 > timeoutMs) {
-                        throw SubscriptionDownloadException(DownloadFailure.Timeout)
-                    }
-
-                    buffer.write(chunk, 0, read)
+                    target = next
+                    continue
                 }
-            }
+                if (status !in 200..299) {
+                    throw SubscriptionDownloadException(DownloadFailure.Status, status)
+                }
 
-            return SubscriptionContent(buffer.toString(Charsets.UTF_8.name()), SubscriptionTitle.from(connection.getHeaderField("Profile-Title")))
-        } catch (e: SubscriptionDownloadException) {
-            throw e
-        } catch (e: IOException) {
-            throw failure(e)
-        } finally {
-            connection.disconnect()
+                if (connection.contentLengthLong > maxBytes && connection.contentEncoding.isNullOrEmpty()) {
+                    throw SubscriptionDownloadException(DownloadFailure.TooLarge)
+                }
+
+                val raw = connection.inputStream
+                val body = if (connection.contentEncoding.equals("gzip", ignoreCase = true)) GZIPInputStream(raw) else raw
+                val buffer = ByteArrayOutputStream()
+                body.use { stream ->
+                    val chunk = ByteArray(64 * 1024)
+                    while (true) {
+                        request.check()
+                        val read = stream.read(chunk)
+                        if (read < 0) {
+                            break
+                        }
+
+                        if (buffer.size() + read > maxBytes) {
+                            throw SubscriptionDownloadException(DownloadFailure.TooLarge)
+                        }
+
+                        // Медленный сервер, который отдает по байту, не держит загрузку дольше общего предела.
+                        if ((System.nanoTime() - started) / 1_000_000 > timeoutMs) {
+                            throw SubscriptionDownloadException(DownloadFailure.Timeout)
+                        }
+
+                        buffer.write(chunk, 0, read)
+                    }
+                }
+
+                return SubscriptionContent(buffer.toString(Charsets.UTF_8.name()), SubscriptionTitle.from(connection.getHeaderField("Profile-Title")))
+            } catch (e: SubscriptionDownloadException) {
+                throw e
+            } catch (e: IOException) {
+                throw failure(e)
+            } finally {
+                request.detach(connection)
+                connection.disconnect()
+            }
         }
     }
 

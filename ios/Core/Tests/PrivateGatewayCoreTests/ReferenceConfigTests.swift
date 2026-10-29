@@ -32,6 +32,11 @@ final class ReferenceConfigTests: XCTestCase {
 
             try accepted(xray, try XCTUnwrap(tunnel.json), "\(fixture), туннель")
             try accepted(xray, try XCTUnwrap(XrayConfig.build(server, everything, tunFd: 42).json), "\(fixture), туннель, все включено")
+            try accepted(
+                xray, try XCTUnwrap(XrayConfig.build(
+                    server, everything, tunFd: 42, subscriptionProxy: SubscriptionProxy(port: 32123, user: "test-user", password: "test-password")
+                ).json), "\(fixture), защищенная загрузка подписки"
+            )
             try accepted(xray, try XCTUnwrap(PingBatch.outbounds(server, CoreSettings()).json), "\(fixture), замер задержки")
             try accepted(xray, try XCTUnwrap(PingBatch.outbounds(server, everything).json), "\(fixture), замер задержки, все включено")
         }

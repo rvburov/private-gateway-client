@@ -70,6 +70,7 @@ public enum XrayConfig {
     public static let directTag = "direct"
     public static let blockTag = "block"
     public static let dnsTag = "dns-out"
+    public static let subscriptionTag = "subscription-in"
 
     /// Выход DNS: A и AAAA (типы 1 и 28) отвечает сам, остальное — отказ REFUSED (код 5). Правилами `rules`: прежний
     /// «nonIPQuery» Xray-core 26.x объявил к удалению. Как у десктопа и Android. Вычисляемое: хранимое статическое значение
@@ -99,7 +100,9 @@ public enum XrayConfig {
     typealias Json = JsonText.Value
 
     /// Конфиг для выбранного сервера, настроек и дескриптора TUN.
-    public static func build(_ server: ServerDefinition, _ settings: CoreSettings, tunFd: Int32) -> XrayConfigResult {
+    public static func build(
+        _ server: ServerDefinition, _ settings: CoreSettings, tunFd: Int32, subscriptionProxy: SubscriptionProxy? = nil
+    ) -> XrayConfigResult {
         let proxy: Json
         switch outbound(server, settings) {
         case let .success(value):
@@ -132,12 +135,28 @@ public enum XrayConfig {
         let block: Json = .object([("tag", .string(blockTag)), ("protocol", .string("blackhole"))])
         // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (dnsRules); без правил Xray 26 — пустой NOERROR.
         let dnsOut: Json = .object([("tag", .string(dnsTag)), ("protocol", .string("dns")), ("settings", .object([("rules", dnsRules)]))])
-        let routing: Json = .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(rules(settings)))])
+        var inbounds = [tun]
+        var routingRules = rules(settings)
+        if let subscriptionProxy, subscriptionProxy.valid {
+            inbounds.append(.object([
+                ("tag", .string(subscriptionTag)), ("listen", .string(SubscriptionProxy.host)), ("port", .int(subscriptionProxy.port)),
+                ("protocol", .string("http")),
+                ("settings", .object([("accounts", .array([.object([
+                    ("user", .string(subscriptionProxy.user)), ("pass", .string(subscriptionProxy.password)),
+                ])]))])),
+            ]))
+            // Обновление «только через VPN» всегда через выбранный сервер: ни частная сеть, ни пользовательские правила
+            // не могут отправить его напрямую. HTTP proxy передает Xray имя, DNS приложения не нужен.
+            routingRules.insert(.object([
+                ("type", .string("field")), ("inboundTag", .array([.string(subscriptionTag)])), ("outboundTag", .string(proxyTag)),
+            ]), at: 0)
+        }
+        let routing: Json = .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(routingRules))])
         let config: Json = .object([
             ("log", log),
             ("env", .object([("xray.tun.fd", .string(String(tunFd)))])),
             ("dns", dns),
-            ("inbounds", .array([tun])),
+            ("inbounds", .array(inbounds)),
             ("outbounds", .array([proxy, direct, block, dnsOut])),
             ("routing", routing),
         ])

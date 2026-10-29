@@ -21,4 +21,7 @@ public enum DownloadFailure
 
     /// <summary>Адреса подписки нет в хранилище секретов ОС.</summary>
     NoAddress,
+
+    /// <summary>Ядро разрешило бы имя подписки через DNS мимо туннеля: такая загрузка запрещена.</summary>
+    UnsafeDns,
 }

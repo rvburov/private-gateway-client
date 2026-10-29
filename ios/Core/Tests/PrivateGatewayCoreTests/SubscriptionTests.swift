@@ -181,6 +181,7 @@ final class SubscriptionTests: XCTestCase {
         let expected: [DownloadFailure: FailureReason] = [
             .network: .network, .nameResolution: .nameResolution, .connection: .connection, .tls: .tls, .timeout: .timeout,
             .status: .status(500), .tooLarge: .tooLarge, .noServers: .noServers, .noAddress: .noAddress,
+            .protectedPathUnavailable: .protectedPathUnavailable,
         ]
         XCTAssertEqual(Set(expected.keys), Set(DownloadFailure.allCases))
         for (failure, reason) in expected {
@@ -245,6 +246,12 @@ final class SubscriptionTests: XCTestCase {
     }
 
     private let url = SubscriptionAddress.parse("https://sub.example.com/sub/fake-token-1")!
+
+    func testProtectedFetchDoesNotUseASourceThatOnlyImplementsOrdinaryDownloads() async {
+        let source = FakeSource(text: "trojan://fake-password@192.0.2.1:443#A")
+        let result = await SubscriptionFetch.fetch(url, from: source, protected: true)
+        XCTAssertEqual(result, .failed(.protectedPathUnavailable, status: nil), "подмена защищенной загрузки обычной запрещена даже при connected")
+    }
 
     func testEverySharedSubscriptionGivesTheServersThatParsed() async throws {
         let folder = LinkParserTests.testData.appendingPathComponent("subscriptions")

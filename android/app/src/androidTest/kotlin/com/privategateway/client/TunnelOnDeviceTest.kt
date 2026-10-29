@@ -10,6 +10,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.settings.DnsChoice
+import java.net.URI
 import com.privategateway.client.di.AppEntryPoint
 import com.privategateway.client.vpn.GatewayVpnService
 import dagger.hilt.android.EntryPointAccessors
@@ -47,6 +50,23 @@ class TunnelOnDeviceTest {
     fun disconnect() = runBlocking<Unit> {
         GatewayVpnService.disconnect(context)
         withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off || it.state == TunnelState.Error } }
+        app.settings().setTunnel(TunnelSettings())
+    }
+
+    @Test
+    fun protected_subscriptions_use_authenticated_http_and_https_even_with_lan_and_private_dns() = runBlocking<Unit> {
+        prepare()
+        app.settings().setTunnel(TunnelSettings(dns = DnsChoice.Custom, customDns = "192.168.254.253", allowLan = true))
+        connect()
+        // Сервер стенда перенаправляет порт18081 на свой HTTP. Прямой LAN-путь до этого адреса не отвечает.
+        val http = app.subscriptionTransport().download(URI("http://192.168.254.254:18081/sub"), onlyViaVpn = true)
+        assertEquals("pg-tunnel-ok", http.text.trim())
+        // Настоящий TLS через authenticated CONNECT: локальный DNS не должен искать имя Cloudflare.
+        val https = app.subscriptionTransport().download(URI("https://cp.cloudflare.com/generate_204"), onlyViaVpn = true)
+        assertEquals("", https.text)
+        GatewayVpnService.disconnect(context)
+        withTimeout(15_000) { app.monitor().status.first { it.state == TunnelState.Off } }
+        assertFailsWith<IOException> { app.subscriptionTransport().download(URI("https://cp.cloudflare.com/generate_204"), onlyViaVpn = true) }
     }
 
     @Test

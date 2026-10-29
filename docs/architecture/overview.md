@@ -11,7 +11,7 @@
 │                              │   shared/specifications/  │                               │
 │ Client.UI                    │   ipc/*.proto             │ Client.Service                │
 │  └ Client.Application        │                           │  ├ Client.Network (конфиг)    │
-│     ├ Client.Network (разбор)│ ◀──────────────────────── │  └ Client.Platform.<ОС>       │
+│     ├ Import (разбор)       │ ◀──────────────────────── │  └ Client.Platform.<ОС>       │
 │     └ Client.Contracts       │   состояние, журнал, пинг │      TUN, блок при обрыве, DNS│
 │ Client.Infrastructure        │                           │                               │
 │  SQLite, секреты ОС, журнал, │                           │  запускает ядра отдельными    │
@@ -25,8 +25,8 @@
 | --- | --- | --- | --- |
 | `Client.Core` | модели и правила без ввода-вывода: состояния защиты и переходы, протоколы, маскирование секретов, интерфейсы платформы | — | нет |
 | `Client.Contracts` | контракт IPC (код из `.proto`) и перевод перечислений ядра в контракт | Core | — |
-| `Client.Network` | разбор ссылок и подписок, сборка конфигов ядер, правила «зашифрован ли трафик» — чистые функции | Core | нет |
-| `Client.Application` | сценарии: подключение, смена сервера, импорт, обновление серверов, проверка, правила уведомлений | Core, Contracts, Network | нет |
+| `Client.Network` | сборка конфигов ядер, правила «зашифрован ли трафик» — чистые функции | Core | нет |
+| `Client.Application` | разбор ссылок и подписок (`Import`); сценарии подключения, смены сервера, обновления серверов, проверки, правила уведомлений | Core, Contracts, Network | нет |
 | `Client.Infrastructure` | SQLite, секреты в хранилище ОС, Serilog, клиент службы по IPC, загрузка списков серверов, уведомления ОС (D-Bus, WinRT) | Core, Contracts, Application | только загрузка списков |
 | `Client.UI` | Avalonia: окна, модели представлений, тема из токенов | Core, Contracts, Application, Infrastructure | нет |
 | `Client.Service` | служба: сервер IPC, запуск ядер, состояние защиты, пинг, проверки | Core, Contracts, Network, Platform.* | да |
@@ -56,7 +56,7 @@
 
 ## Ход подключения
 
-1. Пользователь добавляет профиль: ссылка, QR, файл или адрес подписки. `Client.Network`
+1. Пользователь добавляет профиль: ссылка, QR, файл или адрес подписки. `Client.Application/Import`
    разбирает текст в модели ядра, `Client.Infrastructure` сохраняет профиль в SQLite, ключи — в
    хранилище ОС.
 2. Кнопка-щит: `Client.Application` собирает `ConnectRequest` — описание сервера и настройки

@@ -17,9 +17,9 @@ namespace PrivateGateway.Client.Infrastructure.Import;
 /// <param name="direct">Клиент без прокси для второй попытки; null — без нее.</param>
 public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider time, HttpClient? direct = null) : ISubscriptionDownloader
 {
-    public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
+    public static readonly TimeSpan Timeout = SubscriptionDownload.Timeout;
 
-    public const int MaxBytes = 5 * 1024 * 1024;
+    public const int MaxBytes = SubscriptionDownload.MaxBytes;
 
     /// <summary>Клиент для программы: сжатые ответы распаковываются, предел размера — после распаковки.</summary>
     public static HttpClient CreateClient() =>

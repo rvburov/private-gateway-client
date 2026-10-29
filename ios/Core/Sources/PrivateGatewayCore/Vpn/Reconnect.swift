@@ -291,9 +291,12 @@ public struct TunnelGuard: Sendable {
             var watch = HealthWatch(now: timer.now(), timing: timing)
             watch.nudge()
             while true {
+                try Task.checkCancellation()
                 try await waitUntil({ watch.nextProbeAt }, watch.nudge)
                 watch.begin()
-                if watch.probed(answered: await probe(), now: timer.now()) != .lost {
+                let answered = await probe()
+                try Task.checkCancellation()
+                if watch.probed(answered: answered, now: timer.now()) != .lost {
                     continue
                 }
 
@@ -311,6 +314,7 @@ public struct TunnelGuard: Sendable {
 
     /// Переподключение к тому же серверу; true — снова «Защищено», false — сдались.
     private func reconnect() async throws -> Bool {
+        try Task.checkCancellation()
         guard let reconnection = Reconnection.after(timer.now(), await policy(), timing: timing) else {
             await events.gaveUp(TunnelErrors.serverNotResponding)
             return false
@@ -320,12 +324,15 @@ public struct TunnelGuard: Sendable {
         while true {
             try await waitUntil({ reconnection.nextAttemptAt }, reconnection.nudge)
             let error = await restart(reconnection.begin())
+            try Task.checkCancellation()
             if let error, !Self.retried.contains(error) {
                 await events.gaveUp(error)
                 return false
             }
 
-            if error == nil, await probe() {
+            let answered = error == nil ? await probe() : false
+            try Task.checkCancellation()
+            if answered {
                 await events.protectedAgain()
                 return true
             }
@@ -342,6 +349,7 @@ public struct TunnelGuard: Sendable {
     /// Ждать до `at()` — или раньше, если пришел подгон: тогда `nudge`, и срок пересчитывается.
     private func waitUntil(_ at: () -> Int, _ nudge: () -> Void) async throws {
         while true {
+            try Task.checkCancellation()
             let next = at()
             if next <= timer.now() {
                 return

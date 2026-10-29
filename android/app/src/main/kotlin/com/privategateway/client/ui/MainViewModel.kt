@@ -15,7 +15,7 @@ import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SubscriptionAddress
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionFetch
-import com.privategateway.client.core.subscriptions.SubscriptionSource
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
@@ -32,6 +32,7 @@ import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -122,7 +123,7 @@ class MainViewModel @Inject constructor(
     private val servers: ServerRepository,
     private val settings: SettingsRepository,
     private val engine: CoreEngine,
-    private val source: SubscriptionSource,
+    private val source: SubscriptionTransport,
     private val control: TunnelControl,
     private val meter: LatencyMeter,
     private val updater: SubscriptionUpdater,
@@ -270,7 +271,10 @@ class MainViewModel @Inject constructor(
     suspend fun address(id: String): String? = servers.address(id)
 
     fun edit(text: String) {
-        importState.update { it.copy(text = text) }
+        if (text != importState.value.text) {
+            ++previews
+            importState.update { ImportUi(text = text, name = it.name) }
+        }
     }
 
     private var previews = 0
@@ -286,6 +290,7 @@ class MainViewModel @Inject constructor(
      */
     fun preview(text: String) {
         val attempt = ++previews
+        importState.update { ImportUi(text = it.text, name = it.name) }
         val url = text.trim().takeIf { !it.contains('\n') }?.let { SubscriptionAddress.parse(it) }
         viewModelScope.launch {
             if (url == null) {
@@ -300,7 +305,9 @@ class MainViewModel @Inject constructor(
             importState.update { ImportUi(it.text, downloading = true, name = it.name) }
             val downloaded = withContext(Dispatchers.IO) {
                 try {
-                    Result.success(source.download(url))
+                    Result.success(source.download(url, onlyViaVpn = false))
+                } catch (e: CancellationException) {
+                    throw e
                 } catch (e: SubscriptionDownloadException) {
                     Result.failure(e)
                 } catch (e: Exception) {
@@ -323,6 +330,9 @@ class MainViewModel @Inject constructor(
             }
 
             val batch = withContext(Dispatchers.Default) { ImportParser.parse(content.text) }
+            if (attempt != previews) {
+                return@launch
+            }
             importState.update {
                 ImportUi(
                     it.text,
@@ -362,7 +372,7 @@ class MainViewModel @Inject constructor(
      */
     fun cameraProblem(@StringRes text: Int) {
         ++previews
-        importState.update { it.copy(qrReading = false, qrProblem = text) }
+        importState.update { ImportUi(text = it.text, name = it.name, qrProblem = text) }
     }
 
     /**
@@ -391,6 +401,7 @@ class MainViewModel @Inject constructor(
     }
 
     fun closeImport() {
+        ++previews
         importState.value = ImportUi()
     }
 

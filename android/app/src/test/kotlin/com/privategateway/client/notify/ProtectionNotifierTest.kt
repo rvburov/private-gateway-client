@@ -18,13 +18,13 @@ import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.notify.NotificationPolicy
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SelectedChange
-import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.vpn.TunnelMonitor
 import kotlinx.coroutines.CoroutineScope
@@ -66,7 +66,7 @@ class ProtectionNotifierTest {
         shadowOf(context as Application).grantPermissions(Manifest.permission.POST_NOTIFICATIONS)
         PrivateGatewayApp.createChannels(context)
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        val updater = SubscriptionUpdater(SubscriptionSource { error("в сеть не ходим") }, servers, settings, monitor)
+        val updater = SubscriptionUpdater(SubscriptionTransport { _, _ -> error("в сеть не ходим") }, servers, settings, monitor)
         monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
         notifier = ProtectionNotifier(context, monitor, servers, settings, updater, window)
         notifier.start()

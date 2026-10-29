@@ -10,6 +10,10 @@ case "$1" in
 esac
 
 service=/opt/private-gateway/PrivateGateway.Service
-if [ -x /opt/private-gateway/service/PrivateGateway.Service ]; then
-  "$service" --uninstall || echo "Private Gateway: службу удалить не удалось — $service --uninstall" >&2
+# Поврежденная копия службы тоже требует очистки: отсутствие исполняемого файла не доказывает снятие правил.
+if [ -d /opt/private-gateway/service ] || [ -f /etc/systemd/system/private-gateway.service ]; then
+  if ! "$service" --uninstall; then
+    echo "Private Gateway: служба или сетевые правила не удалены; пакет сохранен. Исправьте ошибку и повторите удаление." >&2
+    exit 1
+  fi
 fi

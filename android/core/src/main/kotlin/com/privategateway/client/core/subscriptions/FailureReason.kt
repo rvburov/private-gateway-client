@@ -37,6 +37,7 @@ sealed interface FailureReason {
 
     /** import.download.network */
     data object Network : FailureReason
+    data object PrivateDns : FailureReason
 
     companion object {
         /**
@@ -59,6 +60,7 @@ sealed interface FailureReason {
             DownloadFailure.NoServers -> NoServers
             DownloadFailure.NoAddress -> NoAddress
             DownloadFailure.Network -> Network
+            DownloadFailure.PrivateDns -> PrivateDns
         }
     }
 }

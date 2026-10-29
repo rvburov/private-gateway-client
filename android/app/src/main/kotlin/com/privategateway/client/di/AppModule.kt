@@ -6,8 +6,6 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.privategateway.client.core.inspect.ProbeRunner
-import com.privategateway.client.core.subscriptions.SubscriptionDownloader
-import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.KeystoreSecretBox
 import com.privategateway.client.data.SecretBox
@@ -25,6 +23,8 @@ import com.privategateway.client.vpn.NetworkDns
 import com.privategateway.client.vpn.ServiceTunnelControl
 import com.privategateway.client.vpn.SystemNetworkDns
 import com.privategateway.client.vpn.TunnelControl
+import com.privategateway.client.subscriptions.DeviceSubscriptionTransport
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -50,10 +50,6 @@ object AppModule {
     @Provides
     fun probeRunner(): ProbeRunner = ProbeRunner()
 
-    /** Загрузка подписок по сети; в тестах — подделка. */
-    @Provides
-    fun subscriptionSource(): SubscriptionSource = SubscriptionDownloader()
-
     @Provides
     @Singleton
     fun settings(@ApplicationContext context: Context): DataStore<Preferences> =
@@ -63,6 +59,9 @@ object AppModule {
 @Module
 @InstallIn(SingletonComponent::class)
 abstract class BindingsModule {
+    @Binds
+    abstract fun subscriptionTransport(transport: DeviceSubscriptionTransport): SubscriptionTransport
+
     @Binds
     @Singleton
     abstract fun secretBox(box: KeystoreSecretBox): SecretBox

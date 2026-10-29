@@ -41,8 +41,11 @@ public sealed partial class PfKillSwitch(
     /// или свой pf.conf без этой строки — и правила якоря не действуют.
     /// </summary>
     public bool IsIntact => IsEnabled
-        && pfctl(["-s", "info"], null).Output.Contains("Status: Enabled", StringComparison.Ordinal)
+        && PfIsEnabled()
         && pfctl(["-s", "rules"], null).Output.Contains("anchor \"com.apple/*\"", StringComparison.Ordinal);
+
+    private bool PfIsEnabled() => pfctl(["-s", "info"], null) is { Code: 0 } info
+        && info.Output.Contains("Status: Enabled", StringComparison.Ordinal);
 
     /// <summary>pfctl этой машины; не macOS — null. Тесты дают свои файл ссылки и якорь.</summary>
     public static PfKillSwitch? ForThisMachine(string tokenFile = "/var/run/private-gateway/pf.token", string anchor = Anchor) =>
@@ -53,7 +56,8 @@ public sealed partial class PfKillSwitch(
         ArgumentNullException.ThrowIfNull(policy);
         Check(["-a", anchor, "-f", "-"], Ruleset(policy));
         Warning = policy.Direct is null ? null : "раздельный режим: на macOS обход туннеля закрыт блоком при обрыве";
-        if (File.Exists(tokenFile))
+        var previousToken = File.Exists(tokenFile) ? File.ReadAllText(tokenFile).Trim() : null;
+        if (previousToken is not null && PfIsEnabled())
         {
             return;
         }
@@ -67,6 +71,12 @@ public sealed partial class PfKillSwitch(
 
         Directory.CreateDirectory(Path.GetDirectoryName(tokenFile)!);
         File.WriteAllText(tokenFile, token.Groups[1].Value);
+        if (previousToken is not null)
+        {
+            // Чужой pfctl -d мог выключить pf, оставив нашу прежнюю ссылку. Новая уже записана и держит pf:
+            // прежнюю отпускаем, если она еще существует; отсутствие ссылки после сброса pf — не ошибка.
+            _ = pfctl(["-X", previousToken], null);
+        }
     }
 
     public void Disable()

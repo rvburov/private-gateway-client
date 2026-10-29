@@ -142,13 +142,17 @@ catch (IOException e)
     journal.Add(JournalLevel.Warning, "service", "DNS ОС после прошлого туннеля не возвращен: " + e.Message);
 }
 
-await using var gateway = new Gateway(
-    new GatewayOptions(xray, canVpn, Uri.TryCreate(Option("--latency-target"), UriKind.Absolute, out var target) ? target : LatencyProbe.DefaultTarget, singBox, canVpn ? ServiceHost.KillSwitch() : null, Routes: ServiceHost.Routes(),
+var killSwitch = canVpn ? ServiceHost.KillSwitch() : null;
+// Type=notify удерживает network-pre.target до восстановления сохраненного блока. Подключение при загрузке — ниже:
+// ждать его готовности здесь нельзя, ведь сеть еще не поднята. IPC имеет отдельный признак ServiceReady для установки.
+await using var gateway = await ServiceStartupReady.CreateGatewayAsync(
+    new GatewayOptions(xray, canVpn, Uri.TryCreate(Option("--latency-target"), UriKind.Absolute, out var target) ? target : LatencyProbe.DefaultTarget, singBox, killSwitch, Routes: ServiceHost.Routes(),
         Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
         TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null, SystemDns: systemDns, NetworkDetails: ServiceHost.NetworkDetails(),
         Webrtc: ct => StunProbe.MappedAsync(StunProbe.DefaultServer, StunProbe.Timeout, ct)),
-    time, journal, systemProxy);
+    time, journal, OperatingSystem.IsLinux() && !user ? Environment.GetEnvironmentVariable("NOTIFY_SOCKET") : null,
+    PrivateGateway.Client.Platform.Linux.SystemdService.NotifyReady, systemProxy).ConfigureAwait(false);
 // Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки и прежняя версия (для
 // отката) — в папке состояния. Ставит обновление только установленная служба (у нее есть --service-name) программы из
 // установщика.

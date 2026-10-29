@@ -137,17 +137,50 @@ final class TunnelController: TunnelControl {
             throw TunnelFailure(TunnelErrors.coreFailed, detail: "no provider session")
         }
 
-        let response = try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Data?, any Error>) in
-            do {
-                try session.sendProviderMessage(TunnelMessages.reload) { @Sendable response in
-                    continuation.resume(returning: response)
-                }
-            } catch {
-                continuation.resume(throwing: TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)"))
-            }
-        }
+        let response = try await Self.message(session, TunnelMessages.reload)
         if let code = TunnelMessages.failure(response) {
             throw TunnelFailure(code)
+        }
+    }
+
+    /// Вход для подписки — только у подключенного собственного профиля и только через сообщение расширению. Сохраненных
+    /// учетных данных нет: каждое ядро выдает свой порт и пароль; нет ответа — загрузчик отказывает без прямого пути.
+    func subscriptionProxy() async -> SubscriptionProxy? {
+        guard let manager else { return nil }
+        return await Self.subscriptionProxy(manager)
+    }
+
+    static func protectedSubscriptionProxy() async -> SubscriptionProxy? {
+        guard let manager = try? await managers().first else { return nil }
+        return await subscriptionProxy(manager)
+    }
+
+    private static func subscriptionProxy(_ manager: NETunnelProviderManager) async -> SubscriptionProxy? {
+        guard manager.connection.status == .connected, let session = manager.connection as? NETunnelProviderSession,
+              let data = try? await message(session, TunnelMessages.subscriptionProxy),
+              let proxy = try? JSONDecoder().decode(SubscriptionProxy.self, from: data), proxy.valid
+        else { return nil }
+        return proxy
+    }
+
+    /// Ответ расширения ограничен по времени и отменяется вместе с фоновой задачей. Запоздалый callback не возобновляет
+    /// continuation второй раз; зависший provider не держит окно или BGAppRefreshTask бесконечно.
+    private static func message(_ session: NETunnelProviderSession, _ data: Data) async throws -> Data? {
+        let reply = ProviderReply()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                guard reply.install(continuation) else { return }
+                do {
+                    try session.sendProviderMessage(data) { @Sendable answer in reply.finish(.success(answer)) }
+                } catch {
+                    reply.finish(.failure(TunnelFailure(TunnelErrors.coreFailed)))
+                }
+                DispatchQueue.global().asyncAfter(deadline: .now() + 20) {
+                    reply.finish(.failure(TunnelFailure(TunnelErrors.coreFailed)))
+                }
+            }
+        } onCancel: {
+            reply.finish(.failure(CancellationError()))
         }
     }
 
@@ -208,4 +241,33 @@ final class TunnelController: TunnelControl {
 /// Значение, которое передается из обработчика завершения системы в главный поток и больше нигде не используется.
 private struct Handoff<Value>: @unchecked Sendable {
     let value: Value
+}
+
+/// Ровно один ответ, даже если отмена, срок и callback пришли одновременно.
+private final class ProviderReply: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuation: CheckedContinuation<Data?, any Error>?
+    private var result: Result<Data?, any Error>?
+
+    func install(_ continuation: CheckedContinuation<Data?, any Error>) -> Bool {
+        lock.lock()
+        if let result {
+            lock.unlock()
+            continuation.resume(with: result)
+            return false
+        }
+        self.continuation = continuation
+        lock.unlock()
+        return true
+    }
+
+    func finish(_ result: Result<Data?, any Error>) {
+        lock.lock()
+        guard self.result == nil else { lock.unlock(); return }
+        self.result = result
+        let continuation = self.continuation
+        self.continuation = nil
+        lock.unlock()
+        continuation?.resume(with: result)
+    }
 }

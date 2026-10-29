@@ -190,6 +190,25 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
+    public async Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        try
+        {
+            return (await _client.DownloadSubscriptionAsync(new V1.SubscriptionDownloadRequest { Address = address.AbsoluteUri },
+                cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
+        }
+        catch (RpcException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw new OperationCanceledException(cancellationToken);
+        }
+        catch (RpcException) when (!cancellationToken.IsCancellationRequested)
+        {
+            // Старая служба или обрыв: прямой повтор запрещен.
+            return SubscriptionDownload.Failed(DownloadFailure.Connection);
+        }
+    }
+
     /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
     public async Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default)
     {

@@ -9,6 +9,7 @@ private struct Stub: Sendable {
     var headers: [String: String] = [:]
     var chunks: [Data] = []
     var error: URLError.Code?
+    var hold = false
 }
 
 private final class StubProtocol: URLProtocol {
@@ -22,6 +23,7 @@ private final class StubProtocol: URLProtocol {
     override func startLoading() {
         Self.seen = request
         let stub = Self.stub
+        if stub.hold { return }
         if let code = stub.error {
             client?.urlProtocol(self, didFailWithError: URLError(code))
             return
@@ -107,6 +109,38 @@ final class SubscriptionDownloaderTests: XCTestCase {
         } catch {
             XCTAssertEqual(error as? SubscriptionDownloadError, SubscriptionDownloadError(.network))
         }
+    }
+
+    func testMissingProtectedEndpointNeverFallsBackToTheOrdinaryDownloader() async {
+        StubProtocol.seen = nil
+        StubProtocol.stub = Stub(chunks: [Data("would-be-direct".utf8)])
+        do {
+            _ = try await SubscriptionDownloader(protocols: [StubProtocol.self], protectedProxy: { nil }).downloadProtected(url)
+            XCTFail("нет входа ядра — отказ до URLSession")
+        } catch {
+            XCTAssertEqual(error as? SubscriptionDownloadError, SubscriptionDownloadError(.protectedPathUnavailable))
+        }
+        XCTAssertNil(StubProtocol.seen, "токен не отправлен обычным download")
+    }
+
+    func testCancellationStopsAnInFlightDownloadWithoutWaitingForTheResourceTimeout() async throws {
+        StubProtocol.seen = nil
+        StubProtocol.stub = Stub(hold: true)
+        let url = self.url
+        let task = Task { try await SubscriptionDownloader(timeout: 60, protocols: [StubProtocol.self]).download(url) }
+        for _ in 0..<1000 where StubProtocol.seen == nil {
+            try await Task.sleep(nanoseconds: 1_000_000)
+        }
+        XCTAssertNotNil(StubProtocol.seen)
+        let start = ContinuousClock.now
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("отмена должна завершить загрузку")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertLessThan(ContinuousClock.now - start, .seconds(2))
     }
 }
 #endif

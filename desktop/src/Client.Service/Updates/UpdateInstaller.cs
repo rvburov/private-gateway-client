@@ -19,9 +19,12 @@ public sealed record UpdateKind(string Asset, Func<string, string, int> Launch);
 /// Ставит только установленная служба программы, поставленной установщиком: у архива и службы пользователя
 /// <see cref="Kind"/> — null, окно ведет на страницу выпуска.
 /// </summary>
-public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folder, UpdateKind? kind, ServiceJournal journal)
+public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folder, UpdateKind? kind, ServiceJournal journal, TimeProvider? time = null)
 {
     private static readonly TimeSpan ReportEvery = TimeSpan.FromMilliseconds(250);
+
+    /// <summary>Общий срок скачивания пакета: ограничивает и медленный ответ после заголовков.</summary>
+    public static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(10);
 
     public UpdateKind? Kind => kind;
 
@@ -98,7 +101,7 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
                 channel.Writer.TryWrite(new UpdateProgress(asset.Size, asset.Size, Ready: true));
             }
             catch (Exception e) when (e is HttpRequestException or IOException or InvalidDataException
-                || (e is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+                || (e is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 File.Delete(part);
                 journal.Add(JournalLevel.Warning, "update", $"Обновление {manifest.Version} не скачалось: {e.Message}");
@@ -144,6 +147,9 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
 
     private async Task DownloadFileAsync(Uri url, string part, UpdateAsset asset, Action<UpdateProgress> report, CancellationToken cancellationToken)
     {
+        using var timeout = new CancellationTokenSource(TransferTimeout, time ?? TimeProvider.System);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        cancellationToken = linked.Token;
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength is { } length && length != asset.Size)

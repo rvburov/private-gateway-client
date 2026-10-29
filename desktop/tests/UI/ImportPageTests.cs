@@ -19,6 +19,87 @@ public sealed class ImportPageTests : WindowHarness
         File.ReadAllText(Path.Combine(Repo.Root, "shared", "testdata", "subscriptions", "base64", "mixed.txt"));
 
     [AvaloniaFact]
+    public async Task Editing_a_checked_link_invalidates_the_servers_that_would_be_added()
+    {
+        var (_, _, page) = OpenImport();
+        page.OpenLinkCommand.Execute(null);
+        page.LinkText = "trojan://pw-a@192.0.2.1:443#A";
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        page.CanAdd.ShouldBeTrue();
+
+        page.LinkText = "trojan://pw-b@192.0.2.2:443#B";
+
+        page.HasPreview.ShouldBeFalse();
+        page.CanAdd.ShouldBeFalse("добавлять можно только проверенный текущий ввод");
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        page.Preview.ShouldNotBeNull().Servers.ShouldHaveSingleItem().Name.ShouldBe("B");
+    }
+
+    [AvaloniaFact]
+    public async Task Opening_the_link_card_drops_a_pending_subscription_and_its_name()
+    {
+        var (_, _, page) = OpenImport();
+        Downloads.Pending = new TaskCompletionSource<string>();
+        Clipboard.Text = "https://sub.example.com/slow";
+        var pending = page.FromClipboardCommand.ExecuteAsync(null);
+        page.IsBusy.ShouldBeTrue();
+
+        page.OpenLinkCommand.Execute(null);
+        Downloads.Pending.SetResult(Subscription);
+        await pending;
+
+        page.IsLink.ShouldBeTrue();
+        page.HasPreview.ShouldBeFalse();
+        page.ProfileName.ShouldBeEmpty();
+        page.IsBusy.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public async Task A_new_link_can_be_checked_before_the_old_download_finishes()
+    {
+        var (_, _, page) = OpenImport();
+        Downloads.Pending = new TaskCompletionSource<string>();
+        page.OpenLinkCommand.Execute(null);
+        page.LinkText = "https://sub.example.com/slow";
+        var pending = page.CheckLinkCommand.ExecuteAsync(null);
+
+        page.LinkText = "trojan://pw-new@192.0.2.2:443#New";
+        page.CheckLinkCommand.CanExecute(null).ShouldBeTrue();
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        Downloads.Pending.SetResult(Subscription);
+        await pending;
+
+        page.Preview.ShouldNotBeNull().Servers.ShouldHaveSingleItem().Name.ShouldBe("New");
+        page.ProfileName.ShouldBeEmpty();
+    }
+
+    [AvaloniaFact]
+    public async Task Opening_the_link_card_drops_a_qr_result_still_being_decoded()
+    {
+        var (_, _, page) = OpenImport();
+        var pending = page.FromImageAsync(QrPicture("trojan://pw-old@192.0.2.1:443#Old"));
+
+        page.OpenLinkCommand.Execute(null);
+        await pending;
+
+        page.IsLink.ShouldBeTrue();
+        page.HasPreview.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public async Task Duplicate_json_keys_are_shown_as_an_import_error()
+    {
+        var (_, _, page) = OpenImport();
+        Clipboard.Text = "{\"outbounds\":[],\"outbounds\":[]}";
+
+        await page.FromClipboardCommand.ExecuteAsync(null);
+
+        page.HasPreview.ShouldBeTrue();
+        page.FailedText.ShouldBe("1");
+        page.CanAdd.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
     public async Task Clipboard_subscription_shows_preview_and_adds_new_servers()
     {
         var (window, shell, page) = OpenImport();

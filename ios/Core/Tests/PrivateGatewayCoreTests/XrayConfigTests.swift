@@ -55,6 +55,26 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertEqual(try object(build(server(reality), CoreSettings())["dns"])["queryStrategy"] as? String, "UseIPv4")
     }
 
+    func testSubscriptionProxyIsLocalAuthenticatedAndForcedThroughTheServerBeforeLanRules() throws {
+        let proxy = SubscriptionProxy(port: 32123, user: "test-user", password: "test-password")
+        let settings = CoreSettings(allowLan: true, lanDns: "192.168.1.53")
+        let text = try XCTUnwrap(XrayConfig.build(try server(reality), settings, tunFd: 42, subscriptionProxy: proxy).json)
+        let config = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let inbounds = try XCTUnwrap(config["inbounds"] as? [[String: Any]])
+        let input = try XCTUnwrap(inbounds.first { $0["tag"] as? String == XrayConfig.subscriptionTag })
+        XCTAssertEqual(input["protocol"] as? String, "http")
+        XCTAssertEqual(input["listen"] as? String, "127.0.0.1")
+        XCTAssertEqual(input["port"] as? Int, 32123)
+        let accounts = try XCTUnwrap(try object(input["settings"])["accounts"] as? [[String: String]])
+        XCTAssertEqual(accounts, [["user": "test-user", "pass": "test-password"]])
+        let first = try XCTUnwrap(try rules(config).first)
+        XCTAssertEqual(first["inboundTag"] as? [String], [XrayConfig.subscriptionTag])
+        XCTAssertEqual(first["outboundTag"] as? String, XrayConfig.proxyTag, "локальная сеть и DNS не отправляют подписку напрямую")
+        XCTAssertEqual(proxy.configuration["HTTPProxy"] as? String, "127.0.0.1")
+        XCTAssertEqual(proxy.configuration["HTTPSProxy"] as? String, "127.0.0.1")
+        XCTAssertEqual(proxy.configuration["ExceptionsList"] as? [String], [])
+    }
+
     func testOwnDnsInAPrivateNetworkIsAskedDirectlyEvenWithTheLanClosed() throws {
         for (custom, direct) in [("192.168.1.53", true), ("fd00::53", true), ("9.9.9.9", false), ("https://192.168.1.53/dns-query", false)] {
             let settings = TunnelSettings(dns: .custom, customDns: custom)

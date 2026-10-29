@@ -23,7 +23,10 @@ enum BackgroundRefresh {
         schedule()
         let container = SharedContainer.current()
         let connected = await TunnelController.systemConnected()
-        let updater = SubscriptionUpdater(source: SubscriptionDownloader(), servers: container.servers, settings: container.settings)
+        let updater = SubscriptionUpdater(
+            source: SubscriptionDownloader(protectedProxy: { await TunnelController.protectedSubscriptionProxy() }),
+            servers: container.servers, settings: container.settings
+        )
         let notices = await updater.updateDue(connected: connected)
         let level = (try? await container.settings.load().notifications) ?? .default
         let desk = NoticeDesk()

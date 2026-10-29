@@ -24,6 +24,19 @@ public sealed class GatewayRpc(
 
     public override Task<V1.ServiceInfo> GetServiceInfo(V1.GetServiceInfoRequest request, ServerCallContext context) => Task.FromResult(info);
 
+    public override async Task<V1.SubscriptionDownloadReply> DownloadSubscription(V1.SubscriptionDownloadRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Address.Length > 8192 || !Uri.TryCreate(request.Address, UriKind.Absolute, out var address)
+            || address.Scheme is not ("https" or "http"))
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, "Нужен адрес подписки http(s)"));
+        }
+
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(context.CancellationToken, lifetime.ApplicationStopping);
+        return (await gateway.DownloadSubscriptionAsync(address, stop.Token).ConfigureAwait(false)).ToContract();
+    }
+
     public override Task<V1.Status> GetStatus(V1.GetStatusRequest request, ServerCallContext context) =>
         Task.FromResult(gateway.Status.ToContract());
 
@@ -244,6 +257,8 @@ public sealed class GatewayRpc(
             {
                 ConnectionState.Connected => V1.CheckState.Ok,
                 ConnectionState.Connecting or ConnectionState.Reconnecting => V1.CheckState.Waiting,
+                ConnectionState.Error when status.ErrorCode == ErrorCodes.KillSwitchFailed
+                    && status.Protection.KillSwitch == CheckState.Warning => V1.CheckState.Warning,
                 ConnectionState.Error or ConnectionState.Blocked => V1.CheckState.Stopped,
                 _ => V1.CheckState.Off,
             },
@@ -252,8 +267,7 @@ public sealed class GatewayRpc(
         {
             Id = DiagnosticCheck.AllTraffic.ToContractId(),
             State = status.Protection.AllTraffic.ToContract(),
-            Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy"
-                : status.Protection.AllTraffic == CheckState.Warning && !status.IsPaused ? "split" : string.Empty,
+            Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy" : gateway.AllTrafficReason ?? string.Empty,
         });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.KillSwitch.ToContractId(), State = status.Protection.KillSwitch.ToContract() });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = dnsState.ToContract(), Reason = dnsReason ?? string.Empty });

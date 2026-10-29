@@ -111,6 +111,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
         : Status.State switch
         {
+            ConnectionState.Connected when Status.HasExitIpLeak => Loc.Instance["status.leak.sub"],
             ConnectionState.Connected => Server is { } server && !ServerFacts.IsEncrypted(server)
                 ? Loc.Instance["status.connected.subPlain"]
                 : Loc.Instance["status.connected.sub"],
@@ -123,7 +124,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 Loc.Instance.Format(Status.StrictBlock ? "status.strict.subError" : "status.error.sub", code),
             // Ошибка — не всегда блокировка: без службы и после отказа защиты нет, в режиме прокси блокировать нечем.
             ConnectionState.Error => Loc.Instance.Format(
-                Status.Protection.AllTraffic == CheckState.Off ? "status.error.sub.direct"
+                Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning ? "status.error.sub.unverified"
+                    : Status.Protection.AllTraffic == CheckState.Off ? "status.error.sub.direct"
                     : Status.Mode == ConnectionMode.Proxy ? "status.error.sub.proxy"
                     : "status.error.sub",
                 Status.ErrorCode ?? "PGC-SVC"),
@@ -314,6 +316,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         ConnectionState.Connected => string.Join(" · ",
             new[] { Status.Exit.City, Status.Exit.NetworkType, Status.Exit.Asn }.Where(s => !string.IsNullOrEmpty(s))),
         ConnectionState.Off => Loc.Instance["ip.meta.off"],
+        ConnectionState.Error when Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning =>
+            Loc.Instance["ip.meta.unverified"],
         ConnectionState.Blocked or ConnectionState.Error => Loc.Instance["ip.meta.stopped"],
         _ => Loc.Instance["ip.meta.waiting"],
     };
@@ -322,9 +326,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string RealIp => Mask(Status.Exit.DirectIp ?? IpPlaceholder);
 
-    public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused
+    public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused || Status.HasExitIpLeak
         ? Loc.Instance["ip.real.visible"]
-        : Loc.Instance["ip.real.hidden"];
+        : Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning
+            ? Loc.Instance["ip.real.unverified"]
+            : Loc.Instance["ip.real.hidden"];
 
     public string MaskIcon => IsIpMasked ? "Icon.EyeOff" : "Icon.Eye";
 
@@ -455,9 +461,13 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     {
         var protection = Status.Protection;
         var paused = Status.IsPaused;
-        // В режиме VPN «частично» — это раздельный режим, а не прокси.
+        // Одинаковое Warning бывает у раздельного режима, измеренного открытого IP и потери firewall.
         Chips[0].Update(protection.AllTraffic, paused,
-            Status.Mode == ConnectionMode.Vpn && protection.AllTraffic == CheckState.Warning ? "split" : null);
+            Status.Mode != ConnectionMode.Vpn || protection.AllTraffic != CheckState.Warning ? null
+            : Status.HasExitIpLeak ? "same_ip"
+            : Status.ErrorCode == ErrorCodes.KillSwitchFailed ? "firewall"
+            : _settings.Current.Routing is { } routing && (routing.HasBypassApps || routing.HasBypassSites) ? "split"
+            : "unverified");
         // DNS в режиме VPN «частично» — свой DNS в частной сети, DNS разрешенной локальной сети или DNS провайдера по открытому
         // IPv6 мимо туннеля, а не прокси; ни одна настройка его не открывает — значит, его нашел замер службы (правила сняты).
         Chips[1].Update(protection.Dns, paused,
@@ -497,7 +507,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     }
 
     private string Mask(string ip) => IsIpMasked && ip != IpPlaceholder
-        ? string.Concat(ip.Select(c => char.IsAsciiDigit(c) ? '•' : c))
+        ? string.Concat(ip.Select(c => char.IsAsciiHexDigit(c) ? '•' : c))
         : ip;
 
     private static string Describe(ServerProfile server, bool withPort)

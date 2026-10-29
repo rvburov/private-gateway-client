@@ -46,16 +46,20 @@ final class AppModel: ObservableObject {
         ping: { await LatencyEngine.ping($0) }
     )
 
-    init(container: SharedContainer = .current(), texts: PgTexts = .current, source: any SubscriptionSource = SubscriptionDownloader()) {
+    init(container: SharedContainer = .current(), texts: PgTexts = .current, source: (any SubscriptionSource)? = nil) {
         self.container = container
         self.texts = texts
         bundleInfo = .of(core: nil)
-        tunnel = TunnelController(settings: container.settings)
+        let tunnel = TunnelController(settings: container.settings)
+        self.tunnel = tunnel
         actions = ServerActions(servers: container.servers, settings: container.settings, control: tunnel)
         settingsActions = SettingsActions(settings: container.settings, control: tunnel)
         subscriptionActions = SubscriptionActions(
             servers: container.servers, settings: container.settings, control: tunnel,
-            updater: SubscriptionUpdater(source: source, servers: container.servers, settings: container.settings)
+            updater: SubscriptionUpdater(
+                source: source ?? SubscriptionDownloader(protectedProxy: { await tunnel.subscriptionProxy() }),
+                servers: container.servers, settings: container.settings
+            )
         )
         tunnel.onChange = { [weak self] in
             self?.refreshStatus()

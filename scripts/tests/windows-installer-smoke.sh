@@ -95,6 +95,34 @@ running || fail "после отката служба не работает: $(s
 sc qc PrivateGateway | grep -q -- "$owner" || fail "после отката у службы другой владелец"
 [ -f "$program/PrivateGateway.exe" ] || fail "после отката нет окна"
 
+# MSI падает после того, как новая служба уже запущена. Ее конфиг отличается безопасной меткой: deferred-action пишет
+# метку в журнал и падает, rollback возвращает старые файлы программы, затем из них — прежнюю службу без сброса состояния.
+runtime="artifacts/publish/PrivateGateway-$version-win-x64/PrivateGateway.Service.runtimeconfig.json"
+cp "$runtime" artifacts/service-runtime-before-smoke.json
+old_runtime_sum=$(sha256sum "$program/Service/PrivateGateway.Service.runtimeconfig.json" | cut -d' ' -f1)
+python3 - "$runtime" <<'PY'
+import json, sys
+path = sys.argv[1]
+with open(path) as file:
+    data = json.load(file)
+data["auditSmokeMarker"] = "SMOKE_NEW_SERVICE"
+with open(path, "w") as file:
+    json.dump(data, file, indent=2)
+PY
+late_failure=$(PGC_MSI_SMOKE_FAIL_AFTER_SERVICE=1 scripts/package-windows.sh "$version" "$major.$minor.$((patch + 3))" | tail -n 1)
+cp artifacts/service-runtime-before-smoke.json "$runtime"
+if msiexec /i "$(cygpath -w "$late_failure")" /qn /norestart /l*v "$(cygpath -w artifacts/msi-late-failure.log)"; then
+  fail "MSI с ошибкой после запуска новой службы прошел"
+fi
+iconv -f UTF-16LE -t UTF-8 artifacts/msi-late-failure.log > artifacts/msi-late-failure.txt
+grep -q 'WixQuietExec:.*SMOKE_NEW_SERVICE' artifacts/msi-late-failure.txt || fail "не доказано, что новая копия службы встала до ошибки MSI"
+[ "$(installed_version)" = "$major.$minor.$((patch + 1))" ] || fail "поздний откат MSI потерял прежнюю версию"
+running || fail "после позднего отката MSI служба не работает"
+[ "$(sha256sum "$program/Service/PrivateGateway.Service.runtimeconfig.json" | cut -d' ' -f1)" = "$old_runtime_sum" ] \
+  || fail "после позднего отката MSI осталась новая копия службы"
+[ "$(cat "$program/ServiceState/update-bucket")" = 42 ] || fail "поздний откат потерял состояние службы"
+sc qc PrivateGateway | grep -q -- "$owner" || fail "поздний откат изменил владельца службы"
+
 # Новая копия службы не запускается (нет нужной библиотеки) — установка возвращает прежнюю и отвечает ошибкой.
 broken=$(mktemp -d)
 for item in "$program"/*; do
@@ -122,6 +150,16 @@ sc qc PrivateGateway | grep -q -- "$owner" || fail "после отката на
 [ -f "$program/PrivateGateway.exe" ] && [ -f "$shortcut" ] || fail "после отката на прежнюю версию нет окна или ярлыка"
 
 echo mine > "$program/user-notes.txt"
+# Отказ CLI удаления не должен позволять RemoveFiles убрать окно и оставить работающую службу без управления.
+mv "$program/PrivateGateway.Service.exe" "$program/PrivateGateway.Service.exe.hidden"
+if msiexec /x "$(cygpath -w "$msi")" /qn /norestart /l*v "$(cygpath -w artifacts/msi-uninstall-failed.log)"; then
+  mv "$program/PrivateGateway.Service.exe.hidden" "$program/PrivateGateway.Service.exe"
+  fail "MSI удален, хотя служба не могла быть удалена"
+fi
+mv "$program/PrivateGateway.Service.exe.hidden" "$program/PrivateGateway.Service.exe"
+[ -f "$program/PrivateGateway.exe" ] && [ -f "$shortcut" ] || fail "отказ удаления убрал окно или ярлык"
+[ "$(installed_version)" = "${version%%-*}" ] || fail "отказ удаления потерял регистрацию MSI"
+running || fail "отказ удаления остановил службу"
 msi_run x "$msi"
 ! sc query PrivateGateway > /dev/null 2>&1 || fail "после удаления осталась служба"
 [ ! -e "$program/Service" ] || fail "после удаления осталась папка службы"

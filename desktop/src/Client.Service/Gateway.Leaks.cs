@@ -92,7 +92,7 @@ public sealed partial class Gateway
     /// <summary>
     /// IP для сайтов сейчас: «Защищено» — замер и сравнение с реальным (IP и время проверки — в состоянии, итог —
     /// в журнале); иначе — по состоянию: выключено и пауза — виден реальный, подключение — ждет, блокировка и
-    /// ошибка — трафик стоит.
+    /// ошибка — вывод сохраненной проверки блока. Неудача восстановления блока не означает, что трафик остановлен.
     /// </summary>
     /// <param name="reportSilence">Писать в журнал, что проверочный адрес не ответил; false — попытка будет еще.</param>
     public async Task<(CheckState State, string? Reason)> CheckExitAsync(bool reportSilence = true)
@@ -105,7 +105,7 @@ public sealed partial class Gateway
 
         if (status.State != ConnectionState.Connected)
         {
-            return (status.State is ConnectionState.Connecting or ConnectionState.Reconnecting ? CheckState.Waiting : CheckState.Stopped, null);
+            return (status.State is ConnectionState.Connecting or ConnectionState.Reconnecting ? CheckState.Waiting : status.Protection.AllTraffic, null);
         }
 
         var session = Volatile.Read(ref _session);
@@ -129,11 +129,19 @@ public sealed partial class Gateway
 
         var direct = _directIp;
         Update(s => session == _session && s.State == ConnectionState.Connected
-            ? s with
+            ? Honest(s with
             {
                 Exit = ip is null ? s.Exit : ExitInfo.Unknown with { Ip = ip, DirectIp = direct ?? s.Exit.DirectIp },
-                Protection = s.Protection with { CheckedAt = _time.GetUtcNow() },
-            }
+                Protection = s.Protection with
+                {
+                    // Только измеренный ответ при известном реальном IP меняет вывод. Молчание сервиса не
+                    // отменяет прежнюю найденную утечку; новая сессия сбросит проверки обычным переходом состояния.
+                    AllTraffic = vpn && ip is not null && direct is not null
+                        ? ip == direct ? CheckState.Warning : ProtectionChecks.For(s.State, s.Mode).AllTraffic
+                        : s.Protection.AllTraffic,
+                    CheckedAt = _time.GetUtcNow(),
+                },
+            })
             : s);
         if (ip is null)
         {

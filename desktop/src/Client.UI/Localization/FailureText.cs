@@ -20,6 +20,7 @@ public static class FailureText
         (DownloadFailure.Tls, _) => Loc.Instance["import.download.tls"],
         (DownloadFailure.NoServers, _) => Loc.Instance["import.download.no_servers"],
         (DownloadFailure.NoAddress, _) => Loc.Instance["import.download.no_address"],
+        (DownloadFailure.UnsafeDns, _) => Loc.Instance["import.download.unsafe_dns"],
         _ => Loc.Instance["import.download.network"],
     };
 

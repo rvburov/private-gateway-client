@@ -7,8 +7,10 @@ namespace PrivateGateway.Client.Service.Updates;
 /// (<see cref="DefaultDownloads"/>; GitHub переадресует на свое хранилище). Без учетной записи: репозиторий открытый,
 /// а лимит API (60 запросов в час с адреса) проверке раз в несколько часов не мешает.
 /// </summary>
-public sealed class GitHubReleaseFeed(HttpClient http, Uri releases, Uri downloads) : IReleaseFeed
+public sealed class GitHubReleaseFeed(HttpClient http, Uri releases, Uri downloads, TimeProvider? time = null) : IReleaseFeed
 {
+    /// <summary>Общий срок загрузки метаданных, включая тело ответа после заголовков.</summary>
+    public static readonly TimeSpan TransferTimeout = TimeSpan.FromSeconds(60);
     public const string Repository = "rvburov/private-gateway-client";
 
     /// <summary>Двадцать последних выпусков: обновление ищется среди них.</summary>
@@ -35,6 +37,9 @@ public sealed class GitHubReleaseFeed(HttpClient http, Uri releases, Uri downloa
     public async Task<byte[]> DownloadAsync(Uri url, int maxBytes, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(url);
+        using var timeout = new CancellationTokenSource(TransferTimeout, time ?? TimeProvider.System);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+        cancellationToken = linked.Token;
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
         response.EnsureSuccessStatusCode();
         if (response.Content.Headers.ContentLength > maxBytes)

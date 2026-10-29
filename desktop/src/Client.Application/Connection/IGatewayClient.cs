@@ -24,6 +24,10 @@ public interface IGatewayClient
 
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
 
+    /// <summary>Подписка только через сервер активной VPN-сессии, независимо от системного прокси и раздельных маршрутов.</summary>
+    Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default) =>
+        Task.FromResult(SubscriptionDownload.Failed(DownloadFailure.Connection));
+
     /// <summary>Что служба говорит о себе: версия, контракт, ядра; службы нет или она не ответила — null.</summary>
     Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(null);
 

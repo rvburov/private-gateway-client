@@ -26,6 +26,10 @@ object SubscriptionFetch {
             return FetchResult.Failed(e.failure, e.status)
         }
 
+        return parse(content)
+    }
+
+    fun parse(content: SubscriptionContent): FetchResult {
         val servers = ImportParser.parse(content.text).lines.mapNotNull { it.result.server }
         return if (servers.isEmpty()) FetchResult.Failed(DownloadFailure.NoServers) else FetchResult.Fetched(servers, content.title)
     }

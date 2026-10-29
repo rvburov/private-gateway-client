@@ -1,0 +1,66 @@
+{
+  "checked": "2026-10-29",
+  "source": "GitHub REST git/ref/tags; annotated tags resolved to commit",
+  "actions": [
+    {
+      "action": "actions/cache/restore",
+      "tag": "v4",
+      "sha": "0057852bfaa89a56745cba8c7296529d2fc39830",
+      "url": "https://api.github.com/repos/actions/cache/git/ref/tags/v4"
+    },
+    {
+      "action": "actions/cache/save",
+      "tag": "v4",
+      "sha": "0057852bfaa89a56745cba8c7296529d2fc39830",
+      "url": "https://api.github.com/repos/actions/cache/git/ref/tags/v4"
+    },
+    {
+      "action": "actions/checkout",
+      "tag": "v5",
+      "sha": "fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09",
+      "url": "https://api.github.com/repos/actions/checkout/git/ref/tags/v5"
+    },
+    {
+      "action": "actions/download-artifact",
+      "tag": "v4",
+      "sha": "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+      "url": "https://api.github.com/repos/actions/download-artifact/git/ref/tags/v4"
+    },
+    {
+      "action": "actions/setup-dotnet",
+      "tag": "v5",
+      "sha": "26b0ec14cb23fa6904739307f278c14f94c95bf1",
+      "url": "https://api.github.com/repos/actions/setup-dotnet/git/ref/tags/v5"
+    },
+    {
+      "action": "actions/setup-go",
+      "tag": "v5",
+      "sha": "40f1582b2485089dde7abd97c1529aa768e1baff",
+      "url": "https://api.github.com/repos/actions/setup-go/git/ref/tags/v5"
+    },
+    {
+      "action": "actions/setup-java",
+      "tag": "v5",
+      "sha": "b6effb05e454b25005698d916606bdc6ffcbf961",
+      "url": "https://api.github.com/repos/actions/setup-java/git/ref/tags/v5"
+    },
+    {
+      "action": "actions/upload-artifact",
+      "tag": "v4",
+      "sha": "ea165f8d65b6e75b540449e92b4886f43607fa02",
+      "url": "https://api.github.com/repos/actions/upload-artifact/git/ref/tags/v4"
+    },
+    {
+      "action": "gitleaks/gitleaks-action",
+      "tag": "v2",
+      "sha": "ff98106e4c7b2bc287b24eaf42907196329070c7",
+      "url": "https://api.github.com/repos/gitleaks/gitleaks-action/git/ref/tags/v2"
+    },
+    {
+      "action": "reactivecircus/android-emulator-runner",
+      "tag": "v2",
+      "sha": "a421e43855164a8197daf9d8d40fe71c6996bb0d",
+      "url": "https://api.github.com/repos/reactivecircus/android-emulator-runner/git/ref/tags/v2"
+    }
+  ]
+}

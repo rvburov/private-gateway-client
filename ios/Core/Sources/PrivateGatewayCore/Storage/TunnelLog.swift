@@ -8,6 +8,7 @@ public struct TunnelLog: Sendable {
 
     private let file: any StateFile
     private let clock: @Sendable () -> Date
+    private let lock = NSLock()
 
     public init(file: any StateFile, clock: @escaping @Sendable () -> Date = { Date() }) {
         self.file = file
@@ -16,13 +17,21 @@ public struct TunnelLog: Sendable {
 
     /// Добавить строку; не записалась — журнал не важнее туннеля, ошибка молча пропускается.
     public func add(_ event: String) {
+        lock.lock()
+        defer { lock.unlock() }
         let line = Self.stamp(clock()) + " " + SecretMasker.mask(event).replacingOccurrences(of: "\n", with: " ")
-        let kept = (lines() + [line]).suffix(Self.limit)
+        let kept = (readLines() + [line]).suffix(Self.limit)
         try? file.write(Data(kept.joined(separator: "\n").utf8))
     }
 
     /// Строки по порядку, последние — в конце.
     public func lines() -> [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return readLines()
+    }
+
+    private func readLines() -> [String] {
         guard let data = try? file.read() else {
             return []
         }

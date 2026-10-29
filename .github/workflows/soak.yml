@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
     inputs:
       minutes:
-        description: Минут на каждый режим
+        description: Минут на каждый режим (не меньше 30; результат нужен для выпуска этого коммита)
         default: '30'
 
 permissions:
@@ -33,17 +33,17 @@ jobs:
         # На Windows — Git Bash: скрипты проекта запускаются в нем (AGENTS.md).
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Как в проверке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
       - id: dotnet
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         continue-on-error: true
         with:
           global-json-file: global.json
 
       - if: steps.dotnet.outcome == 'failure'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
 
@@ -62,4 +62,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends nftables
 
       - name: Долгий прогон
-        run: scripts/soak.sh "$MINUTES"
+        run: |
+          [[ "$MINUTES" =~ ^[0-9]+$ ]] && [ "$MINUTES" -ge 30 ] && [ "$MINUTES" -le 60 ] \
+            || { echo "Для выпускного прогона требуется от 30 до 60 минут на режим" >&2; exit 1; }
+          scripts/soak.sh "$MINUTES"

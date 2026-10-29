@@ -76,6 +76,9 @@
             <Border x:Name="KeysWarning" Classes="notice" IsVisible="{Binding IncludeKeys}">
               <TextBlock Text="{l:L backup.keys.warning}" />
             </Border>
+            <Border x:Name="SubscriptionWarning" Classes="notice" IsVisible="{Binding IncludeServers}">
+              <TextBlock Text="{l:L backup.subscriptions.warning}" />
+            </Border>
             <StackPanel Spacing="6">
               <TextBlock Classes="small" Text="{l:L backup.password}" FontWeight="SemiBold"
                          Foreground="{StaticResource PgBrush.Text.Secondary}" />

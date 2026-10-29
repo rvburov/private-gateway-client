@@ -34,6 +34,7 @@ class FailureReasonTest {
             DownloadFailure.TooLarge to FailureReason.TooLarge,
             DownloadFailure.NoServers to FailureReason.NoServers,
             DownloadFailure.NoAddress to FailureReason.NoAddress,
+            DownloadFailure.PrivateDns to FailureReason.PrivateDns,
         )
 
         assertEquals(DownloadFailure.entries.toSet(), expected.keys)

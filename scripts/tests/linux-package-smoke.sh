@@ -81,7 +81,18 @@ for _ in $(seq 1 50); do
 done
 systemctl is-active --quiet private-gateway || fail "после обновления пакета служба не работает"
 
-# Удаление — без ошибок службы в выводе: «не удалось» там — машина могла остаться с блоком при обрыве или юнитом.
+# Отказ CLI удаления: менеджер пакетов обязан остановиться ДО удаления файлов окна и службы.
+sudo mv /opt/private-gateway/PrivateGateway.Service /opt/private-gateway/PrivateGateway.Service.hidden
+if sudo apt-get remove -y private-gateway > "$tmp_out" 2>&1; then
+  sudo mv /opt/private-gateway/PrivateGateway.Service.hidden /opt/private-gateway/PrivateGateway.Service
+  fail "удаление пакета прошло, хотя служба не могла быть удалена"
+fi
+sudo mv /opt/private-gateway/PrivateGateway.Service.hidden /opt/private-gateway/PrivateGateway.Service
+[ -f /opt/private-gateway/PrivateGateway ] || fail "отказ удаления убрал окно"
+[ -f /etc/systemd/system/private-gateway.service ] || fail "отказ удаления потерял регистрацию службы"
+systemctl is-active --quiet private-gateway || fail "отказ удаления остановил работающую службу"
+
+# Удаление — без ошибок службы в выводе: ошибка означала бы оставшиеся правила или юнит.
 sudo apt-get remove -y private-gateway 2>&1 | tee "$tmp_out"
 ! grep -Eq "не удалось|Unhandled exception" "$tmp_out" || fail "удаление пакета: служба удалилась с ошибкой"
 ! systemctl cat private-gateway > /dev/null 2>&1 || fail "после удаления пакета остался юнит службы"

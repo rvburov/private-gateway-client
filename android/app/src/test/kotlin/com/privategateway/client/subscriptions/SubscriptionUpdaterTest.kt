@@ -1,5 +1,6 @@
 package com.privategateway.client.subscriptions
 
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import android.content.Context
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.room.Room
@@ -56,7 +57,8 @@ class SubscriptionUpdaterTest {
     private val settings by lazy { SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") }) }
     private val monitor = TunnelMonitor()
     private val source = FakeSource()
-    private val updater by lazy { SubscriptionUpdater(source, servers, settings, monitor) }
+    private val paths = CopyOnWriteArrayList<Boolean>()
+    private val updater by lazy { SubscriptionUpdater(SubscriptionTransport { uri, protected -> paths += protected; source.download(uri) }, servers, settings, monitor) }
     private val catalog = Fixtures.servers().distinctBy { Fixtures.identity(it) }
     private val url = URI("https://example.com/sub/0123456789abcdef0123456789abcdef")
 
@@ -110,6 +112,19 @@ class SubscriptionUpdaterTest {
         wait { settings.setSubscriptions(SubscriptionSettings(onlyViaVpn = false)) }
         assertEquals(UpdateOutcome.Updated(0, 0), wait { updater.update(group) }, "настройку выключили — грузится напрямую")
         assertEquals(1, source.calls.get())
+        assertEquals(listOf(false), paths)
+    }
+
+    @Test
+    fun `vpn only selects the protected transport and never an ordinary download`() {
+        val (group, _) = subscribe()
+        serve(catalog.take(3))
+        connect()
+        wait { updater.update(group) }
+        assertEquals(listOf(true), paths)
+        monitor.set(TunnelStatus())
+        assertEquals(UpdateOutcome.Blocked(UpdateBlock.ProtectionOff), wait { updater.update(group) })
+        assertEquals(listOf(true), paths, "после отключения обычный путь не подставляется")
     }
 
     @Test

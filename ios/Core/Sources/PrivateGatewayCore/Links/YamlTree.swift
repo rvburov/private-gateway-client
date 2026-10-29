@@ -134,12 +134,14 @@ enum YamlTree {
         var quote: Unicode.Scalar?
         var comment = false
         var previous: Unicode.Scalar = "\n"
+        var backslashes = 0
         for c in text.unicodeScalars {
             if c == "\n" {
                 line += 1
                 indent = 0
                 atLineStart = true
                 comment = false
+                backslashes = 0
                 previous = c
                 continue
             }
@@ -164,7 +166,8 @@ enum YamlTree {
             }
 
             if let open = quote {
-                if c == open && (open == "'" || previous != "\\") {
+                // Две обратные косые черты означают одну черту в строке, а не экранирование кавычки.
+                if c == open && (open == "'" || backslashes % 2 == 0) {
                     quote = nil
                 }
             } else if c == "\"" || c == "'", previous == "\n" || " \t[{,:-".unicodeScalars.contains(previous) {
@@ -182,6 +185,7 @@ enum YamlTree {
             }
 
             previous = c
+            backslashes = c == "\\" ? backslashes + 1 : 0
         }
 
         return nil

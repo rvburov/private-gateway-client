@@ -48,6 +48,7 @@ class ReferenceConfigTest {
 
             accepted(xray, tunnel.json!!, "$fixture, туннель")
             accepted(xray, XrayConfig.build(server, everything, tunFd = 42).json!!, "$fixture, туннель, все включено")
+            accepted(xray, XrayConfig.build(server, everything, tunFd = 42, SubscriptionProxy(19999, "test-user", "test-password")).json!!, "$fixture, вход подписок")
             accepted(xray, PingBatch.outbounds(server, CoreSettings()).json!!, "$fixture, замер задержки")
             accepted(xray, PingBatch.outbounds(server, everything).json!!, "$fixture, замер задержки, все включено")
         }

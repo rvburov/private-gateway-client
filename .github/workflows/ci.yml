@@ -22,17 +22,17 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Как в сборке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
       - id: dotnet
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         continue-on-error: true
         with:
           global-json-file: global.json
 
       - if: steps.dotnet.outcome == 'failure'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
 
@@ -45,6 +45,11 @@ jobs:
 
       - name: Сборка выпуска на собранных сборках
         run: scripts/tests/release-assembly-smoke.sh
+
+      - name: Условия выпуска и отказы удаления пакета
+        run: |
+          python3 scripts/tests/release-gate-test.py
+          bash scripts/tests/package-hooks-smoke.sh
 
       # Каждая закрепленная сумма sing-box — и тех машин, где CI его не берет, — сверена здесь второй раз.
       - name: Суммы sing-box на второй машине
@@ -61,18 +66,18 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Новейший SDK 10.0 по global.json. Свежий выпуск бывает уже объявлен, а файлы у Microsoft еще не готовы
       # (ответ 409 на всех ОС, 2026-10-25), — тогда предыдущий выпуск: global.json берет любой 10.0.
       - id: dotnet
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         continue-on-error: true
         with:
           global-json-file: global.json
 
       - if: steps.dotnet.outcome == 'failure'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
 
@@ -156,16 +161,16 @@ jobs:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - id: dotnet
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         continue-on-error: true
         with:
           global-json-file: global.json
 
       - if: steps.dotnet.outcome == 'failure'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
 
@@ -210,10 +215,10 @@ jobs:
     name: Android
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # JDK 21: Gradle и AGP идут и на 17, а Robolectric с Android 15 (SDK 35) — только на 21.
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: 21
@@ -227,13 +232,13 @@ jobs:
       # конфиги ядра на эталонных ссылках читает оно само (ReferenceConfigTest). Кешируется по коммиту libXray и скрипту и
       # сохраняется сразу после сборки.
       - id: xray-mobile
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: artifacts/cores/xray-mobile
           key: xray-mobile-${{ runner.os }}-${{ hashFiles('android/libxray.version', 'scripts/get-xray-mobile.sh') }}
 
       - if: steps.xray-mobile.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache: false
@@ -243,7 +248,7 @@ jobs:
         run: scripts/get-xray-mobile.sh
 
       - if: steps.xray-mobile.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: artifacts/cores/xray-mobile
           key: ${{ steps.xray-mobile.outputs.cache-primary-key }}
@@ -263,13 +268,13 @@ jobs:
       # Сохраняется сразу после сборки, а не в конце задания: упавшая дальше сборка приложения не заставит собирать ядро
       # заново.
       - id: libxray
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: android/app/libs/libXray.aar
           key: libxray-${{ hashFiles('android/libxray.version', 'scripts/get-libxray.sh') }}
 
       - if: steps.libxray.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache: false
@@ -279,7 +284,7 @@ jobs:
         run: scripts/get-libxray.sh
 
       - if: steps.libxray.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: android/app/libs/libXray.aar
           key: ${{ steps.libxray.outputs.cache-primary-key }}
@@ -319,7 +324,7 @@ jobs:
 
       - name: APK и отчеты
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-debug
           path: |
@@ -337,7 +342,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: KVM для эмулятора
         run: |
@@ -345,7 +350,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - uses: actions/setup-java@v5
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: 21
@@ -357,13 +362,13 @@ jobs:
 
       # libXray — из кеша задания «Android» (оно идет раньше и собирает ядро при промахе).
       - id: libxray
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: android/app/libs/libXray.aar
           key: libxray-${{ hashFiles('android/libxray.version', 'scripts/get-libxray.sh') }}
 
       - if: steps.libxray.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache: false
@@ -378,7 +383,7 @@ jobs:
           scripts/android-test-server.sh
 
       - name: Проверки на эмуляторе (Android 14)
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
           api-level: 34
           arch: x86_64
@@ -404,7 +409,7 @@ jobs:
 
       - name: Отчеты и журнал сервера
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-emulator
           path: |
@@ -423,7 +428,7 @@ jobs:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Swift
         run: swift --version
@@ -432,13 +437,13 @@ jobs:
       # конфиги ядра на эталонных ссылках читает оно само (ReferenceConfigTests). Кешируется по коммиту libXray и скрипту и
       # сохраняется сразу после сборки.
       - id: xray-mobile
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: artifacts/cores/xray-mobile
           key: xray-mobile-${{ runner.os }}-${{ hashFiles('android/libxray.version', 'scripts/get-xray-mobile.sh') }}
 
       - if: steps.xray-mobile.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache: false
@@ -448,7 +453,7 @@ jobs:
         run: scripts/get-xray-mobile.sh
 
       - if: steps.xray-mobile.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: artifacts/cores/xray-mobile
           key: ${{ steps.xray-mobile.outputs.cache-primary-key }}
@@ -466,7 +471,7 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: Xcode
         run: xcodebuild -version
@@ -474,13 +479,13 @@ jobs:
       # Ядро — тот же коммит libXray, что у Android (android/libxray.version), через gomobile для iPhone и симулятора.
       # Готовый .xcframework кешируется по коммиту и скрипту и сохраняется сразу после сборки.
       - id: libxray
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ios/Frameworks
           key: libxray-ios-${{ hashFiles('android/libxray.version', 'scripts/get-libxray-ios.sh') }}
 
       - if: steps.libxray.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache: false
@@ -490,7 +495,7 @@ jobs:
         run: scripts/get-libxray-ios.sh
 
       - if: steps.libxray.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ios/Frameworks
           key: ${{ steps.libxray.outputs.cache-primary-key }}
@@ -510,7 +515,7 @@ jobs:
         # На Windows — Git Bash: скрипты проекта запускаются в нем (AGENTS.md).
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       - name: scripts/worktree.sh на временном репозитории
         run: scripts/tests/worktree-smoke.sh
@@ -522,10 +527,10 @@ jobs:
     name: Секреты в репозитории
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
-      - uses: gitleaks/gitleaks-action@v2
+      - uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

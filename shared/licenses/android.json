@@ -12,6 +12,13 @@
 //   inside — входит в другой компонент этого списка (Xray-core — внутри libXray).
 [
   {
+    "name": "OkHttp",
+    "license": "Apache-2.0",
+    "copyright": "Copyright Square, Inc. and the OkHttp contributors",
+    "url": "https://github.com/square/okhttp",
+    "maven": ["com.squareup.okhttp3:*"]
+  },
+  {
     "name": "libXray",
     "license": "MIT",
     "copyright": "Copyright (c) 2023-2025 XTLS",

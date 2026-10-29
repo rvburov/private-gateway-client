@@ -194,6 +194,24 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Hidden_ipv6_masks_letters_in_the_exit_and_real_addresses()
+    {
+        ScriptedService? service = null;
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time,
+            () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+        const string ip = "2001:db8:abcd:efab:dead:beef:fade:cafe";
+        service!.Push(s => s with { Exit = ExitInfo.Unknown with { Ip = ip, DirectIp = ip } });
+        Dispatcher.UIThread.RunJobs();
+
+        main.ToggleIpMaskCommand.Execute(null);
+
+        main.WebIp.ShouldBe("••••:•••:••••:••••:••••:••••:••••:••••");
+        main.RealIp.ShouldBe(main.WebIp);
+        main.CanCopyIp.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
     public async Task Choosing_another_server_while_protected_reconnects_to_it()
     {
         var (_, shell) = Open();
@@ -414,6 +432,10 @@ public sealed class MainWindowTests : WindowHarness
                 : c,
             Checks = [new DiagnosticResult(DiagnosticCheck.AllTraffic, CheckState.Warning, "split")],
         });
+        Service<SettingsService>().Update(s => s with
+        {
+            Routing = s.Routing with { Mode = RoutingMode.Split, Rules = [new DomainRule("example.com", RuleAction.Direct)] },
+        });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
 
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
@@ -430,6 +452,74 @@ public sealed class MainWindowTests : WindowHarness
         WaitFor(() => !check.IsRunning);
         var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
         (row.Detail, row.ChipText).ShouldBe(("Программы и сайты из раздельного режима идут мимо туннеля", "Частично"));
+    }
+
+    [AvaloniaFact]
+    public async Task A_measured_real_ip_leak_is_visible_on_main_and_in_checks()
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = c => c.MoveTo(ConnectionState.Connected, Time.GetUtcNow()) is var connected
+                ? connected with
+                {
+                    Protection = connected.Protection with { AllTraffic = CheckState.Warning },
+                    Exit = new ExitInfo("198.51.100.7", null, null, null, "198.51.100.7"),
+                }
+                : c,
+            Checks = [new DiagnosticResult(DiagnosticCheck.AllTraffic, CheckState.Warning, "same_ip")],
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        Dispatcher.UIThread.RunJobs();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        main.StatusTitle.ShouldBe("Реальный IP открыт");
+        main.StatusSubtitle.ShouldBe("Проверка обнаружила трафик мимо туннеля");
+        main.Tone.ShouldBe(Tone.Error);
+        shell.Protection.Mark.ShouldBe("Icon.Mark.Alert");
+        main.RealIpState.ShouldBe("виден сайтам");
+        main.Chips[0].Value.ShouldBe("реальный IP открыт");
+        main.Chips[0].Text.ShouldBe("Проверка обнаружила ваш реальный IP вне туннеля. Восстановите защиту и повторите проверку.");
+
+        shell.NavigateCommand.Execute(Pages.Check);
+        var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
+        WaitFor(() => !check.IsRunning);
+        var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
+        (row.Detail, row.ChipText).ShouldBe(("Проверка обнаружила ваш реальный IP вне туннеля", "IP открыт"));
+    }
+
+    [AvaloniaFact]
+    public async Task Unverified_firewall_never_claims_blocked_traffic_or_hidden_real_ip()
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = c => c.MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+            {
+                ErrorCode = ErrorCodes.KillSwitchFailed,
+                Protection = ProtectionChecks.Paused,
+                Exit = new ExitInfo(null, null, null, null, "198.51.100.7"),
+            },
+            Checks = [new DiagnosticResult(DiagnosticCheck.AllTraffic, CheckState.Warning, "firewall")],
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
+        Dispatcher.UIThread.RunJobs();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        main.StatusSubtitle.ShouldBe("PGC-SVC-007 · защита не подтверждена, трафик может идти напрямую");
+        main.WebIpMeta.ShouldBe("Защита не подтверждена");
+        main.RealIpState.ShouldBe("защита не подтверждена");
+        main.Chips[0].Value.ShouldBe("защита не подтверждена");
+
+        shell.NavigateCommand.Execute(Pages.Check);
+        var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
+        WaitFor(() => !check.IsRunning);
+        var row = check.Rows.Single(r => r.Check == DiagnosticCheck.AllTraffic);
+        (row.Detail, row.ChipText).ShouldBe(("Правила защиты не подтверждены: трафик может идти напрямую", "Нет гарантии"));
     }
 
     [AvaloniaTheory]

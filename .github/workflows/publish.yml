@@ -23,6 +23,7 @@ on:
       - scripts/tests/macos-package-smoke.sh
       - .github/workflows/release.yml
       - scripts/tests/linux-package-smoke.sh
+      - scripts/tests/rpm-package-smoke.sh
       - desktop/packaging/**
       - shared/specifications/icons/**
       - shared/cores/**
@@ -56,17 +57,17 @@ jobs:
         # На Windows — Git Bash: скрипты проекта запускаются в нем (AGENTS.md).
         shell: bash
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
 
       # Как в проверке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
       - id: dotnet
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         continue-on-error: true
         with:
           global-json-file: global.json
 
       - if: steps.dotnet.outcome == 'failure'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
 
@@ -82,7 +83,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # go — для геобазы сайтов из domain-list-community (scripts/get-geosite.sh) и nfpm на Linux.
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: stable
           cache: false
@@ -107,6 +108,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends desktop-file-utils nftables
           scripts/tests/linux-package-smoke.sh "${{ steps.version.outputs.version }}"
+
+      - name: Установка и удаление .rpm (Fedora, без службы systemd)
+        if: runner.os == 'Linux'
+        run: bash scripts/tests/rpm-package-smoke.sh "${{ steps.version.outputs.version }}"
 
       # Установщик Windows — WiX 5.0.2 (MS-RL) глобальным инструментом dotnet, затем настоящая установка и удаление на этой
       # машине (одноразовой): служба, папки, ярлык, запись в «Установленных приложениях».
@@ -135,7 +140,7 @@ jobs:
         if: runner.os == 'macOS'
         run: scripts/tests/macos-package-smoke.sh "${{ steps.version.outputs.version }}"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ runner.os }}
           path: artifacts/release/

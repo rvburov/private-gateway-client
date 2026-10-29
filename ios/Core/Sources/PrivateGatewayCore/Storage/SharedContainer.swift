@@ -40,10 +40,18 @@ public struct SharedContainer: Sendable {
     }
 
     #if canImport(Security)
+    // Окно, импорт и фоновая задача живут в одном процессе: у них должны быть одни акторы хранилища. Атомарная замена
+    // файла сама по себе не защищает read-modify-write двух разных акторов от потери изменений.
+    private static let shared = makeCurrent()
+
     /// Папка App Group и Связка ключей с ее группой доступа. Без прав App Group (сборка без подписи: симулятор, тесты) iOS
     /// папку группы не дает — тогда папка Application Support самого процесса и группа Связки ключей по умолчанию: приложение
     /// работает, но расширение его серверов не видит — как и туннеля без подписи нет.
     public static func current() -> SharedContainer {
+        shared
+    }
+
+    private static func makeCurrent() -> SharedContainer {
         if let group = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroup) {
             return SharedContainer(
                 directory: group.appendingPathComponent("PrivateGateway", isDirectory: true),

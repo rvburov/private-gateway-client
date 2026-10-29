@@ -127,7 +127,7 @@ public sealed class UpdateChecker(
                 return offer;
             }
             catch (Exception e) when (e is HttpRequestException or InvalidDataException or FormatException or IOException
-                || (e is TaskCanceledException && !cancellationToken.IsCancellationRequested))
+                || (e is OperationCanceledException && !cancellationToken.IsCancellationRequested))
             {
                 journal.Add(JournalLevel.Warning, "update", "Проверить обновления не удалось: " + e.Message);
                 return new UpdateOffer(UpdateState.Failed, now);

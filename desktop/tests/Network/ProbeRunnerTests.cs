@@ -27,6 +27,7 @@ public sealed class ProbeRunnerTests
     [Fact]
     public async Task Ping_of_the_loopback_answers_every_echo()
     {
+        RequireIcmp();
         var steps = await Run(ProbeKind.Ping, "127.0.0.1");
 
         steps.Select(s => s.Index).ShouldBe([1, 2, 3, 4]);
@@ -36,9 +37,28 @@ public sealed class ProbeRunnerTests
     [Fact]
     public async Task Route_to_the_loopback_is_one_hop_and_stops_there()
     {
+        RequireIcmp();
         var step = (await Run(ProbeKind.Trace, "127.0.0.1")).ShouldHaveSingleItem("дошли — дальше не идем");
 
         (step.Index, step.Outcome, step.Address).ShouldBe((1, ProbeOutcome.Ok, IPAddress.Loopback));
+    }
+
+    private static void RequireIcmp()
+    {
+        if (!OperatingSystem.IsLinux() || File.Exists("/bin/ping") || File.Exists("/usr/bin/ping"))
+        {
+            return;
+        }
+
+        try
+        {
+            // Независимая проверка возможности ОС, а не пропуск по результату проверяемого ProbeRunner.
+            using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Raw, ProtocolType.Icmp);
+        }
+        catch (SocketException e) when (e.SocketErrorCode == SocketError.AccessDenied)
+        {
+            Assert.Skip("ICMP недоступен: нет прав на raw-сокет и утилиты ping");
+        }
     }
 
     [Fact]

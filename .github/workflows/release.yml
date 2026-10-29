@@ -1,6 +1,6 @@
 name: Выпуск на GitHub
 
-# Тег v<SemVer> → сборки трех ОС (publish.yml со всеми проверками и установкой пакетов) → выпуск на GitHub
+# Тег v<SemVer> → проверка master и CI/soak этого коммита → сборки трех ОС → выпуск на GitHub
 # (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
 # секрет UPDATE_SIGNING_KEY) и заметки из коммитов с прошлого тега. Версия с «-» — бета: выпуск помечен prerelease,
 # канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
@@ -10,41 +10,71 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  gate:
+    name: Условия выпуска
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      - name: Точный коммит тега, master, основная проверка и долгий прогон
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          git fetch origin master
+          python3 scripts/release-gate.py "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$RELEASE_SHA"
+
   build:
     name: Сборки
+    needs: gate
     uses: ./.github/workflows/publish.yml
 
   release:
     name: Выпуск
-    needs: build
+    needs: [gate, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      actions: read
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
 
       - id: dotnet
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         continue-on-error: true
         with:
           global-json-file: global.json
 
       - if: steps.dotnet.outcome == 'failure'
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: release-*
           path: artifacts/builds
+
+      # За время сборки тег или результат повторной проверки могли измениться. Не подписываем старое доказательство.
+      - name: Повторная проверка перед подписью
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ github.ref_name }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          git fetch origin master "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          python3 scripts/release-gate.py "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$RELEASE_SHA"
 
       - name: Файлы, суммы, манифест, подпись и заметки
         env:

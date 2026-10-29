@@ -7,7 +7,7 @@ import com.privategateway.client.core.subscriptions.FetchResult
 import com.privategateway.client.core.subscriptions.SelectedChange
 import com.privategateway.client.core.subscriptions.SubscriptionFetch
 import com.privategateway.client.core.subscriptions.SubscriptionSchedule
-import com.privategateway.client.core.subscriptions.SubscriptionSource
+import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionTimes
 import com.privategateway.client.core.subscriptions.UpdateBlock
 import com.privategateway.client.core.subscriptions.UpdateGate
@@ -63,7 +63,7 @@ sealed interface SubscriptionNotice {
  * Обновление подписок — `SubscriptionUpdater` десктопа. Загрузка — тем же разбором, что импорт; список меняет ApplyUpdate
  * (свое пользователя остается, выбранный пропавший — с пометкой); неудача оставляет прошлый список и запоминает причину.
  * С «только через VPN» адрес подписки уходит в сеть только через туннель: пока защита не подключена, ничего не грузится
- * (приложение не исключено из своего VPN — загрузка и правда идет через сервер).
+ * ([SubscriptionTransport] закрепляет запрос за аутентифицированным входом ядра, который отправляет его в сервер).
  *
  * Когда: переход в «Защищено», каждые 10 минут, пока защита идет (или пока жив процесс, если «только через VPN»
  * выключено), смена настроек и открытие окна — по правилу «пора» (успех старше промежутка, неудача — не чаще раза в час).
@@ -71,7 +71,7 @@ sealed interface SubscriptionNotice {
  */
 @Singleton
 class SubscriptionUpdater @Inject constructor(
-    private val source: SubscriptionSource,
+    private val transport: SubscriptionTransport,
     private val servers: ServerRepository,
     private val settings: SettingsRepository,
     private val monitor: TunnelMonitor,
@@ -141,7 +141,9 @@ class SubscriptionUpdater @Inject constructor(
             val url = servers.subscriptionUrl(id) ?: return failed(id, name, DownloadFailure.NoAddress, null, scheduled)
             val fetched = withContext(Dispatchers.IO) {
                 try {
-                    SubscriptionFetch.fetch(url, source)
+                    SubscriptionFetch.parse(transport.download(url, subscriptions.onlyViaVpn))
+                } catch (e: SubscriptionDownloadException) {
+                    FetchResult.Failed(e.failure, e.status)
                 } catch (e: CancellationException) {
                     throw e
                 } catch (_: Exception) {

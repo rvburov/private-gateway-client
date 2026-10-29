@@ -139,6 +139,47 @@ public sealed class PfKillSwitchTests : IDisposable
     }
 
     [Fact]
+    public void A_token_left_by_a_disabled_pf_does_not_prevent_reenabling_it()
+    {
+        var enabled = false;
+        var token = Path.Combine(_root, "pf.token");
+        File.WriteAllText(token, "100");
+        var calls = new List<string>();
+        var pf = new PfKillSwitch((arguments, _) =>
+        {
+            var command = string.Join(' ', arguments);
+            calls.Add(command);
+            if (command == "-E")
+            {
+                enabled = true;
+                return (0, string.Empty, "Token : 200");
+            }
+
+            return command switch
+            {
+                "-s info" => (0, enabled ? "Status: Enabled" : "Status: Disabled", string.Empty),
+                "-s rules" => (0, "anchor \"com.apple/*\" all", string.Empty),
+                var c when c.EndsWith("-s rules", StringComparison.Ordinal) => (0, "block drop out quick all", string.Empty),
+                _ => (0, string.Empty, string.Empty),
+            };
+        }, token);
+
+        pf.IsIntact.ShouldBeFalse();
+        pf.Enable(new KillSwitchPolicy(null, []));
+
+        pf.IsIntact.ShouldBeTrue("файл токена не заменяет фактического включения pf после чужого pfctl -d");
+        File.ReadAllText(token).ShouldBe("200");
+        calls.ShouldContain("-E");
+        calls.IndexOf("-X 100").ShouldBeGreaterThan(calls.IndexOf("-E"), "прежнюю ссылку отпускаем только после новой");
+
+        calls.Clear();
+        pf.Enable(new KillSwitchPolicy(null, [], AllowLan: true));
+        calls.ShouldNotContain("-E", "действующая ссылка не должна размножаться при каждой смене политики");
+        pf.Disable();
+        calls.ShouldContain("-X 200", "снимается новая ссылка, а не уже недействительный старый токен");
+    }
+
+    [Fact]
     public void Refusal_of_pfctl_is_an_error_and_not_a_silent_open_network()
     {
         var loads = 0;

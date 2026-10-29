@@ -27,6 +27,22 @@ import kotlin.test.assertTrue
  * DNS из туннеля — через сервер; локальная сеть и IPv6 — по настройкам; журнал соединений выключен.
  */
 class XrayConfigTest {
+    @Test
+    fun `subscription input is authenticated and always uses the proxy before lan and dns rules`() {
+        val config = Json.parseToJsonElement(XrayConfig.build(reality, CoreSettings(allowLan = true, lanDns = "192.168.1.53"), 42, SubscriptionProxy(19000, "test-user", "test-password")).json!!).jsonObject
+        val input = config["inbounds"]!!.jsonArray.last().jsonObject
+        assertEquals("127.0.0.1", input["listen"]!!.jsonPrimitive.content)
+        assertEquals("http", input["protocol"]!!.jsonPrimitive.content)
+        val account = input["settings"]!!.jsonObject["accounts"]!!.jsonArray.single().jsonObject
+        assertEquals("test-user", account["user"]!!.jsonPrimitive.content)
+        assertEquals("test-password", account["pass"]!!.jsonPrimitive.content)
+        val first = config["routing"]!!.jsonObject["rules"]!!.jsonArray.first().jsonObject
+        assertEquals(listOf(XrayConfig.SUBSCRIPTION_TAG), first["inboundTag"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(XrayConfig.PROXY_TAG, first["outboundTag"]!!.jsonPrimitive.content)
+        assertTrue(SubscriptionProxy.hasPrivateDns(com.privategateway.client.core.servers.ProxyProtocol.WireGuard, CoreSettings(lanDns = "192.168.1.53")))
+        assertFalse(SubscriptionProxy.hasPrivateDns(com.privategateway.client.core.servers.ProxyProtocol.Vless, CoreSettings(allowLan = true, lanDns = "192.168.1.53")))
+        assertFalse(SubscriptionProxy.hasPrivateDns(com.privategateway.client.core.servers.ProxyProtocol.WireGuard, CoreSettings(allowLan = true)))
+    }
     private val reality = server(
         "vless://11111111-2222-3333-4444-555555555555@203.0.113.24:443?type=tcp&security=reality&sni=www.example.com&fp=chrome" +
             "&pbk=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&sid=0123abcd&flow=xtls-rprx-vision#NL",

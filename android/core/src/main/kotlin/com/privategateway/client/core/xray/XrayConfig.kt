@@ -68,6 +68,7 @@ object XrayConfig {
     const val DIRECT_TAG = "direct"
     const val BLOCK_TAG = "block"
     const val DNS_TAG = "dns-out"
+    const val SUBSCRIPTION_TAG = "subscriptions-in"
 
     /**
      * Выход DNS: A и AAAA (типы 1 и 28) отвечает сам, остальное — отказ REFUSED (код 5). Правилами `rules`: прежний
@@ -93,12 +94,16 @@ object XrayConfig {
         "255.255.255.255/32", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8",
     )
 
+    /** Тот же список, который правила ядра открывают напрямую при allowLan; null — имя, без поиска DNS. */
+    internal fun localAddress(address: String): Boolean? =
+        literal(address.trim('[', ']'))?.let { ip -> localNetworks.any { inNetwork(ip, it) } }
+
     /**
      * @param server выбранный сервер.
      * @param settings настройки подключения.
      * @param tunFd дескриптор TUN от VpnService.
      */
-    fun build(server: ServerDefinition, settings: CoreSettings, tunFd: Int): XrayConfigResult {
+    fun build(server: ServerDefinition, settings: CoreSettings, tunFd: Int, subscriptionProxy: SubscriptionProxy? = null): XrayConfigResult {
         val outbound = outbound(server, settings)
         outbound.rejection?.let { return XrayConfigResult(null, it) }
 
@@ -106,7 +111,7 @@ object XrayConfig {
             "log" to linkedMapOf("loglevel" to if (settings.debugLog) "debug" else "warning", "access" to "none", "dnsLog" to false),
             "env" to linkedMapOf("xray.tun.fd" to tunFd.toString()),
             "dns" to linkedMapOf("servers" to listOf(settings.dns), "queryStrategy" to if (settings.ipv6) "UseIP" else "UseIPv4"),
-            "inbounds" to listOf(
+            "inbounds" to listOfNotNull(
                 linkedMapOf(
                     "tag" to TUN_TAG,
                     "protocol" to "tun",
@@ -118,6 +123,15 @@ object XrayConfig {
                         "routeOnly" to true,
                     ),
                 ),
+                subscriptionProxy?.let {
+                    linkedMapOf(
+                        "tag" to SUBSCRIPTION_TAG,
+                        "listen" to "127.0.0.1",
+                        "port" to it.port,
+                        "protocol" to "http",
+                        "settings" to linkedMapOf("accounts" to listOf(linkedMapOf("user" to it.user, "pass" to it.password))),
+                    )
+                },
             ),
             "outbounds" to listOf(
                 outbound.json,
@@ -130,13 +144,18 @@ object XrayConfig {
                 // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (DNS_RULES); без правил Xray 26 — пустой NOERROR.
                 linkedMapOf("tag" to DNS_TAG, "protocol" to "dns", "settings" to linkedMapOf("rules" to DNS_RULES)),
             ),
-            "routing" to linkedMapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules(settings)),
+            "routing" to linkedMapOf("domainStrategy" to "IPIfNonMatch", "rules" to rules(settings, subscriptionProxy != null)),
         )
         return XrayConfigResult(JsonText.value(config), null)
     }
 
-    private fun rules(settings: CoreSettings): List<Map<String, Any?>> {
-        val rules = mutableListOf<Map<String, Any?>>(
+    private fun rules(settings: CoreSettings, subscriptionProxy: Boolean): List<Map<String, Any?>> {
+        val rules = mutableListOf<Map<String, Any?>>()
+        if (subscriptionProxy) {
+            // Раньше LAN/DNS: даже подписка по частному адресу идет к выбранному серверу, без прямого выхода.
+            rules.add(linkedMapOf("type" to "field", "inboundTag" to listOf(SUBSCRIPTION_TAG), "outboundTag" to PROXY_TAG))
+        }
+        rules.add(
             // DNS из туннеля — к любому адресу: отвечает выход DNS по настройкам этого конфига, через сервер.
             linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "port" to "53", "outboundTag" to DNS_TAG),
         )

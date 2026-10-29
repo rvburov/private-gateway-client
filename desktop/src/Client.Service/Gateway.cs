@@ -140,8 +140,16 @@ public sealed partial class Gateway : IAsyncDisposable
     // Правила блока при обрыве стоят: поставлены подключением или остались с прошлого запуска.
     private volatile bool _blocking;
 
+    // Сторож обнаружил потерю правил, а их восстановление не подтверждено ОС. Наличие сохраненной
+    // политики больше не означает «трафик остановлен»: ошибка видна и в состоянии, и во всех проверках.
+    private volatile bool _blockBroken;
+
     // Номер подключения: выход старого ядра и запоздалая готовность не трогают новое.
     private int _session;
+
+    // Намерение пользователя, включая поиск адреса до запуска ядер: запоздавший Connect не отменяет
+    // более поздние Connect, Disconnect и паузу. Номер рабочей сессии меняется только при смене ядер.
+    private int _connectGeneration;
 
     // Что просили в текущем подключении: режим и системный прокси нужны, когда ядро готово.
     private CoreRequest? _request;
@@ -225,37 +233,46 @@ public sealed partial class Gateway : IAsyncDisposable
 
         if (options.KillSwitch is { } killSwitch && Try(() => killSwitch.IsEnabled, "Не прочитать правила блока при обрыве"))
         {
-            // Служба упала или остановилась с включенной защитой: трафик заблокирован — так и показывать. Какой это
-            // блок и строгий ли режим — из файла блока (на Windows постоянные фильтры WFP стоят и после перезагрузки).
-            // Фильтры могли остаться от «Защищено» — с разрешением адаптеру туннеля, а на Windows без фильтров
-            // пересылки: блок заново по файлу, уже без туннеля (одной транзакцией, без окна).
-            if (held is not null && Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве с прошлого запуска не обновился"))
+            // Правила прошлого запуска могли еще разрешать прежний адаптер TUN. Сохраненную политику
+            // нужно восстановить без него, а не считать наличие хотя бы одного фильтра доказательством защиты.
+            HoldAtStart(held);
+            var restored = held is null
+                ? Try(() => killSwitch.IsIntact, "Не проверить оставшийся блок при обрыве")
+                : EnableBlock(killSwitch, held.Policy, "Блок при обрыве с прошлого запуска не обновился");
+            if (restored)
             {
                 Warn(killSwitch);
+                journal.Add(JournalLevel.Warning, "service", held is { Strict: true }
+                    ? "Строгий режим: блок при обрыве остался с прошлого запуска — сеть закрыта до подключения или выключения строгого режима"
+                    : "Блок при обрыве остался с прошлого запуска: трафик заблокирован до подключения или выключения защиты");
             }
-
-            HoldAtStart(held);
-            journal.Add(JournalLevel.Warning, "service", held is { Strict: true }
-                ? "Строгий режим: блок при обрыве остался с прошлого запуска — сеть закрыта до подключения или выключения строгого режима"
-                : "Блок при обрыве остался с прошлого запуска: трафик заблокирован до подключения или выключения защиты");
+            else
+            {
+                _blockBroken = true;
+                ReportBrokenBlock();
+            }
         }
-        else if (options.KillSwitch is { } boot && held is { Boot: true }
-            && Try(() => { boot.Enable(held.Policy); return true; }, "«Защита при загрузке»: блок не включился"))
+        else if (held is { Open: false } && (held.Boot || held.Paused))
         {
-            // Защита была включена, когда машина выключилась: блок — раньше сети, до подключения или выключения.
+            // Даже отказ firewall не отменяет сохраненное намерение: «Ошибка», политика остается для
+            // сторожа и следующего запуска. «Выключено» здесь означало бы потерять защиту при загрузке.
             HoldAtStart(held);
-            RememberBlock(_held);
-            journal.Add(JournalLevel.Warning, "service", held.Strict
-                ? "Защита при загрузке, строгий режим: сеть закрыта до подключения или выключения строгого режима"
-                : "Защита при загрузке: защита была включена — трафик заблокирован до подключения или выключения защиты");
-        }
-        else if (options.KillSwitch is { } paused && held is { Paused: true }
-            && Try(() => { paused.Enable(held.Policy); return true; }, "Блок при обрыве не вернулся после паузы"))
-        {
-            // Служба упала на паузе для входа в Wi-Fi: пауза кончилась вместе с ней — блок возвращается.
-            HoldAtStart(held);
-            RememberBlock(_held);
-            journal.Add(JournalLevel.Warning, "service", "Служба остановилась на паузе для входа в Wi-Fi: блок при обрыве возвращен");
+            if (options.KillSwitch is { } boot && EnableBlock(boot, held.Policy, "Сохраненный блок при обрыве не включился"))
+            {
+                RememberBlock(_held);
+                Warn(boot);
+                journal.Add(JournalLevel.Warning, "service", held.Paused
+                    ? "Служба остановилась на паузе для входа в Wi-Fi: блок при обрыве возвращен"
+                    : held.Strict
+                    ? "Защита при загрузке, строгий режим: сеть закрыта до подключения или выключения строгого режима"
+                    : "Защита при загрузке: защита была включена — трафик заблокирован до подключения или выключения защиты");
+            }
+            else
+            {
+                _blockBroken = true;
+                ReportBrokenBlock();
+                journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.KillSwitchFailed}: сохраненный блок при обрыве не подтвержден — трафик может идти напрямую");
+            }
         }
         else if (held is { Boot: false })
         {
@@ -279,6 +296,14 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     public string? DnsReason => Status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Dns: CheckState.Warning }
         ? DnsOutside(_request?.Protection, Ipv6Open)
+        : null;
+
+    /// <summary>Почему весь трафик требует внимания: измеренный открытый IP, потеря firewall или раздельный режим.</summary>
+    public string? AllTrafficReason => Status is { Mode: ConnectionMode.Vpn, IsPaused: false, Protection.AllTraffic: CheckState.Warning } status
+        ? status.HasExitIpLeak ? "same_ip"
+        : status.ErrorCode == ErrorCodes.KillSwitchFailed ? "firewall"
+        : status.State == ConnectionState.Connected && _request?.Routing is { } routing && (routing.HasBypassApps || routing.HasBypassSites) ? "split"
+        : "unverified"
         : null;
 
     /// <summary>IPv6 мимо туннеля открыт: туннель его мимо себя пропускает, а правил нет или правила «только туннель» его пропускают.</summary>
@@ -355,7 +380,7 @@ public sealed partial class Gateway : IAsyncDisposable
     public async Task<bool> ConnectAtBootAsync(CancellationToken cancellationToken = default)
     {
         // Строгий режим: защиту выключили вручную — при загрузке сеть закрыта, а не подключена.
-        if (!_blocking || Status.StrictBlock || _options.BootConnect?.Load() is not { } stored)
+        if (!_blocking || Status.StrictBlock || _held is { Strict: true } || _options.BootConnect?.Load() is not { } stored)
         {
             return false;
         }
@@ -378,6 +403,11 @@ public sealed partial class Gateway : IAsyncDisposable
     private async Task<V1.ConnectReply> ConnectAsync(V1.ConnectRequest request, IReadOnlyList<IPAddress>? known, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(request);
+        cancellationToken.ThrowIfCancellationRequested();
+        var generation = Interlocked.Increment(ref _connectGeneration);
+        // Намерение принято: отмена ожидания RPC не бросает подготовку посередине. Ее заменяют только
+        // новое действие пользователя и остановка службы; DNS и остальные шаги ограничены по времени.
+        cancellationToken = CancellationToken.None;
         CoreRequest core;
         ProtectionSettings protection;
         bool killSwitchOn;
@@ -393,14 +423,14 @@ public sealed partial class Gateway : IAsyncDisposable
         }
         catch (ArgumentException e)
         {
-            return await RejectAsync(request, null, ErrorCodes.BadRequest, e.Message, cancellationToken).ConfigureAwait(false);
+            return await RejectAsync(request, null, ErrorCodes.BadRequest, e.Message, generation, cancellationToken).ConfigureAwait(false);
         }
 
         var serverId = request.Server.Id;
         var vpn = core.Mode == ConnectionMode.Vpn;
         if (vpn && !_options.CanVpn)
         {
-            return await RejectAsync(request, core.Mode, ErrorCodes.AdminRequired, "Режиму VPN нужны права администратора", cancellationToken)
+            return await RejectAsync(request, core.Mode, ErrorCodes.AdminRequired, "Режиму VPN нужны права администратора", generation, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -409,7 +439,7 @@ public sealed partial class Gateway : IAsyncDisposable
             return await RejectAsync(request, core.Mode, ErrorCodes.VpnNotReady,
                 _options.KillSwitch is not null ? "Нет сборки sing-box"
                 : OperatingSystem.IsLinux() ? "Режим VPN недоступен: нет nftables (программа nft), а без нее нет блока при обрыве"
-                : "Режим VPN недоступен: нет блока при обрыве", cancellationToken)
+                : "Режим VPN недоступен: нет блока при обрыве", generation, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -418,7 +448,7 @@ public sealed partial class Gateway : IAsyncDisposable
         if (vpn && _options.TunDevice is { } tun && !File.Exists(tun))
         {
             return await RejectAsync(request, core.Mode, ErrorCodes.VpnNotReady,
-                $"Нет устройства TUN ({tun}): в контейнере его нужно пробросить, на машине — включить модуль ядра tun", cancellationToken)
+                $"Нет устройства TUN ({tun}): в контейнере его нужно пробросить, на машине — включить модуль ядра tun", generation, cancellationToken)
                 .ConfigureAwait(false);
         }
 
@@ -437,12 +467,12 @@ public sealed partial class Gateway : IAsyncDisposable
                 CoreRejection.Unencrypted => UnencryptedServer,
                 _ => "Ядро Xray не возьмется за сервер: " + built.Rejection,
             },
-                cancellationToken).ConfigureAwait(false);
+                generation, cancellationToken).ConfigureAwait(false);
         }
 
         if (_options.XrayPath is not { } xray || !File.Exists(xray))
         {
-            return await RejectAsync(request, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", cancellationToken).ConfigureAwait(false);
+            return await RejectAsync(request, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", generation, cancellationToken).ConfigureAwait(false);
         }
 
         // Чужой туннель с маршрутом ко всему интернету: два VPN сразу — трафик может пойти мимо нашего.
@@ -451,7 +481,7 @@ public sealed partial class Gateway : IAsyncDisposable
             if (!request.AllowOtherVpn)
             {
                 return await RejectAsync(request, core.Mode, ErrorCodes.OtherVpn,
-                    $"Работает другой VPN: маршрут ко всему интернету через {string.Join(", ", other)}", cancellationToken).ConfigureAwait(false);
+                    $"Работает другой VPN: маршрут ко всему интернету через {string.Join(", ", other)}", generation, cancellationToken).ConfigureAwait(false);
             }
 
             _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({string.Join(", ", other)}) — подключение по выбору пользователя");
@@ -465,6 +495,11 @@ public sealed partial class Gateway : IAsyncDisposable
             await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
             try
             {
+                if (!IsLatestConnect(generation))
+                {
+                    return SupersededConnect();
+                }
+
                 if (Status.State == ConnectionState.Off)
                 {
                     BeginConnecting(core.Mode, serverId);
@@ -487,14 +522,13 @@ public sealed partial class Gateway : IAsyncDisposable
         var before = Volatile.Read(ref _tunnel) is null && !_blocking
             ? Task.Run(() => (InspectNetwork(), EgressAddress(Probe4)), CancellationToken.None)
             : null;
-        IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, cancellationToken).ConfigureAwait(false) : [];
+        IReadOnlyList<IPAddress> addresses = vpn ? known ?? await ResolveAsync(core, generation, cancellationToken).ConfigureAwait(false) : [];
         var (ip, ip6) = await direct.ConfigureAwait(false);
-        (_directIp, _directIp6) = (ip ?? _directIp, ip6 ?? _directIp6);
-        _directWebrtc = await directWebrtc.ConfigureAwait(false) ?? _directWebrtc;
-        if (before is not null)
+        var webrtc = await directWebrtc.ConfigureAwait(false);
+        (NetworkSnapshot Snapshot, IPAddress? Egress)? snapshot = before is not null ? await before.ConfigureAwait(false) : null;
+        if (!IsLatestConnect(generation))
         {
-            var (snapshot, egress) = await before.ConfigureAwait(false);
-            RememberBefore(snapshot, egress);
+            return SupersededConnect();
         }
 
         // Дальше подключение доводится до конца и при отмене вызова: поиск адреса мог остановить прежнее подключение, и
@@ -515,25 +549,37 @@ public sealed partial class Gateway : IAsyncDisposable
         else if (vpn && addresses.Count == 0)
         {
             // Другой сервер под блоком без туннеля: DoH самой службы с исключением в блоке только на время поиска.
-            addresses = await LookupPastBlockAsync(core, cancellationToken).ConfigureAwait(false);
+            addresses = await LookupPastBlockAsync(core, generation, cancellationToken).ConfigureAwait(false);
         }
 
         if (vpn && addresses.Count == 0)
         {
             // Под блоком при обрыве отказ его не снимает: адрес найдется после отключения. Без блока повторное подключение
             // найдет адрес само.
-            return await RejectAsync(request, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", cancellationToken).ConfigureAwait(false);
+            return await RejectAsync(request, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", generation, cancellationToken).ConfigureAwait(false);
         }
 
         if (vpn && XrayConfigBuilder.Unencrypted(core.Server, addresses[0].ToString()))
         {
-            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, UnencryptedServer, cancellationToken).ConfigureAwait(false);
+            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, UnencryptedServer, generation, cancellationToken).ConfigureAwait(false);
         }
 
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         int session;
         try
         {
+            if (!IsLatestConnect(generation))
+            {
+                return SupersededConnect();
+            }
+
+            (_directIp, _directIp6) = (ip ?? _directIp, ip6 ?? _directIp6);
+            _directWebrtc = webrtc ?? _directWebrtc;
+            if (snapshot is { } measured)
+            {
+                RememberBefore(measured.Snapshot, measured.Egress);
+            }
+
             // Сначала новый номер: выход старого ядра при остановке не должен стать ошибкой нового подключения.
             session = ++_session;
             _request = core;
@@ -585,6 +631,11 @@ public sealed partial class Gateway : IAsyncDisposable
             _switch.Release();
         }
     }
+
+    private bool IsLatestConnect(int generation) => generation == Volatile.Read(ref _connectGeneration);
+
+    // Ответ устаревшему окну: новое состояние уже определено более поздним действием пользователя.
+    private static V1.ConnectReply SupersededConnect() => new() { Accepted = false };
 
     /// <summary>
     /// Ядро режима прокси — и ждать, пока оно откроет вход (<see cref="WaitReadyAsync"/>): тогда системный прокси и
@@ -659,6 +710,9 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     public async Task DisconnectAsync(bool keepBlock = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
+        Interlocked.Increment(ref _connectGeneration);
+        cancellationToken = CancellationToken.None;
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
@@ -671,6 +725,13 @@ public sealed partial class Gateway : IAsyncDisposable
             // Правила «только туннель» (блок при обрыве выключен) строгий режим не держит: без блока при обрыве его нет.
             if (keepBlock && Status.State != ConnectionState.Off && (HoldStrictBlock() || (_blocking && _held is not { Open: true })))
             {
+                if (_blockBroken)
+                {
+                    ReportBrokenBlock();
+                    RememberBootConnection(null, []);
+                    return;
+                }
+
                 if (Status.State == ConnectionState.Blocked)
                 {
                     // И пауза для входа в Wi-Fi кончается: сеть снова закрыта.
@@ -780,6 +841,7 @@ public sealed partial class Gateway : IAsyncDisposable
                 return null;
             }
 
+            Interlocked.Increment(ref _connectGeneration);
             var until = _time.GetUtcNow() + duration;
             var session = _session;
             Update(s => s with { CaptivePauseUntil = until, Protection = ProtectionChecks.Paused });
@@ -860,6 +922,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        Interlocked.Increment(ref _connectGeneration);
         lock (_gate)
         {
             _pauseEnd?.Dispose();
@@ -909,14 +972,19 @@ public sealed partial class Gateway : IAsyncDisposable
     /// блок при обрыве, если снова просят режим VPN с блоком: «Блокировка» с кодом причины.
     /// </summary>
     private async Task<V1.ConnectReply> RejectAsync(V1.ConnectRequest request, ConnectionMode? mode, string code, string message,
-        CancellationToken cancellationToken)
+        int generation, CancellationToken cancellationToken)
     {
         var serverId = request.Server?.Id;
         var strict = mode == ConnectionMode.Vpn && request.Protection?.StrictMode == true;
-        _journal.Add(JournalLevel.Warning, "service", $"Подключение отклонено ({code}): {message}");
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (!IsLatestConnect(generation))
+            {
+                return SupersededConnect();
+            }
+
+            _journal.Add(JournalLevel.Warning, "service", $"Подключение отклонено ({code}): {message}");
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
             ConnectionStatus Requested(ConnectionStatus s) => s with
@@ -940,6 +1008,12 @@ public sealed partial class Gateway : IAsyncDisposable
                 && status.State != ConnectionState.Off && _blocking && _held is not { Open: true } && BlockWithoutTunnel();
             if (held || strictHeld || guarded)
             {
+                if (_blockBroken)
+                {
+                    ReportBrokenBlock();
+                    return new V1.ConnectReply { Accepted = false, Error = new V1.ErrorInfo { Code = code, Message = message } };
+                }
+
                 if (guarded)
                 {
                     // Прежнее подключение само не вернется (конец паузы, смена сети): «Блокировка» до подключения или отключения.
@@ -1172,6 +1246,7 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 await StopCoreAsync().ConfigureAwait(false);
                 BlockWithoutTunnel();
+                Update(s => Honest(s));
             }
         }
         finally
@@ -1536,7 +1611,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// прежнее подключение все равно сменится: ядра останавливаются сейчас, и имя ищется через систему, без туннеля.
     /// Не нашлось — пусто.
     /// </summary>
-    private async Task<IReadOnlyList<IPAddress>> ResolveAsync(CoreRequest core, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<IPAddress>> ResolveAsync(CoreRequest core, int generation, CancellationToken cancellationToken)
     {
         var host = core.Server.Host.Trim('[', ']');
         if (IPAddress.TryParse(host, out var literal))
@@ -1550,6 +1625,11 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         var found = await LookupAsync(host, cancellationToken).ConfigureAwait(false);
+        if (!IsLatestConnect(generation))
+        {
+            return [];
+        }
+
         var fake = _request is { Protection.FakeDns: true } && found.Any(FakeDnsPool.Contains);
         if (found.Length > 0 && !fake)
         {
@@ -1573,10 +1653,15 @@ public sealed partial class Gateway : IAsyncDisposable
             return [];
         }
 
-        _journal.Add(JournalLevel.Warning, "service", "Адрес нового сервера через прежнее подключение не найден — оно остановлено, адрес ищется без туннеля");
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            if (!IsLatestConnect(generation))
+            {
+                return [];
+            }
+
+            _journal.Add(JournalLevel.Warning, "service", "Адрес нового сервера через прежнее подключение не найден — оно остановлено, адрес ищется без туннеля");
             _session++;
             await StopCoreAsync().ConfigureAwait(false);
             BlockWithoutTunnel();
@@ -1612,7 +1697,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// на время поиска блок пропускает только программу службы (WFP) или ее помеченный сокет (nftables) и только к DoH, потом
     /// возвращается прежний. Блока нет, он открытый, туннель поднят или DoH не по адресу — пусто.
     /// </summary>
-    private async Task<IReadOnlyList<IPAddress>> LookupPastBlockAsync(CoreRequest core, CancellationToken cancellationToken)
+    private async Task<IReadOnlyList<IPAddress>> LookupPastBlockAsync(CoreRequest core, int generation, CancellationToken cancellationToken)
     {
         var host = core.Server.Host.Trim('[', ']');
         if (_options is not { KillSwitch: { } killSwitch, Doh: { } doh } || !IPAddress.TryParse(doh.Host.Trim('[', ']'), out var dohAddress)
@@ -1624,7 +1709,7 @@ public sealed partial class Gateway : IAsyncDisposable
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!_blocking || _held is not { Open: false } held || Volatile.Read(ref _tunnel) is not null)
+            if (!IsLatestConnect(generation) || !_blocking || _held is not { Open: false } held || Volatile.Read(ref _tunnel) is not null)
             {
                 return [];
             }
@@ -1686,7 +1771,7 @@ public sealed partial class Gateway : IAsyncDisposable
             tunnel ? (Volatile.Read(ref _tunnel)?.Subnet ?? TunSubnet.Default).Dns : null,
             Ipv6OutsideOpen(_killSwitchOn, core.Protection, Volatile.Read(ref _tunnel) is { Ipv6Outside: true }),
             core.Protection.LanDns);
-        if (!Try(() => { killSwitch.Enable(policy); return true; }, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))
+        if (!EnableBlock(killSwitch, policy, _killSwitchOn ? "Блок при обрыве не включился" : "Правила «только туннель» не встали"))
         {
             return false;
         }
@@ -1768,7 +1853,7 @@ public sealed partial class Gateway : IAsyncDisposable
     private void EnsureBlock()
     {
         if (!_blocking || _options.KillSwitch is not { } killSwitch || _held is not { } held
-            || Try(() => killSwitch.IsIntact, "Правила блока при обрыве не прочитаны"))
+            || (!_blockBroken && Try(() => killSwitch.IsIntact, "Правила блока при обрыве не прочитаны")))
         {
             return;
         }
@@ -1777,17 +1862,66 @@ public sealed partial class Gateway : IAsyncDisposable
             ? ("Правила «только туннель» сняла другая программа — они ставятся снова", "Правила «только туннель» не вернулись", "Правила «только туннель» поставлены снова")
             : ("Блок при обрыве сняла другая программа — он ставится снова", "Блок при обрыве не вернулся", "Блок при обрыве поставлен снова");
         _journal.Add(JournalLevel.Warning, "service", $"{ErrorCodes.BlockRemoved}: {removed}");
-        if (Try(() => { killSwitch.Enable(held.Policy); return true; }, $"{ErrorCodes.KillSwitchFailed}: {failed} — трафик может идти мимо туннеля"))
+        var wasBroken = _blockBroken;
+        _blockBroken = true;
+        if (EnableBlock(killSwitch, held.Policy, $"{ErrorCodes.KillSwitchFailed}: {failed} — трафик может идти мимо туннеля"))
         {
             _journal.Add(JournalLevel.Info, "service", $"{back} ({killSwitch.Name})");
             Warn(killSwitch);
+            if (wasBroken)
+            {
+                // После подтвержденного восстановления можно убрать ядра оставшегося подключения. До этого
+                // туннель сохраняется: останавливать его без firewall значило бы открыть обычный маршрут.
+                Update(s => Honest(s with { Protection = ProtectionChecks.For(s.State, s.Mode) }));
+                _ = StopFailedAsync(Volatile.Read(ref _session));
+            }
+
+            return;
+        }
+
+        ReportBrokenBlock();
+    }
+
+    private void ReportBrokenBlock()
+    {
+        EndPauseTimer();
+        if (Status.State is not (ConnectionState.Off or ConnectionState.Error))
+        {
+            Move(s => s with { ErrorCode = ErrorCodes.KillSwitchFailed }, ConnectionState.Error);
+        }
+        else
+        {
+            Update(s => Honest(s with { ErrorCode = ErrorCodes.KillSwitchFailed, CaptivePauseUntil = null }));
         }
     }
+
+    // Успешный вызов программы firewall еще не подтверждает, что правила действуют: например, pf
+    // мог остаться выключенным. Сторож и ручное подключение используют одну проверку результата ОС.
+    private bool EnableBlock(IKillSwitch killSwitch, KillSwitchPolicy policy, string failure) => Try(() =>
+    {
+        killSwitch.Enable(policy);
+        try
+        {
+            _blockBroken = !killSwitch.IsIntact;
+        }
+        catch
+        {
+            _blockBroken = true;
+            throw;
+        }
+
+        if (_blockBroken)
+        {
+            throw new IOException("ОС не подтвердила, что правила firewall действуют");
+        }
+
+        return true;
+    }, failure);
 
     /// <summary>Вернуть блок, который служба держит (после паузы, при остановке, в строгом режиме); не встал — false.</summary>
     private bool Restore(HeldBlock held, string done)
     {
-        if (_options.KillSwitch is not { } killSwitch || !Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве не включился"))
+        if (_options.KillSwitch is not { } killSwitch || !EnableBlock(killSwitch, held.Policy, "Блок при обрыве не включился"))
         {
             return false;
         }
@@ -1857,6 +1991,7 @@ public sealed partial class Gateway : IAsyncDisposable
         if (Try(() => { killSwitch.Disable(); return true; }, "Блок при обрыве не снялся"))
         {
             _blocking = false;
+            _blockBroken = false;
             _journal.Add(JournalLevel.Info, "service", "Блок при обрыве снят");
             Warn(killSwitch);
         }
@@ -1955,6 +2090,15 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private ConnectionStatus Honest(ConnectionStatus status)
     {
+        if (_blockBroken && status.Mode == ConnectionMode.Vpn && status.State != ConnectionState.Off && !status.IsPaused)
+        {
+            return status with
+            {
+                ErrorCode = ErrorCodes.KillSwitchFailed,
+                Protection = new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null),
+            };
+        }
+
         if (status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected } && _request?.Routing is { } routing
             && (routing.HasBypassApps || routing.HasBypassSites))
         {

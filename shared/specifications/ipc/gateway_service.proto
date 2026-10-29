@@ -26,6 +26,9 @@ service GatewayService {
   // Версии службы, контракта и ядер. Интерфейс вызывает первым и сверяет api_version.
   rpc GetServiceInfo(GetServiceInfoRequest) returns (ServiceInfo);
 
+  // Подписка через сервер активной VPN-сессии. Никогда не идет напрямую или по системному прокси.
+  rpc DownloadSubscription(SubscriptionDownloadRequest) returns (SubscriptionDownloadReply);
+
   // Текущее состояние и поток его изменений (главный экран, трей, уведомления).
   rpc GetStatus(GetStatusRequest) returns (Status);
   rpc WatchStatus(WatchStatusRequest) returns (stream Status);
@@ -94,6 +97,14 @@ service GatewayService {
   // До и после VPN: «до» служба снимает при включении защиты (пока прямой путь открыт), «сейчас» — замером по этому
   // вызову: адреса для сайтов по IPv4 и IPv6, адрес STUN (WebRTC), адаптер выхода в интернет, его шлюз и DNS.
   rpc CompareNetwork(CompareNetworkRequest) returns (NetworkComparison);
+}
+
+message SubscriptionDownloadRequest { string address = 1; }
+message SubscriptionDownloadReply {
+  bytes content = 1;
+  string title = 2;
+  string failure = 3;
+  int32 status_code = 4;
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────

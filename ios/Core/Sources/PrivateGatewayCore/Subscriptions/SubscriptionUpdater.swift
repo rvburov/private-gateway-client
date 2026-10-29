@@ -31,8 +31,8 @@ public struct UpdateReport: Equatable, Sendable {
 
 /// Обновление подписок — `SubscriptionUpdater` Android. Загрузка — тем же разбором, что импорт; список меняет `applyUpdate`
 /// (свое пользователя остается, выбранный пропавший — с пометкой); неудача оставляет прошлый список и запоминает причину.
-/// С «только через VPN» адрес подписки уходит в сеть только через туннель: пока защита не подключена, ничего не грузится.
-/// Загружает приложение, а не расширение: соединения расширения iOS в туннель не пускает, а приложения — пускает.
+/// С «только через VPN» используется только защищенный метод источника — явный локальный прокси ядра с выходом через
+/// выбранный сервер. Снимок connected нужен для сообщения в окне, но не служит гарантией сетевого пути.
 ///
 /// Когда — решает приложение (окно открыто, переход в «Защищено», раз в 10 минут, пока окно на экране, фоновое обновление
 /// iOS): `updateDue` обновляет только те, которым пора. Отказ по расписанию — сообщение «не обновились»; кнопкой — только
@@ -67,6 +67,7 @@ public actor SubscriptionUpdater {
         let times = groups.filter(\.canUpdate).map { SubscriptionTimes(id: $0.id, updatedAt: $0.updatedAt, lastAttemptAt: $0.lastAttemptAt) }
         var notices: [SubscriptionNotice] = []
         for id in SubscriptionSchedule.due(times, app.subscriptions.refresh, now: clock()) {
+            if Task.isCancelled { break }
             notices += await update(id, connected: connected, scheduled: true).notices
         }
 
@@ -76,6 +77,7 @@ public actor SubscriptionUpdater {
     /// Обновить одну подписку (кнопка «Обновить», новый адрес в «Изменить»); `scheduled` — сама, а не кнопкой: тогда неудача —
     /// сообщение «не обновились».
     public func update(_ id: String, connected: Bool, scheduled: Bool = false) async -> UpdateReport {
+        guard !Task.isCancelled else { return UpdateReport(.unavailable) }
         guard let app = try? await settings.load() else {
             return UpdateReport(.unavailable)
         }
@@ -103,7 +105,9 @@ public actor SubscriptionUpdater {
             return await failed(id, name, .noAddress, nil, scheduled)
         }
 
-        switch await SubscriptionFetch.fetch(url, from: source) {
+        let fetched = await SubscriptionFetch.fetch(url, from: source, protected: app.subscriptions.onlyViaVpn)
+        guard !Task.isCancelled else { return UpdateReport(.unavailable) }
+        switch fetched {
         case let .failed(failure, status):
             return await failed(id, name, failure, status, scheduled)
         case let .fetched(list, _):

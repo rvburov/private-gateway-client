@@ -42,6 +42,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
     // Номер разбора: ответ подписки, пришедший после нового источника или ухода с экрана, не нужен.
     private int _attempt;
+    private CancellationTokenSource? _download;
 
     public ImportPageViewModel(
         IServerStore store,
@@ -81,6 +82,14 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
     [ObservableProperty]
     public partial string LinkText { get; set; } = string.Empty;
+
+    partial void OnLinkTextChanged(string value)
+    {
+        if (Source == ImportSource.Link)
+        {
+            BeginOperation();
+        }
+    }
 
     [ObservableProperty]
     public partial string ProfileName { get; set; } = string.Empty;
@@ -176,15 +185,20 @@ public sealed partial class ImportPageViewModel : ObservableObject
     [RelayCommand]
     private async Task FromClipboardAsync()
     {
+        var attempt = BeginOperation();
         Source = ImportSource.Clipboard;
         var text = await _clipboard.GetTextAsync().ConfigureAwait(true);
+        if (attempt != _attempt)
+        {
+            return;
+        }
         if (string.IsNullOrWhiteSpace(text))
         {
             Show(Loc.Instance["import.empty.clipboard"]);
             return;
         }
 
-        await AnalyzeAsync(text, suggestedName: null).ConfigureAwait(true);
+        await AnalyzeAsync(text, suggestedName: null, attempt).ConfigureAwait(true);
     }
 
     /// <summary>
@@ -194,35 +208,53 @@ public sealed partial class ImportPageViewModel : ObservableObject
     [RelayCommand]
     private async Task FromQrAsync()
     {
+        var attempt = BeginOperation();
         Source = ImportSource.Qr;
-        if (await _clipboard.GetImageAsync().ConfigureAwait(true) is { } snapshot)
+        var snapshot = await _clipboard.GetImageAsync().ConfigureAwait(true);
+        if (attempt != _attempt)
         {
-            await FromImageAsync(snapshot).ConfigureAwait(true);
+            return;
+        }
+
+        if (snapshot is not null)
+        {
+            await DecodeImageAsync(snapshot, attempt).ConfigureAwait(true);
             return;
         }
 
         try
         {
-            if (await _files.OpenImageAsync().ConfigureAwait(true) is { } file)
+            if (await _files.OpenImageAsync().ConfigureAwait(true) is { } file && attempt == _attempt)
             {
-                await FromImageAsync(file.Image).ConfigureAwait(true);
+                await DecodeImageAsync(file.Image, attempt).ConfigureAwait(true);
             }
         }
         catch (InvalidDataException e)
         {
-            Show(Loc.Instance.Format("import.file.failed", e.Message));
+            if (attempt == _attempt)
+            {
+                Show(Loc.Instance.Format("import.file.failed", e.Message));
+            }
         }
         catch (IOException e)
         {
-            Show(Loc.Instance.Format("import.file.failed", e.Message));
+            if (attempt == _attempt)
+            {
+                Show(Loc.Instance.Format("import.file.failed", e.Message));
+            }
         }
     }
 
     /// <summary>Картинка с QR-кодом — из буфера, файла или перетащенная в окно.</summary>
-    public async Task FromImageAsync(ImagePixels image)
+    public Task FromImageAsync(ImagePixels image)
     {
+        var attempt = BeginOperation();
         Source = ImportSource.Qr;
-        var attempt = _attempt;
+        return DecodeImageAsync(image, attempt);
+    }
+
+    private async Task DecodeImageAsync(ImagePixels image, int attempt)
+    {
         // Распознавание большой картинки — заметная работа: не в потоке интерфейса.
         var text = await Task.Run(() => QrCode.Decode(image)).ConfigureAwait(true);
         if (attempt != _attempt)
@@ -237,49 +269,62 @@ public sealed partial class ImportPageViewModel : ObservableObject
             return;
         }
 
-        await AnalyzeAsync(text, suggestedName: null).ConfigureAwait(true);
+        await AnalyzeAsync(text, suggestedName: null, attempt).ConfigureAwait(true);
     }
 
     /// <summary>Перетащенный файл не прочитан: большой, не текст или не картинка.</summary>
-    public void ShowFileError(string reason) => Show(Loc.Instance.Format("import.file.failed", reason));
+    public void ShowFileError(string reason)
+    {
+        BeginOperation();
+        Show(Loc.Instance.Format("import.file.failed", reason));
+    }
 
     /// <summary>Перетащенный в окно текстовый файл — как выбранный кнопкой «Открыть файл».</summary>
     public Task FromDroppedFileAsync(string name, string text)
     {
+        var attempt = BeginOperation();
         Source = ImportSource.File;
-        return AnalyzeAsync(text, Path.GetFileNameWithoutExtension(name));
+        return AnalyzeAsync(text, Path.GetFileNameWithoutExtension(name), attempt);
     }
 
     [RelayCommand]
     private void OpenLink()
     {
+        BeginOperation();
         Source = ImportSource.Link;
         Message = null;
     }
 
-    [RelayCommand]
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private Task CheckLinkAsync() => AnalyzeAsync(LinkText, suggestedName: null);
 
     [RelayCommand]
     private async Task FromFileAsync()
     {
+        var attempt = BeginOperation();
         Source = ImportSource.File;
         try
         {
-            if (await _files.OpenTextAsync().ConfigureAwait(true) is not { } file)
+            if (await _files.OpenTextAsync().ConfigureAwait(true) is not { } file || attempt != _attempt)
             {
                 return;
             }
 
-            await AnalyzeAsync(file.Text, Path.GetFileNameWithoutExtension(file.Name)).ConfigureAwait(true);
+            await AnalyzeAsync(file.Text, Path.GetFileNameWithoutExtension(file.Name), attempt).ConfigureAwait(true);
         }
         catch (InvalidDataException e)
         {
-            Show(Loc.Instance.Format("import.file.failed", e.Message));
+            if (attempt == _attempt)
+            {
+                Show(Loc.Instance.Format("import.file.failed", e.Message));
+            }
         }
         catch (IOException e)
         {
-            Show(Loc.Instance.Format("import.file.failed", e.Message));
+            if (attempt == _attempt)
+            {
+                Show(Loc.Instance.Format("import.file.failed", e.Message));
+            }
         }
     }
 
@@ -332,14 +377,14 @@ public sealed partial class ImportPageViewModel : ObservableObject
     /// Текст из источника: одна строка с адресом http(s) — подписка, ее сначала загрузить; иначе —
     /// ссылки или base64 как есть.
     /// </summary>
-    private async Task AnalyzeAsync(string text, string? suggestedName)
+    private async Task AnalyzeAsync(string text, string? suggestedName, int? operation = null)
     {
-        var attempt = ++_attempt;
-        IsBusy = false;
-        Message = null;
-        Preview = null;
-        IsInsecure = false;
-        _subscriptionUrl = null;
+        var attempt = operation ?? BeginOperation();
+        if (attempt != _attempt)
+        {
+            return;
+        }
+
         var trimmed = text.Trim();
         if (!trimmed.Contains('\n', StringComparison.Ordinal)
             && Uri.TryCreate(trimmed, UriKind.Absolute, out var url)
@@ -348,9 +393,15 @@ public sealed partial class ImportPageViewModel : ObservableObject
             IsBusy = true;
             Message = Loc.Instance["import.downloading"];
             SubscriptionContent content;
+            using var download = new CancellationTokenSource();
+            _download = download;
             try
             {
-                content = await _downloader.DownloadAsync(url).ConfigureAwait(true);
+                content = await _downloader.DownloadAsync(url, download.Token).ConfigureAwait(true);
+            }
+            catch (OperationCanceledException) when (download.IsCancellationRequested)
+            {
+                return;
             }
             catch (SubscriptionDownloadException e)
             {
@@ -366,6 +417,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
                 if (attempt == _attempt)
                 {
                     IsBusy = false;
+                    _download = null;
                 }
             }
 
@@ -401,15 +453,28 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
     private void Reset()
     {
-        _attempt++;
-        IsBusy = false;
-        IsInsecure = false;
+        BeginOperation();
         Source = ImportSource.None;
         LinkText = string.Empty;
         ProfileName = string.Empty;
         Preview = null;
         Message = null;
         _subscriptionUrl = null;
+    }
+
+    /// <summary>Новый ввод делает прежний предпросмотр и все ожидающие ответы неактуальными.</summary>
+    private int BeginOperation()
+    {
+        ++_attempt;
+        _download?.Cancel();
+        _download = null;
+        IsBusy = false;
+        Message = null;
+        Preview = null;
+        IsInsecure = false;
+        _subscriptionUrl = null;
+        ProfileName = string.Empty;
+        return _attempt;
     }
 
     private static string Number(int? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "0";

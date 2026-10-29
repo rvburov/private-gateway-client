@@ -17,6 +17,7 @@ internal static class SingBoxImport
     {
         CommentHandling = JsonCommentHandling.Skip,
         AllowTrailingCommas = true,
+        AllowDuplicateProperties = false,
         MaxDepth = 64,
     };
 

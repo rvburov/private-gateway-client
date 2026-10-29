@@ -172,6 +172,11 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             ? await service.GetDetailsAsync(cancellationToken).ConfigureAwait(false)
             : null;
 
+    public async Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.DownloadSubscriptionAsync(address, cancellationToken).ConfigureAwait(false)
+            : SubscriptionDownload.Failed(DownloadFailure.Connection);
+
     /// <summary>Обновление ищет найденная служба; службу пользователя ради проверки не запускает.</summary>
     public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default) =>
         await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service

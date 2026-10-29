@@ -32,7 +32,12 @@ public static class IpcChannel
             KeepAlivePingDelay = TimeSpan.FromSeconds(30),
             KeepAlivePingTimeout = TimeSpan.FromSeconds(10),
         };
-        return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions { HttpHandler = handler, DisposeHttpClient = true });
+        return GrpcChannel.ForAddress("http://localhost", new GrpcChannelOptions
+        {
+            HttpHandler = handler,
+            DisposeHttpClient = true,
+            MaxReceiveMessageSize = Core.Servers.SubscriptionDownload.MaxBytes + 64 * 1024,
+        });
     }
 
     /// <summary>Отвечает ли служба по адресу за <paramref name="timeout"/>: соединение открылось и на том конце — служба.</summary>

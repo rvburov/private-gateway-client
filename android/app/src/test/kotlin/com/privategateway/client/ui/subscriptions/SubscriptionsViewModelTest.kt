@@ -13,6 +13,7 @@ import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.ui.Message
 import com.privategateway.client.vpn.TunnelControl
@@ -82,7 +83,7 @@ class SubscriptionsViewModelTest {
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
         // Сеть не нужна: с «только через VPN» без защиты загрузка не начинается.
         val source = SubscriptionSource { error("в сеть без защиты не ходим") }
-        model = SubscriptionsViewModel(servers, settings, SubscriptionUpdater(source, servers, settings, monitor), monitor, control)
+        model = SubscriptionsViewModel(servers, settings, SubscriptionUpdater(SubscriptionTransport { uri, _ -> source.download(uri) }, servers, settings, monitor), monitor, control)
         scope.async { model.messages.collect { messages += it } }
     }
 

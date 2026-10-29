@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
 
 namespace PrivateGateway.Client.Platform.Linux;
@@ -22,7 +23,8 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
 
     /// <summary>
     /// Текст юнита: команда — путь и параметры, каждый в кавычках systemd. Служба стартует раньше сети
-    /// (network-pre.target), как брандмауэр: «Защита при загрузке» ставит блок до того, как поднимутся адаптеры.
+    /// (network-pre.target), как брандмауэр: systemd ждет READY=1 после установки сохраненного блока, а не только
+    /// создания процесса. Подключение к серверу готовности не задерживает — для него сеть еще должна подняться.
     /// </summary>
     public static string Unit(string description, IReadOnlyList<string> command)
     {
@@ -35,7 +37,8 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
             .Append("Before=network-pre.target\n")
             .Append('\n')
             .Append("[Service]\n")
-            .Append("Type=simple\n")
+            .Append("Type=notify\n")
+            .Append("NotifyAccess=main\n")
             .Append("ExecStart=").Append(execStart).Append('\n')
             .Append("Restart=on-failure\n")
             .Append("RestartSec=5\n")
@@ -47,6 +50,18 @@ public sealed class SystemdService(Action<IReadOnlyList<string>> systemctl, stri
         // В кавычках systemd «\» и «"» экранируются, «%» — спецификатор, его удваивают.
         static string Quote(string value) => "\"" + value.Replace("\\", "\\\\", StringComparison.Ordinal)
             .Replace("\"", "\\\"", StringComparison.Ordinal).Replace("%", "%%", StringComparison.Ordinal) + "\"";
+    }
+
+    /// <summary>
+    /// Сообщить systemd, что ранняя инициализация закончена: сохраненный блок при обрыве уже установлен. NOTIFY_SOCKET
+    /// бывает путем или абстрактным Unix-сокетом (начинается с «@»); сообщение — локальная датаграмма, без сети.
+    /// </summary>
+    public static void NotifyReady(string socketPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(socketPath);
+        var address = socketPath[0] == '@' ? "\0" + socketPath[1..] : socketPath;
+        using var socket = new Socket(AddressFamily.Unix, SocketType.Dgram, ProtocolType.Unspecified);
+        socket.SendTo("READY=1"u8, new UnixDomainSocketEndPoint(address));
     }
 
     public bool IsInstalled(string name) => File.Exists(UnitPath(name));

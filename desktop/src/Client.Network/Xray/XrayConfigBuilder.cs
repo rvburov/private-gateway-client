@@ -123,6 +123,45 @@ public static class XrayConfigBuilder
         "255.255.255.255/32", "::/128", "::1/128", "fc00::/7", "fe80::/10", "ff00::/8",
     ];
 
+    /// <summary>
+    /// DNS самого ядра может идти напрямую: свой LAN DNS — явным правилом порта 53, а при разрешенной локальной сети
+    /// ее адреса (включая числовой адрес DoH) — правилом LocalNetworks. Имя DNS при открытой LAN не доказывает публичный
+    /// адрес и тоже считается возможным обходом. Использует тот же список сетей, что конфиг; сам имен не разрешает.
+    /// </summary>
+    public static bool DnsMayBypassServer(ProtectionSettings protection)
+    {
+        ArgumentNullException.ThrowIfNull(protection);
+        if (protection.LanDns is not null)
+        {
+            return true;
+        }
+
+        if (!protection.AllowLan)
+        {
+            return false;
+        }
+
+        foreach (var server in protection.DnsServers)
+        {
+            var host = Uri.TryCreate(server, UriKind.Absolute, out var url) && url.Scheme is "https" or "http" ? url.Host : server;
+            if (IPAddress.TryParse(host, out var address))
+            {
+                address = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+                if (LocalNetworks.Any(network => IPNetwork.Parse(network).Contains(address)))
+                {
+                    return true;
+                }
+            }
+            else
+            {
+                // DoH по имени может разрешиться в LAN: загрузка только через VPN требует доказанного пути.
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <param name="request">Сервер и настройки.</param>
     /// <param name="tun">Режим VPN: вход только для своего TUN и адрес сервера; null — вход прокси из настроек.</param>
     /// <param name="probe">Вход проверки связи с сервером; null — без него.</param>

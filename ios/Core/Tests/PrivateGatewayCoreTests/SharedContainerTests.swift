@@ -17,6 +17,15 @@ final class SharedContainerTests: XCTestCase {
         }
     }
 
+    #if canImport(Security)
+    func testCurrentSharesRepositoriesBetweenTheWindowAndBackgroundTask() {
+        let app = SharedContainer.current()
+        let background = SharedContainer.current()
+        XCTAssertTrue(app.servers === background.servers)
+        XCTAssertTrue(app.settings === background.settings)
+    }
+    #endif
+
     func testExtensionSeesWhatTheAppSaved() async throws {
         let vault = MemoryVault()
         let app = SharedContainer(directory: directory, vault: vault)

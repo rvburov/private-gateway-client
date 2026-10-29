@@ -5,6 +5,11 @@
 // должна встречаться в коде тестов (тест AllowedSkipsTests): удаленный пропуск не оставляет здесь разрешения.
 [
   {
+    "reason": "ICMP недоступен: нет прав на raw-сокет и утилиты ping",
+    "os": ["Linux"],
+    "why": "ограниченная среда без CAP_NET_RAW и ping; в Linux CI утилита и права есть, проверки пинга и трассировки выполняются"
+  },
+  {
     "reason": "долгий прогон — по PG_SOAK_MINUTES",
     "os": ["Linux", "Windows", "macOS"],
     "why": "минуты на круг: идет ночью в soak.yml и по scripts/soak.sh"
@@ -106,6 +111,11 @@
   },
 
   // Только Linux: на Windows и macOS этих частей ОС нет.
+  {
+    "reason": "уведомление systemd — локальный сокет Linux",
+    "os": ["Windows", "macOS"],
+    "why": "READY=1 через Unix datagram, включая абстрактное пространство имен Linux; проверяется на Linux без прав root"
+  },
   {
     "reason": "сетевые пространства есть только в Linux",
     "os": ["Windows", "macOS"],

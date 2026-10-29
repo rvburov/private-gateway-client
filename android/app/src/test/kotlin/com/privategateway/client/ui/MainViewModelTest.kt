@@ -15,6 +15,7 @@ import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.R
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.ui.qr.QrImages
 import com.privategateway.client.ui.qr.QrRead
@@ -49,6 +50,8 @@ import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.net.URI
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -96,8 +99,15 @@ class MainViewModelTest {
     private class FakeSource : SubscriptionSource {
         var content: SubscriptionContent? = null
         var failure: SubscriptionDownloadException? = null
+        var entered: CountDownLatch? = null
+        var release: CountDownLatch? = null
 
-        override fun download(url: URI): SubscriptionContent = failure?.let { throw it } ?: requireNotNull(content)
+        override fun download(url: URI): SubscriptionContent {
+            val response = failure?.let { throw it } ?: requireNotNull(content)
+            entered?.countDown()
+            release?.let { check(it.await(3, TimeUnit.SECONDS)) }
+            return response
+        }
     }
 
     private class FakeEngine : CoreEngine {
@@ -116,7 +126,7 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(monitor, servers, settings, FakeEngine(), source, control, LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() }, SubscriptionUpdater(source, servers, settings, monitor), images)
+        model = MainViewModel(monitor, servers, settings, FakeEngine(), SubscriptionTransport { uri, _ -> source.download(uri) }, control, LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() }, SubscriptionUpdater(SubscriptionTransport { uri, _ -> source.download(uri) }, servers, settings, monitor), images)
     }
 
     @After
@@ -179,6 +189,40 @@ class MainViewModelTest {
         val result = wait { model.importing.first { it.added != null } }
         assertEquals(0, result.added)
         assertEquals(1, result.duplicates)
+    }
+
+    @Test
+    fun `editing checked text invalidates its servers and subscription address`() {
+        val old = "https://example.com/sub/old"
+        source.content = SubscriptionContent(com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first()), "Старый профиль")
+        model.edit(old)
+        model.preview(old)
+        wait { model.importing.first { it.batch != null } }
+        model.edit("https://example.org/sub/new")
+        assertNull(model.importing.value.batch)
+        assertNull(model.importing.value.url)
+        model.add()
+        assertEquals(emptyList(), wait { servers.servers.first() })
+    }
+
+    @Test
+    fun `closing or editing while a subscription loads discards its response`() {
+        source.content = SubscriptionContent(com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first()), "Старый профиль")
+        val entered = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        source.entered = entered
+        source.release = release
+        model.preview("https://example.com/sub/old")
+        check(entered.await(3, TimeUnit.SECONDS))
+        model.closeImport()
+        val fresh = com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().distinctBy { Fixtures.identity(it) }[1])
+        model.edit(fresh)
+        model.preview(fresh)
+        val expected = wait { model.importing.first { it.batch != null } }
+        release.countDown()
+        // Дождаться всех продолжений модели: старый результат не должен вновь появиться после завершения загрузки.
+        waitUntil { model.viewModelScope.coroutineContext.job.children.count() <= 2 }
+        assertEquals(expected, model.importing.value)
     }
 
     @Test

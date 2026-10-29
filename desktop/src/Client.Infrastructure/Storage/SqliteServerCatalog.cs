@@ -390,6 +390,15 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             ? url
             : null;
 
+    public SubscriptionUpdate? TryApplyUpdate(string subscriptionId, Uri expectedUrl, IReadOnlyList<ServerDefinition> servers)
+    {
+        lock (_gate)
+        {
+            return Groups.Exists(g => g.Id == subscriptionId) && SubscriptionUrl(subscriptionId) == expectedUrl
+                ? ApplyUpdate(subscriptionId, servers) : null;
+        }
+    }
+
     public SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers)
     {
         ArgumentNullException.ThrowIfNull(servers);

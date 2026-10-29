@@ -47,6 +47,8 @@ enum class DownloadFailure {
 
     /** Адрес подписки не открылся: запечатанный адрес не расшифровать (ключ Keystore потерян). */
     NoAddress,
+    /** WireGuard сам разрешает имя через выбранный локальный DNS: гарантии «только через сервер» нет. */
+    PrivateDns,
     ;
 
     companion object {

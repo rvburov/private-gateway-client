@@ -18,6 +18,18 @@ public sealed class BackupPageTests : WindowHarness
     private const string Password = "correct horse battery";
 
     [AvaloniaFact]
+    public void Server_copies_warn_about_subscription_access_even_without_server_keys()
+    {
+        var (window, _, page) = OpenBackup();
+
+        page.IncludeKeys.ShouldBeFalse();
+        Find<Border>(window, "SubscriptionWarning").IsVisible.ShouldBeTrue();
+        page.IncludeServers = false;
+        Dispatcher.UIThread.RunJobs();
+        Find<Border>(window, "SubscriptionWarning").IsVisible.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
     public void Defaults_match_the_board()
     {
         var (window, shell, page) = OpenBackup();

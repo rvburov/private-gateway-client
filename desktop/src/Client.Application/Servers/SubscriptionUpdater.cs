@@ -1,3 +1,4 @@
+using System.Text;
 using Microsoft.Extensions.Logging;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
@@ -20,6 +21,9 @@ public enum UpdateBlock
 
     /// <summary>Эта подписка уже обновляется.</summary>
     Busy,
+
+    /// <summary>Подписка удалена или изменена, пока загружался ответ.</summary>
+    Superseded,
 }
 
 /// <summary>Итог попытки: обновлено, не удалось (причина сохранена у подписки) или не начато.</summary>
@@ -57,6 +61,8 @@ public sealed partial class SubscriptionUpdater : IDisposable
     private readonly TimeProvider _time;
     private readonly ILogger<SubscriptionUpdater> _logger;
     private readonly HashSet<string> _busy = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (Uri Address, CancellationTokenSource Stop)> _operations = new(StringComparer.Ordinal);
+    private readonly Lock _operationGate = new();
     private SynchronizationContext? _context;
     private ITimer? _timer;
 
@@ -74,6 +80,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
         _settings = settings;
         _time = time;
         _logger = logger;
+        _store.Changed += OnStoreChanged;
     }
 
     /// <summary>Началось или закончилось обновление какой-то подписки — для крутилки на кнопке.</summary>
@@ -89,10 +96,16 @@ public sealed partial class SubscriptionUpdater : IDisposable
     public UpdateBlock Block =>
         !_settings.Current.UpdateOnlyViaVpn ? UpdateBlock.None
         : _gateway.Service is ServiceKind.Simulated or ServiceKind.None ? UpdateBlock.ServiceMissing
-        : _gateway.Status.State != ConnectionState.Connected ? UpdateBlock.ProtectionOff
+        : _gateway.Status is not { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn, IsPaused: false } ? UpdateBlock.ProtectionOff
         : UpdateBlock.None;
 
-    public bool IsUpdating(string subscriptionId) => _busy.Contains(subscriptionId);
+    public bool IsUpdating(string subscriptionId)
+    {
+        lock (_operationGate)
+        {
+            return _busy.Contains(subscriptionId);
+        }
+    }
 
     /// <summary>
     /// Обновлять по расписанию. Работа идет в контексте вызова (окно), загрузка — в фоне. Еще одна
@@ -116,6 +129,14 @@ public sealed partial class SubscriptionUpdater : IDisposable
         _timer?.Dispose();
         _gateway.StatusChanged -= OnStatusChanged;
         _settings.Changed -= OnSettingsChanged;
+        _store.Changed -= OnStoreChanged;
+        lock (_operationGate)
+        {
+            foreach (var operation in _operations.Values)
+            {
+                operation.Stop.Cancel();
+            }
+        }
     }
 
     /// <summary>Подписки, которым пора: успех старше промежутка из настроек, неудача — старше часа.</summary>
@@ -158,9 +179,13 @@ public sealed partial class SubscriptionUpdater : IDisposable
             return new UpdateResult(null, Block: block);
         }
 
-        if (!_busy.Add(subscriptionId))
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        lock (_operationGate)
         {
-            return new UpdateResult(null, Block: UpdateBlock.Busy);
+            if (!_busy.Add(subscriptionId))
+            {
+                return new UpdateResult(null, Block: UpdateBlock.Busy);
+            }
         }
 
         BusyChanged?.Invoke(this, EventArgs.Empty);
@@ -171,14 +196,39 @@ public sealed partial class SubscriptionUpdater : IDisposable
                 return Fail(subscriptionId, DownloadFailure.NoAddress);
             }
 
+            lock (_operationGate)
+            {
+                _operations[subscriptionId] = (url, stop);
+            }
+
             string text;
             try
             {
-                text = (await _downloader.DownloadAsync(url, cancellationToken).ConfigureAwait(true)).Text;
+                if (_settings.Current.UpdateOnlyViaVpn)
+                {
+                    var response = await _gateway.DownloadSubscriptionAsync(url, stop.Token).ConfigureAwait(true);
+                    if (response.Failure is { } failure)
+                    {
+                        return IsCurrent(subscriptionId, url, stop) ? Fail(subscriptionId, failure, response.StatusCode)
+                            : new UpdateResult(null, Block: UpdateBlock.Superseded);
+                    }
+
+                    text = response.Content is { Length: <= SubscriptionDownload.MaxBytes } content ? Encoding.UTF8.GetString(content) : string.Empty;
+                }
+                else
+                {
+                    text = (await _downloader.DownloadAsync(url, stop.Token).ConfigureAwait(true)).Text;
+                }
             }
             catch (SubscriptionDownloadException e)
             {
-                return Fail(subscriptionId, e.Failure, e.StatusCode);
+                return IsCurrent(subscriptionId, url, stop) ? Fail(subscriptionId, e.Failure, e.StatusCode)
+                    : new UpdateResult(null, Block: UpdateBlock.Superseded);
+            }
+
+            if (!IsCurrent(subscriptionId, url, stop))
+            {
+                return new UpdateResult(null, Block: UpdateBlock.Superseded);
             }
 
             List<ServerDefinition> servers = [.. ImportParser.Parse(text).Lines.Where(l => l.Result.IsOk).Select(l => l.Result.Server!)];
@@ -187,7 +237,11 @@ public sealed partial class SubscriptionUpdater : IDisposable
                 return Fail(subscriptionId, DownloadFailure.NoServers);
             }
 
-            var update = _store.ApplyUpdate(subscriptionId, servers);
+            var update = _store.TryApplyUpdate(subscriptionId, url, servers);
+            if (update is null)
+            {
+                return new UpdateResult(null, Block: UpdateBlock.Superseded);
+            }
             LogUpdated(_logger, update.Added, update.Removed, update.Kept);
             if (update.Selected != SelectedServerChange.None
                 && _settings.Current.NotifySelectedServerChange
@@ -199,10 +253,45 @@ public sealed partial class SubscriptionUpdater : IDisposable
 
             return new UpdateResult(update);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new UpdateResult(null, Block: UpdateBlock.Superseded);
+        }
         finally
         {
-            _busy.Remove(subscriptionId);
+            lock (_operationGate)
+            {
+                _operations.Remove(subscriptionId);
+                _busy.Remove(subscriptionId);
+            }
             BusyChanged?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    private bool IsCurrent(string id, Uri address, CancellationTokenSource stop) =>
+        !stop.IsCancellationRequested && _store.SubscriptionUrl(id) == address;
+
+    private void OnStoreChanged(object? sender, EventArgs e)
+    {
+        List<(string Id, Uri Address, CancellationTokenSource Stop)> active;
+        lock (_operationGate)
+        {
+            active = [.. _operations.Select(p => (p.Key, p.Value.Address, p.Value.Stop))];
+        }
+
+        foreach (var (id, address, stop) in active)
+        {
+            if (_store.SubscriptionUrl(id) != address)
+            {
+                try
+                {
+                    stop.Cancel();
+                }
+                catch (ObjectDisposedException)
+                {
+                    // Операция завершилась между снимком и уведомлением.
+                }
+            }
         }
     }
 
