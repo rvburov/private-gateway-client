@@ -9,6 +9,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
+import com.privategateway.client.waitForAsync
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
@@ -40,7 +41,6 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -142,7 +142,7 @@ class MainViewModelTest {
 
     // Предел ожидания, а не задержка: тест идет дальше, как только условие выполнилось. 10 с, как в других тестах
     // приложения: на занятой машине CI первая запись в DataStore и Room под Robolectric не уложилась в 5 с (master 395).
-    private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(10_000) { block() } }
+    private fun <T> wait(block: suspend () -> T): T = waitForAsync(block)
 
     private fun waitUntil(condition: () -> Boolean) = wait {
         while (!condition()) {

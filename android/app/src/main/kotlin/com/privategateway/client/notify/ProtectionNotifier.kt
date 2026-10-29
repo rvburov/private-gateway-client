@@ -30,7 +30,9 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -86,6 +88,11 @@ class ProtectionNotifier @Inject constructor(
                 }?.let { deliver(it) }
             }
         }
+    }
+
+    /** Завершить владельца уведомлений: дождаться слушателей до закрытия их хранилища. Повторного запуска нет. */
+    internal suspend fun close() {
+        scope.coroutineContext.job.cancelAndJoin()
     }
 
     /** Текст уведомления: {0} — сервер, {1} — подписка, {2} — причина словами и код или почему подписка не загрузилась. */

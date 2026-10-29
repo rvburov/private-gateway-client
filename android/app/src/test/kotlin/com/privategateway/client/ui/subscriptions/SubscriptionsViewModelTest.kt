@@ -9,6 +9,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
 import com.privategateway.client.R
+import com.privategateway.client.waitForAsync
 import com.privategateway.client.core.subscriptions.SubscriptionSource
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
@@ -30,7 +31,6 @@ import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
-import kotlinx.coroutines.withTimeout
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -99,7 +99,7 @@ class SubscriptionsViewModelTest {
         main.close()
     }
 
-    private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(10_000) { block() } }
+    private fun <T> wait(block: suspend () -> T): T = waitForAsync(block)
 
     private fun waitMessage(): Message = wait {
         while (messages.isEmpty()) {

@@ -3,6 +3,9 @@ import com.privategateway.build.GeneratePgResources
 import com.privategateway.build.MavenModules
 import com.privategateway.build.GeneratePgTheme
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.gradle.api.file.FileCollection
+import org.gradle.api.tasks.Classpath
+import org.gradle.process.CommandLineArgumentProvider
 
 // Приложение Android: Compose, VpnService и ядро Xray (libXray, .aar от gomobile — собирает scripts/get-libxray.sh).
 plugins {
@@ -11,6 +14,17 @@ plugins {
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
     id("privategateway.shared-resources")
+}
+
+// Только JVM-тесты: агент корутин сохраняет место приостановки для дампа при исходном таймауте.
+// В runtime приложения, APK и проверки на устройстве эта конфигурация не входит.
+class CoroutineAgentArguments(@get:Classpath val agent: FileCollection) : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> = listOf("-javaagent:${agent.singleFile.absolutePath}")
+}
+
+val coroutinesAgent = configurations.create("coroutinesAgent") {
+    isCanBeConsumed = false
+    isTransitive = false
 }
 
 android {
@@ -58,8 +72,10 @@ android {
             isIncludeAndroidResources = true
             all {
                 it.systemProperty("testdata", rootDir.resolve("../shared/testdata").canonicalPath)
+                it.jvmArgumentProviders.add(CoroutineAgentArguments(coroutinesAgent))
+                it.systemProperty("kotlinx.coroutines.debug.enable.creation.stack.trace", "true")
                 it.testLogging {
-                    events("failed")
+                    events("failed", "standardError")
                     exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
                 }
             }
@@ -145,6 +161,8 @@ dependencies {
     testImplementation(libs.androidx.test.core)
     testImplementation(libs.androidx.test.junit)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.kotlinx.coroutines.debug)
+    coroutinesAgent(libs.kotlinx.coroutines.core.jvm)
     testImplementation(libs.work.testing)
     testImplementation(platform(libs.compose.bom))
     testImplementation(libs.compose.ui.test.junit4)

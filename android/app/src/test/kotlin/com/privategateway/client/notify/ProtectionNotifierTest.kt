@@ -30,8 +30,9 @@ import com.privategateway.client.vpn.TunnelMonitor
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.After
@@ -74,7 +75,13 @@ class ProtectionNotifierTest {
 
     @After
     fun close() {
-        scope.cancel()
+        runBlocking {
+            // Уведомления слушают Room и DataStore в собственном scope, а не в scope хранилища из этой фикстуры.
+            if (::notifier.isInitialized) {
+                notifier.close()
+            }
+            scope.coroutineContext.job.cancelAndJoin()
+        }
         database.close()
     }
 
