@@ -12,6 +12,8 @@
 #   scripts/tests/windows-installer-smoke.sh <версия>
 set -euo pipefail
 export MSYS_NO_PATHCONV=1
+# Python GitHub Runner использует системную cp1252 при перенаправленном stdout; отчеты и JSON проекта — UTF-8.
+export PYTHONUTF8=1
 
 version=${1:?версия выпуска}
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
