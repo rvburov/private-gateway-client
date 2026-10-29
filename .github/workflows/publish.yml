@@ -118,6 +118,7 @@ jobs:
           dotnet tool install --global wix --version 5.0.2
           export PATH="$HOME/.dotnet/tools:$PATH"
           wix extension add --global WixToolset.Util.wixext/5.0.2
+          wix extension add --global WixToolset.UI.wixext/5.0.2
           scripts/package-windows.sh "${{ steps.version.outputs.version }}"
 
       - name: Установка и удаление MSI

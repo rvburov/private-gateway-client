@@ -11,6 +11,9 @@ namespace PrivateGateway.Client.Infrastructure.Storage;
 public sealed class SqliteDatabase(AppPaths paths)
 {
     private readonly Lock _gate = new();
+
+    /// <summary>Папка данных этой базы.</summary>
+    public AppPaths Paths => paths;
     private bool _migrated;
 
     public SqliteConnection Open()

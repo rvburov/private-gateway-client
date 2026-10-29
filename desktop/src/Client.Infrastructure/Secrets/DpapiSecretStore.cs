@@ -2,17 +2,16 @@ using System.Runtime.Versioning;
 using System.Security.Cryptography;
 using System.Text;
 using PrivateGateway.Client.Application.Secrets;
-using PrivateGateway.Client.Infrastructure.Storage;
 
 namespace PrivateGateway.Client.Infrastructure.Secrets;
 
 /// <summary>
-/// Windows: секрет шифруется DPAPI текущего пользователя и лежит в таблице secrets. Расшифровать
-/// его может только этот пользователь на этом компьютере. Дополнительная энтропия — ключ записи:
+/// Windows: секрет шифруется DPAPI текущего пользователя и лежит в своем файле <see cref="SecretFile"/> (secrets.db).
+/// Расшифровать его может только этот пользователь на этом компьютере. Дополнительная энтропия — ключ записи:
 /// зашифрованное значение нельзя переставить под другой ключ.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class DpapiSecretStore(SqliteDatabase database) : ISecretStore
+public sealed class DpapiSecretStore(SecretFile file) : ISecretStore
 {
     public string Name => "Windows DPAPI";
 
@@ -21,23 +20,12 @@ public sealed class DpapiSecretStore(SqliteDatabase database) : ISecretStore
     public void Save(string key, string secret)
     {
         ArgumentNullException.ThrowIfNull(secret);
-        var blob = ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), Entropy(key), DataProtectionScope.CurrentUser);
-        using var connection = database.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "INSERT INTO secrets (key, value) VALUES ($key, $value) "
-            + "ON CONFLICT(key) DO UPDATE SET value = excluded.value";
-        command.Parameters.AddWithValue("$key", key);
-        command.Parameters.AddWithValue("$value", blob);
-        command.ExecuteNonQuery();
+        file.Write(key, ProtectedData.Protect(Encoding.UTF8.GetBytes(secret), Entropy(key), DataProtectionScope.CurrentUser));
     }
 
     public string? Read(string key)
     {
-        using var connection = database.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "SELECT value FROM secrets WHERE key = $key";
-        command.Parameters.AddWithValue("$key", key);
-        if (command.ExecuteScalar() is not byte[] blob)
+        if (file.Read(key) is not { } blob)
         {
             return null;
         }
@@ -53,14 +41,7 @@ public sealed class DpapiSecretStore(SqliteDatabase database) : ISecretStore
         }
     }
 
-    public void Delete(string key)
-    {
-        using var connection = database.Open();
-        using var command = connection.CreateCommand();
-        command.CommandText = "DELETE FROM secrets WHERE key = $key";
-        command.Parameters.AddWithValue("$key", key);
-        command.ExecuteNonQuery();
-    }
+    public void Delete(string key) => file.Delete(key);
 
     private static byte[] Entropy(string key) => Encoding.UTF8.GetBytes("PrivateGateway:" + key);
 }

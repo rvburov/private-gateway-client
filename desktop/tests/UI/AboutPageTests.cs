@@ -262,6 +262,51 @@ public sealed class AboutPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Installed_service_that_does_not_answer_says_so_and_is_reinstalled_from_here()
+    {
+        // У пользователя на Windows: «Служба — работает», ядра «не установлено» — и ни слова почему.
+        ScriptedService? service = null;
+        Installer.IsAvailable = true;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        Installer.OnInstalled = () => service!.Details = new ServiceDetails(AppInfo.Version, ContractMapping.ApiVersion, [new CoreDetails("xray", "26.10.21", true)])
+        {
+            Build = AppInfo.Build,
+        };
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
+
+        page.ServiceNotice.ShouldStartWith("Служба установлена, но окну не отвечает");
+        Find<Button>(window, "UpdateService").Content.ShouldBe("Переустановить службу");
+        Find<Button>(window, "UpdateService").IsEffectivelyVisible.ShouldBeTrue();
+
+        Press(window, "UpdateService");
+        Dispatcher.UIThread.RunJobs();
+
+        Installer.Installs.ShouldBe(1);
+        page.HasServiceNotice.ShouldBeFalse("служба ответила — объяснять нечего");
+        Text(window, "AboutXray").ShouldBe("26.10.21");
+    }
+
+    [AvaloniaFact]
+    public void Missing_service_is_installed_from_the_about_page()
+    {
+        // Первый запуск пройден без службы — поставить ее можно отсюда, а не только с экрана ошибки.
+        Installer.IsAvailable = true;
+        var (window, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.None));
+        shell.NavigateCommand.Execute(Pages.About);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
+
+        page.ServiceNotice.ShouldStartWith("Служба не установлена");
+        Find<Button>(window, "UpdateService").Content.ShouldBe("Установить службу");
+
+        Press(window, "UpdateService");
+        Dispatcher.UIThread.RunJobs();
+        Installer.Installs.ShouldBe(1);
+    }
+
+    [AvaloniaFact]
     public void Older_service_shows_its_cores_says_what_happened_and_is_updated_from_this_copy()
     {
         ScriptedService? service = null;

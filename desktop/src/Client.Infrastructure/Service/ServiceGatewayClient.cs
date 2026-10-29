@@ -513,6 +513,33 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// <summary>Что делает служба, неизвестно — окно не обещает защиту: проверки как при выключенной.</summary>
     private static ConnectionStatus NoService(ConnectionStatus status) => status with { Protection = ProtectionChecks.For(ConnectionState.Off) };
 
+    /// <summary>
+    /// Журнал службы не идет — в журнал окна строка, почему: иначе «Проверка» и отчет показывают пустой журнал, а «служба
+    /// не отвечает» без причины (у пользователя на Windows 2026-10-29). Та же причина подряд — одной строкой.
+    /// </summary>
+    private void NoteUnreachable(RpcException e)
+    {
+        var detail = e.Status.Detail is { Length: > 200 } text ? text[..200] : e.Status.Detail;
+        var message = $"Нет связи со службой: {e.StatusCode} — {detail}";
+        JournalEntry entry;
+        lock (_gate)
+        {
+            if (_journal.Count > 0 && _journal[^1].Message == message)
+            {
+                return;
+            }
+
+            entry = new JournalEntry(_time.GetUtcNow(), JournalLevel.Warning, "window", message);
+            _journal.Add(entry);
+            if (_journal.Count > JournalLimit)
+            {
+                _journal.RemoveAt(0);
+            }
+        }
+
+        JournalAdded?.Invoke(this, entry);
+    }
+
     private async Task WatchLogAsync()
     {
         while (!_stopping.IsCancellationRequested)
@@ -543,8 +570,9 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                     JournalAdded?.Invoke(this, journal);
                 }
             }
-            catch (RpcException)
+            catch (RpcException e)
             {
+                NoteUnreachable(e);
             }
             catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException)
             {

@@ -165,9 +165,16 @@ public static partial class ServiceHost
                 return null;
             }
 
-            var output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(5000);
-            return pattern.Match(output) is { Success: true } match ? match.Groups[1].Value : null;
+            // Ядро не ответило за 5 с (например, его держит антивирус при первом запуске) — версии нет, а служба
+            // запускается дальше: без предела она ждала бы вывода вечно и не начинала слушать окно.
+            var output = process.StandardOutput.ReadToEndAsync();
+            if (!output.Wait(TimeSpan.FromSeconds(5)))
+            {
+                process.Kill(entireProcessTree: true);
+                return null;
+            }
+
+            return pattern.Match(output.Result) is { Success: true } match ? match.Groups[1].Value : null;
         }
         catch (System.ComponentModel.Win32Exception)
         {

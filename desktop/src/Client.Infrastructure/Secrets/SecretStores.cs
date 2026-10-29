@@ -10,7 +10,7 @@ public static class SecretStores
     {
         if (OperatingSystem.IsWindows())
         {
-            return new DpapiSecretStore(database);
+            return new DpapiSecretStore(new SecretFile(database));
         }
 
         if (OperatingSystem.IsMacOS())

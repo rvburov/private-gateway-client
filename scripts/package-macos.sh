@@ -83,3 +83,5 @@ hdiutil create -volname "Private Gateway" -srcfolder "$staging" -fs HFS+ -format
 cd artifacts/release
 shasum -a 256 $(LC_ALL=C ls | grep -v "^SHA256SUMS$") > SHA256SUMS
 cat SHA256SUMS
+echo
+echo "Образ диска готов: $PWD/PrivateGateway-$version-$rid.dmg — открыть и перетащить Private Gateway в «Программы»"

@@ -24,6 +24,50 @@ public sealed class SubscriptionDownloaderTests
         (await downloader.DownloadAsync(Url, Ct)).ShouldBe(new SubscriptionContent("vless://… #Нидерланды", null));
     }
 
+    [Theory]
+    [InlineData(HttpRequestError.ProxyTunnelError)]
+    [InlineData(HttpRequestError.ConnectionError)]
+    public async Task Unreachable_system_proxy_gives_way_to_a_direct_try(HttpRequestError error)
+    {
+        // Системный прокси оставил выключенный другой VPN-клиент: до него не дойти, а напрямую подписка грузится.
+        var direct = 0;
+        var downloader = new HttpSubscriptionDownloader(
+            new HttpClient(new StubHandler(_ => throw new HttpRequestException(error, "proxy"))), _time,
+            new HttpClient(new StubHandler(_ =>
+            {
+                direct++;
+                return Ok("vless://… #Напрямую");
+            })));
+
+        (await downloader.DownloadAsync(Url, Ct)).Text.ShouldBe("vless://… #Напрямую");
+        direct.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Answer_through_the_system_proxy_needs_no_second_try()
+    {
+        var direct = 0;
+        var downloader = new HttpSubscriptionDownloader(new HttpClient(new StubHandler(_ => Ok("vless://…"))), _time,
+            new HttpClient(new StubHandler(_ =>
+            {
+                direct++;
+                return Ok("другой ответ");
+            })));
+
+        (await downloader.DownloadAsync(Url, Ct)).Text.ShouldBe("vless://…");
+        direct.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Unreachable_server_both_ways_is_a_connection_failure()
+    {
+        var downloader = new HttpSubscriptionDownloader(
+            new HttpClient(new StubHandler(_ => throw new HttpRequestException(HttpRequestError.ProxyTunnelError, "proxy"))), _time,
+            new HttpClient(new StubHandler(_ => throw new HttpRequestException(HttpRequestError.ConnectionError, "server"))));
+
+        (await Should.ThrowAsync<SubscriptionDownloadException>(() => downloader.DownloadAsync(Url, Ct))).Failure.ShouldBe(DownloadFailure.Connection);
+    }
+
     [Fact]
     public async Task Profile_title_names_the_subscription()
     {

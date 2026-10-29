@@ -1,4 +1,5 @@
 using System.Text;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Infrastructure.Secrets;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -75,6 +76,21 @@ public sealed class SecretStoreTests : IDisposable
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             Encoding.UTF8.GetString(File.ReadAllBytes(database)).ShouldNotContain("pw-plain-text-marker");
         }
+    }
+
+    [Fact]
+    public void Catalog_adds_a_subscription_with_this_os_store()
+    {
+        // На Windows «Добавить» падало с «database is locked»: DPAPI писал в базу каталога посреди его транзакции.
+        SkipWithoutStore();
+        var catalog = new SqliteServerCatalog(new SqliteDatabase(_paths), _store, TimeProvider.System);
+
+        var outcome = catalog.Add([LinkParser.Parse("trojan://pw-store@198.51.100.7:443#Store").Server!], "Профиль",
+            new Uri("https://example.com/sub/" + _key));
+
+        outcome.Added.ShouldBe(1);
+        catalog.Definition(catalog.Servers.Single().Id)!.Credentials.ShouldNotBeNull();
+        catalog.RemoveSubscription(catalog.Subscriptions.Single().Id);
     }
 
     private void SkipWithoutStore()

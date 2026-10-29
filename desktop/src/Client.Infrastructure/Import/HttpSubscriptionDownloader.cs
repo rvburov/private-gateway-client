@@ -8,9 +8,14 @@ namespace PrivateGateway.Client.Infrastructure.Import;
 /// <summary>
 /// Загрузка подписки по http(s): не дольше <see cref="Timeout"/>, не больше <see cref="MaxBytes"/>
 /// после распаковки. Адрес подписки — секрет: в ошибках только причина и код ответа. Название — из
-/// заголовка Profile-Title.
+/// заголовка Profile-Title. Сначала — как настроена система (ее прокси), а если до прокси не дойти — еще раз напрямую
+/// (<paramref name="direct"/>): системный прокси часто оставляет другой VPN-клиент, и пока тот выключен, прокси на его
+/// адресе нет — подписка не грузилась с «нет соединения с сервером подписки» (у пользователя на Windows 2026-10-29).
 /// </summary>
-public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider time) : ISubscriptionDownloader
+/// <param name="http">Клиент с системным прокси.</param>
+/// <param name="time">Часы для предела времени.</param>
+/// <param name="direct">Клиент без прокси для второй попытки; null — без нее.</param>
+public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider time, HttpClient? direct = null) : ISubscriptionDownloader
 {
     public static readonly TimeSpan Timeout = TimeSpan.FromSeconds(20);
 
@@ -19,6 +24,10 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
     /// <summary>Клиент для программы: сжатые ответы распаковываются, предел размера — после распаковки.</summary>
     public static HttpClient CreateClient() =>
         new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All });
+
+    /// <summary>То же без системного прокси — вторая попытка, когда прокси не отвечает.</summary>
+    public static HttpClient CreateDirectClient() =>
+        new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All, UseProxy = false });
 
     public async Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
     {
@@ -32,37 +41,14 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Get, url);
-            request.Headers.UserAgent.ParseAdd("PrivateGateway/0.1");
-            using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, linked.Token)
-                .ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            try
             {
-                throw new SubscriptionDownloadException(DownloadFailure.Status, (int)response.StatusCode);
+                return await FetchAsync(http, url, linked.Token).ConfigureAwait(false);
             }
-
-            if (response.Content.Headers.ContentLength > MaxBytes)
+            catch (HttpRequestException e) when (direct is not null && e.HttpRequestError is HttpRequestError.ProxyTunnelError or HttpRequestError.ConnectionError)
             {
-                throw new SubscriptionDownloadException(DownloadFailure.TooLarge);
+                return await FetchAsync(direct, url, linked.Token).ConfigureAwait(false);
             }
-
-            await using var stream = await response.Content.ReadAsStreamAsync(linked.Token).ConfigureAwait(false);
-            using var buffer = new MemoryStream();
-            var chunk = new byte[81920];
-            int read;
-            while ((read = await stream.ReadAsync(chunk, linked.Token).ConfigureAwait(false)) > 0)
-            {
-                if (buffer.Length + read > MaxBytes)
-                {
-                    throw new SubscriptionDownloadException(DownloadFailure.TooLarge);
-                }
-
-                buffer.Write(chunk, 0, read);
-            }
-
-            var title = response.Headers.TryGetValues("Profile-Title", out var titles) ? titles.FirstOrDefault() : null;
-            return new SubscriptionContent(
-                Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length), SubscriptionContent.TitleFrom(title));
         }
         catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
         {
@@ -74,10 +60,45 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
             throw new SubscriptionDownloadException(e.HttpRequestError switch
             {
                 HttpRequestError.NameResolutionError => DownloadFailure.NameResolution,
-                HttpRequestError.ConnectionError => DownloadFailure.Connection,
+                HttpRequestError.ConnectionError or HttpRequestError.ProxyTunnelError => DownloadFailure.Connection,
                 HttpRequestError.SecureConnectionError => DownloadFailure.Tls,
                 _ => DownloadFailure.Network,
             }, innerException: e);
         }
+    }
+
+    private static async Task<SubscriptionContent> FetchAsync(HttpClient client, Uri url, CancellationToken cancellationToken)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.UserAgent.ParseAdd("PrivateGateway/0.1");
+        using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken)
+            .ConfigureAwait(false);
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new SubscriptionDownloadException(DownloadFailure.Status, (int)response.StatusCode);
+        }
+
+        if (response.Content.Headers.ContentLength > MaxBytes)
+        {
+            throw new SubscriptionDownloadException(DownloadFailure.TooLarge);
+        }
+
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+        while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
+        {
+            if (buffer.Length + read > MaxBytes)
+            {
+                throw new SubscriptionDownloadException(DownloadFailure.TooLarge);
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        var title = response.Headers.TryGetValues("Profile-Title", out var titles) ? titles.FirstOrDefault() : null;
+        return new SubscriptionContent(
+            Encoding.UTF8.GetString(buffer.GetBuffer(), 0, (int)buffer.Length), SubscriptionContent.TitleFrom(title));
     }
 }

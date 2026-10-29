@@ -77,7 +77,11 @@ PrivateGateway-<версия>-<rid>/
 `scripts/package-windows.sh <версия>` (шаг `publish.yml` на Windows) собирает `PrivateGateway-<версия>-win-x64.msi` —
 WiX 5.0.2 (MS-RL; с v6 у WiX отдельный сбор Open Source Maintenance Fee) по `desktop/packaging/windows/Product.wxs`:
 
-- программа — в `Program Files\Private Gateway` на всю машину, ярлык в меню «Пуск» с AUMID окна (уведомления
+- мастер установки (решение 487): приветствие → папка установки → установка (запрос UAC) → «Готово» с флажком
+  «Запустить Private Gateway» (окно запускается от имени пользователя); шага лицензии нет, язык мастера — русский;
+  выбранная папка запоминается в реестре (`HKLM\Software\Private Gateway`, `InstallFolder`), и тихое обновление из
+  окна ставит туда же; `msiexec /qn` идет без мастера; в конце сборки скрипт печатает путь к готовому MSI;
+- программа — по умолчанию в `Program Files\Private Gateway` на всю машину, ярлык в меню «Пуск» с AUMID окна (уведомления
   приходят от имени программы), значок и ссылка в «Установленных приложениях»; версия MSI — цифры SemVer;
 - служба — той же командой, что из окна: `PrivateGateway.Service.exe --install --owner [OWNER]` (свойство `OWNER` — SID
   владельца, по умолчанию тот, кто ставит), копия в `Program Files\Private Gateway\Service`, состояние в

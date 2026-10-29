@@ -100,6 +100,9 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private readonly TimeProvider _time;
     private ServiceDetails? _details;
 
+    // Сведения спрошены хотя бы раз: до ответа пустые сведения — еще не «служба молчит».
+    private bool _detailsLoaded;
+
     // Коммит файла службы, который поставит «Обновить службу»; null — не узнать.
     private string? _sourceBuild;
 
@@ -314,10 +317,21 @@ public sealed partial class AboutPageViewModel : ObservableObject
         ? ServiceVersions.Compare(AppInfo.Version, details, ContractMapping.ApiVersion, AppInfo.Build)
         : ServiceMatch.Same;
 
-    public bool HasServiceNotice => ServiceMatch != ServiceMatch.Same || UpdateFailed;
+    public bool HasServiceNotice => ServiceMatch != ServiceMatch.Same || UpdateFailed || ServiceSilent || ServiceMissing;
+
+    /// <summary>
+    /// Установленная служба есть, а сведений от нее нет: запущена, но окну не отвечает (у пользователя на Windows
+    /// 2026-10-29 — «работает» и ядра «не установлено» без объяснения). Помогает переустановка из этой копии.
+    /// </summary>
+    private bool ServiceSilent => _detailsLoaded && _details is null && _gateway.Service == ServiceKind.Installed;
+
+    /// <summary>Службы нет: VPN для всей системы и блок при обрыве без нее не работают — поставить отсюда же.</summary>
+    private bool ServiceMissing => _gateway.Service == ServiceKind.None;
 
     public string ServiceNotice => UpdateFailed
         ? _updateError is { } reason ? Loc.Instance.Format("about.service.updateFailedBecause", reason) : Loc.Instance["about.service.updateFailed"]
+        : ServiceSilent ? Loc.Instance["about.service.silent"]
+        : ServiceMissing ? Loc.Instance["about.service.missing"]
         : ServiceMatch switch
         {
             ServiceMatch.Same => string.Empty,
@@ -341,8 +355,13 @@ public sealed partial class AboutPageViewModel : ObservableObject
         build.Length == 0 ? Loc.Instance["about.service.build.unknown"] : build.Length > 7 ? build[..7] : build;
 
     /// <summary>Переустановить службу из этой копии программы — та же установка, что «Установить службу».</summary>
-    public bool CanUpdateService => ServiceMatch != ServiceMatch.Same && !StaleSource && _installer.IsAvailable
-        && _gateway.Service == ServiceKind.Installed && !IsUpdatingService;
+    public bool CanUpdateService => !StaleSource && _installer.IsAvailable && !IsUpdatingService
+        && (ServiceSilent || ServiceMissing || (ServiceMatch != ServiceMatch.Same && _gateway.Service == ServiceKind.Installed));
+
+    /// <summary>Службы нет — «Установить службу»; не отвечает — «Переустановить»; другой версии — «Обновить».</summary>
+    public string UpdateServiceText => ServiceMissing ? Loc.Instance["problem.install"]
+        : ServiceSilent ? Loc.Instance["about.service.reinstall"]
+        : Loc.Instance["about.service.update"];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CanUpdateService))]
@@ -448,6 +467,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private async Task LoadDetailsAsync()
     {
         _details = await _gateway.GetDetailsAsync().ConfigureAwait(true);
+        _detailsLoaded = true;
         _sourceBuild = _installer.SourceBuild;
         OnPropertyChanged(string.Empty);
     }

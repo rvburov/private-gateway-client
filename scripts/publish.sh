@@ -46,3 +46,12 @@ mkdir -p "$out/cores"
 cp -R artifacts/cores/xray artifacts/cores/sing-box "$out/cores/"
 
 dotnet run scripts/package.cs "$out" artifacts/release "$version" "$rid"
+
+echo
+echo "Сборка выпуска готова: $out"
+echo "Архив и суммы: artifacts/release"
+case "$rid" in
+  win-*) echo "Установщик Windows (MSI): scripts/package-windows.sh $version" ;;
+  osx-*) echo "Образ диска macOS (.dmg): scripts/package-macos.sh $version" ;;
+  linux-*) echo "Пакеты Linux (.deb и .rpm): scripts/package-linux.sh $version" ;;
+esac

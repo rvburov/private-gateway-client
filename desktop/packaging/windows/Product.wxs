@@ -13,10 +13,14 @@
   - Удаление (не обновление) сначала удаляет службу: uninstall снимает блок при обрыве и удаляет папки службы и ее
     состояния — машина не остается без сети.
   Файлы пользователя (настройки окна в LocalAppData) и чужие файлы в папке программы установщик не трогает.
+  - Мастер установки, как у обычных программ (решение 487): приветствие → папка установки → установка (тут Windows
+    спрашивает права администратора) → «Готово» с флажком «Запустить Private Gateway». Лицензионного шага нет. Язык
+    мастера — русский (культура ru-RU, scripts/package-windows.sh). Тихая установка (msiexec /qn — обновление из окна,
+    смоук CI) идет без мастера, как раньше.
 -->
-<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
   <Package Name="Private Gateway" Manufacturer="Private Gateway" Version="$(Version)" UpgradeCode="b3f677bb-fd84-4ddd-b04c-8cf67f3ea5c3"
-           Scope="perMachine" Compressed="yes" Language="1033">
+           Scope="perMachine" Compressed="yes" Language="1049" Codepage="1251">
     <!-- Понижение версии разрешено: откат на прежнюю версию из «О программе» ставит ее MSI поверх новой. -->
     <MajorUpgrade Schedule="afterInstallInitialize" AllowDowngrades="yes" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
@@ -25,6 +29,12 @@
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/rvburov/private-gateway-client" />
     <Property Id="ARPNOMODIFY" Value="1" />
+
+    <!-- Папка, выбранная в мастере, — и для обновлений: тихое обновление из окна (без мастера) ставит туда же, а не в
+         Program Files по умолчанию. -->
+    <Property Id="INSTALLFOLDER">
+      <RegistrySearch Id="SavedInstallFolder" Root="HKLM" Key="Software\Private Gateway" Name="InstallFolder" Type="raw" Bitness="always64" />
+    </Property>
 
     <StandardDirectory Id="ProgramFiles64Folder">
       <Directory Id="INSTALLFOLDER" Name="Private Gateway" />
@@ -41,8 +51,24 @@
           <ShortcutProperty Key="System.AppUserModel.ID" Value="PrivateGateway.Client" />
         </Shortcut>
         <RegistryValue Root="HKLM" Key="Software\Private Gateway" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
+        <RegistryValue Root="HKLM" Key="Software\Private Gateway" Name="InstallFolder" Type="string" Value="[INSTALLFOLDER]" />
       </Component>
     </StandardDirectory>
+
+    <!-- Мастер: стандартный WixUI_InstallDir без шага лицензии — «Далее» с приветствия ведет сразу к выбору папки. -->
+    <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <UI>
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" Condition="NOT Installed" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" />
+      <Publish Dialog="ExitDialog" Control="Finish" Event="DoAction" Value="LaunchApp"
+               Condition="WIXUI_EXITDIALOGOPTIONALCHECKBOX = 1 AND NOT Installed" />
+    </UI>
+
+    <!-- «Запустить Private Gateway» на последнем шаге: окно — от имени пользователя, а не от установщика с правами. -->
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Запустить Private Gateway" />
+    <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
+    <Property Id="WixShellExecTarget" Value="[INSTALLFOLDER]PrivateGateway.exe" />
+    <CustomAction Id="LaunchApp" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" />
 
     <Feature Id="Main">
       <ComponentGroupRef Id="App" />

@@ -23,3 +23,5 @@ nfpm package --config "$config" --packager rpm --target artifacts/release/
 cd artifacts/release
 sha256sum $(LC_ALL=C ls | grep -v "^SHA256SUMS$") > SHA256SUMS
 cat SHA256SUMS
+echo
+echo "Пакеты готовы: $PWD — .deb: sudo apt install ./<файл>.deb, .rpm: sudo dnf install ./<файл>.rpm"
