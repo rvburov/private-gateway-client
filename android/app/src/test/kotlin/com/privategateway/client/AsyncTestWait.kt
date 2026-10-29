@@ -1,10 +1,9 @@
 package com.privategateway.client
 
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
-import kotlinx.coroutines.debug.DebugProbes
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import java.io.PrintStream
 
 /** При исходном таймауте — состояния всех корутин и потоков: ожидание UI не показывает, где остановилась запись. */
 fun <T> waitForAsync(block: suspend () -> T): T = runBlocking {
@@ -17,10 +16,15 @@ fun <T> waitForAsync(block: suspend () -> T): T = runBlocking {
     }
 }
 
-@OptIn(ExperimentalCoroutinesApi::class)
 private fun dumpAsyncTimeout() {
     System.err.println("Async test timeout: coroutine and thread states follow")
-    runCatching { DebugProbes.dumpCoroutines(System.err) }.onFailure {
+    runCatching {
+        // Robolectric разделяет kotlin.* с родителем, но загружает свою копию kotlinx.coroutines.*.
+        // События компилятора уже получает агент рядом с общими DebugProbesKt: дамп нужен из того же загрузчика.
+        val hooks = Class.forName("kotlin.coroutines.jvm.internal.DebugProbesKt")
+        val type = Class.forName("kotlinx.coroutines.debug.DebugProbes", true, hooks.classLoader)
+        type.getMethod("dumpCoroutines", PrintStream::class.java).invoke(type.getField("INSTANCE").get(null), System.err)
+    }.onFailure {
         System.err.println("Coroutine dump unavailable: ${it.javaClass.name}")
     }
     System.err.println()

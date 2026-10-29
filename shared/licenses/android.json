@@ -77,6 +77,13 @@
     "maven": ["org.jetbrains.kotlin:*", "org.jetbrains:annotations"]
   },
   {
+    "name": "kotlinx.atomicfu",
+    "license": "Apache-2.0",
+    "copyright": "Copyright 2017 JetBrains s.r.o.",
+    "url": "https://github.com/Kotlin/kotlinx.atomicfu",
+    "maven": ["org.jetbrains.kotlinx:atomicfu*"]
+  },
+  {
     "name": "kotlinx.coroutines",
     "license": "Apache-2.0",
     "copyright": "Copyright 2016-2025 JetBrains s.r.o. and contributors",
