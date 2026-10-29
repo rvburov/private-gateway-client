@@ -24,7 +24,6 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.async
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
@@ -91,9 +90,10 @@ class SubscriptionsViewModelTest {
     fun close() {
         // Сначала — работа модели, до конца: ее продолжения идут через Dispatchers.Main, и resetMain() рядом с ними падает
         // («Dispatchers.Main is used concurrently with setting it» — отмена хранилища будила их из потока IO). Потом —
-        // хранилище и база.
+        // хранилище и база. DataStore должен закончить отмену и закрытие файла до закрытия Main-dispatcher и удаления
+        // TemporaryFolder: cancel() без join оставляет его IO-акторы работать после конца теста.
         runBlocking { model.viewModelScope.coroutineContext.job.cancelAndJoin() }
-        scope.cancel()
+        runBlocking { scope.coroutineContext.job.cancelAndJoin() }
         database.close()
         Dispatchers.resetMain()
         main.close()
