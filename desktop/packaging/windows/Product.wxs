@@ -67,7 +67,8 @@
     <!-- «Запустить Private Gateway» на последнем шаге: окно — от имени пользователя, а не от установщика с правами. -->
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOXTEXT" Value="Запустить Private Gateway" />
     <Property Id="WIXUI_EXITDIALOGOPTIONALCHECKBOX" Value="1" />
-    <Property Id="WixShellExecTarget" Value="[INSTALLFOLDER]PrivateGateway.exe" />
+    <!-- Путь — после выбора папки (CostFinalize): Property со ссылкой на другое свойство WiX не подставляет. -->
+    <SetProperty Id="WixShellExecTarget" Value="[INSTALLFOLDER]PrivateGateway.exe" After="CostFinalize" Sequence="ui" />
     <CustomAction Id="LaunchApp" BinaryRef="Wix4UtilCA_X64" DllEntry="WixShellExec" Impersonate="yes" />
 
     <Feature Id="Main">
