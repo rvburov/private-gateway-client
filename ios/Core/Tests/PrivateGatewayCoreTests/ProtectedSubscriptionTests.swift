@@ -55,6 +55,82 @@ final class ProtectedSubscriptionTests: XCTestCase {
         XCTAssertTrue(origin.requests.isEmpty, "даже локальный адрес не исключается из явного защищенного прокси")
     }
 
+    func testRedirectToLocalOriginIsRejectedBeforeUrlSessionCanBypassTheProxy() async throws {
+        try requireProtectedTransport()
+        let origin = try LocalHttpProxy()
+        defer { origin.stop() }
+        let server = try LocalHttpProxy(redirect: "http://127.0.0.1:\(origin.port)/sub/fake-token")
+        defer { server.stop() }
+        let proxy = SubscriptionProxy(port: server.port, user: "test-user", password: "test-password")
+        let url = try XCTUnwrap(SubscriptionAddress.parse("http://subscription.invalid/start"))
+        do {
+            _ = try await SubscriptionDownloader(timeout: 5, protectedProxy: { proxy }).downloadProtected(url)
+            XCTFail("redirect в локальную сеть запрещен до запроса")
+        } catch {
+            XCTAssertEqual(error as? SubscriptionDownloadError, SubscriptionDownloadError(.protectedAddressUnsupported))
+        }
+        XCTAssertTrue(origin.requests.isEmpty)
+    }
+
+    func testDnsAliasToLoopbackCannotFallBackFromAClosedProxy() async throws {
+        try requireProtectedTransport()
+        guard aliasFixtureReady() else { return }
+        let origin = try LocalHttpProxy()
+        defer { origin.stop() }
+        let closed = try LocalHttpProxy()
+        let port = closed.port
+        closed.stop()
+        let proxy = SubscriptionProxy(port: port, user: "test-user", password: "test-password")
+        let url = try XCTUnwrap(SubscriptionAddress.parse("http://\(Self.loopbackAlias):\(origin.port)/sub/fake-token"))
+        do {
+            _ = try await SubscriptionDownloader(timeout: 3, protectedProxy: { proxy }).downloadProtected(url)
+            XCTFail("закрытый прокси не должен разрешать запрос по alias напрямую")
+        } catch {}
+        XCTAssertTrue(origin.requests.isEmpty, "DNS alias не должен обойти обязательный CONNECT transport")
+    }
+
+    func testRedirectToDnsAliasCannotReachTheLoopbackOriginDirectly() async throws {
+        try requireProtectedTransport()
+        guard aliasFixtureReady() else { return }
+        let origin = try LocalHttpProxy()
+        defer { origin.stop() }
+        let server = try LocalHttpProxy(redirect: "http://\(Self.loopbackAlias):\(origin.port)/sub/fake-token")
+        defer { server.stop() }
+        let proxy = SubscriptionProxy(port: server.port, user: "test-user", password: "test-password")
+        let url = try XCTUnwrap(SubscriptionAddress.parse("http://subscription.invalid/start"))
+        do {
+            _ = try await SubscriptionDownloader(timeout: 5, protectedProxy: { proxy }).downloadProtected(url)
+            XCTFail("proxy fixture отклоняет CONNECT в alias: прямого повтора быть не должно")
+        } catch {}
+        XCTAssertTrue(origin.requests.isEmpty, "redirect и DNS alias не должны открыть прямой путь к локальному origin")
+    }
+
+    private static let loopbackAlias = "pg-subscription-loopback.example.test"
+
+    /// Только проверка стенда теста: CI добавляет имя в /etc/hosts одноразового Mac. Код продукта DNS lookup не делает.
+    private func aliasFixtureReady() -> Bool {
+        var hints = addrinfo()
+        hints.ai_family = AF_INET
+        hints.ai_socktype = SOCK_STREAM
+        var list: UnsafeMutablePointer<addrinfo>?
+        let code = getaddrinfo(Self.loopbackAlias, nil, &hints, &list)
+        guard code == 0, let first = list else {
+            XCTFail("Нет alias-стенда: добавьте 127.0.0.1 \(Self.loopbackAlias) в /etc/hosts машины теста")
+            return false
+        }
+        defer { freeaddrinfo(first) }
+        var next: UnsafeMutablePointer<addrinfo>? = first
+        var found = false
+        while let item = next {
+            if let address = item.pointee.ai_addr, item.pointee.ai_family == AF_INET {
+                found = found || address.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { $0.pointee.sin_addr.s_addr == inet_addr("127.0.0.1") }
+            }
+            next = item.pointee.ai_next
+        }
+        XCTAssertTrue(found, "alias-стенд обязан разрешаться в 127.0.0.1")
+        return found
+    }
+
     private func requireProtectedTransport() throws {
         try XCTSkipUnless(SubscriptionDownloader.supportsProtectedTransport, "защищенные подписки требуют iOS 17+ / macOS 14+; legacy отказ проверяет SubscriptionDownloaderTests")
     }
@@ -67,13 +143,15 @@ private final class LocalHttpProxy: @unchecked Sendable {
     private let lock = NSLock()
     private var running = true
     private var received: [String] = []
+    private let redirect: String?
     var requests: [String] {
         lock.lock()
         defer { lock.unlock() }
         return received
     }
 
-    init() throws {
+    init(redirect: String? = nil) throws {
+        self.redirect = redirect
         let socketFd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)
         guard socketFd >= 0 else { throw POSIXError(.ENFILE) }
         var address = sockaddr_in()
@@ -155,6 +233,9 @@ private final class LocalHttpProxy: @unchecked Sendable {
     }
 
     private var bodyResponse: String {
+        if let redirect {
+            return "HTTP/1.1 302 Found\r\nLocation: \(redirect)\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        }
         let body = "test-subscription"
         return "HTTP/1.1 200 OK\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n\(body)"
     }

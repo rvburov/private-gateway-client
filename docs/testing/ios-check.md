@@ -125,7 +125,10 @@ CI уже проверяет без вас на симуляторе iPhone: с�
 
 Автоматически на macOS и в AppTests симулятора iOS: `ProtectedSubscriptionTests` — настоящий URLSession и HTTP-прокси на петле, Basic 407,
 HTTP/HTTPS CONNECT, отсутствие proxy credential в запросе сайта внутри туннеля, отказ закрытого прокси без запроса к
-прямому локальному адресу; `SubscriptionDownloaderTests` — отмена и availability. Проверки транспорта требуют iOS 17+ /
+прямому локальному адресу, redirect в локальный URL и DNS alias → loopback; `SubscriptionDownloaderTests` — отмена и availability.
+Для alias-стенда CI добавляет в `/etc/hosts` одноразового Mac `127.0.0.1 pg-subscription-loopback.example.test`.
+При локальном запуске тестов macOS/симулятора настройте тот же тестовый alias; сам продукт DNS lookup для preflight не делает.
+Проверки транспорта требуют iOS 17+ /
 macOS 14+: на iOS 16 / macOS 13 защищенное обновление явно отказывает до IPC/URLSession, без dictionary fallback.
 На iOS 16 дополнительно проверьте сообщение «Для обновления подписок только через VPN нужна iOS 17 или новее», работу
 самого VPN и ручного импорта: минимальная версия всего приложения не повышалась.

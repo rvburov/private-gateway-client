@@ -16,6 +16,48 @@ public struct SubscriptionProxy: Codable, Equatable, Sendable {
 
     public var valid: Bool { (1...65535).contains(port) && !user.isEmpty && !password.isEmpty }
 
+    /// CFNetwork обходит прокси для некоторых локальных адресов даже при allowFailover=false. Такие и неоднозначные
+    /// URL отклоняются до URLSession и на каждом redirect. Только синтаксис/байты, без DNS lookup ради проверки.
+    public static func supportsTarget(_ url: URLComponents) -> Bool {
+        guard let raw = url.host, let canonical = url.url?.host, !raw.contains("%") else { return false }
+        let host = unbracketed(canonical.lowercased())
+        var original = unbracketed(raw.lowercased())
+        guard !original.hasSuffix(".."), !host.hasSuffix("..") else { return false }
+        if original.hasSuffix(".") { original.removeLast() }
+        var name = host
+        if name.hasSuffix(".") { name.removeLast() }
+        if let address = IpAddress.parse(name) {
+            return PublicAddress.isPublic(name) && !XrayConfig.localNetworks.contains { contains(normalized(address), network: $0) }
+                && !ambiguousV4(original)
+        }
+        guard !name.contains(":"), !ambiguousV4(original) else { return false }
+        let labels = name.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2, labels.allSatisfy({ label in
+            !label.isEmpty && label.count <= 63 && label.first != "-" && label.last != "-"
+                && label.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") }
+        }), labels.last?.allSatisfy({ $0.isNumber }) == false else { return false }
+        let localNames = ["localhost", "local", "localdomain", "lan", "home.arpa"]
+        return !localNames.contains { name == $0 || name.hasSuffix("." + $0) }
+    }
+
+    private static func unbracketed(_ host: String) -> String {
+        host.hasPrefix("[") && host.hasSuffix("]") ? String(host.dropFirst().dropLast()) : host
+    }
+
+    /// inet_aton-формы (127.1, decimal DWORD, hex, octal) разные стеки понимают по-разному. Строгий публичный dotted quad
+    /// разрешен; все остальные полностью числовые/hex последовательности не становятся именем для URLSession.
+    private static func ambiguousV4(_ host: String) -> Bool {
+        if let parsed = IpAddress.parse(host), parsed.count == 4 { return false }
+        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
+        return !parts.isEmpty && parts.allSatisfy { part in
+            if part.hasPrefix("0x") {
+                let digits = part.dropFirst(2)
+                return !digits.isEmpty && digits.allSatisfy { $0.isASCII && $0.isHexDigit }
+            }
+            return !part.isEmpty && part.allSatisfy { $0.isNumber }
+        }
+    }
+
     /// WireGuard сам разрешает имя назначения. Явное исключение lanDns или разрешенная локальная сеть могут направить
     /// этот DNS напрямую, даже если HTTP-вход принудительно идет в proxy. Сравниваем с теми же CIDR, что у правил Xray,
     /// а не только с RFC1918: там есть петля, CGN, link-local, тестовые и групповые сети. Имя DNS не разрешаем ради

@@ -43,6 +43,9 @@ public struct SubscriptionDownloader: SubscriptionSource {
         guard Self.supportsProtectedTransport else {
             throw SubscriptionDownloadError(.protectedTransportUnsupported)
         }
+        guard SubscriptionProxy.supportsTarget(url) else {
+            throw SubscriptionDownloadError(.protectedAddressUnsupported)
+        }
         let resolved = await protectedProxy?()
         try Task.checkCancellation()
         guard let proxy = resolved, proxy.valid else {
@@ -86,7 +89,7 @@ public struct SubscriptionDownloader: SubscriptionSource {
 
         var request = URLRequest(url: target)
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        let transfer = Transfer(scheme: target.scheme?.lowercased(), maxBytes: maxBytes)
+        let transfer = Transfer(scheme: target.scheme?.lowercased(), maxBytes: maxBytes, protected: proxy != nil)
         let session = URLSession(configuration: configuration, delegate: transfer, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         return try await transfer.run(session.dataTask(with: request))
@@ -98,6 +101,7 @@ public struct SubscriptionDownloader: SubscriptionSource {
 private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let scheme: String?
     private let maxBytes: Int
+    private let protected: Bool
     private let lock = NSLock()
     private var body = Data()
     private var title: String?
@@ -106,9 +110,10 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
     private var task: URLSessionDataTask?
     private var cancelled = false
 
-    init(scheme: String?, maxBytes: Int) {
+    init(scheme: String?, maxBytes: Int, protected: Bool) {
         self.scheme = scheme
         self.maxBytes = maxBytes
+        self.protected = protected
     }
 
     func run(_ task: URLSessionDataTask) async throws -> SubscriptionContent {
@@ -145,7 +150,14 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
         _ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest
     ) async -> URLRequest? {
         // Другая схема — не идти: ответ перенаправления станет итогом, и его код скажет, почему не загрузилось.
-        request.url?.scheme?.lowercased() == scheme ? request : nil
+        guard request.url?.scheme?.lowercased() == scheme else { return nil }
+        if protected {
+            guard let url = request.url.flatMap({ URLComponents(url: $0, resolvingAgainstBaseURL: false) }), SubscriptionProxy.supportsTarget(url) else {
+                locked { failure = SubscriptionDownloadError(.protectedAddressUnsupported) }
+                return nil
+            }
+        }
+        return request
     }
 
     func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse) async -> URLSession.ResponseDisposition {
@@ -168,7 +180,7 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
             return .allow
         }
 
-        locked { failure = error }
+        locked { if failure == nil { failure = error } }
         return .cancel
     }
 

@@ -458,6 +458,12 @@ jobs:
           path: artifacts/cores/xray-mobile
           key: ${{ steps.xray-mobile.outputs.cache-primary-key }}
 
+      # Public-looking alias локального origin: проверка обхода URLSession по результату DNS, включая redirect.
+      # Только одноразовый Mac задания; продукт не делает lookup адреса подписки ради preflight.
+      - name: Alias loopback для проверки обязательного прокси
+        if: runner.os == 'macOS'
+        run: printf '%s\n' '127.0.0.1 pg-subscription-loopback.example.test' | sudo tee -a /etc/hosts > /dev/null
+
       # Без Xray libXray тест конфигов здесь падает, а не пропускается.
       - name: Сборка и тесты
         env:
@@ -499,6 +505,9 @@ jobs:
         with:
           path: ios/Frameworks
           key: ${{ steps.libxray.outputs.cache-primary-key }}
+
+      - name: Alias loopback для проверки обязательного прокси
+        run: printf '%s\n' '127.0.0.1 pg-subscription-loopback.example.test' | sudo tee -a /etc/hosts > /dev/null
 
       - name: Сборка и тесты на симуляторе
         run: scripts/ios-test.sh

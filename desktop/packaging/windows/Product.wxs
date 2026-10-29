@@ -25,7 +25,9 @@
   <Package Name="Private Gateway" Manufacturer="Private Gateway" Version="$(Version)" UpgradeCode="b3f677bb-fd84-4ddd-b04c-8cf67f3ea5c3"
            Scope="perMachine" Compressed="yes" Language="1049" Codepage="1251">
     <!-- Понижение версии разрешено: откат на прежнюю версию из «О программе» ставит ее MSI поверх новой. -->
-    <MajorUpgrade Schedule="afterInstallInitialize" AllowDowngrades="yes" />
+    <!-- Удаление старого продукта — после применения нового скрипта и внутри общей транзакции. Перед ним уже можно
+         зарегистрировать rollback службы: слот сразу после InstallInitialize запрещает любые script-generating actions. -->
+    <MajorUpgrade Schedule="afterInstallExecute" AllowDowngrades="yes" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="AppIcon" SourceFile="$(Icon)" />
@@ -89,7 +91,7 @@
                  Before="RollbackInstallService" Sequence="execute" />
     <CustomAction Id="RollbackInstallService" BinaryRef="Wix4UtilCA_X64" DllEntry="WixQuietExec" Execute="rollback" Impersonate="no" Return="ignore" />
 
-    <!-- Регистрируется до удаления прежнего MSI, поэтому при обратном выполнении старые файлы уже восстановлены.
+    <!-- Регистрируется до InstallFiles, поэтому при обратном выполнении старые файлы уже восстановлены.
          Возвращает службу из них даже если новая успела запуститься и MSI упал позднее. Состояние не удаляется. -->
     <SetProperty Id="RollbackUpgradeService" Value="&quot;[INSTALLFOLDER]PrivateGateway.Service.exe&quot; --install --owner [OWNER]"
                  Before="RollbackUpgradeService" Sequence="execute" />
@@ -108,7 +110,7 @@
     <?endif ?>
 
     <InstallExecuteSequence>
-      <Custom Action="RollbackUpgradeService" Before="RemoveExistingProducts" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
+      <Custom Action="RollbackUpgradeService" Before="InstallFiles" Condition="WIX_UPGRADE_DETECTED AND NOT REMOVE" />
       <Custom Action="RollbackInstallService" After="InstallFiles" Condition="NOT REMOVE AND NOT WIX_UPGRADE_DETECTED" />
       <Custom Action="InstallService" After="RollbackInstallService" Condition="NOT REMOVE" />
       <?if $(SmokeFailAfterService) = 1 ?>

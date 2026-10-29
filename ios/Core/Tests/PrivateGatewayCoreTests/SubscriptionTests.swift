@@ -183,6 +183,7 @@ final class SubscriptionTests: XCTestCase {
             .status: .status(500), .tooLarge: .tooLarge, .noServers: .noServers, .noAddress: .noAddress,
             .protectedPathUnavailable: .protectedPathUnavailable,
             .protectedTransportUnsupported: .protectedTransportUnsupported,
+            .protectedAddressUnsupported: .protectedAddressUnsupported,
         ]
         XCTAssertEqual(Set(expected.keys), Set(DownloadFailure.allCases))
         for (failure, reason) in expected {

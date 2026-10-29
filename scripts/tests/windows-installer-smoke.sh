@@ -85,6 +85,33 @@ msi_version=$(installed_version)
 # Обновление: та же сборка в MSI с версией выше — служба заменяется и снова работает, ее состояние на месте.
 IFS=. read -r major minor patch <<< "${version%%-*}"
 newer=$(scripts/package-windows.sh "$version" "$major.$minor.$((patch + 1))" | tail -n 1)
+# Позднее RemoveExistingProducts опирается на стабильные component GUID. Читаем настоящие Component rows из обоих MSI
+# через декомпилятор: одинаковые файлы и целевые пути не должны стать другими компонентами из-за новой версии пакета.
+wix msi decompile "$msi" -sui -sct -sras -o artifacts/msi-base-components.wxs
+wix msi decompile "$newer" -sui -sct -sras -o artifacts/msi-next-components.wxs
+python3 - artifacts/msi-base-components.wxs artifacts/msi-next-components.wxs <<'PY'
+import re, sys
+import xml.etree.ElementTree as ET
+
+def components(path):
+    result = {}
+    for item in ET.parse(path).getroot().iter():
+        if item.tag.rsplit("}", 1)[-1] != "Component":
+            continue
+        guid = item.get("Guid", "").strip("{}").lower()
+        if not re.fullmatch(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", guid):
+            raise SystemExit(f"{path}: у {item.get('Id')} нет конкретного ComponentId из MSI")
+        result[item.attrib["Id"]] = guid
+    if not result:
+        raise SystemExit(f"{path}: таблица Component пуста")
+    return result
+
+base, newer = map(components, sys.argv[1:])
+changed = sorted(key for key in base.keys() | newer.keys() if base.get(key) != newer.get(key))
+if changed:
+    raise SystemExit("Компоненты одинаковой раскладки поменяли GUID: " + ", ".join(changed[:10]))
+print(f"Стабильные ComponentId подтверждены в двух MSI: {len(base)} компонентов")
+PY
 msi_run i "$newer"
 [ "$(installed_version)" = "$major.$minor.$((patch + 1))" ] || fail "после обновления версия $(installed_version)"
 running || fail "после обновления служба не работает: $(sc query PrivateGateway)"

@@ -62,4 +62,22 @@ final class SubscriptionProxyPolicyTests: XCTestCase {
             }
         }
     }
+
+    func testProtectedUrlsRejectLocalAndAmbiguousHostFormsWithoutResolvingNames() throws {
+        let rejected = [
+            "127.0.0.1", "127.1", "2130706433", "0x7f000001", "0177.0.0.1", "127.0.0.1.",
+            "[::1]", "[::ffff:127.0.0.1]", "[::ffff:7f00:1]", "[fe80::1%25en0]", "localhost", "localhost.",
+            "a.localhost", "router.local", "router.local.", "router", "router.localdomain", "router.home.arpa",
+            "10.0.0.1", "100.64.0.1", "169.254.1.1", "192.168.1.53", "[fc00::53]", "[fe80::53]", "[ff02::53]",
+            "example..com", "010.008.008.008", "134744072", "0x08080808",
+        ]
+        for host in rejected {
+            let url = try XCTUnwrap(SubscriptionAddress.parse("http://\(host)/sub/fake-token"), host)
+            XCTAssertFalse(SubscriptionProxy.supportsTarget(url), host)
+        }
+        for host in ["example.com", "example.com.", "subscription.invalid", "1.1.1.1", "9.9.9.9", "[2001:4860:4860::8888]", "[::ffff:9.9.9.9]"] {
+            let url = try XCTUnwrap(SubscriptionAddress.parse("https://\(host)/sub/fake-token"), host)
+            XCTAssertTrue(SubscriptionProxy.supportsTarget(url), host)
+        }
+    }
 }
