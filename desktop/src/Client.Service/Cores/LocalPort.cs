@@ -28,7 +28,10 @@ public static class LocalPort
     private static readonly Queue<int> Issued = new();
     private static readonly HashSet<int> IssuedSet = [];
 
-    /// <summary>Порт, свободный и для TCP, и для UDP: вход SOCKS5 ядра занимает оба.</summary>
+    /// <summary>
+    /// Кандидат, свободный для TCP и UDP в момент проверки: вход SOCKS5 ядра занимает оба. Проверочные сокеты закрываются
+    /// до возврата; это не межпроцессное резервирование, и другой процесс может занять порт до запуска входа ядра.
+    /// </summary>
     public static int FreeForTcpAndUdp() => FreeForTcpAndUdp(Random.Shared);
 
     /// <summary>То же со своим источником случайных чисел (тесты).</summary>
