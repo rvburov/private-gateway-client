@@ -28,7 +28,6 @@
     <Icon Id="AppIcon" SourceFile="$(Icon)" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/rvburov/private-gateway-client" />
-    <Property Id="ARPNOMODIFY" Value="1" />
 
     <!-- Папка, выбранная в мастере, — и для обновлений: тихое обновление из окна (без мастера) ставит туда же, а не в
          Program Files по умолчанию. -->
