@@ -29,8 +29,9 @@
                            IsVisible="{Binding KillSwitchNote, Converter={x:Static ObjectConverters.IsNotNull}}"
                            Foreground="{StaticResource PgBrush.Status.Caution.Text}" />
               </StackPanel>
-              <ToggleButton x:Name="KillSwitchToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanKillSwitch}"
-                            IsChecked="{Binding KillSwitch}" AutomationProperties.Name="{l:L prot.ks.title}" />
+              <c:ConfirmSwitch x:Name="KillSwitchToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanKillSwitch}"
+                               IsChecked="{Binding KillSwitch, Mode=OneWay}" Command="{Binding FlipKillSwitchCommand}"
+                               AutomationProperties.Name="{l:L prot.ks.title}" />
             </Grid>
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
@@ -47,8 +48,9 @@
                 <TextBlock Classes="strong" Text="{l:L prot.strict.title}" TextWrapping="Wrap" />
                 <TextBlock Classes="caption" Text="{l:L prot.strict.text}" TextWrapping="Wrap" />
               </StackPanel>
-              <ToggleButton x:Name="StrictToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanStrictMode}"
-                            IsChecked="{Binding StrictMode}" AutomationProperties.Name="{l:L prot.strict.title}" />
+              <c:ConfirmSwitch x:Name="StrictToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanStrictMode}"
+                               IsChecked="{Binding StrictMode, Mode=OneWay}" Command="{Binding FlipStrictModeCommand}"
+                               AutomationProperties.Name="{l:L prot.strict.title}" />
             </Grid>
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">

@@ -79,7 +79,7 @@ public abstract class WindowHarness : IDisposable
     /// <param name="firstLaunch">true — как при первом запуске: с приветствием (доска 10).</param>
     /// <param name="gateway">Своя служба для окна; null — имитация.</param>
     /// <remarks>Окно — в демо-режиме, на имитации службы, даже если на машине запущена настоящая служба.</remarks>
-    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false, Func<IServiceProvider, IGatewayClient>? gateway = null)
+    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false, Func<IServiceProvider, IGatewayClient>? gateway = null, bool demo = true)
     {
         _services = App.BuildServices(_paths, s =>
         {
@@ -99,7 +99,7 @@ public abstract class WindowHarness : IDisposable
             {
                 s.AddSingleton<IGatewayClient>(gateway);
             }
-        }, demo: true);
+        }, demo: demo);
         if (!firstLaunch)
         {
             _services.GetRequiredService<SettingsService>().Update(s => s with { OnboardingDone = true });

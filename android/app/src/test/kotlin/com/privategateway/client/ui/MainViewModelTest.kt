@@ -130,7 +130,9 @@ class MainViewModelTest {
         Dispatchers.resetMain()
     }
 
-    private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(5_000) { block() } }
+    // Предел ожидания, а не задержка: тест идет дальше, как только условие выполнилось. 10 с, как в других тестах
+    // приложения: на занятой машине CI первая запись в DataStore и Room под Robolectric не уложилась в 5 с (master 395).
+    private fun <T> wait(block: suspend () -> T): T = runBlocking { withTimeout(10_000) { block() } }
 
     private fun waitUntil(condition: () -> Boolean) = wait {
         while (!condition()) {

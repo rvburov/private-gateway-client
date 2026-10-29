@@ -105,6 +105,8 @@ public sealed partial class ServersPageViewModel : ObservableObject
 
     public ObservableCollection<ProtocolFilterViewModel> Protocols { get; } = [];
 
+    public bool HasProtocols => Protocols.Count > 0;
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSortByLatency), nameof(IsSortByName))]
     public partial ServerSort Sort { get; set; }

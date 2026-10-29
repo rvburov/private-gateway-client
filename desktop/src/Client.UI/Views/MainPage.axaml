@@ -23,7 +23,7 @@
       <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Base}" />
     </Style>
   </UserControl.Styles>
-  <ScrollViewer Classes="page">
+  <ScrollViewer Classes="page" c:ScrollMemory.Remember="True">
     <StackPanel>
 
       <!-- Шапка: знак, название, версия, «демо» на имитации, «+» -->

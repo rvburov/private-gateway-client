@@ -1,5 +1,4 @@
 using System.Globalization;
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -147,10 +146,13 @@ public sealed partial class CorePageViewModel : ObservableObject
                 return;
             }
 
-            Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(ProxyAllowLan)));
             _ = OpenProxyToLanAsync();
         }
     }
+
+    /// <summary>Нажатие на переключатель: открыть прокси для локальной сети — через вопрос.</summary>
+    [RelayCommand]
+    private void FlipProxyAllowLan() => ProxyAllowLan = !ProxyAllowLan;
 
     // ── Команды ──────────────────────────────────────────────────────────────
 

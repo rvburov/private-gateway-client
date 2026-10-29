@@ -219,8 +219,8 @@
                     <TextBlock Classes="strong" Text="{l:L routing.lan.title}" />
                     <TextBlock x:Name="LanText" Classes="caption" Text="{Binding LanText}" TextWrapping="Wrap" />
                   </StackPanel>
-                  <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" StrokeThickness="2.2"
-                          Foreground="{StaticResource PgBrush.Text.Muted}" VerticalAlignment="Center" />
+                  <c:Icon Classes="chevron" Grid.Column="1" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16" StrokeThickness="2.2"
+                          VerticalAlignment="Center" />
                 </Grid>
               </Button>
             </StackPanel>

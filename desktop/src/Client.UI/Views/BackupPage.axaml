@@ -8,8 +8,13 @@
   <!-- Резервная копия — docs/design, доска 14. Подстраница настроек: островок виден, «назад» — к настройкам. -->
   <UserControl.Styles>
     <!-- Пункт копии: флажок, название и пояснение -->
+    <!-- Части копии (доска 14): строка не ниже 46, подпись в две строки — через 12 от квадрата -->
     <Style Selector="CheckBox.part">
       <Setter Property="Padding" Value="0,6" />
+      <Setter Property="MinHeight" Value="46" />
+    </Style>
+    <Style Selector="CheckBox.part /template/ ContentPresenter#Label">
+      <Setter Property="Margin" Value="12,0,0,0" />
     </Style>
     <Style Selector="CheckBox.part:disabled">
       <Setter Property="Opacity" Value="0.45" />

@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -68,10 +67,13 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
             }
 
             // Выключить — только после «Выключить» в диалоге; до ответа переключатель стоит на месте.
-            Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(KillSwitch)));
             _ = TurnKillSwitchOffAsync();
         }
     }
+
+    /// <summary>Нажатие на переключатель (<see cref="Controls.ConfirmSwitch"/>): выключение — через вопрос.</summary>
+    [RelayCommand]
+    private void FlipKillSwitch() => KillSwitch = !KillSwitch;
 
     public string KillSwitchText => Loc.Instance.Format("prot.ks.text", Loc.Instance[
         OperatingSystem.IsWindows() ? "prot.firewall.windows" : OperatingSystem.IsMacOS() ? "prot.firewall.macos" : "prot.firewall.linux"]);
@@ -100,10 +102,13 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
                 return;
             }
 
-            Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(StrictMode)));
             _ = TurnStrictModeOnAsync();
         }
     }
+
+    /// <summary>Нажатие на переключатель: включение — через вопрос.</summary>
+    [RelayCommand]
+    private void FlipStrictMode() => StrictMode = !StrictMode;
 
     // ── DNS ──────────────────────────────────────────────────────────────────
 

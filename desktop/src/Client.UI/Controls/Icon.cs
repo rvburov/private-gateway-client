@@ -33,10 +33,16 @@ public sealed class Icon : Viewbox
 
     private const double Canvas24 = 24;
 
+    static Icon()
+    {
+        // 24 — значение по умолчанию, а не локальное: локальное сильнее шаблона и стиля, и галочка флажка (12 в
+        // шаблоне) или значки первого запуска (20 и 16 из стиля) рисовались бы 24.
+        WidthProperty.OverrideDefaultValue<Icon>(Canvas24);
+        HeightProperty.OverrideDefaultValue<Icon>(Canvas24);
+    }
+
     public Icon()
     {
-        Width = 24;
-        Height = 24;
         Stretch = Stretch.Uniform;
         var main = MakePath();
         main[!Path.DataProperty] = this[!DataProperty];

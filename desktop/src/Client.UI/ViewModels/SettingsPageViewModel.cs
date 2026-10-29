@@ -1,4 +1,3 @@
-using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -79,10 +78,13 @@ public sealed partial class SettingsPageViewModel : ObservableObject
                 return;
             }
 
-            Dispatcher.UIThread.Post(() => OnPropertyChanged(nameof(KillSwitch)));
             _ = TurnKillSwitchOffAsync();
         }
     }
+
+    /// <summary>Нажатие на переключатель (<see cref="Controls.ConfirmSwitch"/>): выключение — через вопрос.</summary>
+    [RelayCommand]
+    private void FlipKillSwitch() => KillSwitch = !KillSwitch;
 
     private async Task TurnKillSwitchOffAsync()
     {

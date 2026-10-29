@@ -195,16 +195,18 @@ public sealed class CoreLedgerTests : IDisposable
     {
         using var channel = IpcChannel.Create(endpoint, system: false);
         var client = new V1.GatewayService.GatewayServiceClient(channel);
+        // Предел — по времени, а не по числу попыток: под нагрузкой (весь набор тестов сразу) перезапущенная служба однажды
+        // не ответила за 100 попыток, около 20 с (2026-10-29); остановку тест ждет так же — до 60 с.
         using var wait = CancellationTokenSource.CreateLinkedTokenSource(Ct);
-        wait.CancelAfter(TimeSpan.FromSeconds(30));
-        for (var attempt = 0; ; attempt++)
+        wait.CancelAfter(TimeSpan.FromSeconds(60));
+        while (true)
         {
             try
             {
                 await client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: wait.Token);
                 break;
             }
-            catch (RpcException) when (attempt < 100)
+            catch (RpcException) when (!wait.IsCancellationRequested)
             {
                 await Task.Delay(200, wait.Token);
             }

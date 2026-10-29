@@ -119,7 +119,7 @@
     </StackPanel>
 
     <!-- Список: группы по подпискам, под островком запас для прокрутки -->
-    <ScrollViewer Grid.Row="2" Classes="page">
+    <ScrollViewer Grid.Row="2" Classes="page" c:ScrollMemory.Remember="True">
       <StackPanel Margin="20,12,20,0" Spacing="6">
         <ItemsControl ItemsSource="{Binding Groups}">
           <ItemsControl.ItemsPanel>
@@ -201,14 +201,19 @@
       </StackPanel>
     </ScrollViewer>
 
+    <!-- Нажатие мимо открытой панели фильтра закрывает ее, как выпадающий список; само нажатие дальше не идет -->
+    <Border x:Name="FilterDismiss" Grid.RowSpan="3" Background="Transparent" IsVisible="{Binding IsFilterOpen}"
+            PointerPressed="OnDismissFilter" />
+
     <!-- Фильтр и сортировка: панель поверх вкладок и списка, под полем поиска -->
     <Border x:Name="FilterPanel" Grid.Row="1" Grid.RowSpan="2" IsVisible="{Binding IsFilterOpen}"
             VerticalAlignment="Top" Margin="20,52,20,0" Padding="14"
             Background="{StaticResource PgBrush.Surface.Solid}" BorderBrush="{StaticResource PgBrush.Line.Border}"
             BorderThickness="1" CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
       <StackPanel Spacing="12">
-        <TextBlock Classes="overline" Text="{l:L servers.filter.protocols, Upper=True}" />
-        <ItemsControl ItemsSource="{Binding Protocols}">
+        <!-- Без серверов протоколов нет — нет и заголовка над пустым местом -->
+        <TextBlock Classes="overline" Text="{l:L servers.filter.protocols, Upper=True}" IsVisible="{Binding HasProtocols}" />
+        <ItemsControl ItemsSource="{Binding Protocols}" IsVisible="{Binding HasProtocols}">
           <ItemsControl.ItemsPanel>
             <ItemsPanelTemplate>
               <UniformGrid Columns="2" ColumnSpacing="8" RowSpacing="2" />

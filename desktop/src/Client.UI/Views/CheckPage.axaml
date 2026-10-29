@@ -32,7 +32,7 @@
       <TextBlock Classes="h1" Text="{l:L page.check.title}" VerticalAlignment="Center" />
     </Grid>
 
-    <ScrollViewer Grid.Row="1" Classes="page">
+    <ScrollViewer Grid.Row="1" Classes="page" c:ScrollMemory.Remember="True">
       <StackPanel Margin="20,0" Spacing="12">
         <UniformGrid Columns="2" ColumnSpacing="8">
           <Border CornerRadius="{StaticResource PgRadius.Button}" BoxShadow="{StaticResource PgShadow.Accent}">
@@ -98,8 +98,8 @@
                   <TextBlock Classes="strong" Text="{l:L diag.network.title}" />
                   <TextBlock Classes="caption" Text="{l:L diag.network.text}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" />
               </Grid>
             </Button>
             <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -115,8 +115,8 @@
                   <TextBlock Classes="strong" Text="{l:L diag.probe.title}" />
                   <TextBlock Classes="caption" Text="{l:L diag.probe.text}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" />
               </Grid>
             </Button>
             <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -132,8 +132,8 @@
                   <TextBlock Classes="strong" Text="{l:L diag.connections.title}" />
                   <TextBlock Classes="caption" Text="{l:L diag.connections.text}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" />
               </Grid>
             </Button>
             <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -149,8 +149,8 @@
                   <TextBlock Classes="strong" Text="{l:L diag.compare.title}" />
                   <TextBlock Classes="caption" Text="{l:L diag.compare.text}" TextTrimming="CharacterEllipsis" />
                 </StackPanel>
-                <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                        StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                        StrokeThickness="2" />
               </Grid>
             </Button>
           </StackPanel>
@@ -173,8 +173,8 @@
                     <TextBlock Classes="strong" Text="{l:L diag.path.title}" />
                     <TextBlock Classes="caption" Text="{l:L diag.path.text}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                  <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" />
                 </Grid>
               </Button>
               <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -190,8 +190,8 @@
                     <TextBlock Classes="strong" Text="{l:L diag.layers.title}" />
                     <TextBlock Classes="caption" Text="{l:L diag.layers.text}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                  <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" />
                 </Grid>
               </Button>
               <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -207,8 +207,8 @@
                     <TextBlock Classes="strong" Text="{l:L diag.events.title}" />
                     <TextBlock Classes="caption" Text="{l:L diag.events.text}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                  <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" />
                 </Grid>
               </Button>
               <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -224,8 +224,8 @@
                     <TextBlock Classes="strong" Text="{l:L diag.trouble.title}" />
                     <TextBlock Classes="caption" Text="{l:L diag.trouble.text}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                  <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" />
                 </Grid>
               </Button>
               <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
@@ -241,8 +241,8 @@
                     <TextBlock Classes="strong" Text="{l:L diag.vpnpath.title}" />
                     <TextBlock Classes="caption" Text="{l:L diag.vpnpath.text}" TextTrimming="CharacterEllipsis" />
                   </StackPanel>
-                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
+                  <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                          StrokeThickness="2" />
                 </Grid>
               </Button>
             </StackPanel>

@@ -1,9 +1,15 @@
 using System.Globalization;
+using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Controls;
@@ -93,6 +99,56 @@ public sealed class ServersPageTests : WindowHarness
         page.Sort.ShouldBe(ServerSort.Latency);
         page.Groups.SelectMany(g => g.Rows).Count().ShouldBe(7);
         Find<Border>(window, "FilterPanel").IsVisible.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public void Filter_closes_on_a_press_outside_it_and_when_leaving_the_page()
+    {
+        var (window, shell, page) = OpenServers();
+        Press(window, "FilterButton");
+        var panel = Find<Border>(window, "FilterPanel");
+
+        PressAt(window, panel.TranslatePoint(new Point(panel.Bounds.Width / 2, 6), window)!.Value);
+        page.IsFilterOpen.ShouldBeTrue("нажатие в самой панели ее не закрывает");
+
+        // Под панелью — строка сервера: нажатие закрывает фильтр и дальше не идет, карточка не открывается.
+        PressAt(window, panel.TranslatePoint(new Point(panel.Bounds.Width / 2, panel.Bounds.Height + 20), window)!.Value);
+        page.IsFilterOpen.ShouldBeFalse("нажатие мимо панели закрывает ее");
+        panel.IsVisible.ShouldBeFalse();
+        shell.Overlay.HasSheet.ShouldBeFalse("нажатие, закрывшее фильтр, не открывает сервер под ним");
+
+        Press(window, "FilterButton");
+        page.IsFilterOpen.ShouldBeTrue();
+        shell.NavigateCommand.Execute(Pages.Home);
+        Dispatcher.UIThread.RunJobs();
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        page.IsFilterOpen.ShouldBeFalse("ушли со страницы — фильтр закрыт");
+    }
+
+    [AvaloniaFact]
+    public void Filter_without_servers_shows_no_empty_protocols_heading()
+    {
+        // Без демо-режима и своих серверов список пуст — как у пользователя до первого сервера.
+        var (window, shell) = Open(
+            gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed),
+            demo: false);
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>();
+
+        Press(window, "FilterButton");
+
+        page.Protocols.ShouldBeEmpty();
+        Find<Border>(window, "FilterPanel").GetVisualDescendants().OfType<TextBlock>().Where(t => t.IsEffectivelyVisible)
+            .Select(t => t.Text).ShouldNotContain("ПРОТОКОЛЫ");
+    }
+
+    private static void PressAt(Window window, Point point)
+    {
+        window.MouseDown(point, MouseButton.Left);
+        window.MouseUp(point, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
     }
 
     [AvaloniaFact]

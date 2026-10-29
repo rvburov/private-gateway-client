@@ -312,8 +312,9 @@
                 <TextBlock Classes="strong" Text="{l:L core.lanProxy.title}" TextWrapping="Wrap" />
                 <TextBlock Classes="caption" Text="{l:L core.lanProxy.text}" TextWrapping="Wrap" />
               </StackPanel>
-              <ToggleButton x:Name="LanProxyToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
-                            IsChecked="{Binding ProxyAllowLan}" AutomationProperties.Name="{l:L core.lanProxy.title}" />
+              <c:ConfirmSwitch x:Name="LanProxyToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                               IsChecked="{Binding ProxyAllowLan, Mode=OneWay}" Command="{Binding FlipProxyAllowLanCommand}"
+                               AutomationProperties.Name="{l:L core.lanProxy.title}" />
             </Grid>
           </StackPanel>
         </Border>

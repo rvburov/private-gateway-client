@@ -6,7 +6,7 @@
              x:Class="PrivateGateway.Client.UI.Views.SettingsPage"
              x:DataType="vm:SettingsPageViewModel">
   <!-- Настройки — docs/design, доска 4. -->
-  <ScrollViewer Classes="page">
+  <ScrollViewer Classes="page" c:ScrollMemory.Remember="True">
     <StackPanel Margin="20,0">
       <TextBlock Classes="h1" Text="{l:L page.settings.title}" Margin="0,18,0,12" />
 
@@ -31,9 +31,9 @@
               <TextBlock Classes="strong" Text="{l:L settings.ks.title}" />
               <TextBlock Classes="caption" Text="{l:L settings.ks.text}" TextWrapping="Wrap" />
             </StackPanel>
-            <ToggleButton x:Name="KillSwitchToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
-                          IsEnabled="{Binding CanKillSwitch}" IsChecked="{Binding KillSwitch}"
-                          AutomationProperties.Name="{l:L settings.ks.title}" />
+            <c:ConfirmSwitch x:Name="KillSwitchToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                             IsEnabled="{Binding CanKillSwitch}" IsChecked="{Binding KillSwitch, Mode=OneWay}"
+                             Command="{Binding FlipKillSwitchCommand}" AutomationProperties.Name="{l:L settings.ks.title}" />
           </Grid>
           <Border Classes="divider" />
 
@@ -98,25 +98,34 @@
 
       <TextBlock Classes="overline" Text="{l:L settings.section.advanced, Upper=True}" Margin="6,18,6,8" />
       <Border Classes="card" Padding="8,4">
-        <ItemsControl ItemsSource="{Binding Advanced}">
+        <!-- Строки разделены полосами, как в «Проверке» и «Компонентах» (решение 486); над первой полосы нет -->
+        <ItemsControl Classes="divided" ItemsSource="{Binding Advanced}">
+          <ItemsControl.Styles>
+            <Style Selector="ItemsControl.divided ContentPresenter:nth-child(1) Border.between">
+              <Setter Property="IsVisible" Value="False" />
+            </Style>
+          </ItemsControl.Styles>
           <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:AdvancedLinkViewModel">
-              <Button Classes="plain" Padding="8,10" Command="{Binding OpenCommand}" CommandParameter="{Binding Id}"
-                      AutomationProperties.Name="{Binding Title}">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                  <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
-                          Background="{StaticResource PgBrush.Accent.Tint}">
-                    <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="20" Height="20"
-                            StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
-                  </Border>
-                  <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
-                    <TextBlock Classes="strong" Text="{Binding Title}" />
-                    <TextBlock Classes="caption" Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
-                  </StackPanel>
-                  <c:Icon Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
-                          StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />
-                </Grid>
-              </Button>
+              <StackPanel>
+                <Border Classes="divider between" Margin="8,0" />
+                <Button Classes="plain" Padding="8,10" Command="{Binding OpenCommand}" CommandParameter="{Binding Id}"
+                        AutomationProperties.Name="{Binding Title}">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="36" Height="36" CornerRadius="{StaticResource PgRadius.Input}"
+                            Background="{StaticResource PgBrush.Accent.Tint}">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="20" Height="20"
+                              StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Text}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Title}" />
+                      <TextBlock Classes="caption" Text="{Binding Text}" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                    <c:Icon Classes="chevron" Grid.Column="2" Data="{StaticResource Icon.ChevronRight}" Width="16" Height="16"
+                            StrokeThickness="2" />
+                  </Grid>
+                </Button>
+              </StackPanel>
             </DataTemplate>
           </ItemsControl.ItemTemplate>
         </ItemsControl>
