@@ -14,6 +14,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.lifecycle.viewModelScope
 import com.privategateway.client.R
 import com.privategateway.client.core.inspect.AddressFailure
 import com.privategateway.client.core.inspect.AddressInfo
@@ -33,11 +34,13 @@ import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.TunnelMonitor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.job
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.setMain
@@ -85,7 +88,7 @@ class InspectorTest {
 
     private val networks = Networks(listOf(wifi))
 
-    private val model by lazy {
+    private val modelLazy = lazy {
         val names = mapOf("example.org" to listOf(InetAddress.getByName("203.0.113.10")))
         val web = object : WebFetch {
             override suspend fun get(url: String): String? {
@@ -101,12 +104,21 @@ class InspectorTest {
         )
     }
 
+    private val model by modelLazy
+
     // Главный поток Robolectric занят ожиданием теста: viewModelScope (Dispatchers.Main) идет без очереди Looper.
     @Before
     fun main() = Dispatchers.setMain(UnconfinedTestDispatcher())
 
     @After
-    fun reset() = Dispatchers.resetMain()
+    fun reset() {
+        // stateIn(Eagerly) живет в scope модели. Закрываем его до замены общего Main, но не создаем ленивую модель
+        // ради cleanup в проверках, которым нужны только компоненты Compose.
+        if (modelLazy.isInitialized()) {
+            runBlocking { model.viewModelScope.coroutineContext.job.cancelAndJoin() }
+        }
+        Dispatchers.resetMain()
+    }
 
     private fun <T> waitFor(read: () -> T, done: (T) -> Boolean): T = runBlocking {
         withTimeout(10_000) {

@@ -59,7 +59,7 @@ class TunnelOnDeviceTest {
         app.settings().setTunnel(TunnelSettings(dns = DnsChoice.Custom, customDns = "192.168.254.253", allowLan = true))
         connect()
         // Сервер стенда перенаправляет порт18081 на свой HTTP. Прямой LAN-путь до этого адреса не отвечает.
-        val http = app.subscriptionTransport().download(URI("http://192.168.254.254:18081/sub"), onlyViaVpn = true)
+        val http = app.subscriptionTransport().download(URI("http://192.168.254.254:18081/"), onlyViaVpn = true)
         assertEquals("pg-tunnel-ok", http.text.trim())
         // Настоящий TLS через authenticated CONNECT: локальный DNS не должен искать имя Cloudflare.
         val https = app.subscriptionTransport().download(URI("https://cp.cloudflare.com/generate_204"), onlyViaVpn = true)
