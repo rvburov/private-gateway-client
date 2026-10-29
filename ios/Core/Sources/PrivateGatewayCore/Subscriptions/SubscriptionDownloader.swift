@@ -1,5 +1,6 @@
 #if canImport(Darwin)
 import Foundation
+import Network
 
 /// Загрузка подписки по http(s) — как `SubscriptionDownloader` Android и `HttpSubscriptionDownloader` десктопа: не дольше
 /// 20 секунд, не больше 5 МБ после распаковки, перенаправления — только внутри той же схемы (https не уходит на http, ответ
@@ -7,6 +8,13 @@ import Foundation
 /// не хранятся. Только для iPhone и Mac: загрузчик Linux (FoundationNetworking) ведет себя иначе, а приложению он не нужен.
 public struct SubscriptionDownloader: SubscriptionSource {
     public static let userAgent = "PrivateGateway/0.1"
+
+    /// Старый connectionProxyDictionary может обходить localhost даже с пустыми исключениями. Защищенная загрузка
+    /// требует документированный HTTP CONNECT transport с allowFailover=false; остальные функции iOS 16 доступны.
+    public static var supportsProtectedTransport: Bool {
+        if #available(iOS 17.0, macOS 14.0, *) { return true }
+        return false
+    }
 
     private let timeout: TimeInterval
     private let maxBytes: Int
@@ -32,6 +40,9 @@ public struct SubscriptionDownloader: SubscriptionSource {
     /// явный прокси и для HTTP, и для HTTPS, поэтому напрямую или через системный прокси этот запрос не повторится.
     public func downloadProtected(_ url: URLComponents) async throws -> SubscriptionContent {
         try Task.checkCancellation()
+        guard Self.supportsProtectedTransport else {
+            throw SubscriptionDownloadError(.protectedTransportUnsupported)
+        }
         let resolved = await protectedProxy?()
         try Task.checkCancellation()
         guard let proxy = resolved, proxy.valid else {
@@ -54,16 +65,28 @@ public struct SubscriptionDownloader: SubscriptionSource {
         configuration.urlCache = nil
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         // Исключение ATS разрешает пользовательские HTTP-подписки; HTTPS по-прежнему требует TLS 1.2 и доверенный
-        // сертификат. Обработчик authentication challenge ниже не отменяет системную проверку сервера.
+        // сертификат: обычную системную проверку сервера URLSession не переопределяем.
         configuration.tlsMinimumSupportedProtocolVersion = .TLSv12
-        configuration.connectionProxyDictionary = proxy?.configuration
+        if let proxy {
+            guard #available(iOS 17.0, macOS 14.0, *), let port = NWEndpoint.Port(rawValue: UInt16(proxy.port)) else {
+                throw SubscriptionDownloadError(.protectedTransportUnsupported)
+            }
+            // Modern API задает именно CONNECT transport, включая HTTP и локальные адреса. Запрещен любой failover
+            // к непроксированному соединению; credential относится к proxy, а не к заголовкам запроса сайта.
+            var requiredProxy = ProxyConfiguration(
+                httpCONNECTProxy: .hostPort(host: NWEndpoint.Host(SubscriptionProxy.host), port: port), tlsOptions: nil
+            )
+            requiredProxy.allowFailover = false
+            requiredProxy.applyCredential(username: proxy.user, password: proxy.password)
+            configuration.proxyConfigurations = [requiredProxy]
+        }
         if let protocols {
             configuration.protocolClasses = protocols
         }
 
         var request = URLRequest(url: target)
         request.setValue(Self.userAgent, forHTTPHeaderField: "User-Agent")
-        let transfer = Transfer(scheme: target.scheme?.lowercased(), maxBytes: maxBytes, proxy: proxy)
+        let transfer = Transfer(scheme: target.scheme?.lowercased(), maxBytes: maxBytes)
         let session = URLSession(configuration: configuration, delegate: transfer, delegateQueue: nil)
         defer { session.invalidateAndCancel() }
         return try await transfer.run(session.dataTask(with: request))
@@ -82,12 +105,10 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
     private var continuation: CheckedContinuation<SubscriptionContent, any Error>?
     private var task: URLSessionDataTask?
     private var cancelled = false
-    private let proxy: SubscriptionProxy?
 
-    init(scheme: String?, maxBytes: Int, proxy: SubscriptionProxy?) {
+    init(scheme: String?, maxBytes: Int) {
         self.scheme = scheme
         self.maxBytes = maxBytes
-        self.proxy = proxy
     }
 
     func run(_ task: URLSessionDataTask) async throws -> SubscriptionContent {
@@ -118,27 +139,6 @@ private final class Transfer: NSObject, URLSessionDataDelegate, @unchecked Senda
         }
         task?.cancel()
         continuation?.resume(throwing: CancellationError())
-    }
-
-    func urlSession(
-        _ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
-        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
-    ) {
-        let space = challenge.protectionSpace
-        guard space.isProxy() else {
-            completionHandler(.performDefaultHandling, nil)
-            return
-        }
-
-        // Учетные данные — только нашему локальному HTTP-прокси, никогда серверу подписки или другому посреднику.
-        guard let proxy, space.host == SubscriptionProxy.host, space.port == proxy.port,
-              space.authenticationMethod == NSURLAuthenticationMethodHTTPBasic, challenge.previousFailureCount == 0
-        else {
-            completionHandler(.cancelAuthenticationChallenge, nil)
-            return
-        }
-
-        completionHandler(.useCredential, URLCredential(user: proxy.user, password: proxy.password, persistence: .none))
     }
 
     func urlSession(

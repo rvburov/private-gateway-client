@@ -42,6 +42,7 @@ final class TextKeysTests: XCTestCase {
         let reasons: [FailureReason] = [
             .notFound, .forbidden(401), .status(500), .tooLarge, .timeout, .nameResolution, .connection, .tls, .noServers, .noAddress, .network,
             .protectedPathUnavailable,
+            .protectedTransportUnsupported,
         ]
         keys += reasons.map { TextKeys.failure($0).key }
         for count in [1, 2, 5] {

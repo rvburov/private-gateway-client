@@ -70,9 +70,6 @@ final class XrayConfigTests: XCTestCase {
         let first = try XCTUnwrap(try rules(config).first)
         XCTAssertEqual(first["inboundTag"] as? [String], [XrayConfig.subscriptionTag])
         XCTAssertEqual(first["outboundTag"] as? String, XrayConfig.proxyTag, "локальная сеть и DNS не отправляют подписку напрямую")
-        XCTAssertEqual(proxy.configuration["HTTPProxy"] as? String, "127.0.0.1")
-        XCTAssertEqual(proxy.configuration["HTTPSProxy"] as? String, "127.0.0.1")
-        XCTAssertEqual(proxy.configuration["ExceptionsList"] as? [String], [])
     }
 
     func testOwnDnsInAPrivateNetworkIsAskedDirectlyEvenWithTheLanClosed() throws {

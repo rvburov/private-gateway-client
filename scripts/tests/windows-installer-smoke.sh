@@ -31,7 +31,13 @@ msi_run() {
   local action=$1 file=${2:-$msi} log="artifacts/msi-$1-$RANDOM.log"
   shift $(( $# < 2 ? $# : 2 ))
   msiexec "/$action" "$(cygpath -w "$file")" /qn /norestart /l*v "$(cygpath -w "$log")" "$@" || {
-    iconv -f UTF-16LE -t UTF-8 "$log" 2> /dev/null | tail -60 || tail -60 "$log"
+    if iconv -f UTF-16LE -t UTF-8 "$log" > "$log.txt" 2> /dev/null; then
+      # Конец журнала — обычно только свойства MSI. Причина сбоя custom-action находится раньше.
+      grep -nE -B 8 -A 12 'Return value 3|WixQuietExec|RollbackUpgradeService|[Ee]rror [0-9]+|Ошибка' "$log.txt" | tail -100 || true
+      tail -20 "$log.txt"
+    else
+      tail -60 "$log"
+    fi
     fail "msiexec /$action $file закончился с ошибкой"
   }
 }

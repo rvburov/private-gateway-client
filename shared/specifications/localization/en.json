@@ -1,6 +1,7 @@
 {
   "app.title": "Private Gateway",
   "ios_secure_subscription.unavailable": "The protected download path is unavailable. Check the VPN connection and DNS through the server; the subscription is never downloaded directly.",
+  "ios_secure_subscription.unsupported": "Updating subscriptions only through the VPN requires iOS 17 or later. VPN and manual server import remain available on iOS 16; the subscription is never downloaded directly.",
   "app.badge.demo": "demo",
   "app.badge.demo.hint": "Demo mode: connection is simulated, servers are examples",
   "problem.service.title": "Service is not running",

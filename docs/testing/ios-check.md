@@ -124,6 +124,10 @@ CI уже проверяет без вас на симуляторе iPhone: с�
    поздний сетевой результат.
 
 Автоматически на macOS и в AppTests симулятора iOS: `ProtectedSubscriptionTests` — настоящий URLSession и HTTP-прокси на петле, Basic 407,
-HTTPS CONNECT, отказ закрытого прокси без запроса к прямому локальному адресу; `SubscriptionDownloaderTests` — отмена.
+HTTP/HTTPS CONNECT, отсутствие proxy credential в запросе сайта внутри туннеля, отказ закрытого прокси без запроса к
+прямому локальному адресу; `SubscriptionDownloaderTests` — отмена и availability. Проверки транспорта требуют iOS 17+ /
+macOS 14+: на iOS 16 / macOS 13 защищенное обновление явно отказывает до IPC/URLSession, без dictionary fallback.
+На iOS 16 дополнительно проверьте сообщение «Для обновления подписок только через VPN нужна iOS 17 или новее», работу
+самого VPN и ручного импорта: минимальная версия всего приложения не повышалась.
 На Linux/macOS: YAML escape-регрессия, `SerialWorkTests`, выбор защищенного метода обновления и отказ источника без него;
 `ReferenceConfigTests` дает настоящий конфиг HTTP-входа Xray-core версии libXray. Туннель и сценарии выше требуют iPhone.

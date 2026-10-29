@@ -101,6 +101,8 @@ public enum DownloadFailure: String, CaseIterable, Sendable {
     case noAddress = "NoAddress"
     /// Ядро туннеля не дало защищенный вход: напрямую при «только через VPN» не загружаем.
     case protectedPathUnavailable = "ProtectedPathUnavailable"
+    /// На iOS 16 нет API, гарантирующего отсутствие прямого повтора/обхода локального адреса URLSession.
+    case protectedTransportUnsupported = "ProtectedTransportUnsupported"
 
     /// Причина, сохраненная у подписки: nil — неудачи не было; неизвестное имя (из будущей версии) — сеть, как у десктопа.
     public static func parse(_ name: String?) -> DownloadFailure? {
@@ -132,6 +134,7 @@ public enum FailureReason: Equatable, Sendable {
     case noAddress
     case network
     case protectedPathUnavailable
+    case protectedTransportUnsupported
 
     /// Причина и код ответа, как их дает загрузка или хранит подписка. Код важен только для `.status`; без кода сказать
     /// «сервер ответил» нечего — «ошибка сети».
@@ -153,6 +156,7 @@ public enum FailureReason: Equatable, Sendable {
         case .noAddress: return .noAddress
         case .network: return .network
         case .protectedPathUnavailable: return .protectedPathUnavailable
+        case .protectedTransportUnsupported: return .protectedTransportUnsupported
         }
     }
 }

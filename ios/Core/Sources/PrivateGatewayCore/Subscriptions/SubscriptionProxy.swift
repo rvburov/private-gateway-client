@@ -59,14 +59,4 @@ public struct SubscriptionProxy: Codable, Equatable, Sendable {
         return address[whole] & mask == bytes[whole] & mask
     }
 
-    /// Явный прокси для HTTP и HTTPS (CONNECT). Пустые исключения: даже локальная подписка идет через выбранный сервер.
-    /// PAC/WPAD не используются; отсутствие или отказ этого входа — ошибка, а не возврат к системному/прямому пути.
-    public var configuration: [String: Any] {
-        [
-            "HTTPEnable": 1, "HTTPProxy": Self.host, "HTTPPort": port,
-            "HTTPSEnable": 1, "HTTPSProxy": Self.host, "HTTPSPort": port,
-            "ExceptionsList": [String](), "ExcludeSimpleHostnames": false,
-            "ProxyAutoConfigEnable": 0, "ProxyAutoDiscoveryEnable": 0,
-        ]
-    }
 }

@@ -59,6 +59,7 @@ public enum TextKeys {
         case .noAddress: return ("import.download.no_address", nil)
         case .network: return ("import.download.network", nil)
         case .protectedPathUnavailable: return ("ios_secure_subscription.unavailable", nil)
+        case .protectedTransportUnsupported: return ("ios_secure_subscription.unsupported", nil)
         }
     }
 

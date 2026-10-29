@@ -118,9 +118,30 @@ final class SubscriptionDownloaderTests: XCTestCase {
             _ = try await SubscriptionDownloader(protocols: [StubProtocol.self], protectedProxy: { nil }).downloadProtected(url)
             XCTFail("нет входа ядра — отказ до URLSession")
         } catch {
-            XCTAssertEqual(error as? SubscriptionDownloadError, SubscriptionDownloadError(.protectedPathUnavailable))
+            let expected: DownloadFailure = SubscriptionDownloader.supportsProtectedTransport ? .protectedPathUnavailable : .protectedTransportUnsupported
+            XCTAssertEqual(error as? SubscriptionDownloadError, SubscriptionDownloadError(expected))
         }
         XCTAssertNil(StubProtocol.seen, "токен не отправлен обычным download")
+    }
+
+    func testLegacyOsRefusesProtectedTransfersBeforeAskingForCredentialsOrStartingARequest() async {
+        if #available(iOS 17.0, macOS 14.0, *) {
+            XCTAssertTrue(SubscriptionDownloader.supportsProtectedTransport)
+            return
+        }
+        XCTAssertFalse(SubscriptionDownloader.supportsProtectedTransport)
+        StubProtocol.seen = nil
+        let source = SubscriptionDownloader(protocols: [StubProtocol.self], protectedProxy: {
+            XCTFail("на legacy ОС даже вход ядра не запрашивается")
+            return nil
+        })
+        do {
+            _ = try await source.downloadProtected(url)
+            XCTFail("нет обязательного CONNECT transport — явный отказ")
+        } catch {
+            XCTAssertEqual(error as? SubscriptionDownloadError, SubscriptionDownloadError(.protectedTransportUnsupported))
+        }
+        XCTAssertNil(StubProtocol.seen)
     }
 
     func testCancellationStopsAnInFlightDownloadWithoutWaitingForTheResourceTimeout() async throws {
