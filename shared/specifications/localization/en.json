@@ -1312,6 +1312,7 @@
   "about.tun": "TUN driver",
   "about.tun.none": "not installed",
   "about.tun.system": "built into the OS",
+  "about.tun.wintun": "Wintun built into sing-box",
   "about.tun.engine": "sing-box {0} · {1}",
   "about.privacy.group": "Privacy",
   "about.privacy.telemetry": "No telemetry is collected",

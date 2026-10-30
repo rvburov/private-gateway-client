@@ -1312,6 +1312,7 @@
   "about.tun": "TUN-драйвер",
   "about.tun.none": "не установлен",
   "about.tun.system": "встроен в ОС",
+  "about.tun.wintun": "Wintun в составе sing-box",
   "about.tun.engine": "sing-box {0} · {1}",
   "about.privacy.group": "Приватность",
   "about.privacy.telemetry": "Телеметрия не собирается",

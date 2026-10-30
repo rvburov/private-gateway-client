@@ -33,7 +33,7 @@ public sealed class AboutPageTests : WindowHarness
         Text(window, "ServiceState").ShouldBe("имитация, демо-режим");
         Text(window, "AboutXray").ShouldBe("не установлено");
         Text(window, "AboutSecondCore").ShouldBe("не установлено");
-        Text(window, "TunDriver").ShouldBe(OperatingSystem.IsWindows() ? "не установлен" : "встроен в ОС");
+        Text(window, "TunDriver").ShouldBe("не установлен", "без sing-box нет и TUN");
         Text(window, "ChannelText").ShouldBe("Стабильный");
         Text(window, "UpdatesText").ShouldBe("В демо-режиме обновления не проверяются.", "имитация в сеть не ходит — так и сказано");
         Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeFalse();
@@ -321,7 +321,8 @@ public sealed class AboutPageTests : WindowHarness
         var page = shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>();
 
         Text(window, "AboutXray").ShouldBe("25.8.3", "версии ядер — от службы");
-        Text(window, "TunDriver").ShouldStartWith("sing-box 1.14.3 · ", customMessage: "sing-box — движок TUN");
+        Text(window, "TunDriver").ShouldBe(OperatingSystem.IsWindows() ? "sing-box 1.14.3 · Wintun в составе sing-box" : "sing-box 1.14.3 · встроен в ОС",
+            "sing-box — движок TUN; Wintun у него свой, не «не установлен» (у пользователя на Windows 2026-10-30)");
         Text(window, "AboutSecondCore").ShouldBe("sing-box 1.14.3", "и ретранслятор Hysteria2 и TUIC за Xray");
         Text(window, "ServiceState").ShouldBe("работает · 0.0.9");
         page.ServiceNotice.ShouldStartWith($"Служба 0.0.9 старше окна {AppInfo.Version}");

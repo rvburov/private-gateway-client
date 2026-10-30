@@ -372,17 +372,12 @@ public sealed partial class AboutPageViewModel : ObservableObject
     public partial bool UpdateFailed { get; set; }
 
     /// <summary>
-    /// TUN режима VPN — sing-box (его версия от службы) поверх драйвера: на Windows — Wintun, его ставит служба; на macOS
-    /// и Linux TUN есть в самой ОС.
+    /// TUN режима VPN — sing-box (его версия от службы) поверх драйвера: на Windows — Wintun, он в составе самого sing-box
+    /// (отдельно его ставить не нужно); на macOS и Linux TUN есть в самой ОС. Нет sing-box — нет и TUN.
     /// </summary>
-    public string TunDriver
-    {
-        get
-        {
-            var driver = Loc.Instance[OperatingSystem.IsWindows() ? "about.tun.none" : "about.tun.system"];
-            return _details?.Core("sing-box") is { } engine ? Loc.Instance.Format("about.tun.engine", engine.Version, driver) : driver;
-        }
-    }
+    public string TunDriver => _details?.Core("sing-box") is { } engine
+        ? Loc.Instance.Format("about.tun.engine", engine.Version, Loc.Instance[OperatingSystem.IsWindows() ? "about.tun.wintun" : "about.tun.system"])
+        : Loc.Instance["about.tun.none"];
 
     // ── Команды ──────────────────────────────────────────────────────────────
 

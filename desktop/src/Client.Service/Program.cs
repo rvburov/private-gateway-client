@@ -147,7 +147,7 @@ var killSwitch = canVpn ? ServiceHost.KillSwitch() : null;
 // ждать его готовности здесь нельзя, ведь сеть еще не поднята. IPC имеет отдельный признак ServiceReady для установки.
 await using var gateway = await ServiceStartupReady.CreateGatewayAsync(
     new GatewayOptions(xray, canVpn, Uri.TryCreate(Option("--latency-target"), UriKind.Absolute, out var target) ? target : LatencyProbe.DefaultTarget, singBox, killSwitch, Routes: ServiceHost.Routes(),
-        Reconnect: ReconnectTiming.Default, Network: network, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
+        Reconnect: ReconnectTiming.Default, Network: network, CurrentNetwork: NetworkInspector.Current, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
         TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null, SystemDns: systemDns, NetworkDetails: ServiceHost.NetworkDetails(),
         Webrtc: ct => StunProbe.MappedAsync(StunProbe.DefaultServer, StunProbe.Timeout, ct)),

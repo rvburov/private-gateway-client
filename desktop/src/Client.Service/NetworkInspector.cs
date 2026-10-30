@@ -115,6 +115,34 @@ public sealed class NetworkInspector(INetworkDetails? details, TimeProvider time
         };
     }
 
+    /// <summary>
+    /// Сеть машины для главного экрана: включенный адаптер со шлюзом, не петля и не туннель (свой TUN и чужие VPN — не сеть
+    /// машины); из нескольких — кабель, потом Wi-Fi, потом сотовая, потом прочие. Нет такого — <see cref="NetworkInfo.Unknown"/>
+    /// («Нет сети»). Имя Wi-Fi .NET не дает — без имени.
+    /// </summary>
+    public static NetworkInfo Current(IEnumerable<(AdapterKind Kind, bool Up, bool HasGateway)> adapters)
+    {
+        ArgumentNullException.ThrowIfNull(adapters);
+        var kind = adapters.Where(a => a.Up && a.HasGateway && a.Kind is not (AdapterKind.Loopback or AdapterKind.Tunnel))
+            .Select(a => a.Kind).OrderBy(k => k switch { AdapterKind.Ethernet => 0, AdapterKind.Wifi => 1, AdapterKind.Cellular => 2, _ => 3 })
+            .Cast<AdapterKind?>().FirstOrDefault();
+        return kind switch
+        {
+            null => NetworkInfo.Unknown,
+            AdapterKind.Wifi => new NetworkInfo(NetworkKind.WiFi, null, false, false),
+            AdapterKind.Cellular => new NetworkInfo(NetworkKind.Mobile, null, false, true),
+            _ => new NetworkInfo(NetworkKind.Ethernet, null, false, false),
+        };
+    }
+
+    /// <summary>То же по адаптерам машины.</summary>
+    public static NetworkInfo Current() => Current(NetworkInterface.GetAllNetworkInterfaces().Select(a =>
+    {
+        var up = Try(() => a.OperationalStatus) == OperationalStatus.Up;
+        var gateway = up && Try(() => Gateways(a.GetIPProperties().GatewayAddresses.Select(g => g.Address)).Count > 0);
+        return (Kind(a.NetworkInterfaceType, a.Name, a.Description), up, gateway);
+    }));
+
     /// <summary>Шлюзы адаптера: «0.0.0.0» и «::» — это «шлюза нет» (так ОС пишет сеть без шлюза), их нет и в списке.</summary>
     public static List<IPAddress> Gateways(IEnumerable<IPAddress> gateways) =>
         [.. gateways.Where(a => !a.Equals(IPAddress.Any) && !a.Equals(IPAddress.IPv6Any))];

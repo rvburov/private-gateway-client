@@ -115,7 +115,8 @@ public sealed partial class Gateway
         // уведомления «Нужен вход в Wi-Fi».
         (_directIp, _directIp6, _directWebrtc) = (null, null, null);
         var now = _time.GetUtcNow();
-        Update(s => s with { Exit = s.Exit with { DirectIp = null }, NetworkChangedAt = now });
+        var network = ReadNetwork();
+        Update(s => s with { Exit = s.Exit with { DirectIp = null }, NetworkChangedAt = now, Network = network ?? s.Network });
 
         // Другая основная сеть (macOS): ее DNS — тоже на туннель, прежней — свой.
         if (Volatile.Read(ref _tunnel) is { } tunnel)

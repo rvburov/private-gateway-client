@@ -75,7 +75,8 @@ public sealed record GatewayOptions(
     INetworkDetails? NetworkDetails = null,
     Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null,
     Func<CancellationToken, Task<IPEndPoint?>>? Webrtc = null,
-    IReadOnlyList<string>? TunnelRoutes = null);
+    IReadOnlyList<string>? TunnelRoutes = null,
+    Func<NetworkInfo>? CurrentNetwork = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -213,6 +214,12 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             network.Changed += OnNetworkChanged;
             network.Resumed += OnResumed;
+        }
+
+        // Какая сеть у машины — для главного экрана («Wi-Fi», «Ethernet»); дальше — при каждой ее смене.
+        if (ReadNetwork() is { } info)
+        {
+            _status = _status with { Network = info };
         }
 
         var held = options.BootBlock is { } path ? Service.BootBlock.Read(path) : null;
@@ -2066,6 +2073,20 @@ public sealed partial class Gateway : IAsyncDisposable
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             _journal.Add(JournalLevel.Error, "service", "«Защита при загрузке»: подключение не записано: " + e.Message);
+        }
+    }
+
+    /// <summary>Сеть машины от ОС; не прочиталась — null и запись в журнал, прежнее значение остается.</summary>
+    private NetworkInfo? ReadNetwork()
+    {
+        try
+        {
+            return _options.CurrentNetwork?.Invoke();
+        }
+        catch (Exception e) when (e is System.Net.NetworkInformation.NetworkInformationException or IOException or InvalidOperationException)
+        {
+            _journal.Add(JournalLevel.Warning, "service", "Сеть машины не прочитана: " + e.Message);
+            return null;
         }
     }
 
