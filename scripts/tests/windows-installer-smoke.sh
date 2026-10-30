@@ -114,8 +114,13 @@ if changed:
     raise SystemExit("Компоненты одинаковой раскладки поменяли GUID: " + ", ".join(changed[:10]))
 print(f"Стабильные ComponentId подтверждены в двух MSI: {len(base)} компонентов")
 PY
+# Файл той же версии, что в новом MSI, но с другим содержимым — как пересборка 0.1.0 из новых исходников: при позднем
+# RemoveExistingProducts правила версий MSI оставили бы старый файл, обновление обязано его заменить.
+built="artifacts/publish/PrivateGateway-$version-win-x64/PrivateGateway.exe"
+printf 'stale' >> "$program/PrivateGateway.exe"
 msi_run i "$newer"
 [ "$(installed_version)" = "$major.$minor.$((patch + 1))" ] || fail "после обновления версия $(installed_version)"
+cmp -s "$built" "$program/PrivateGateway.exe" || fail "обновление оставило прежний файл той же версии (PrivateGateway.exe)"
 running || fail "после обновления служба не работает: $(sc query PrivateGateway)"
 [ "$(cat "$program/ServiceState/update-bucket")" = 42 ] || fail "обновление потеряло состояние службы"
 [ ! -e "$program/Service.old" ] && [ ! -e "$program/Service.new" ] || fail "после обновления остались папки Service.old/.new"
