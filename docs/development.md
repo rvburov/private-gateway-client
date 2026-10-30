@@ -21,7 +21,7 @@ v2fly/domain-list-community. Без него сборка выпуска ост�
 
 | ОС | Команда |
 | --- | --- |
-| Windows | в PowerShell: `winget install GoLang.Go`; нет `winget` — установщик `…windows-amd64.msi` с https://go.dev/dl/. Затем открыть Git Bash заново |
+| Windows | в PowerShell: `winget install GoLang.Go`, со Scoop — `scoop install go`; нет ни того ни другого — установщик `…windows-amd64.msi` с https://go.dev/dl/. Затем открыть Git Bash заново |
 | Debian, Ubuntu | `sudo apt-get install -y golang-go` |
 | Fedora | `sudo dnf install -y golang` |
 | macOS | `brew install go` |
