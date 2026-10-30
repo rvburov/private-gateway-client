@@ -895,6 +895,7 @@
   "diag.report.checkedAt": "Проверено: {0}",
   "diag.report.state": "Состояние: {0}",
   "diag.report.checks": "Проверки",
+  "diag.report.problems": "Ошибки и предупреждения (весь журнал окна)",
   "diag.report.journal": "Журнал (секреты скрыты)",
   "diag.report.network": "Сеть машины",
   "diag.report.compare": "До и после VPN",

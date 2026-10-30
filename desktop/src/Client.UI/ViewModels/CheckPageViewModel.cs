@@ -200,6 +200,18 @@ public sealed partial class CheckPageViewModel : ObservableObject
             lines.AddRange(inspector);
         }
 
+        // Ошибки и предупреждения всего журнала окна — отдельно: при подробном «Журнале ядра» последние строки — обычные
+        // события ядер, и ошибка первой попытки подключения в них не попадала (у пользователя на Windows 2026-10-31).
+        var problems = _gateway.Journal.Where(e => e.Level is JournalLevel.Warning or JournalLevel.Error).ToList();
+        if (problems.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add(loc["diag.report.problems"]);
+            lines.AddRange(problems
+                .Select(e => new JournalLineViewModel(e.Time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), e.Level, e.Source, SecretMasker.Mask(e.Message)))
+                .Select(j => $"  {j.Time} {j.Level} {j.Source}  {j.Message}"));
+        }
+
         lines.Add(string.Empty);
         lines.Add(loc["diag.report.journal"]);
         lines.AddRange(Journal.Reverse().Select(j => $"  {j.Time} {j.Level} {j.Source}  {j.Message}"));

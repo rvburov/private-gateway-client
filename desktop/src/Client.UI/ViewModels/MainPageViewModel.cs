@@ -374,11 +374,13 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         ? ms.ToString(CultureInfo.InvariantCulture)
         : IpPlaceholder;
 
-    public string DownText => Status.State == ConnectionState.Connected
+    // Скорость служба считает по адаптеру туннеля — только в режиме VPN; в режиме прокси общего счетчика нет, и «0,0» был бы
+    // неправдой.
+    public string DownText => Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn }
         ? Status.Traffic.DownloadMbps.ToString("0.0", Loc.Instance.Culture)
         : IpPlaceholder;
 
-    public string UpText => Status.State == ConnectionState.Connected
+    public string UpText => Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn }
         ? Status.Traffic.UploadMbps.ToString("0.0", Loc.Instance.Culture)
         : IpPlaceholder;
 

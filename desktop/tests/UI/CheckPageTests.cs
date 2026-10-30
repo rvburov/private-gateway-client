@@ -89,6 +89,14 @@ public sealed class CheckPageTests : WindowHarness
         Row(page, DiagnosticCheck.ExitIp).Chip.ShouldBe("Скрыт");
         page.Journal.Select(j => j.Level).ShouldContain("WRN");
         Snapshot(window, "check-blocked");
+
+        // Ошибки и предупреждения — отдельным разделом отчета, до обычного журнала: при подробном журнале ядра последние строки
+        // заняты его событиями, и ошибка первой попытки подключения в отчет не попадала (у пользователя 2026-10-31).
+        var report = page.BuildReport().Split(Environment.NewLine);
+        var problems = Array.IndexOf(report, "Ошибки и предупреждения (весь журнал окна)");
+        problems.ShouldBeGreaterThan(0);
+        report[problems + 1].ShouldContain(" WRN ");
+        problems.ShouldBeLessThan(Array.IndexOf(report, "Журнал (секреты скрыты)"));
     }
 
     [AvaloniaFact]

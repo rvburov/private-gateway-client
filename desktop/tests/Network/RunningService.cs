@@ -53,7 +53,9 @@ internal sealed class RunningService : IAsyncDisposable
             : Path.Combine(Path.GetTempPath(), "pg-ipc-" + Guid.NewGuid().ToString("N")[..8], "ipc.sock");
         var journal = new ServiceJournal(TimeProvider.System);
         var guard = systemProxy is var (proxy, backup) ? new SystemProxyGuard(proxy, backup, journal) : null;
-        var defaults = new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget);
+        // Пинг главного экрана (запрос через сервер раз в 15 с) в стендах выключен: он попал бы в счет запросов к сайтам
+        // тестов. Его проверяет GatewayTrafficTests.
+        var defaults = new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget, TrafficWatch: Timeout.InfiniteTimeSpan);
         var gateway = new Gateway(options?.Invoke(defaults) ?? defaults, time ?? TimeProvider.System, journal, guard);
         var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox), updates?.Invoke(journal),
             installer?.Invoke(journal));

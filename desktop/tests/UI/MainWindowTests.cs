@@ -636,6 +636,8 @@ public sealed class MainWindowTests : WindowHarness
         main.CheckedText.ShouldBe("Блок при обрыве в режиме прокси недоступен");
         main.HasCheckAction.ShouldBeTrue();
         main.WebIpMeta.ShouldEndWith("только для программ через прокси");
+        (main.PingText, main.DownText, main.UpText).ShouldBe(("42", "—", "—"),
+            "пинг — через сервер, а скорость в режиме прокси служба не считает: «0,0» был бы неправдой");
         (shell.Protection.Tone, shell.Protection.Label, shell.Protection.Mark).ShouldBe((Tone.Partial, "Прокси", "Icon.Mark.Alert"));
         main.HasBypass.ShouldBeFalse();
         Snapshot(window, "main-proxy");

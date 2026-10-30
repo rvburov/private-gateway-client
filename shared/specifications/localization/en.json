@@ -895,6 +895,7 @@
   "diag.report.checkedAt": "Checked: {0}",
   "diag.report.state": "State: {0}",
   "diag.report.checks": "Checks",
+  "diag.report.problems": "Errors and warnings (whole window journal)",
   "diag.report.journal": "Log (secrets hidden)",
   "diag.report.network": "This computer's network",
   "diag.report.compare": "Before and after VPN",

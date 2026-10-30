@@ -102,6 +102,14 @@ public static class LatencyProbe
         }
     }
 
+    /// <summary>Задержка до проверочного адреса через ядро и сервер, мс; нет ответа за время пробы — null.</summary>
+    public static async Task<int?> DelayAsync(ServerProbe probe, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(probe);
+        return (await RequestAsync(probe.Port, probe.Target, probe.Timeout, TimeProvider.System, cancellationToken, probe.Credentials)
+            .ConfigureAwait(false)).Milliseconds;
+    }
+
     /// <summary>Отвечает ли сервер: любой ответ HTTP через ядро — да; нет ответа за время пробы — нет.</summary>
     public static async Task<bool> ReachesAsync(ServerProbe probe, CancellationToken cancellationToken = default)
     {

@@ -76,7 +76,10 @@ public sealed record GatewayOptions(
     Func<ServerProbe, CancellationToken, Task<string?>>? AddressFetch = null,
     Func<CancellationToken, Task<IPEndPoint?>>? Webrtc = null,
     IReadOnlyList<string>? TunnelRoutes = null,
-    Func<NetworkInfo>? CurrentNetwork = null);
+    Func<NetworkInfo>? CurrentNetwork = null,
+    Func<ServerProbe, CancellationToken, Task<int?>>? Delay = null,
+    Func<(long Received, long Sent)?>? TunnelCounters = null,
+    TimeSpan? TrafficWatch = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -289,6 +292,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
         var every = options.BlockWatch ?? BlockWatchEvery;
         _blockWatch = time.CreateTimer(_ => _ = GuardBlockAsync(), null, every, every);
+        StartTrafficSampling(time);
 
         // Своего sing-box еще нет: правила маршрутизации, оставшиеся от его аварии в прошлом запуске, — убрать.
         if (options.CanVpn && VpnTunnel.RemoveLeftoverRules(options.TunnelNetns) is { Length: > 0 } removed)
@@ -936,6 +940,10 @@ public sealed partial class Gateway : IAsyncDisposable
         }
 
         await _blockWatch.DisposeAsync().ConfigureAwait(false);
+        if (_trafficTimer is not null)
+        {
+            await _trafficTimer.DisposeAsync().ConfigureAwait(false);
+        }
 
         // Переподключение, проверка связи и запуски туннеля останавливаются: подключения больше нет.
         Interlocked.Increment(ref _session);
