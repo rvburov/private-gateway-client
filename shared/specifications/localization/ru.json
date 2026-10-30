@@ -877,6 +877,8 @@
   "diag.exit_ip.waiting": "Станет известен после подключения",
   "diag.exit_ip.stopped": "Трафик остановлен: сайты не видят ни один ваш IP",
   "diag.exit_ip.stopped.chip": "Скрыт",
+  "diag.exit_ip.proxy": "{0} — только для программ, которые идут через прокси; остальные — напрямую, с вашим IP",
+  "diag.exit_ip.proxy.chip": "Через прокси",
   "diag.exit_ip.off": "{0} — ваш реальный IP",
   "diag.exit_ip.off.chip": "Виден",
   "diag.exit_ip.same_ip": "Сайты видят ваш реальный IP — трафик идет мимо туннеля",

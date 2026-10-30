@@ -258,6 +258,9 @@ public sealed class VpnTunnel : IAsyncDisposable
                 }
             }
 
+            // Последние строки sing-box всех уровней: на уровне журнала по умолчанию (warning) его ход запуска не виден, и
+            // отказ «не поднялся за N с» ничего не объяснял (у пользователя на Windows 2026-10-30) — при отказе они в журнал.
+            var recent = new System.Collections.Concurrent.ConcurrentQueue<string>();
             while (true)
             {
                 var ready = 0;
@@ -275,6 +278,13 @@ public sealed class VpnTunnel : IAsyncDisposable
                         {
                             output?.Invoke("sing-box", line);
                         }
+                        else
+                        {
+                            recent.Enqueue(line);
+                            while (recent.Count > StartupLines && recent.TryDequeue(out _))
+                            {
+                            }
+                        }
                     });
 
                 // Готов, когда запущены все части sing-box: правила маршрутизации TUN появляются раньше, чем выходы и
@@ -282,8 +292,20 @@ public sealed class VpnTunnel : IAsyncDisposable
                 var core = singBoxCore;
                 try
                 {
-                    await WaitAsync(() => Volatile.Read(ref ready) == 1, "sing-box", core, timeout - time.GetElapsedTime(started), time, cancellationToken)
+                    // Не меньше SingBoxStart: Windows при первом запуске создает адаптер Wintun несколько секунд, и остаток общего
+                    // срока подключения (по умолчанию 10 с минус запуск Xray и проверка IPv6) ему бывает мал.
+                    var left = timeout - time.GetElapsedTime(started);
+                    await WaitAsync(() => Volatile.Read(ref ready) == 1, "sing-box", core, left > SingBoxStart ? left : SingBoxStart, time, cancellationToken)
                         .ConfigureAwait(false);
+                }
+                catch (TunnelException) when (!(ipv6 && core.HasExited))
+                {
+                    foreach (var line in recent)
+                    {
+                        output?.Invoke("sing-box", line);
+                    }
+
+                    throw;
                 }
                 catch (TunnelException) when (ipv6 && core.HasExited)
                 {
@@ -435,6 +457,12 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// </summary>
     public static bool XrayStarted(string line) =>
         line.Contains("core: Xray ", StringComparison.Ordinal) && line.EndsWith(" started", StringComparison.Ordinal);
+
+    /// <summary>Сколько последних строк sing-box ниже уровня журнала пишется в журнал при отказе запуска.</summary>
+    public const int StartupLines = 30;
+
+    /// <summary>Сколько sing-box ждать не меньше, даже если общий срок подключения почти вышел.</summary>
+    public static readonly TimeSpan SingBoxStart = TimeSpan.FromSeconds(20);
 
     /// <summary>
     /// Предупреждение Xray-core 26.x о Shadowsocks, которое он печатает при каждом запуске из-за входа связи с TUN

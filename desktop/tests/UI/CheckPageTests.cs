@@ -92,6 +92,28 @@ public sealed class CheckPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Exit_ip_in_proxy_mode_is_not_called_hidden()
+    {
+        // У пользователя на Windows (2026-10-30) браузер шел мимо прокси, а проверка писала «Скрыт»: IP сервера видят только
+        // сайты, которые открывают программы через прокси ядра.
+        ScriptedService? service = null;
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Checks = [new DiagnosticResult(DiagnosticCheck.ExitIp, CheckState.Ok)],
+        });
+        Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Proxy });
+        service!.Push(s => s with { Exit = ExitInfo.Unknown with { Ip = "203.0.113.24" } });
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning);
+
+        Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов",
+            "203.0.113.24 — только для программ, которые идут через прокси; остальные — напрямую, с вашим IP", "Через прокси"));
+    }
+
+    [AvaloniaFact]
     public async Task Exit_ip_shows_when_the_service_measures_it_and_a_leak_or_silence_is_named()
     {
         ScriptedService? service = null;

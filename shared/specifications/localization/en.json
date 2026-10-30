@@ -877,6 +877,8 @@
   "diag.exit_ip.waiting": "Known after the connection",
   "diag.exit_ip.stopped": "Traffic is stopped: sites see none of your IPs",
   "diag.exit_ip.stopped.chip": "Hidden",
+  "diag.exit_ip.proxy": "{0} — only for apps that go through the proxy; others go direct, with your IP",
+  "diag.exit_ip.proxy.chip": "Via proxy",
   "diag.exit_ip.off": "{0} — your real IP",
   "diag.exit_ip.off.chip": "Visible",
   "diag.exit_ip.same_ip": "Sites see your real IP — traffic bypasses the tunnel",

@@ -242,11 +242,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
         {
             var result = _report?[check];
             var state = IsRunning || result is null ? CheckState.Waiting : result.State;
-            var reason = IsRunning ? null : result?.Reason;
+            var reason = IsRunning ? null : ViaProxy(check, state) ? "proxy" : result?.Reason;
             return new CheckRowViewModel(
                 check,
                 Loc.Instance[$"diag.{Id(check)}.title"],
-                result is null ? Loc.Instance["diag.checking"] : Detail(check, result.State, result.Reason),
+                result is null ? Loc.Instance["diag.checking"] : Detail(check, result.State, ViaProxy(check, result.State) ? "proxy" : result.Reason),
                 IsRunning ? Loc.Instance["diag.state.waiting.chip"] : Chip(check, state, reason),
                 state);
         }).ToList();
@@ -275,6 +275,14 @@ public sealed partial class CheckPageViewModel : ObservableObject
         OnPropertyChanged(nameof(HasJournal));
     }
 
+    /// <summary>
+    /// IP сервера в режиме прокси видят только сайты, которые открывают программы через прокси ядра: остальные идут напрямую.
+    /// «Скрыт» здесь вводил в заблуждение (у пользователя на Windows 2026-10-30 браузер шел мимо прокси, а проверка писала
+    /// «Скрыт»).
+    /// </summary>
+    private bool ViaProxy(DiagnosticCheck check, CheckState state) =>
+        check == DiagnosticCheck.ExitIp && state == CheckState.Ok && Protection.Status.Mode == ConnectionMode.Proxy;
+
     /// <summary>Пояснение: по коду уточнения, иначе по состоянию проверки, иначе общее.</summary>
     private string Detail(DiagnosticCheck check, CheckState state, string? reason)
     {
@@ -283,6 +291,8 @@ public sealed partial class CheckPageViewModel : ObservableObject
         var status = Protection.Status;
         switch (check)
         {
+            case DiagnosticCheck.ExitIp when reason == "proxy":
+                return Loc.Instance.Format("diag.exit_ip.proxy", status.Exit.Ip ?? Hidden);
             case DiagnosticCheck.ExitIp when state == CheckState.Ok && status.Exit.Ip is not null:
                 return string.Join(" · ", new[] { status.Exit.Ip, status.Exit.City, status.Exit.NetworkType }
                     .Where(s => !string.IsNullOrEmpty(s)));
