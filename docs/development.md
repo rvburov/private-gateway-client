@@ -11,7 +11,7 @@
 
 | ОС | Команда |
 | --- | --- |
-| Windows | в PowerShell: `winget install Git.Git Microsoft.DotNet.SDK.10` — дальше только Git Bash |
+| Windows | в PowerShell: `winget install Git.Git Microsoft.DotNet.SDK.10`; нет `winget` — установщики с https://git-scm.com и https://dotnet.microsoft.com/download (SDK 10). Дальше только Git Bash |
 | Debian, Ubuntu | `sudo apt-get install -y git curl unzip dotnet-sdk-10.0` |
 | Fedora | `sudo dnf install -y git curl unzip dotnet-sdk-10.0` |
 | macOS | `xcode-select --install`, затем `brew install --cask dotnet-sdk` (нужен Homebrew) |
@@ -21,7 +21,7 @@ v2fly/domain-list-community. Без него сборка выпуска ост�
 
 | ОС | Команда |
 | --- | --- |
-| Windows | в PowerShell: `winget install GoLang.Go`, затем открыть Git Bash заново |
+| Windows | в PowerShell: `winget install GoLang.Go`; нет `winget` — установщик `…windows-amd64.msi` с https://go.dev/dl/. Затем открыть Git Bash заново |
 | Debian, Ubuntu | `sudo apt-get install -y golang-go` |
 | Fedora | `sudo dnf install -y golang` |
 | macOS | `brew install go` |
