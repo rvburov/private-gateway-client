@@ -24,6 +24,10 @@ public static class IpcChannel
         var handler = new SocketsHttpHandler
         {
             ConnectCallback = (_, cancellationToken) => ConnectAsync(endpoint, system, cancellationToken),
+            // Без системного прокси: адрес канала — условный localhost, а прокси (часто мертвый, от выключенного другого
+            // VPN-клиента) перехватывал запрос, и HTTP/2 без TLS через него невозможен — служба работала, а окно писало
+            // «Служба не запущена» (у пользователя на Windows 2026-10-30).
+            UseProxy = false,
             // Соединение вместе с согласованием HTTP/2: на занятой машине служба отвечает не сразу. Pipe,
             // которого нет, отказывает раньше — через PipeWait.
             ConnectTimeout = TimeSpan.FromSeconds(10),
