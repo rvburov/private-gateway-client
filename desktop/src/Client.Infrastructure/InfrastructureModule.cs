@@ -66,7 +66,9 @@ public static class InfrastructureModule
         services.AddSingleton(_ => SystemNotifiers.ForCurrentOs(File.Exists(paths.NotifyIcon) ? paths.NotifyIcon : null));
         services.AddSingleton<ISubscriptionDownloader>(sp =>
             new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>(),
-                HttpSubscriptionDownloader.CreateDirectClient()));
+                HttpSubscriptionDownloader.CreateDirectClient(),
+                url => HttpSubscriptionDownloader.IsForeignProxy(HttpClient.DefaultProxy, url,
+                    sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)));
         return services;
     }
 }

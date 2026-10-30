@@ -28,6 +28,10 @@
     <!-- Удаление старого продукта — после применения нового скрипта и внутри общей транзакции. Перед ним уже можно
          зарегистрировать rollback службы: слот сразу после InstallInitialize запрещает любые script-generating actions. -->
     <MajorUpgrade Schedule="afterInstallExecute" AllowDowngrades="yes" />
+    <!-- При позднем удалении старого продукта новые файлы ложатся поверх старых по правилам версий MSI: файл той же
+         версии (пересборка 0.1.0) и более старой (откат на прежнюю версию) не заменился бы, и в папке осталась бы
+         прежняя программа под новой записью. «a» — заменять всегда: все файлы — свои, в своей папке. -->
+    <Property Id="REINSTALLMODE" Value="amus" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
 
     <Icon Id="AppIcon" SourceFile="$(Icon)" />

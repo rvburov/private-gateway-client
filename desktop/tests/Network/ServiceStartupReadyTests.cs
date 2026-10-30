@@ -1,12 +1,13 @@
 using System.Net.Sockets;
 using System.Text;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Service;
 
 namespace PrivateGateway.Client.Tests.Network;
 
-/// <summary>systemd ждет настоящий блок при загрузке, а не запуск процесса; все правила здесь — подделка.</summary>
+/// <summary>systemd ждет попытку восстановить блок при загрузке, а не запуск процесса; все правила здесь — подделка.</summary>
 public sealed class ServiceStartupReadyTests : IDisposable
 {
     private readonly string _root = Directory.CreateTempSubdirectory("pg-startup-").FullName;
@@ -34,78 +35,38 @@ public sealed class ServiceStartupReadyTests : IDisposable
     }
 
     [Fact]
-    public async Task Failed_boot_protection_never_releases_systemd()
+    public async Task Failed_boot_protection_keeps_the_service_running_with_an_error()
     {
         var block = Save(new HeldBlock(new KillSwitchPolicy(null, []), "vpn.example.com", Boot: true, Strict: false));
         var killSwitch = new StartupSwitch { Refuse = true };
+        var journal = new ServiceJournal(TimeProvider.System);
         var notified = false;
 
-        await Should.ThrowAsync<IOException>(async () =>
-        {
-            await using var gateway = await ServiceStartupReady.CreateGatewayAsync(Options(block, killSwitch), TimeProvider.System,
-                new ServiceJournal(TimeProvider.System), "/run/audit-notify.sock", _ => notified = true);
-        });
+        await using var gateway = await ServiceStartupReady.CreateGatewayAsync(Options(block, killSwitch), TimeProvider.System,
+            journal, "/run/audit-notify.sock", _ => notified = true);
 
-        notified.ShouldBeFalse("запуск процесса без действующего блока — еще не готовность");
+        notified.ShouldBeTrue("отказ запуска не закрыл бы сеть, а оставил бы окно без службы");
+        gateway.Status.ErrorCode.ShouldBe(ErrorCodes.KillSwitchFailed, "защита не подтверждена — так и видно в окне");
         killSwitch.IsIntact.ShouldBeFalse();
+        journal.Tail(100).ShouldContain(e => e.Level == JournalLevel.Error && e.Message.Contains("сторож", StringComparison.Ordinal));
     }
 
     [Fact]
-    public async Task Intact_old_rules_do_not_release_systemd_when_the_saved_policy_could_not_be_restored()
+    public async Task Intact_old_rules_are_not_reported_as_the_restored_policy()
     {
         var block = Save(new HeldBlock(new KillSwitchPolicy(null, []), "vpn.example.com", Boot: true, Strict: false));
         var killSwitch = new StartupSwitch { Enabled = true, Intact = true, Refuse = true };
-        var notified = false;
 
-        await Should.ThrowAsync<IOException>(async () =>
-        {
-            await using var gateway = await ServiceStartupReady.CreateGatewayAsync(Options(block, killSwitch), TimeProvider.System,
-                new ServiceJournal(TimeProvider.System), "/run/audit-notify.sock", _ => notified = true);
-        });
+        await using var gateway = await ServiceStartupReady.CreateGatewayAsync(Options(block, killSwitch), TimeProvider.System,
+            new ServiceJournal(TimeProvider.System), "/run/audit-notify.sock", _ => { });
 
-        notified.ShouldBeFalse("старые фильтры могли оставить разрешение прежнему TUN; нужна готовность новой политики");
+        gateway.Status.ErrorCode.ShouldBe(ErrorCodes.KillSwitchFailed,
+            "старые фильтры могли оставить разрешение прежнему TUN; нужна готовность новой политики");
     }
 
     [Fact]
-    public void Declared_but_inactive_filters_do_not_count_as_ready()
-    {
-        var killSwitch = new StartupSwitch { Enabled = true, Intact = false };
-        var notified = false;
-
-        Should.Throw<IOException>(() => ServiceStartupReady.NotifySystemd("@audit-notify", null, killSwitch, _ => notified = true));
-
-        notified.ShouldBeFalse("наличие таблицы без действующих правил не должно открывать барьер");
-    }
-
-    [Theory]
-    [InlineData(false, false, false)]
-    [InlineData(true, false, true)]
-    public void Disabled_or_open_boot_policy_does_not_require_filters(bool boot, bool paused, bool open)
-    {
-        var block = Save(new HeldBlock(new KillSwitchPolicy(null, []), "vpn.example.com", boot, Strict: false, paused, open));
-        var notified = false;
-
-        ServiceStartupReady.NotifySystemd("@audit-notify", block, null, _ => notified = true);
-
-        notified.ShouldBeTrue("пользователь выключил постоянную защиту — блок до сети не требуется");
-    }
-
-    [Fact]
-    public void Pause_left_by_a_crash_requires_protection_even_without_boot_policy()
-    {
-        var block = Save(new HeldBlock(new KillSwitchPolicy(null, []), "vpn.example.com", Boot: false, Strict: false, Paused: true));
-
-        Should.Throw<IOException>(() => ServiceStartupReady.NotifySystemd("@audit-notify", block, null,
-            _ => throw new InvalidOperationException("не должно уведомлять systemd")));
-    }
-
-    [Fact]
-    public void Manual_start_does_not_send_systemd_notifications()
-    {
-        var block = Save(new HeldBlock(new KillSwitchPolicy(null, []), "vpn.example.com", Boot: true, Strict: false));
-
-        ServiceStartupReady.NotifySystemd(null, block, null, _ => throw new InvalidOperationException("обычный запуск — без NOTIFY_SOCKET"));
-    }
+    public void Manual_start_does_not_send_systemd_notifications() =>
+        ServiceStartupReady.NotifySystemd(null, _ => throw new InvalidOperationException("обычный запуск — без NOTIFY_SOCKET"));
 
     [Theory]
     [InlineData(false)]

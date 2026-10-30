@@ -1,33 +1,34 @@
 using PrivateGateway.Client.Core;
-using PrivateGateway.Client.Core.Platform;
 
 namespace PrivateGateway.Client.Service;
 
 /// <summary>
-/// Ранняя готовность службы для systemd: конструктор Gateway уже восстановил блок, а подключение при загрузке еще
-/// не началось. systemd только после этой отметки выпускает network-pre.target; файл ServiceReady для установщика
-/// по-прежнему появляется позже, когда слушает IPC.
+/// Ранняя готовность службы для systemd: конструктор Gateway уже восстановил блок (или попытался), а подключение при
+/// загрузке еще не началось. systemd только после этой отметки выпускает network-pre.target; файл ServiceReady для
+/// установщика по-прежнему появляется позже, когда слушает IPC.
 /// </summary>
 public static class ServiceStartupReady
 {
     /// <summary>
-    /// Создать Gateway (его конструктор восстанавливает блок), проверить защиту и только потом отпустить systemd.
-    /// Ошибка уведомления не оставляет незакрытые таймеры Gateway. Подключение к серверу сюда не входит.
+    /// Создать Gateway (его конструктор восстанавливает блок) и только потом отпустить systemd. Блок не встал — служба
+    /// все равно отмечает готовность и остается в «Ошибке» с PGC-SVC-007 (решение 498): отказ запуска не закрыл
+    /// бы сеть — network-pre.target ждет только конца запуска, удачного или нет, — а лишил бы окно связи со службой
+    /// и возможности выключить защиту; повторяет попытку сторож блока, а не перезапуск systemd.
     /// </summary>
     public static async ValueTask<Gateway> CreateGatewayAsync(GatewayOptions options, TimeProvider time, ServiceJournal journal,
         string? notifySocket, Action<string> notify, SystemProxyGuard? systemProxy = null)
     {
+        ArgumentNullException.ThrowIfNull(journal);
         var gateway = new Gateway(options, time, journal, systemProxy);
         try
         {
-            // Старые фильтры могут быть целы, но сохранить разрешение прежнему TUN: отказ их
-            // замены в конструкторе тоже не является готовностью нужной политики.
             if (!string.IsNullOrEmpty(notifySocket) && gateway.Status.ErrorCode == ErrorCodes.KillSwitchFailed)
             {
-                throw new IOException("Служба не готова: сохраненная политика блока не восстановлена — READY=1 не отправлен");
+                journal.Add(JournalLevel.Error, "service",
+                    $"{ErrorCodes.KillSwitchFailed}: сохраненный блок при обрыве не подтвержден до сети — служба работает, блок повторит сторож");
             }
 
-            NotifySystemd(notifySocket, options.BootBlock, options.KillSwitch, notify);
+            NotifySystemd(notifySocket, notify);
             return gateway;
         }
         catch
@@ -37,26 +38,13 @@ public static class ServiceStartupReady
         }
     }
 
-    /// <summary>
-    /// Отметить готовность, если программу запустил systemd с NOTIFY_SOCKET. Сохраненная защита при загрузке или блок,
-    /// оставленный прошлым запуском, должны действовать по-настоящему; загрузка правил без действующего фильтра не
-    /// считается готовностью. Отказ не отправляет READY=1 и становится ошибкой запуска службы.
-    /// </summary>
-    public static void NotifySystemd(string? notifySocket, string? bootBlockFile, IKillSwitch? killSwitch, Action<string> notify)
+    /// <summary>Отметить готовность, если программу запустил systemd с NOTIFY_SOCKET.</summary>
+    public static void NotifySystemd(string? notifySocket, Action<string> notify)
     {
         ArgumentNullException.ThrowIfNull(notify);
-        if (string.IsNullOrEmpty(notifySocket))
+        if (!string.IsNullOrEmpty(notifySocket))
         {
-            return;
+            notify(notifySocket);
         }
-
-        var saved = bootBlockFile is null ? null : BootBlock.Read(bootBlockFile);
-        var required = saved is { Open: false } && (saved.Boot || saved.Paused);
-        if ((required || killSwitch?.IsEnabled == true) && killSwitch?.IsIntact != true)
-        {
-            throw new IOException("Служба не готова: сохраненный блок при обрыве не действует — READY=1 не отправлен");
-        }
-
-        notify(notifySocket);
     }
 }

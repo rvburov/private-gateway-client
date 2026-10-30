@@ -8,7 +8,8 @@ namespace PrivateGateway.Client.Infrastructure.Secrets;
 /// секрет посреди своей транзакции в app.db (сначала секрет, потом строка); в той же базе запись другим подключением
 /// ждала бы конца этой транзакции, а та — записи: «database is locked» через 30 с и падение окна при «Добавить»
 /// (найдено у пользователя 2026-10-29). Отдельный файл не ждет ничьих транзакций, как Связка ключей и Secret Service.
-/// Секреты из прежней таблицы app.db переносятся при создании файла.
+/// Секреты из прежней таблицы app.db переносятся при каждом запуске, пока она не пуста, и оттуда удаляются: прерванный
+/// перенос доделывается в следующий раз, а копия удаленного сервера не остается в app.db.
 /// </summary>
 public sealed class SecretFile
 {
@@ -19,13 +20,9 @@ public sealed class SecretFile
         ArgumentNullException.ThrowIfNull(database);
         _path = database.Paths.Secrets;
         database.Paths.EnsureCreated();
-        var created = !File.Exists(_path);
         using var connection = Open();
         Run(connection, "CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY NOT NULL, value BLOB NOT NULL)");
-        if (created)
-        {
-            MoveFrom(database, connection);
-        }
+        MoveFrom(database, connection);
     }
 
     public void Write(string key, byte[] value)
@@ -50,25 +47,47 @@ public sealed class SecretFile
         Run(connection, "DELETE FROM secrets WHERE key = $key", ("$key", key));
     }
 
-    /// <summary>Секреты, записанные прежними версиями в таблицу secrets самой базы (миграция 0002), — сюда.</summary>
+    /// <summary>
+    /// Секреты, записанные прежними версиями в таблицу secrets самой базы (миграция 0002), — сюда, затем удалить там.
+    /// Уже перенесенный ключ не перезаписывается: в файле он новее. Сбой до удаления — повтор при следующем запуске.
+    /// </summary>
     private static void MoveFrom(SqliteDatabase database, SqliteConnection target)
     {
         using var source = database.Open();
-        using var read = source.CreateCommand();
-        read.CommandText = "SELECT key, value FROM secrets";
-        using var reader = read.ExecuteReader();
-        using var transaction = target.BeginTransaction();
-        while (reader.Read())
+        var rows = new List<(string Key, byte[] Value)>();
+        using (var read = source.CreateCommand())
         {
-            using var write = target.CreateCommand();
-            write.Transaction = transaction;
-            write.CommandText = "INSERT OR IGNORE INTO secrets (key, value) VALUES ($key, $value)";
-            write.Parameters.AddWithValue("$key", reader.GetString(0));
-            write.Parameters.AddWithValue("$value", (byte[])reader.GetValue(1));
-            write.ExecuteNonQuery();
+            read.CommandText = "SELECT key, value FROM secrets";
+            using var reader = read.ExecuteReader();
+            while (reader.Read())
+            {
+                rows.Add((reader.GetString(0), (byte[])reader.GetValue(1)));
+            }
         }
 
-        transaction.Commit();
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        using (var transaction = target.BeginTransaction())
+        {
+            foreach (var (key, value) in rows)
+            {
+                using var write = target.CreateCommand();
+                write.Transaction = transaction;
+                write.CommandText = "INSERT OR IGNORE INTO secrets (key, value) VALUES ($key, $value)";
+                write.Parameters.AddWithValue("$key", key);
+                write.Parameters.AddWithValue("$value", value);
+                write.ExecuteNonQuery();
+            }
+
+            transaction.Commit();
+        }
+
+        using var delete = source.CreateCommand();
+        delete.CommandText = "DELETE FROM secrets";
+        delete.ExecuteNonQuery();
     }
 
     private SqliteConnection Open()

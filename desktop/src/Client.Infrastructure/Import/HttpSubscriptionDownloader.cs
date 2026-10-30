@@ -11,11 +11,15 @@ namespace PrivateGateway.Client.Infrastructure.Import;
 /// заголовка Profile-Title. Сначала — как настроена система (ее прокси), а если до прокси не дойти — еще раз напрямую
 /// (<paramref name="direct"/>): системный прокси часто оставляет другой VPN-клиент, и пока тот выключен, прокси на его
 /// адресе нет — подписка не грузилась с «нет соединения с сервером подписки» (у пользователя на Windows 2026-10-29).
+/// Только если прокси чужой (<paramref name="mayBypass"/>): системный прокси на входе своего ядра — это режим прокси,
+/// и пока ядро перезапускается, напрямую загрузка ушла бы мимо защиты; без прокси повторять нечего.
 /// </summary>
 /// <param name="http">Клиент с системным прокси.</param>
 /// <param name="time">Часы для предела времени.</param>
 /// <param name="direct">Клиент без прокси для второй попытки; null — без нее.</param>
-public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider time, HttpClient? direct = null) : ISubscriptionDownloader
+/// <param name="mayBypass">Можно ли идти мимо системного прокси для этого адреса; null — можно.</param>
+public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider time, HttpClient? direct = null, Func<Uri, bool>? mayBypass = null)
+    : ISubscriptionDownloader
 {
     public static readonly TimeSpan Timeout = SubscriptionDownload.Timeout;
 
@@ -28,6 +32,21 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
     /// <summary>То же без системного прокси — вторая попытка, когда прокси не отвечает.</summary>
     public static HttpClient CreateDirectClient() =>
         new(new SocketsHttpHandler { AutomaticDecompression = DecompressionMethods.All, UseProxy = false });
+
+    /// <summary>
+    /// Прокси системы для адреса — чужой: он есть и это не вход своего ядра (127.0.0.1 или ::1 на порту
+    /// <paramref name="ownPort"/>). Только мимо такого загрузка повторяется напрямую.
+    /// </summary>
+    public static bool IsForeignProxy(IWebProxy proxy, Uri url, int ownPort)
+    {
+        ArgumentNullException.ThrowIfNull(proxy);
+        if (proxy.IsBypassed(url) || proxy.GetProxy(url) is not { } address || address == url)
+        {
+            return false;
+        }
+
+        return !(address.IsLoopback && address.Port == ownPort);
+    }
 
     public async Task<SubscriptionContent> DownloadAsync(Uri url, CancellationToken cancellationToken = default)
     {
@@ -45,7 +64,8 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
             {
                 return await FetchAsync(http, url, linked.Token).ConfigureAwait(false);
             }
-            catch (HttpRequestException e) when (direct is not null && e.HttpRequestError is HttpRequestError.ProxyTunnelError or HttpRequestError.ConnectionError)
+            catch (HttpRequestException e) when (direct is not null && e.HttpRequestError is HttpRequestError.ProxyTunnelError or HttpRequestError.ConnectionError
+                && (mayBypass?.Invoke(url) ?? true))
             {
                 return await FetchAsync(direct, url, linked.Token).ConfigureAwait(false);
             }

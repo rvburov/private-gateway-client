@@ -44,6 +44,34 @@ public sealed class SubscriptionDownloaderTests
     }
 
     [Fact]
+    public async Task Own_core_as_the_system_proxy_is_never_bypassed()
+    {
+        // Режим прокси: системный прокси — вход своего ядра. Пока ядро перезапускается, напрямую — мимо защиты.
+        var direct = 0;
+        var downloader = new HttpSubscriptionDownloader(
+            new HttpClient(new StubHandler(_ => throw new HttpRequestException(HttpRequestError.ConnectionError, "proxy"))), _time,
+            new HttpClient(new StubHandler(_ =>
+            {
+                direct++;
+                return Ok("vless://…");
+            })),
+            _ => false);
+
+        (await Should.ThrowAsync<SubscriptionDownloadException>(() => downloader.DownloadAsync(Url, Ct))).Failure.ShouldBe(DownloadFailure.Connection);
+        direct.ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:10808", false)]
+    [InlineData("http://localhost:10808", false)]
+    [InlineData("http://[::1]:10808", false)]
+    [InlineData("http://127.0.0.1:1080", true)]
+    [InlineData("http://192.0.2.10:10808", true)]
+    [InlineData(null, false)]
+    public void Only_a_foreign_system_proxy_may_be_bypassed(string? proxy, bool foreign) =>
+        HttpSubscriptionDownloader.IsForeignProxy(proxy is null ? new WebProxy() : new WebProxy(proxy), Url, 10808).ShouldBe(foreign);
+
+    [Fact]
     public async Task Answer_through_the_system_proxy_needs_no_second_try()
     {
         var direct = 0;

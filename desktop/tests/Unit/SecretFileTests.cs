@@ -68,8 +68,39 @@ public sealed class SecretFileTests : IDisposable
         var file = new SecretFile(database);
 
         Encoding.UTF8.GetString(file.Read("server:srv-1").ShouldNotBeNull()).ShouldBe("blob-1");
+        Count(database).ShouldBe(0, "в app.db копия не остается: удаленный сервер не оставил бы там свой ключ");
         file.Write("server:srv-1", Encoding.UTF8.GetBytes("blob-2"));
-        Encoding.UTF8.GetString(new SecretFile(database).Read("server:srv-1")!).ShouldBe("blob-2", "переносится только при создании файла");
+        Encoding.UTF8.GetString(new SecretFile(database).Read("server:srv-1")!).ShouldBe("blob-2", "перенесенное не перезаписывается");
+    }
+
+    [Fact]
+    public void Interrupted_move_is_finished_at_the_next_start()
+    {
+        // Файл уже есть (перенос прервался или прежняя сборка переносила только при создании), а в app.db ключи остались.
+        var database = new SqliteDatabase(_paths);
+        new SecretFile(database).Write("server:srv-2", Encoding.UTF8.GetBytes("new-2"));
+        using (var connection = database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "INSERT INTO secrets (key, value) VALUES ('server:srv-1', $one), ('server:srv-2', $two)";
+            command.Parameters.AddWithValue("$one", Encoding.UTF8.GetBytes("blob-1"));
+            command.Parameters.AddWithValue("$two", Encoding.UTF8.GetBytes("old-2"));
+            command.ExecuteNonQuery();
+        }
+
+        var file = new SecretFile(database);
+
+        Encoding.UTF8.GetString(file.Read("server:srv-1").ShouldNotBeNull()).ShouldBe("blob-1");
+        Encoding.UTF8.GetString(file.Read("server:srv-2")!).ShouldBe("new-2", "в файле ключ новее");
+        Count(database).ShouldBe(0);
+    }
+
+    private static long Count(SqliteDatabase database)
+    {
+        using var connection = database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT COUNT(*) FROM secrets";
+        return (long)command.ExecuteScalar()!;
     }
 
     private static List<ServerDefinition> Parse(params string[] links) =>
