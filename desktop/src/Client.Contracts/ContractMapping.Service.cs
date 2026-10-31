@@ -1,5 +1,6 @@
 using Google.Protobuf.WellKnownTypes;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -71,6 +72,22 @@ public static partial class ContractMapping
         V1.NetworkKind.UsbModem => NetworkKind.UsbModem,
         V1.NetworkKind.Mobile => NetworkKind.Mobile,
         _ => throw new ArgumentOutOfRangeException(nameof(kind), kind, "Сеть не задана"),
+    };
+
+    public static V1.OtherClientSign ToContract(this OtherClientSign sign) => sign switch
+    {
+        OtherClientSign.Adapter => V1.OtherClientSign.Adapter,
+        OtherClientSign.Process => V1.OtherClientSign.Process,
+        OtherClientSign.SystemProxy => V1.OtherClientSign.SystemProxy,
+        _ => throw new ArgumentOutOfRangeException(nameof(sign), sign, null),
+    };
+
+    public static OtherClientSign ToCore(this V1.OtherClientSign sign) => sign switch
+    {
+        V1.OtherClientSign.Adapter => OtherClientSign.Adapter,
+        V1.OtherClientSign.Process => OtherClientSign.Process,
+        V1.OtherClientSign.SystemProxy => OtherClientSign.SystemProxy,
+        _ => throw new ArgumentOutOfRangeException(nameof(sign), sign, "Признак не задан"),
     };
 
     // ── Сервер ───────────────────────────────────────────────────────────────
@@ -353,6 +370,12 @@ public static partial class ContractMapping
             result.Error = new V1.ErrorInfo { Code = code };
         }
 
+        result.OtherClients.AddRange(status.OtherClients?.Items.Select(c => new V1.OtherClient
+        {
+            Program = c.Program,
+            Sign = c.Sign.ToContract(),
+            Detail = c.Detail,
+        }) ?? []);
         return result;
     }
 
@@ -375,7 +398,13 @@ public static partial class ContractMapping
             Empty(status.Error?.Code),
             status.CaptivePauseUntil?.ToDateTimeOffset(),
             status.StrictBlock,
-            status.NetworkChangedAt?.ToDateTimeOffset());
+            status.NetworkChangedAt?.ToDateTimeOffset(),
+            // Признак, которого окно не знает (служба новее), — без него: остальные находки остаются.
+            status.OtherClients.Count == 0 ? null : new OtherClientList(
+            [
+                .. status.OtherClients.Where(c => c.Sign != V1.OtherClientSign.Unspecified && System.Enum.IsDefined(c.Sign))
+                    .Select(c => new OtherClient(c.Program, c.Sign.ToCore(), c.Detail)),
+            ]));
     }
 
     /// <summary>Пустая строка контракта — как отсутствующее значение.</summary>

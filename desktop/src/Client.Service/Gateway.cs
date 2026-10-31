@@ -79,7 +79,8 @@ public sealed record GatewayOptions(
     Func<NetworkInfo>? CurrentNetwork = null,
     Func<ServerProbe, CancellationToken, Task<int?>>? Delay = null,
     Func<(long Received, long Sent)?>? TunnelCounters = null,
-    TimeSpan? TrafficWatch = null);
+    TimeSpan? TrafficWatch = null,
+    Func<IReadOnlyList<RunningProcess>>? Processes = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -486,16 +487,17 @@ public sealed partial class Gateway : IAsyncDisposable
             return await RejectAsync(request, core.Mode, ErrorCodes.CoreFailed, "Нет сборки ядра Xray", generation, cancellationToken).ConfigureAwait(false);
         }
 
-        // Чужой туннель с маршрутом ко всему интернету: два VPN сразу — трафик может пойти мимо нашего.
-        if (vpn && OtherVpnAdapters() is { Count: > 0 } other)
+        // Другая программа VPN или прокси ведет трафик (решение 507): два VPN сразу — трафик может пойти мимо туннеля, а внешний IP
+        // показал бы ее сервер. Рядом с ней защита не включается, пока пользователь не разрешил это в настройках.
+        if (OtherClientsNow(vpn, request.ForeignProxy) is { Count: > 0 } other)
         {
             if (!request.AllowOtherVpn)
             {
-                return await RejectAsync(request, core.Mode, ErrorCodes.OtherVpn,
-                    $"Работает другой VPN: маршрут ко всему интернету через {string.Join(", ", other)}", generation, cancellationToken).ConfigureAwait(false);
+                return await RejectAsync(request, core.Mode, ErrorCodes.OtherVpn, "Работает другой VPN или прокси: " + Describe(other), generation,
+                    cancellationToken, new OtherClientList(other)).ConfigureAwait(false);
             }
 
-            _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({string.Join(", ", other)}) — подключение по выбору пользователя");
+            _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({Describe(other)}) — подключение по выбору пользователя");
         }
 
         // Поиск адреса сервера бывает долгим (до срока пробы, под блоком — еще DoH службы): с выключенной защитой окно сразу
@@ -690,6 +692,74 @@ public sealed partial class Gateway : IAsyncDisposable
         _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id
             + (process.CompanionId is { } relayId ? ", ретранслятор sing-box для Hysteria2 и TUIC — процесс " + relayId : string.Empty));
         return relayReady;
+    }
+
+    /// <summary>
+    /// Другие программы VPN и прокси, которые сейчас ведут трафик (<see cref="OtherClients"/>): ядра других программ, системный
+    /// прокси окна, если его вход на этой машине слушает (<paramref name="foreignProxy"/> — «адрес:порт» от окна), и в режиме
+    /// VPN (<paramref name="vpn"/>) — туннели с маршрутом ко всему интернету. Режиму прокси чужой туннель не помеха: его
+    /// трафик идет к своему серверу и через чужой VPN, выход тот же. Процессов служба не читает (тесты) — только туннели и прокси.
+    /// </summary>
+    private IReadOnlyList<OtherClient> OtherClientsNow(bool vpn, string? foreignProxy)
+    {
+        IReadOnlyList<RunningProcess> processes = [];
+        try
+        {
+            processes = _options.Processes?.Invoke() ?? [];
+        }
+        catch (Exception e) when (e is IOException or InvalidOperationException or System.ComponentModel.Win32Exception or UnauthorizedAccessException)
+        {
+            _journal.Add(JournalLevel.Warning, "service", "Процессы не прочитаны, другие программы VPN не проверены: " + e.Message);
+        }
+
+        (string, int?)? proxy = null;
+        if (foreignProxy is { Length: > 0 } address && OtherClients.LocalPort(address) is { } port && Listener(port) is { Listens: true } listener)
+        {
+            proxy = (address, listener.Owner);
+        }
+
+        string[] own = [.. new[] { _options.XrayPath, _options.SingBoxPath }.OfType<string>().Select(Path.GetFullPath)];
+        return OtherClients.Find(processes, own, vpn ? OtherVpnAdapters() ?? [] : [], proxy);
+    }
+
+    /// <summary>Слушает ли кто-то порт <paramref name="port"/> на этой машине и кто (номер процесса, если ОС его называет).</summary>
+    private (bool Listens, int? Owner) Listener(int port)
+    {
+        try
+        {
+            if (_options.NetworkDetails?.Sockets() is { Count: > 0 } sockets)
+            {
+                var socket = sockets.FirstOrDefault(s => s is { Protocol: SocketProtocol.Tcp, State: SocketState.Listen } && s.Local.Port == port);
+                return (socket is not null, socket?.ProcessId);
+            }
+        }
+        catch (IOException)
+        {
+            // Таблица сокетов не прочиталась — проверка соединением.
+        }
+
+        try
+        {
+            using var probe = new TcpClient();
+            return (probe.ConnectAsync(IPAddress.Loopback, port).Wait(TimeSpan.FromMilliseconds(500)) && probe.Connected, null);
+        }
+        catch (Exception e) when (e is SocketException or AggregateException)
+        {
+            return (false, null);
+        }
+    }
+
+    /// <summary>Находки для журнала: «Hiddify: процесс HiddifyCli, системный прокси 127.0.0.1:2334; адаптер wg0».</summary>
+    public static string Describe(IReadOnlyList<OtherClient> clients)
+    {
+        ArgumentNullException.ThrowIfNull(clients);
+        return string.Join("; ", clients.GroupBy(c => c.Program, StringComparer.Ordinal).Select(g =>
+            (g.Key.Length > 0 ? g.Key + ": " : string.Empty) + string.Join(", ", g.Select(c => c.Sign switch
+            {
+                OtherClientSign.Adapter => "адаптер " + c.Detail,
+                OtherClientSign.Process => "процесс " + c.Detail,
+                _ => "системный прокси " + c.Detail,
+            }))));
     }
 
     /// <summary>
@@ -989,7 +1059,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// блок при обрыве, если снова просят режим VPN с блоком: «Блокировка» с кодом причины.
     /// </summary>
     private async Task<V1.ConnectReply> RejectAsync(V1.ConnectRequest request, ConnectionMode? mode, string code, string message,
-        int generation, CancellationToken cancellationToken)
+        int generation, CancellationToken cancellationToken, OtherClientList? clients = null)
     {
         var serverId = request.Server?.Id;
         var strict = mode == ConnectionMode.Vpn && request.Protection?.StrictMode == true;
@@ -1045,6 +1115,7 @@ public sealed partial class Gateway : IAsyncDisposable
                     Update(s => Requested(s) with
                     {
                         ErrorCode = code,
+                        OtherClients = clients,
                         CaptivePauseUntil = null,
                         Protection = ProtectionChecks.For(ConnectionState.Blocked),
                         Since = now,
@@ -1053,7 +1124,7 @@ public sealed partial class Gateway : IAsyncDisposable
                 }
                 else
                 {
-                    Move(Requested, ConnectionState.Blocked, after: s => s with { ErrorCode = code, StrictBlock = strictHeld });
+                    Move(Requested, ConnectionState.Blocked, after: s => s with { ErrorCode = code, OtherClients = clients, StrictBlock = strictHeld });
                 }
 
                 if (Status.StrictBlock)
@@ -1080,7 +1151,7 @@ public sealed partial class Gateway : IAsyncDisposable
             }
 
             // Подключения нет и прежнее остановлено: защиты нет, трафик идет напрямую — так и говорить.
-            Move(s => Requested(s) with { ErrorCode = code }, ConnectionState.Error,
+            Move(s => Requested(s) with { ErrorCode = code, OtherClients = clients }, ConnectionState.Error,
                 s => s with { Protection = ProtectionChecks.For(ConnectionState.Off) });
         }
         finally

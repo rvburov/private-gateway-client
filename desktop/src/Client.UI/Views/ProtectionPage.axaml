@@ -194,6 +194,18 @@
           </StackPanel>
         </Border>
 
+        <TextBlock Classes="overline" Text="{l:L prot.group.other, Upper=True}" Margin="6,16,6,8" />
+        <Border Classes="card" Padding="16,2">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+            <StackPanel Spacing="3" Margin="0,0,14,0">
+              <TextBlock Classes="strong" Text="{l:L prot.otherVpn.title}" TextWrapping="Wrap" />
+              <TextBlock Classes="caption" Text="{l:L prot.otherVpn.text}" TextWrapping="Wrap" />
+            </StackPanel>
+            <ToggleButton x:Name="OtherVpnToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
+                          IsChecked="{Binding AllowOtherVpn}" AutomationProperties.Name="{l:L prot.otherVpn.title}" />
+          </Grid>
+        </Border>
+
         <Border Height="{StaticResource PgLayout.ScrollBottomPadding}" />
       </StackPanel>
     </ScrollViewer>

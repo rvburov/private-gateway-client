@@ -1,12 +1,15 @@
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Service;
@@ -33,6 +36,7 @@ public sealed class ProblemPageTests : WindowHarness
 
     // Установленная служба находит чужой VPN, пока его не выключат или не выберут «Продолжить».
     private bool _otherVpn;
+    private OtherClientList? _others;
 
     public ProblemPageTests() => _launcher = new FakeLauncher(() => _answering.Add(User));
 
@@ -211,7 +215,7 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public async Task Other_vpn_screen_checks_again_and_goes_on_only_by_choice()
+    public async Task Other_vpn_screen_names_the_program_checks_again_and_goes_on_only_with_the_setting()
     {
         Installer.IsAvailable = true;
         _answering.Add(Installed);
@@ -221,41 +225,67 @@ public sealed class ProblemPageTests : WindowHarness
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.CurrentKey == Pages.Problem);
 
+        // Служба старее окна — находок не присылает: экран по макету, без названия программы.
         var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
         Text(window, "ProblemTitle").ShouldBe("Работает другой VPN");
         WaitFor(() => page.Facts.Count == 3);
         page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Чужой сетевой адаптер: активен", "Системный прокси: 127.0.0.1:7890", "Маршрут по умолчанию: занят"],
             "системный прокси другой программы — строка по макету; читает его окно: служба настроек пользователя не видит");
-        (Find<Button>(window, "Retry").Content, Find<Button>(window, "Continue").Content)
-            .ShouldBe(("Я отключил его — проверить снова", "Продолжить (не рекомендуется)"));
+        Find<Button>(window, "Retry").Content.ShouldBe("Я закрыл его — проверить снова");
+        window.GetVisualDescendants().OfType<Button>().ShouldNotContain(b => b.Name == "Continue",
+            "«Продолжить (не рекомендуется)» нет: рядом с другим VPN защита не включается (решение 507)");
         (Find<Button>(window, "Install").IsVisible, Find<Button>(window, "UseProxy").IsVisible, Find<Button>(window, "Cancel").IsVisible)
             .ShouldBe((false, false, false), "ни установка, ни режим прокси другой VPN не уберут");
         Find<Button>(window, "Details").Content.ShouldBe("Подробнее в журнале · код PGC-NET-010");
-        Snapshot(window, "problem-other-vpn");
 
         Press(window, "Retry");
         WaitFor(() => shell.Toast.IsVisible);
 
-        shell.Toast.Text.ShouldBe("Другой VPN все еще работает — отключите его или продолжите на свой риск");
+        shell.Toast.Text.ShouldBe("Другая программа VPN все еще работает — закройте ее и проверьте снова");
         shell.CurrentKey.ShouldBe(Pages.Problem);
+
+        // Служба назвала программу: заголовок, текст и строки — о ней; ее вход прокси служба нашла сама — строки окна нет.
+        _others = new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli"),
+            new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:7890")]);
+        Time.Advance(TimeSpan.FromSeconds(1));
+        Press(window, "Retry");
+        WaitFor(() => Text(window, "ProblemTitle") == "Работает Hiddify");
+
+        Text(window, "ProblemText").ShouldStartWith("Hiddify уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход»");
+        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Hiddify: процесс HiddifyCli", "Hiddify: прокси 127.0.0.1:7890"]);
+        shell.Toast.Text.ShouldBe("Hiddify все еще работает — закройте его: значок в трее → «Выход»");
+        Snapshot(window, "problem-other-vpn");
 
         _otherVpn = false;
         Press(window, "Retry");
         WaitFor(() => shell.CurrentKey == Pages.Home);
 
         Service<IGatewayClient>().Status.State.ShouldBe(ConnectionState.Connected);
-        _installed!.OtherVpnAllowed.ShouldBeFalse("проверили снова — подключение без исключений");
 
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         _otherVpn = true;
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { AllowOtherVpn = true } });
         Time.Advance(TimeSpan.FromSeconds(1));
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
-        WaitFor(() => shell.CurrentKey == Pages.Problem);
+        Dispatcher.UIThread.RunJobs();
 
-        Press(window, "Continue");
-        WaitFor(() => shell.CurrentKey == Pages.Home);
+        (shell.CurrentKey, Service<IGatewayClient>().Status.State).ShouldBe((Pages.Home, ConnectionState.Connected),
+            "«Разрешить работу рядом с другим VPN» — подключение идет");
+    }
 
-        (Service<IGatewayClient>().Status.State, _installed.OtherVpnAllowed).ShouldBe((ConnectionState.Connected, true), "подключение — по выбору пользователя");
+    [AvaloniaFact]
+    public void The_setting_to_run_alongside_another_vpn_is_off_by_default_and_saved()
+    {
+        var (window, shell) = Open();
+        shell.NavigateCommand.Execute(Pages.Protection);
+        Dispatcher.UIThread.RunJobs();
+
+        var toggle = Find<ToggleButton>(window, "OtherVpnToggle");
+        toggle.IsChecked.ShouldBe(false, "по умолчанию рядом с другим VPN защита не включается");
+        toggle.IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+
+        Service<SettingsService>().Current.Protection.AllowOtherVpn.ShouldBeTrue();
     }
 
     [AvaloniaFact]
@@ -284,8 +314,8 @@ public sealed class ProblemPageTests : WindowHarness
                 address => address.System
                     ? _installed = new ScriptedService(Time, Settings, ServiceKind.Installed)
                     {
-                        Outcome = connecting => _otherVpn && !_installed!.OtherVpnAllowed
-                            ? (connecting with { ErrorCode = ErrorCodes.OtherVpn }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+                        Outcome = connecting => _otherVpn && !Settings().Protection.AllowOtherVpn
+                            ? (connecting with { ErrorCode = ErrorCodes.OtherVpn, OtherClients = _others }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
                             {
                                 Protection = ProtectionChecks.For(ConnectionState.Off),
                             }

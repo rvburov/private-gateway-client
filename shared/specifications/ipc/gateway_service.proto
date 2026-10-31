@@ -160,6 +160,27 @@ message Status {
   // Когда служба последний раз видела смену сети машины; не задано — с запуска службы не менялась.
   // Окно по нему понимает, что попытки идут сразу после смены Wi-Fi (уведомление «Нужен вход в Wi-Fi»).
   google.protobuf.Timestamp network_changed_at = 13;
+  // Другие программы VPN и прокси: в ERROR с PGC-NET-010 — из-за них подключение не началось (экран называет программу),
+  // в CONNECTED — запустились во время подключения (уведомление). Иначе пусто.
+  repeated OtherClient other_clients = 14;
+}
+
+// Чем выдала себя другая программа VPN или прокси.
+enum OtherClientSign {
+  OTHER_CLIENT_SIGN_UNSPECIFIED = 0;
+  // Ее туннель держит маршрут ко всему интернету; detail — имя адаптера.
+  OTHER_CLIENT_SIGN_ADAPTER = 1;
+  // Работает ее ядро; detail — имя процесса.
+  OTHER_CLIENT_SIGN_PROCESS = 2;
+  // Системный прокси ведет на ее вход на этой машине; detail — «адрес:порт».
+  OTHER_CLIENT_SIGN_SYSTEM_PROXY = 3;
+}
+
+message OtherClient {
+  // Название программы (Hiddify, v2rayN…); не узнана — пусто.
+  string program = 1;
+  OtherClientSign sign = 2;
+  string detail = 3;
 }
 
 enum NetworkKind {
@@ -226,8 +247,13 @@ message ConnectRequest {
   ProtectionSettings protection = 3;
   RoutingSettings routing = 4;
   ConnectionSettings connection = 5;
-  // Режим VPN: подключиться, хотя работает другой VPN (PGC-NET-010), — «Продолжить (не рекомендуется)».
+  // Подключиться, хотя работает другая программа VPN или прокси (PGC-NET-010), — настройка «Разрешить работу рядом с
+  // другим VPN».
   bool allow_other_vpn = 6;
+  // Системный прокси пользователя окна, если его поставила другая программа: «адрес:порт»; нет — пусто. Установленная
+  // служба его не видит (настройки пользователя), а вход на этой машине, который он указывает, проверяет: слушает — работает
+  // другая программа прокси (PGC-NET-010).
+  string foreign_proxy = 7;
 }
 
 // «Подключение и ядро» (доска 6): ядро, TUN, соединение, режим прокси.

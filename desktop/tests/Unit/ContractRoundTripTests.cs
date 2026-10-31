@@ -3,6 +3,7 @@ using Google.Protobuf;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using V1 = PrivateGateway.Client.Contracts.V1;
@@ -113,6 +114,32 @@ public sealed class ContractRoundTripTests
         V1.Status.Parser.ParseFrom(tunneled.ToContract().ToByteArray()).ToCore().Protection.Ipv6Tunnel.ShouldBeTrue("IPv6 через туннель доходит до окна");
         var moved = status with { NetworkChangedAt = at.AddSeconds(-40) };
         V1.Status.Parser.ParseFrom(moved.ToContract().ToByteArray()).ToCore().ShouldBe(moved, "время смены сети доходит до окна");
+        var others = off with
+        {
+            State = ConnectionState.Error,
+            ErrorCode = "PGC-NET-010",
+            OtherClients = new OtherClientList(
+            [
+                new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli"),
+                new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:2334"),
+                new OtherClient(string.Empty, OtherClientSign.Adapter, "wg0"),
+            ]),
+        };
+        V1.Status.Parser.ParseFrom(others.ToContract().ToByteArray()).ToCore().ShouldBe(others, "находки другой программы VPN доходят до окна");
+        var newer = others.ToContract();
+        newer.OtherClients.Add(new V1.OtherClient { Program = "Будущая", Sign = (V1.OtherClientSign)42, Detail = "x" });
+        newer.ToCore().OtherClients.ShouldBe(others.OtherClients, "признак, которого окно не знает, пропускается, остальное остается");
+    }
+
+    [Fact]
+    public void Other_client_signs_round_trip()
+    {
+        foreach (var sign in Enum.GetValues<OtherClientSign>())
+        {
+            sign.ToContract().ToCore().ShouldBe(sign);
+        }
+
+        Should.Throw<ArgumentOutOfRangeException>(() => V1.OtherClientSign.Unspecified.ToCore());
     }
 
     [Fact]

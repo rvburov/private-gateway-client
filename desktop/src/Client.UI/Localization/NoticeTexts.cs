@@ -4,7 +4,8 @@ namespace PrivateGateway.Client.UI.Localization;
 
 /// <summary>
 /// Тексты уведомлений на языке интерфейса (доски 19 и 22): заголовок по событию (<c>{0}</c> — версия обновления), текст по
-/// ключу — <c>{0}</c> сервер, <c>{1}</c> подписка, <c>{2}</c> причина: код ошибки словами или почему подписка не загрузилась.
+/// ключу — <c>{0}</c> сервер, <c>{1}</c> подписка, <c>{2}</c> причина: код ошибки словами или почему подписка не загрузилась,
+/// <c>{3}</c> — другая программа VPN или прокси.
 /// </summary>
 public sealed class NoticeTexts : INoticeTexts
 {
@@ -16,7 +17,8 @@ public sealed class NoticeTexts : INoticeTexts
             : string.Empty;
         return new NoticeText(
             Loc.Instance.Format(TitleKey(notice.Kind), notice.Version ?? string.Empty),
-            Loc.Instance.Format(notice.TextKey, notice.Server ?? Loc.Instance["notify.server.none"], notice.Subscription ?? string.Empty, reason),
+            Loc.Instance.Format(notice.TextKey, notice.Server ?? Loc.Instance["notify.server.none"], notice.Subscription ?? string.Empty, reason,
+                notice.Program ?? string.Empty),
             [.. notice.Actions.Select(a => new NoticeButton(a, Loc.Instance["notify.action." + char.ToLowerInvariant(a.ToString()[0]) + a.ToString()[1..]]))]);
     }
 
@@ -36,6 +38,7 @@ public sealed class NoticeTexts : INoticeTexts
         NoticeKind.ServerGone => "notify.gone.title",
         NoticeKind.ServerChanged => "notify.changed.title",
         NoticeKind.UpdateAvailable => "notify.update.title",
+        NoticeKind.OtherClient => "notify.other.title",
         _ => "notify.stale.title",
     };
 }

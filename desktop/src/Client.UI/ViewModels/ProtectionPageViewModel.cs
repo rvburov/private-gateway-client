@@ -166,6 +166,13 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         set => Set(p => p with { LanDiscovery = value });
     }
 
+    /// <summary>«Разрешить работу рядом с другим VPN» (решение 507): по умолчанию выключено — рядом с ним защита не включается.</summary>
+    public bool AllowOtherVpn
+    {
+        get => P.AllowOtherVpn;
+        set => Set(p => p with { AllowOtherVpn = value });
+    }
+
     // ── Команды ──────────────────────────────────────────────────────────────
 
     [RelayCommand]

@@ -94,6 +94,32 @@ public sealed partial class ReconnectTests
     }
 
     [Fact]
+    public async Task Another_client_started_while_connected_is_in_the_status_until_it_quits()
+    {
+        // Ядро другой программы запустилось во время подключения: подключение идет дальше, а состояние называет программу —
+        // окно скажет об этом уведомлением. Проверка — с каждой пробой связи.
+        IReadOnlyList<RunningProcess> running = [];
+        await using var rig = await ProxyRig.CreateAsync(processes: () => running);
+        using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        running = [new RunningProcess(7, "HiddifyCli", null)];
+        var noted = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.OtherClients.Count > 0, rig.Service.Journal))[^1];
+
+        noted.State.ShouldBe(V1.ConnectionState.Connected, "подключение идет дальше");
+        noted.OtherClients.Select(c => (c.Program, c.Sign, c.Detail)).ShouldBe([("Hiddify", V1.OtherClientSign.Process, "HiddifyCli")]);
+        rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Level == JournalLevel.Warning
+            && e.Message == "Запустилась другая программа VPN или прокси (Hiddify: процесс HiddifyCli) — трафик может пойти мимо туннеля");
+
+        running = [];
+        var gone = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.OtherClients.Count == 0, rig.Service.Journal))[^1];
+
+        gone.State.ShouldBe(V1.ConnectionState.Connected);
+        rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Другая программа VPN или прокси больше не работает");
+    }
+
+    [Fact]
     public async Task Network_change_checks_the_server_at_once_and_skips_the_rest_of_the_pause()
     {
         // Пробы раз в час и паузы по часу: успеть может только смена сети. Другой VPN режиму прокси не помеха.
@@ -396,7 +422,8 @@ public sealed partial class ReconnectTests
         public RunningService Service { get; }
 
         public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null, IRouteTable? routes = null,
-            (ISystemProxy Proxy, string Backup)? systemProxy = null, Func<ServerProbe, CancellationToken, Task<bool>>? probe = null)
+            (ISystemProxy Proxy, string Backup)? systemProxy = null, Func<ServerProbe, CancellationToken, Task<bool>>? probe = null,
+            Func<IReadOnlyList<RunningProcess>>? processes = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var site = new LocalSite("проверка");
@@ -406,7 +433,7 @@ public sealed partial class ReconnectTests
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
             var service = await RunningService.StartAsync(site.Url, systemProxy: systemProxy,
-                options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes, Probe = probe ?? o.Probe });
+                options: o => o with { Reconnect = timing ?? Fast, Network = network, Routes = routes, Probe = probe ?? o.Probe, Processes = processes });
             return new ProxyRig(site, serverConfig, serverPort, definition, server, service);
         }
 

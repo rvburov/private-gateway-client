@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Network.Xray;
 using PrivateGateway.Client.Service.Cores;
@@ -74,6 +75,8 @@ public sealed partial class Gateway
             {
                 return;
             }
+
+            NoteOtherClients(session);
 
             // Одна неудача бывает и у живого сервера — вторая проба сразу.
             if (await ProbeAsync().ConfigureAwait(false) || await ProbeAsync().ConfigureAwait(false))
@@ -196,6 +199,40 @@ public sealed partial class Gateway
 
         _ = StopForOtherVpnAsync(session, other);
         return true;
+    }
+
+    /// <summary>
+    /// Во время подключения запустилась другая программа VPN или прокси (работает ее ядро): окно говорит об этом уведомлением
+    /// (<see cref="ConnectionStatus.OtherClients"/> в «Защищено»), подключение идет дальше — чужой туннель с маршрутом ко всему
+    /// интернету останавливает его сам (<see cref="OtherVpnStarted"/>). Пользователь разрешил работу рядом с другим VPN —
+    /// молчать. Проверка — с каждой пробой связи.
+    /// </summary>
+    private void NoteOtherClients(int session)
+    {
+        if (_allowOtherVpn || _options.Processes is null)
+        {
+            return;
+        }
+
+        var found = OtherClientsNow(vpn: false, foreignProxy: null);
+        var list = found.Count == 0 ? null : new OtherClientList(found);
+        lock (_gate)
+        {
+            if (session != _session || _status.State != ConnectionState.Connected || Equals(_status.OtherClients, list))
+            {
+                return;
+            }
+
+            _status = _status with { OtherClients = list };
+            foreach (var watcher in _watchers)
+            {
+                watcher.TryWrite(_status);
+            }
+        }
+
+        _journal.Add(list is null ? JournalLevel.Info : JournalLevel.Warning, "service", list is null
+            ? "Другая программа VPN или прокси больше не работает"
+            : $"Запустилась другая программа VPN или прокси ({Describe(found)}) — трафик может пойти мимо туннеля");
     }
 
     /// <summary>Ядра останавливаются, блок при обрыве остается: трафик стоит, пока пользователь не решит.</summary>

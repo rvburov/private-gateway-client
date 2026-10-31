@@ -39,7 +39,9 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     private readonly List<JournalEntry> _journal = [];
     private ConnectionStatus _status;
 
-    // «Продолжить (не рекомендуется)» на «Работает другой VPN»: до отключения другой VPN не мешает подключаться.
+    private readonly Func<UserProxy?>? _userProxy;
+
+    // Подключиться вопреки другому VPN (ConnectDespiteOtherVpnAsync): до отключения другой VPN не мешает подключаться.
     private volatile bool _allowOtherVpn;
 
     /// <param name="channel">Канал до службы (<see cref="IpcChannel"/>); клиент его закрывает.</param>
@@ -47,9 +49,14 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// <param name="definitions">Описание сервера с ключами по id — из хранилища (ключи — из хранилища ОС).</param>
     /// <param name="settings">Текущие настройки: режим, защита, подключение, маршрутизация.</param>
     /// <param name="time">Часы программы.</param>
+    /// <param name="userProxy">
+    /// Системный прокси пользователя окна (<see cref="IUserProxySettings.Read"/>): поставленный другой программой уходит службе в
+    /// запросе подключения — сама установленная служба его не видит; null — не передавать.
+    /// </param>
     public ServiceGatewayClient(GrpcChannel channel, ServiceKind service, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings,
-        TimeProvider time)
+        TimeProvider time, Func<UserProxy?>? userProxy = null)
     {
+        _userProxy = userProxy;
         _channel = channel;
         Service = service;
         _client = new V1.GatewayService.GatewayServiceClient(channel);
@@ -102,7 +109,8 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             Protection = settings.ToContract(),
             Connection = settings.ToConnection(),
             Routing = settings.ToRouting(),
-            AllowOtherVpn = _allowOtherVpn,
+            AllowOtherVpn = _allowOtherVpn || settings.Protection.AllowOtherVpn,
+            ForeignProxy = await ForeignProxyAsync(settings).ConfigureAwait(false),
         };
         try
         {
@@ -118,6 +126,21 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             Unreachable(server.Id, settings.Mode);
         }
+    }
+
+    /// <summary>
+    /// Системный прокси другой программы — «адрес:порт» для службы (она проверит, слушает ли его вход на этой машине); свой,
+    /// скрипт автонастройки или прокси нет — пусто. На Linux и macOS его читает отдельная программа — в фоне.
+    /// </summary>
+    private async Task<string> ForeignProxyAsync(AppSettings settings)
+    {
+        if (_userProxy is not { } read)
+        {
+            return string.Empty;
+        }
+
+        var proxy = await Task.Run(read).ConfigureAwait(false);
+        return proxy is { IsScript: false } && proxy.IsForeign(settings) ? proxy.Address : string.Empty;
     }
 
     public async Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default)

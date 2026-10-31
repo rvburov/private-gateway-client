@@ -150,7 +150,7 @@ await using var gateway = await ServiceStartupReady.CreateGatewayAsync(
         Reconnect: ReconnectTiming.Default, Network: network, CurrentNetwork: NetworkInspector.Current, BootBlock: bootBlock, Trace: LatencyProbe.DefaultTrace, BootConnect: bootConnect,
         Trace6: LatencyProbe.DefaultTrace6, Doh: LatencyProbe.DefaultDoh, OutsideDns: DnsProbe.DefaultResolver,
         TunDevice: OperatingSystem.IsLinux() ? "/dev/net/tun" : null, SystemDns: systemDns, NetworkDetails: ServiceHost.NetworkDetails(),
-        Webrtc: ct => StunProbe.MappedAsync(StunProbe.DefaultServer, StunProbe.Timeout, ct)),
+        Webrtc: ct => StunProbe.MappedAsync(StunProbe.DefaultServer, StunProbe.Timeout, ct), Processes: RunningProcesses.Read),
     time, journal, OperatingSystem.IsLinux() && !user ? Environment.GetEnvironmentVariable("NOTIFY_SOCKET") : null,
     PrivateGateway.Client.Platform.Linux.SystemdService.NotifyReady, systemProxy).ConfigureAwait(false);
 // Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки и прежняя версия (для

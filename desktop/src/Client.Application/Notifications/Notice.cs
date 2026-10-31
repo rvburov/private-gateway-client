@@ -37,6 +37,9 @@ public enum NoticeKind
 
     /// <summary>Проверка по расписанию нашла новую версию программы.</summary>
     UpdateAvailable,
+
+    /// <summary>Во время подключения запустилась другая программа VPN или прокси (решение 507).</summary>
+    OtherClient,
 }
 
 /// <summary>Кнопки уведомления; надписи — <c>notify.action.*</c>.</summary>
@@ -78,7 +81,8 @@ public enum NoticeAction
 
 /// <summary>
 /// Что сказать: событие, ключ текста и кнопки (не больше двух — доска 22). Тексты окно берет из локализации:
-/// <c>{0}</c> — сервер, <c>{1}</c> — подписка, <c>{2}</c> — причина (код ошибки или неудача загрузки); в заголовке
+/// <c>{0}</c> — сервер, <c>{1}</c> — подписка, <c>{2}</c> — причина (код ошибки или неудача загрузки), <c>{3}</c> — другая программа
+/// VPN; в заголовке
 /// <c>{0}</c> — версия обновления. IP-адресов и имен сетей Wi-Fi в уведомлениях нет.
 /// </summary>
 public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<NoticeAction> Actions)
@@ -86,6 +90,9 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
     public string? Server { get; init; }
 
     public string? Subscription { get; init; }
+
+    /// <summary>Названия других программ VPN и прокси (<see cref="NoticeKind.OtherClient"/>) — <c>{3}</c> в тексте.</summary>
+    public string? Program { get; init; }
 
     /// <summary>Код ошибки защиты (<see cref="Core.ErrorCodes"/>).</summary>
     public string? Code { get; init; }
@@ -100,7 +107,7 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
 
     /// <summary>Важное (обрыв, блокировка интернета, вход в Wi-Fi, сбой службы) — со звуком; остальные — обычные, без звука.</summary>
     public bool IsImportant => Kind is NoticeKind.ConnectionLost or NoticeKind.ServerDown or NoticeKind.WifiSignIn
-        or NoticeKind.ServiceStopped or NoticeKind.ProtectionFailed;
+        or NoticeKind.ServiceStopped or NoticeKind.ProtectionFailed or NoticeKind.OtherClient;
 
     /// <summary>
     /// Метка: новое уведомление с той же меткой заменяет прежнее в центре уведомлений ОС — о защите там одно, последнее.

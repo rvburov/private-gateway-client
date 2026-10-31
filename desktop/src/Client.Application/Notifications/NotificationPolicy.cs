@@ -48,6 +48,11 @@ public static class NotificationPolicy
             ConnectionState.Error when changed =>
                 new(NoticeKind.ProtectionFailed, "notify.failed." + Traffic(after), [NoticeAction.Open]),
 
+            // Во время подключения запустилась другая программа VPN или прокси: трафик может пойти мимо туннеля.
+            ConnectionState.Connected when !moved && after.OtherClients is { Items.Count: > 0 } others && before.OtherClients is null =>
+                Programs(others) is { Length: > 0 } names
+                    ? new(NoticeKind.OtherClient, "notify.other.named", [NoticeAction.Open]) { Program = names }
+                    : new(NoticeKind.OtherClient, "notify.other.text", [NoticeAction.Open]),
             ConnectionState.Connected when moved =>
                 new(NoticeKind.Connected, before.State == ConnectionState.Reconnecting ? "notify.on.back" : after.IsProxy ? "notify.on.proxy" : "notify.on.text", []),
             ConnectionState.Off when moved =>
@@ -69,6 +74,9 @@ public static class NotificationPolicy
             && status.Network.Kind is not (NetworkKind.Mobile or NetworkKind.UsbModem)
             && ConnectionController.CanPause(status);
     }
+
+    /// <summary>Названия узнанных программ через запятую; ни одной — пусто.</summary>
+    private static string Programs(Core.Platform.OtherClientList others) => string.Join(", ", others.Programs(string.Empty).Where(p => p.Length > 0));
 
     /// <summary>Что с трафиком: закрыт блоком, идет напрямую или стоит у прокси.</summary>
     private static string Traffic(ConnectionStatus status) =>

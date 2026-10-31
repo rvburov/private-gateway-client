@@ -68,7 +68,8 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Bool("protection.block_ipv6", p.BlockIpv6),
             Enum("protection.addresses", p.Addresses),
             Bool("protection.allow_lan", p.AllowLan),
-            Bool("protection.lan_discovery", p.LanDiscovery));
+            Bool("protection.lan_discovery", p.LanDiscovery),
+            Bool("protection.allow_other_vpn", p.AllowOtherVpn));
         var c = d.Connection;
         var core = new ConnectionSettings(
             Enum("connection.core_log", c.CoreLog),
@@ -179,6 +180,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["protection.addresses"] = settings.Protection.Addresses.ToString(),
             ["protection.allow_lan"] = Text(settings.Protection.AllowLan),
             ["protection.lan_discovery"] = Text(settings.Protection.LanDiscovery),
+            ["protection.allow_other_vpn"] = Text(settings.Protection.AllowOtherVpn),
             ["connection.core_log"] = settings.Connection.CoreLog.ToString(),
             ["connection.tun_engine"] = settings.Connection.Stack.ToString(),
             ["connection.mtu"] = settings.Connection.Mtu?.ToString(CultureInfo.InvariantCulture) ?? string.Empty,

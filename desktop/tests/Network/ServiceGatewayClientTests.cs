@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using System.Net.Sockets;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
@@ -80,13 +81,15 @@ public sealed class ServiceGatewayClientTests
         await client.ConnectAsync(Profile(definition), Ct);
 
         (client.Status.State, client.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.OtherVpn), "отказ виден сразу: окно решает по нему");
+        client.Status.OtherClients.ShouldBe(new OtherClientList([new OtherClient(string.Empty, OtherClientSign.Adapter, "wg0")]),
+            "находка доходит до окна: экран назовет адаптер");
         (await client.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn]
             .ShouldBe(new DiagnosticResult(DiagnosticCheck.OtherVpn, CheckState.Warning, "vpn_adapter"));
 
         await client.ConnectDespiteOtherVpnAsync(Profile(definition), Ct);
 
         client.Status.ErrorCode.ShouldBe(ErrorCodes.ServerNotFound, "другой VPN пропущен — подключение дошло до адреса сервера");
-        service.Journal.Tail(50).ShouldContain(e => e.Message == "Работает другой VPN (wg0) — подключение по выбору пользователя");
+        service.Journal.Tail(50).ShouldContain(e => e.Message == "Работает другой VPN (адаптер wg0) — подключение по выбору пользователя");
 
         await client.ConnectAsync(Profile(definition), Ct);
 
@@ -101,6 +104,76 @@ public sealed class ServiceGatewayClientTests
         {
             routes.Routes = [new DefaultRoute("eth0", IsTunnel: false), new DefaultRoute(own, IsTunnel: true)];
             (await client.RunChecksAsync(Ct))[DiagnosticCheck.OtherVpn]!.State.ShouldBe(CheckState.Ok, "свой туннель — не чужой VPN");
+        }
+    }
+
+    [Fact]
+    public async Task Proxy_mode_does_not_start_next_to_another_client_core_until_the_setting_allows_it()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        // Hiddify ведет трафик своим ядром HiddifyCli; свое ядро службы (тот же путь, что у Xray службы) — не помеха; окно
+        // v2rayA без ядра — тоже. Туннель другого VPN режиму прокси не помеха.
+        IReadOnlyList<RunningProcess> processes =
+        [
+            new(100, "Hiddify", @"C:\Program Files\Hiddify\Hiddify.exe"),
+            new(101, "HiddifyCli", @"C:\Program Files\Hiddify\HiddifyCli.exe"),
+            new(102, "xray", Path.GetFullPath(XrayKit.Xray!)),
+        ];
+        var running = processes;
+        var routes = new FakeRoutes { Routes = [new DefaultRoute("wg0", IsTunnel: true)] };
+        await using var service = await RunningService.StartAsync(options: o => o with { Processes = () => running, Routes = routes });
+        var (definition, _) = XrayKit.Pair("vless", 443);
+        var settings = Settings(XrayKit.FreePort());
+        using (var client = Client(service.Endpoint, definition, settings))
+        {
+            await client.ConnectAsync(Profile(definition), Ct);
+
+            (client.Status.State, client.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.OtherVpn));
+            client.Status.OtherClients.ShouldBe(new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]));
+            service.Journal.Tail(50).ShouldContain(e => e.Message.Contains("Работает другой VPN или прокси: Hiddify: процесс HiddifyCli", StringComparison.Ordinal));
+
+            running = [processes[0], processes[2]];
+            await client.ConnectAsync(Profile(definition), Ct);
+
+            client.Status.ErrorCode.ShouldNotBe(ErrorCodes.OtherVpn, "Hiddify открыт, но выключен: его ядро не работает — трафик он не ведет");
+            client.Status.OtherClients.ShouldBeNull();
+            await client.DisconnectAsync(Ct);
+        }
+
+        running = processes;
+        using var allowed = Client(service.Endpoint, definition, settings with { Protection = settings.Protection with { AllowOtherVpn = true } });
+        await allowed.ConnectAsync(Profile(definition), Ct);
+
+        allowed.Status.ErrorCode.ShouldNotBe(ErrorCodes.OtherVpn, "«Разрешить работу рядом с другим VPN» — подключение идет");
+        service.Journal.Tail(50).ShouldContain(e => e.Message == "Работает другой VPN (Hiddify: процесс HiddifyCli) — подключение по выбору пользователя");
+    }
+
+    [Fact]
+    public async Task A_foreign_system_proxy_blocks_only_while_its_local_entry_listens()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        // Системный прокси другой программы видит окно, а не служба: оно присылает его в запросе, служба проверяет его вход.
+        using var entry = new TcpListener(IPAddress.Loopback, 0);
+        entry.Start();
+        var address = $"127.0.0.1:{((IPEndPoint)entry.LocalEndpoint).Port}";
+        await using var service = await RunningService.StartAsync();
+        var (definition, _) = XrayKit.Pair("vless", 443);
+        var settings = Settings(XrayKit.FreePort());
+        using (var client = Client(service.Endpoint, definition, settings, () => new UserProxy(address)))
+        {
+            await client.ConnectAsync(Profile(definition), Ct);
+
+            client.Status.ErrorCode.ShouldBe(ErrorCodes.OtherVpn);
+            client.Status.OtherClients.ShouldBe(new OtherClientList([new OtherClient(string.Empty, OtherClientSign.SystemProxy, address)]));
+        }
+
+        entry.Stop();
+        using (var dead = Client(service.Endpoint, definition, settings, () => new UserProxy(address)))
+        {
+            await dead.ConnectAsync(Profile(definition), Ct);
+
+            dead.Status.ErrorCode.ShouldNotBe(ErrorCodes.OtherVpn, "вход не слушает — прокси остался от выключенной программы, трафик она не ведет");
+            await dead.DisconnectAsync(Ct);
         }
     }
 
@@ -312,8 +385,9 @@ public sealed class ServiceGatewayClientTests
         await WaitFor(() => !Answers(user));
     }
 
-    private static ServiceGatewayClient Client(string endpoint, ServerDefinition? definition, AppSettings settings) =>
-        new(IpcChannel.Create(endpoint, system: false), ServiceKind.User, id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System);
+    private static ServiceGatewayClient Client(string endpoint, ServerDefinition? definition, AppSettings settings, Func<UserProxy?>? userProxy = null) =>
+        new(IpcChannel.Create(endpoint, system: false), ServiceKind.User, id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System,
+            userProxy);
 
     // Системный прокси выключен: тесты не трогают настройки машины.
     private static AppSettings Settings(int proxyPort) => AppSettings.Default with

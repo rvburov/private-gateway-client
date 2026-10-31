@@ -1,3 +1,5 @@
+using PrivateGateway.Client.Core.Platform;
+
 namespace PrivateGateway.Client.Core;
 
 /// <summary>Состояние одной проверки защиты: чипы главного экрана и строки экрана «Проверка».</summary>
@@ -94,7 +96,8 @@ public sealed record ExitInfo(string? Ip, string? City, string? NetworkType, str
 /// защиту выключили вручную, а сеть закрыта до подключения или выключения строгого режима.
 /// <c>CaptivePauseUntil</c> — пауза для входа в Wi-Fi: в «Защищено», «Блокировке» (и строгого режима), «Ошибке» под блоком,
 /// а также в «Подключении» и «Переподключении» — тогда попытки стоят до конца паузы. <c>NetworkChangedAt</c> — когда служба
-/// последний раз видела смену сети машины.
+/// последний раз видела смену сети машины. <c>OtherClients</c> — другие программы VPN и прокси: в «Ошибке» с PGC-NET-010 — из-за
+/// них подключение не началось, в «Защищено» — запустились во время подключения (уведомление); иначе null.
 /// </summary>
 public sealed record ConnectionStatus(
     ConnectionState State,
@@ -109,7 +112,8 @@ public sealed record ConnectionStatus(
     string? ErrorCode,
     DateTimeOffset? CaptivePauseUntil,
     bool StrictBlock = false,
-    DateTimeOffset? NetworkChangedAt = null)
+    DateTimeOffset? NetworkChangedAt = null,
+    OtherClientList? OtherClients = null)
 {
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;
@@ -137,6 +141,7 @@ public sealed record ConnectionStatus(
         Protection = ProtectionChecks.For(state, Mode),
         Attempt = state == ConnectionState.Reconnecting ? Attempt + 1 : 0,
         ErrorCode = state == ConnectionState.Error ? ErrorCode : null,
+        OtherClients = state == ConnectionState.Error ? OtherClients : null,
         CaptivePauseUntil = null,
         StrictBlock = false,
     };

@@ -49,7 +49,8 @@ public static class InfrastructureModule
                 address => new ServiceGatewayClient(IpcChannel.Create(address.Endpoint, address.System),
                     address.System ? ServiceKind.Installed : ServiceKind.User,
                     id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
-                    () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>()),
+                    () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
+                    sp.GetRequiredService<IUserProxySettings>().Read),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder)), sp.GetRequiredService<IUserProxySettings>()));
         services.AddSingleton<IServiceInstaller>(sp => demo

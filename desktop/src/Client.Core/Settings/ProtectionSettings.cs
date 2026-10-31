@@ -29,6 +29,8 @@ public enum AddressPreference
 /// как в макете: защита при загрузке, блок DNS провайдера, IPv6 вне туннеля и локальная сеть закрыты.
 /// <c>BlockIpv6</c> — «Блокировать IPv6 вне туннеля»: IPv6, который не идет через туннель (сервер без IPv6, ОС не
 /// дает адаптеру IPv6), закрыт строгими маршрутами всегда, а не только по настройке «Строгие маршруты».
+/// <c>AllowOtherVpn</c> — «Разрешить работу рядом с другим VPN»: подключаться, хотя работает другая программа VPN или прокси
+/// (PGC-NET-010); по умолчанию нельзя (решение 507). Служба получает его в запросе подключения, а не в настройках защиты.
 /// </summary>
 public sealed record ProtectionSettings(
     bool BootProtection = true,
@@ -41,7 +43,8 @@ public sealed record ProtectionSettings(
     bool BlockIpv6 = true,
     AddressPreference Addresses = AddressPreference.PreferIpv4,
     bool AllowLan = false,
-    bool LanDiscovery = false)
+    bool LanDiscovery = false,
+    bool AllowOtherVpn = false)
 {
     public static ProtectionSettings Default { get; } = new();
 
