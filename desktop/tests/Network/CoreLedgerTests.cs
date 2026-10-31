@@ -326,6 +326,9 @@ public sealed class CoreLedgerTests : IDisposable
             }
         }
 
+        // Настоящая служба ищет другие программы VPN (решение 507): на машине CI параллельные тесты держат свои Xray и поддельные
+        // sing-box во временных папках — для нее это чужие ядра. Здесь проверяется память о ядрах, а не этот поиск.
+        request.AllowOtherVpn = true;
         using var watch = client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await client.ConnectAsync(request, cancellationToken: Ct);
         var done = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error))[^1];
