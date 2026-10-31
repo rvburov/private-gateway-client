@@ -170,6 +170,7 @@ public class LinkParserTests
         Put(transport, "path", s.Transport.Path);
         Put(transport, "host", s.Transport.Host);
         Put(transport, "serviceName", s.Transport.ServiceName);
+        Put(transport, "mode", s.Transport.Mode);
         json["transport"] = transport;
 
         var security = new JsonObject { ["kind"] = s.Security.Kind.ToString().ToLowerInvariant() };

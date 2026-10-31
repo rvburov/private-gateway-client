@@ -29,18 +29,23 @@ public enum TransportSecurity: String, Sendable {
     case reality
 }
 
-/// Транспорт: вид, путь, заголовок Host, имя сервиса gRPC.
+/// Транспорт: вид, путь, заголовок Host, имя сервиса gRPC; `mode` — режим XHTTP (`xhttpModes`), не задан — выбирает ядро.
 public struct TransportOptions: Equatable, Hashable, Sendable {
+    /// Режимы XHTTP, которые знает Xray: stream-one — один поток в обе стороны.
+    public static let xhttpModes: Set<String> = ["auto", "packet-up", "stream-up", "stream-one"]
+
     public var kind: TransportKind
     public var path: String?
     public var host: String?
     public var serviceName: String?
+    public var mode: String?
 
-    public init(_ kind: TransportKind, path: String? = nil, host: String? = nil, serviceName: String? = nil) {
+    public init(_ kind: TransportKind, path: String? = nil, host: String? = nil, serviceName: String? = nil, mode: String? = nil) {
         self.kind = kind
         self.path = path
         self.host = host
         self.serviceName = serviceName
+        self.mode = mode
     }
 
     public static let tcp = TransportOptions(.tcp)

@@ -228,6 +228,11 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Что покажут проверки; по умолчанию — ничего.</summary>
         public IReadOnlyList<DiagnosticResult> Checks { get; set; } = [];
 
+        /// <summary>Что служба намеряет в «Задержке»; null — не ответила.</summary>
+        public DelayBreakdown? Delay { get; set; }
+
+        public Task<DelayBreakdown?> MeasureDelayAsync(CancellationToken cancellationToken = default) => Task.FromResult(Delay);
+
         /// <summary>Что служба скажет о входах прокси и других программах; null — служба старее окна.</summary>
         public InterferenceProbe? Entries { get; set; }
 

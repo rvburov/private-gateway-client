@@ -794,6 +794,11 @@ public static class XrayConfigBuilder
                     path["host"] = host;
                 }
 
+                if (transport.Kind == TransportKind.Xhttp && transport.Mode is { Length: > 0 } mode)
+                {
+                    path["mode"] = mode;
+                }
+
                 stream[network + "Settings"] = path;
                 break;
             case TransportKind.Grpc:

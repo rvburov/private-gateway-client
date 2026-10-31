@@ -300,6 +300,7 @@ object XrayConfig {
             TransportKind.WebSocket, TransportKind.HttpUpgrade, TransportKind.Xhttp -> {
                 val path = linkedMapOf<String, Any?>("path" to (transport.path ?: "/"))
                 transport.host?.takeIf { it.isNotEmpty() }?.let { path["host"] = it }
+                transport.mode?.takeIf { transport.kind == TransportKind.Xhttp && it.isNotEmpty() }?.let { path["mode"] = it }
                 stream[network + "Settings"] = path
             }
 

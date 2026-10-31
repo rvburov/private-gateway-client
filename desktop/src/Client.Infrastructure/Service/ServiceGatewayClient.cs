@@ -233,6 +233,23 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     }
 
     /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
+    public async Task<DelayBreakdown?> MeasureDelayAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            var reply = await _client.MeasureDelayAsync(new V1.MeasureDelayRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            return new DelayBreakdown(Positive(reply.ToServerMs), Positive(reply.ThroughServerMs), Positive(reply.NewConnectionMs),
+                reply.MeasuredAt?.ToDateTimeOffset() ?? _time.GetUtcNow());
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+
+        static int? Positive(int value) => value > 0 ? value : null;
+    }
+
+    /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
     public async Task<InterferenceProbe?> CheckEntriesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(addresses);

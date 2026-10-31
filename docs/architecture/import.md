@@ -7,7 +7,7 @@ Android и iOS), тест — `desktop/tests/Unit/LinkParserTests.cs`.
 
 | Схема | Протокол | Секретная часть |
 | --- | --- | --- |
-| `vless://uuid@адрес:порт?…#имя` | VLESS: TCP, WS, gRPC, HTTPUpgrade, XHTTP; TLS или REALITY | UUID |
+| `vless://uuid@адрес:порт?…#имя` | VLESS: TCP, WS, gRPC, HTTPUpgrade, XHTTP (режим `mode`: auto, packet-up, stream-up, stream-one — в конфиг ядра; незнакомый — как не заданный, решение 509); TLS или REALITY | UUID |
 | `vmess://base64(JSON)` | VMess без alterId (только AEAD) | UUID |
 | `trojan://пароль@адрес:порт?…#имя` | Trojan, TLS по умолчанию | пароль |
 | `ss://base64url(метод:пароль)@адрес:порт#имя` и старый `ss://base64(…@адрес:порт)` | Shadowsocks AEAD и 2022, без plugin | пароль |

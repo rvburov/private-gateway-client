@@ -254,12 +254,16 @@
       <!-- Скорость -->
       <Border Classes="card" Margin="20,10,20,0" Padding="6,10">
         <Grid ColumnDefinitions="*,Auto,*,Auto,*">
-          <StackPanel HorizontalAlignment="Center" Spacing="2">
-            <TextBlock Classes="caption" Text="{l:L speed.ping}" HorizontalAlignment="Center" />
-            <TextBlock x:Name="PingValue" Classes="title" FontFamily="{StaticResource PgFont.Mono}" Text="{Binding PingText}"
-                       HorizontalAlignment="Center" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
-            <TextBlock Classes="caption" Text="{l:L unit.ms}" HorizontalAlignment="Center" />
-          </StackPanel>
+          <!-- Плитка «Пинг» открывает «Проверку» на блоке «Задержка»: из чего складывается это число (решение 509) -->
+          <Button x:Name="PingTile" Classes="plain" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" Padding="0"
+                  Command="{Binding OpenDelayCommand}" AutomationProperties.Name="{l:L speed.ping.open}">
+            <StackPanel HorizontalAlignment="Center" Spacing="2">
+              <TextBlock Classes="caption" Text="{l:L speed.ping}" HorizontalAlignment="Center" />
+              <TextBlock x:Name="PingValue" Classes="title" FontFamily="{StaticResource PgFont.Mono}" Text="{Binding PingText}"
+                         HorizontalAlignment="Center" Foreground="{StaticResource PgBrush.Status.Success.Text}" />
+              <TextBlock Classes="caption" Text="{l:L unit.ms}" HorizontalAlignment="Center" />
+            </StackPanel>
+          </Button>
           <Border Grid.Column="1" Width="1" Background="{StaticResource PgBrush.Line.Divider}" />
           <StackPanel Grid.Column="2" HorizontalAlignment="Center" Spacing="2">
             <TextBlock Classes="caption" Text="{l:L speed.down}" HorizontalAlignment="Center" />

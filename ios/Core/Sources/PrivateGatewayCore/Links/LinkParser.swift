@@ -483,7 +483,9 @@ public enum LinkParser {
                 kind,
                 path: grpc ? nil : value(query, "path"),
                 host: grpc ? nil : value(query, "host"),
-                serviceName: grpc ? value(query, "serviceName") : nil
+                serviceName: grpc ? value(query, "serviceName") : nil,
+                // Режим XHTTP: незнакомый — как не заданный, ядро выберет само.
+                mode: value(query, "mode").map { $0.lowercased() }.flatMap { kind == .xhttp && TransportOptions.xhttpModes.contains($0) ? $0 : nil }
             ),
             error: nil
         )

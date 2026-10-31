@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -154,6 +155,50 @@ public sealed class CheckPageTests : WindowHarness
         WaitFor(() => !page.IsRunning && page.Hindrances.Count == 1);
         (page.Hindrances[0].Title, page.Hindrances[0].ChipText, page.Hindrances[0].State).ShouldBe(("Ничего не найдено", "Нет", CheckState.Ok));
     }
+
+    [AvaloniaFact]
+    public async Task Ping_tile_opens_the_delay_block_with_three_numbers_and_where_the_new_connection_time_comes_from()
+    {
+        // У пользователя 2026-10-31 пинг 480 мс против 124 у других клиентов: блок показывает, из чего складывается число.
+        var (window, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Delay = new DelayBreakdown(120, 124, 480, Time.GetUtcNow()),
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("vless://11111111-2222-3333-4444-555555555555@203.0.113.24:443?encryption=none&security=reality"
+            + "&sni=www.example.com&fp=chrome&pbk=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&sid=0123abcd&type=tcp#R").Server!], null);
+        var before = OpenCheck(shell);
+        WaitFor(() => !before.IsRunning);
+        before.DelayHint.ShouldBe("Подключитесь — задержка меряется через сервер");
+        ScrollOf(window).Offset.Y.ShouldBe(0, "без плитки экран открывается сверху");
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        shell.NavigateCommand.Execute(Pages.Home);
+        Dispatcher.UIThread.RunJobs();
+        Press(window, "PingTile");
+        Dispatcher.UIThread.RunJobs();
+
+        var page = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
+        WaitFor(() => !page.IsRunning && !page.IsMeasuringDelay && page.Delay is not null);
+        WaitFor(() => ScrollOf(window).Offset.Y > 0);
+        var header = Find<Grid>(window, "DelayHeader");
+        header.TranslatePoint(new Avalonia.Point(0, 0), ScrollOf(window))!.Value.Y.ShouldBeInRange(0, ScrollOf(window).Viewport.Height,
+            "плитка «Пинг» открывает «Проверку» на блоке «Задержка»");
+        page.DelayRows.Select(r => (r.Title, r.Value)).ShouldBe([("До сервера", "120 мс"), ("Через сервер", "124 мс"), ("Новое соединение", "480 мс")]);
+        page.DelayWhy.ShouldBe("Откуда 480 мс: на каждое новое соединение уходит примерно 4 круга до сервера (соединение с сервером → рукопожатие "
+            + "REALITY → шифрование до сайта → запрос), а один круг у вас — около 120 мс.");
+        page.DelayUpdated.ShouldStartWith("Обновлено ");
+        page.HasDelayHint.ShouldBeFalse();
+        var report = page.BuildReport();
+        report.ShouldContain("Задержка");
+        report.ShouldContain("  До сервера: 120 мс — прямое соединение с сервером — один круг по сети");
+        report.ShouldContain("примерно 4 круга до сервера");
+        Snapshot(window, "check-delay");
+        page.TakeFocusDelay().ShouldBeFalse("просьба прокрутить — одна, ее уже забрал экран");
+    }
+
+    private static ScrollViewer ScrollOf(Avalonia.Controls.Window window) =>
+        window.GetVisualDescendants().OfType<CheckPage>().Single().GetVisualDescendants().OfType<ScrollViewer>().First();
 
     [AvaloniaFact]
     public void Without_the_service_the_settings_are_shown_unchecked_and_not_fixable()

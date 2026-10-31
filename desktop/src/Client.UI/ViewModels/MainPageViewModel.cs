@@ -33,6 +33,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     private readonly SettingsService _settings;
     private readonly OverlayViewModel _overlay;
     private readonly IUrlLauncher _launcher;
+    private readonly CheckFocus _checkFocus;
     private readonly DispatcherTimer _clock;
 
     public MainPageViewModel(
@@ -46,9 +47,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         ToastViewModel toast,
         SettingsService settings,
         OverlayViewModel overlay,
-        IUrlLauncher launcher)
+        IUrlLauncher launcher,
+        CheckFocus checkFocus)
     {
         ArgumentNullException.ThrowIfNull(protection);
+        _checkFocus = checkFocus;
         Protection = protection;
         _gateway = gateway;
         _catalog = catalog;
@@ -390,6 +393,14 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void Navigate(string page) => _navigator.Navigate(page);
+
+    /// <summary>Плитка «Пинг»: «Проверка» сразу на блоке «Задержка» — из чего складывается это число (решение 509).</summary>
+    [RelayCommand]
+    private void OpenDelay()
+    {
+        _checkFocus.RequestDelay();
+        _navigator.Navigate(Pages.Check);
+    }
 
     [RelayCommand]
     private void ToggleIpMask() => IsIpMasked = !IsIpMasked;

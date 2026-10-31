@@ -91,6 +91,9 @@ public interface IGatewayClient
     Task<InterferenceProbe?> CheckEntriesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default) =>
         Task.FromResult<InterferenceProbe?>(null);
 
+    /// <summary>«Задержка» (решение 509): до сервера, через сервер и по новому соединению. Службы нет или она старее окна — null.</summary>
+    Task<DelayBreakdown?> MeasureDelayAsync(CancellationToken cancellationToken = default) => Task.FromResult<DelayBreakdown?>(null);
+
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
 

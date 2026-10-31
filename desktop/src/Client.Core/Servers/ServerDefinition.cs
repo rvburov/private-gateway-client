@@ -14,9 +14,15 @@ public enum TransportKind
     Udp,
 }
 
-/// <summary>Транспорт: путь и заголовок Host для WS/HTTPUpgrade/XHTTP, имя сервиса для gRPC.</summary>
-public sealed record TransportOptions(TransportKind Kind, string? Path = null, string? Host = null, string? ServiceName = null)
+/// <summary>
+/// Транспорт: путь и заголовок Host для WS/HTTPUpgrade/XHTTP, имя сервиса для gRPC; <paramref name="Mode"/> — режим XHTTP
+/// (<see cref="XhttpModes"/>: auto, packet-up, stream-up, stream-one); не задан — выбирает ядро (auto).
+/// </summary>
+public sealed record TransportOptions(TransportKind Kind, string? Path = null, string? Host = null, string? ServiceName = null, string? Mode = null)
 {
+    /// <summary>Режимы XHTTP, которые знает Xray: stream-one — один поток в обе стороны, без лишних запросов на каждое соединение.</summary>
+    public static IReadOnlySet<string> XhttpModes { get; } = new HashSet<string>(StringComparer.Ordinal) { "auto", "packet-up", "stream-up", "stream-one" };
+
     public static TransportOptions Tcp { get; } = new(TransportKind.Tcp);
 
     public static TransportOptions Quic { get; } = new(TransportKind.Quic);

@@ -229,6 +229,12 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>Задержку меряет служба, которая держит подключение; ради замера службу не запускать.</summary>
+    public async Task<DelayBreakdown?> MeasureDelayAsync(CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.MeasureDelayAsync(cancellationToken).ConfigureAwait(false)
+            : null;
+
     /// <summary>
     /// Входы прокси и другие программы проверяет служба, которая есть сейчас; ради этого службу пользователя не запускать:
     /// без службы блок «Что на этом компьютере может мешать» покажет настройки без проверки входов.

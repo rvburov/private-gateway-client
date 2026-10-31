@@ -88,6 +88,7 @@ object LinkWriter {
             "path" to transport.path,
             "host" to transport.host,
             "serviceName" to transport.serviceName,
+            "mode" to transport.mode,
             "security" to server.security.kind.name.lowercase(Locale.ROOT),
         ) + tls(server)
     }

@@ -82,6 +82,7 @@ public enum LinkWriter {
             ("path", transport.path),
             ("host", transport.host),
             ("serviceName", transport.serviceName),
+            ("mode", transport.mode),
             ("security", server.security.kind.rawValue),
         ] + tls(server)
     }

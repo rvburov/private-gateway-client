@@ -108,6 +108,7 @@ enum ClashImport {
         ConfigTree.put(&query, "path", ConfigTree.text(ws, "path") ?? ConfigTree.text(xhttp, "path"))
         ConfigTree.put(&query, "host", ConfigTree.header(ConfigTree.object(ws, "headers"), "Host") ?? ConfigTree.text(xhttp, "host"))
         ConfigTree.put(&query, "serviceName", ConfigTree.text(ConfigTree.object(node, "grpc-opts"), "grpc-service-name"))
+        ConfigTree.put(&query, "mode", ConfigTree.text(xhttp, "mode"))
     }
 
     /// WireGuard: поля сервера или один peers; AmneziaWG ядро не поддерживает.

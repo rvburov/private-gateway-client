@@ -90,6 +90,7 @@ public static class LinkWriter
             ("path", transport.Path),
             ("host", transport.Host),
             ("serviceName", transport.ServiceName),
+            ("mode", transport.Mode),
             ("security", server.Security.Kind.ToString().ToLowerInvariant()),
         ];
         query.AddRange(Tls(server));

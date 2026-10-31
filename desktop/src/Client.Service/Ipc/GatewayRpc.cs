@@ -237,6 +237,18 @@ public sealed class GatewayRpc(
         return reply;
     }
 
+    public override async Task<V1.DelayBreakdown> MeasureDelay(V1.MeasureDelayRequest request, ServerCallContext context)
+    {
+        var delay = await gateway.MeasureDelayAsync(context?.CancellationToken ?? default).ConfigureAwait(false);
+        return new V1.DelayBreakdown
+        {
+            ToServerMs = delay.ToServerMs ?? 0,
+            ThroughServerMs = delay.ThroughServerMs ?? 0,
+            NewConnectionMs = delay.NewConnectionMs ?? 0,
+            MeasuredAt = Timestamp.FromDateTimeOffset(delay.MeasuredAt),
+        };
+    }
+
     public override async Task<V1.MeasureIpReply> MeasureIp(V1.MeasureIpRequest request, ServerCallContext context)
     {
         await gateway.MeasureIpAsync().ConfigureAwait(false);

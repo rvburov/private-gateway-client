@@ -122,6 +122,7 @@ public static partial class ContractMapping
                 Path = server.Transport.Path ?? string.Empty,
                 Host = server.Transport.Host ?? string.Empty,
                 ServiceName = server.Transport.ServiceName ?? string.Empty,
+                Mode = server.Transport.Mode ?? string.Empty,
             },
             Security = security,
         };
@@ -244,7 +245,8 @@ public static partial class ContractMapping
                 TransportKind.Tcp => TransportOptions.Tcp,
                 TransportKind.Quic => TransportOptions.Quic,
                 TransportKind.Udp => TransportOptions.Udp,
-                _ => new TransportOptions(kind, Empty(transport.Path), Empty(transport.Host), Empty(transport.ServiceName)),
+                _ => new TransportOptions(kind, Empty(transport.Path), Empty(transport.Host), Empty(transport.ServiceName),
+                    kind == TransportKind.Xhttp && TransportOptions.XhttpModes.Contains(transport.Mode) ? transport.Mode : null),
             },
             security.Type.ToCore() is var securityKind && securityKind == TransportSecurity.None
                 ? SecurityOptions.None

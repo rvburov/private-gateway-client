@@ -472,7 +472,9 @@ public static class LinkParser
                 known,
                 known == TransportKind.Grpc ? null : Query(query, "path"),
                 known == TransportKind.Grpc ? null : Query(query, "host"),
-                known == TransportKind.Grpc ? Query(query, "serviceName") : null);
+                known == TransportKind.Grpc ? Query(query, "serviceName") : null,
+                // Режим XHTTP: незнакомый — как не заданный, ядро выберет само.
+                known == TransportKind.Xhttp && Query(query, "mode")?.ToLowerInvariant() is { } mode && TransportOptions.XhttpModes.Contains(mode) ? mode : null);
         return null;
     }
 

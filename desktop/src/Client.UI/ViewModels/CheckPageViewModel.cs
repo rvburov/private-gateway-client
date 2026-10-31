@@ -34,6 +34,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
     private readonly INavigator _navigator;
     private readonly IMachineSettings _machine;
     private readonly SettingsService _settings;
+    private readonly CheckFocus _focus;
     private DiagnosticReport? _report;
     private ConnectionState? _reportState;
     private bool _rerun;
@@ -47,8 +48,19 @@ public sealed partial class CheckPageViewModel : ObservableObject
         TimeProvider time,
         INavigator navigator,
         IMachineSettings machine,
-        SettingsService settings)
+        SettingsService settings,
+        CheckFocus focus)
     {
+        ArgumentNullException.ThrowIfNull(focus);
+        _focus = focus;
+        // Плитка «Пинг» на уже открытом раньше экране: свежий замер — к прокрутке на блок.
+        focus.DelayRequested += (_, _) => Dispatcher.UIThread.Post(() =>
+        {
+            if (!IsRunning && !IsMeasuringDelay)
+            {
+                MeasureDelayCommand.Execute(null);
+            }
+        });
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(gateway);
         _navigator = navigator;
@@ -127,6 +139,95 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     public bool HasJournal => Journal.Count > 0;
 
+    /// <summary>Экран открыт плиткой «Пинг» — прокрутить к блоку «Задержка»: true один раз, забирает вид.</summary>
+    public bool TakeFocusDelay() => _focus.TakeDelay();
+
+    /// <summary>«Задержка» (решение 509): последний замер службы; не мерили или не вышло — null.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DelayRows), nameof(DelayWhy), nameof(HasDelayWhy), nameof(DelayUpdated), nameof(DelayHint), nameof(HasDelayHint))]
+    public partial DelayBreakdown? Delay { get; private set; }
+
+    /// <summary>Идет замер задержки.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(DelayHint), nameof(HasDelayHint), nameof(DelayUpdated))]
+    [NotifyCanExecuteChangedFor(nameof(MeasureDelayCommand))]
+    public partial bool IsMeasuringDelay { get; private set; }
+
+    /// <summary>Три строки: до сервера, через сервер, новое соединение.</summary>
+    public IReadOnlyList<DelayRowViewModel> DelayRows =>
+    [
+        new(Loc.Instance["diag.delay.toServer"], Loc.Instance["diag.delay.toServer.text"], Ms(Delay?.ToServerMs)),
+        new(Loc.Instance["diag.delay.through"], Loc.Instance["diag.delay.through.text"], Ms(Delay?.ThroughServerMs)),
+        new(Loc.Instance["diag.delay.fresh"], Loc.Instance["diag.delay.fresh.text"], Ms(Delay?.NewConnectionMs)),
+    ];
+
+    /// <summary>
+    /// Откуда число нового соединения: сколько кругов до сервера (по замерам, а не по учебнику) и сколько длится один круг —
+    /// у пользователя «480 мс» пинга против «124» у других клиентов вызывали вопрос (2026-10-31).
+    /// </summary>
+    public string DelayWhy => Delay is { ToServerMs: { } one, NewConnectionMs: { } fresh, Rounds: { } rounds }
+        ? Loc.Instance.Format("diag.delay.why", fresh, Rounded(rounds), RoundsWord(Rounded(rounds)), Handshake, one)
+        : string.Empty;
+
+    public bool HasDelayWhy => DelayWhy.Length > 0;
+
+    /// <summary>«Обновлено 12:34:56»; не мерили — пусто.</summary>
+    public string DelayUpdated => Delay is { } delay && !IsMeasuringDelay
+        ? Loc.Instance.Format("diag.delay.updated", delay.MeasuredAt.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture))
+        : string.Empty;
+
+    /// <summary>Почему чисел нет: идет замер, нет подключения, служба не ответила.</summary>
+    public string DelayHint => IsMeasuringDelay ? Loc.Instance["diag.delay.measuring"]
+        : Protection.Status is not { State: ConnectionState.Connected, IsPaused: false } ? Loc.Instance["diag.delay.off"]
+        : Delay is null ? Loc.Instance["diag.delay.none"]
+        : string.Empty;
+
+    public bool HasDelayHint => DelayHint.Length > 0;
+
+    /// <summary>«Обновить» задержку: служба меряет заново (несколько секунд).</summary>
+    [RelayCommand(CanExecute = nameof(CanMeasureDelay))]
+    private async Task MeasureDelayAsync()
+    {
+        if (Protection.Status is not { State: ConnectionState.Connected, IsPaused: false })
+        {
+            Delay = null;
+            return;
+        }
+
+        IsMeasuringDelay = true;
+        try
+        {
+            Delay = await _gateway.MeasureDelayAsync().ConfigureAwait(true);
+        }
+        finally
+        {
+            IsMeasuringDelay = false;
+        }
+    }
+
+    private bool CanMeasureDelay() => !IsMeasuringDelay;
+
+    /// <summary>Рукопожатие сервера в объяснении: REALITY, TLS или протокола.</summary>
+    private string Handshake => _catalog.Servers.FirstOrDefault(s => s.Id == Protection.Status.ServerId)?.Security switch
+    {
+        TransportSecurity.Reality => "REALITY",
+        TransportSecurity.Tls => "TLS",
+        _ => Loc.Instance["diag.delay.handshake.protocol"],
+    };
+
+    private static int Rounded(double rounds) => (int)Math.Max(1, Math.Round(rounds, MidpointRounding.AwayFromZero));
+
+    /// <summary>«круг», «круга», «кругов» — по правилам языка.</summary>
+    private static string RoundsWord(int count)
+    {
+        var form = Loc.Instance.Culture.TwoLetterISOLanguageName == "ru"
+            ? count % 10 == 1 && count % 100 != 11 ? "one" : count % 10 is >= 2 and <= 4 && count % 100 is < 12 or > 14 ? "few" : "many"
+            : count == 1 ? "one" : "many";
+        return Loc.Instance["diag.delay.rounds." + form];
+    }
+
+    private static string Ms(int? value) => value is { } ms ? Loc.Instance.Format("diag.delay.ms", ms) : "—";
+
     /// <summary>«Что на этом компьютере может мешать» (решение 508): настройки компьютера и другие программы VPN и прокси.</summary>
     public ObservableCollection<HindranceRowViewModel> Hindrances { get; } = [];
 
@@ -153,6 +254,10 @@ public sealed partial class CheckPageViewModel : ObservableObject
                 _reportState = Protection.Status.State;
                 _report = await _gateway.RunChecksAsync().ConfigureAwait(true);
                 await FindHindrancesAsync().ConfigureAwait(true);
+                if (!IsMeasuringDelay)
+                {
+                    await MeasureDelayAsync().ConfigureAwait(true);
+                }
             }
             while (_rerun);
         }
@@ -260,6 +365,14 @@ public sealed partial class CheckPageViewModel : ObservableObject
             loc["diag.report.checks"],
         };
         lines.AddRange(Rows.Select(r => $"  [{r.ChipText}] {r.Title} — {WithoutRealIp(r)}"));
+        lines.Add(string.Empty);
+        lines.Add(loc["diag.report.delay"]);
+        lines.AddRange(DelayRows.Select(r => $"  {r.Title}: {r.Value} — {r.Text}"));
+        if (HasDelayWhy)
+        {
+            lines.Add("  " + DelayWhy);
+        }
+
         if (Hindrances.Count > 0)
         {
             lines.Add(string.Empty);
@@ -343,6 +456,8 @@ public sealed partial class CheckPageViewModel : ObservableObject
         }
 
         OnPropertyChanged(nameof(RunText));
+        OnPropertyChanged(nameof(DelayHint));
+        OnPropertyChanged(nameof(HasDelayHint));
     }
 
     private void RefreshJournal()
@@ -441,3 +556,7 @@ public sealed record JournalLineViewModel(string Time, JournalLevel LevelValue, 
 
     public bool IsDebug => LevelValue == JournalLevel.Debug;
 }
+
+/// <summary>Строка блока «Задержка»: что измерено, пояснение и число.</summary>
+public sealed record DelayRowViewModel(string Title, string Text, string Value);
+

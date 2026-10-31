@@ -92,3 +92,15 @@ public static class JournalTail
         return kept;
     }
 }
+
+/// <summary>
+/// «Задержка» на «Проверке» (решение 509), медианы трех замеров, мс: <paramref name="ToServerMs"/> — прямое TCP-соединение с
+/// сервером (один круг), <paramref name="ThroughServerMs"/> — запрос через сервер по открытому соединению (его показывает
+/// «Пинг» на главной), <paramref name="NewConnectionMs"/> — тот же запрос по новому соединению. Не измерено — null.
+/// </summary>
+public sealed record DelayBreakdown(int? ToServerMs, int? ThroughServerMs, int? NewConnectionMs, DateTimeOffset MeasuredAt)
+{
+    /// <summary>Сколько кругов до сервера уходит на новое соединение — по замерам; не измерено — null.</summary>
+    public double? Rounds => ToServerMs is { } one && one > 0 && NewConnectionMs is { } fresh ? Math.Round((double)fresh / one, 1) : null;
+}
+

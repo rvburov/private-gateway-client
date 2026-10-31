@@ -114,6 +114,7 @@ internal object ClashImport {
         put(query, "path", text(ws, "path") ?: text(xhttp, "path"))
         put(query, "host", header(obj(ws, "headers"), "Host") ?: text(xhttp, "host"))
         put(query, "serviceName", text(obj(node, "grpc-opts"), "grpc-service-name"))
+        put(query, "mode", text(xhttp, "mode"))
     }
 
     /** WireGuard: поля сервера или один peers; AmneziaWG ядро не поддерживает. */

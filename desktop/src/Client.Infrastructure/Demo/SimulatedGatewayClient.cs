@@ -451,6 +451,10 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         return Task.CompletedTask;
     }
 
+    /// <summary>Задержка имитации: до сервера 31, через сервер 34, новое соединение 127 мс (четыре круга); без защиты — нет.</summary>
+    public Task<DelayBreakdown?> MeasureDelayAsync(CancellationToken cancellationToken = default) =>
+        Task.FromResult(Status.State == ConnectionState.Connected ? new DelayBreakdown(31, 34, 127, time.GetUtcNow()) : null);
+
     public async Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default)
     {
         await Task.Delay(ChecksDelay, time, cancellationToken).ConfigureAwait(false);

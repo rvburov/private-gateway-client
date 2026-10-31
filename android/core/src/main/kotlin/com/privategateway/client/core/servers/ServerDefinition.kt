@@ -31,14 +31,18 @@ enum class TransportSecurity {
     Reality,
 }
 
-/** Транспорт: вид, путь, заголовок Host, имя сервиса gRPC. */
+/** Транспорт: вид, путь, заголовок Host, имя сервиса gRPC; [mode] — режим XHTTP ([XHTTP_MODES]), не задан — выбирает ядро. */
 data class TransportOptions(
     val kind: TransportKind,
     val path: String? = null,
     val host: String? = null,
     val serviceName: String? = null,
+    val mode: String? = null,
 ) {
     companion object {
+        /** Режимы XHTTP, которые знает Xray: stream-one — один поток в обе стороны. */
+        val XHTTP_MODES = setOf("auto", "packet-up", "stream-up", "stream-one")
+
         val Tcp = TransportOptions(TransportKind.Tcp)
         val Quic = TransportOptions(TransportKind.Quic)
         val Udp = TransportOptions(TransportKind.Udp)

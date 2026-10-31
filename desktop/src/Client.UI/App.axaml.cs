@@ -65,6 +65,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<ToastViewModel>();
         services.AddSingleton<OverlayViewModel>();
         services.AddSingleton<ProtectionViewModel>();
+        services.AddSingleton<CheckFocus>();
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
         services.AddSingleton<IFileSaveService, AvaloniaFileSaveService>();
         services.AddSingleton<IFileOpenService, AvaloniaFileOpenService>();

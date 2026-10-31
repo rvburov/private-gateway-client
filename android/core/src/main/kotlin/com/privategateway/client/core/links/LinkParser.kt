@@ -454,6 +454,8 @@ object LinkParser {
                     if (grpc) null else query(query, "path"),
                     if (grpc) null else query(query, "host"),
                     if (grpc) query(query, "serviceName") else null,
+                    // Режим XHTTP: незнакомый — как не заданный, ядро выберет само.
+                    query(query, "mode")?.lowercase(Locale.ROOT)?.takeIf { kind == TransportKind.Xhttp && it in TransportOptions.XHTTP_MODES },
                 )
             },
             null,

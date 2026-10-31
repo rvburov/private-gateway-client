@@ -83,6 +83,38 @@
           </ItemsControl>
         </Border>
 
+        <!-- Задержка (решение 509): из чего складывается пинг — до сервера, через сервер и новое соединение; сюда ведет плитка «Пинг» -->
+        <Grid x:Name="DelayHeader" ColumnDefinitions="*,Auto" Margin="6,6,6,-4">
+          <TextBlock Classes="overline" Text="{l:L diag.delay.title, Upper=True}" VerticalAlignment="Center" />
+          <Button x:Name="DelayRefresh" Grid.Column="1" Classes="link" Padding="0" Command="{Binding MeasureDelayCommand}"
+                  Content="{l:L diag.delay.refresh}" />
+        </Grid>
+        <Border x:Name="DelayBlock" Classes="card" Padding="16,4" AutomationProperties.Name="{l:L diag.delay.title}">
+          <StackPanel>
+            <ItemsControl x:Name="DelayRows" ItemsSource="{Binding DelayRows}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:DelayRowViewModel">
+                  <Border Classes="checkRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,11">
+                    <Grid ColumnDefinitions="*,Auto">
+                      <StackPanel Spacing="2" Margin="0,0,12,0" VerticalAlignment="Center">
+                        <TextBlock Classes="strong" Text="{Binding Title}" />
+                        <TextBlock Classes="caption" Text="{Binding Text}" TextWrapping="Wrap" />
+                      </StackPanel>
+                      <TextBlock Grid.Column="1" Classes="title" FontFamily="{StaticResource PgFont.Mono}" Text="{Binding Value}"
+                                 VerticalAlignment="Center" />
+                    </Grid>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <TextBlock x:Name="DelayWhy" Classes="caption" Text="{Binding DelayWhy}" TextWrapping="Wrap" IsVisible="{Binding HasDelayWhy}"
+                       Margin="0,10,0,4" LineHeight="{StaticResource PgLineHeight.Body}" />
+            <TextBlock x:Name="DelayHint" Classes="caption" Text="{Binding DelayHint}" TextWrapping="Wrap" IsVisible="{Binding HasDelayHint}"
+                       Margin="0,10,0,4" />
+            <TextBlock Classes="caption" Text="{Binding DelayUpdated}" Margin="0,4,0,10" Foreground="{StaticResource PgBrush.Text.Muted}" />
+          </StackPanel>
+        </Border>
+
         <!-- Что на этом компьютере может мешать (решение 508): переменные и системный прокси, WinHTTP, другие программы VPN -->
         <TextBlock Classes="overline" Text="{l:L diag.hinder.title, Upper=True}" Margin="6,6,6,-4" />
         <Border Classes="card" Padding="16,4" AutomationProperties.Name="{l:L diag.hinder.title}">

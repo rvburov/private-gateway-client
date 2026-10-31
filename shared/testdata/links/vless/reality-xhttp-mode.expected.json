@@ -1,0 +1,21 @@
+{
+  "name": "REALITY XHTTP",
+  "protocol": "vless",
+  "host": "203.0.113.26",
+  "port": 443,
+  "transport": {
+    "kind": "xhttp",
+    "path": "/xh",
+    "mode": "stream-one"
+  },
+  "security": {
+    "kind": "reality",
+    "sni": "www.example.com",
+    "fingerprint": "chrome",
+    "realityPublicKey": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "realityShortId": "0123abcd"
+  },
+  "credentials": {
+    "uuid": "11111111-2222-3333-4444-555555555555"
+  }
+}

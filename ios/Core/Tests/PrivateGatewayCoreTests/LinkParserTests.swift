@@ -190,6 +190,7 @@ final class LinkParserTests: XCTestCase {
         put(&transport, "path", s.transport.path)
         put(&transport, "host", s.transport.host)
         put(&transport, "serviceName", s.transport.serviceName)
+        put(&transport, "mode", s.transport.mode)
         json["transport"] = transport
 
         var security: [String: Any] = ["kind": s.security.kind.rawValue]

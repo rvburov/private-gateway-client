@@ -101,6 +101,19 @@ service GatewayService {
   // «Что на этом компьютере может мешать»: слушают ли входы прокси из настроек пользователя (окно читает переменные
   // окружения, системный прокси, WinHTTP) и кто — и какие другие программы VPN и прокси сейчас работают.
   rpc CheckEntries(CheckEntriesRequest) returns (CheckEntriesReply);
+
+  // «Задержка» на «Проверке»: до сервера (TCP), через сервер по открытому соединению и по новому — медианы трех замеров.
+  rpc MeasureDelay(MeasureDelayRequest) returns (DelayBreakdown);
+}
+
+message MeasureDelayRequest {}
+
+// Мс; 0 — не измерено (нет подключения, сервер по UDP, не ответил).
+message DelayBreakdown {
+  int32 to_server_ms = 1;
+  int32 through_server_ms = 2;
+  int32 new_connection_ms = 3;
+  google.protobuf.Timestamp measured_at = 4;
 }
 
 // Не больше 16 адресов «узел:порт»; лишние служба не проверяет.
@@ -389,6 +402,8 @@ message Transport {
   string path = 2;
   string host = 3;
   string service_name = 4;
+  // Режим XHTTP: auto, packet-up, stream-up, stream-one; пусто — выбирает ядро.
+  string mode = 5;
 }
 
 enum SecurityType {

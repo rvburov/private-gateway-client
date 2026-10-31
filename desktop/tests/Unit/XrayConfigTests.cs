@@ -107,6 +107,9 @@ public sealed class XrayConfigTests
         (xhttp["xhttpSettings"]!["path"]!.GetValue<string>(), xhttp["xhttpSettings"]!["host"]!.GetValue<string>()).ShouldBe(("/xh", "cdn.example.org"));
         xhttp["tlsSettings"]!["serverName"]!.GetValue<string>().ShouldBe("example.org");
         xhttp["tlsSettings"]!["alpn"]!.AsArray().Select(a => a!.GetValue<string>()).ShouldBe(["h2", "http/1.1"]);
+        xhttp["xhttpSettings"]!["mode"].ShouldBeNull("режим не задан — выбирает ядро");
+        Outbound(Build(Link("vless/reality-xhttp-mode")), XrayConfigBuilder.ProxyTag)["streamSettings"]!["xhttpSettings"]!["mode"]!.GetValue<string>()
+            .ShouldBe("stream-one", "режим XHTTP из ссылки — в конфиг ядра");
 
         var grpc = Outbound(Build(Link("vless/grpc-raw-utf8-name")), XrayConfigBuilder.ProxyTag)["streamSettings"]!;
         (grpc["network"]!.GetValue<string>(), grpc["grpcSettings"]!["serviceName"]!.GetValue<string>()).ShouldBe(("grpc", "grpc-svc"));

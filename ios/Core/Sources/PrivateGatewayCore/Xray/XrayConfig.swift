@@ -348,6 +348,10 @@ public enum XrayConfig {
                 path.append(("host", .string(host)))
             }
 
+            if transport.kind == .xhttp, let mode = transport.mode, !mode.isEmpty {
+                path.append(("mode", .string(mode)))
+            }
+
             stream.append((network + "Settings", .object(path)))
         case .grpc:
             stream.append(("grpcSettings", .object([("serviceName", .string(transport.serviceName ?? ""))])))
