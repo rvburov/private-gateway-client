@@ -683,7 +683,8 @@ public sealed partial class Gateway : IAsyncDisposable
     {
         var process = CoreRelay.StartXray(_options.XrayPath!, XrayConfigBuilder.Build(core, probe: _probe, relay: _relay).Config!, _options.SingBoxPath,
             _relay is { } relay ? [new RelayRoute(core.Server, relay)] : [], core.Connection.CoreLog, out var relayReady,
-            xrayOutput: line => _journal.Add(JournalLevel.Info, "xray", line), relayOutput: line => _journal.Add(JournalLevel.Info, "sing-box", line));
+            xrayOutput: line => _journal.Add(CoreLines.Level("xray", line), "xray", line),
+            relayOutput: line => _journal.Add(CoreLines.Level("sing-box", line), "sing-box", line));
         process.Exited += (_, _) => OnCoreExited(session, process);
         _core = process;
         _journal.Add(JournalLevel.Info, "service", "Ядро Xray запущено, процесс " + process.Id
@@ -1542,7 +1543,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
                 TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(JournalLevel.Info, source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelRoutes,
+                (source, line) => _journal.Add(CoreLines.Level(source, line), source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelRoutes,
                 cancellationToken: starting).ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)

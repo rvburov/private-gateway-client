@@ -565,7 +565,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     {
         while (_journal.Count > JournalLimit)
         {
-            var oldest = _journal.FindIndex(e => e.Level is not (JournalLevel.Warning or JournalLevel.Error));
+            var oldest = _journal.FindIndex(e => !e.IsProblem());
             _journal.RemoveAt(oldest < 0 ? 0 : oldest);
         }
     }

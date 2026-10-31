@@ -82,17 +82,21 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
         _entries.Add(entry);
         while (_entries.Count > Capacity)
         {
-            var oldest = _entries.FindIndex(e => e.Level is not (JournalLevel.Warning or JournalLevel.Error));
+            var oldest = _entries.FindIndex(e => !e.IsProblem());
             _entries.RemoveAt(oldest < 0 ? 0 : oldest);
         }
     }
 
-    /// <summary>Последние <paramref name="count"/> записей, от старых к новым.</summary>
+    /// <summary>
+    /// Последние <paramref name="count"/> записей, от старых к новым, — ошибки и предупреждения в первую очередь
+    /// (<see cref="JournalTail.Take"/>): окно берет хвост в 200 записей, и ошибка, за которой шли сотни обычных строк, в него
+    /// тоже попадает.
+    /// </summary>
     public IReadOnlyList<JournalEntry> Tail(int count)
     {
         lock (_gate)
         {
-            return [.. _entries.Skip(Math.Max(0, _entries.Count - Math.Max(0, count)))];
+            return JournalTail.Take(_entries, count);
         }
     }
 }

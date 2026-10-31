@@ -56,3 +56,39 @@ public enum JournalLevel
 /// <param name="Source">Кто пишет: service, xray, sing-box, firewall, dns…</param>
 /// <param name="Message">Текст записи, секреты скрыты.</param>
 public sealed record JournalEntry(DateTimeOffset Time, JournalLevel Level, string Source, string Message);
+
+/// <summary>Хвост журнала, в котором ошибки и предупреждения держатся дольше обычных записей.</summary>
+public static class JournalTail
+{
+    /// <summary>Ошибка или предупреждение.</summary>
+    public static bool IsProblem(this JournalEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+        return entry.Level is JournalLevel.Warning or JournalLevel.Error;
+    }
+
+    /// <summary>
+    /// Не больше <paramref name="count"/> записей из <paramref name="entries"/>, от старых к новым, — как в журнале на
+    /// <paramref name="count"/> записей, где лишняя уходит самая старая обычная: последние ошибки и предупреждения, а на
+    /// оставшиеся места — последние обычные записи. Ошибку подключения не вытесняют ни подробный журнал ядра, ни запуск окна
+    /// после долгой работы службы, ни перезапуск службы (журнал на диске).
+    /// </summary>
+    public static IReadOnlyList<JournalEntry> Take(IReadOnlyList<JournalEntry> entries, int count)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var problems = entries.Count(e => e.IsProblem());
+        var keepProblems = Math.Min(problems, Math.Max(0, count));
+        var keepNormal = Math.Max(0, count - problems);
+        var kept = new List<JournalEntry>(keepProblems + keepNormal);
+        for (var i = entries.Count - 1; i >= 0 && (keepProblems > 0 || keepNormal > 0); i--)
+        {
+            if (entries[i].IsProblem() ? keepProblems-- > 0 : keepNormal-- > 0)
+            {
+                kept.Add(entries[i]);
+            }
+        }
+
+        kept.Reverse();
+        return kept;
+    }
+}

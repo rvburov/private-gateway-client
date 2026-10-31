@@ -52,4 +52,26 @@ public sealed class JournalFileTests : IDisposable
             File.GetUnixFileMode(again.Current).ShouldBe(UnixFileMode.UserRead | UnixFileMode.UserWrite, "журнал читает только владелец");
         }
     }
+
+    [Fact]
+    public void After_a_restart_the_tail_from_disk_keeps_the_error_behind_ordinary_entries()
+    {
+        // Служба перезапустилась: в журнал в памяти идет хвост с диска — ошибка прошлого запуска в нем, хотя за ней шла
+        // тысяча обычных строк.
+        var at = DateTimeOffset.Parse("2026-10-31T10:00:00Z", System.Globalization.CultureInfo.InvariantCulture);
+        using (var file = new JournalFile(_root))
+        {
+            file.Append(new JournalEntry(at, JournalLevel.Error, "service", "PGC-SVC-002: sing-box вышел при запуске"));
+            for (var i = 1; i <= 1000; i++)
+            {
+                file.Append(new JournalEntry(at.AddSeconds(i), JournalLevel.Info, "sing-box", $"INFO connection {i}"));
+            }
+        }
+
+        using var again = new JournalFile(_root);
+        var tail = again.Tail(ServiceJournal.Capacity);
+        tail.Count.ShouldBe(ServiceJournal.Capacity);
+        tail[0].Message.ShouldBe("PGC-SVC-002: sing-box вышел при запуске");
+        tail[^1].Message.ShouldBe("INFO connection 1000");
+    }
 }

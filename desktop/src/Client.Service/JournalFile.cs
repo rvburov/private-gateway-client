@@ -61,7 +61,11 @@ public sealed class JournalFile(string folder) : IDisposable
         }
     }
 
-    /// <summary>Последние <paramref name="count"/> записей с диска, от старых к новым; битые строки (обрыв на аварии) пропускаются.</summary>
+    /// <summary>
+    /// Последние <paramref name="count"/> записей с диска, от старых к новым, — ошибки и предупреждения в первую очередь
+    /// (<see cref="JournalTail.Take"/>): после перезапуска службы окно видит и ошибку, за которой шли сотни обычных строк.
+    /// Битые строки (обрыв на аварии) пропускаются.
+    /// </summary>
     public IReadOnlyList<JournalEntry> Tail(int count)
     {
         lock (_gate)
@@ -87,7 +91,7 @@ public sealed class JournalFile(string folder) : IDisposable
                 }
             }
 
-            return [.. lines.Select(Parse).OfType<JournalEntry>().TakeLast(Math.Max(0, count))];
+            return JournalTail.Take([.. lines.Select(Parse).OfType<JournalEntry>()], count);
         }
     }
 

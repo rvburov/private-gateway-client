@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Network.Xray;
 using PrivateGateway.Client.Platform.Linux;
+using PrivateGateway.Client.Platform.Windows;
 
 namespace PrivateGateway.Client.Service.Cores;
 
@@ -267,6 +268,11 @@ public sealed class VpnTunnel : IAsyncDisposable
                 var ready = 0;
                 var tun = new TunRequest(link, serverAddresses, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
                     DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
+                if (OperatingSystem.IsWindows() && netns is null)
+                {
+                    RemoveStaleAddresses(subnet, output);
+                }
+
                 singBoxCore = CoreProcess.StartSingBox(singBox, SingBoxConfigBuilder.BuildTun(tun), netns,
                     line =>
                     {
@@ -454,6 +460,27 @@ public sealed class VpnTunnel : IAsyncDisposable
         catch (Exception e) when (e is IOException or System.Text.Json.JsonException)
         {
             return "Правила маршрутизации sing-box не проверены: " + e.Message;
+        }
+    }
+
+    /// <summary>
+    /// Windows: адреса TUN, оставшиеся на адаптерах от прошлых запусков, — снять (<see cref="WindowsTunAddresses"/>): иначе
+    /// Windows не ставит их адаптеру sing-box, и он выходит при запуске. Не прочиталось — запуск идет как есть, это в журнале.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RemoveStaleAddresses(TunSubnet subnet, Action<string, string>? output)
+    {
+        try
+        {
+            var addresses = new[] { subnet.Address, IPAddress.Parse(SingBoxConfigBuilder.TunAddress6.Split('/')[0]) };
+            if (WindowsTunAddresses.RemoveStale(SingBoxConfigBuilder.InterfaceName, addresses) is { Count: > 0 } removed)
+            {
+                output?.Invoke("service", "Сняты адреса TUN, оставшиеся от прошлых запусков: " + string.Join(", ", removed));
+            }
+        }
+        catch (IOException e)
+        {
+            output?.Invoke("service", "Адреса TUN, оставшиеся от прошлых запусков, не проверены: " + e.Message);
         }
     }
 
