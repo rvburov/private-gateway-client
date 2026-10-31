@@ -944,6 +944,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             await _trafficTimer.DisposeAsync().ConfigureAwait(false);
         }
+        ForgetPingClient();
 
         // Переподключение, проверка связи и запуски туннеля останавливаются: подключения больше нет.
         Interlocked.Increment(ref _session);

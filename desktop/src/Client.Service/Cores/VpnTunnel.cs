@@ -261,6 +261,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             // Последние строки sing-box всех уровней: на уровне журнала по умолчанию (warning) его ход запуска не виден, и
             // отказ «не поднялся за N с» ничего не объяснял (у пользователя на Windows 2026-10-30) — при отказе они в журнал.
             var recent = new System.Collections.Concurrent.ConcurrentQueue<string>();
+            var retried = false;
             while (true)
             {
                 var ready = 0;
@@ -305,7 +306,20 @@ public sealed class VpnTunnel : IAsyncDisposable
                         output?.Invoke("sing-box", line);
                     }
 
-                    throw;
+                    // Вышел при запуске — еще одна попытка: на Windows первый запуск после старта службы падал, а второй,
+                    // нажатый пользователем, проходил (2026-10-31). Не поднялся за срок — повтор не поможет.
+                    if (!core.HasExited || retried)
+                    {
+                        throw;
+                    }
+
+                    retried = true;
+                    output?.Invoke("service", $"sing-box вышел при запуске (код {core.ExitCode}) — еще одна попытка");
+                    core.Dispose();
+                    singBoxCore = null;
+                    recent.Clear();
+                    await Task.Delay(RetryPause, time, cancellationToken).ConfigureAwait(false);
+                    continue;
                 }
                 catch (TunnelException) when (ipv6 && core.HasExited)
                 {
@@ -460,6 +474,9 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     /// <summary>Сколько последних строк sing-box ниже уровня журнала пишется в журнал при отказе запуска.</summary>
     public const int StartupLines = 30;
+
+    /// <summary>Пауза перед второй попыткой запуска sing-box: ОС успевает убрать адаптер и маршруты первой.</summary>
+    public static readonly TimeSpan RetryPause = TimeSpan.FromSeconds(1);
 
     /// <summary>Сколько sing-box ждать не меньше, даже если общий срок подключения почти вышел.</summary>
     public static readonly TimeSpan SingBoxStart = TimeSpan.FromSeconds(20);

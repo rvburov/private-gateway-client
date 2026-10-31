@@ -550,13 +550,24 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
             entry = new JournalEntry(_time.GetUtcNow(), JournalLevel.Warning, "window", message);
             _journal.Add(entry);
-            if (_journal.Count > JournalLimit)
-            {
-                _journal.RemoveAt(0);
-            }
+            TrimJournal();
         }
 
         JournalAdded?.Invoke(this, entry);
+    }
+
+    /// <summary>
+    /// Журнал окна — не длиннее <see cref="JournalLimit"/>: уходит самая старая обычная запись, а ошибки и предупреждения
+    /// остаются, пока обычных хватает. При подробном «Журнале ядра» события ядер за минуту вытесняли ошибку первой попытки
+    /// подключения, и отчет ее уже не показывал (у пользователя на Windows 2026-10-31). Вызывать под _gate.
+    /// </summary>
+    private void TrimJournal()
+    {
+        while (_journal.Count > JournalLimit)
+        {
+            var oldest = _journal.FindIndex(e => e.Level is not (JournalLevel.Warning or JournalLevel.Error));
+            _journal.RemoveAt(oldest < 0 ? 0 : oldest);
+        }
     }
 
     private async Task WatchLogAsync()
@@ -580,10 +591,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                     lock (_gate)
                     {
                         _journal.Add(journal);
-                        if (_journal.Count > JournalLimit)
-                        {
-                            _journal.RemoveAt(0);
-                        }
+                        TrimJournal();
                     }
 
                     JournalAdded?.Invoke(this, journal);

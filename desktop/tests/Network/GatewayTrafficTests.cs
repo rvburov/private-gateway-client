@@ -3,6 +3,7 @@ using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Network.Xray;
 using PrivateGateway.Client.Service;
+using V1 = PrivateGateway.Client.Contracts.V1;
 
 namespace PrivateGateway.Client.Tests.Network;
 
@@ -55,6 +56,26 @@ public sealed class GatewayTrafficTests
         await gateway.DisconnectAsync(cancellationToken: TestContext.Current.CancellationToken);
         await gateway.SampleTrafficAsync();
         gateway.Status.Traffic.ShouldBe(TrafficStats.Empty, "выключено — ни пинга, ни скорости");
+    }
+
+    [Fact]
+    public async Task Ping_goes_through_the_core_and_the_server_on_a_warmed_connection()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        using var site = new LocalSite("204");
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        await using var service = await RunningService.StartAsync(site.Url);
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: TestContext.Current.CancellationToken);
+        await service.Client.ConnectAsync(ServiceIpcTests.Request(definition, XrayKit.FreePort()), cancellationToken: TestContext.Current.CancellationToken);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        var before = site.Requests;
+
+        await service.Gateway.SampleTrafficAsync();
+
+        service.Gateway.Status.Traffic.LatencyMs.ShouldNotBeNull("проверочный адрес ответил через ядро и сервер");
+        (site.Requests - before).ShouldBe(2, "первый замер — прогрев соединения и сам замер: рукопожатия в пинг не входят");
     }
 
     private static Gateway Connected(FakeTimeProvider time, ConnectionMode mode, Func<(long, long)?> counters, Func<int?> ping)

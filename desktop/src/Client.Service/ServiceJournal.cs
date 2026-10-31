@@ -19,7 +19,7 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
     /// <summary>Источники — ядра: их вывод проходит еще и через <see cref="AddressMasker"/>.</summary>
     public static readonly IReadOnlySet<string> CoreSources = new HashSet<string>(StringComparer.Ordinal) { "xray", "sing-box" };
 
-    private readonly Queue<JournalEntry> _entries = new();
+    private readonly List<JournalEntry> _entries = [];
     private readonly Lock _gate = new();
     private string[] _secrets = [];
 
@@ -73,12 +73,17 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
         }
     }
 
+    /// <summary>
+    /// Не больше <see cref="Capacity"/> записей: уходит самая старая обычная, а ошибки и предупреждения остаются, пока обычных
+    /// хватает, — подробный журнал ядра не вытесняет ошибку подключения (у пользователя на Windows 2026-10-31).
+    /// </summary>
     private void Keep(JournalEntry entry)
     {
-        _entries.Enqueue(entry);
+        _entries.Add(entry);
         while (_entries.Count > Capacity)
         {
-            _entries.Dequeue();
+            var oldest = _entries.FindIndex(e => e.Level is not (JournalLevel.Warning or JournalLevel.Error));
+            _entries.RemoveAt(oldest < 0 ? 0 : oldest);
         }
     }
 
