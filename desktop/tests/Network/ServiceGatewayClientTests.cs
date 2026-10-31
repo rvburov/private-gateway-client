@@ -363,7 +363,8 @@ public sealed class ServiceGatewayClientTests
         var user = new ServiceAddress(MissingEndpoint(), System: false);
         try
         {
-            var settings = Settings(XrayKit.FreePort());
+            // Настоящая служба ищет другие программы VPN (решение 507): сервер теста — Xray вне ее папки, для нее он чужой.
+            var settings = Settings(XrayKit.FreePort()) with { Protection = ProtectionSettings.Default with { AllowLan = true, AllowOtherVpn = true } };
             var locator = new ServiceLocator([new(MissingEndpoint(), System: true), user], Answers,
                 new UserServiceLauncher(ServiceExecutable, window.Id, user.Endpoint, state), TimeProvider.System);
             using var host = new GatewayHost(locator, a => Client(a.Endpoint, definition, settings), () => settings, TimeProvider.System);
