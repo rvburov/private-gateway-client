@@ -8,6 +8,7 @@ using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Localization;
@@ -97,6 +98,74 @@ public sealed class CheckPageTests : WindowHarness
         problems.ShouldBeGreaterThan(0);
         report[problems + 1].ShouldContain(" WRN ");
         problems.ShouldBeLessThan(Array.IndexOf(report, "Журнал (секреты скрыты)"));
+    }
+
+    [AvaloniaFact]
+    public void Things_on_this_computer_that_may_interfere_are_named_and_a_dead_user_proxy_is_fixed()
+    {
+        // У пользователя на Windows 2026-10-31 консольные программы ломались из-за оставшегося https_proxy на вход Hiddify.
+        Machine.Found.AddRange(
+        [
+            new Hindrance(HindranceKind.EnvironmentProxy, "https_proxy", "http://user:secret@127.0.0.1:2334", HindranceScope.Machine),
+            new Hindrance(HindranceKind.EnvironmentProxy, "https_proxy", "http://127.0.0.1:2334", HindranceScope.User),
+            new Hindrance(HindranceKind.WinHttpProxy, "WinHttpSettings", "198.51.100.5:3128", HindranceScope.Machine),
+            new Hindrance(HindranceKind.AutoDetect, "AutoDetect", string.Empty, HindranceScope.User),
+        ]);
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Entries = new InterferenceProbe(
+                [new EntryCheck("127.0.0.1:2334", false, null), new EntryCheck("198.51.100.5:3128", true, null)],
+                [new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]),
+        });
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning && page.Hindrances.Count == 5);
+
+        page.Hindrances.Select(h => (h.Title, h.ChipText)).ShouldBe(
+        [
+            ("Переменная https_proxy (вся машина)", "Не отвечает"),
+            ("Переменная https_proxy (пользователь)", "Не отвечает"),
+            ("Прокси WinHTTP (вся машина)", "Работает"),
+            ("Автоопределение прокси (WPAD)", "Включено"),
+            ("Hiddify", "Работает"),
+        ]);
+        page.Hindrances[0].Detail.ShouldStartWith("http://***@127.0.0.1:2334 — не отвечает", Case.Sensitive, "имя и пароль прокси скрыты");
+        page.Hindrances[0].Detail.ShouldContain("нужны права администратора");
+        page.Hindrances[0].CanFix.ShouldBeFalse("переменную машины окно не трогает — нужны права администратора");
+        page.Hindrances[2].Detail.ShouldContain("Закройте программу");
+        page.Hindrances.Select(h => h.CanFix).ShouldBe([false, true, false, false, false], "исправить — только мертвый прокси пользователя");
+        var report = page.BuildReport();
+        report.ShouldContain("Что на этом компьютере может мешать");
+        report.ShouldContain("[Не отвечает] Переменная https_proxy (пользователь) — http://127.0.0.1:2334 — не отвечает");
+        report.ShouldNotContain("secret");
+        Find<ItemsControl>(window, "Hindrances").BringIntoView();
+        Dispatcher.UIThread.RunJobs();
+        Snapshot(window, "check-hindrances");
+
+        page.Hindrances[1].FixCommand.Execute(null);
+        WaitFor(() => page.Hindrances.Count == 4);
+
+        Machine.Fixed.ShouldBe([new Hindrance(HindranceKind.EnvironmentProxy, "https_proxy", "http://127.0.0.1:2334", HindranceScope.User)]);
+        shell.Toast.Text.ShouldStartWith("Исправлено. Прежнее значение — в файле /backups/settings.json.");
+
+        Machine.Found.Clear();
+        service!.Entries = new InterferenceProbe([], []);
+        page.RunCommand.Execute(null);
+        WaitFor(() => !page.IsRunning && page.Hindrances.Count == 1);
+        (page.Hindrances[0].Title, page.Hindrances[0].ChipText, page.Hindrances[0].State).ShouldBe(("Ничего не найдено", "Нет", CheckState.Ok));
+    }
+
+    [AvaloniaFact]
+    public void Without_the_service_the_settings_are_shown_unchecked_and_not_fixable()
+    {
+        Machine.Found.Add(new Hindrance(HindranceKind.EnvironmentProxy, "http_proxy", "127.0.0.1:2334", HindranceScope.User));
+        var (_, shell) = Open();
+        var page = OpenCheck(shell);
+        Finish(page);
+        WaitFor(() => page.Hindrances.Count == 1);
+
+        (page.Hindrances[0].ChipText, page.Hindrances[0].CanFix).ShouldBe(("Не проверен", false), "без ответа службы прокси может быть живым");
+        page.Hindrances[0].Detail.ShouldStartWith("127.0.0.1:2334 — не проверен: служба не отвечает.");
     }
 
     [AvaloniaFact]

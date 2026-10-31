@@ -227,6 +227,16 @@ public sealed class GatewayRpc(
     public override async Task<V1.NetworkComparison> CompareNetwork(V1.CompareNetworkRequest request, ServerCallContext context) =>
         (await gateway.CompareNetworkAsync(context?.CancellationToken ?? default).ConfigureAwait(false)).ToContract();
 
+    public override async Task<V1.CheckEntriesReply> CheckEntries(V1.CheckEntriesRequest request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        var (entries, clients) = await gateway.CheckEntriesAsync(request.Addresses, context?.CancellationToken ?? default).ConfigureAwait(false);
+        var reply = new V1.CheckEntriesReply();
+        reply.Entries.AddRange(entries.Select(e => new V1.EntryCheck { Address = e.Address, Listens = e.Listens, Process = e.Process ?? string.Empty }));
+        reply.Clients.AddRange(clients.Select(c => c.ToContract()));
+        return reply;
+    }
+
     public override async Task<V1.MeasureIpReply> MeasureIp(V1.MeasureIpRequest request, ServerCallContext context)
     {
         await gateway.MeasureIpAsync().ConfigureAwait(false);

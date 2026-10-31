@@ -84,13 +84,20 @@ public interface IGatewayClient
     /// </summary>
     Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default) => Task.FromResult<NetworkComparison?>(null);
 
+    /// <summary>
+    /// «Что на этом компьютере может мешать» (решение 508): слушают ли входы прокси <paramref name="addresses"/> («узел:порт») и
+    /// кто, и какие другие программы VPN и прокси сейчас работают. Служба старее окна или ее нет — null.
+    /// </summary>
+    Task<InterferenceProbe?> CheckEntriesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default) =>
+        Task.FromResult<InterferenceProbe?>(null);
+
     /// <summary>Поставить скачанное обновление: служба запускает установщик ОС; ответ — номер его процесса, не вышло — null.</summary>
     Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) => Task.FromResult<int?>(null);
 
     /// <summary>
-    /// «Продолжить (не рекомендуется)» на «Работает другой VPN»: подключиться, хотя служба нашла чужой
-    /// туннель. Выбор действует до отключения — переподключения и смена настроек на ходу его не спрашивают
-    /// снова. Где чужой VPN не проверяется (имитация), — обычное подключение.
+    /// Подключиться, хотя служба нашла другую программу VPN или прокси. Выбор действует до отключения — переподключения и
+    /// смена настроек на ходу его не спрашивают снова. Где другие программы не проверяются (имитация), — обычное подключение.
+    /// Окно само так не подключается (решение 507): для этого — настройка «Разрешить работу рядом с другим VPN».
     /// </summary>
     Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default) =>
         ConnectAsync(server, cancellationToken);

@@ -83,6 +83,38 @@
           </ItemsControl>
         </Border>
 
+        <!-- Что на этом компьютере может мешать (решение 508): переменные и системный прокси, WinHTTP, другие программы VPN -->
+        <TextBlock Classes="overline" Text="{l:L diag.hinder.title, Upper=True}" Margin="6,6,6,-4" />
+        <Border Classes="card" Padding="16,4" AutomationProperties.Name="{l:L diag.hinder.title}">
+          <ItemsControl x:Name="Hindrances" ItemsSource="{Binding Hindrances}">
+            <ItemsControl.ItemTemplate>
+              <DataTemplate x:DataType="vm:HindranceRowViewModel">
+                <Border Classes="checkRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1"
+                        Padding="0,11">
+                  <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Top" Margin="0,1,0,0"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
+                      <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="12" Height="12"
+                              StrokeThickness="3.2" Foreground="{StaticResource PgBrush.Surface.Solid}" />
+                    </Border>
+                    <StackPanel Grid.Column="1" Margin="12,0" Spacing="2" VerticalAlignment="Center">
+                      <TextBlock Classes="strong" Text="{Binding Title}" TextWrapping="Wrap" />
+                      <TextBlock Classes="caption" Text="{Binding Detail}" TextWrapping="Wrap" />
+                      <Button Classes="link" HorizontalAlignment="Left" Padding="0,4,0,0" IsVisible="{Binding CanFix}"
+                              Command="{Binding FixCommand}" Content="{l:L diag.hinder.fix}" />
+                    </StackPanel>
+                    <Border Grid.Column="2" Padding="9,3" CornerRadius="10" VerticalAlignment="Top"
+                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}">
+                      <TextBlock Text="{Binding ChipText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold"
+                                 Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+                    </Border>
+                  </Grid>
+                </Border>
+              </DataTemplate>
+            </ItemsControl.ItemTemplate>
+          </ItemsControl>
+        </Border>
+
         <!-- Сетевой инспектор: сеть машины и проверка узла — только чтение -->
         <Border Classes="card" Padding="8,4">
           <StackPanel>

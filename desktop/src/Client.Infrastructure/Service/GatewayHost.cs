@@ -229,6 +229,15 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         }
     }
 
+    /// <summary>
+    /// Входы прокси и другие программы проверяет служба, которая есть сейчас; ради этого службу пользователя не запускать:
+    /// без службы блок «Что на этом компьютере может мешать» покажет настройки без проверки входов.
+    /// </summary>
+    public async Task<InterferenceProbe?> CheckEntriesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default) =>
+        await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
+            ? await service.CheckEntriesAsync(addresses, cancellationToken).ConfigureAwait(false)
+            : null;
+
     /// <summary>Сравнение делает служба; в режиме прокси ради инспектора запускается служба пользователя.</summary>
     public async Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default) =>
         await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service

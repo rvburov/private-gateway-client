@@ -6,6 +6,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Logging;
 using PrivateGateway.Client.UI.Localization;
@@ -31,6 +32,8 @@ public sealed partial class CheckPageViewModel : ObservableObject
     private readonly ToastViewModel _toast;
     private readonly TimeProvider _time;
     private readonly INavigator _navigator;
+    private readonly IMachineSettings _machine;
+    private readonly SettingsService _settings;
     private DiagnosticReport? _report;
     private ConnectionState? _reportState;
     private bool _rerun;
@@ -42,11 +45,15 @@ public sealed partial class CheckPageViewModel : ObservableObject
         IFileSaveService files,
         ToastViewModel toast,
         TimeProvider time,
-        INavigator navigator)
+        INavigator navigator,
+        IMachineSettings machine,
+        SettingsService settings)
     {
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(gateway);
         _navigator = navigator;
+        _machine = machine;
+        _settings = settings;
         Protection = protection;
         _gateway = gateway;
         _catalog = catalog;
@@ -120,6 +127,9 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     public bool HasJournal => Journal.Count > 0;
 
+    /// <summary>«Что на этом компьютере может мешать» (решение 508): настройки компьютера и другие программы VPN и прокси.</summary>
+    public ObservableCollection<HindranceRowViewModel> Hindrances { get; } = [];
+
     // ── Команды ──────────────────────────────────────────────────────────────
 
     // Кнопка не гаснет во время проверки: повторное нажатие проверит еще раз сразу после текущей.
@@ -142,6 +152,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
                 // Состояние, для которого идет проверка: его смена во время проверки — повод повторить.
                 _reportState = Protection.Status.State;
                 _report = await _gateway.RunChecksAsync().ConfigureAwait(true);
+                await FindHindrancesAsync().ConfigureAwait(true);
             }
             while (_rerun);
         }
@@ -150,6 +161,61 @@ public sealed partial class CheckPageViewModel : ObservableObject
             IsRunning = false;
             Refresh();
         }
+    }
+
+    /// <summary>
+    /// Настройки компьютера, которые могут мешать, — читает окно (<see cref="IMachineSettings"/>); слушают ли их входы прокси и
+    /// какие другие программы VPN и прокси работают — отвечает служба. Без службы — настройки без проверки входов.
+    /// </summary>
+    private async Task FindHindrancesAsync()
+    {
+        var settings = _settings.Current;
+        IReadOnlyList<Hindrance> found;
+        try
+        {
+            found = await Task.Run(() => _machine.Read(settings)).ConfigureAwait(true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
+        {
+            found = [];
+        }
+
+        var probe = await _gateway.CheckEntriesAsync([.. found.Select(h => h.Endpoint).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)])
+            .ConfigureAwait(true);
+        Hindrances.Clear();
+        foreach (var hindrance in found)
+        {
+            var entry = hindrance.Endpoint is { } endpoint
+                ? probe?.Entries.FirstOrDefault(e => e.Address.Equals(endpoint, StringComparison.OrdinalIgnoreCase))
+                : null;
+            Hindrances.Add(HindranceRowViewModel.For(hindrance, entry, probe is not null, _machine.CanFix(hindrance, entry), FixAsync));
+        }
+
+        foreach (var client in probe?.Clients ?? [])
+        {
+            Hindrances.Add(HindranceRowViewModel.For(client));
+        }
+
+        if (Hindrances.Count == 0)
+        {
+            Hindrances.Add(HindranceRowViewModel.Nothing());
+        }
+    }
+
+    /// <summary>«Исправить»: убрать настройку; прежнее значение — в файле копии, путь — в подсказке. Потом — найти заново.</summary>
+    private async Task FixAsync(Hindrance hindrance)
+    {
+        try
+        {
+            var backup = await Task.Run(() => _machine.Fix(hindrance)).ConfigureAwait(true);
+            _toast.Show(Loc.Instance.Format("diag.hinder.fixed", backup), ToastViewModel.LongDuration);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException or InvalidOperationException)
+        {
+            _toast.Show(Loc.Instance.Format("diag.hinder.fixFailed", e.Message), ToastViewModel.LongDuration);
+        }
+
+        await FindHindrancesAsync().ConfigureAwait(true);
     }
 
     /// <summary>
@@ -194,6 +260,13 @@ public sealed partial class CheckPageViewModel : ObservableObject
             loc["diag.report.checks"],
         };
         lines.AddRange(Rows.Select(r => $"  [{r.ChipText}] {r.Title} — {WithoutRealIp(r)}"));
+        if (Hindrances.Count > 0)
+        {
+            lines.Add(string.Empty);
+            lines.Add(loc["diag.report.hinder"]);
+            lines.AddRange(Hindrances.Select(h => $"  [{h.ChipText}] {h.Title} — {h.Detail}"));
+        }
+
         if (inspector is not null)
         {
             lines.Add(string.Empty);

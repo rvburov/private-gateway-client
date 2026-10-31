@@ -21,6 +21,7 @@ public static partial class SecretMasker
         }
 
         var result = ProxyLink().Replace(text, m => m.Groups["scheme"].Value + "://" + Hidden);
+        result = UserInfo().Replace(result, m => m.Groups["scheme"].Value + Hidden + "@");
         result = HttpUrl().Replace(result, m =>
             m.Groups["rest"].Length > 1 ? m.Groups["origin"].Value + "/" + Hidden : m.Value);
         result = Uuid().Replace(result, Hidden);
@@ -43,6 +44,10 @@ public static partial class SecretMasker
     private static partial Regex ProxyLink();
 
     // Адрес подписки: путь и параметры часто и есть токен доступа, хост оставляем.
+    // Имя и пароль в адресе прокси или сайта: «http://имя:пароль@узел» — сам узел остается.
+    [GeneratedRegex(@"(?<scheme>\b[a-z][a-z0-9+.-]*://)[^\s/@""'<>]+@", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
+    private static partial Regex UserInfo();
+
     [GeneratedRegex(@"(?<origin>\bhttps?://[^\s/""'<>?#]+)(?<rest>[/?#][^\s""'<>]*)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex HttpUrl();

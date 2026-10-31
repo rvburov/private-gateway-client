@@ -178,6 +178,31 @@ public sealed class ServiceGatewayClientTests
     }
 
     [Fact]
+    public async Task Entries_of_proxy_settings_are_checked_and_other_clients_are_named()
+    {
+        // «Что на этом компьютере может мешать» (решение 508): окно присылает входы прокси из настроек, служба отвечает, кто слушает.
+        using var live = new TcpListener(IPAddress.Loopback, 0);
+        live.Start();
+        var liveAddress = $"127.0.0.1:{((IPEndPoint)live.LocalEndpoint).Port}";
+        var deadAddress = $"127.0.0.1:{XrayKit.FreePort()}";
+        IReadOnlyList<RunningProcess> processes = [new(5, "mihomo", "/opt/clash/mihomo")];
+        await using var service = await RunningService.StartAsync(options: o => o with { Processes = () => processes });
+        using var client = Client(service.Endpoint, null, Settings(XrayKit.FreePort()));
+
+        var probe = (await client.CheckEntriesAsync([liveAddress, deadAddress, "192.0.2.1:3128", "не адрес"], Ct)).ShouldNotBeNull();
+
+        probe.Entries.ShouldBe(
+        [
+            new EntryCheck(liveAddress, true, null),
+            new EntryCheck(deadAddress, false, null),
+            new EntryCheck("192.0.2.1:3128", false, null),
+        ], "вход в сети — пробным соединением: адрес документации не отвечает; не адрес — не проверяется");
+        probe.Clients.ShouldBe([new OtherClient("mihomo", OtherClientSign.Process, "mihomo")]);
+        (await client.CheckEntriesAsync([.. Enumerable.Range(1, 40).Select(i => $"127.0.0.1:{i}")], Ct))!.Entries.Count
+            .ShouldBe(PrivateGateway.Client.Service.Gateway.EntryLimit, "служба не сканер портов");
+    }
+
+    [Fact]
     public async Task Vpn_connect_shows_connecting_while_the_server_name_is_looked_up()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");

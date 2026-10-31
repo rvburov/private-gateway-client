@@ -58,6 +58,8 @@ public abstract class WindowHarness : IDisposable
     /// <summary>Системный прокси пользователя: по умолчанию выключен — тесты не читают настройки машины.</summary>
     protected FakeUserProxy SystemProxy { get; } = new();
 
+    protected FakeMachine Machine { get; } = new();
+
     /// <summary>Уведомления ОС в тестах не показываются, а запоминаются.</summary>
     protected FakeNotifier Notifier { get; } = new();
 
@@ -93,6 +95,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<IAutostart>(Autostart);
             s.AddSingleton<IServiceInstaller>(Installer);
             s.AddSingleton<IUserProxySettings>(SystemProxy);
+            s.AddSingleton<IMachineSettings>(Machine);
             s.AddSingleton<ISystemNotifier>(Notifier);
             s.AddSingleton<IAppRelauncher>(Relauncher);
             if (gateway is not null)
@@ -225,6 +228,12 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Что покажут проверки; по умолчанию — ничего.</summary>
         public IReadOnlyList<DiagnosticResult> Checks { get; set; } = [];
 
+        /// <summary>Что служба скажет о входах прокси и других программах; null — служба старее окна.</summary>
+        public InterferenceProbe? Entries { get; set; }
+
+        public Task<InterferenceProbe?> CheckEntriesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default) =>
+            Task.FromResult(Entries);
+
         public IReadOnlyList<JournalEntry> Journal => [];
 
         public event EventHandler<ConnectionStatus>? StatusChanged;
@@ -312,6 +321,26 @@ public abstract class WindowHarness : IDisposable
             }
 
             return Task.FromResult(Accept);
+        }
+    }
+
+    /// <summary>Настройки компьютера, которые задает тест: настоящие (переменные прокси машины CI) тесту не нужны.</summary>
+    protected sealed class FakeMachine : IMachineSettings
+    {
+        public List<Hindrance> Found { get; } = [];
+
+        public List<Hindrance> Fixed { get; } = [];
+
+        public IReadOnlyList<Hindrance> Read(AppSettings settings) => [.. Found];
+
+        public bool CanFix(Hindrance hindrance, EntryCheck? entry) =>
+            hindrance is { Kind: HindranceKind.EnvironmentProxy, Scope: HindranceScope.User } && entry is { Listens: false };
+
+        public string Fix(Hindrance hindrance)
+        {
+            Fixed.Add(hindrance);
+            Found.Remove(hindrance);
+            return "/backups/settings.json";
         }
     }
 

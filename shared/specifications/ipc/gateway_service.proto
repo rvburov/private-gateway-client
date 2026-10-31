@@ -97,6 +97,25 @@ service GatewayService {
   // До и после VPN: «до» служба снимает при включении защиты (пока прямой путь открыт), «сейчас» — замером по этому
   // вызову: адреса для сайтов по IPv4 и IPv6, адрес STUN (WebRTC), адаптер выхода в интернет, его шлюз и DNS.
   rpc CompareNetwork(CompareNetworkRequest) returns (NetworkComparison);
+
+  // «Что на этом компьютере может мешать»: слушают ли входы прокси из настроек пользователя (окно читает переменные
+  // окружения, системный прокси, WinHTTP) и кто — и какие другие программы VPN и прокси сейчас работают.
+  rpc CheckEntries(CheckEntriesRequest) returns (CheckEntriesReply);
+}
+
+// Не больше 16 адресов «узел:порт»; лишние служба не проверяет.
+message CheckEntriesRequest { repeated string addresses = 1; }
+
+message EntryCheck {
+  string address = 1;
+  bool listens = 2;
+  // Имя процесса, который слушает вход на этой машине; не знает — пусто.
+  string process = 3;
+}
+
+message CheckEntriesReply {
+  repeated EntryCheck entries = 1;
+  repeated OtherClient clients = 2;
 }
 
 message SubscriptionDownloadRequest { string address = 1; }

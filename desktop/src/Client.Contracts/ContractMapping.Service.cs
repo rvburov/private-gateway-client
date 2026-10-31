@@ -370,12 +370,7 @@ public static partial class ContractMapping
             result.Error = new V1.ErrorInfo { Code = code };
         }
 
-        result.OtherClients.AddRange(status.OtherClients?.Items.Select(c => new V1.OtherClient
-        {
-            Program = c.Program,
-            Sign = c.Sign.ToContract(),
-            Detail = c.Detail,
-        }) ?? []);
+        result.OtherClients.AddRange(status.OtherClients?.Items.Select(c => c.ToContract()) ?? []);
         return result;
     }
 
@@ -400,12 +395,21 @@ public static partial class ContractMapping
             status.StrictBlock,
             status.NetworkChangedAt?.ToDateTimeOffset(),
             // Признак, которого окно не знает (служба новее), — без него: остальные находки остаются.
-            status.OtherClients.Count == 0 ? null : new OtherClientList(
-            [
-                .. status.OtherClients.Where(c => c.Sign != V1.OtherClientSign.Unspecified && System.Enum.IsDefined(c.Sign))
-                    .Select(c => new OtherClient(c.Program, c.Sign.ToCore(), c.Detail)),
-            ]));
+            status.OtherClients.Count == 0 ? null : new OtherClientList(status.OtherClients.ToCore()));
     }
+
+    public static V1.OtherClient ToContract(this OtherClient client)
+    {
+        ArgumentNullException.ThrowIfNull(client);
+        return new V1.OtherClient { Program = client.Program, Sign = client.Sign.ToContract(), Detail = client.Detail };
+    }
+
+    /// <summary>Находки другой программы VPN; признак, которого окно не знает (служба новее), — без него: остальные остаются.</summary>
+    public static IReadOnlyList<OtherClient> ToCore(this IEnumerable<V1.OtherClient> clients) =>
+    [
+        .. clients.Where(c => c.Sign != V1.OtherClientSign.Unspecified && System.Enum.IsDefined(c.Sign))
+            .Select(c => new OtherClient(c.Program, c.Sign.ToCore(), c.Detail)),
+    ];
 
     /// <summary>Пустая строка контракта — как отсутствующее значение.</summary>
     private static string? Empty(string? value) => string.IsNullOrEmpty(value) ? null : value;

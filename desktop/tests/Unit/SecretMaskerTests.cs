@@ -35,6 +35,12 @@ public class SecretMaskerTests
         SecretMasker.Mask("проверка https://example.com").ShouldBe("проверка https://example.com");
     }
 
+    [Theory]
+    [InlineData("https_proxy=http://user:secret@127.0.0.1:2334", "https_proxy=http://" + Hidden + "@127.0.0.1:2334")]
+    [InlineData("all_proxy=socks5h://user@proxy.example.com:1080", "all_proxy=socks5h://" + Hidden + "@proxy.example.com:1080")]
+    [InlineData("прокси http://127.0.0.1:2334 без имени", "прокси http://127.0.0.1:2334 без имени")]
+    public void Name_and_password_in_a_proxy_address_are_hidden(string text, string masked) => SecretMasker.Mask(text).ShouldBe(masked);
+
     [Fact]
     public void Uuid_is_hidden()
     {

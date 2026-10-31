@@ -43,6 +43,8 @@ public static class InfrastructureModule
         services.AddSingleton<ISettingsStore, SqliteSettingsStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IUserProxySettings>(_ => UserProxySettings.ForCurrentUser());
+        services.AddSingleton<IMachineSettings>(sp =>
+            MachineSettings.ForCurrentUser(sp.GetRequiredService<IUserProxySettings>(), paths.DataDirectory, sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IGatewayClient>(sp => demo
             ? ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp)
             : new GatewayHost(ServiceLocator.ForThisWindow(sp.GetRequiredService<TimeProvider>()),

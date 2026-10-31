@@ -233,6 +233,24 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     }
 
     /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
+    public async Task<InterferenceProbe?> CheckEntriesAsync(IReadOnlyList<string> addresses, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(addresses);
+        try
+        {
+            var request = new V1.CheckEntriesRequest();
+            request.Addresses.AddRange(addresses);
+            var reply = await _client.CheckEntriesAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
+            return new InterferenceProbe([.. reply.Entries.Select(e => new EntryCheck(e.Address, e.Listens, e.Process.Length > 0 ? e.Process : null))],
+                reply.Clients.ToCore());
+        }
+        catch (RpcException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Служба без этого вызова (старая) или без связи — null.</summary>
     public async Task<NetworkComparison?> CompareNetworkAsync(CancellationToken cancellationToken = default)
     {
         try
