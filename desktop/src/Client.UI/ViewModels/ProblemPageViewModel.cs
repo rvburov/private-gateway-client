@@ -70,9 +70,6 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(Title), nameof(Text), nameof(Facts))]
     public partial OtherClientList? Others { get; private set; }
 
-    /// <summary>Названия найденных программ через запятую; ни одной не узнали — пусто.</summary>
-    private string Programs => string.Join(", ", Others?.Programs(string.Empty).Where(p => p.Length > 0) ?? []);
-
     /// <summary>Код ошибки, которую показывает экран; меняется вместе с новой ошибкой службы.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAdmin), nameof(IsConflict), nameof(IsCaution), nameof(IsService), nameof(Title), nameof(Text), nameof(Facts),
@@ -91,12 +88,13 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// <summary>«Служба не запущена» — красный щит.</summary>
     public bool IsService => !IsCaution;
 
-    /// <summary>«Работает Hiddify» — программу узнали; иначе «Работает другой VPN».</summary>
-    public string Title => IsConflict && Programs.Length > 0 ? Loc.Instance.Format("problem.conflict.title.named", Programs)
-        : Loc.Instance[IsConflict ? "problem.conflict.title" : IsAdmin ? "problem.admin.title" : "problem.service.title"];
+    /// <summary>
+    /// «Работает другой VPN или прокси-клиент» — всегда общими словами (просьба пользователя 2026-11-01): какая программа и чем
+    /// выдала себя — в фактах ниже.
+    /// </summary>
+    public string Title => Loc.Instance[IsConflict ? "problem.conflict.title" : IsAdmin ? "problem.admin.title" : "problem.service.title"];
 
-    public string Text => IsConflict && Programs.Length > 0 ? Loc.Instance.Format("problem.conflict.text.named", Programs)
-        : Loc.Instance[IsConflict ? "problem.conflict.text" : IsAdmin ? "problem.admin.text" : "problem.service.text"];
+    public string Text => Loc.Instance[IsConflict ? "problem.conflict.text" : IsAdmin ? "problem.admin.text" : "problem.service.text"];
 
     /// <summary>
     /// Факты по макету. У «Работает другой VPN» — что нашла служба: программа и чем она себя выдала (ядро, адаптер,
@@ -255,8 +253,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         if (_gateway.Status is { State: ConnectionState.Error or ConnectionState.Blocked, ErrorCode: ErrorCodes.OtherVpn } status)
         {
             Others = status.OtherClients;
-            _toast.Show(Programs.Length > 0 ? Loc.Instance.Format("problem.conflict.still.named", Programs) : Loc.Instance["problem.conflict.still"],
-                ToastViewModel.LongDuration);
+            _toast.Show(Loc.Instance["problem.conflict.still"], ToastViewModel.LongDuration);
             return;
         }
 

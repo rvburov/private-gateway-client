@@ -270,6 +270,7 @@ public sealed class VpnTunnel : IAsyncDisposable
                     DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
                 if (OperatingSystem.IsWindows() && netns is null)
                 {
+                    RemoveLeftoverAdapter(output);
                     RemoveStaleAddresses(subnet, output);
                 }
 
@@ -460,6 +461,26 @@ public sealed class VpnTunnel : IAsyncDisposable
         catch (Exception e) when (e is IOException or System.Text.Json.JsonException)
         {
             return "Правила маршрутизации sing-box не проверены: " + e.Message;
+        }
+    }
+
+    /// <summary>
+    /// Windows: устройство адаптера TUN, оставшееся от прежнего sing-box, — убрать (<see cref="WintunAdapter"/>): иначе на
+    /// части машин новый адаптер ждет 15 с и не поднимается. Не далось — запуск идет как есть, это в журнале.
+    /// </summary>
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static void RemoveLeftoverAdapter(Action<string, string>? output)
+    {
+        try
+        {
+            if (WintunAdapter.RemoveLeftover(SingBoxConfigBuilder.InterfaceName))
+            {
+                output?.Invoke("service", "Убран адаптер TUN, оставшийся от прошлого запуска");
+            }
+        }
+        catch (System.ComponentModel.Win32Exception e)
+        {
+            output?.Invoke("service", "Адаптер TUN, оставшийся от прошлого запуска, не убран: " + e.Message);
         }
     }
 

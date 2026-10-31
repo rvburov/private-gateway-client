@@ -72,7 +72,7 @@ public sealed partial class HindranceRowViewModel(string title, string detail, s
         return new HindranceRowViewModel(title, detail, chip, state, canFix ? hindrance : null, canFix ? fix : null);
     }
 
-    /// <summary>Другая программа VPN или прокси, которую нашла служба.</summary>
+    /// <summary>Другой VPN или прокси-клиент, которого нашла служба: «Другой VPN или прокси-клиент», в подробностях — какой и чем выдал себя.</summary>
     public static HindranceRowViewModel For(OtherClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
@@ -83,8 +83,10 @@ public sealed partial class HindranceRowViewModel(string title, string detail, s
             OtherClientSign.Process => "problem.fact.sign.process",
             _ => "problem.fact.sign.proxy",
         }, client.Detail);
-        return new HindranceRowViewModel(client.Program.Length > 0 ? client.Program : loc["problem.fact.other_program"],
-            loc.Format("diag.hinder.client", sign), loc["diag.hinder.chip.live"], CheckState.Warning);
+        // Заголовок — общий (просьба пользователя 2026-11-01): название программы — подробность, а не суть замечания.
+        return new HindranceRowViewModel(loc["diag.hinder.other"],
+            loc.Format("diag.hinder.client", client.Program.Length > 0 ? client.Program : loc["problem.fact.other_program"], sign),
+            loc["diag.hinder.chip.live"], CheckState.Warning);
     }
 
     /// <summary>Ничего не найдено.</summary>

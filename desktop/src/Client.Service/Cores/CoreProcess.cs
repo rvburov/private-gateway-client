@@ -90,12 +90,17 @@ public sealed class CoreProcess : IDisposable
         Start(executable, ["run", "-c", "stdin", "--disable-color"], config, Path.GetDirectoryName(Path.GetFullPath(executable))!, null, netns, output);
 
     /// <summary>
-    /// Остановить ядро и дождаться выхода. <paramref name="grace"/> — сначала попросить (SIGTERM на
-    /// Linux и macOS): sing-box за это время убирает свои маршруты и правила; не ушел — снять.
+    /// Остановить ядро и дождаться выхода. <paramref name="grace"/> — сначала попросить (SIGTERM на Linux и macOS, Ctrl+C в
+    /// консоль ядра на Windows — <see cref="ConsoleInterrupt"/>): sing-box за это время убирает свои маршруты, правила и
+    /// адаптер TUN; не ушел — снять.
     /// </summary>
     public async Task StopAsync(TimeSpan grace = default, CancellationToken cancellationToken = default)
     {
-        if (!_process.HasExited && grace > TimeSpan.Zero && !OperatingSystem.IsWindows() && SendSignal(_process.Id, SigTerm) == 0)
+        if (!_process.HasExited && grace > TimeSpan.Zero && OperatingSystem.IsWindows())
+        {
+            await InterruptAsync(_process, grace, cancellationToken).ConfigureAwait(false);
+        }
+        else if (!_process.HasExited && grace > TimeSpan.Zero && SendSignal(_process.Id, SigTerm) == 0)
         {
             using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             wait.CancelAfter(grace);
@@ -180,7 +185,7 @@ public sealed class CoreProcess : IDisposable
             info.Environment[name] = value;
         }
 
-        var process = Process.Start(info) ?? throw new InvalidOperationException("Ядро не запустилось: " + Path.GetFileName(executable));
+        var process = StartProcess(info) ?? throw new InvalidOperationException("Ядро не запустилось: " + Path.GetFileName(executable));
         // Windows: ядро — в задании, которое ОС закрывает вместе со службой, и без службы оно не останется.
         // На Linux то же делает systemd: при сбое службы он останавливает весь ее cgroup.
         if (OperatingSystem.IsWindows())
@@ -208,6 +213,24 @@ public sealed class CoreProcess : IDisposable
         process.StandardInput.Write(config.ToJsonString());
         process.StandardInput.Close();
         return core;
+    }
+
+    [System.Runtime.Versioning.SupportedOSPlatform("windows")]
+    private static Task<bool> InterruptAsync(Process process, TimeSpan grace, CancellationToken cancellationToken) =>
+        Task.Run(() => ConsoleInterrupt.Stop(process, grace), cancellationToken);
+
+    // Windows: не во время мягкой остановки другого ядра — тогда служба не реагирует на Ctrl+C, и ядро унаследовало бы это.
+    private static Process? StartProcess(ProcessStartInfo info)
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return Process.Start(info);
+        }
+
+        lock (ConsoleInterrupt.Gate)
+        {
+            return Process.Start(info);
+        }
     }
 
     private void Line(string? text)

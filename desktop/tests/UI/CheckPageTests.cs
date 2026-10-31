@@ -128,8 +128,10 @@ public sealed class CheckPageTests : WindowHarness
             ("Переменная https_proxy (пользователь)", "Не отвечает"),
             ("Прокси WinHTTP (вся машина)", "Работает"),
             ("Автоопределение прокси (WPAD)", "Включено"),
-            ("Hiddify", "Работает"),
+            ("Другой VPN или прокси-клиент", "Работает"),
         ]);
+        page.Hindrances[4].Detail.ShouldStartWith("Hiddify — процесс HiddifyCli. Работает и ведет трафик", Case.Sensitive,
+            "заголовок общий, какая программа — в подробностях (просьба пользователя 2026-11-01)");
         page.Hindrances[0].Detail.ShouldStartWith("http://***@127.0.0.1:2334 — не отвечает", Case.Sensitive, "имя и пароль прокси скрыты");
         page.Hindrances[0].Detail.ShouldContain("нужны права администратора");
         page.Hindrances[0].CanFix.ShouldBeFalse("переменную машины окно не трогает — нужны права администратора");

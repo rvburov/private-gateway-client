@@ -178,6 +178,70 @@ public sealed class ServiceGatewayClientTests
     }
 
     [Fact]
+    public async Task A_foreign_system_proxy_switched_on_while_connected_stops_the_connection()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        // Решение 511: подключено, и тут другой клиент ставит свой системный прокси. Окно его видит (служба — нет) и говорит
+        // службе; та проверяет, что вход слушает не свое ядро, и останавливает подключение с PGC-NET-010.
+        await using var service = await RunningService.StartAsync();
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        using var entry = new TcpListener(IPAddress.Loopback, 0);
+        entry.Start();
+        var address = $"127.0.0.1:{((IPEndPoint)entry.LocalEndpoint).Port}";
+        UserProxy? foreign = null;
+        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User,
+            id => id == "srv-1" ? definition : null, () => Settings(XrayKit.FreePort()), TimeProvider.System, () => foreign, TimeSpan.FromMilliseconds(200));
+        await client.ConnectAsync(Profile(definition), Ct);
+        await WaitFor(() => client.Status.State == ConnectionState.Connected);
+
+        foreign = new UserProxy("http://" + address);
+        await WaitFor(() => client.Status.State == ConnectionState.Error);
+
+        client.Status.ErrorCode.ShouldBe(ErrorCodes.OtherVpn);
+        client.Status.OtherClients.ShouldBe(new OtherClientList([new OtherClient(string.Empty, OtherClientSign.SystemProxy, address)]),
+            "схема в адресе не мешает: окно присылает «узел:порт»");
+        await client.DisconnectAsync(Ct);
+    }
+
+    [Fact]
+    public async Task A_dead_foreign_proxy_or_permission_keeps_the_connection()
+    {
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        await using var service = await RunningService.StartAsync();
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        var settings = Settings(XrayKit.FreePort());
+        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User,
+            id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System, () => new UserProxy($"127.0.0.1:{XrayKit.FreePort()}"),
+            TimeSpan.FromMilliseconds(100));
+        await client.ConnectAsync(Profile(definition), Ct);
+        await WaitFor(() => client.Status.State == ConnectionState.Connected);
+
+        // Прокси остался от выключенной программы — его вход никто не слушает.
+        await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+        client.Status.State.ShouldBe(ConnectionState.Connected, "мертвый прокси трафик не ведет");
+
+        // Слушает, но работа рядом с другим VPN разрешена.
+        using var entry = new TcpListener(IPAddress.Loopback, 0);
+        entry.Start();
+        settings = settings with { Protection = settings.Protection with { AllowOtherVpn = true } };
+        var allowed = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User,
+            id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System,
+            () => new UserProxy($"127.0.0.1:{((IPEndPoint)entry.LocalEndpoint).Port}"), TimeSpan.FromMilliseconds(100));
+        using (allowed)
+        {
+            await WaitFor(() => allowed.Status.State == ConnectionState.Connected);
+            await Task.Delay(TimeSpan.FromSeconds(1), Ct);
+            allowed.Status.State.ShouldBe(ConnectionState.Connected, "разрешено — окно службе не сообщает");
+        }
+
+        await client.DisconnectAsync(Ct);
+    }
+
+    [Fact]
     public async Task Entries_of_proxy_settings_are_checked_and_other_clients_are_named()
     {
         // «Что на этом компьютере может мешать» (решение 508): окно присылает входы прокси из настроек, служба отвечает, кто слушает.

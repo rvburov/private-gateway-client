@@ -24,6 +24,12 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// <summary>Сколько последних записей журнала службы держит интерфейс.</summary>
     public const int JournalLimit = 200;
 
+    /// <summary>
+    /// Как часто окно смотрит системный прокси, пока «Защищено» (решение 511): реестр Windows читается мгновенно, на Linux и
+    /// macOS — короткой программой (gsettings, scutil); другая программа, включенная рядом, замечается за это время.
+    /// </summary>
+    public static readonly TimeSpan ProxyWatch = TimeSpan.FromSeconds(5);
+
     private static readonly TimeSpan Retry = TimeSpan.FromSeconds(2);
 
     private readonly GrpcChannel _channel;
@@ -40,6 +46,8 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     private ConnectionStatus _status;
 
     private readonly Func<UserProxy?>? _userProxy;
+    private readonly TimeSpan _proxyWatch;
+    private int _watchingProxy;
 
     // Подключиться вопреки другому VPN (ConnectDespiteOtherVpnAsync): до отключения другой VPN не мешает подключаться.
     private volatile bool _allowOtherVpn;
@@ -53,10 +61,15 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// Системный прокси пользователя окна (<see cref="IUserProxySettings.Read"/>): поставленный другой программой уходит службе в
     /// запросе подключения — сама установленная служба его не видит; null — не передавать.
     /// </param>
+    /// <param name="proxyWatch">
+    /// Как часто, пока «Защищено», смотреть системный прокси пользователя: поставила его другая программа — служба об этом узнает
+    /// (<see cref="ReportForeignProxyAsync"/>); по умолчанию — <see cref="ProxyWatch"/>.
+    /// </param>
     public ServiceGatewayClient(GrpcChannel channel, ServiceKind service, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings,
-        TimeProvider time, Func<UserProxy?>? userProxy = null)
+        TimeProvider time, Func<UserProxy?>? userProxy = null, TimeSpan? proxyWatch = null)
     {
         _userProxy = userProxy;
+        _proxyWatch = proxyWatch ?? ProxyWatch;
         _channel = channel;
         Service = service;
         _client = new V1.GatewayService.GatewayServiceClient(channel);
@@ -140,7 +153,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
 
         var proxy = await Task.Run(read).ConfigureAwait(false);
-        return proxy is { IsScript: false } && proxy.IsForeign(settings) ? proxy.Address : string.Empty;
+        return proxy is { IsScript: false } && proxy.IsForeign(settings) ? ProxyAddress.Endpoint(proxy.Address) ?? string.Empty : string.Empty;
     }
 
     public async Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default)
@@ -565,6 +578,64 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
 
         StatusChanged?.Invoke(this, status);
+        if (status.State == ConnectionState.Connected && _userProxy is not null && Interlocked.Exchange(ref _watchingProxy, 1) == 0)
+        {
+            _ = WatchProxyAsync();
+        }
+    }
+
+    /// <summary>
+    /// Пока «Защищено» — системный прокси пользователя: поставила его другая программа (VPN- или прокси-клиент, включенный
+    /// рядом) — служба проверит, слушает ли его вход другая программа, и остановит подключение (решение 511). Разрешена работа
+    /// рядом с другим VPN — не смотрит.
+    /// </summary>
+    private async Task WatchProxyAsync()
+    {
+        try
+        {
+            while (Status.State == ConnectionState.Connected)
+            {
+                await Task.Delay(_proxyWatch, _time, _stopping).ConfigureAwait(false);
+                var settings = _settings();
+                if (Status.State != ConnectionState.Connected || _allowOtherVpn || settings.Protection.AllowOtherVpn)
+                {
+                    continue;
+                }
+
+                if (await ForeignProxyAsync(settings).ConfigureAwait(false) is { Length: > 0 } address)
+                {
+                    await ReportForeignProxyAsync(address).ConfigureAwait(false);
+                }
+            }
+        }
+        catch (Exception e) when (e is OperationCanceledException or ObjectDisposedException or IOException or UnauthorizedAccessException
+            or System.Security.SecurityException or InvalidOperationException)
+        {
+            // Окно закрывается или настройку не прочитать — посмотрим при следующем «Защищено».
+        }
+        finally
+        {
+            Volatile.Write(ref _watchingProxy, 0);
+        }
+
+        // Пока цикл выходил, могло прийти новое «Защищено».
+        if (!_stopping.IsCancellationRequested && Status.State == ConnectionState.Connected && Interlocked.Exchange(ref _watchingProxy, 1) == 0)
+        {
+            _ = WatchProxyAsync();
+        }
+    }
+
+    /// <summary>Сказать службе о системном прокси другой программы; служба старая (нет вызова) или не отвечает — ничего.</summary>
+    private async Task ReportForeignProxyAsync(string address)
+    {
+        try
+        {
+            await _client.ReportForeignProxyAsync(new V1.ForeignProxyReport { Address = address }, cancellationToken: _stopping).ConfigureAwait(false);
+        }
+        catch (RpcException)
+        {
+            // Служба прежней версии или без связи — подключение идет как было.
+        }
     }
 
     /// <summary>

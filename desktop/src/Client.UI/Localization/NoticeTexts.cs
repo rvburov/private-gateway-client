@@ -17,8 +17,7 @@ public sealed class NoticeTexts : INoticeTexts
             : string.Empty;
         return new NoticeText(
             Loc.Instance.Format(TitleKey(notice.Kind), notice.Version ?? string.Empty),
-            Loc.Instance.Format(notice.TextKey, notice.Server ?? Loc.Instance["notify.server.none"], notice.Subscription ?? string.Empty, reason,
-                notice.Program ?? string.Empty),
+            Loc.Instance.Format(notice.TextKey, notice.Server ?? Loc.Instance["notify.server.none"], notice.Subscription ?? string.Empty, reason),
             [.. notice.Actions.Select(a => new NoticeButton(a, Loc.Instance["notify.action." + char.ToLowerInvariant(a.ToString()[0]) + a.ToString()[1..]]))]);
     }
 

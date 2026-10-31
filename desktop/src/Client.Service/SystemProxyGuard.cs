@@ -18,6 +18,9 @@ public sealed class SystemProxyGuard(ISystemProxy proxy, string backupPath, Serv
     private readonly Lock _gate = new();
     private int? _port;
 
+    // Каким служба поставила системный прокси: другая программа его сменила — возвращать прежний поверх нее нельзя.
+    private SystemProxySnapshot? _applied;
+
     /// <summary>Включен ли системный прокси этой службой.</summary>
     public bool IsActive
     {
@@ -49,6 +52,7 @@ public sealed class SystemProxyGuard(ISystemProxy proxy, string backupPath, Serv
                 }
 
                 proxy.Enable(port);
+                _applied = proxy.Read();
             }))
             {
                 return;
@@ -60,9 +64,13 @@ public sealed class SystemProxyGuard(ISystemProxy proxy, string backupPath, Serv
         journal.Add(JournalLevel.Info, "service", $"Системный прокси включен ({proxy.Name}): 127.0.0.1:{port}");
     }
 
-    /// <summary>Вернуть настройки, как были до включения; не включен — ничего.</summary>
+    /// <summary>
+    /// Вернуть настройки, как были до включения; не включен — ничего. Сменила их за это время другая программа (VPN- или
+    /// прокси-клиент, включенный рядом, решение 511) — ее настройки остаются: прежние вернули бы прокси мимо нее.
+    /// </summary>
     public void Release()
     {
+        var replaced = false;
         lock (_gate)
         {
             if (_port is null)
@@ -70,15 +78,35 @@ public sealed class SystemProxyGuard(ISystemProxy proxy, string backupPath, Serv
                 return;
             }
 
+            var port = _port.Value.ToString(System.Globalization.CultureInfo.InvariantCulture);
             _port = null;
-            if (!Try(RestoreFromFile))
+            if (!Try(() =>
+            {
+                // Сменена — если не та, что ставила служба, и своего порта в ней нет нигде: чтение настроек на macOS и Linux
+                // может разниться в мелочах, а оставить прокси на мертвый вход хуже, чем вернуть прежний.
+                replaced = _applied is { } applied && proxy.Read() is var now && !Same(now, applied)
+                    && !now.Values.Values.Any(v => v is not null && (v == port || v.EndsWith(":" + port, StringComparison.Ordinal)));
+                if (replaced)
+                {
+                    File.Delete(backupPath);
+                }
+                else
+                {
+                    RestoreFromFile();
+                }
+            }))
             {
                 return;
             }
         }
 
-        journal.Add(JournalLevel.Info, "service", "Системный прокси возвращен, как был");
+        journal.Add(JournalLevel.Info, "service", replaced
+            ? "Системный прокси сменила другая программа — оставлен, как она поставила"
+            : "Системный прокси возвращен, как был");
     }
+
+    private static bool Same(SystemProxySnapshot left, SystemProxySnapshot right) =>
+        left.Values.Count == right.Values.Count && left.Values.All(v => right.Values.TryGetValue(v.Key, out var value) && value == v.Value);
 
     /// <summary>После сбоя службы снимок остался — вернуть настройки по нему. true — было что возвращать.</summary>
     public bool RestoreStale()

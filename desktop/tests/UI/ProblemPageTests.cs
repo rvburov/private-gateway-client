@@ -227,7 +227,7 @@ public sealed class ProblemPageTests : WindowHarness
 
         // Служба старее окна — находок не присылает: экран по макету, без названия программы.
         var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
-        Text(window, "ProblemTitle").ShouldBe("Работает другой VPN");
+        Text(window, "ProblemTitle").ShouldBe("Работает другой VPN или прокси-клиент");
         WaitFor(() => page.Facts.Count == 3);
         page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Чужой сетевой адаптер: активен", "Системный прокси: 127.0.0.1:7890", "Маршрут по умолчанию: занят"],
             "системный прокси другой программы — строка по макету; читает его окно: служба настроек пользователя не видит");
@@ -241,19 +241,21 @@ public sealed class ProblemPageTests : WindowHarness
         Press(window, "Retry");
         WaitFor(() => shell.Toast.IsVisible);
 
-        shell.Toast.Text.ShouldBe("Другая программа VPN все еще работает — закройте ее и проверьте снова");
+        shell.Toast.Text.ShouldBe("Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»");
         shell.CurrentKey.ShouldBe(Pages.Problem);
 
-        // Служба назвала программу: заголовок, текст и строки — о ней; ее вход прокси служба нашла сама — строки окна нет.
+        // Служба назвала программу: заголовок и текст — общими словами (просьба пользователя 2026-11-01), программа и чем она
+        // себя выдала — в строках; ее вход прокси служба нашла сама — строки окна нет.
         _others = new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli"),
             new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:7890")]);
         Time.Advance(TimeSpan.FromSeconds(1));
         Press(window, "Retry");
-        WaitFor(() => Text(window, "ProblemTitle") == "Работает Hiddify");
+        WaitFor(() => page.Facts.Any(f => f.Label == "Hiddify"));
 
-        Text(window, "ProblemText").ShouldStartWith("Hiddify уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход»");
+        Text(window, "ProblemTitle").ShouldBe("Работает другой VPN или прокси-клиент");
+        Text(window, "ProblemText").ShouldStartWith("Другой VPN или прокси-клиент уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход»");
         page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Hiddify: процесс HiddifyCli", "Hiddify: прокси 127.0.0.1:7890"]);
-        shell.Toast.Text.ShouldBe("Hiddify все еще работает — закройте его: значок в трее → «Выход»");
+        shell.Toast.Text.ShouldBe("Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»");
         Snapshot(window, "problem-other-vpn");
 
         _otherVpn = false;

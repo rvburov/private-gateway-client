@@ -197,7 +197,7 @@ public sealed partial class Gateway
             return false;
         }
 
-        _ = StopForOtherVpnAsync(session, other);
+        _ = StopForOtherVpnAsync(session, $"включился другой VPN ({string.Join(", ", other)})");
         return true;
     }
 
@@ -235,8 +235,42 @@ public sealed partial class Gateway
             : $"Запустилась другая программа VPN или прокси ({Describe(found)}) — трафик может пойти мимо туннеля");
     }
 
-    /// <summary>Ядра останавливаются, блок при обрыве остается: трафик стоит, пока пользователь не решит.</summary>
-    private async Task StopForOtherVpnAsync(int session, IReadOnlyList<string> other)
+    /// <summary>
+    /// Окно заметило во время подключения системный прокси другой программы (служба системный прокси пользователя не видит,
+    /// решение 511): его вход на этой машине слушает не свое ядро — программы, которые берут системный прокси, идут мимо
+    /// туннеля через нее, а в режиме прокси она еще и заменила свой прокси. Подключение останавливается с PGC-NET-010 и ее
+    /// названием, как при подключении; блок при обрыве остается. Разрешена работа рядом с другим VPN, вход не слушает,
+    /// подключения нет — ничего. Остановлено — true.
+    /// </summary>
+    public bool ForeignProxyAppeared(string address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        int session;
+        lock (_gate)
+        {
+            if (_allowOtherVpn || _status.State is not (ConnectionState.Connected or ConnectionState.Reconnecting) || _status.IsPaused)
+            {
+                return false;
+            }
+
+            session = _session;
+        }
+
+        var found = OtherClientsNow(vpn: false, foreignProxy: address);
+        if (!found.Any(c => c.Sign == OtherClientSign.SystemProxy))
+        {
+            return false;
+        }
+
+        _ = StopForOtherVpnAsync(session, "включился системный прокси другой программы (" + Describe(found) + ")", new OtherClientList(found));
+        return true;
+    }
+
+    /// <summary>
+    /// Ядра останавливаются, блок при обрыве остается: трафик стоит, пока пользователь не решит. <paramref name="what"/> — что
+    /// включилось, для журнала; <paramref name="clients"/> — что назвать на экране «Работает другой VPN или прокси-клиент».
+    /// </summary>
+    private async Task StopForOtherVpnAsync(int session, string what, OtherClientList? clients = null)
     {
         try
         {
@@ -251,9 +285,9 @@ public sealed partial class Gateway
                     }
                 }
 
-                _journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.OtherVpn}: включился другой VPN ({string.Join(", ", other)}) — подключение остановлено"
+                _journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.OtherVpn}: {what} — подключение остановлено"
                     + (_blocking ? ", блок при обрыве держит трафик" : string.Empty));
-                Move(s => s with { ErrorCode = ErrorCodes.OtherVpn }, ConnectionState.Error);
+                Move(s => s with { ErrorCode = ErrorCodes.OtherVpn, OtherClients = clients ?? s.OtherClients }, ConnectionState.Error);
                 await StopCoreAsync().ConfigureAwait(false);
                 BlockWithoutTunnel();
             }

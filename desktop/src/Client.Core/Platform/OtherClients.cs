@@ -113,7 +113,8 @@ public static class OtherClients
             found.Add(new OtherClient(named ?? Single(apps) ?? string.Empty, OtherClientSign.Adapter, adapter));
         }
 
-        if (proxy is var (address, owner))
+        // Вход слушает свое ядро (режим прокси) — это не другая программа.
+        if (proxy is var (address, owner) && !(owner is { } ownerId && processes.FirstOrDefault(p => p.Id == ownerId) is { } listener && IsOwn(listener, own)))
         {
             var process = owner is { } id ? processes.FirstOrDefault(p => p.Id == id) : null;
             var program = process is null ? Single(apps) ?? string.Empty
@@ -127,19 +128,42 @@ public static class OtherClients
     }
 
     /// <summary>
-    /// Системный прокси указывает на вход на этой машине (127.0.0.1, ::1, localhost) — «адрес:порт» в порт; иначе (сервер в
-    /// сети, скрипт автонастройки) — null: это не программа на этой машине.
+    /// Системный прокси указывает на вход на этой машине (127.0.0.1, ::1, localhost) — порт; иначе (сервер в сети, скрипт
+    /// автонастройки, не разобрать) — null: это не программа на этой машине. Адрес — как его пишут ОС и программы:
+    /// «узел:порт», со схемой и именем («схема://имя@адрес:порт/»), списком Windows («http=узел:порт;https=…» — первый).
+    /// Со схемой Hiddify ставит его на Windows, и раньше такой вход не узнавался: защита включалась рядом с ним.
     /// </summary>
     public static int? LocalPort(string address)
     {
         ArgumentNullException.ThrowIfNull(address);
-        var colon = address.LastIndexOf(':');
-        if (colon <= 0 || !int.TryParse(address.AsSpan(colon + 1), out var port) || port is <= 0 or > 65535)
+        var text = address.Trim();
+        if (text.IndexOf(';', StringComparison.Ordinal) is var list and >= 0)
+        {
+            text = text[..list];
+        }
+
+        if (text.IndexOf("://", StringComparison.Ordinal) is var scheme and >= 0)
+        {
+            text = text[(scheme + 3)..];
+        }
+        else if (text.IndexOf('=', StringComparison.Ordinal) is var protocol and >= 0)
+        {
+            text = text[(protocol + 1)..];
+        }
+
+        text = text[(text.LastIndexOf('@') + 1)..];
+        if (text.IndexOfAny(['/', '?', '#']) is var end and >= 0)
+        {
+            text = text[..end];
+        }
+
+        var colon = text.LastIndexOf(':');
+        if (colon <= 0 || !int.TryParse(text.AsSpan(colon + 1), out var port) || port is <= 0 or > 65535)
         {
             return null;
         }
 
-        var host = address[..colon].Trim('[', ']');
+        var host = text[..colon].Trim('[', ']');
         return host.Equals("localhost", StringComparison.OrdinalIgnoreCase) || (IPAddress.TryParse(host, out var ip) && IPAddress.IsLoopback(ip))
             ? port
             : null;

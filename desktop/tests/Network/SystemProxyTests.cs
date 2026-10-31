@@ -215,6 +215,22 @@ public sealed class SystemProxyTests : IDisposable
     }
 
     [Fact]
+    public void Guard_leaves_the_proxy_another_program_set_while_connected()
+    {
+        // Решение 511: во время подключения другой VPN- или прокси-клиент поставил свой системный прокси. Прежний (до нашего)
+        // поверх него не возвращается — иначе выключение защиты сломало бы ту программу.
+        var proxy = new FakeSystemProxy();
+        var guard = new SystemProxyGuard(proxy, Backup, _journal);
+        guard.Apply(10808);
+
+        proxy.Enable(2334);
+        guard.Release();
+
+        (proxy.Port, File.Exists(Backup), guard.IsActive).ShouldBe((2334, false, false));
+        _journal.Tail(1).Single().Message.ShouldBe("Системный прокси сменила другая программа — оставлен, как она поставила");
+    }
+
+    [Fact]
     public void Guard_restores_settings_left_after_a_crash()
     {
         var proxy = new FakeSystemProxy();

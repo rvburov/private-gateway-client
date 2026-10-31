@@ -83,6 +83,10 @@ public sealed class OtherClientsTests
     [InlineData("proxy.example.com:8080", null)]
     [InlineData("127.0.0.1", null)]
     [InlineData("127.0.0.1:70000", null)]
+    [InlineData("http://127.0.0.1:2334", 2334)]
+    [InlineData("socks5://user:secret@[::1]:1080/", 1080)]
+    [InlineData("http=127.0.0.1:2334;https=127.0.0.1:2335", 2334)]
+    [InlineData("https://proxy.example.com:443", null)]
     public void Only_a_proxy_on_this_machine_has_a_local_port(string address, int? port) => OtherClients.LocalPort(address).ShouldBe(port);
 
     [Fact]

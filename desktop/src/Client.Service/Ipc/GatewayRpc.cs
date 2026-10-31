@@ -237,6 +237,12 @@ public sealed class GatewayRpc(
         return reply;
     }
 
+    public override Task<V1.ForeignProxyReply> ReportForeignProxy(V1.ForeignProxyReport request, ServerCallContext context)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        return Task.FromResult(new V1.ForeignProxyReply { Stopped = gateway.ForeignProxyAppeared(request.Address) });
+    }
+
     public override async Task<V1.DelayBreakdown> MeasureDelay(V1.MeasureDelayRequest request, ServerCallContext context)
     {
         var delay = await gateway.MeasureDelayAsync(context?.CancellationToken ?? default).ConfigureAwait(false);

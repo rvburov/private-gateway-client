@@ -91,9 +91,6 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
 
     public string? Subscription { get; init; }
 
-    /// <summary>Названия других программ VPN и прокси (<see cref="NoticeKind.OtherClient"/>) — <c>{3}</c> в тексте.</summary>
-    public string? Program { get; init; }
-
     /// <summary>Код ошибки защиты (<see cref="Core.ErrorCodes"/>).</summary>
     public string? Code { get; init; }
 
