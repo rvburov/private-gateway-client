@@ -155,17 +155,6 @@ public sealed class ReferenceConfigTests
             start.Environment[name] = value;
         }
 
-        using var process = Process.Start(start)!;
-        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        var errors = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
-        process.StandardInput.Write(config.ToJsonString());
-        process.StandardInput.Close();
-        if (!process.WaitForExit(TimeSpan.FromSeconds(60)))
-        {
-            process.Kill();
-            throw new TimeoutException($"{Path.GetFileName(executable)} не ответил за минуту");
-        }
-
-        return (process.ExitCode, output.Result + errors.Result);
+        return TestCoreCommand.Run(start, config.ToJsonString(), TimeSpan.FromMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
     }
 }

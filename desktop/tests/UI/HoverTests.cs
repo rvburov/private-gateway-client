@@ -125,6 +125,15 @@ public sealed class HoverTests : WindowHarness
         shell.NavigateCommand.Execute(Pages.Settings);
         Dispatcher.UIThread.RunJobs();
         var row = Buttons(window).First(b => b.Classes.Contains("plain") && b.IsEffectivelyVisible);
+        row.BringIntoView();
+        Dispatcher.UIThread.RunJobs();
+        Describe("BringIntoView");
+
+        // Нижний край viewport перекрыт островком навигации: строки настроек прокручиваются выше него.
+        row.GetVisualAncestors().OfType<ScrollViewer>().First().ScrollToEnd();
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        Describe("ScrollToEnd");
 
         Hover(window, row);
 
@@ -133,6 +142,13 @@ public sealed class HoverTests : WindowHarness
         ColorOf(presenter.Foreground).ShouldBe(ColorOf(Resource("PgBrush.Accent.Base")));
         var title = row.GetVisualDescendants().OfType<TextBlock>().First(t => t.Classes.Contains("strong"));
         ColorOf(title.Foreground).ShouldBe(ColorOf(Resource("PgBrush.Accent.Base")), "заголовок строки — синий");
+
+        void Describe(string stage)
+        {
+            var point = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
+            var hit = Avalonia.Input.InputExtensions.InputHitTest(window, point);
+            TestContext.Current.TestOutputHelper?.WriteLine($"{stage}: row={row.Bounds}, center={point}, window={window.ClientSize}, hit={hit}");
+        }
     }
 
     [AvaloniaFact]

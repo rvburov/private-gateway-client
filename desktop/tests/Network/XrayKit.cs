@@ -115,11 +115,10 @@ internal static class XrayKit
 
     private static (string Private, string Public) WireGuardKeys()
     {
-        var start = new ProcessStartInfo(Xray!, "wg") { RedirectStandardOutput = true, UseShellExecute = false };
-        using var process = Process.Start(start)!;
-        var output = process.StandardOutput.ReadToEnd();
-        process.WaitForExit();
-        return (KeyLine(output, isPublic: false), KeyLine(output, isPublic: true));
+        var start = new ProcessStartInfo(Xray!, "wg");
+        var result = TestCoreCommand.Run(start, null, TimeSpan.FromMinutes(1), cancellationToken: TestContext.Current.CancellationToken);
+        result.Code.ShouldBe(0, "команда WireGuard должна завершиться до чтения ключей");
+        return (KeyLine(result.Output, isPublic: false), KeyLine(result.Output, isPublic: true));
     }
 
     /// <summary>
@@ -204,41 +203,55 @@ internal static class XrayKit
         var listen = IPAddress.Parse(config["inbounds"]?[0]?["listen"]?.GetValue<string>() ?? "127.0.0.1");
         // Вход WireGuard слушает только UDP — подключиться к нему по TCP нельзя, готовность — по строке «Xray … started».
         var udp = config["inbounds"]?[0]?["protocol"]?.GetValue<string>() == "wireguard";
-        var deadline = DateTime.UtcNow.AddSeconds(20);
-        while (DateTime.UtcNow < deadline)
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        wait.CancelAfter(TimeSpan.FromSeconds(20));
+        try
         {
-            if (xray.HasExited)
+            while (!wait.IsCancellationRequested)
             {
-                break;
-            }
-
-            if (udp)
-            {
-                lock (output)
+                if (xray.HasExited)
                 {
-                    if (output.Any(l => l.Contains(" started", StringComparison.Ordinal)))
-                    {
-                        return xray;
-                    }
+                    break;
                 }
 
-                await Task.Delay(100).ConfigureAwait(false);
-                continue;
-            }
+                if (udp)
+                {
+                    lock (output)
+                    {
+                        if (output.Any(l => l.Contains(" started", StringComparison.Ordinal)))
+                        {
+                            return xray;
+                        }
+                    }
 
-            try
-            {
-                using var probe = new TcpClient();
-                await probe.ConnectAsync(listen, port).ConfigureAwait(false);
-                return xray;
+                    await Task.Delay(100, wait.Token).ConfigureAwait(false);
+                    continue;
+                }
+
+                try
+                {
+                    using var probe = new TcpClient();
+                    await probe.ConnectAsync(listen, port, wait.Token).ConfigureAwait(false);
+                    return xray;
+                }
+                catch (SocketException)
+                {
+                    await Task.Delay(100, wait.Token).ConfigureAwait(false);
+                }
             }
-            catch (SocketException)
-            {
-                await Task.Delay(100).ConfigureAwait(false);
-            }
+        }
+        catch (OperationCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+        {
+            // Общий срок включает ConnectAsync, а не только паузы между попытками.
+        }
+        catch
+        {
+            xray.Dispose();
+            throw;
         }
 
         xray.Dispose();
+        TestContext.Current.CancellationToken.ThrowIfCancellationRequested();
         lock (output)
         {
             throw new InvalidOperationException("Ядро не открыло порт " + port + ":\n" + string.Join('\n', output));
