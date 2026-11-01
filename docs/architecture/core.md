@@ -92,7 +92,8 @@
   (Windows x64, macOS arm64 и x64, Linux x64 и arm64; сборка без закрепленной суммы — с предупреждением). Загрузка — `scripts/download.sh`:
   обрыв посреди файла (curl 18) — до 6 попыток, каждая докачивает с места обрыва; проверка — `scripts/tests/download-smoke.sh`
   в CI на трех ОС. В облаке
-  агента выпуски GitHub закрыты: `scripts/get-xray.sh --build` собирает ядро из исходников тега через
+  агента выпуски GitHub бывают закрыты сетью среды: тогда `scripts/get-xray.sh --build` (его вызывает
+  `scripts/cloud-setup.sh`, если загрузка не прошла) собирает ядро из исходников тега через
   go, геобазы берет из ветки `release` Loyalsoldier/v2ray-rules-dat — только для тестов. Выпуск возит свою геобазу
   сайтов из v2fly/domain-list-community (`scripts/get-geosite.sh`, release.md).
 - `desktop/tests/Network/XrayProxyTests` — контролируемый прокси-тест на 127.0.0.1: свое ядро-сервер,

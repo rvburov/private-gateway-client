@@ -106,15 +106,20 @@ VPN-клиент меняет состояние всей машины, поэт
   gitleaks → `git push origin HEAD:master` обычной перемоткой. Отклонили — никакой принудительной
   отправки: `fetch` → `rebase` → тесты заново → push; три отказа подряд — остановиться и сказать
   пользователю. Открытый PR после такой отправки GitHub закрывает сам как слитый.
+- **Подготовка машины — `scripts/cloud-setup.sh`**, один раз за сессию до сборки: пакеты ОС (.NET
+  SDK, `ip`, nftables, gitleaks, Secret Service) и ядра Xray и sing-box. Хук `SessionStart` о нем
+  напоминает. Без него нет сборки, а тесты `Network` на блок и маршруты падают на отсутствии `ip`.
+  Тесты хранилища секретов — `dbus-run-session -- scripts/tests/secret-service.sh`.
 - **Чего в облаке нет:**
   - экрана — интерфейс проверять только тестами без экрана (Avalonia.Headless);
-  - прав и устройств для TUN, брандмауэра и службы — тесты, которым они нужны, уходят в Skipped,
-    так и писать в отчете;
-  - бывает, что нет .NET SDK, а загрузка с сайта Microsoft закрыта сетью среды — ставить пакетом
-    ОС: `apt-get install -y dotnet-sdk-10.0`;
+  - Windows и macOS — их TUN, брандмауэр и служба уходят в Skipped, так и писать в отчете; тесты
+    Linux идут в своем сетевом пространстве, если среда дала root и `/dev/net/tun`;
+  - IPv6 в ядре машины, а агент — root: тесты IPv6 и тест «запущен от root» уходят в Skipped с
+    пометкой отчета «не разрешено на Linux» — в облаке это ожидаемо, в CI они идут;
   - доступа к GitHub-репозиториям, кроме подключенных к сессии;
-  - загрузки выпусков GitHub — ядро Xray для тестов `Network` собирать из исходников:
-    `scripts/get-xray.sh --build` (нужен go, модули идут через proxy.golang.org).
+  - бывает, что сеть среды закрывает сайт Microsoft и выпуски GitHub: `cloud-setup.sh` ставит .NET
+    пакетом ОС, а Xray собирает из исходников (`scripts/get-xray.sh --build`, нужен go, модули идут
+    через proxy.golang.org); sing-box так не собрать — без выпусков его тесты пропускаются.
 
 ## Проект
 
@@ -149,7 +154,7 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
   THIRD-PARTY-NOTICES выпуска; `android.json` — то же для приложения Android) и полные тексты их лицензий;
 - `docs/` — `design/` (макет: актуальный v1.1 — `design/html`, HTML и CSS; v1.0 заморожен), `architecture/`, `security/`, `testing/` (проверки на машинах пользователя),
   `operations/` (релизный чеклист, поддержка и инциденты), `roadmap/`, `sources/`;
-- `scripts/` — `worktree.sh`, `cloud-session.sh` и скрипты сборки;
+- `scripts/` — `worktree.sh`, облачные `cloud-session.sh` и `cloud-setup.sh`, скрипты сборки;
 - `artifacts/` — вывод сборки, `packages/` — кеш NuGet, `.localdata/` — данные отладочного
   запуска; все три не в git.
 
