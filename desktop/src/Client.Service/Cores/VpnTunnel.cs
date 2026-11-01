@@ -206,8 +206,8 @@ public sealed class VpnTunnel : IAsyncDisposable
 
         var link = NewLink(serverAddresses[0], bypass: XrayConfigBuilder.NeedsBypassInbound(request));
 
-        // Hysteria2 и TUIC — через ретранслятор sing-box (CoreRelay): к серверу он соединяется по тому же адресу, что выведен из
-        // маршрутов TUN и открыт блоком.
+        // Hysteria2 и TUIC — через ретранслятор sing-box (CoreRelay): к серверу он соединяется по тому же адресу и порту,
+        // которые правило sing-box отправляет напрямую, а блок пропускает.
         var relay = CoreRelay.LinkFor(request.Server, singBox);
         var built = XrayConfigBuilder.Build(request, link, probe, relay);
         if (built.Config is not { } xrayConfig)
@@ -266,7 +266,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             while (true)
             {
                 var ready = 0;
-                var tun = new TunRequest(link, serverAddresses, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
+                var tun = new TunRequest(link, serverAddresses, request.Server.Port, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
                     DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
                 if (OperatingSystem.IsWindows() && netns is null)
                 {

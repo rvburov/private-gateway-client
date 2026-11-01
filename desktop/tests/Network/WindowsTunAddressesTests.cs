@@ -45,7 +45,7 @@ public sealed class WindowsTunAddressesTests
         // Адаптер «Private Gateway» с адресом TUN — как остается от прошлого запуска: sing-box без Xray (выход к нему при запуске
         // не нужен), в TUN — только адрес документации, без строгих маршрутов: машина CI остается в сети.
         var subnet = TunSubnet.Choose(VpnTunnel.MachineNetworks());
-        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(VpnTunnel.NewLink(IPAddress.Loopback), [IPAddress.Loopback], ProtectionSettings.Default,
+        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(VpnTunnel.NewLink(IPAddress.Loopback), [IPAddress.Loopback], 443, ProtectionSettings.Default,
             ConnectionSettings.Default, new TunIpv6(Kernel: true, Tunnel: false), Routes: ["192.0.2.123/32"], Subnet: subnet));
         var output = new CoreOutput();
         var started = 0;

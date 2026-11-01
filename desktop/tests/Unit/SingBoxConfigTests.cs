@@ -12,6 +12,8 @@ public sealed class SingBoxConfigTests
     /// <summary>Пароль связи с Xray — заведомо ненастоящий.</summary>
     private static readonly TunLink Link = new(31000, "tun-password-1", "198.51.100.20");
 
+    private const int ServerPort = 8444;
+
     /// <summary>IPv6 есть в ядре, через туннель не идет — сервер его не открывает.</summary>
     private static readonly TunIpv6 Closed = new(Kernel: true, Tunnel: false);
 
@@ -24,7 +26,7 @@ public sealed class SingBoxConfigTests
         (tun["auto_route"]!.GetValue<bool>(), tun["strict_route"]!.GetValue<bool>(), tun["stack"]!.GetValue<string>())
             .ShouldBe((true, true, "system"));
         Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress], "сервер не открывает IPv6 — у TUN его нет");
-        Strings(tun["route_exclude_address"]).ShouldBe(["198.51.100.20/32", "2001:db8::20/128"], "локальная сеть не разрешена — мимо туннеля только сервер");
+        Strings(tun["route_exclude_address"]).ShouldBeEmpty("IP сервера остается в TUN: другие порты этого адреса должны идти через VPN");
         tun.ContainsKey("mtu").ShouldBeFalse("MTU подбирает sing-box");
         tun["interface_name"]!.GetValue<string>().ShouldBe(OperatingSystem.IsWindows() ? "Private Gateway" : OperatingSystem.IsMacOS() ? "utun225" : "pgtun0",
             "по имени адаптера туннель узнают правила блока при обрыве; на macOS — только utunN, номер свой");
@@ -39,14 +41,18 @@ public sealed class SingBoxConfigTests
             tun.ContainsKey("iproute2_rule_index").ShouldBeFalse("правила ip rule — только в Linux");
         }
 
-        var xray = config["outbounds"]!.AsArray().ShouldHaveSingleItem()!;
+        var outbounds = config["outbounds"]!.AsArray();
+        outbounds.Select(o => o!["tag"]!.GetValue<string>()).ShouldBe([SingBoxConfigBuilder.XrayTag, SingBoxConfigBuilder.ServerDirectTag]);
+        var xray = outbounds.Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.XrayTag)!;
         (xray["type"]!.GetValue<string>(), xray["server"]!.GetValue<string>(), xray["server_port"]!.GetValue<int>()).ShouldBe(("shadowsocks", "127.0.0.1", 31000));
         (xray["method"]!.GetValue<string>(), xray["password"]!.GetValue<string>()).ShouldBe((TunLink.Method, Link.Password), "связь с Xray — Shadowsocks AEAD (решение 481)");
         xray.AsObject().ContainsKey("udp_over_tcp").ShouldBeFalse("UDP — датаграммами");
         var route = config["route"]!.AsObject();
         route["final"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag);
         route["auto_detect_interface"]!.GetValue<bool>().ShouldBeTrue();
-        var dns = route["rules"]!.AsArray().ShouldHaveSingleItem("и DNS — в Xray: его отвечает выход DNS Xray, а не sing-box и не провайдер")!;
+        var rules = route["rules"]!.AsArray();
+        rules.Count.ShouldBe(2, "DNS туннеля — в Xray, транспортный endpoint — напрямую, остальное — в выход final");
+        var dns = rules[0]!;
         (string.Join(',', Strings(dns["ip_cidr"])), dns["port"]!.GetValue<int>(), dns["outbound"]!.GetValue<string>())
             .ShouldBe(("172.19.0.2/32", 53, SingBoxConfigBuilder.XrayTag), "DNS к адресу туннеля — в Xray от любой программы, и мимо туннеля тоже");
         config.ContainsKey("dns").ShouldBeFalse("своего DNS у sing-box нет — имен он не ищет");
@@ -58,7 +64,56 @@ public sealed class SingBoxConfigTests
     {
         var tun = Tun(Build([IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "192.168.1.53" }));
 
-        Strings(tun["route_exclude_address"]).ShouldBe(["198.51.100.20/32", "192.168.1.53/32"], "Xray спрашивает свой DNS напрямую, локальная сеть закрыта");
+        Strings(tun["route_exclude_address"]).ShouldBe(["192.168.1.53/32"], "Xray спрашивает свой DNS напрямую, IP VPN-сервера целиком не исключается");
+    }
+
+    [Theory]
+    [InlineData("198.51.100.20", 8444, true)]
+    [InlineData("198.51.100.20", 8443, false)]
+    [InlineData("198.51.100.20", 443, false)]
+    [InlineData("198.51.100.21", 8444, false)]
+    [InlineData("2001:db8::20", 8444, true)]
+    [InlineData("2001:db8::20", 8443, false)]
+    [InlineData("2001:db8::20", 443, false)]
+    [InlineData("2001:db8::21", 8444, false)]
+    public void Only_the_transport_endpoint_goes_direct_and_other_services_on_its_ip_stay_in_the_vpn(string address, int port, bool direct)
+    {
+        var config = Build([IPAddress.Parse("198.51.100.20"), IPAddress.Parse("2001:db8::20")], ipv6: Closed with { Tunnel = true });
+
+        ExitFor(config, address, port).ShouldBe(direct ? SingBoxConfigBuilder.ServerDirectTag : SingBoxConfigBuilder.XrayTag,
+            "VPN на 8444 не должен исключать панель на 8443 или весь IP из туннеля; один порт на другом IP тоже не является endpoint");
+        var endpoint = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.ServerDirectTag)!;
+        endpoint["type"]!.GetValue<string>().ShouldBe("direct");
+        config["route"]!["auto_detect_interface"]!.GetValue<bool>().ShouldBeTrue("транспортный выход привязан к внешней карте и не возвращается в TUN");
+        if (OperatingSystem.IsLinux())
+        {
+            endpoint["routing_mark"]!.GetValue<uint>().ShouldBe(SingBoxConfigBuilder.DirectMark);
+        }
+        else
+        {
+            endpoint.AsObject().ContainsKey("routing_mark").ShouldBeFalse("SO_MARK существует только на Linux");
+        }
+    }
+
+    [Fact]
+    public void No_server_addresses_cannot_turn_a_port_into_a_general_direct_exit()
+    {
+        var config = Build([]);
+
+        config["outbounds"]!.AsArray().ShouldHaveSingleItem()!["tag"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag);
+        config["route"]!["rules"]!.AsArray().ShouldHaveSingleItem()!["port"]!.GetValue<int>().ShouldBe(53);
+        ExitFor(config, "198.51.100.20", ServerPort).ShouldBe(SingBoxConfigBuilder.XrayTag,
+            "пустой набор IP не должен означать любой адрес на порту сервера");
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(65536)]
+    public void An_invalid_transport_port_is_rejected_before_rules_are_built(int port)
+    {
+        Should.Throw<ArgumentOutOfRangeException>(() => Build([IPAddress.Parse("198.51.100.20")], serverPort: port));
+        Should.Throw<ArgumentOutOfRangeException>(() => Build([], serverPort: port));
     }
 
     [Fact]
@@ -96,7 +151,7 @@ public sealed class SingBoxConfigTests
             ConnectionSettings.Default with { StrictRoutes = false }, Closed with { Tunnel = tunnel }));
 
         tun["strict_route"]!.GetValue<bool>().ShouldBe(strict, because);
-        SingBoxConfigBuilder.Ipv6Outside(new TunRequest(Link, [], ProtectionSettings.Default with { BlockIpv6 = blockIpv6, Addresses = addresses },
+        SingBoxConfigBuilder.Ipv6Outside(new TunRequest(Link, [], ServerPort, ProtectionSettings.Default with { BlockIpv6 = blockIpv6, Addresses = addresses },
             ConnectionSettings.Default with { StrictRoutes = false }, Closed with { Tunnel = tunnel })).ShouldBe(!strict && !tunnel);
     }
 
@@ -104,7 +159,7 @@ public sealed class SingBoxConfigTests
     public void Server_over_ipv6_keeps_its_connection_when_ipv6_is_not_tunneled()
     {
         var link = Link with { ServerAddress = "2001:db8::20" };
-        TunRequest Request(bool tunnel) => new(link, [IPAddress.Parse("2001:db8::20")], ProtectionSettings.Default, ConnectionSettings.Default,
+        TunRequest Request(bool tunnel) => new(link, [IPAddress.Parse("2001:db8::20")], ServerPort, ProtectionSettings.Default, ConnectionSettings.Default,
             Closed with { Tunnel = tunnel });
 
         Tun(SingBoxConfigBuilder.BuildTun(Request(tunnel: false)))["strict_route"]!.GetValue<bool>()
@@ -138,7 +193,7 @@ public sealed class SingBoxConfigTests
 
         tun["strict_route"]!.GetValue<bool>().ShouldBe(!OperatingSystem.IsLinux(),
             "на Linux без IPv6 в ядре sing-box со строгими маршрутами не стартует, а закрывать там нечего");
-        SingBoxConfigBuilder.Ipv6Outside(new TunRequest(Link, [], ProtectionSettings.Default, ConnectionSettings.Default, new TunIpv6(Kernel: false, Tunnel: false)))
+        SingBoxConfigBuilder.Ipv6Outside(new TunRequest(Link, [], ServerPort, ProtectionSettings.Default, ConnectionSettings.Default, new TunIpv6(Kernel: false, Tunnel: false)))
             .ShouldBeFalse("IPv6 в ОС нет — и мимо туннеля ему идти некуда");
         Strings(tun["address"]).ShouldBe([SingBoxConfigBuilder.TunAddress]);
     }
@@ -146,7 +201,7 @@ public sealed class SingBoxConfigTests
     [Fact]
     public void Chosen_programs_go_around_the_tunnel_through_a_marked_exit()
     {
-        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
+        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ServerPort, ProtectionSettings.Default,
             ConnectionSettings.Default, Closed, ["/opt/game/game", "/usr/bin/xray"]));
 
         var direct = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.DirectTag)!;
@@ -162,7 +217,7 @@ public sealed class SingBoxConfigTests
 
         var rules = config["route"]!["rules"]!.AsArray();
         rules[0]!["port"]!.GetValue<int>().ShouldBe(53, "DNS к адресу туннеля — первым: напрямую через карту на него ответа нет");
-        var rule = rules.Skip(1).ShouldHaveSingleItem()!;
+        var rule = rules.Skip(2).ShouldHaveSingleItem()!;
         Strings(rule["process_path"]).ShouldBe(["/opt/game/game", "/usr/bin/xray"]);
         rule["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
         config["route"]!["final"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.XrayTag, "остальное — через Xray и сервер");
@@ -184,7 +239,7 @@ public sealed class SingBoxConfigTests
             .ShouldBe(["/x/xray"], "прямой выход Xray для сайтов «Напрямую» не должен вернуться в TUN");
         SingBoxConfigBuilder.DirectPrograms(RoutingSettings.Default, closed with { AllowLan = true }, "/x/xray")
             .ShouldBe(["/x/xray"], "и для локальной сети: не все, что Xray считает локальным, есть в исключениях TUN");
-        Build([IPAddress.Parse("198.51.100.20")])["route"]!["rules"]!.AsArray().Count.ShouldBe(1, "только DNS к адресу туннеля");
+        Build([IPAddress.Parse("198.51.100.20")])["route"]!["rules"]!.AsArray().Count.ShouldBe(2, "только DNS к адресу туннеля и транспортный endpoint");
     }
 
     [Fact]
@@ -201,27 +256,27 @@ public sealed class SingBoxConfigTests
             "Xray соединяет программу напрямую — его выход не должен вернуться в TUN");
         SingBoxConfigBuilder.DirectPrograms(split, ProtectionSettings.Default, "/x/xray").ShouldBe(["/opt/game/game"]);
 
-        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link with { BypassPort = 31001 }, [IPAddress.Parse("198.51.100.20")], fake,
+        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link with { BypassPort = 31001 }, [IPAddress.Parse("198.51.100.20")], ServerPort, fake,
             ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"], ["/opt/game/game"]));
 
         var rules = config["route"]!["rules"]!.AsArray();
-        rules.Count.ShouldBe(3);
-        (string.Join(',', Strings(rules[1]!["process_path"])), string.Join(',', Strings(rules[1]!["ip_cidr"])), rules[1]!["outbound"]!.GetValue<string>())
+        rules.Count.ShouldBe(4);
+        (string.Join(',', Strings(rules[2]!["process_path"])), string.Join(',', Strings(rules[2]!["ip_cidr"])), rules[2]!["outbound"]!.GetValue<string>())
             .ShouldBe(("/opt/game/game", XrayConfigBuilder.FakeDnsPool, SingBoxConfigBuilder.BypassTag),
                 "адрес FakeDNS у программы мимо туннеля — во вход обхода Xray, раньше правила «напрямую»");
-        rules[2]!["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
+        rules[3]!["outbound"]!.GetValue<string>().ShouldBe(SingBoxConfigBuilder.DirectTag);
         var bypass = config["outbounds"]!.AsArray().Single(o => o!["tag"]!.GetValue<string>() == SingBoxConfigBuilder.BypassTag)!;
         (bypass["type"]!.GetValue<string>(), bypass["server"]!.GetValue<string>(), bypass["server_port"]!.GetValue<int>(), bypass["password"]!.GetValue<string>())
             .ShouldBe(("shadowsocks", "127.0.0.1", 31001, Link.Password));
 
-        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], fake, ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"],
-            ["/opt/game/game"]))["route"]!["rules"]!.AsArray().Count.ShouldBe(2, "нет входа обхода — нет и правила");
+        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ServerPort, fake, ConnectionSettings.Default, Closed, ["/opt/game/game", "/x/xray"],
+            ["/opt/game/game"]))["route"]!["rules"]!.AsArray().Count.ShouldBe(3, "нет входа обхода — нет и правила");
     }
 
     [Fact]
     public void Narrow_routes_of_a_ci_test_take_only_their_networks_and_no_strict_routes()
     {
-        var tun = Tun(SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
+        var tun = Tun(SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ServerPort, ProtectionSettings.Default,
             ConnectionSettings.Default with { StrictRoutes = true }, Closed, Routes: ["1.1.1.1/32", "198.18.0.0/15"])));
 
         Strings(tun["route_address"]).ShouldBe(["1.1.1.1/32", "198.18.0.0/15"]);
@@ -282,22 +337,48 @@ public sealed class SingBoxConfigTests
     public void Tun_on_another_subnet_gives_the_os_and_xray_its_own_dns_address()
     {
         var subnet = TunSubnet.Candidates[1];
-        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ProtectionSettings.Default,
+        var config = SingBoxConfigBuilder.BuildTun(new TunRequest(Link, [IPAddress.Parse("198.51.100.20")], ServerPort, ProtectionSettings.Default,
             ConnectionSettings.Default, Closed, Subnet: subnet));
 
         var tun = Tun(config);
         Strings(tun["address"]).ShouldBe(["10.255.253.1/30"]);
         Strings(tun["dns_address"]).ShouldBe(["10.255.253.2"], "этот адрес sing-box дает DNS ОС");
-        Strings(config["route"]!["rules"]!.AsArray().ShouldHaveSingleItem()!["ip_cidr"]).ShouldBe(["10.255.253.2/32"],
+        Strings(config["route"]!["rules"]![0]!["ip_cidr"]).ShouldBe(["10.255.253.2/32"],
             "DNS к адресу туннеля — в Xray, а не к прежнему 172.19.0.2");
     }
 
     private static JsonObject Build(
-        IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null, TunIpv6? ipv6 = null) =>
-        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default,
+        IReadOnlyList<IPAddress> servers, ProtectionSettings? protection = null, ConnectionSettings? connection = null, TunIpv6? ipv6 = null, int serverPort = ServerPort) =>
+        SingBoxConfigBuilder.BuildTun(new TunRequest(Link, servers, serverPort, protection ?? ProtectionSettings.Default, connection ?? ConnectionSettings.Default,
             ipv6 ?? Closed));
 
     private static JsonObject Tun(JsonObject config) => config["inbounds"]!.AsArray().ShouldHaveSingleItem()!.AsObject();
 
     private static List<string> Strings(JsonNode? array) => [.. array!.AsArray().Select(n => n!.GetValue<string>())];
+
+    /// <summary>Проверить контракт маршрутов для назначения: сначала маршруты ОС, затем правила sing-box, затем final.</summary>
+    private static string ExitFor(JsonObject config, string destination, int port)
+    {
+        var address = IPAddress.Parse(destination);
+        bool InNetworks(JsonNode networks) => Strings(networks).Any(n => IPNetwork.Parse(n).Contains(address));
+
+        if (InNetworks(Tun(config)["route_exclude_address"]!))
+        {
+            return "outside-tun";
+        }
+
+        var route = config["route"]!;
+        foreach (var rule in route["rules"]!.AsArray())
+        {
+            if (rule!["process_path"] is not null || rule["ip_cidr"] is { } networks && !InNetworks(networks)
+                || rule["port"] is { } rulePort && rulePort.GetValue<int>() != port)
+            {
+                continue;
+            }
+
+            return rule["outbound"]!.GetValue<string>();
+        }
+
+        return route["final"]!.GetValue<string>();
+    }
 }

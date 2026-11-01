@@ -71,7 +71,7 @@ public sealed partial class WindowsTunnelTests
     private static async Task<CoreProcess> StartTunAsync(CoreOutput output, string what)
     {
         var subnet = TunSubnet.Choose(VpnTunnel.MachineNetworks());
-        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(VpnTunnel.NewLink(IPAddress.Loopback), [IPAddress.Loopback], ProtectionSettings.Default,
+        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(VpnTunnel.NewLink(IPAddress.Loopback), [IPAddress.Loopback], 443, ProtectionSettings.Default,
             ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, new TunIpv6(Kernel: true, Tunnel: false), Routes: Routes, Subnet: subnet));
         var started = 0;
         var clock = Stopwatch.StartNew();

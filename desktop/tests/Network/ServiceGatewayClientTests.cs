@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
+using System.Text.Json.Nodes;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
@@ -440,6 +441,9 @@ public sealed class ServiceGatewayClientTests
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
         var serverPort = XrayKit.FreePort();
         var (definition, serverConfig) = XrayKit.Pair("vless", serverPort);
+        // Здесь проверяется жизнь службы, а не интернет: сервер локально отклоняет пробу. Два внешних
+        // таймаута по 10 с иначе выходили за 20 с ожидания и делали тест зависимым от сети машины.
+        serverConfig["outbounds"] = new JsonArray(new JsonObject { ["protocol"] = "blackhole" });
         using var server = await XrayKit.Start(serverConfig, serverPort);
         // «Окно» — отдельный процесс службы на своем адресе: его можно закрыть, не закрывая тест.
         // Своя папка состояния: служба пользователя не смотрит в снимок системного прокси этой машины.
@@ -459,12 +463,12 @@ public sealed class ServiceGatewayClientTests
             using var host = new GatewayHost(locator, a => Client(a.Endpoint, definition, settings), () => settings, TimeProvider.System);
 
             await host.ConnectAsync(Profile(definition), Ct);
-            // Служба подключает: «Защищено» — когда сервер теста ответит проверочным адресом из интернета; без интернета у машины
-            // теста — «Переподключение». Здесь проверяется запуск и остановка службы пользователя, а не сервер.
-            await WaitFor(() => host.Status.State is ConnectionState.Connected or ConnectionState.Reconnecting);
+            // Служба и ядро поднялись, локальный сервер отклонил пробу — штатное переподключение.
+            await WaitFor(() => host.Status.State == ConnectionState.Reconnecting);
 
             host.Status.Mode.ShouldBe(ConnectionMode.Proxy);
             host.Journal.ShouldContain(e => e.Source == "app" && e.Message.StartsWith("Запущена служба пользователя", StringComparison.Ordinal));
+            host.Journal.ShouldContain(e => e.Source == "service" && e.Message.StartsWith("Ядро Xray запущено", StringComparison.Ordinal));
         }
         finally
         {

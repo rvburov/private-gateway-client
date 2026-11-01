@@ -71,7 +71,7 @@ public sealed partial class WindowsTunnelTests
 
         // Подсеть TUN — как ее берет служба: 172.19.0.1 на машине CI бывает занят адаптером Hyper-V (soak #4).
         var subnet = TunSubnet.Choose(VpnTunnel.MachineNetworks());
-        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(link, [IPAddress.Loopback], request.Protection, request.Connection,
+        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(link, [IPAddress.Loopback], request.Server.Port, request.Protection, request.Connection,
             new TunIpv6(Kernel: true, Tunnel: false), Routes: Routes, Subnet: subnet));
         var started = 0;
         using var singBox = CoreProcess.StartSingBox(XrayKit.SingBox!, tun, output: line =>

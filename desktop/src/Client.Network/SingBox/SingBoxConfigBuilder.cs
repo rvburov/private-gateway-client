@@ -9,8 +9,9 @@ using PrivateGateway.Client.Network.Xray;
 namespace PrivateGateway.Client.Network.SingBox;
 
 /// <summary>
-/// Что нужно TUN режима VPN: связь с Xray (<see cref="TunLink"/>), адреса сервера, которые идут мимо
-/// туннеля, настройки и IPv6 (<see cref="TunIpv6"/>). <paramref name="DirectPrograms"/> — раздельный режим: программы, чьи
+/// Что нужно TUN режима VPN: связь с Xray (<see cref="TunLink"/>), адреса сервера и его порт
+/// (<paramref name="ServerPort"/>), которые идут напрямую, настройки и IPv6 (<see cref="TunIpv6"/>).
+/// Остальные порты того же адреса идут через Xray. <paramref name="DirectPrograms"/> — раздельный режим: программы, чьи
 /// соединения идут мимо туннеля (<see cref="SingBoxConfigBuilder.DirectPrograms"/>); пусто — обхода нет.
 /// <paramref name="FakeIpPrograms"/> — те из них, чьи соединения с адресами FakeDNS идут во вход обхода
 /// Xray (<see cref="SingBoxConfigBuilder.FakeIpPrograms"/>, <see cref="TunLink.BypassPort"/>).
@@ -22,6 +23,7 @@ namespace PrivateGateway.Client.Network.SingBox;
 public sealed record TunRequest(
     TunLink Xray,
     IReadOnlyList<IPAddress> ServerAddresses,
+    int ServerPort,
     ProtectionSettings Protection,
     ConnectionSettings Connection,
     TunIpv6 Ipv6,
@@ -32,7 +34,8 @@ public sealed record TunRequest(
 
 /// <summary>
 /// Сервер Hysteria2 или TUIC за ретранслятором (<see cref="SingBoxConfigBuilder.BuildRelay"/>): вход для Xray и адрес, к которому
-/// соединяться — разрешенный службой заранее (режим VPN: он же выведен из маршрутов TUN и открыт блоком); null — имя из описания.
+/// соединяться — разрешенный службой заранее (режим VPN: этот адрес и порт сервера sing-box отправляет напрямую, блок их пропускает);
+/// null — имя из описания.
 /// </summary>
 public sealed record RelayRoute(ServerDefinition Server, RelayLink Link, string? Address = null);
 
@@ -47,8 +50,9 @@ public sealed record TunIpv6(bool Kernel, bool Tunnel);
 /// Конфиг sing-box для режима VPN: только TUN. Весь трафик машины — в TUN, оттуда во вход Shadowsocks Xray на
 /// 127.0.0.1 (основное ядро — Xray, sing-box лишь переводит пакеты в соединения). DNS — такой же
 /// трафик: запросы к любому адресу уходят в Xray, и там их отвечает выход DNS по настройкам DNS Xray —
-/// один DNS в режимах прокси и VPN; DNS ОС — адрес <see cref="TunDns"/>, его sing-box прописывает ОС. Адреса сервера — мимо туннеля, иначе соединение с ним ушло бы в
-/// сам туннель. IPv6 идет через туннель, если служба решила, что сервер его открывает (<see cref="TunIpv6"/>); иначе у TUN
+/// один DNS в режимах прокси и VPN; DNS ОС — адрес <see cref="TunDns"/>, его sing-box прописывает ОС. Только адреса и порт
+/// подключения к серверу — напрямую, иначе оно вернулось бы в Xray. Остальные порты того же IP остаются в туннеле.
+/// IPv6 идет через туннель, если служба решила, что сервер его открывает (<see cref="TunIpv6"/>); иначе у TUN
 /// нет IPv6, и строгие маршруты делают его недоступным (<see cref="StrictRoutes"/>). Раздельный
 /// режим — правило по пути программы: ее соединения sing-box отправляет своим выходом напрямую, с
 /// меткой <see cref="DirectMark"/> — по ней их пропускает блок при обрыве. Журнал соединений выключен.
@@ -59,6 +63,9 @@ public static class SingBoxConfigBuilder
     public const string TunTag = "tun-in";
     public const string XrayTag = "xray";
     public const string DirectTag = "direct";
+
+    /// <summary>Прямой выход только к адресам и порту VPN-сервера: защита соединения ядра от петли.</summary>
+    public const string ServerDirectTag = "server-direct";
 
     /// <summary>Выход во вход обхода Xray — для программ мимо туннеля с адресом FakeDNS.</summary>
     public const string BypassTag = "xray-bypass";
@@ -132,6 +139,11 @@ public static class SingBoxConfigBuilder
     public static JsonObject BuildTun(TunRequest request)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.ServerPort is <= 0 or > 65535)
+        {
+            throw new ArgumentOutOfRangeException(nameof(request), "Порт сервера должен быть от 1 до 65535");
+        }
+
         var connection = request.Connection;
         var protection = request.Protection;
         var subnet = request.Subnet ?? TunSubnet.Default;
@@ -153,9 +165,10 @@ public static class SingBoxConfigBuilder
                 TunEngine.Mixed => "mixed",
                 _ => "system",
             },
-            // Мимо TUN — адреса сервера, свой DNS в частной сети (его Xray спрашивает напрямую) и частные сети, если разрешены.
+            // Мимо TUN — свой DNS в частной сети (его Xray спрашивает напрямую) и разрешенные частные сети.
+            // IP сервера целиком не исключается: другие службы на нем должны оставаться в туннеле.
             ["route_exclude_address"] = new JsonArray([
-                .. request.ServerAddresses.Concat(protection.LanDns is { } lanDns ? [lanDns] : [])
+                .. (protection.LanDns is { } lanDns ? [lanDns] : Array.Empty<IPAddress>())
                     .Select(a => (JsonNode)(a.AddressFamily == AddressFamily.InterNetworkV6 ? $"{a}/128" : $"{a}/32")),
                 .. protection.AllowLan ? PrivateNetworks.Select(n => (JsonNode)n) : []]),
         };
@@ -163,8 +176,7 @@ public static class SingBoxConfigBuilder
         {
             // Маршруты туннеля — половинами, а не одним маршрутом по умолчанию: правило sing-box «таблица туннеля без
             // маршрута по умолчанию» пропускает /0, и тогда адрес с более узким маршрутом в основной таблице (своя сеть
-            // IPv6, маршрут из объявления роутера в чужом Wi-Fi) ушел бы мимо туннеля. У IPv4 таблицу дробит адрес
-            // сервера, у IPv6 сервера по IPv6 может не быть.
+            // IPv6, маршрут из объявления роутера в чужом Wi-Fi) ушел бы мимо туннеля.
             tun["route_address"] = Ipv6Tunneled(request)
                 ? new JsonArray("0.0.0.0/1", "128.0.0.0/1", "::/1", "8000::/1")
                 : new JsonArray("0.0.0.0/1", "128.0.0.0/1");
@@ -207,6 +219,26 @@ public static class SingBoxConfigBuilder
             ["port"] = 53,
             ["outbound"] = XrayTag,
         });
+
+        // Только транспортный адрес и порт идут напрямую через выбранный физический интерфейс
+        // (auto_detect_interface). Сайт на том же IP и другом порту остается в Xray, а не уходит мимо TUN.
+        if (request.ServerAddresses.Count > 0)
+        {
+            var serverDirect = new JsonObject { ["type"] = "direct", ["tag"] = ServerDirectTag };
+            if (OperatingSystem.IsLinux())
+            {
+                serverDirect["routing_mark"] = DirectMark;
+            }
+
+            outbounds.Add(serverDirect);
+            rules.Add(new JsonObject
+            {
+                ["ip_cidr"] = new JsonArray([.. request.ServerAddresses.Select(a =>
+                    (JsonNode)(a.AddressFamily == AddressFamily.InterNetworkV6 ? $"{a}/128" : $"{a}/32"))]),
+                ["port"] = request.ServerPort,
+                ["outbound"] = ServerDirectTag,
+            });
+        }
 
         // Программа мимо туннеля пришла на адрес FakeDNS (DNS за нее спросила служба ОС через туннель):
         // имя знает только Xray — он и соединит напрямую. Раньше правила «программа — напрямую».

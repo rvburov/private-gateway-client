@@ -21,7 +21,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// TUN нужны root, unshare, nsenter, curl и python3, Xray и sing-box.
 /// </summary>
 [Collection(NamespaceSerial.Name)]
-public sealed class VpnTunnelTests
+public sealed partial class VpnTunnelTests
 {
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
