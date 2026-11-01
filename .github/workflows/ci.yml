@@ -321,10 +321,34 @@ jobs:
           path: android/app/libs/libXray.aar
           key: ${{ steps.libxray.outputs.cache-primary-key }}
 
+      # Android нужных SDK (android-all-instrumented, по сотне с лишним МБ) Robolectric качает не через Gradle, а сам — с
+      # Maven Central в ~/.m2 во время тестов. Без кеша это каждый прогон, и Maven Central отвечает машинам CI 429 «слишком
+      # много запросов»: так упал master #458. Кеш — по версии Robolectric и набору SDK тестов (robolectric.properties и
+      # @Config(sdk = …)); сохраняется, только если задание прошло, — недокачанный набор в кеш не попадет.
+      - name: Ключ кеша Robolectric
+        id: robolectric-key
+        run: |
+          version=$(sed -n 's/^robolectric *= *"\(.*\)"/\1/p' android/gradle/libs.versions.toml)
+          sdks=$({ grep -h '^sdk=' android/app/src/test/resources/robolectric.properties; grep -rhoE 'sdk *= *\[[^]]*\]' android/app/src/test; } | tr -d ' ' | sort -u | sha256sum | cut -c1-12)
+          echo "key=robolectric-$version-$sdks" >> "$GITHUB_OUTPUT"
+
+      - id: robolectric
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ steps.robolectric-key.outputs.key }}
+
       # Приложение: сборка APK (подпись отладочным ключом), тесты без устройства (Robolectric: хранилище, тексты RU/EN,
       # экраны Compose) и Android Lint — его ошибки роняют проверку.
       - name: Сборка, тесты и Lint приложения
+        id: app
         run: android/gradlew -p android --continue :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug
+
+      - if: steps.robolectric.outputs.cache-hit != 'true' && steps.app.outcome == 'success'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: ~/.m2/repository/org/robolectric
+          key: ${{ steps.robolectric.outputs.cache-primary-key }}
 
       # Схемы базы (Room) лежат в git: по ним MigrationTestHelper проверяет миграции. Схема, которую сборка выгрузила, а
       # в git ее нет, — печатается (положить в git); схема в git, которая разошлась с сущностями, — ошибка: базу поменяли

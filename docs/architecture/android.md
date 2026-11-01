@@ -320,6 +320,10 @@ Maven (`maven`, шаблоны «группа:имя», «*» в конце — 
   DataStore 1.3.0 исправляет гонку нового читателя с записью (upstream I6a427, b/431787506): в 1.1.7 старое содержимое
   могло получить новую версию, после чего читатель пропускал реально записанное обновление. Управляемый тест Storage
   воспроизводит прежний сбой; увеличение таймаутов и смена главного диспетчера не исправляют потерянное событие.
+- Android нужного SDK для Robolectric (`android-all-instrumented`) Robolectric качает сам, не через Gradle, — с Maven
+  Central в `~/.m2` при первом тесте. В CI этот каталог кешируется по версии Robolectric и набору SDK тестов
+  (`robolectric.properties` и `@Config(sdk = …)`): без кеша каждый прогон качал заново, Maven Central ответил 429 и тесты
+  упали не из-за кода (master #458, решение 532). Новый SDK в тестах меняет ключ — первый прошедший прогон его сохранит.
 - Android Lint — его ошибки роняют CI.
 - Эмулятор (задание CI «Android (эмулятор)», Android 14 x86_64 с KVM; локально — запущенный эмулятор и
   `scripts/get-xray.sh && scripts/android-test-server.sh`, затем `android/gradlew -p android :app:connectedDebugAndroidTest`):
