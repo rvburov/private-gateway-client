@@ -84,6 +84,22 @@ public partial class ThemeAndMarkupTests
         raster.ShouldBeEmpty();
     }
 
+    [Fact]
+    public void Pixels_of_a_drawn_picture_are_read_only_through_bitmap_pixels()
+    {
+        // Сырой CopyPixels отдает байты в порядке платформы: на Linux и Windows — BGRA, на macOS — RGBA. Тест, который
+        // читал их как BGRA, проходил на Linux и падал в CI на macOS; BitmapPixels приводит любую картинку к BGRA.
+        var call = "." + nameof(Avalonia.Media.Imaging.Bitmap.CopyPixels) + "(";
+        var offenders = Directory.EnumerateFiles(Path.Combine(Repo.Root, "desktop"), "*.cs", SearchOption.AllDirectories)
+            .Where(f => !f.EndsWith(Path.Combine("Services", "BitmapPixels.cs"), StringComparison.Ordinal))
+            .SelectMany(f => File.ReadLines(f).Select((line, i) => (File: Path.GetFileName(f), Line: i + 1, Text: line)))
+            .Where(l => l.Text.Contains(call, StringComparison.Ordinal))
+            .Select(l => $"{l.File}:{l.Line}: {l.Text.Trim()}")
+            .ToArray();
+
+        offenders.ShouldBeEmpty("пиксели картинки — только через BitmapPixels.From");
+    }
+
     [AvaloniaFact]
     public void Theme_resources_resolve_with_token_values()
     {

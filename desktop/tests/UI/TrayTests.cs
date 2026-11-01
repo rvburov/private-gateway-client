@@ -161,23 +161,15 @@ public sealed class TrayTests : WindowHarness
             ? solid.Color
             : throw new InvalidOperationException("нет цвета темы " + key);
 
-    /// <summary>Цвет щита чуть ниже центра — между белыми линиями знака.</summary>
+    /// <summary>
+    /// Цвет щита чуть ниже центра — между белыми линиями знака. Пиксели — через <see cref="BitmapPixels"/>: сырой
+    /// CopyPixels отдает порядок байтов платформы (на macOS — RGBA), а он приводит к BGRA.
+    /// </summary>
     private static Avalonia.Media.Color Center(Avalonia.Media.Imaging.Bitmap bitmap)
     {
-        var pixels = new byte[64 * 64 * 4];
-        var buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal(pixels.Length);
-        try
-        {
-            bitmap.CopyPixels(new Avalonia.PixelRect(0, 0, 64, 64), buffer, pixels.Length, 64 * 4);
-            System.Runtime.InteropServices.Marshal.Copy(buffer, pixels, 0, pixels.Length);
-        }
-        finally
-        {
-            System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer);
-        }
-
-        var at = ((14 * 64) + 32) * 4;
-        return Avalonia.Media.Color.FromArgb(pixels[at + 3], pixels[at + 2], pixels[at + 1], pixels[at]);
+        var pixels = BitmapPixels.From(bitmap);
+        var at = ((14 * pixels.Width) + 32) * 4;
+        return Avalonia.Media.Color.FromArgb(pixels.Bgra[at + 3], pixels.Bgra[at + 2], pixels.Bgra[at + 1], pixels.Bgra[at]);
     }
 
     [AvaloniaFact]

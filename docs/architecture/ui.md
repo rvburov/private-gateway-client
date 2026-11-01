@@ -371,6 +371,11 @@ shared/specifications/design-tokens.json ──dotnet run scripts/gen-tokens.cs�
 кнопки и проверяют подписи, а снимки каждого состояния пишутся в `artifacts/ui-snapshots/` для
 сверки с `docs/design/screens/`.
 
+Цвет пикселя картинки (значок, кадр окна) тест читает только через `BitmapPixels.From`: сырой
+`CopyPixels` отдает байты в порядке платформы — на Linux и Windows BGRA, на macOS RGBA, и проверка,
+прошедшая на Linux, падает в CI на macOS. Обход ловит тест
+`ThemeAndMarkupTests.Pixels_of_a_drawn_picture_are_read_only_through_bitmap_pixels`.
+
 ```bash
 dotnet test --project desktop/tests/UI
 ```
