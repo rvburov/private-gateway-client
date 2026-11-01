@@ -1007,7 +1007,9 @@ public sealed partial class VpnModeTests
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2));
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2), "ядра остановлены");
         service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e =>
-            e.Message == "PGC-NET-010: включился другой VPN (pgother0) — подключение остановлено, блок при обрыве держит трафик");
+            e.Message == "PGC-NET-010: включился другой VPN: туннель с маршрутом ко всему интернету — подключение остановлено, блок при обрыве держит трафик");
+        stopped.OtherClients.Select(c => (c.Program, c.Sign)).ShouldBe([(string.Empty, V1.OtherClientSign.Adapter)],
+            "экран покажет туннель другого клиента — признаком, без имени адаптера");
 
         // Ядра останавливаются после «Ошибки», блок без туннеля встает следом.
         for (var i = 0; i < 100 && rig.KillSwitch.Last!.TunnelInterface is not null; i++)

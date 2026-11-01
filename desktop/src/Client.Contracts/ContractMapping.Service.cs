@@ -403,14 +403,14 @@ public static partial class ContractMapping
     public static V1.OtherClient ToContract(this OtherClient client)
     {
         ArgumentNullException.ThrowIfNull(client);
-        return new V1.OtherClient { Program = client.Program, Sign = client.Sign.ToContract(), Detail = client.Detail };
+        return new V1.OtherClient { Sign = client.Sign.ToContract(), Detail = client.Detail };
     }
 
     /// <summary>Находки другой программы VPN; признак, которого окно не знает (служба новее), — без него: остальные остаются.</summary>
     public static IReadOnlyList<OtherClient> ToCore(this IEnumerable<V1.OtherClient> clients) =>
     [
         .. clients.Where(c => c.Sign != V1.OtherClientSign.Unspecified && System.Enum.IsDefined(c.Sign))
-            .Select(c => new OtherClient(c.Program, c.Sign.ToCore(), c.Detail)),
+            .Select(c => new OtherClient(c.Sign.ToCore(), c.Detail)),
     ];
 
     /// <summary>Пустая строка контракта — как отсутствующее значение.</summary>

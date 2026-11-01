@@ -107,20 +107,18 @@ public class NotificationPolicyTests
     [Fact]
     public void Another_client_started_while_connected_is_told_once_in_general_words()
     {
-        var hiddify = Connected with
+        var other = Connected with
         {
-            OtherClients = new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]),
+            OtherClients = new OtherClientList([new OtherClient(OtherClientSign.Process, "sing-box")]),
         };
 
-        var started = For(Connected, hiddify).ShouldNotBeNull();
+        var started = For(Connected, other).ShouldNotBeNull();
         (started.Kind, started.TextKey, started.IsImportant).ShouldBe((NoticeKind.OtherClient, "notify.other.text", true),
-            "общими словами, без названия программы (просьба пользователя 2026-11-01): какая — на «Проверке»");
+            "общими словами, без названия программы (решение 516)");
         started.Actions.ShouldBe([NoticeAction.Open]);
-        For(hiddify, hiddify with { Traffic = new TrafficStats(40, 1, 1) }).ShouldBeNull("та же программа — уведомление уже было");
-        For(hiddify, Connected).ShouldBeNull("программа закрылась — сказать нечего");
+        For(other, other with { Traffic = new TrafficStats(40, 1, 1) }).ShouldBeNull("те же признаки — уведомление уже было");
+        For(other, Connected).ShouldBeNull("клиент закрылся — сказать нечего");
 
-        var unknown = Connected with { OtherClients = new OtherClientList([new OtherClient(string.Empty, OtherClientSign.Process, "tun2socks")]) };
-        For(Connected, unknown).ShouldNotBeNull().TextKey.ShouldBe("notify.other.text", "не узнанная программа — те же слова");
-        For(Status(ConnectionState.Connecting), hiddify).ShouldNotBeNull().Kind.ShouldBe(NoticeKind.Connected, "подключились — об этом и речь");
+        For(Status(ConnectionState.Connecting), other).ShouldNotBeNull().Kind.ShouldBe(NoticeKind.Connected, "подключились — об этом и речь");
     }
 }

@@ -36,6 +36,54 @@ public sealed partial class Gateway
         {
             _ = WatchAsync(session, watch, every);
         }
+
+        if (_options.OtherClientsWatch is { } often)
+        {
+            _ = WatchOthersAsync(session, watch, often);
+        }
+    }
+
+    /// <summary>
+    /// Пока «Защищено» — другой VPN или прокси-клиент, включенный рядом (решение 516): проба сервера идет раз в минуту, а
+    /// чужой туннель, который меняет одни маршруты, без нового адреса, смена сети не выдает. Таблица маршрутов и список
+    /// процессов читаются быстро — раз в несколько секунд. Включился туннель — подключение остановлено; запустилось ядро —
+    /// замечание в состоянии (окно — уведомлением).
+    /// </summary>
+    private async Task WatchOthersAsync(int session, int watch, TimeSpan often)
+    {
+        try
+        {
+            while (true)
+            {
+                await Task.Delay(often, _time).ConfigureAwait(false);
+                ConnectionState state;
+                lock (_gate)
+                {
+                    if (watch != _watch || session != _session)
+                    {
+                        return;
+                    }
+
+                    state = _status.State;
+                }
+
+                if (state != ConnectionState.Connected)
+                {
+                    continue;
+                }
+
+                if (OtherVpnStarted(session))
+                {
+                    return;
+                }
+
+                NoteOtherClients(session);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Служба остановилась.
+        }
     }
 
     private async Task WatchAsync(int session, int watch, TimeSpan every)
@@ -197,7 +245,8 @@ public sealed partial class Gateway
             return false;
         }
 
-        _ = StopForOtherVpnAsync(session, $"включился другой VPN ({string.Join(", ", other)})");
+        _ = StopForOtherVpnAsync(session, "включился другой VPN: туннель с маршрутом ко всему интернету",
+            new OtherClientList([.. other.Select(adapter => new OtherClient(OtherClientSign.Adapter, adapter))]));
         return true;
     }
 
@@ -231,8 +280,8 @@ public sealed partial class Gateway
         }
 
         _journal.Add(list is null ? JournalLevel.Info : JournalLevel.Warning, "service", list is null
-            ? "Другая программа VPN или прокси больше не работает"
-            : $"Запустилась другая программа VPN или прокси ({Describe(found)}) — трафик может пойти мимо туннеля");
+            ? "Другой VPN или прокси-клиент больше не работает"
+            : $"Запустился другой VPN или прокси-клиент ({Describe(found)}) — трафик может пойти мимо туннеля");
     }
 
     /// <summary>
@@ -262,7 +311,7 @@ public sealed partial class Gateway
             return false;
         }
 
-        _ = StopForOtherVpnAsync(session, "включился системный прокси другой программы (" + Describe(found) + ")", new OtherClientList(found));
+        _ = StopForOtherVpnAsync(session, "включился другой VPN или прокси-клиент (" + Describe(found) + ")", new OtherClientList(found));
         return true;
     }
 

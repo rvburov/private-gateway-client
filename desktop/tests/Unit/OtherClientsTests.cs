@@ -3,8 +3,9 @@ using PrivateGateway.Client.Core.Platform;
 namespace PrivateGateway.Client.Tests.Unit;
 
 /// <summary>
-/// Другие программы VPN и прокси (<see cref="OtherClients"/>): помеха — их работающее ядро, туннель и слушающий вход системного
-/// прокси; окно программы без ядра — не помеха; свои ядра — не в счет; название — по окну, папке, адаптеру или владельцу входа.
+/// Другие VPN и прокси-клиенты (<see cref="OtherClients"/>, решение 516): помеха — работающее ядро прокси, туннель ко всему
+/// интернету и слушающий вход системного прокси; окно программы без ядра и незнакомые процессы — не помеха; свои ядра — не в
+/// счет. Названия программ не определяются: только признаки.
 /// </summary>
 public sealed class OtherClientsTests
 {
@@ -13,66 +14,60 @@ public sealed class OtherClientsTests
     private static readonly string[] Own = [OwnXray, @"C:\Program Files\Private Gateway\cores\sing-box.exe"];
 
     [Fact]
-    public void A_running_core_is_named_after_the_app_in_its_folder()
+    public void A_running_proxy_core_is_a_sign_and_the_own_core_is_not()
     {
         RunningProcess[] processes =
         [
-            new(10, "v2rayN", @"C:\Tools\v2rayN\v2rayN.exe"),
-            new(11, "xray", @"C:\Tools\v2rayN\bin\xray\xray.exe"),
-            new(12, "Hiddify", @"C:\Program Files\Hiddify\Hiddify.exe"),
+            new(10, "ClientApp", @"C:\Tools\ClientApp\ClientApp.exe"),
+            new(11, "xray", @"C:\Tools\ClientApp\bin\xray.exe"),
             new(13, "xray", OwnXray),
             new(14, "explorer", null),
         ];
 
-        OtherClients.Find(processes, Own, []).ShouldBe([new OtherClient("v2rayN", OtherClientSign.Process, "xray")],
-            "ядро v2rayN — из его папки; Hiddify открыт без ядра — не помеха; свое ядро службы — не в счет");
+        OtherClients.Find(processes, Own, []).ShouldBe([new OtherClient(OtherClientSign.Process, "xray")],
+            "чужое ядро — признак; свое ядро службы и окна программ — нет");
     }
 
     [Fact]
-    public void A_core_without_its_app_folder_takes_the_only_open_app_or_its_own_name()
+    public void Cores_are_found_by_the_engine_name_without_naming_the_client()
     {
-        OtherClients.Find([new(1, "HiddifyCli", null)], Own, []).ShouldBe([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]);
-        OtherClients.Find([new(1, "mihomo", "/usr/local/bin/mihomo"), new(2, "clash-verge", "/opt/Clash Verge/clash-verge")], Own, [])
-            .ShouldBe([new OtherClient("Clash Verge", OtherClientSign.Process, "mihomo")], "окно одно — ядро его");
-        OtherClients.Find([new(1, "sing-box", "/opt/other/sing-box")], Own, []).ShouldBe([new OtherClient("sing-box", OtherClientSign.Process, "sing-box")],
-            "sing-box сам и окно, и ядро — чужой по пути");
-        OtherClients.Find([new(1, "XRAY", null)], Own, []).ShouldBe([new OtherClient("Xray", OtherClientSign.Process, "XRAY")],
+        OtherClients.Find([new(1, "mihomo", "/usr/local/bin/mihomo")], Own, []).ShouldBe([new OtherClient(OtherClientSign.Process, "mihomo")]);
+        OtherClients.Find([new(1, "sing-box", "/opt/other/sing-box")], Own, []).ShouldBe([new OtherClient(OtherClientSign.Process, "sing-box")],
+            "sing-box другой программы — чужой по пути");
+        OtherClients.Find([new(1, "XRAY", null)], Own, []).ShouldBe([new OtherClient(OtherClientSign.Process, "XRAY")],
             "путь не прочитан — своим не признать; имя — без учета регистра");
-        OtherClients.Find([new(1, "xray", OwnXray.ToUpperInvariant())], Own, []).ShouldBe(OperatingSystem.IsLinux() ? [new OtherClient("Xray", OtherClientSign.Process, "xray")] : [],
+        OtherClients.Find([new(1, "xray", OwnXray.ToUpperInvariant())], Own, []).ShouldBe(OperatingSystem.IsLinux() ? [new OtherClient(OtherClientSign.Process, "xray")] : [],
             "пути Windows и macOS — без учета регистра");
     }
 
     [Fact]
-    public void Apps_alone_and_unknown_processes_are_not_a_hindrance()
+    public void Windows_of_clients_and_unknown_processes_are_not_a_hindrance()
     {
-        OtherClients.Find([new(1, "Hiddify", null), new(2, "v2rayN", null), new(3, "chrome", null), new(4, "wireguard", null)], Own, []).ShouldBeEmpty();
-        OtherClients.IsKnown("HiddifyCli").ShouldBeTrue();
+        OtherClients.Find([new(1, "ClientApp", null), new(3, "chrome", null), new(4, "wireguard", null)], Own, []).ShouldBeEmpty();
+        OtherClients.IsKnown("xray").ShouldBeTrue();
         OtherClients.IsKnown("chrome").ShouldBeFalse();
     }
 
     [Fact]
-    public void A_tunnel_is_named_by_its_adapter_or_the_only_open_app()
+    public void A_tunnel_to_the_whole_internet_is_a_sign_whatever_its_name()
     {
-        OtherClients.Find([], Own, ["Hiddify Tunnel", "wg0", "outline-tap0"]).ShouldBe(
+        OtherClients.Find([], Own, ["Client Tunnel", "wg0"]).ShouldBe(
         [
-            new OtherClient("Hiddify", OtherClientSign.Adapter, "Hiddify Tunnel"),
-            new OtherClient(string.Empty, OtherClientSign.Adapter, "wg0"),
-            new OtherClient("Outline", OtherClientSign.Adapter, "outline-tap0"),
+            new OtherClient(OtherClientSign.Adapter, "Client Tunnel"),
+            new OtherClient(OtherClientSign.Adapter, "wg0"),
         ]);
-        OtherClients.Find([new(1, "NekoBox", null)], Own, ["tun0"]).ShouldBe([new OtherClient("NekoBox", OtherClientSign.Adapter, "tun0")]);
     }
 
     [Fact]
-    public void A_listening_system_proxy_is_named_by_the_owner_of_its_entry()
+    public void A_listening_system_proxy_is_a_sign_unless_the_own_core_listens()
     {
-        RunningProcess[] processes = [new(20, "Hiddify", @"C:\Hiddify\Hiddify.exe"), new(21, "v2rayN", @"C:\v2rayN\v2rayN.exe"), new(22, "privoxy", null)];
+        RunningProcess[] processes = [new(20, "ClientApp", @"C:\ClientApp\ClientApp.exe"), new(21, "xray", OwnXray)];
 
-        OtherClients.Find(processes, Own, [], ("127.0.0.1:2334", 20)).ShouldBe([new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:2334")],
-            "ядро Hiddify — внутри окна: его выдает вход прокси");
-        OtherClients.Find(processes, Own, [], ("127.0.0.1:8118", 22)).ShouldBe([new OtherClient("privoxy", OtherClientSign.SystemProxy, "127.0.0.1:8118")],
-            "незнакомая программа — по имени процесса");
-        OtherClients.Find(processes, Own, [], ("127.0.0.1:2334", null)).ShouldBe([new OtherClient(string.Empty, OtherClientSign.SystemProxy, "127.0.0.1:2334")],
-            "владелец неизвестен, окон два — без названия");
+        OtherClients.Find(processes, Own, [], ("127.0.0.1:2334", 20)).ShouldBe([new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:2334")],
+            "ядро внутри окна клиента: его выдает вход прокси");
+        OtherClients.Find(processes, Own, [], ("127.0.0.1:2334", null)).ShouldBe([new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:2334")],
+            "владелец неизвестен — все равно признак");
+        OtherClients.Find(processes, Own, [], ("127.0.0.1:10808", 21)).ShouldBeEmpty("вход слушает свое ядро (режим прокси)");
     }
 
     [Theory]
@@ -92,13 +87,11 @@ public sealed class OtherClientsTests
     [Fact]
     public void The_list_compares_by_content()
     {
-        var one = new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]);
-        var same = new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]);
+        var one = new OtherClientList([new OtherClient(OtherClientSign.Process, "xray")]);
+        var same = new OtherClientList([new OtherClient(OtherClientSign.Process, "xray")]);
 
         one.ShouldBe(same);
         one.GetHashCode().ShouldBe(same.GetHashCode());
-        one.ShouldNotBe(new OtherClientList([new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:2334")]));
-        new OtherClientList([new("Hiddify", OtherClientSign.Process, "a"), new("Hiddify", OtherClientSign.SystemProxy, "b"), new(string.Empty, OtherClientSign.Adapter, "wg0")])
-            .Programs("другая").ShouldBe(["Hiddify", "другая"]);
+        one.ShouldNotBe(new OtherClientList([new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:2334")]));
     }
 }

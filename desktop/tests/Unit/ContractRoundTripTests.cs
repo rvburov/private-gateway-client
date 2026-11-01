@@ -120,9 +120,9 @@ public sealed class ContractRoundTripTests
             ErrorCode = "PGC-NET-010",
             OtherClients = new OtherClientList(
             [
-                new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli"),
-                new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:2334"),
-                new OtherClient(string.Empty, OtherClientSign.Adapter, "wg0"),
+                new OtherClient(OtherClientSign.Process, "sing-box"),
+                new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:2334"),
+                new OtherClient(OtherClientSign.Adapter, "wg0"),
             ]),
         };
         V1.Status.Parser.ParseFrom(others.ToContract().ToByteArray()).ToCore().ShouldBe(others, "находки другой программы VPN доходят до окна");

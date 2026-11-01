@@ -215,7 +215,7 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public async Task Other_vpn_screen_names_the_program_checks_again_and_goes_on_only_with_the_setting()
+    public async Task Other_vpn_screen_shows_the_signs_checks_again_and_goes_on_only_with_the_setting()
     {
         Installer.IsAvailable = true;
         _answering.Add(Installed);
@@ -225,11 +225,11 @@ public sealed class ProblemPageTests : WindowHarness
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.CurrentKey == Pages.Problem);
 
-        // Служба старее окна — находок не присылает: экран по макету, без названия программы.
+        // Служба старее окна — находок не присылает: экран по макету.
         var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
         Text(window, "ProblemTitle").ShouldBe("Работает другой VPN или прокси-клиент");
         WaitFor(() => page.Facts.Count == 3);
-        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Чужой сетевой адаптер: активен", "Системный прокси: 127.0.0.1:7890", "Маршрут по умолчанию: занят"],
+        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Туннель другого клиента: ведет весь трафик", "Системный прокси: 127.0.0.1:7890", "Маршрут по умолчанию: занят"],
             "системный прокси другой программы — строка по макету; читает его окно: служба настроек пользователя не видит");
         Find<Button>(window, "Retry").Content.ShouldBe("Я закрыл его — проверить снова");
         window.GetVisualDescendants().OfType<Button>().ShouldNotContain(b => b.Name == "Continue",
@@ -244,17 +244,18 @@ public sealed class ProblemPageTests : WindowHarness
         shell.Toast.Text.ShouldBe("Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»");
         shell.CurrentKey.ShouldBe(Pages.Problem);
 
-        // Служба назвала программу: заголовок и текст — общими словами (просьба пользователя 2026-11-01), программа и чем она
-        // себя выдала — в строках; ее вход прокси служба нашла сама — строки окна нет.
-        _others = new OtherClientList([new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli"),
-            new OtherClient("Hiddify", OtherClientSign.SystemProxy, "127.0.0.1:7890")]);
+        // Служба прислала признаки: строки — признаками, без названий программ и процессов (решение 516); два ядра — одна строка;
+        // вход прокси служба нашла сама — строки окна нет.
+        _others = new OtherClientList([new OtherClient(OtherClientSign.Process, "sing-box"), new OtherClient(OtherClientSign.Process, "xray"),
+            new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:7890")]);
         Time.Advance(TimeSpan.FromSeconds(1));
         Press(window, "Retry");
-        WaitFor(() => page.Facts.Any(f => f.Label == "Hiddify"));
+        WaitFor(() => page.Facts.Any(f => f.Label == "Ядро прокси"));
 
         Text(window, "ProblemTitle").ShouldBe("Работает другой VPN или прокси-клиент");
         Text(window, "ProblemText").ShouldStartWith("Другой VPN или прокси-клиент уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход»");
-        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Hiddify: процесс HiddifyCli", "Hiddify: прокси 127.0.0.1:7890"]);
+        page.Facts.Select(f => $"{f.Label}: {f.Value}").ShouldBe(["Ядро прокси: работает", "Системный прокси: 127.0.0.1:7890"]);
+        page.Facts.ShouldAllBe(f => !f.Value.Contains("xray", StringComparison.OrdinalIgnoreCase) && !f.Value.Contains("sing-box", StringComparison.Ordinal));
         shell.Toast.Text.ShouldBe("Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»");
         Snapshot(window, "problem-other-vpn");
 

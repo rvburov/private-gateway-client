@@ -45,7 +45,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="AddressFetch"/> — запрос к RIPEstat о провайдере адреса (тесты); null — <see cref="AddressLookup.FetchAsync"/>;
 /// <paramref name="Webrtc"/> — замер STUN обычным путем службы (<see cref="StunProbe"/>): какой адрес видит WebRTC; null — не мерить;
 /// <paramref name="TunnelRoutes"/> — только эти сети через TUN (тесты Windows в CI,
-/// <see cref="TunRequest.Routes"/>); null — весь трафик.
+/// <see cref="TunRequest.Routes"/>); null — весь трафик;
+/// <paramref name="OtherClientsWatch"/> — как часто, пока «Защищено», искать другой VPN или прокси-клиент (туннель и ядро,
+/// решение 516); null — только с пробой сервера (<see cref="ReconnectTiming.Every"/>) и при смене сети.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -80,7 +82,8 @@ public sealed record GatewayOptions(
     Func<ServerProbe, CancellationToken, Task<int?>>? Delay = null,
     Func<(long Received, long Sent)?>? TunnelCounters = null,
     TimeSpan? TrafficWatch = null,
-    Func<IReadOnlyList<RunningProcess>>? Processes = null);
+    Func<IReadOnlyList<RunningProcess>>? Processes = null,
+    TimeSpan? OtherClientsWatch = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -493,11 +496,11 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             if (!request.AllowOtherVpn)
             {
-                return await RejectAsync(request, core.Mode, ErrorCodes.OtherVpn, "Работает другой VPN или прокси: " + Describe(other), generation,
+                return await RejectAsync(request, core.Mode, ErrorCodes.OtherVpn, "Работает другой VPN или прокси-клиент: " + Describe(other), generation,
                     cancellationToken, new OtherClientList(other)).ConfigureAwait(false);
             }
 
-            _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN ({Describe(other)}) — подключение по выбору пользователя");
+            _journal.Add(JournalLevel.Warning, "service", $"Работает другой VPN или прокси-клиент ({Describe(other)}) — подключение по выбору пользователя");
         }
 
         // Поиск адреса сервера бывает долгим (до срока пробы, под блоком — еще DoH службы): с выключенной защитой окно сразу
@@ -749,17 +752,19 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
-    /// <summary>Находки для журнала: «Hiddify: процесс HiddifyCli, системный прокси 127.0.0.1:2334; адаптер wg0».</summary>
+    /// <summary>
+    /// Находки для журнала — признаками, без названий программ и их процессов (решение 516): «работает ядро прокси, туннель с
+    /// маршрутом ко всему интернету, системный прокси 127.0.0.1:2334».
+    /// </summary>
     public static string Describe(IReadOnlyList<OtherClient> clients)
     {
         ArgumentNullException.ThrowIfNull(clients);
-        return string.Join("; ", clients.GroupBy(c => c.Program, StringComparer.Ordinal).Select(g =>
-            (g.Key.Length > 0 ? g.Key + ": " : string.Empty) + string.Join(", ", g.Select(c => c.Sign switch
-            {
-                OtherClientSign.Adapter => "адаптер " + c.Detail,
-                OtherClientSign.Process => "процесс " + c.Detail,
-                _ => "системный прокси " + c.Detail,
-            }))));
+        return string.Join(", ", clients.Select(c => c.Sign switch
+        {
+            OtherClientSign.Adapter => "туннель с маршрутом ко всему интернету",
+            OtherClientSign.Process => "работает ядро прокси",
+            _ => "системный прокси " + c.Detail,
+        }).Distinct(StringComparer.Ordinal));
     }
 
     /// <summary>

@@ -62,7 +62,6 @@ public sealed partial class HindranceRowViewModel(string title, string detail, s
 
         var (state, chip, status) = entry switch
         {
-            { Listens: true, Process: { } process } => (CheckState.Warning, loc["diag.hinder.chip.live"], loc.Format("diag.hinder.live.process", process)),
             { Listens: true } => (CheckState.Warning, loc["diag.hinder.chip.live"], loc["diag.hinder.live"]),
             { Listens: false } => (CheckState.Stopped, loc["diag.hinder.chip.dead"], loc["diag.hinder.dead"]),
             _ => (CheckState.Waiting, loc["diag.hinder.chip.unknown"], loc[checkedEntries ? "diag.hinder.unknown" : "diag.hinder.noService"]),
@@ -72,21 +71,22 @@ public sealed partial class HindranceRowViewModel(string title, string detail, s
         return new HindranceRowViewModel(title, detail, chip, state, canFix ? hindrance : null, canFix ? fix : null);
     }
 
-    /// <summary>Другой VPN или прокси-клиент, которого нашла служба: «Другой VPN или прокси-клиент», в подробностях — какой и чем выдал себя.</summary>
-    public static HindranceRowViewModel For(OtherClient client)
+    /// <summary>
+    /// Другой VPN или прокси-клиент, которого нашла служба: одна строка «Другой VPN или прокси-клиент», в подробностях —
+    /// признаки (работает ядро прокси, туннель ко всему интернету, системный прокси с адресом), без названий программ (решение 516).
+    /// </summary>
+    public static HindranceRowViewModel For(IReadOnlyList<OtherClient> clients)
     {
-        ArgumentNullException.ThrowIfNull(client);
+        ArgumentNullException.ThrowIfNull(clients);
         var loc = Loc.Instance;
-        var sign = loc.Format(client.Sign switch
+        var signs = string.Join(", ", clients.Select(c => c.Sign switch
         {
-            OtherClientSign.Adapter => "problem.fact.sign.adapter",
-            OtherClientSign.Process => "problem.fact.sign.process",
-            _ => "problem.fact.sign.proxy",
-        }, client.Detail);
-        // Заголовок — общий (просьба пользователя 2026-11-01): название программы — подробность, а не суть замечания.
-        return new HindranceRowViewModel(loc["diag.hinder.other"],
-            loc.Format("diag.hinder.client", client.Program.Length > 0 ? client.Program : loc["problem.fact.other_program"], sign),
-            loc["diag.hinder.chip.live"], CheckState.Warning);
+            OtherClientSign.Adapter => loc["diag.hinder.sign.adapter"],
+            OtherClientSign.Process => loc["diag.hinder.sign.core"],
+            _ => loc.Format("diag.hinder.sign.proxy", c.Detail),
+        }).Distinct(StringComparer.Ordinal));
+        signs = signs.Length > 0 ? char.ToUpper(signs[0], loc.Culture) + signs[1..] : signs;
+        return new HindranceRowViewModel(loc["diag.hinder.other"], loc.Format("diag.hinder.client", signs), loc["diag.hinder.chip.live"], CheckState.Warning);
     }
 
     /// <summary>Ничего не найдено.</summary>

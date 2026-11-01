@@ -296,9 +296,9 @@ public sealed partial class CheckPageViewModel : ObservableObject
             Hindrances.Add(HindranceRowViewModel.For(hindrance, entry, probe is not null, _machine.CanFix(hindrance, entry), FixAsync));
         }
 
-        foreach (var client in probe?.Clients ?? [])
+        if (probe?.Clients is { Count: > 0 } clients)
         {
-            Hindrances.Add(HindranceRowViewModel.For(client));
+            Hindrances.Add(HindranceRowViewModel.For(clients));
         }
 
         if (Hindrances.Count == 0)

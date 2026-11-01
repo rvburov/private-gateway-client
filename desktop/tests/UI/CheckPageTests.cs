@@ -104,7 +104,7 @@ public sealed class CheckPageTests : WindowHarness
     [AvaloniaFact]
     public void Things_on_this_computer_that_may_interfere_are_named_and_a_dead_user_proxy_is_fixed()
     {
-        // У пользователя на Windows 2026-10-31 консольные программы ломались из-за оставшегося https_proxy на вход Hiddify.
+        // У пользователя на Windows 2026-10-31 консольные программы ломались из-за оставшегося https_proxy на вход другого клиента.
         Machine.Found.AddRange(
         [
             new Hindrance(HindranceKind.EnvironmentProxy, "https_proxy", "http://user:secret@127.0.0.1:2334", HindranceScope.Machine),
@@ -117,7 +117,8 @@ public sealed class CheckPageTests : WindowHarness
         {
             Entries = new InterferenceProbe(
                 [new EntryCheck("127.0.0.1:2334", false, null), new EntryCheck("198.51.100.5:3128", true, null)],
-                [new OtherClient("Hiddify", OtherClientSign.Process, "HiddifyCli")]),
+                [new OtherClient(OtherClientSign.Process, "sing-box"), new OtherClient(OtherClientSign.Process, "xray"),
+                    new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:2334")]),
         });
         var page = OpenCheck(shell);
         WaitFor(() => !page.IsRunning && page.Hindrances.Count == 5);
@@ -130,8 +131,8 @@ public sealed class CheckPageTests : WindowHarness
             ("Автоопределение прокси (WPAD)", "Включено"),
             ("Другой VPN или прокси-клиент", "Работает"),
         ]);
-        page.Hindrances[4].Detail.ShouldStartWith("Hiddify — процесс HiddifyCli. Работает и ведет трафик", Case.Sensitive,
-            "заголовок общий, какая программа — в подробностях (просьба пользователя 2026-11-01)");
+        page.Hindrances[4].Detail.ShouldBe("Работает ядро прокси, системный прокси 127.0.0.1:2334. Закройте его полностью — значок в трее → «Выход».",
+            "одна строка на все признаки, без названий программ и процессов (решение 516)");
         page.Hindrances[0].Detail.ShouldStartWith("http://***@127.0.0.1:2334 — не отвечает", Case.Sensitive, "имя и пароль прокси скрыты");
         page.Hindrances[0].Detail.ShouldContain("нужны права администратора");
         page.Hindrances[0].CanFix.ShouldBeFalse("переменную машины окно не трогает — нужны права администратора");

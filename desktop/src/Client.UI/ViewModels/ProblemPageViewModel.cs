@@ -97,8 +97,9 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     public string Text => Loc.Instance[IsConflict ? "problem.conflict.text" : IsAdmin ? "problem.admin.text" : "problem.service.text"];
 
     /// <summary>
-    /// Факты по макету. У «Работает другой VPN» — что нашла служба: программа и чем она себя выдала (ядро, адаптер,
-    /// вход прокси), строка на находку. Служба старее окна и находок не присылает — адаптер и маршрут: тогда она считает
+    /// Факты по макету. У «Работает другой VPN или прокси-клиент» — что нашла служба, признаками и без названий программ
+    /// (решение 516): работает ядро прокси, чужой адаптер с маршрутом ко всему интернету, системный прокси с адресом — строка
+    /// на признак. Служба старее окна и находок не присылает — адаптер и маршрут: тогда она считает
     /// чужим VPN только туннель, который держит маршрут ко всему интернету. И системный прокси, если его поставила
     /// другая программа (читает окно: настройки пользователя), — когда служба не назвала его сама.
     /// </summary>
@@ -106,13 +107,12 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         ?
         [
             .. Others is { Items.Count: > 0 } others
-                ? others.Items.Select(o => new ProblemFact(o.Program.Length > 0 ? o.Program : Loc.Instance["problem.fact.other_program"],
-                    Loc.Instance.Format(o.Sign switch
-                    {
-                        OtherClientSign.Adapter => "problem.fact.sign.adapter",
-                        OtherClientSign.Process => "problem.fact.sign.process",
-                        _ => "problem.fact.sign.proxy",
-                    }, o.Detail), IsWarning: true))
+                ? others.Items.Select(o => o.Sign switch
+                {
+                    OtherClientSign.Adapter => new ProblemFact(Loc.Instance["problem.fact.adapter"], Loc.Instance["problem.fact.adapter.active"], IsWarning: true),
+                    OtherClientSign.Process => new ProblemFact(Loc.Instance["problem.fact.core"], Loc.Instance["problem.fact.core.running"], IsWarning: true),
+                    _ => new ProblemFact(Loc.Instance["problem.fact.system_proxy"], o.Detail, IsWarning: true),
+                }).Distinct()
                 : [new ProblemFact(Loc.Instance["problem.fact.adapter"], Loc.Instance["problem.fact.adapter.active"], IsWarning: true)],
             .. ForeignProxy is { } proxy && Others?.Items.Any(o => o.Sign == OtherClientSign.SystemProxy) != true
                 ? [new ProblemFact(Loc.Instance["problem.fact.system_proxy"], proxy.IsScript ? Loc.Instance["problem.fact.system_proxy.script"] : proxy.Address,
