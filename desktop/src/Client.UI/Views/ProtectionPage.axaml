@@ -33,6 +33,12 @@
                                IsChecked="{Binding KillSwitch, Mode=OneWay}" Command="{Binding FlipKillSwitchCommand}"
                                AutomationProperties.Name="{l:L prot.ks.title}" />
             </Grid>
+            <StackPanel x:Name="VirtualMachinesProtection" Spacing="3" Margin="0,0,0,12" IsVisible="{Binding ShowVirtualMachines}">
+              <TextBlock Classes="strong" Text="{l:L diag.virtual_machines.title}" TextWrapping="Wrap" />
+              <TextBlock x:Name="VirtualMachinesStatus" Classes="caption" Text="{Binding VirtualMachinesText}" TextWrapping="Wrap"
+                         Foreground="{StaticResource PgBrush.Status.Caution.Text}" />
+              <TextBlock Classes="caption" Text="{l:L diag.virtual_machines.scope}" TextWrapping="Wrap" />
+            </StackPanel>
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">

@@ -218,7 +218,7 @@ public sealed class WfpKillSwitchTests
     }
 
     [Fact]
-    public void Hyper_v_rules_close_the_vms_and_go_away_with_the_block()
+    public void Hyper_v_block_rules_are_repaired_and_go_away_with_the_block()
     {
         if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
         {
@@ -236,6 +236,12 @@ public sealed class WfpKillSwitchTests
             (HyperVFirewall.Created, HyperVFirewall.IsClosed()).ShouldBe((created, true),
                 "оба правила уже стоят — их не снимают и не ставят заново: ВМ ни на миг не открыты");
 
+            DisableHyperVOutboundRule();
+            HyperVFirewall.IsClosed().ShouldBeFalse("два InstanceID на месте, но исходящее правило выключено");
+            HyperVFirewall.Close().ShouldBeNull("выключенное правило восстановлено при повторной постановке блока");
+            HyperVFirewall.IsClosed().ShouldBeTrue("оба направления опять включены и блокируют\n" + HyperVRules());
+            HyperVFirewall.Created.ShouldBe(created + 1, "исправное направление при починке другого не снимается и не пересоздается");
+
             WfpKillSwitch.ForService().Warning.ShouldBeNull();
             HyperVFirewall.IsClosed().ShouldBeFalse("фильтров блока нет — правила Hyper-V, оставшиеся с прошлого раза, снимаются при запуске службы");
 
@@ -248,6 +254,34 @@ public sealed class WfpKillSwitchTests
         {
             HyperVFirewall.Open();
         }
+    }
+
+    [SupportedOSPlatform("windows")]
+    private static void DisableHyperVOutboundRule()
+    {
+        var scope = new ManagementScope(HyperVFirewall.Namespace, new ConnectionOptions { Timeout = TimeSpan.FromSeconds(10) });
+        scope.Connect();
+        using var searcher = new ManagementObjectSearcher(scope, new ObjectQuery("SELECT * FROM " + HyperVFirewall.Class),
+            new System.Management.EnumerationOptions
+            {
+                Context = HyperVFirewall.Store(), ReturnImmediately = false, Timeout = TimeSpan.FromSeconds(10),
+            });
+        var changed = false;
+        using var result = searcher.Get();
+        foreach (var instance in result.Cast<ManagementObject>())
+        {
+            using (instance)
+            {
+                if (string.Equals(instance["InstanceID"] as string, HyperVFirewallPolicy.OutboundId, StringComparison.OrdinalIgnoreCase))
+                {
+                    instance["Enabled"] = 2;
+                    instance.Put(new PutOptions(HyperVFirewall.Store(), TimeSpan.FromSeconds(10), false, PutType.UpdateOnly));
+                    changed = true;
+                }
+            }
+        }
+
+        changed.ShouldBeTrue("изменяется только собственное исходящее правило теста");
     }
 
     /// <summary>Что видно в классе правил Hyper-V без хранилища и в каждом из них — для сообщения теста.</summary>

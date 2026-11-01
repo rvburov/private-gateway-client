@@ -52,9 +52,13 @@ public static class InfrastructureModule
                     address.System ? ServiceKind.Installed : ServiceKind.User,
                     id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
-                    sp.GetRequiredService<IUserProxySettings>().Read),
+                    sp.GetRequiredService<IUserProxySettings>().Read, manageUserProxy: OperatingSystem.IsWindows()),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
-                () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder)), sp.GetRequiredService<IUserProxySettings>()));
+                () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))
+                    || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>()));
+        services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
+            sp.GetRequiredService<IGatewayClient>(), !demo && OperatingSystem.IsWindows() ? new CurrentUserWindowsProxy() : null,
+            new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IServiceInstaller>(sp => demo
             ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));

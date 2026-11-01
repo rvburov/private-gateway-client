@@ -307,7 +307,8 @@ public static partial class ContractMapping
             settings.ProxyPort is > 0 and <= 65535 ? (int)settings.ProxyPort
                 : throw new ArgumentOutOfRangeException(nameof(settings), settings.ProxyPort, "Порт прокси вне 1–65535"),
             settings.ProxyAllowLan,
-            settings.SystemProxy);
+            settings.SystemProxy,
+            settings.VpnSystemProxy);
     }
 
     /// <summary>Маршрутизация из запроса: у программ в контракте только путь — он же и название.</summary>
@@ -366,6 +367,11 @@ public static partial class ContractMapping
             CaptivePauseUntil = status.CaptivePauseUntil is { } until ? Timestamp.FromDateTimeOffset(until) : null,
             StrictBlock = status.StrictBlock,
             NetworkChangedAt = status.NetworkChangedAt is { } changed ? Timestamp.FromDateTimeOffset(changed) : null,
+            LocalProxyPort = (uint)(status.LocalProxyPort ?? 0),
+            UserProxyManagedByWindow = status.UserProxyManagedByWindow,
+            VirtualMachines = status.VirtualMachines is { } vm
+                ? new V1.VirtualMachineProtection { State = vm.State.ToContract(), Reason = vm.Reason }
+                : null,
         };
         if (status.ErrorCode is { } code)
         {
@@ -397,7 +403,10 @@ public static partial class ContractMapping
             status.StrictBlock,
             status.NetworkChangedAt?.ToDateTimeOffset(),
             // Признак, которого окно не знает (служба новее), — без него: остальные находки остаются.
-            status.OtherClients.Count == 0 ? null : new OtherClientList(status.OtherClients.ToCore()));
+            status.OtherClients.Count == 0 ? null : new OtherClientList(status.OtherClients.ToCore()),
+            status.VirtualMachines is { } vm ? new PrivateGateway.Client.Core.VirtualMachineProtection(vm.State.ToCore(), vm.Reason) : null,
+            status.LocalProxyPort is > 0 and <= 65535 ? (int)status.LocalProxyPort : null,
+            status.UserProxyManagedByWindow);
     }
 
     public static V1.OtherClient ToContract(this OtherClient client)

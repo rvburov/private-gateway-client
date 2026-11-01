@@ -50,6 +50,9 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// <summary>Одно из ядер уже не работает — и до подписки на <see cref="Exited"/>.</summary>
     public bool HasExited => _xray.HasExited || _singBox.HasExited;
 
+    /// <summary>Отдельный локальный HTTP/SOCKS-вход, подтвержденный вместе с запуском Xray; null — не включен.</summary>
+    public int? LocalProxyPort { get; private init; }
+
     /// <summary>Номера процессов ядер — для журнала.</summary>
     public (int Xray, int SingBox) Processes => (_xray.Id, _singBox.Id);
 
@@ -204,6 +207,8 @@ public sealed class VpnTunnel : IAsyncDisposable
             throw new TunnelException("Нет адреса сервера");
         }
 
+        // Пока выбираются внутренние порты, фиксированный вход прокси занят нашей парой: они не совпадут.
+        using var localProxy = ReserveLocalProxy(request, netns);
         var link = NewLink(serverAddresses[0], bypass: XrayConfigBuilder.NeedsBypassInbound(request));
 
         // Hysteria2 и TUIC — через ретранслятор sing-box (CoreRelay): к серверу он соединяется по тому же адресу и порту,
@@ -217,6 +222,7 @@ public sealed class VpnTunnel : IAsyncDisposable
 
         var started = time.GetTimestamp();
         var xrayStarted = 0;
+        localProxy?.Dispose();
         var xrayCore = CoreRelay.StartXray(xray, xrayConfig, singBox,
             relay is null ? [] : [new RelayRoute(request.Server, relay, serverAddresses[0].ToString())], request.Connection.CoreLog, out var relayReady, netns,
             line =>
@@ -237,7 +243,9 @@ public sealed class VpnTunnel : IAsyncDisposable
         {
             // Вход Xray в своем сетевом пространстве отсюда не виден — тогда по строке «Xray … started»: ее ядро
             // печатает, когда входы уже слушают. Ретранслятор — тоже по строке готовности.
-            await WaitAsync(() => !xrayCore.HasExited && (netns is null ? Listens(link.Port) : Volatile.Read(ref xrayStarted) == 1) && relayReady(),
+            await WaitAsync(() => !xrayCore.HasExited && Volatile.Read(ref xrayStarted) == 1 && (netns is null
+                    ? Listens(link.Port) && (!request.Connection.VpnSystemProxy || Listens(request.Connection.ProxyPort))
+                    : Volatile.Read(ref xrayStarted) == 1) && relayReady(),
                 "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
 
             // IPv6 через туннель — только если сервер его открывает: иначе соединения IPv6 принимал бы TUN, а рвал сервер, и
@@ -338,7 +346,10 @@ public sealed class VpnTunnel : IAsyncDisposable
                     continue;
                 }
 
-                return new VpnTunnel(xrayCore, core, netns, output, tun);
+                return new VpnTunnel(xrayCore, core, netns, output, tun)
+                {
+                    LocalProxyPort = request.Connection.VpnSystemProxy ? request.Connection.ProxyPort : null,
+                };
             }
         }
         catch
@@ -367,6 +378,23 @@ public sealed class VpnTunnel : IAsyncDisposable
     {
         ArgumentNullException.ThrowIfNull(server);
         return new TunLink(LocalPort.FreeForTcpAndUdp(), Secret(), server.ToString(), bypass ? LocalPort.FreeForTcpAndUdp() : 0);
+    }
+
+    private static LocalPortLease? ReserveLocalProxy(CoreRequest request, string? netns)
+    {
+        if (!request.Connection.VpnSystemProxy || netns is not null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return LocalPort.ReserveForTcpAndUdp(request.Connection.ProxyPort);
+        }
+        catch (SocketException)
+        {
+            throw new TunnelException($"Локальный порт прокси {request.Connection.ProxyPort} занят или недоступен");
+        }
     }
 
     /// <summary>

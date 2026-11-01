@@ -36,6 +36,7 @@ public partial class App : Avalonia.Application
         Loc.Instance.SetLanguage(settings.Current.Language);
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            desktop.Exit += (_, _) => Services.GetRequiredService<IUserProxyController>().Shutdown();
             var window = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
             _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
                 startup.Minimized, Services.GetRequiredService<NoticeWindow>(), Services.GetRequiredService<UpdateWatcher>());
@@ -49,6 +50,7 @@ public partial class App : Avalonia.Application
         Services.GetRequiredService<SubscriptionUpdater>().Start();
         Services.GetRequiredService<AutostartSync>().Start();
         Services.GetRequiredService<ProtectionSync>().Start();
+        Services.GetRequiredService<IUserProxyController>().Start();
         Services.GetRequiredService<NetworkEventLog>().Start();
         Services.GetRequiredService<UpdateWatcher>().Start();
         _ = Services.GetRequiredService<LaunchConnect>().RunAsync();

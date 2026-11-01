@@ -347,6 +347,27 @@ public sealed class ProtectionPageTests : WindowHarness
         page.CanStrictMode.ShouldBeFalse();
     }
 
+    [AvaloniaFact]
+    public void Virtual_machine_limitations_follow_the_service_snapshot_without_claiming_verified_traffic()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time,
+            () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        var page = Navigate(shell);
+
+        service!.Push(s => s with { VirtualMachines = new VirtualMachineProtection(CheckState.Warning, "unavailable") });
+        Dispatcher.UIThread.RunJobs();
+
+        page.ShowVirtualMachines.ShouldBeTrue();
+        Text(window, "VirtualMachinesStatus").ShouldBe("Брандмауэр Hyper-V недоступен. При потере туннеля трафик ВМ может пойти напрямую.");
+        Find<StackPanel>(window, "VirtualMachinesProtection").IsVisible.ShouldBeTrue();
+
+        service.Push(s => s with { VirtualMachines = new VirtualMachineProtection(CheckState.Warning, "rules_applied") });
+        Dispatcher.UIThread.RunJobs();
+
+        Text(window, "VirtualMachinesStatus").ShouldBe("Оба правила Hyper-V включены и блокируют входящие и исходящие соединения. Проверка трафика ВМ не выполнена.");
+    }
+
     private (MainWindow Window, ShellViewModel Shell, ProtectionPageViewModel Page) OpenProtection()
     {
         var (window, shell) = Open();

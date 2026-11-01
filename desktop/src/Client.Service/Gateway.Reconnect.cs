@@ -153,7 +153,18 @@ public sealed partial class Gateway
         }
 
         var probe = new ServerProbe(link.Port, new NetworkCredential(link.User, link.Password), _options.LatencyTarget, timeout ?? Timing.ProbeTimeout);
-        return await (_options.Probe ?? LatencyProbe.ReachesAsync)(probe, CancellationToken.None).ConfigureAwait(false);
+        if (_options.Probe is { } custom)
+        {
+            return await custom(probe, CancellationToken.None).ConfigureAwait(false);
+        }
+
+        var result = await LatencyProbe.CheckAsync(probe, CancellationToken.None).ConfigureAwait(false);
+        if (!result.Reached)
+        {
+            _journal.Add(JournalLevel.Warning, "service", "Проверка связи через ядро: " + result.Description);
+        }
+
+        return result.Reached;
     }
 
     /// <summary>

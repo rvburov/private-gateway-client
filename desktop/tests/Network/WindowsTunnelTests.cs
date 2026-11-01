@@ -62,7 +62,7 @@ public sealed partial class WindowsTunnelTests
         // DNS Xray — обычный, по UDP через сервер: на сервере теста его отвечает свой DNS.
         var request = new CoreRequest(definition, ConnectionMode.Vpn,
             ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8", FakeDns = fakeDns },
-            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
+            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug, VpnSystemProxy = true, ProxyPort = XrayKit.FreePort() }, RoutingSettings.Default);
         var output = new CoreOutput();
         var link = VpnTunnel.NewLink(IPAddress.Loopback);
         var xrayConfig = XrayConfigBuilder.Build(request, link).Config.ShouldNotBeNull();
@@ -107,6 +107,14 @@ public sealed partial class WindowsTunnelTests
 
             (await output.TraceAsync(() => GetAsync(page))).ShouldBe("через туннель Windows", "адрес — через TUN, Xray и сервер");
             site.Requests.ShouldBe(1);
+            foreach (var protocol in new[] { "http", "socks5" })
+            {
+                using var handler = new SocketsHttpHandler { Proxy = new WebProxy($"{protocol}://127.0.0.1:{request.Connection.ProxyPort}") };
+                using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
+                (await output.TraceAsync(() => http.GetStringAsync(page, Ct))).ShouldBe("через туннель Windows");
+            }
+
+            site.Requests.ShouldBe(3, "TUN, HTTP и SOCKS используют один контролируемый сервер");
         }
         finally
         {

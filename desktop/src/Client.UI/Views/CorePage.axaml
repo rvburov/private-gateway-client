@@ -302,10 +302,13 @@
               <StackPanel Spacing="3" Margin="0,0,14,0">
                 <TextBlock Classes="strong" Text="{l:L core.systemProxy.title}" TextWrapping="Wrap" />
                 <TextBlock Classes="caption" Text="{l:L core.systemProxy.text}" TextWrapping="Wrap" />
+                <TextBlock x:Name="SystemProxyStatus" Classes="caption" Text="{Binding SystemProxyStatus}" TextWrapping="Wrap" />
               </StackPanel>
               <ToggleButton x:Name="SystemProxyToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
                             IsChecked="{Binding SystemProxy}" AutomationProperties.Name="{l:L core.systemProxy.title}" />
             </Grid>
+            <TextBlock Classes="caption" Text="{l:L core.systemProxy.split.note}" TextWrapping="Wrap"
+                       IsVisible="{Binding ShowProxySplitNote}" Margin="0,0,0,12" />
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">

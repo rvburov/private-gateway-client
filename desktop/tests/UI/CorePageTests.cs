@@ -32,8 +32,58 @@ public sealed class CorePageTests : WindowHarness
         Text(window, "ReconnectChoiceText").ShouldBe("Экспоненц. до 60 с");
         Text(window, "ProxyPort").ShouldBe("10808");
         (page.StrictRoutes, page.Sniffing, page.Mux, page.TlsFragment, page.ProxyAllowLan).ShouldBe((true, true, false, false, false));
-        Find<ToggleButton>(window, "SystemProxyToggle").IsChecked.ShouldBe(true, "системный прокси в режиме прокси — по умолчанию");
+        Find<ToggleButton>(window, "SystemProxyToggle").IsChecked.ShouldBe(false, "совместный путь VPN + прокси включается только явно");
         Snapshot(window, "core");
+    }
+
+    [AvaloniaFact]
+    public void System_proxy_status_displays_confirmed_application_and_failure_independently_of_the_toggle()
+    {
+        var (window, shell, _) = OpenCore();
+        var controller = new ProxyStatusStub();
+        var page = new CorePageViewModel(Service<SettingsService>(), Service<IGatewayClient>(), Service<OverlayViewModel>(), shell, controller);
+        page.SystemProxy = true;
+        window.Content = new CorePage { DataContext = page };
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "SystemProxyStatus").ShouldBe("Включится после готовности локального прокси");
+
+        controller.Report(new UserProxyStatus(UserProxyState.Applied, 2080));
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "SystemProxyStatus").ShouldBe("Применен: 127.0.0.1:2080", "показывается фактический порт, а не желаемые 10808");
+
+        controller.Report(new UserProxyStatus(UserProxyState.Error));
+        Dispatcher.UIThread.RunJobs();
+        page.SystemProxy.ShouldBeTrue("намерение пользователя сохранено, несмотря на ошибку применения");
+        Text(window, "SystemProxyStatus").ShouldBe("Не удалось изменить настройки системного прокси");
+    }
+
+    private sealed class ProxyStatusStub : IUserProxyController
+    {
+        public UserProxyStatus Status { get; private set; } = new(UserProxyState.Waiting);
+        public event EventHandler<UserProxyStatus>? Changed;
+        public void Start() { }
+        public void Shutdown() { }
+        public void Report(UserProxyStatus status)
+        {
+            Status = status;
+            Changed?.Invoke(this, status);
+        }
+    }
+
+    [AvaloniaFact]
+    public void System_proxy_preferences_are_separate_for_vpn_and_proxy_modes()
+    {
+        var (_, _, page) = OpenCore();
+        var settings = Service<SettingsService>();
+        page.SystemProxy.ShouldBeFalse();
+        page.SystemProxy = true;
+        settings.Update(s => s with { Mode = ConnectionMode.Proxy });
+        page.SystemProxy.ShouldBeTrue("старое предпочтение proxy-only сохранено");
+        page.SystemProxy = false;
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn });
+        page.SystemProxy.ShouldBeTrue("VPN имеет отдельный явно выбранный флаг");
+        settings.Current.Connection.SystemProxy.ShouldBeFalse();
+        settings.Current.Connection.VpnSystemProxy.ShouldBeTrue();
     }
 
     [AvaloniaFact]
@@ -55,7 +105,7 @@ public sealed class CorePageTests : WindowHarness
         page.Mux = true;
         page.TlsFragment = true;
         page.StrictRoutes = false;
-        Find<ToggleButton>(window, "SystemProxyToggle").IsChecked = false;
+        Find<ToggleButton>(window, "SystemProxyToggle").IsChecked = true;
         Dispatcher.UIThread.RunJobs();
 
         Text(window, "StackChoiceText").ShouldBe("gVisor");
@@ -70,7 +120,7 @@ public sealed class CorePageTests : WindowHarness
             Mux = true,
             TlsFragment = true,
             StrictRoutes = false,
-            SystemProxy = false,
+            VpnSystemProxy = true,
         });
     }
 

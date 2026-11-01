@@ -79,6 +79,9 @@ public interface IKillSwitch
     /// <summary>Что блок закрыть не смог при последнем включении или снятии (например, ВМ без брандмауэра Hyper-V); все — null.</summary>
     string? Warning => null;
 
+    /// <summary>Отдельная защита виртуальных машин; правила и ограничения, без обещания проверки их трафика.</summary>
+    VirtualMachineProtection VirtualMachines => VirtualMachineProtection.Unknown;
+
     /// <summary>Чем ставятся правила — для журнала.</summary>
     string Name { get; }
 

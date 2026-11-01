@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Platform;
 
 namespace PrivateGateway.Client.Platform.Windows;
@@ -84,8 +85,11 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     /// <summary>Что не вышло с брандмауэром Hyper-V при последнем включении или снятии; все вышло — null.</summary>
     public string? Warning { get; private set; }
 
+    public VirtualMachineProtection VirtualMachines { get; private set; } = VirtualMachineProtection.Unknown;
+
     // Сколько фильтров поставил последний Enable: сторож блока проверяет, что на месте все.
     private int _filters;
+    private int _expectVirtualMachineRules;
 
     public bool IsEnabled => FirstFilterFlags() is not null;
 
@@ -93,9 +97,20 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     /// На месте все фильтры последнего включения, а не только первый: другая программа могла снять часть. Включала не эта
     /// служба (блок с прошлого запуска) — как <see cref="IsEnabled"/>.
     /// </summary>
-    public bool IsIntact => Volatile.Read(ref _filters) is var count and > 0
+    public bool IsIntact => (Volatile.Read(ref _filters) is var count and > 0
         ? WithEngine(engine => Enumerable.Range(0, count).All(index => FilterExists(engine, index)))
-        : IsEnabled;
+        : IsEnabled) && VirtualMachineRulesIntact();
+
+    private bool VirtualMachineRulesIntact()
+    {
+        if (Volatile.Read(ref _expectVirtualMachineRules) == 0 || HyperVFirewall.IsClosed())
+        {
+            return true;
+        }
+
+        VirtualMachines = new VirtualMachineProtection(CheckState.Warning, "rules_missing");
+        return false;
+    }
 
     /// <summary>Фильтры постоянные — переживут перезагрузку («Защита при загрузке»).</summary>
     public static bool IsPersistent => (FirstFilterFlags() & Persistent) != 0;
@@ -103,6 +118,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     public void Enable(KillSwitchPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
+        Volatile.Write(ref _expectVirtualMachineRules, 0);
         ulong? luid = policy.TunnelInterface is { } name && ConvertInterfaceAliasToLuid(name, out var found) == 0 ? found : null;
         var rules = WfpRules.For(policy, luid);
         WithEngine(engine => Transaction(engine, () =>
@@ -133,6 +149,12 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         if (onlyProgram is null)
         {
             Warning = luid is null ? HyperVFirewall.Close() : HyperVFirewall.Open();
+            var closed = luid is null && Warning is null && HyperVFirewall.IsClosed();
+            VirtualMachines = VirtualMachineProtection.AfterFirewall(
+                Warning == HyperVFirewall.Missing ? "hyper_v_unavailable" : Warning,
+                withoutTunnel: luid is null,
+                rulesIntact: closed);
+            Volatile.Write(ref _expectVirtualMachineRules, closed ? 1 : 0);
         }
     }
 
@@ -159,6 +181,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
 
     public void Disable()
     {
+        Volatile.Write(ref _expectVirtualMachineRules, 0);
         WithEngine(engine => Transaction(engine, () =>
         {
             DeleteFilters(engine);
@@ -168,6 +191,9 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         if (onlyProgram is null)
         {
             Warning = HyperVFirewall.Open();
+            VirtualMachines = Warning is null ? VirtualMachineProtection.Off
+                : VirtualMachineProtection.AfterFirewall(Warning == HyperVFirewall.Missing ? "hyper_v_unavailable" : Warning,
+                    withoutTunnel: true, rulesIntact: false);
         }
     }
 

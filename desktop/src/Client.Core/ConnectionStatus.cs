@@ -113,7 +113,10 @@ public sealed record ConnectionStatus(
     DateTimeOffset? CaptivePauseUntil,
     bool StrictBlock = false,
     DateTimeOffset? NetworkChangedAt = null,
-    OtherClientList? OtherClients = null)
+    OtherClientList? OtherClients = null,
+    VirtualMachineProtection? VirtualMachines = null,
+    int? LocalProxyPort = null,
+    bool UserProxyManagedByWindow = false)
 {
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;

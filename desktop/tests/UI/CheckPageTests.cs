@@ -382,6 +382,34 @@ public sealed class CheckPageTests : WindowHarness
         Snapshot(window, "check-en");
     }
 
+    [AvaloniaFact]
+    public async Task Virtual_machine_result_and_export_report_the_mechanism_without_claiming_no_leaks()
+    {
+        ScriptedService? service = null;
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time,
+            () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Checks = [new DiagnosticResult(DiagnosticCheck.VirtualMachines, CheckState.Warning, "unavailable")],
+        });
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning);
+
+        var initial = Row(page, DiagnosticCheck.VirtualMachines);
+        (initial.Title, initial.Chip).ShouldBe(("Защита WSL2 и Hyper-V", "Недоступно"));
+        initial.Detail.ShouldStartWith("Брандмауэр Hyper-V недоступен. При потере туннеля трафик ВМ может пойти напрямую.");
+        initial.Detail.ShouldContain("Windows Sandbox");
+        page.BuildReport().ShouldContain("Защита WSL2 и Hyper-V");
+
+        service!.Checks = [new DiagnosticResult(DiagnosticCheck.VirtualMachines, CheckState.Warning, "rules_applied")];
+        await page.RunCommand.ExecuteAsync(null);
+        WaitFor(() => !page.IsRunning);
+
+        var row = page.Rows.Single(r => r.Check == DiagnosticCheck.VirtualMachines);
+        row.State.ShouldBe(CheckState.Warning);
+        row.ChipText.ShouldBe("Не проверено");
+        row.Detail.ShouldContain("Проверка трафика ВМ не выполнена");
+    }
+
     private static CheckPageViewModel OpenCheck(ShellViewModel shell)
     {
         shell.NavigateCommand.Execute(Pages.Check);

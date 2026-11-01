@@ -110,9 +110,24 @@ public sealed class UserProxyTests
 
         ours.IsForeign(proxyMode).ShouldBeFalse("вход нашего ядра — его ставит служба пользователя");
         new UserProxy("127.0.0.1:7890").IsForeign(proxyMode).ShouldBeTrue("другой порт — другая программа");
-        ours.IsForeign(proxyMode with { Mode = ConnectionMode.Vpn }).ShouldBeTrue("в режиме VPN системный прокси служба не ставит");
+        ours.IsForeign(proxyMode with { Mode = ConnectionMode.Vpn }).ShouldBeTrue("совместный VPN-прокси отдельно не включен");
+        ours.IsForeign(proxyMode with { Mode = ConnectionMode.Vpn, Connection = proxyMode.Connection with { VpnSystemProxy = true } })
+            .ShouldBeFalse("явно включенный совместный путь использует тот же вход");
         ours.IsForeign(proxyMode with { Connection = proxyMode.Connection with { SystemProxy = false } }).ShouldBeTrue("свой системный прокси выключен");
         new UserProxy("127.0.0.1:10808", IsScript: true).IsForeign(proxyMode).ShouldBeTrue("скриптов служба не ставит");
+    }
+
+    [Fact]
+    public void Confirmed_proxy_port_overrides_desired_settings_in_foreign_detection_and_diagnostics()
+    {
+        var settings = AppSettings.Default with { Mode = ConnectionMode.Proxy };
+        var clean = new DiagnosticReport([new(DiagnosticCheck.OtherVpn, CheckState.Ok)], DateTimeOffset.UnixEpoch);
+        var actual = new UserProxy("http://127.0.0.1:2080");
+        actual.IsForeign(settings, ownedPort: 2080).ShouldBeFalse();
+        UserProxy.WithUserProxy(clean, actual, settings, ownedPort: 2080).ShouldBeSameAs(clean);
+        new UserProxy("127.0.0.1:10808").IsForeign(settings, ownedPort: 2080)
+            .ShouldBeTrue("желаемый порт больше не доказывает владение при подтвержденном другом входе");
+        new UserProxy("127.0.0.1:2080", IsScript: true).IsForeign(settings, ownedPort: 2080).ShouldBeTrue();
     }
 
     [Fact]

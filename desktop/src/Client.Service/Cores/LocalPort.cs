@@ -47,6 +47,14 @@ public static class LocalPort
     /// </summary>
     public static LocalPortLease ReserveForTcpAndUdp() => ReserveForTcpAndUdp(Random.Shared);
 
+    /// <summary>Удерживать конкретный локальный порт до запуска входа; занятый порт дает SocketException.</summary>
+    public static LocalPortLease ReserveForTcpAndUdp(int port)
+    {
+        ArgumentOutOfRangeException.ThrowIfLessThan(port, 1);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(port, 65535);
+        return BindBoth(ProtocolType.Tcp, ProtocolType.Udp, port);
+    }
+
     /// <summary>То же со своим источником случайных чисел (тесты).</summary>
     public static LocalPortLease ReserveForTcpAndUdp(Random random)
     {

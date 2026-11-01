@@ -8,7 +8,7 @@ public sealed record SystemProxySnapshot(IReadOnlyDictionary<string, string?> Va
 
 /// <summary>
 /// Системный прокси ОС для режима прокси: браузеры и программы, которые берут прокси из настроек ОС,
-/// идут через вход ядра на 127.0.0.1. Реализации — в Client.Platform.*, вызывает только служба.
+/// идут через вход ядра на 127.0.0.1. Вызывает служба либо контроллер Infrastructure в контексте пользователя окна.
 /// </summary>
 public interface ISystemProxy
 {

@@ -19,13 +19,31 @@ public sealed partial class CorePageViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly OverlayViewModel _overlay;
     private readonly INavigator _navigator;
+    private readonly IUserProxyController? _userProxy;
     private ServiceDetails? _details;
 
-    public CorePageViewModel(SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator)
+    public CorePageViewModel(SettingsService settings, IGatewayClient gateway, OverlayViewModel overlay, INavigator navigator,
+        IUserProxyController? userProxy = null)
     {
         _settings = settings;
         _overlay = overlay;
         _navigator = navigator;
+        _userProxy = userProxy;
+        var context = SynchronizationContext.Current;
+        if (userProxy is not null)
+        {
+            userProxy.Changed += (_, _) =>
+            {
+                if (context is null)
+                {
+                    OnPropertyChanged(nameof(SystemProxyStatus));
+                }
+                else
+                {
+                    context.Post(_ => OnPropertyChanged(nameof(SystemProxyStatus)), null);
+                }
+            };
+        }
         _ = LoadDetailsAsync(gateway);
         LogOptions = Options(Enum.GetValues<CoreLogLevel>(), LogLabel, () => C.CoreLog, v => Set(c => c with { CoreLog = v }), () => IsLogOpen = false);
         StackOptions = Options(Enum.GetValues<TunEngine>(), StackLabel, () => C.Stack, v => Set(c => c with { Stack = v }), () => IsStackOpen = false);
@@ -127,12 +145,27 @@ public sealed partial class CorePageViewModel : ObservableObject
 
     public string ProxyPort => C.ProxyPort.ToString(CultureInfo.InvariantCulture);
 
-    /// <summary>Системный прокси ОС на время подключения в режиме прокси: браузеры пойдут через него сами.</summary>
+    /// <summary>Настройка своего режима: прежний proxy-only не включает новый совместный путь VPN без явного выбора.</summary>
     public bool SystemProxy
     {
-        get => C.SystemProxy;
-        set => Set(c => c with { SystemProxy = value });
+        get => C.UsesSystemProxy(_settings.Current.Mode);
+        set => Set(c => _settings.Current.Mode == ConnectionMode.Vpn ? c with { VpnSystemProxy = value } : c with { SystemProxy = value });
     }
+
+    public bool ShowProxySplitNote => _settings.Current.Mode == ConnectionMode.Vpn && SystemProxy && _settings.Current.Routing.HasBypassApps;
+
+    public string SystemProxyStatus => (_userProxy?.Status ?? new UserProxyStatus(SystemProxy ? UserProxyState.Waiting : UserProxyState.Off)) switch
+    {
+        { State: UserProxyState.Applied, Port: { } port } => Loc.Instance.Format("core.systemProxy.status.applied", port),
+        { State: UserProxyState.Held, Port: { } port } => Loc.Instance.Format("core.systemProxy.status.held", port),
+        { State: UserProxyState.Restored } => Loc.Instance["core.systemProxy.status.restored"],
+        { State: UserProxyState.ChangedByOther } => Loc.Instance["core.systemProxy.status.changed"],
+        { State: UserProxyState.ServiceManaged } => Loc.Instance["core.systemProxy.status.service"],
+        { State: UserProxyState.Unsupported } => Loc.Instance["core.systemProxy.status.unsupported"],
+        { State: UserProxyState.Error } => Loc.Instance["core.systemProxy.status.error"],
+        { State: UserProxyState.Waiting } => Loc.Instance["core.systemProxy.status.waiting"],
+        _ => Loc.Instance["core.systemProxy.status.off"],
+    };
 
     /// <summary>Открыть — только после «Открыть» в диалоге; закрыть — сразу.</summary>
     public bool ProxyAllowLan

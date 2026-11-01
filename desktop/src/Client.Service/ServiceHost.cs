@@ -139,6 +139,8 @@ public static partial class ServiceHost
             ApiVersion = ContractMapping.ApiVersion,
             Os = System.Runtime.InteropServices.RuntimeInformation.OSDescription,
         };
+        info.Capabilities.Add("vpn-local-proxy-v1");
+        info.Capabilities.Add("user-proxy-window-v1");
         foreach (var (name, path, pattern) in new[] { ("xray", xray, XrayVersion()), ("sing-box", singBox, SingBoxVersion()) })
         {
             var version = path is not null && File.Exists(path) ? CoreVersion(path, pattern) : null;

@@ -36,6 +36,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
     private readonly SettingsService _settings;
     private readonly CheckFocus _focus;
     private DiagnosticReport? _report;
+    private ServiceDetails? _reportServiceDetails;
     private ConnectionState? _reportState;
     private bool _rerun;
 
@@ -332,6 +333,16 @@ public sealed partial class CheckPageViewModel : ObservableObject
     {
         var now = _time.GetLocalNow();
         var name = "private-gateway-report-" + now.ToString("yyyyMMdd-HHmm", CultureInfo.InvariantCulture) + ".txt";
+        using var detailsTimeout = new CancellationTokenSource(TimeSpan.FromSeconds(5), _time);
+        try
+        {
+            _reportServiceDetails = await _gateway.GetDetailsAsync(detailsTimeout.Token).ConfigureAwait(true);
+        }
+        catch (OperationCanceledException) when (detailsTimeout.IsCancellationRequested)
+        {
+            _reportServiceDetails = null;
+        }
+
         var snapshot = await _gateway.InspectNetworkAsync().ConfigureAwait(true);
         var comparison = await _gateway.CompareNetworkAsync().ConfigureAwait(true);
         var connections = await _gateway.ListConnectionsAsync().ConfigureAwait(true);
@@ -356,6 +367,10 @@ public sealed partial class CheckPageViewModel : ObservableObject
         var lines = new List<string>
         {
             loc.Format("diag.report.title", AppInfo.Version),
+            loc.Format("diag.report.windowBuild", AppInfo.Version, Known(AppInfo.Build)),
+            loc.Format("diag.report.serviceBuild", Known(_reportServiceDetails?.Version), Known(_reportServiceDetails?.Build),
+                Known(_reportServiceDetails?.ApiVersion)),
+            loc.Format("diag.report.platform", AppInfo.OsVersion, AppInfo.Architecture),
             loc.Format("diag.report.system",
                 ServiceTexts.State(_gateway.Service), AppInfo.OsName),
             loc.Format("diag.report.checkedAt", (_report?.FinishedAt ?? _time.GetUtcNow()).ToLocalTime()
@@ -413,6 +428,8 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
         return text.ToString();
 
+        string Known(string? value) => string.IsNullOrWhiteSpace(value) ? loc["diag.report.unknown"] : value;
+
         // Реальный IP пользователя в отчет не попадает, даже если он сейчас виден сайтам.
         string WithoutRealIp(CheckRowViewModel row) =>
             row.Check == DiagnosticCheck.ExitIp && Protection.Status.Exit.DirectIp is { } ip
@@ -436,9 +453,13 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     private void Refresh()
     {
-        var rows = Enum.GetValues<DiagnosticCheck>().Select(check =>
+        var rows = Enum.GetValues<DiagnosticCheck>()
+            .Where(check => check != DiagnosticCheck.VirtualMachines || OperatingSystem.IsWindows()
+                || _report?[check] is { Reason: not "not_applicable" and not "simulated" })
+            .Select(check =>
         {
-            var result = _report?[check];
+            var result = _report?[check] ?? (check == DiagnosticCheck.VirtualMachines && _report is not null
+                ? new DiagnosticResult(check, CheckState.Waiting, "not_checked") : null);
             var state = IsRunning || result is null ? CheckState.Waiting : result.State;
             var reason = IsRunning ? null : ViaProxy(check, state) ? "proxy" : result?.Reason;
             return new CheckRowViewModel(
@@ -503,6 +524,9 @@ public sealed partial class CheckPageViewModel : ObservableObject
                 return Loc.Instance.Format("diag.core.ok", ServerFacts.CoreName(server?.Protocol ?? ProxyProtocol.Vless));
             case DiagnosticCheck.KillSwitch when state == CheckState.Ok:
                 return Loc.Instance.Format("diag.kill_switch.ok", FirewallName);
+            case DiagnosticCheck.VirtualMachines:
+                return First($"diag.{id}.{reason}", $"diag.{id}.{stateKey}", "diag.virtual_machines.not_checked")
+                    + " " + Loc.Instance["diag.virtual_machines.scope"];
         }
 
         return First($"diag.{id}.{reason}", $"diag.{id}.{stateKey}", $"diag.state.{stateKey}.text");
@@ -525,6 +549,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
         DiagnosticCheck.KillSwitch => "kill_switch",
         DiagnosticCheck.ExitIp => "exit_ip",
         DiagnosticCheck.OtherVpn => "other_vpn",
+        DiagnosticCheck.VirtualMachines => "virtual_machines",
         _ => check.ToString().ToLowerInvariant(),
     };
 

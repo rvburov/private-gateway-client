@@ -57,8 +57,12 @@ public sealed record ConnectionSettings(
     ReconnectPolicy Reconnect = ReconnectPolicy.Backoff60Seconds,
     int ProxyPort = ConnectionSettings.DefaultProxyPort,
     bool ProxyAllowLan = false,
-    bool SystemProxy = true)
+    bool SystemProxy = true,
+    bool VpnSystemProxy = false)
 {
+    /// <summary>Системный прокси в выбранном режиме; VPN требует отдельного явного включения.</summary>
+    public bool UsesSystemProxy(ConnectionMode mode) => mode == ConnectionMode.Vpn ? VpnSystemProxy : SystemProxy;
+
     /// <summary>Порт локального входа ядра HTTP + SOCKS5 (mixed).</summary>
     public const int DefaultProxyPort = 10808;
 

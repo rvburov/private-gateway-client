@@ -11,25 +11,28 @@ namespace PrivateGateway.Client.Application.Connection;
 public sealed record UserProxy(string Address, bool IsScript = false)
 {
     /// <summary>
-    /// Чужой — не вход нашего ядра: в режиме прокси служба пользователя ставит системный прокси на
-    /// 127.0.0.1:порт из «Подключения и ядра»; все остальное поставила другая программа или человек.
+    /// Чужой — не подтвержденный вход нашего ядра. Новое окно Windows управляет HKCU пользователя; старые службы
+    /// пользователя ставят его сами. Пока фактический порт известен, желаемые настройки его не заменяют.
     /// </summary>
-    public bool IsForeign(AppSettings settings)
+    public bool IsForeign(AppSettings settings, int? ownedPort = null)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return IsScript || settings.Mode != ConnectionMode.Proxy || !settings.Connection.SystemProxy
-            || Address != "127.0.0.1:" + settings.Connection.ProxyPort.ToString(CultureInfo.InvariantCulture);
+        return IsScript || (ownedPort is > 0
+            ? !IsLoopback(ownedPort.Value)
+            : !settings.Connection.UsesSystemProxy(settings.Mode) || !IsLoopback(settings.Connection.ProxyPort));
     }
+
+    private bool IsLoopback(int port) => ProxyAddress.Endpoint(Address) == "127.0.0.1:" + port.ToString(CultureInfo.InvariantCulture);
 
     /// <summary>
     /// Отчет службы с системным прокси пользователя: установленная служба (SYSTEM, root) его не видит,
     /// видит окно. Чужой прокси — предупреждение в «Другие VPN и прокси»; чужой VPN, найденный службой,
     /// важнее и остается.
     /// </summary>
-    public static DiagnosticReport WithUserProxy(DiagnosticReport report, UserProxy? proxy, AppSettings settings)
+    public static DiagnosticReport WithUserProxy(DiagnosticReport report, UserProxy? proxy, AppSettings settings, int? ownedPort = null)
     {
         ArgumentNullException.ThrowIfNull(report);
-        if (proxy is null || !proxy.IsForeign(settings) || report[DiagnosticCheck.OtherVpn] is { State: CheckState.Warning })
+        if (proxy is null || !proxy.IsForeign(settings, ownedPort) || report[DiagnosticCheck.OtherVpn] is { State: CheckState.Warning })
         {
             return report;
         }

@@ -5,8 +5,12 @@ namespace PrivateGateway.Client.Core;
 /// <param name="ApiVersion">Версия контракта IPC: «1».</param>
 /// <param name="Cores">Ядра, которые служба нашла рядом с собой.</param>
 /// <param name="Build">Сборка службы — коммит исходников (<see cref="SemVer.Build"/>); неизвестна — пусто.</param>
-public sealed record ServiceDetails(string Version, string ApiVersion, IReadOnlyList<CoreDetails> Cores, string Build = "")
+/// <param name="Capabilities">Возможности службы; старая служба их не сообщает.</param>
+public sealed record ServiceDetails(string Version, string ApiVersion, IReadOnlyList<CoreDetails> Cores, string Build = "", IReadOnlyList<string>? Capabilities = null)
 {
+    /// <summary>Служба предоставляет отдельный HTTP/SOCKS-вход вместе с TUN.</summary>
+    public bool SupportsVpnProxy => Capabilities?.Contains("vpn-local-proxy-v1", StringComparer.Ordinal) == true;
+
     /// <summary>Ядро по имени (xray, sing-box), если оно есть и запускается.</summary>
     public CoreDetails? Core(string name) => Cores.FirstOrDefault(c => c.Name == name && c.Available);
 }

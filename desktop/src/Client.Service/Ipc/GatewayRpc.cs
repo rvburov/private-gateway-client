@@ -262,7 +262,7 @@ public sealed class GatewayRpc(
     }
 
     /// <summary>
-    /// Все восемь проверок «Проверки»: служба и ядро, весь трафик и блок — по состоянию, IP для сайтов, IPv6 и DNS — замером
+    /// Проверки «Проверки»: служба и ядро, весь трафик и блок — по состоянию, IP для сайтов, IPv6 и DNS — замером
     /// (<see cref="Gateway.CheckExitAsync"/>, <see cref="Gateway.CheckIpv6Async"/>, <see cref="Gateway.CheckDnsAsync"/>), другие VPN —
     /// по маршрутам.
     /// </summary>
@@ -298,6 +298,14 @@ public sealed class GatewayRpc(
             Reason = status.Mode == ConnectionMode.Proxy ? "system_proxy" : gateway.AllTrafficReason ?? string.Empty,
         });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.KillSwitch.ToContractId(), State = status.Protection.KillSwitch.ToContract() });
+        if (OperatingSystem.IsWindows())
+        {
+            var machines = gateway.VirtualMachines;
+            report.Results.Add(new V1.CheckResult
+            {
+                Id = DiagnosticCheck.VirtualMachines.ToContractId(), State = machines.State.ToContract(), Reason = machines.Reason,
+            });
+        }
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = dnsState.ToContract(), Reason = dnsReason ?? string.Empty });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Ipv6.ToContractId(), State = ipv6State.ToContract(), Reason = ipv6Reason ?? string.Empty });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.ExitIp.ToContractId(), State = exitState.ToContract(), Reason = exitReason ?? string.Empty });

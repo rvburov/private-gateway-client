@@ -24,6 +24,9 @@ public enum DiagnosticCheck
 
     /// <summary>Другие VPN и системные прокси, которые могут увести трафик мимо туннеля.</summary>
     OtherVpn,
+
+    /// <summary>Доступность и состояние отдельной блокировки виртуальных машин Windows.</summary>
+    VirtualMachines,
 }
 
 /// <summary>

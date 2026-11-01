@@ -343,7 +343,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             lock (_gate)
             {
-                return _status;
+                return Honest(_status);
             }
         }
     }
@@ -434,7 +434,8 @@ public sealed partial class Gateway : IAsyncDisposable
                 request.Mode.ToCore(),
                 protection,
                 (request.Connection ?? throw new ArgumentException("Нет настроек подключения")).ToCore(),
-                (request.Routing ?? throw new ArgumentException("Нет маршрутизации")).ToCore());
+                (request.Routing ?? throw new ArgumentException("Нет маршрутизации")).ToCore(),
+                request.UserProxyManagedByWindow);
         }
         catch (ArgumentException e)
         {
@@ -883,7 +884,8 @@ public sealed partial class Gateway : IAsyncDisposable
                 what = status.StrictBlock ? "строгий режим — сеть открыта без VPN" : "блок снят, трафик идет напрямую";
             }
             else if (status.State is ConnectionState.Connecting or ConnectionState.Reconnecting && _request is { } request
-                && (request.Mode == ConnectionMode.Vpn || _systemProxy is { IsActive: true }))
+                && (request.Mode == ConnectionMode.Vpn || _systemProxy is { IsActive: true }
+                    || request.UserProxyManagedByWindow && request.Connection.UsesSystemProxy(request.Mode)))
             {
                 // Отель: сервер за порталом не ответит, пока не войти в сеть, а попытки держат туннель к нему (весь трафик — в
                 // него) или системный прокси на ядре без связи. Попытки останавливаются до конца паузы, потом подключение
@@ -910,12 +912,14 @@ public sealed partial class Gateway : IAsyncDisposable
                 }
 
                 await StopCoreAsync().ConfigureAwait(false);
+                _systemProxy?.Release();
                 what = "трафик идет напрямую";
             }
-            else if (status.State is ConnectionState.Connected or ConnectionState.Error && _systemProxy is { IsActive: true } systemProxy)
+            else if (status.State is ConnectionState.Connected or ConnectionState.Error
+                && (_systemProxy is { IsActive: true } || _request is { UserProxyManagedByWindow: true } managed && managed.Connection.UsesSystemProxy(managed.Mode)))
             {
                 // В «Ошибке» режима прокси системный прокси ведет на остановленное ядро — страница входа тоже не открылась бы.
-                systemProxy.Release();
+                _systemProxy?.Release();
                 what = "трафик идет напрямую";
             }
             else
@@ -1294,7 +1298,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private void ApplySystemProxy()
     {
-        if (_request is not { Mode: ConnectionMode.Proxy, Connection.SystemProxy: true } request)
+        if (_request is not { } request || !request.Connection.UsesSystemProxy(request.Mode) || request.UserProxyManagedByWindow)
         {
             _systemProxy?.Release();
         }
@@ -2197,6 +2201,12 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private ConnectionStatus Honest(ConnectionStatus status)
     {
+        status = status with
+        {
+            LocalProxyPort = ReadyLocalProxyPort(status),
+            VirtualMachines = VirtualMachinesFor(status),
+            UserProxyManagedByWindow = _request is { UserProxyManagedByWindow: true },
+        };
         if (_blockBroken && status.Mode == ConnectionMode.Vpn && status.State != ConnectionState.Off && !status.IsPaused)
         {
             return status with

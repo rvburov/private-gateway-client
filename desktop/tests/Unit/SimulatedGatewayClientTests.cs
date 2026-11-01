@@ -301,7 +301,8 @@ public class SimulatedGatewayClientTests
         time.Advance(SimulatedGatewayClient.ConnectDelay);
         await connect;
         var on = await RunChecks(gateway, time);
-        on.Results.Where(r => r.Check != DiagnosticCheck.Service).ShouldAllBe(r => r.State == CheckState.Ok);
+        on.Results.Where(r => r.Check is not (DiagnosticCheck.Service or DiagnosticCheck.VirtualMachines)).ShouldAllBe(r => r.State == CheckState.Ok);
+        on[DiagnosticCheck.VirtualMachines].ShouldBe(new DiagnosticResult(DiagnosticCheck.VirtualMachines, CheckState.Warning, "simulated"));
         on.FinishedAt.ShouldBe(time.GetUtcNow());
 
         var blocked = gateway.ConnectAsync(Server with { Id = "tr", LatencyMs = null }, TestContext.Current.CancellationToken);

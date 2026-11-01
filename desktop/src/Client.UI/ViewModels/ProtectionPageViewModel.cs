@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -45,6 +46,7 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         AddressOptions = [.. Enum.GetValues<AddressPreference>().Select(v =>
             new ChoiceOptionViewModel(() => AddressLabel(v), () => P.Addresses == v, () => ChooseAddresses(v)))];
         settings.Changed += (_, _) => Refresh();
+        gateway.StatusChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
     }
 
@@ -79,6 +81,20 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         OperatingSystem.IsWindows() ? "prot.firewall.windows" : OperatingSystem.IsMacOS() ? "prot.firewall.macos" : "prot.firewall.linux"]);
 
     public string? KillSwitchNote => CanKillSwitch ? null : Loc.Instance["prot.ks.proxy"];
+
+    /// <summary>Статус пришел от службы: сам интерфейс правила Windows не читает и не меняет.</summary>
+    public bool ShowVirtualMachines => OperatingSystem.IsWindows()
+        || _gateway.Status.VirtualMachines is { Reason: not "not_applicable" };
+
+    public string VirtualMachinesText
+    {
+        get
+        {
+            var reason = _gateway.Status.VirtualMachines?.Reason ?? "not_checked";
+            var key = "diag.virtual_machines." + reason;
+            return Loc.Instance[Loc.Instance.Has(key) ? key : "diag.virtual_machines.not_checked"];
+        }
+    }
 
     public string BootTitle => Loc.Instance.Format("prot.boot.title", AppInfo.OsName);
 

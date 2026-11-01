@@ -12,7 +12,8 @@ public sealed record CoreRequest(
     ConnectionMode Mode,
     ProtectionSettings Protection,
     ConnectionSettings Connection,
-    RoutingSettings Routing);
+    RoutingSettings Routing,
+    bool UserProxyManagedByWindow = false);
 
 /// <summary>Почему ядро Xray не возьмется за сервер.</summary>
 public enum CoreRejection
@@ -89,6 +90,7 @@ public sealed record XrayProbeConfig(JsonObject? Config, IReadOnlyList<CoreRejec
 public static class XrayConfigBuilder
 {
     public const string InboundTag = "socks-in";
+    public const string LocalProxyTag = "local-proxy-in";
     public const string ProbeTag = "probe-in";
     public const string ProxyTag = "proxy";
     public const string DirectTag = "direct";
@@ -223,6 +225,12 @@ public static class XrayConfigBuilder
         }
 
         var inbounds = new JsonArray { tun is null ? Inbound(request) : TunInbound(request, tun, InboundTag, tun.Port) };
+        if (tun is not null && request.Connection.VpnSystemProxy)
+        {
+            var localProxy = Inbound(request, LocalProxyTag);
+            localProxy["sniffing"] = TunSniffing(request);
+            inbounds.Add(localProxy);
+        }
         var bypass = tun is { BypassPort: > 0 } && NeedsBypassInbound(request);
         if (bypass)
         {
@@ -376,9 +384,9 @@ public static class XrayConfigBuilder
     /// </summary>
     private static JsonArray AllowAll() => new(new JsonObject { ["action"] = "allow" });
 
-    private static JsonObject Inbound(CoreRequest request) => new()
+    private static JsonObject Inbound(CoreRequest request, string tag = InboundTag) => new()
     {
-        ["tag"] = InboundTag,
+        ["tag"] = tag,
         // Наружу — только в режиме прокси и только с явного согласия (вопрос в «Подключении и ядре»).
         ["listen"] = request.Mode == ConnectionMode.Proxy && request.Connection.ProxyAllowLan ? "0.0.0.0" : "127.0.0.1",
         ["port"] = request.Connection.ProxyPort,
@@ -566,7 +574,7 @@ public static class XrayConfigBuilder
             rules.Add(new JsonObject
             {
                 ["type"] = "field",
-                ["inboundTag"] = new JsonArray(InboundTag),
+                ["inboundTag"] = tunDns && request.Connection.VpnSystemProxy ? new JsonArray(InboundTag, LocalProxyTag) : new JsonArray(InboundTag),
                 ["ip"] = new JsonArray("::/0"),
                 ["outboundTag"] = BlockTag,
             });

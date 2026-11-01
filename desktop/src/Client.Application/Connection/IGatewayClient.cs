@@ -22,6 +22,12 @@ public interface IGatewayClient
     /// <summary>Какая служба отвечает окну: установленная, пользователя, никакой или имитация.</summary>
     ServiceKind Service { get; }
 
+    /// <summary>Получен хотя бы один настоящий статус службы; начальный Off окна еще ничего не подтверждает.</summary>
+    bool HasReceivedStatus => false;
+
+    /// <summary>Последний подтвержденный вход, на который окно направило пользовательский прокси; сохраняется при переподключении.</summary>
+    int? ManagedUserProxyPort => Status.UserProxyManagedByWindow ? Status.LocalProxyPort : null;
+
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
 
     /// <summary>Подписка только через сервер активной VPN-сессии, независимо от системного прокси и раздельных маршрутов.</summary>

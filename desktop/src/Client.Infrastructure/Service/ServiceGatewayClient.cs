@@ -48,6 +48,10 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     private readonly Func<UserProxy?>? _userProxy;
     private readonly TimeSpan _proxyWatch;
     private int _watchingProxy;
+    private readonly bool _manageUserProxy;
+    private volatile bool _receivedStatus;
+    private DateTimeOffset? _lastServiceSince;
+    private int _ownedProxyPort;
 
     // Подключиться вопреки другому VPN (ConnectDespiteOtherVpnAsync): до отключения другой VPN не мешает подключаться.
     private volatile bool _allowOtherVpn;
@@ -65,14 +69,17 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// Как часто, пока «Защищено», смотреть системный прокси пользователя: поставила его другая программа — служба об этом узнает
     /// (<see cref="ReportForeignProxyAsync"/>); по умолчанию — <see cref="ProxyWatch"/>.
     /// </param>
+    /// <param name="manageUserProxy">Окно Windows умеет управлять HKCU; служба должна подтвердить эту возможность.</param>
+    /// <param name="calls">Вызовы IPC; null — настоящий канал. Подмена нужна детерминированным тестам без сокетов.</param>
     public ServiceGatewayClient(GrpcChannel channel, ServiceKind service, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings,
-        TimeProvider time, Func<UserProxy?>? userProxy = null, TimeSpan? proxyWatch = null)
+        TimeProvider time, Func<UserProxy?>? userProxy = null, TimeSpan? proxyWatch = null, bool manageUserProxy = false, CallInvoker? calls = null)
     {
         _userProxy = userProxy;
+        _manageUserProxy = manageUserProxy;
         _proxyWatch = proxyWatch ?? ProxyWatch;
         _channel = channel;
         Service = service;
-        _client = new V1.GatewayService.GatewayServiceClient(channel);
+        _client = new V1.GatewayService.GatewayServiceClient(calls ?? channel.CreateCallInvoker());
         _definitions = definitions;
         _settings = settings;
         _time = time;
@@ -95,6 +102,10 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
     public ServiceKind Service { get; }
 
+    public bool HasReceivedStatus => _receivedStatus;
+
+    public int? ManagedUserProxyPort => Volatile.Read(ref _ownedProxyPort) is > 0 and var port ? port : null;
+
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
     public IReadOnlyList<JournalEntry> Journal
@@ -114,6 +125,8 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     {
         ArgumentNullException.ThrowIfNull(server);
         var settings = _settings();
+        var windowProxy = _manageUserProxy && (await GetDetailsAsync(cancellationToken).ConfigureAwait(false))?.Capabilities
+            ?.Contains("user-proxy-window-v1", StringComparer.Ordinal) == true;
         var request = new V1.ConnectRequest
         {
             // Описания нет (сервер удален) — запрос без сервера: служба откажет и остановит прежнее подключение.
@@ -124,16 +137,14 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             Routing = settings.ToRouting(),
             AllowOtherVpn = _allowOtherVpn || settings.Protection.AllowOtherVpn,
             ForeignProxy = await ForeignProxyAsync(settings).ConfigureAwait(false),
+            UserProxyManagedByWindow = windowProxy,
         };
         try
         {
-            // Отказ — состояние службы «Ошибка». Поток WatchStatus принесет его позже ответа, а окно решает
-            // сразу после подключения: состояние берется у службы здесь же.
-            var reply = await _client.ConnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
-            if (!reply.Accepted)
-            {
-                Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
-            }
+            // Ответ Connect не содержит снимка. После принятой попытки WatchStatus тоже может еще хранить прежнюю
+            // ошибку: окно принимает решение сразу после await, поэтому актуальный статус читается при любом ответе.
+            await _client.ConnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
+            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
         }
         catch (RpcException)
         {
@@ -153,7 +164,8 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
 
         var proxy = await Task.Run(read).ConfigureAwait(false);
-        return proxy is { IsScript: false } && proxy.IsForeign(settings) ? ProxyAddress.Endpoint(proxy.Address) ?? string.Empty : string.Empty;
+        return proxy is { IsScript: false } && proxy.IsForeign(settings, ManagedUserProxyPort)
+            ? ProxyAddress.Endpoint(proxy.Address) ?? string.Empty : string.Empty;
     }
 
     public async Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default)
@@ -432,6 +444,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         try
         {
             await _client.DisconnectAsync(Disconnect(_settings()), cancellationToken: cancellationToken).ConfigureAwait(false);
+            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
         }
         catch (RpcException)
         {
@@ -449,6 +462,11 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             var reply = await _client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Duration = Duration.FromTimeSpan(duration) },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (reply.Until is not null)
+            {
+                Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
+            }
+
             return reply.Until is not null;
         }
         catch (RpcException)
@@ -463,6 +481,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             await _client.PauseForCaptivePortalAsync(new V1.CaptivePauseRequest { Cancel = true }, cancellationToken: cancellationToken)
                 .ConfigureAwait(false);
+            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
         }
         catch (RpcException)
         {
@@ -574,7 +593,27 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     {
         lock (_gate)
         {
+            if (_lastServiceSince is { } known && status.Since < known)
+            {
+                return;
+            }
+
+            if (_receivedStatus && status == _status)
+            {
+                return;
+            }
+
             _status = status;
+            _receivedStatus = true;
+            _lastServiceSince = status.Since;
+            if (status is { UserProxyManagedByWindow: true, LocalProxyPort: > 0 and var activePort })
+            {
+                Volatile.Write(ref _ownedProxyPort, activePort);
+            }
+            else if (status.State is ConnectionState.Off or ConnectionState.Connected || status.IsPaused)
+            {
+                Volatile.Write(ref _ownedProxyPort, 0);
+            }
         }
 
         StatusChanged?.Invoke(this, status);

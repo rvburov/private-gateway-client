@@ -19,6 +19,9 @@ public sealed record AppPaths(string DataDirectory)
     /// <summary>Значок программы для уведомлений Windows (рисует окно при запуске).</summary>
     public string NotifyIcon => Path.Combine(DataDirectory, "notify.png");
 
+    /// <summary>Прежние настройки HKCU и подтвержденный владелец локального входа — для возврата после сбоя окна.</summary>
+    public string UserProxyBackup => Path.Combine(DataDirectory, "window-system-proxy.json");
+
     public static AppPaths ForCurrentUser()
     {
         var overridden = Environment.GetEnvironmentVariable(OverrideVariable);

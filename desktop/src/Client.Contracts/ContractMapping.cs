@@ -171,7 +171,7 @@ public static partial class ContractMapping
     {
         ArgumentNullException.ThrowIfNull(info);
         return new(info.ServiceVersion, info.ApiVersion, [.. info.Cores.Select(c => new PrivateGateway.Client.Core.CoreDetails(c.Name, c.Version, c.Available))],
-            info.ServiceBuild);
+            info.ServiceBuild, [.. info.Capabilities]);
     }
 
     public static V1.Protocol ToContract(this CoreProtocol protocol) => protocol switch
@@ -263,6 +263,7 @@ public static partial class ContractMapping
         CoreCheck.Ipv6 => "ipv6",
         CoreCheck.ExitIp => "exit_ip",
         CoreCheck.OtherVpn => "other_vpn",
+        CoreCheck.VirtualMachines => "virtual_machines",
         _ => throw new ArgumentOutOfRangeException(nameof(check), check, null),
     };
 
@@ -277,6 +278,7 @@ public static partial class ContractMapping
         "ipv6" => CoreCheck.Ipv6,
         "exit_ip" => CoreCheck.ExitIp,
         "other_vpn" => CoreCheck.OtherVpn,
+        "virtual_machines" => CoreCheck.VirtualMachines,
         _ => null,
     };
 
@@ -408,6 +410,7 @@ public static partial class ContractMapping
             ProxyPort = (uint)c.ProxyPort,
             ProxyAllowLan = c.ProxyAllowLan,
             SystemProxy = c.SystemProxy,
+            VpnSystemProxy = c.VpnSystemProxy,
         };
     }
 

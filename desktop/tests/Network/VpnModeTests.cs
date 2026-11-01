@@ -641,16 +641,25 @@ public sealed partial class VpnModeTests
         await using var rig = await Rig.CreateAsync();
 
         var (netns, lan, definition, killSwitch) = (rig.Netns, rig.Lan, rig.Definition, rig.KillSwitch);
-        await using var service = await RunningService.StartAsync(options: rig.Vpn);
+        var proxy = new FakeSystemProxy();
+        var backup = Path.Combine(Path.GetTempPath(), "pg-combined-pause-" + Guid.NewGuid().ToString("N") + ".json");
+        await using var service = await RunningService.StartAsync(systemProxy: (proxy, backup), options: rig.Vpn);
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
-        await service.Client.ConnectAsync(VpnRequest(definition), cancellationToken: Ct);
-        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        var request = VpnRequest(definition);
+        request.Connection.VpnSystemProxy = true;
+        request.Connection.ProxyPort = (uint)XrayKit.FreePort();
+        await service.Client.ConnectAsync(request, cancellationToken: Ct);
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected))[^1];
+        connected.LocalProxyPort.ShouldBe(request.Connection.ProxyPort, "служба подтвердила дополнительный вход VPN");
+        proxy.Port.ShouldBe((int)request.Connection.ProxyPort, "системный прокси применен после готовности VPN");
         var hour = new V1.CaptivePauseRequest { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromHours(1)) };
 
         (await service.Client.PauseForCaptivePortalAsync(hour, cancellationToken: Ct)).Until.ShouldNotBeNull("в режиме VPN пауза есть");
 
         var paused = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.CaptivePauseUntil is not null))[^1].ToCore();
         (paused.State, paused.Protection).ShouldBe((ConnectionState.Connected, ProtectionChecks.Paused));
+        proxy.Port.ShouldBeNull("страница входа не должна обращаться к уже остановленному прокси VPN");
+        File.Exists(backup).ShouldBeFalse("на паузе прежние настройки возвращены и снимок освобожден");
         killSwitch.IsEnabled.ShouldBeFalse("на паузе блок снят — иначе страница входа в сеть не откроется");
         (await netns.CurlAsync(lan.Url)).ShouldBe("мимо туннеля", "страница входа в сеть открывается напрямую");
         await Should.ThrowAsync<InvalidOperationException>(() => netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 3), "туннель на паузе стоит");
@@ -661,6 +670,7 @@ public sealed partial class VpnModeTests
         var states = await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error && s.CaptivePauseUntil is null);
         states.Select(s => s.State).ShouldContain(V1.ConnectionState.Connecting, "туннель поднимается заново, через «Подключение»");
         states[^1].State.ShouldBe(V1.ConnectionState.Connected, states[^1].Error?.Message);
+        proxy.Port.ShouldBe((int)request.Connection.ProxyPort, "после возврата VPN системный прокси снова ведет в готовый вход");
         (killSwitch.IsEnabled, killSwitch.Enables).ShouldBe((true, 4), "защита вернулась с блоком — снова до ядер и после подъема адаптера");
         killSwitch.Tunnels.ShouldBe([null, SingBoxConfigBuilder.InterfaceName, null, SingBoxConfigBuilder.InterfaceName],
             "до ядер — без разрешения туннелю (его еще нет), после подъема адаптера — с ним");
@@ -673,7 +683,13 @@ public sealed partial class VpnModeTests
 
         (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected && s.CaptivePauseUntil is null))[^1]
             .ToCore().Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Connected), "пауза кончилась сама — защита снова полная");
+        proxy.Port.ShouldBe((int)request.Connection.ProxyPort, "автоматическое завершение паузы тоже возвращает прокси");
         killSwitch.IsEnabled.ShouldBeTrue();
+
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest(), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Off);
+        proxy.Port.ShouldBeNull("явное отключение возвращает исходные настройки прокси");
+        File.Exists(backup).ShouldBeFalse();
     }
 
     [Fact]

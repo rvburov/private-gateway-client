@@ -9,7 +9,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// Задержка через настоящее ядро: свой сервер VLESS и свой сайт на 127.0.0.1 вместо проверочного
 /// адреса. Каждый сервер проверяется своим путем — живой, мертвый и неподдерживаемый не путаются.
 /// </summary>
-public sealed class LatencyProbeTests
+public sealed partial class LatencyProbeTests
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(5);
 

@@ -553,6 +553,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
             new(DiagnosticCheck.Ipv6, protection.Ipv6),
             new(DiagnosticCheck.ExitIp, running),
             new(DiagnosticCheck.OtherVpn, CheckState.Ok),
+            new(DiagnosticCheck.VirtualMachines, CheckState.Warning, "simulated"),
         ];
     }
 

@@ -105,7 +105,8 @@ public sealed class LeakCheckTests
 
         var report = await stand.Service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct);
         report.Results.Select(r => r.Id).ShouldBe(
-            Enum.GetValues<DiagnosticCheck>().Where(c => c != DiagnosticCheck.OtherVpn).Select(c => c.ToContractId()), ignoreOrder: true,
+            Enum.GetValues<DiagnosticCheck>().Where(c => c != DiagnosticCheck.OtherVpn
+                && (OperatingSystem.IsWindows() || c != DiagnosticCheck.VirtualMachines)).Select(c => c.ToContractId()), ignoreOrder: true,
             "все проверки «Проверки», кроме чужого VPN — у службы теста нет маршрутов");
         report.Results.Single(r => r.Id == DiagnosticCheck.ExitIp.ToContractId()).State.ShouldBe(V1.CheckState.Ok);
         report.Results.Single(r => r.Id == DiagnosticCheck.KillSwitch.ToContractId()).State.ShouldBe(V1.CheckState.Warning, "в режиме прокси блока нет");

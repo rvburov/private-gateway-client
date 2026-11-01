@@ -67,6 +67,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
 
     public ServiceKind Service => Current?.Service ?? ServiceKind.None;
 
+    public bool HasReceivedStatus => Current?.HasReceivedStatus ?? false;
+
+    public int? ManagedUserProxyPort => Current?.ManagedUserProxyPort;
+
     public event EventHandler<ConnectionStatus>? StatusChanged;
 
     /// <summary>Свои записи окна (поиск и запуск службы) и журнал службы.</summary>
@@ -157,7 +161,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             : new DiagnosticReport([new DiagnosticResult(DiagnosticCheck.Service, CheckState.Stopped, "not_found")], _time.GetUtcNow());
         return _userProxy is null
             ? report
-            : UserProxy.WithUserProxy(report, await Task.Run(_userProxy.Read, cancellationToken).ConfigureAwait(false), _settings());
+            : UserProxy.WithUserProxy(report, await Task.Run(_userProxy.Read, cancellationToken).ConfigureAwait(false), _settings(), ManagedUserProxyPort);
     }
 
     /// <summary>Пинг меряет служба; в режиме прокси ради него запускается служба пользователя.</summary>

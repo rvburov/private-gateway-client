@@ -105,9 +105,37 @@ public static class LatencyProbe
     /// <summary>Отвечает ли сервер: любой ответ HTTP через ядро — да; нет ответа за время пробы — нет.</summary>
     public static async Task<bool> ReachesAsync(ServerProbe probe, CancellationToken cancellationToken = default)
     {
+        return (await CheckAsync(probe, cancellationToken).ConfigureAwait(false)).Reached;
+    }
+
+    /// <summary>
+    /// Та же проба с причиной отказа для журнала. Любой HTTP-код считается ответом, как в <see cref="ReachesAsync"/>:
+    /// отказ самого проверочного сайта не объявляется потерей VPN. Отмена вызывающего остается отменой, а не таймаутом.
+    /// </summary>
+    public static async Task<ProbeReachability> CheckAsync(ServerProbe probe, CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(probe);
-        return (await RequestAsync(probe.Port, probe.Target, probe.Timeout, TimeProvider.System, cancellationToken, probe.Credentials)
-            .ConfigureAwait(false)).Milliseconds is not null;
+        using var handler = new SocketsHttpHandler
+        {
+            Proxy = new FixedProxy(new Uri($"socks5://127.0.0.1:{probe.Port}")) { Credentials = probe.Credentials },
+            UseProxy = true,
+            AllowAutoRedirect = false,
+            UseCookies = false,
+        };
+        using var http = new HttpClient(handler) { Timeout = probe.Timeout };
+        try
+        {
+            using var response = await http.GetAsync(probe.Target, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
+            return ProbeReachability.Responded(response.StatusCode);
+        }
+        catch (HttpRequestException error)
+        {
+            return ProbeReachability.Failed(error);
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return ProbeReachability.TimedOut();
+        }
     }
 
     /// <summary>
@@ -248,28 +276,9 @@ public static class LatencyProbe
     private static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,
         NetworkCredential? credentials = null)
     {
-        using var handler = new SocketsHttpHandler
-        {
-            Proxy = new FixedProxy(new Uri($"socks5://127.0.0.1:{port}")) { Credentials = credentials },
-            UseProxy = true,
-            AllowAutoRedirect = false,
-            UseCookies = false,
-        };
-        using var http = new HttpClient(handler) { Timeout = timeout };
         var started = time.GetTimestamp();
-        try
-        {
-            using var response = await http.GetAsync(target, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-            return LatencyResult.Of(time.GetElapsedTime(started));
-        }
-        catch (HttpRequestException)
-        {
-            return LatencyResult.Failed(LatencyFailure.NoResponse);
-        }
-        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
-        {
-            return LatencyResult.Failed(LatencyFailure.NoResponse);
-        }
+        var result = await CheckAsync(new ServerProbe(port, credentials, target, timeout), cancellationToken).ConfigureAwait(false);
+        return result.Reached ? LatencyResult.Of(time.GetElapsedTime(started)) : LatencyResult.Failed(LatencyFailure.NoResponse);
     }
 
     private static LatencyResult[] Done(LatencyResult?[] results) => [.. results.Select(r => r!)];
@@ -311,7 +320,7 @@ public static class LatencyProbe
         return true;
     }
 
-    /// <summary>Прокси для всех адресов: WebProxy пропускает localhost мимо прокси, а проверке нужен только вход ядра.</summary>
+    /// <summary>Фиксированный прокси для всех адресов, включая localhost: у проверки нет прямого запасного пути.</summary>
     internal sealed class FixedProxy(Uri proxy) : IWebProxy
     {
         public ICredentials? Credentials { get; set; }
