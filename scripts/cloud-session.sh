@@ -25,9 +25,10 @@ for name in GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL GIT_COMMITTER_NAME GIT_COMMITTER_EM
   fi
 done
 
-# .NET SDK в облаке бывает не установлен, а загрузка с сайта Microsoft закрыта сетью среды.
-if ! command -v dotnet > /dev/null 2>&1; then
-  echo "Нет .NET SDK: поставить пакетом ОС — apt-get install -y dotnet-sdk-10.0 (AGENTS.md, «Облачная копия»)."
+# Свежая машина приходит без .NET SDK и без ip (iproute2): нет сборки, тесты Network падают.
+# Установка идет минуты, поэтому хук ее не запускает, а только напоминает.
+if ! command -v dotnet > /dev/null 2>&1 || ! command -v ip > /dev/null 2>&1; then
+  echo "Машина не готова (нет .NET SDK или ip): scripts/cloud-setup.sh — пакеты ОС и ядра (AGENTS.md, «Облачная копия»)."
 fi
 
 echo "Облачная копия репозитория: коммиты — от имени Roman Burov, без подписи. Как работа из облака"
