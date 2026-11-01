@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using System.Net;
 using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
@@ -396,13 +395,8 @@ public sealed partial class ReconnectTests
     private static int Attempts(RunningService service) =>
         service.Journal.Tail(ServiceJournal.Capacity).Count(e => e.Message.StartsWith("Переподключение, попытка", StringComparison.Ordinal));
 
-    /// <summary>Процесс ядра, которое служба запустила последним, — из ее журнала.</summary>
-    private static int CoreProcessId(RunningService service)
-    {
-        const string prefix = "Ядро Xray запущено, процесс ";
-        var line = service.Journal.Tail(ServiceJournal.Capacity).Last(e => e.Message.StartsWith(prefix, StringComparison.Ordinal)).Message;
-        return int.Parse(line[prefix.Length..], CultureInfo.InvariantCulture);
-    }
+    /// <summary>Процесс ядра, которое служба запустила последним, — независимо от хранения строк журнала.</summary>
+    private static int CoreProcessId(RunningService service) => service.Cores.Proxy;
 
     /// <summary>Свой сервер Xray с выходом на свой сайт и служба с быстрыми пробами; проверочный адрес — тот же сайт.</summary>
     private sealed class ProxyRig : IAsyncDisposable

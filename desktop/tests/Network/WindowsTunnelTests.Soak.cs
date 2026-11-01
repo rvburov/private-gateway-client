@@ -227,15 +227,8 @@ public sealed partial class WindowsTunnelTests
         }
     }
 
-    /// <summary>Номера процессов ядер нынешнего туннеля — из журнала службы.</summary>
-    private static (int Xray, int SingBox) Tunnel(RunningService service)
-    {
-        const string Prefix = "Туннель поднят: Xray — процесс ";
-        const string Marker = ", sing-box — процесс ";
-        var line = service.Journal.Tail(ServiceJournal.Capacity).Last(e => e.Message.StartsWith(Prefix, StringComparison.Ordinal)).Message;
-        var at = line.IndexOf(Marker, StringComparison.Ordinal);
-        return (int.Parse(line[Prefix.Length..at], CultureInfo.InvariantCulture), int.Parse(line[(at + Marker.Length)..], CultureInfo.InvariantCulture));
-    }
+    /// <summary>Последняя пара процессов туннеля — независимо от хранения строк журнала.</summary>
+    private static (int Xray, int SingBox) Tunnel(RunningService service) => service.Cores.Tunnel;
 
     /// <summary>Страница через curl.exe (его одного держит блок теста); не ответила за <paramref name="seconds"/> — null.</summary>
     private static async Task<string?> GetWithCurlAsync(string curl, Uri page, int seconds, CancellationToken cancellationToken)

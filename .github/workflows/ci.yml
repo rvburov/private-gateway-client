@@ -99,9 +99,11 @@ jobs:
       - name: Тесты
         run: dotnet test --solution PrivateGateway.slnx -c Release --no-build --results-directory artifacts/test-results --report-ctrf
 
+      # Независимые проверки идут и после отказа обычных тестов, если сборка готова: иначе отчет
+      # получает каскад запрещенных пропусков вместо результатов root и Secret Service.
       # На Linux хранилища секретов без рабочего стола нет — поднимаем GNOME Keyring в своей сессии.
       - name: Хранилище секретов Linux (Secret Service)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gnome-keyring libsecret-1-0 dbus
@@ -111,7 +113,7 @@ jobs:
       # без него они пропускаются. Правила и TUN ставятся только внутри своих пространств, машина CI их не видит.
       # После остальных тестов: файлы результатов от root не мешают шагам без него.
       - name: Сетевые пространства Linux (root)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends nftables
@@ -129,7 +131,7 @@ jobs:
       # сборки — на общей среде .NET, а launchd запускает ее без DOTNET_ROOT: путь к среде — в /etc/dotnet/install_location,
       # как у установщика .NET (выпуск самодостаточный, ему это не нужно).
       - name: Служба, pf, DNS, прокси и Связка ключей macOS (root)
-        if: runner.os == 'macOS'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           dotnet_root=${DOTNET_ROOT:-$(dirname "$(readlink -f "$(command -v dotnet)")")}
           sudo mkdir -p /etc/dotnet
@@ -194,14 +196,14 @@ jobs:
       # Как в основном задании: хранилище секретов Linux — в своей сессии GNOME Keyring, туннель ретранслятора — от root в
       # своем сетевом пространстве (TUN sing-box этой машины на настоящем пути трафика).
       - name: Хранилище секретов Linux (Secret Service)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gnome-keyring libsecret-1-0 dbus
           dbus-run-session -- scripts/tests/secret-service.sh -c Release --no-build --results-directory artifacts/test-results --report-ctrf
 
       - name: Туннель ретранслятора в сетевом пространстве Linux (root)
-        if: runner.os == 'Linux'
+        if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
           sudo env "PATH=$PATH" "DOTNET_ROOT=$DOTNET_ROOT" "HOME=$HOME" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
             dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \

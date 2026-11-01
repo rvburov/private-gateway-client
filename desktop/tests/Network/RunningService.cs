@@ -17,13 +17,15 @@ internal sealed class RunningService : IAsyncDisposable
     private readonly Gateway _gateway;
     private bool _stopped;
 
-    private RunningService(string endpoint, Microsoft.AspNetCore.Builder.WebApplication app, Gateway gateway, GrpcChannel channel, ServiceJournal journal)
+    private RunningService(string endpoint, Microsoft.AspNetCore.Builder.WebApplication app, Gateway gateway, GrpcChannel channel, ServiceJournal journal,
+        ServiceCoreTracker cores)
     {
         Endpoint = endpoint;
         _app = app;
         _gateway = gateway;
         _channel = channel;
         Journal = journal;
+        Cores = cores;
         Client = new V1.GatewayService.GatewayServiceClient(channel);
     }
 
@@ -33,6 +35,9 @@ internal sealed class RunningService : IAsyncDisposable
     public V1.GatewayService.GatewayServiceClient Client { get; }
 
     public ServiceJournal Journal { get; }
+
+    /// <summary>Последние PID ядер стенда независимо от вытеснения строк из журнала.</summary>
+    public ServiceCoreTracker Cores { get; }
 
     /// <summary>Сама служба — для того, что делает она сама, без окна (подключение при загрузке).</summary>
     public Gateway Gateway => _gateway;
@@ -52,15 +57,24 @@ internal sealed class RunningService : IAsyncDisposable
             ? "PrivateGateway.Test." + Guid.NewGuid().ToString("N")
             : Path.Combine(Path.GetTempPath(), "pg-ipc-" + Guid.NewGuid().ToString("N")[..8], "ipc.sock");
         var journal = new ServiceJournal(TimeProvider.System);
+        var cores = new ServiceCoreTracker(journal);
         var guard = systemProxy is var (proxy, backup) ? new SystemProxyGuard(proxy, backup, journal) : null;
         // Пинг главного экрана (запрос через сервер раз в 15 с) в стендах выключен: он попал бы в счет запросов к сайтам
         // тестов. Его проверяет GatewayTrafficTests.
         var defaults = new GatewayOptions(XrayKit.Xray, CanVpn: false, latencyTarget ?? LatencyProbe.DefaultTarget, TrafficWatch: Timeout.InfiniteTimeSpan);
-        var gateway = new Gateway(options?.Invoke(defaults) ?? defaults, time ?? TimeProvider.System, journal, guard);
-        var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox), updates?.Invoke(journal),
-            installer?.Invoke(journal));
-        await app.StartAsync(TestContext.Current.CancellationToken);
-        return new RunningService(endpoint, app, gateway, IpcChannel.Create(endpoint, system: false), journal);
+        try
+        {
+            var gateway = new Gateway(options?.Invoke(defaults) ?? defaults, time ?? TimeProvider.System, journal, guard);
+            var app = IpcServer.Build(new IpcOptions(endpoint), gateway, journal, ServiceHost.Info(XrayKit.Xray, XrayKit.SingBox), updates?.Invoke(journal),
+                installer?.Invoke(journal));
+            await app.StartAsync(TestContext.Current.CancellationToken);
+            return new RunningService(endpoint, app, gateway, IpcChannel.Create(endpoint, system: false), journal, cores);
+        }
+        catch
+        {
+            cores.Dispose();
+            throw;
+        }
     }
 
     /// <summary>Остановить службу, как при ее завершении; повторный вызов ничего не делает.</summary>
@@ -72,9 +86,16 @@ internal sealed class RunningService : IAsyncDisposable
         }
 
         _stopped = true;
-        _channel.Dispose();
-        await _app.StopAsync(CancellationToken.None);
-        await _app.DisposeAsync();
-        await _gateway.DisposeAsync();
+        try
+        {
+            _channel.Dispose();
+            await _app.StopAsync(CancellationToken.None);
+            await _app.DisposeAsync();
+            await _gateway.DisposeAsync();
+        }
+        finally
+        {
+            Cores.Dispose();
+        }
     }
 }

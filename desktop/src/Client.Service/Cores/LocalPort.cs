@@ -37,13 +37,26 @@ public static class LocalPort
     /// <summary>То же со своим источником случайных чисел (тесты).</summary>
     public static int FreeForTcpAndUdp(Random random)
     {
+        using var lease = ReserveForTcpAndUdp(random);
+        return lease.Port;
+    }
+
+    /// <summary>
+    /// Выбрать порт и удерживать слушателем TCP и сокетом UDP до <see cref="LocalPortLease.Dispose"/>. Ядро сможет занять порт только
+    /// после освобождения пары: передача номера внешнему процессу по-прежнему не является атомарным резервированием.
+    /// </summary>
+    public static LocalPortLease ReserveForTcpAndUdp() => ReserveForTcpAndUdp(Random.Shared);
+
+    /// <summary>То же со своим источником случайных чисел (тесты).</summary>
+    public static LocalPortLease ReserveForTcpAndUdp(Random random)
+    {
         ArgumentNullException.ThrowIfNull(random);
         for (var attempt = 0; attempt < 500; attempt++)
         {
             var port = random.Next(First, End);
-            if (Issue(port) && Free(port))
+            if (Issue(port) && TryReserve(port) is { } lease)
             {
-                return port;
+                return lease;
             }
         }
 
@@ -55,24 +68,20 @@ public static class LocalPort
     /// порт, который ОС дала для TCP, для UDP бывает закрыт, и наоборот. Поэтому порт по очереди выбирает то TCP, то UDP, а
     /// другой протокол его проверяет.
     /// </summary>
-    private static int FromSystem()
+    private static LocalPortLease FromSystem()
     {
         for (var attempt = 1; ; attempt++)
         {
             var (first, second) = attempt % 2 == 1 ? (ProtocolType.Tcp, ProtocolType.Udp) : (ProtocolType.Udp, ProtocolType.Tcp);
             try
             {
-                int port;
-                using (var chosen = Bind(first, 0))
+                var lease = BindBoth(first, second, 0);
+                if (Issue(lease.Port) || attempt >= 200)
                 {
-                    port = ((IPEndPoint)chosen.LocalEndPoint!).Port;
-                    using var other = Bind(second, port);
+                    return lease;
                 }
 
-                if (Issue(port) || attempt >= 200)
-                {
-                    return port;
-                }
+                lease.Dispose();
             }
             catch (SocketException) when (attempt < 200)
             {
@@ -101,17 +110,33 @@ public static class LocalPort
         }
     }
 
-    private static bool Free(int port)
+    private static LocalPortLease? TryReserve(int port)
     {
         try
         {
-            using var tcp = Bind(ProtocolType.Tcp, port);
-            using var udp = Bind(ProtocolType.Udp, port);
-            return true;
+            return BindBoth(ProtocolType.Tcp, ProtocolType.Udp, port);
         }
         catch (SocketException)
         {
-            return false;
+            return null;
+        }
+    }
+
+    private static LocalPortLease BindBoth(ProtocolType first, ProtocolType second, int port)
+    {
+        var chosen = Bind(first, port);
+        Socket? other = null;
+        try
+        {
+            var actual = ((IPEndPoint)chosen.LocalEndPoint!).Port;
+            other = Bind(second, actual);
+            return new LocalPortLease(actual, chosen, other);
+        }
+        catch
+        {
+            other?.Dispose();
+            chosen.Dispose();
+            throw;
         }
     }
 
@@ -120,7 +145,15 @@ public static class LocalPort
         var socket = new Socket(AddressFamily.InterNetwork, protocol == ProtocolType.Tcp ? SocketType.Stream : SocketType.Dgram, protocol);
         try
         {
+            socket.ExclusiveAddressUse = true;
             socket.Bind(new IPEndPoint(IPAddress.Loopback, port));
+            if (protocol == ProtocolType.Tcp)
+            {
+                // TCP только с Bind на Unix допускает другой Bind: .NET включает SO_REUSEADDR для TCP.
+                // Удерживаем возможность запустить слушатель, а не только привязать адрес сокета.
+                socket.Listen(1);
+            }
+
             return socket;
         }
         catch

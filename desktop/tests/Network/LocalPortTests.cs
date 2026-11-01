@@ -7,32 +7,70 @@ using PrivateGateway.Client.Service.Cores;
 namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
-/// Порт входа ядра: свободен и для TCP, и для UDP. На Windows с занятыми диапазонами (Hyper-V, WinNAT)
-/// порт, который ОС дает одному протоколу, у другого бывает закрыт — CI это ловит.
+/// Пара удерживает порт для TCP и UDP одновременно. Номер из FreeForTcpAndUdp после возврата уже не удерживается:
+/// новый Bind тогда проверял бы межпроцессную гонку, а не выбор порта. На Windows диапазоны TCP и UDP бывают разными.
 /// </summary>
 public sealed class LocalPortTests(ITestOutputHelper output)
 {
-    [Fact]
-    public void Port_takes_both_tcp_and_udp()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Reservation_holds_both_tcp_and_udp_while_it_is_alive(bool fromSystem)
     {
-        for (var i = 0; i < 50; i++)
-        {
-            var port = LocalPort.FreeForTcpAndUdp();
+        using var lease = Reserve(fromSystem);
 
-            var stage = "TCP: TcpListener.Start (Bind/Listen)";
-            try
+        lease.Port.ShouldBeInRange(1, 65535);
+        CannotBind(lease.Port, ProtocolType.Tcp, fromSystem);
+        CannotBind(lease.Port, ProtocolType.Udp, fromSystem);
+    }
+
+    private static LocalPortLease Reserve(bool fromSystem)
+    {
+        if (!fromSystem)
+        {
+            return LocalPort.ReserveForTcpAndUdp();
+        }
+
+        // Кандидат уже выдан: все 500 обычных попыток получают его же и ведут в запасной путь ОС.
+        // Удерживаемая пара не дает случайному первому выбору из ОС совпасть с ней.
+        using var previous = LocalPort.ReserveForTcpAndUdp(new FixedPortRandom(LocalPort.First));
+        var forced = new FixedPortRandom(LocalPort.First);
+        var lease = LocalPort.ReserveForTcpAndUdp(forced);
+        try
+        {
+            forced.Calls.ShouldBe(500, "запасной путь достигнут ограниченным числом обычных попыток");
+            lease.Port.ShouldNotBe(previous.Port, "первая пара еще удерживает свой порт");
+            return lease;
+        }
+        catch
+        {
+            lease.Dispose();
+            throw;
+        }
+    }
+
+    private void CannotBind(int port, ProtocolType protocol, bool fromSystem)
+    {
+        using var competing = new Socket(AddressFamily.InterNetwork,
+            protocol == ProtocolType.Tcp ? SocketType.Stream : SocketType.Dgram, protocol)
+        { ExclusiveAddressUse = false };
+        competing.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+        try
+        {
+            var error = Should.Throw<SocketException>(() =>
             {
-                using var tcp = new TcpListener(IPAddress.Loopback, port);
-                tcp.Start();
-                stage = "UDP: UdpClient.Bind";
-                using var udp = new UdpClient(new IPEndPoint(IPAddress.Loopback, port));
-                port.ShouldBeGreaterThan(0);
-            }
-            catch (SocketException error)
-            {
-                Diagnose(port, i + 1, stage, error);
-                throw;
-            }
+                competing.Bind(new IPEndPoint(IPAddress.Loopback, port));
+                if (protocol == ProtocolType.Tcp)
+                {
+                    competing.Listen(1);
+                }
+            }, $"пока пара удерживает порт {port}, второй {protocol} вход должен быть отклонен и с запросом совместного использования");
+            error.SocketErrorCode.ShouldBeOneOf(SocketError.AddressAlreadyInUse, SocketError.AccessDenied);
+        }
+        catch (Exception error) when (error is SocketException or ShouldAssertException)
+        {
+            Diagnose(port, fromSystem ? "запасной путь ОС" : "основной диапазон", protocol, error);
+            throw;
         }
     }
 
@@ -70,9 +108,10 @@ public sealed class LocalPortTests(ITestOutputHelper output)
         batch.Distinct().Count().ShouldBe(batch.Count, "по порту на вход замера — без повторов");
     }
 
-    private void Diagnose(int port, int iteration, string stage, SocketException error)
+    private void Diagnose(int port, string source, ProtocolType protocol, Exception error)
     {
-        Write($"Кандидат LocalPort: порт={port}, итерация={iteration}, этап={stage}, SocketErrorCode={error.SocketErrorCode}");
+        var code = error is SocketException socket ? socket.SocketErrorCode.ToString() : error.GetType().Name;
+        Write($"Пара LocalPort: порт={port}, источник={source}, протокол={protocol}, ошибка={code}");
         Snapshot("TCP listeners", () => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners()
             .Where(endpoint => endpoint.Port == port).Select(SafeEndpoint));
         Snapshot("TCP connections", () => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpConnections()
@@ -112,4 +151,16 @@ public sealed class LocalPortTests(ITestOutputHelper output)
         IPAddress.IsLoopback(endpoint.Address) || endpoint.Address.Equals(IPAddress.Any) || endpoint.Address.Equals(IPAddress.IPv6Any)
             ? endpoint.ToString()
             : $"[адрес]:{endpoint.Port}";
+
+    private sealed class FixedPortRandom(int port) : Random
+    {
+        public int Calls { get; private set; }
+
+        public override int Next(int minValue, int maxValue)
+        {
+            port.ShouldBeInRange(minValue, maxValue - 1);
+            Calls++;
+            return port;
+        }
+    }
 }

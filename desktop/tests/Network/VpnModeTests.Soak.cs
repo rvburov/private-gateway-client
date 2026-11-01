@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Globalization;
 using Google.Protobuf.WellKnownTypes;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
@@ -157,14 +156,7 @@ public sealed partial class VpnModeTests
             }
         }
 
-        (int Xray, int SingBox) Tunnel()
-        {
-            const string Prefix = "Туннель поднят: Xray — процесс ";
-            const string Marker = ", sing-box — процесс ";
-            var line = service.Journal.Tail(ServiceJournal.Capacity).Last(e => e.Message.StartsWith(Prefix, StringComparison.Ordinal)).Message;
-            var at = line.IndexOf(Marker, StringComparison.Ordinal);
-            return (int.Parse(line[Prefix.Length..at], CultureInfo.InvariantCulture), int.Parse(line[(at + Marker.Length)..], CultureInfo.InvariantCulture));
-        }
+        (int Xray, int SingBox) Tunnel() => service.Cores.Tunnel;
 
         string Tables() => string.Join('\n', rig.Netns.Run(null, "nft", "list", "tables").Split('\n', StringSplitOptions.RemoveEmptyEntries).Order());
 
