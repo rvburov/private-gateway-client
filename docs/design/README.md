@@ -1,17 +1,23 @@
-# Макет интерфейса — v1.0
+# Макет интерфейса
 
-**Статус:** согласован 23.10.2026 · заморожен. Изменения — только новой версией макета.
+**Актуальный — v1.1 (HTML и CSS), 01.11.2026: [`html/index.html`](html/index.html).** Вид программы со всеми правками
+после v1.0, все 26 экранов, интерактивный. Открывается в любом браузере двойным щелчком, без интернета. Вверху каждой
+страницы — устройство (Windows, macOS, Linux, Android, iOS): экран один и тот же, меняются только рамка ОС, шрифт и поля.
+Цвета, шрифты и значки — из `shared/specifications/design-tokens.json` и `Icons.axaml` программы (`dotnet run
+scripts/gen-design-html.cs`; расхождение ловит тест). Устройство и правила — [`html/README.md`](html/README.md).
 
-Макет покрывает десктоп (C# · Avalonia: Windows, macOS, Linux) и мобильные версии (Android · Kotlin + Compose, iOS · Swift + SwiftUI).
-Интерактивная версия — артефакт Claude «Private Gateway Client — макет» (доступ только у владельца).
+**v1.0** — согласован 23.10.2026 · заморожен как история (ниже). Макет покрывает десктоп (C# · Avalonia: Windows,
+macOS, Linux) и мобильные версии (Android · Kotlin + Compose, iOS · Swift + SwiftUI). Интерактивная версия v1.0 —
+артефакт Claude «Private Gateway Client — макет» (доступ только у владельца).
 
 ## Что где лежит
 
 ```
 docs/design/
 ├── README.md        — этот файл: список экранов, правила, открытые вопросы
+├── html/            — макет v1.1: index.html, boards/NN-*.html, assets/ (токены, значки, стили, шрифты)
 ├── screens/         — PNG всех 26 досок макета (снимок v1.0)
-└── mockup/          — исходники макета: canvas.json + *.dc.html (по файлу на доску)
+└── mockup/          — исходники макета v1.0: canvas.json + *.dc.html (по файлу на доску)
 
 shared/specifications/
 └── design-tokens.json — единый источник цветов, шрифтов, отступов, скруглений, теней

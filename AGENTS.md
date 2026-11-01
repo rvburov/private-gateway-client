@@ -147,7 +147,7 @@ Avalonia 12 для Windows, macOS и Linux; затем Android (Kotlin) и iOS (
 - `shared/testdata/` — эталонные обезличенные ссылки и подписки для тестов разбора на всех ОС;
 - `shared/licenses/` — открытые компоненты программы (`components.json` десктопа: экран «О программе» и
   THIRD-PARTY-NOTICES выпуска; `android.json` — то же для приложения Android) и полные тексты их лицензий;
-- `docs/` — `design/` (макет v1.0), `architecture/`, `security/`, `testing/` (проверки на машинах пользователя),
+- `docs/` — `design/` (макет: актуальный v1.1 — `design/html`, HTML и CSS; v1.0 заморожен), `architecture/`, `security/`, `testing/` (проверки на машинах пользователя),
   `operations/` (релизный чеклист, поддержка и инциденты), `roadmap/`, `sources/`;
 - `scripts/` — `worktree.sh`, `cloud-session.sh` и скрипты сборки;
 - `artifacts/` — вывод сборки, `packages/` — кеш NuGet, `.localdata/` — данные отладочного
@@ -167,6 +167,7 @@ scripts/package-windows.sh <версия>                    # MSI из сбор
 git tag v1.2.3 && git push origin v1.2.3                # выпуск на GitHub (release.yml); 1.3.0-beta.1 — бета
 dotnet run scripts/release.cs keygen <файл вне репозитория> # ключ подписи обновлений (делает пользователь, release.md)
 dotnet run scripts/gen-icons.cs                        # значок программы (SVG, ICO) из Icons.axaml и токенов
+dotnet run scripts/gen-design-html.cs                  # токены CSS и значки HTML-макета docs/design/html
 ```
 
 - Вывод сборки — в `artifacts/bin/<проект>/debug/`, выпуска — в `artifacts/release/`

@@ -60,6 +60,37 @@ public partial class ThemeAndMarkupTests
     }
 
     [Fact]
+    public void Html_mockup_is_generated_from_current_tokens_and_icons()
+    {
+        // Макет v1.1 (docs/design/html) берет цвета, размеры и значки из тех же источников, что программа: токены
+        // поменяли, а макет нет — он показывал бы не то, что программа.
+        static string Hash(string path) => Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(File.ReadAllText(path).ReplaceLineEndings("\n"))));
+        var assets = Path.Combine(Repo.Root, "docs", "design", "html", "assets");
+
+        File.ReadAllText(Path.Combine(assets, "tokens.css")).ShouldContain(
+            "tokens-sha256: " + Hash(Path.Combine(Repo.Root, "shared", "specifications", "design-tokens.json")),
+            customMessage: "Токены поменялись, а макет нет: dotnet run scripts/gen-design-html.cs");
+        File.ReadAllText(Path.Combine(assets, "icons.js")).ShouldContain(
+            "icons-sha256: " + Hash(Path.Combine(Repo.UiSource, "Themes", "Icons.axaml")),
+            customMessage: "Значки поменялись, а макет нет: dotnet run scripts/gen-design-html.cs");
+    }
+
+    [Fact]
+    public void Html_mockup_takes_colors_only_from_tokens()
+    {
+        // Цвет на досках и в библиотеке блоков — только var(--pg-…) из tokens.css, как в программе — ресурсы темы.
+        var offenders = Directory.EnumerateFiles(Path.Combine(Repo.Root, "docs", "design", "html"), "*.*", SearchOption.AllDirectories)
+            .Where(f => f.EndsWith(".html", StringComparison.Ordinal) || f.EndsWith(".css", StringComparison.Ordinal) || f.EndsWith(".js", StringComparison.Ordinal))
+            .Where(f => !f.EndsWith("tokens.css", StringComparison.Ordinal))
+            .SelectMany(f => File.ReadLines(f).Select((line, i) => (File: Path.GetFileName(f), Line: i + 1, Text: line)))
+            .Where(l => MockupColor().IsMatch(l.Text))
+            .Select(l => $"{l.File}:{l.Line}: {l.Text.Trim()}")
+            .ToArray();
+
+        offenders.ShouldBeEmpty("цвет в макете — только var(--pg-…) из tokens.css");
+    }
+
+    [Fact]
     public void Views_take_colors_only_from_the_theme()
     {
         var offenders = Directory.EnumerateFiles(Repo.UiSource, "*.axaml", SearchOption.AllDirectories)
@@ -123,4 +154,8 @@ public partial class ThemeAndMarkupTests
 
     [GeneratedRegex("#[0-9A-Fa-f]{3,8}\\b")]
     private static partial Regex HexColor();
+
+    // Шестнадцатеричный цвет (не числовая сущность HTML вида &#8212;) или rgb()/rgba()/hsl().
+    [GeneratedRegex("(?<![&\\w])#[0-9A-Fa-f]{3,8}\\b|\\b(?:rgba?|hsla?)\\(")]
+    private static partial Regex MockupColor();
 }
