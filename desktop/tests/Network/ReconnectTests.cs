@@ -108,7 +108,7 @@ public sealed partial class ReconnectTests
 
         noted.State.ShouldBe(V1.ConnectionState.Connected, "подключение идет дальше");
         noted.OtherClients.Select(c => (c.Program, c.Sign, c.Detail)).ShouldBe([(string.Empty, V1.OtherClientSign.Process, "mihomo")],
-            "название программы служба не определяет (решение 516)");
+            "название программы служба не определяет (решение 525)");
         rig.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Level == JournalLevel.Warning
             && e.Message == "Запустился другой VPN или прокси-клиент (работает ядро прокси) — трафик может пойти мимо туннеля");
 

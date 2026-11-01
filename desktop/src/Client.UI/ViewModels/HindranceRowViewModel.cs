@@ -73,7 +73,7 @@ public sealed partial class HindranceRowViewModel(string title, string detail, s
 
     /// <summary>
     /// Другой VPN или прокси-клиент, которого нашла служба: одна строка «Другой VPN или прокси-клиент», в подробностях —
-    /// признаки (работает ядро прокси, туннель ко всему интернету, системный прокси с адресом), без названий программ (решение 516).
+    /// признаки (работает ядро прокси, туннель ко всему интернету, системный прокси с адресом), без названий программ (решение 525).
     /// </summary>
     public static HindranceRowViewModel For(IReadOnlyList<OtherClient> clients)
     {

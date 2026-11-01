@@ -44,7 +44,7 @@ public sealed partial class Gateway
     }
 
     /// <summary>
-    /// Пока «Защищено» — другой VPN или прокси-клиент, включенный рядом (решение 516): проба сервера идет раз в минуту, а
+    /// Пока «Защищено» — другой VPN или прокси-клиент, включенный рядом (решение 525): проба сервера идет раз в минуту, а
     /// чужой туннель, который меняет одни маршруты, без нового адреса, смена сети не выдает. Таблица маршрутов и список
     /// процессов читаются быстро — раз в несколько секунд. Включился туннель — подключение остановлено; запустилось ядро —
     /// замечание в состоянии (окно — уведомлением).
@@ -56,7 +56,7 @@ public sealed partial class Gateway
             while (true)
             {
                 await Task.Delay(often, _time).ConfigureAwait(false);
-                ConnectionState state;
+                ConnectionStatus status;
                 lock (_gate)
                 {
                     if (watch != _watch || session != _session)
@@ -64,10 +64,17 @@ public sealed partial class Gateway
                         return;
                     }
 
-                    state = _status.State;
+                    status = _status;
                 }
 
-                if (state != ConnectionState.Connected)
+                // Как и проверка связи: прежний наблюдатель заканчивается при обрыве, новый запускает AfterConnected.
+                // Пауза сохраняет Connected, но поиска и уведомления на ней нет (решение 526).
+                if (status.State != ConnectionState.Connected)
+                {
+                    return;
+                }
+
+                if (status.IsPaused)
                 {
                     continue;
                 }
@@ -278,7 +285,7 @@ public sealed partial class Gateway
         var list = found.Count == 0 ? null : new OtherClientList(found);
         lock (_gate)
         {
-            if (session != _session || _status.State != ConnectionState.Connected || Equals(_status.OtherClients, list))
+            if (session != _session || _status.State != ConnectionState.Connected || _status.IsPaused || Equals(_status.OtherClients, list))
             {
                 return;
             }

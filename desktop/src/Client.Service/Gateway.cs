@@ -47,7 +47,7 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="TunnelRoutes"/> — только эти сети через TUN (тесты Windows в CI,
 /// <see cref="TunRequest.Routes"/>); null — весь трафик;
 /// <paramref name="OtherClientsWatch"/> — как часто, пока «Защищено», искать другой VPN или прокси-клиент (туннель и ядро,
-/// решение 516); null — только с пробой сервера (<see cref="ReconnectTiming.Every"/>) и при смене сети.
+/// решение 525); null — только с пробой сервера (<see cref="ReconnectTiming.Every"/>) и при смене сети.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -754,7 +754,7 @@ public sealed partial class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Находки для журнала — признаками, без названий программ и их процессов (решение 516): «работает ядро прокси, туннель с
+    /// Находки для журнала — признаками, без названий программ и их процессов (решение 525): «работает ядро прокси, туннель с
     /// маршрутом ко всему интернету, системный прокси 127.0.0.1:2334».
     /// </summary>
     public static string Describe(IReadOnlyList<OtherClient> clients)

@@ -111,7 +111,8 @@ public sealed partial class WindowsTunnelTests
             {
                 using var handler = new SocketsHttpHandler { Proxy = new WebProxy($"{protocol}://127.0.0.1:{request.Connection.ProxyPort}") };
                 using var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(10) };
-                (await output.TraceAsync(() => http.GetStringAsync(page, Ct))).ShouldBe("через туннель Windows");
+                (await output.TraceAsync(() => http.GetStringAsync(page, Ct), $"{protocol} через локальный прокси к {page}"))
+                    .ShouldBe("через туннель Windows");
             }
 
             site.Requests.ShouldBe(3, "TUN, HTTP и SOCKS используют один контролируемый сервер");

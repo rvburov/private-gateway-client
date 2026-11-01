@@ -244,7 +244,7 @@ public sealed class ProblemPageTests : WindowHarness
         shell.Toast.Text.ShouldBe("Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»");
         shell.CurrentKey.ShouldBe(Pages.Problem);
 
-        // Служба прислала признаки: строки — признаками, без названий программ и процессов (решение 516); два ядра — одна строка;
+        // Служба прислала признаки: строки — признаками, без названий программ и процессов (решение 525); два ядра — одна строка;
         // вход прокси служба нашла сама — строки окна нет.
         _others = new OtherClientList([new OtherClient(OtherClientSign.Process, "sing-box"), new OtherClient(OtherClientSign.Process, "xray"),
             new OtherClient(OtherClientSign.SystemProxy, "127.0.0.1:7890")]);

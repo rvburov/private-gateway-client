@@ -91,6 +91,9 @@ public static class XrayConfigBuilder
 {
     public const string InboundTag = "socks-in";
     public const string LocalProxyTag = "local-proxy-in";
+
+    /// <summary>Повторный разбор адреса FakeDNS из HTTP-прокси через уже существующий защищенный вход TUN.</summary>
+    public const string LocalProxyFakeDnsTag = "local-proxy-fakedns";
     public const string ProbeTag = "probe-in";
     public const string ProxyTag = "proxy";
     public const string DirectTag = "direct";
@@ -215,6 +218,23 @@ public static class XrayConfigBuilder
         if (request.Connection.TlsFragment)
         {
             outbounds.Add(Fragment());
+        }
+
+        if (tun is not null && fakeDns && request.Connection.VpnSystemProxy)
+        {
+            // Xray 26.10.21 в обработчике обычного HTTP заменяет Content и теряет sniffing входа. SOCKS и CONNECT
+            // его сохраняют. Адрес из пула идет через уже существующий защищенный вход TUN: там имя восстановится,
+            // а правила имен, IP и локальной сети применятся как обычно. Выход loopback здесь не годится: он ставит
+            // SkipDNSResolve и тем самым обходит правила IPIfNonMatch по адресам восстановленного имени.
+            outbounds.Add(new JsonObject
+            {
+                ["tag"] = LocalProxyFakeDnsTag,
+                ["protocol"] = "shadowsocks",
+                ["settings"] = Servers(new JsonObject
+                {
+                    ["address"] = "127.0.0.1", ["port"] = tun.Port, ["method"] = TunLink.Method, ["password"] = tun.Password,
+                }),
+            });
         }
 
         if (tun is not null)
@@ -534,6 +554,19 @@ public static class XrayConfigBuilder
             rules.Add(new JsonObject { ["type"] = "field", ["inboundTag"] = new JsonArray(BypassTag), ["outboundTag"] = DirectTag });
         }
 
+        if (fakeDns && request.Connection.VpnSystemProxy)
+        {
+            // Только fake IP дополнительного прокси: один раз восстановить имя на защищенном входе TUN,
+            // затем обычные правила. У TUN другой тег, поэтому повторной отправки сюда нет.
+            rules.Add(new JsonObject
+            {
+                ["type"] = "field",
+                ["inboundTag"] = new JsonArray(LocalProxyTag),
+                ["ip"] = new JsonArray(FakeDnsPool),
+                ["outboundTag"] = LocalProxyFakeDnsTag,
+            });
+        }
+
         if (tunDns)
         {
             // DNS из TUN — к любому адресу, хоть к роутеру в локальной сети: отвечает выход DNS по
@@ -544,6 +577,17 @@ public static class XrayConfigBuilder
                 ["inboundTag"] = new JsonArray(InboundTag),
                 ["port"] = "53",
                 ["outboundTag"] = DnsTag,
+            });
+        }
+
+        if (fakeDns)
+        {
+            // Существующая запись FakeDNS уже превратилась в имя при sniffing входа TUN. Остаточный адрес из пула
+            // не имеет назначения: запрещаем его даже при AllowLan, иначе freedom пошлет его снова в маршруты TUN.
+            rules.Add(new JsonObject
+            {
+                ["type"] = "field", ["inboundTag"] = new JsonArray(InboundTag),
+                ["ip"] = new JsonArray(FakeDnsPool), ["outboundTag"] = BlockTag,
             });
         }
 

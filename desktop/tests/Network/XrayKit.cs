@@ -186,7 +186,7 @@ internal static class XrayKit
         static JsonArray Lines(string pem) => new([.. pem.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(l => JsonValue.Create(l.TrimEnd('\r')))]);
     }
 
-    public static async Task<CoreProcess> Start(JsonObject config, int port)
+    public static async Task<CoreProcess> Start(JsonObject config, int port, Action<string>? trace = null)
     {
         AllowLocalSites(config);
         var output = new List<string>();
@@ -196,6 +196,8 @@ internal static class XrayKit
             {
                 output.Add(line);
             }
+
+            trace?.Invoke(line);
         });
         Outputs.AddOrUpdate(xray, output);
 

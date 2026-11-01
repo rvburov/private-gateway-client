@@ -114,7 +114,7 @@ public class NotificationPolicyTests
 
         var started = For(Connected, other).ShouldNotBeNull();
         (started.Kind, started.TextKey, started.IsImportant).ShouldBe((NoticeKind.OtherClient, "notify.other.text", true),
-            "общими словами, без названия программы (решение 516)");
+            "общими словами, без названия программы (решение 525)");
         started.Actions.ShouldBe([NoticeAction.Open]);
         For(other, other with { Traffic = new TrafficStats(40, 1, 1) }).ShouldBeNull("те же признаки — уведомление уже было");
         For(other, Connected).ShouldBeNull("клиент закрылся — сказать нечего");

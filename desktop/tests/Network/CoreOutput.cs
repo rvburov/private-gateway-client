@@ -24,15 +24,17 @@ internal sealed class CoreOutput(NetworkNamespace? netns = null)
     }
 
     /// <summary>Выполнить запрос через туннель; упал — та же ошибка с выводом ядер.</summary>
-    public async Task<T> TraceAsync<T>(Func<Task<T>> request)
+    public async Task<T> TraceAsync<T>(Func<Task<T>> request, string? operation = null)
     {
         try
         {
             return await request().ConfigureAwait(false);
         }
-        catch (InvalidOperationException e)
+        catch (Exception e) when (e is InvalidOperationException or HttpRequestException ||
+                                 e is OperationCanceledException && !TestContext.Current.CancellationToken.IsCancellationRequested)
         {
-            throw new InvalidOperationException($"{e.Message}\nВывод ядер (последние строки):\n{string.Join('\n', _lines)}{await NetworkAsync()}", e);
+            var failure = operation is null ? e.Message : $"{operation}: {e.Message}";
+            throw new InvalidOperationException($"{failure}\nВывод ядер (последние строки):\n{string.Join('\n', _lines)}{await NetworkAsync()}", e);
         }
     }
 
