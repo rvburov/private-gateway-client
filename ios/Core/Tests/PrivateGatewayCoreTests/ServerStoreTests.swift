@@ -233,6 +233,40 @@ final class ServerStoreTests: XCTestCase {
 
     // MARK: Группы
 
+    func testTheSameSubscriptionAddedAgainGoesIntoItsGroup() async throws {
+        // У пользователя 2026-11-01: повторно добавленная подписка давала вторую группу с тем же названием (решение 528).
+        _ = try await store.add(Array(Self.unique.prefix(1)), group: "Провайдер", url: url)
+        let again = try XCTUnwrap(URLComponents(string: "HTTPS://EXAMPLE.com:443/sub/0123456789abcdef0123456789abcdef/"))
+        _ = try await store.add(Array(Self.unique.prefix(2)), group: "Провайдер (2)", url: again)
+        let groups = try await store.groups()
+        XCTAssertEqual(groups.count, 1, "та же ссылка — та же группа")
+        XCTAssertEqual(groups.first?.servers, 2)
+        let found = try await store.subscriptionFor(url)
+        XCTAssertEqual(found, groups.first?.id)
+
+        _ = try await store.add(Array(Self.unique.dropFirst(2).prefix(1)), group: "Провайдер", url: XCTUnwrap(URLComponents(string: "https://example.com/sub/other-token")))
+        let afterOther = try await store.groups()
+        XCTAssertEqual(afterOther.count, 2, "другой токен — другая подписка")
+    }
+
+    func testGroupsOfOneSubscriptionCreatedBeforeAreMergedOnce() async throws {
+        _ = try await store.add(Array(Self.unique.prefix(1)), group: "Провайдер", url: url)
+        _ = try await store.add(Array(Self.unique.dropFirst(1).prefix(1)), group: "Провайдер", url: XCTUnwrap(URLComponents(string: "https://example.com/sub/other-token")))
+        let groups = try await store.groups()
+        XCTAssertEqual(groups.count, 2)
+        // Как до решения 528: у второй группы тот же адрес.
+        try vault.store(XCTUnwrap(url.string), for: ServerStore.subscriptionKey(groups[1].id))
+
+        try await store.mergeSameSubscriptions(selectedId: nil)
+
+        let merged = try await store.groups()
+        XCTAssertEqual(merged.map(\.id), [groups[0].id])
+        XCTAssertEqual(merged.first?.servers, 2)
+        try await store.mergeSameSubscriptions(selectedId: nil)
+        let again = try await store.groups()
+        XCTAssertEqual(again.count, 1, "повторов больше нет")
+    }
+
     func testSubscriptionKeepsItsAddressOnlyInTheVault() async throws {
         let result = try await store.add(Array(Self.unique.prefix(3)), group: " Провайдер ", url: url)
         XCTAssertEqual(result, AddResult(added: 3, duplicates: 0))
@@ -240,7 +274,7 @@ final class ServerStoreTests: XCTestCase {
         let group = try XCTUnwrap(groups.first)
         XCTAssertEqual(group.name, "Провайдер")
         XCTAssertEqual(group.servers, 3)
-        XCTAssertEqual(group.maskedUrl, "https://example.com/sub/••••")
+        XCTAssertEqual(group.maskedUrl, "https://example.com/sub/****")
         XCTAssertTrue(group.canUpdate)
         XCTAssertNotNil(group.updatedAt, "подписка по адресу только что загружена")
         let stored = try await store.subscriptionUrl(group.id)
@@ -342,7 +376,7 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertEqual(edited.name, "Новое")
         XCTAssertNil(edited.failure)
         XCTAssertNil(edited.status)
-        XCTAssertEqual(edited.maskedUrl, "https://example.org/feed/••••")
+        XCTAssertEqual(edited.maskedUrl, "https://example.org/feed/****")
         let stored = try await store.subscriptionUrl(group)
         XCTAssertEqual(stored?.string, next.string)
     }

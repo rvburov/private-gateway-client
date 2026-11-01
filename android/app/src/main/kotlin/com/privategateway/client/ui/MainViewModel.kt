@@ -110,6 +110,8 @@ data class ImportUi(
     val duplicates: Int = 0,
     val url: URI? = null,
     val insecure: Boolean = false,
+    /** Эта подписка уже добавлена — ее название: «Добавить» обновит ее (решение 528). */
+    val existing: String? = null,
     val downloading: Boolean = false,
     val failure: FailureReason? = null,
     val name: String = "",
@@ -145,6 +147,8 @@ class MainViewModel @Inject constructor(
     val messages: SharedFlow<Message> = notices.asSharedFlow()
 
     init {
+        // Группы одной подписки, созданные до решения 528 повторным добавлением ссылки, — одна группа.
+        viewModelScope.launch { servers.mergeSameSubscriptions(settings.selectedServerId.first()) }
         viewModelScope.launch {
             updater.notices.collect { notice ->
                 notices.emit(
@@ -330,6 +334,7 @@ class MainViewModel @Inject constructor(
             }
 
             val batch = withContext(Dispatchers.Default) { ImportParser.parse(content.text) }
+            val existing = servers.subscriptionFor(url)?.let { id -> servers.groups.first().firstOrNull { it.id == id }?.name }
             if (attempt != previews) {
                 return@launch
             }
@@ -339,6 +344,7 @@ class MainViewModel @Inject constructor(
                     batch,
                     url = url,
                     insecure = SubscriptionAddress.insecure(url),
+                    existing = existing,
                     name = it.name.ifBlank { SubscriptionFetch.suggestName(content.title, url) },
                 )
             }
@@ -390,6 +396,14 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             val parsed = batch.lines.mapNotNull { it.result.server }
             val before = servers.servers.first().map { it.id }.toSet()
+            // Та же подписка уже есть — обновить ее, как «Обновить»: новые — в нее, пропавшие из подписки — удалить (решение 528).
+            val existing = current.url?.let { servers.subscriptionFor(it) }
+            if (existing != null) {
+                val update = servers.applyUpdate(existing, parsed, settings.selectedServerId.first())
+                importState.update { if (it.batch === batch) it.copy(adding = false, added = update.added, duplicates = parsed.size - update.added) else it }
+                return@launch
+            }
+
             // С названием — свой профиль (подписка, если загружено по адресу); без названия — «Мои серверы».
             val result = servers.add(parsed, current.name, current.url)
             if (settings.selectedServerId.first() == null) {

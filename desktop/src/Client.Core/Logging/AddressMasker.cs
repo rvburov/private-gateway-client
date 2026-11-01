@@ -13,7 +13,7 @@ namespace PrivateGateway.Client.Core.Logging;
 public static partial class AddressMasker
 {
     /// <summary>Чем заменяется адрес.</summary>
-    public const string Hidden = "•••";
+    public const string Hidden = "***";
 
     // Расширения файлов, похожие на домены верхнего уровня: geoip.dat, default.go, config.json.
     private static readonly HashSet<string> FileExtensions = new(StringComparer.OrdinalIgnoreCase)

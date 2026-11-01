@@ -1,3 +1,4 @@
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -45,16 +46,34 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
     // ── Режим ────────────────────────────────────────────────────────────────
 
+    /// <summary>Режим VPN — без вопроса: он только усиливает защиту.</summary>
     public bool IsVpnMode
     {
         get => S.Mode == ConnectionMode.Vpn;
-        set => Set(s => s with { Mode = value ? ConnectionMode.Vpn : ConnectionMode.Proxy });
+        set
+        {
+            // Снятие отметки VPN — часть выбора «Только прокси»: тот спрашивает сам (ChooseProxyCommand).
+            if (value)
+            {
+                Set(s => s with { Mode = ConnectionMode.Vpn });
+            }
+        }
     }
 
-    public bool IsProxyMode
+    /// <summary>
+    /// «Только прокси» — после подтверждения (просьба пользователя 2026-11-01, решение 529): переход с VPN ослабляет защиту,
+    /// а случайное нажатие при включенной защите через секунду переподключало бы в режиме прокси. Сегмент сам не
+    /// отмечается (<see cref="Controls.ConfirmRadioButton"/>): до ответа режим остается VPN.
+    /// </summary>
+    public bool IsProxyMode => S.Mode == ConnectionMode.Proxy;
+
+    [RelayCommand]
+    private async Task ChooseProxyAsync()
     {
-        get => S.Mode == ConnectionMode.Proxy;
-        set => Set(s => s with { Mode = value ? ConnectionMode.Proxy : ConnectionMode.Vpn });
+        if (S.Mode != ConnectionMode.Proxy && await SafetyDialogs.ConfirmProxyModeAsync(_overlay).ConfigureAwait(true))
+        {
+            Set(s => s with { Mode = ConnectionMode.Proxy });
+        }
     }
 
     public string ModeNote => IsProxyMode

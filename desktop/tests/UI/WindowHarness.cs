@@ -228,6 +228,12 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Что покажут проверки; по умолчанию — ничего.</summary>
         public IReadOnlyList<DiagnosticResult> Checks { get; set; } = [];
 
+        /// <summary>
+        /// Задан — проверка как у настоящей службы: время проверки приходит в состоянии сразу, а ответ вызова — когда задача
+        /// завершится.
+        /// </summary>
+        public TaskCompletionSource? ChecksReply { get; set; }
+
         /// <summary>Что служба намеряет в «Задержке»; null — не ответила.</summary>
         public DelayBreakdown? Delay { get; set; }
 
@@ -295,8 +301,16 @@ public abstract class WindowHarness : IDisposable
 
         public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new DiagnosticReport(Checks, time.GetUtcNow()));
+        public async Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default)
+        {
+            if (ChecksReply is { } reply)
+            {
+                Raise(Status with { Protection = Status.Protection with { CheckedAt = time.GetUtcNow() } });
+                await reply.Task.ConfigureAwait(true);
+            }
+
+            return new DiagnosticReport(Checks, time.GetUtcNow());
+        }
 
         public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
             Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());

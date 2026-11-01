@@ -245,6 +245,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 // Записанное в хранилище ОС в этой попытке: при сбое база откатится, а их — удалить.
                 var saved = new List<string>();
                 string? groupId = null;
+                string? existing = null;
                 var newRows = new List<Row>();
                 string? select = null;
                 try
@@ -255,7 +256,17 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                             ("$definition", JsonSerializer.Serialize(definition, Json)), ("$id", id));
                     }
 
-                    if (fresh.Count > 0 && !string.IsNullOrWhiteSpace(groupName))
+                    // Та же ссылка подписки или то же название группы без адреса — в существующую группу, а не в новую (решение
+                    // 528): повторно добавленная подписка давала вторую группу с тем же названием.
+                    existing = fresh.Count == 0 || string.IsNullOrWhiteSpace(groupName) ? null
+                        : subscriptionUrl is not null ? ((IServerStore)this).SubscriptionFor(subscriptionUrl)
+                        : Groups.Find(g => g.Address is null && SubscriptionUrl(g.Id) is null
+                            && string.Equals(g.Name.Trim(), groupName.Trim(), StringComparison.OrdinalIgnoreCase))?.Id;
+                    if (existing is not null)
+                    {
+                        groupId = existing;
+                    }
+                    else if (fresh.Count > 0 && !string.IsNullOrWhiteSpace(groupName))
                     {
                         groupId = "sub-" + Guid.NewGuid().ToString("N");
                         if (subscriptionUrl is not null)
@@ -305,7 +316,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 renewed = renewals.Count;
                 _selectedId ??= select;
                 Rows.AddRange(newRows);
-                if (groupId is not null)
+                if (groupId is not null && existing is null)
                 {
                     _subscriptions!.Add(new ServerSubscription(groupId, groupName!.Trim(), now,
                         subscriptionUrl is null ? null : SubscriptionAddress.Mask(subscriptionUrl)));
@@ -899,6 +910,62 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
 
         BackfillAddresses(connection);
+        MergeSameSubscriptions(connection);
+    }
+
+    /// <summary>
+    /// Подписки с одним адресом — одна группа (решение 528). До него повторно добавленная ссылка давала вторую группу с тем же
+    /// названием: серверы поздних групп переходят в самую раннюю, их повторы удаляются (выбранный сервер остается), поздние
+    /// группы и их адреса в хранилище ОС — удаляются. Повторов нет — ничего не пишется.
+    /// </summary>
+    private void MergeSameSubscriptions(SqliteConnection connection)
+    {
+        if (!_secrets.IsAvailable || _subscriptions!.Count < 2)
+        {
+            return;
+        }
+
+        var addressed = _subscriptions.Select(s => (s.Id, Url: SubscriptionUrl(s.Id))).Where(s => s.Url is not null).ToList();
+        var merged = new List<string>();
+        var dropped = new List<Row>();
+        foreach (var (first, firstUrl) in addressed)
+        {
+            if (merged.Contains(first))
+            {
+                continue;
+            }
+
+            foreach (var (later, _) in addressed.SkipWhile(s => s.Id != first).Skip(1).Where(s => !merged.Contains(s.Id) && SubscriptionAddress.Same(firstUrl!, s.Url!)))
+            {
+                var keys = _rows!.Where(r => r.Profile.SubscriptionId == first).Select(r => r.Endpoint + "|" + _secrets.Read(SecretKey(r.Profile.Id))).ToHashSet(StringComparer.Ordinal);
+                using var transaction = connection.BeginTransaction();
+                foreach (var row in _rows!.Where(r => r.Profile.SubscriptionId == later).ToList())
+                {
+                    if (row.Profile.Id != _selectedId && keys.Contains(row.Endpoint + "|" + _secrets.Read(SecretKey(row.Profile.Id))))
+                    {
+                        Run(connection, transaction, "DELETE FROM servers WHERE id = $id", ("$id", row.Profile.Id));
+                        dropped.Add(row);
+                    }
+                }
+
+                Run(connection, transaction, "UPDATE servers SET subscription_id = $first WHERE subscription_id = $later", ("$first", first), ("$later", later));
+                Run(connection, transaction, "DELETE FROM subscriptions WHERE id = $id", ("$id", later));
+                transaction.Commit();
+                merged.Add(later);
+                _rows!.RemoveAll(dropped.Contains);
+                for (var i = 0; i < _rows.Count; i++)
+                {
+                    if (_rows[i].Profile.SubscriptionId == later)
+                    {
+                        _rows[i] = _rows[i] with { Profile = _rows[i].Profile with { SubscriptionId = first } };
+                    }
+                }
+            }
+        }
+
+        _subscriptions.RemoveAll(s => merged.Contains(s.Id));
+        merged.ForEach(id => _secrets.Delete(SubscriptionKey(id)));
+        dropped.ForEach(row => _secrets.Delete(SecretKey(row.Profile.Id)));
     }
 
     /// <summary>

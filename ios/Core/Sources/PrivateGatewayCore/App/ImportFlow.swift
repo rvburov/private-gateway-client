@@ -47,6 +47,12 @@ public enum ImportFlow {
     @discardableResult
     public static func add(_ batch: ImportBatch, name: String, url: URLComponents?, servers: ServerStore, settings: SettingsStore) async throws -> AddResult {
         let parsed = batch.lines.compactMap(\.result.server)
+        // Та же подписка уже есть — обновить ее, как «Обновить»: новые — в нее, пропавшие из подписки — удалить (решение 528).
+        if let url, let existing = try await servers.subscriptionFor(url) {
+            let update = try await servers.applyUpdate(existing, incoming: parsed, selectedId: try await settings.load().selectedServerId)
+            return AddResult(added: update.added, duplicates: parsed.count - update.added)
+        }
+
         let before = Set(try await servers.servers().map(\.id))
         let result = try await servers.add(parsed, group: name, url: url)
         if try await settings.load().selectedServerId == nil, let first = try await servers.servers().first(where: { !before.contains($0.id) }) {

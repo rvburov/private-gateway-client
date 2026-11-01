@@ -139,6 +139,47 @@ public sealed class TrayTests : WindowHarness
         Png(on).ShouldNotBe(Png(off));
     }
 
+    [AvaloniaTheory]
+    [InlineData(Tone.Connecting)]
+    [InlineData(Tone.Reconnecting)]
+    public void Connecting_icon_is_the_saturated_blue_of_the_spinner_and_not_the_pale_ring(Tone tone)
+    {
+        var (_, _) = Open();
+
+        // Просьба пользователя 2026-11-01: бледно-голубой щит на панели задач почти не виден.
+        using var icon = TrayIconRenderer.Render(tone, "Icon.Mark.Ok");
+        var color = Center(icon);
+
+        color.ShouldBe(Theme($"PgBrush.State.{tone}.Spinner"),
+            "щит — синим индикатора подключения");
+        color.ShouldNotBe(Theme($"PgBrush.State.{tone}.Ring"));
+        TrayIconRenderer.Brush(Tone.Blocked).ShouldBe("PgBrush.State.Blocked.Ring", "остальные цвета — прежние");
+    }
+
+    private static Avalonia.Media.Color Theme(string key) =>
+        Avalonia.Application.Current!.TryGetResource(key, null, out var brush) && brush is Avalonia.Media.ISolidColorBrush solid
+            ? solid.Color
+            : throw new InvalidOperationException("нет цвета темы " + key);
+
+    /// <summary>Цвет щита чуть ниже центра — между белыми линиями знака.</summary>
+    private static Avalonia.Media.Color Center(Avalonia.Media.Imaging.Bitmap bitmap)
+    {
+        var pixels = new byte[64 * 64 * 4];
+        var buffer = System.Runtime.InteropServices.Marshal.AllocHGlobal(pixels.Length);
+        try
+        {
+            bitmap.CopyPixels(new Avalonia.PixelRect(0, 0, 64, 64), buffer, pixels.Length, 64 * 4);
+            System.Runtime.InteropServices.Marshal.Copy(buffer, pixels, 0, pixels.Length);
+        }
+        finally
+        {
+            System.Runtime.InteropServices.Marshal.FreeHGlobal(buffer);
+        }
+
+        var at = ((14 * 64) + 32) * 4;
+        return Avalonia.Media.Color.FromArgb(pixels[at + 3], pixels[at + 2], pixels[at + 1], pixels[at]);
+    }
+
     [AvaloniaFact]
     public void Autostart_shows_only_the_tray_icon_after_the_first_launch()
     {

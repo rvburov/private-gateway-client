@@ -1,7 +1,9 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -10,6 +12,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI;
+using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
@@ -92,11 +95,46 @@ public sealed class SettingsPageTests : IDisposable
     }
 
     [AvaloniaFact]
+    public void Switching_from_vpn_to_proxy_asks_first_and_keeps_vpn_by_default()
+    {
+        // Просьба пользователя 2026-11-01: случайное нажатие «Только прокси» не должно ослабить защиту.
+        var (window, page) = OpenSettings();
+        var overlay = ((ShellViewModel)window.DataContext!).Overlay;
+        var proxy = window.GetVisualDescendants().OfType<ConfirmRadioButton>().Single(r => r.Name == "ProxyMode");
+
+        Press(window, proxy);
+
+        var dialog = overlay.Dialog.ShouldNotBeNull();
+        (dialog.Title, dialog.PrimaryText, dialog.SecondaryText).ShouldBe(("Перейти в режим прокси?", "Оставить VPN", "Перейти на прокси"));
+        dialog.IsSecondaryDanger.ShouldBeTrue();
+        dialog.Text.ShouldContain("блок при обрыве работать не будет");
+        (page.IsVpnMode, page.IsProxyMode, proxy.IsChecked).ShouldBe((true, false, false), "до ответа режим прежний и переключатель стоит на VPN");
+        Build().GetRequiredService<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Vpn);
+
+        overlay.DismissCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.IsVpnMode.ShouldBeTrue("Escape и щелчок мимо — остаться на VPN");
+        Build().GetRequiredService<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Vpn);
+
+        Press(window, proxy);
+        overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        (page.IsProxyMode, proxy.IsChecked).ShouldBe((true, true));
+        page.IsVpnMode = true;
+        Dispatcher.UIThread.RunJobs();
+        (page.IsVpnMode, overlay.Dialog).ShouldBe((true, null), "обратно на VPN — без вопроса");
+    }
+
+    [AvaloniaFact]
     public void Proxy_mode_disables_kill_switch_and_explains_why()
     {
         var (window, page) = OpenSettings();
 
-        page.IsProxyMode = true;
+        page.ChooseProxyCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        ((ShellViewModel)window.DataContext!).Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
 
         page.CanKillSwitch.ShouldBeFalse();
@@ -160,5 +198,18 @@ public sealed class SettingsPageTests : IDisposable
     {
         Dispatcher.UIThread.RunJobs();
         window.CaptureRenderedFrame()?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+    }
+
+    /// <summary>Нажатие мышью, как у пользователя: сегмент — в видимой части страницы.</summary>
+    private static void Press(Window window, Control control)
+    {
+        var scroll = control.FindAncestorOfType<ScrollViewer>()!;
+        var top = control.TranslatePoint(default, (Visual)scroll.Content!)!.Value.Y;
+        scroll.Offset = new Vector(0, Math.Max(0, top - 120));
+        Dispatcher.UIThread.RunJobs();
+        var center = control.TranslatePoint(new Point(control.Bounds.Width / 2, control.Bounds.Height / 2), window)!.Value;
+        window.MouseDown(center, MouseButton.Left);
+        window.MouseUp(center, MouseButton.Left);
+        Dispatcher.UIThread.RunJobs();
     }
 }

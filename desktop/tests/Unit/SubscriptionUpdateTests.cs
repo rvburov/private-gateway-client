@@ -150,7 +150,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
         var subscription = Catalog().Subscriptions.ShouldHaveSingleItem();
         subscription.Name.ShouldBe("Резервная");
-        subscription.Address.ShouldBe("https://other.example.org/clash/••••");
+        subscription.Address.ShouldBe("https://other.example.org/clash/****");
         subscription.LastFailure.ShouldBeNull("новый адрес — прошлая ошибка к нему не относится");
         catalog.SubscriptionUrl(id).ShouldBe(newUrl);
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
@@ -201,7 +201,95 @@ public sealed class SubscriptionUpdateTests : IDisposable
             command.ExecuteNonQuery();
         }
 
-        Catalog().Subscriptions.Single().Address.ShouldBe("https://sub.example.com/sub/••••");
+        Catalog().Subscriptions.Single().Address.ShouldBe("https://sub.example.com/sub/****");
+    }
+
+    [Theory]
+    [InlineData("https://sub.example.com/sub/fake-token-1", true)]
+    [InlineData("HTTPS://SUB.example.com:443/sub/fake-token-1/", true)]
+    [InlineData("https://sub.example.com/sub/FAKE-token-1", false)]
+    [InlineData("https://sub.example.com/sub/fake-token-2", false)]
+    [InlineData("https://sub.example.com/sub/fake-token-1?device=2", false)]
+    public void Same_subscription_is_the_whole_address_with_its_token(string other, bool same) =>
+        SubscriptionAddress.Same(new Uri("https://sub.example.com/sub/fake-token-1"), new Uri(other)).ShouldBe(same);
+
+    [Fact]
+    public void The_same_subscription_added_again_goes_into_its_group()
+    {
+        // У пользователя 2026-11-01: подписку добавили второй раз, когда на сервере появился новый профиль, — новый сервер
+        // попал во вторую группу с тем же названием (решение 528).
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443#A", "trojan://pw-b@198.51.100.2:443#B"), "Основная (2)",
+            new Uri("https://SUB.example.com/sub/fake-token-1/"));
+
+        catalog.Subscriptions.Select(s => s.Id).ShouldBe([id], "та же ссылка — та же группа");
+        catalog.Servers.Select(s => (s.Name, s.SubscriptionId)).ShouldBe([("A", id), ("B", id)]);
+        ((IServerStore)catalog).SubscriptionFor(Url).ShouldBe(id);
+
+        catalog.Add(Parse("trojan://pw-c@198.51.100.3:443#C"), "Основная", new Uri("https://sub.example.com/sub/fake-token-2"));
+        catalog.Subscriptions.Count.ShouldBe(2, "другой токен — другая подписка, даже с тем же названием");
+    }
+
+    [Fact]
+    public void A_named_group_without_address_takes_links_with_the_same_name()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443#A"), "Мои");
+
+        catalog.Add(Parse("trojan://pw-b@198.51.100.2:443#B"), " мои ");
+
+        catalog.Subscriptions.ShouldHaveSingleItem().Name.ShouldBe("Мои");
+        catalog.Servers.Select(s => s.SubscriptionId).Distinct().ShouldHaveSingleItem();
+    }
+
+    [Fact]
+    public void Groups_of_the_same_subscription_created_before_are_merged_once()
+    {
+        // Две группы одной подписки, как у пользователя: создаются с разными адресами, затем адрес второй — тот же.
+        var catalog = Catalog();
+        var first = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        catalog.Add(Parse("trojan://pw-b@198.51.100.2:443#B"), "Основная", new Uri("https://sub.example.com/sub/fake-token-9"));
+        var second = catalog.Subscriptions.Single(s => s.Id != first).Id;
+        var a = ServerId(catalog, "A");
+        using (var connection = new SqliteDatabase(_paths).Open())
+        using (var command = connection.CreateCommand())
+        {
+            // Повтор сервера A во второй группе — он уйдет, B перейдет в первую.
+            command.CommandText = "INSERT INTO servers (id, subscription_id, position, definition, created_at) "
+                + "SELECT 'srv-copy', $second, position + 100, definition, created_at FROM servers WHERE id = $a";
+            command.Parameters.AddWithValue("$second", second);
+            command.Parameters.AddWithValue("$a", a);
+            command.ExecuteNonQuery();
+        }
+
+        _secrets.Values["server:srv-copy"] = _secrets.Values["server:" + a];
+        _secrets.Values["subscription:" + second] = Url.ToString();
+
+        var merged = Catalog();
+
+        merged.Subscriptions.Select(s => s.Id).ShouldBe([first]);
+        merged.Servers.Select(s => (s.Name, s.SubscriptionId)).OrderBy(s => s.Name).ShouldBe([("A", first), ("B", first)]);
+        _secrets.Values.ShouldNotContainKey("subscription:" + second);
+        _secrets.Values.ShouldNotContainKey("server:srv-copy");
+        Catalog().Subscriptions.Count.ShouldBe(1, "один раз: дальше повторов нет");
+    }
+
+    [Fact]
+    public void Address_saved_with_dots_is_rewritten_with_asterisks_once()
+    {
+        // Просьба пользователя 2026-11-01: скрытое — звездочками; адреса, сохраненные раньше, миграция 5 переписывает.
+        var catalog = Catalog();
+        Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        using (var connection = new SqliteDatabase(_paths).Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE subscriptions SET address = 'https://sub.example.com/sub/\u2022\u2022\u2022\u2022'; PRAGMA user_version = 4;";
+            command.ExecuteNonQuery();
+        }
+
+        Catalog().Subscriptions.Single().Address.ShouldBe("https://sub.example.com/sub/****");
     }
 
     // ── Обновитель: когда и как ──────────────────────────────────────────────
@@ -422,15 +510,15 @@ public sealed class SubscriptionUpdateTests : IDisposable
     // ── Подпись адреса ───────────────────────────────────────────────────────
 
     [Theory]
-    [InlineData("https://example.com/sub/0123456789abcdef", "https://example.com/sub/••••")]
-    [InlineData("https://example.org/clash/abc?token=1", "https://example.org/clash/••••")]
-    [InlineData("https://sub.example.com/api/v1/client/subscribe?token=fake", "https://sub.example.com/api/••••")]
-    [InlineData("https://example.com/AbCdEf0123456789xyz/clash", "https://example.com/••••")]
-    [InlineData("https://example.com/0123456789abcdef", "https://example.com/••••")]
-    [InlineData("https://example.com/AbCdEfGhIjKlMnOpQr/clash", "https://example.com/••••")]
-    [InlineData("https://example.com/?token=fake", "https://example.com/••••")]
+    [InlineData("https://example.com/sub/0123456789abcdef", "https://example.com/sub/****")]
+    [InlineData("https://example.org/clash/abc?token=1", "https://example.org/clash/****")]
+    [InlineData("https://sub.example.com/api/v1/client/subscribe?token=fake", "https://sub.example.com/api/****")]
+    [InlineData("https://example.com/AbCdEf0123456789xyz/clash", "https://example.com/****")]
+    [InlineData("https://example.com/0123456789abcdef", "https://example.com/****")]
+    [InlineData("https://example.com/AbCdEfGhIjKlMnOpQr/clash", "https://example.com/****")]
+    [InlineData("https://example.com/?token=fake", "https://example.com/****")]
     [InlineData("https://user:pass@example.com:8443/sub", "https://example.com:8443/sub")]
-    [InlineData("http://203.0.113.5:2096/sub/fake-id", "http://203.0.113.5:2096/sub/••••")]
+    [InlineData("http://203.0.113.5:2096/sub/fake-id", "http://203.0.113.5:2096/sub/****")]
     [InlineData("https://example.com", "https://example.com")]
     public void Address_shows_where_but_never_the_token(string url, string expected)
     {

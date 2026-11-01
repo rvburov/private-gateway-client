@@ -228,7 +228,10 @@
             <Border Classes="notice" IsVisible="{Binding IsInsecure}">
               <TextBlock x:Name="InsecureWarning" Text="{l:L import.insecure}" />
             </Border>
-            <StackPanel Spacing="6">
+            <Border Classes="notice" IsVisible="{Binding HasExistingSubscription}">
+              <TextBlock x:Name="ExistingSubscription" Text="{Binding ExistingSubscriptionText}" TextWrapping="Wrap" />
+            </Border>
+            <StackPanel Spacing="6" IsVisible="{Binding !HasExistingSubscription}">
               <TextBlock Classes="small" Text="{l:L import.name}" FontWeight="SemiBold"
                          Foreground="{StaticResource PgBrush.Text.Secondary}" />
               <TextBox x:Name="ProfileName" Classes="input" Text="{Binding ProfileName}" MaxLength="64"

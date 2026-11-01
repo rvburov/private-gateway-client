@@ -180,7 +180,17 @@ struct ImportView: View {
                     .accessibilityIdentifier("import.insecure")
             }
 
-            if model.added == nil, good > 0 {
+            if let existing = model.existing, model.added == nil {
+                // Та же подписка уже добавлена: «Добавить» обновит ее, а не создаст вторую группу (решение 528).
+                Text(texts.importSubscriptionExists(existing))
+                    .pgText(PgType.small)
+                    .foregroundStyle(Color(PgColor.Text.secondary))
+                    .padding(PgSpace.m)
+                    .background(RoundedRectangle(cornerRadius: PgRadius.button, style: .continuous).fill(Color(PgColor.Accent.tint)))
+                    .accessibilityIdentifier("import.existing")
+            }
+
+            if model.added == nil, good > 0, model.existing == nil {
                 Text(texts.importName).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
                 PgField(placeholder: texts.importNamePlaceholder, text: $model.name, identifier: "import.name")
             }

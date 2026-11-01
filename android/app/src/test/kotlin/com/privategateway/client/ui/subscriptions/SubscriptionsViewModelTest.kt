@@ -128,7 +128,7 @@ class SubscriptionsViewModelTest {
         val item = model.ui.value.groups.single()
         assertTrue(model.edit(item, " Новое ", "https://example.org/new/cccc3333dddd4444"))
         val edited = wait { servers.groups.first { list -> list.single().name == "Новое" } }.single()
-        assertEquals("https://example.org/new/••••", edited.maskedUrl)
+        assertEquals("https://example.org/new/****", edited.maskedUrl)
         assertEquals(id, edited.id)
         // Проверка загрузкой сразу — без защиты ее не будет, и окно это скажет.
         assertEquals(R.string.subs_blocked_off, waitMessage().text)

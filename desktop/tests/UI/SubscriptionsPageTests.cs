@@ -36,9 +36,9 @@ public sealed class SubscriptionsPageTests : WindowHarness
         Text(window, "SectionTitle").ShouldBe("ПОДПИСКИ · 4");
         page.Cards.Select(c => (c.Name, c.Address, c.HealthText, c.Meta)).ShouldBe(
         [
-            ("Резервная", "https://example.org/clash/••••", "Работает", "1 сервер · обновлено вчера"),
-            ("Основная", "https://example.com/sub/••••", "Работает", "2 сервера · обновлено в 15:42"),
-            ("Тестовый стенд", "https://sub.example.net/test/••••", "Ошибка", "1 сервер · последняя попытка 2 ч назад"),
+            ("Резервная", "https://example.org/clash/****", "Работает", "1 сервер · обновлено вчера"),
+            ("Основная", "https://example.com/sub/****", "Работает", "2 сервера · обновлено в 15:42"),
+            ("Тестовый стенд", "https://sub.example.net/test/****", "Ошибка", "1 сервер · последняя попытка 2 ч назад"),
             ("Мои серверы", "добавлены вручную по ссылкам", "Вручную", "1 сервер"),
         ]);
         page.Cards[2].Error.ShouldBe("Сервер ответил 403 — доступ запрещен, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.");
@@ -120,7 +120,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         var edit = shell.Overlay.Sheet.ShouldBeOfType<SubscriptionEditViewModel>();
         Text(window, "EditTitle").ShouldBe("Изменить «Основная»");
-        Find<TextBox>(window, "EditUrl").PlaceholderText.ShouldBe("https://example.com/sub/••••");
+        Find<TextBox>(window, "EditUrl").PlaceholderText.ShouldBe("https://example.com/sub/****");
 
         edit.Name = "  Главная ";
         edit.Url = "ftp://example.com/sub";
@@ -134,7 +134,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
 
         shell.Overlay.HasSheet.ShouldBeFalse();
         var card = page.Cards.Single(c => c.Name == "Главная");
-        card.Address.ShouldBe("https://example.com/sub/••••");
+        card.Address.ShouldBe("https://example.com/sub/****");
         Secrets.Values.Values.ShouldContain("https://example.com/sub/fake-token-new");
         shell.Toast.Text.ShouldStartWith("Службы VPN еще нет", customMessage: "новый адрес сразу проверяется — но только через VPN");
     }

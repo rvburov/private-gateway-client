@@ -131,7 +131,7 @@ public actor ServerStore {
         let state = try read()
         return state.subscriptions.sorted { $0.position < $1.position }.map { record in
             GroupItem(
-                id: record.id, name: record.name, maskedUrl: record.maskedUrl, servers: state.servers.filter { $0.subscriptionId == record.id }.count,
+                id: record.id, name: record.name, maskedUrl: record.maskedUrl.map(SubscriptionAddress.shown), servers: state.servers.filter { $0.subscriptionId == record.id }.count,
                 updatedAt: record.updatedAt, lastAttemptAt: record.lastAttemptAt, failure: DownloadFailure.parse(record.lastFailure), status: record.lastStatus
             )
         }
@@ -199,7 +199,17 @@ public actor ServerStore {
 
         var position = state.servers.map(\.position).max() ?? -1
         let now = clock()
-        let groupId = named.map { _ in newId() }
+        // Та же ссылка подписки или то же название профиля без адреса — в существующую группу, а не во вторую (решение 528).
+        let existing: String?
+        if named == nil {
+            existing = nil
+        } else if let url {
+            existing = try findSubscription(url, in: state)
+        } else {
+            existing = state.subscriptions.first { $0.maskedUrl == nil && $0.name.trimmingCharacters(in: .whitespaces).lowercased() == named?.lowercased() }?.id
+        }
+
+        let groupId = existing ?? named.map { _ in newId() }
         var fresh: [(ServerRecord, ServerDefinition)] = []
         var renewed: [String: ServerDefinition] = [:]
         var duplicates = 0
@@ -230,7 +240,7 @@ public actor ServerStore {
             try vault.store(LinkWriter.write(server), for: Self.serverKey(record.id))
         }
 
-        if let named, let groupId {
+        if let named, let groupId, existing == nil {
             let address = url.map { SubscriptionAddress.mask($0) }
             if let url, let text = url.string {
                 try vault.store(text, for: Self.subscriptionKey(groupId))
@@ -247,6 +257,55 @@ public actor ServerStore {
         state.servers += fresh.map { $0.0 }
         try write(state)
         return AddResult(added: fresh.count, duplicates: duplicates)
+    }
+
+    /// Подписка с этим адресом уже добавлена (`SubscriptionAddress.same`) — ее id; нет — nil (решение 528).
+    public func subscriptionFor(_ url: URLComponents) throws -> String? {
+        try findSubscription(url, in: read())
+    }
+
+    private func findSubscription(_ url: URLComponents, in state: StoredState) throws -> String? {
+        try state.subscriptions.first { record in
+            try subscriptionUrl(record.id).map { SubscriptionAddress.same($0, url) } ?? false
+        }?.id
+    }
+
+    /// Подписки с одним адресом — одна группа (решение 528). До него повторно добавленная ссылка давала вторую группу: ее
+    /// серверы переходят в самую раннюю, повторы удаляются (выбранный `selectedId` остается), поздние группы удаляются.
+    public func mergeSameSubscriptions(selectedId: String?) throws {
+        var state = try read()
+        let addressed = try state.subscriptions.compactMap { record in try subscriptionUrl(record.id).map { (record.id, $0) } }
+        var merged = Set<String>()
+        var dropped: [String] = []
+        for (index, (first, firstUrl)) in addressed.enumerated() where !merged.contains(first) {
+            for (later, laterUrl) in addressed.dropFirst(index + 1) where !merged.contains(later) && SubscriptionAddress.same(firstUrl, laterUrl) {
+                let keys = Set(try state.servers.filter { $0.subscriptionId == first }.compactMap { try open($0).map(ServerKeys.key) })
+                for (position, record) in state.servers.enumerated() where record.subscriptionId == later {
+                    if record.id != selectedId, let server = try open(record), keys.contains(ServerKeys.key(server)) {
+                        dropped.append(record.id)
+                    } else {
+                        state.servers[position].subscriptionId = first
+                    }
+                }
+
+                merged.insert(later)
+            }
+        }
+
+        guard !merged.isEmpty else {
+            return
+        }
+
+        state.servers.removeAll { dropped.contains($0.id) }
+        state.subscriptions.removeAll { merged.contains($0.id) }
+        try write(state)
+        for id in dropped {
+            try vault.remove(Self.serverKey(id))
+        }
+
+        for id in merged {
+            try vault.remove(Self.subscriptionKey(id))
+        }
     }
 
     public func delete(_ id: String) throws {

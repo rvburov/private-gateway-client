@@ -21,6 +21,19 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.ksOff.drop"])
         { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
+    /// <summary>Переход с VPN на «Только прокси»: мимо сервера пойдет все, что не берет системный прокси, блока при обрыве нет.</summary>
+    /// <returns>true — пользователь выбрал «Перейти на прокси».</returns>
+    public static async Task<bool> ConfirmProxyModeAsync(OverlayViewModel overlay) =>
+        await overlay.AskAsync(new DialogViewModel(
+            DialogKind.Warning,
+            "Icon.Shield",
+            "Icon.Mark.Alert",
+            Loc.Instance["dialog.proxyMode.title"],
+            Loc.Instance["dialog.proxyMode.text"],
+            Loc.Instance["dialog.proxyMode.keep"],
+            Loc.Instance["dialog.proxyMode.switch"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+
     /// <param name="overlay">Слой диалогов.</param>
     /// <param name="strict">«Блокировка» строгого режима: после паузы сеть снова закроется, а не вернется VPN.</param>
     /// <returns>true — пользователь выбрал «Открыть на 5 минут».</returns>

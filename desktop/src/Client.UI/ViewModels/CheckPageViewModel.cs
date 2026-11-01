@@ -24,7 +24,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
     /// <summary>Сколько последних записей журнала показывать на экране и в отчете.</summary>
     public const int JournalShown = 50;
 
-    private const string Hidden = "•••";
+    private const string Hidden = "***";
 
     private readonly IGatewayClient _gateway;
     private readonly IServerCatalog _catalog;

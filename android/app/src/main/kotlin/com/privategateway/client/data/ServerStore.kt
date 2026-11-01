@@ -48,7 +48,7 @@ data class ServerEntity(
 /**
  * Группа серверов: подписка с адресом или профиль без него (тогда [maskedUrl] и [sealedUrl] — null и группа не
  * обновляется). Адрес подписки — секрет (в нем токен доступа): целиком он только запечатан, открыто — маска
- * («https://example.com/sub/••••»). Последняя неудача — причина ([lastFailure], имя DownloadFailure) и код ответа.
+ * («https://example.com/sub/» и скрытая часть «****»). Последняя неудача — причина ([lastFailure], имя DownloadFailure) и код ответа.
  */
 @Entity(tableName = "subscriptions")
 data class SubscriptionEntity(
@@ -101,6 +101,10 @@ interface ServerDao {
 
     @Query("DELETE FROM servers WHERE subscriptionId = :group")
     suspend fun deleteGroup(group: String)
+
+    /** Перенести сервер в другую группу — объединение групп одной подписки (решение 528). */
+    @Query("UPDATE servers SET subscriptionId = :group WHERE id = :id")
+    suspend fun moveTo(id: String, group: String)
 
     @Query("DELETE FROM servers WHERE subscriptionId IS NULL")
     suspend fun deleteManual()

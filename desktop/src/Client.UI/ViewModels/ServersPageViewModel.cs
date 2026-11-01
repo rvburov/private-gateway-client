@@ -170,7 +170,8 @@ public sealed partial class ServersPageViewModel : ObservableObject
 
     // ── Команды ──────────────────────────────────────────────────────────────
 
-    [RelayCommand]
+    // Кнопка не становится недоступной: крутится только стрелка, повтор во время обновления отсекает IsRefreshing.
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RefreshAsync()
     {
         if (IsRefreshing)

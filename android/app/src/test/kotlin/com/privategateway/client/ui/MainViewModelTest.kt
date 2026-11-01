@@ -263,7 +263,7 @@ class MainViewModelTest {
         wait { model.importing.first { it.added != null } }
         val group = wait { servers.groups.first { it.isNotEmpty() } }.single()
         assertEquals("Провайдер", group.name)
-        assertEquals("https://example.com/sub/••••", group.maskedUrl)
+        assertEquals("https://example.com/sub/****", group.maskedUrl)
         assertEquals(2, group.servers)
     }
 

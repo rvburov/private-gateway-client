@@ -8,7 +8,7 @@ namespace PrivateGateway.Client.Core.Servers;
 /// <param name="Name">Название, которое дал пользователь при добавлении.</param>
 /// <param name="UpdatedAt">Когда список последний раз обновился; null — еще не обновлялся.</param>
 /// <param name="Address">
-/// Адрес подписки без секретной части для подписи («https://example.com/sub/••••»); null — адреса
+/// Адрес подписки без секретной части для подписи («https://example.com/sub/****»); null — адреса
 /// нет, группа не обновляется. Сам адрес — только в хранилище секретов ОС.
 /// </param>
 /// <param name="LastAttemptAt">Когда последний раз пробовали обновить; null — не пробовали.</param>

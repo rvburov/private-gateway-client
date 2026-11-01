@@ -19,7 +19,8 @@
             <Border Classes="segments">
               <UniformGrid Columns="2">
                 <RadioButton Classes="segment" GroupName="mode" IsChecked="{Binding IsVpnMode}" Content="{l:L settings.mode.vpn}" />
-                <RadioButton Classes="segment" GroupName="mode" IsChecked="{Binding IsProxyMode}" Content="{l:L settings.mode.proxy}" />
+                <c:ConfirmRadioButton x:Name="ProxyMode" Classes="segment" GroupName="mode" IsChecked="{Binding IsProxyMode, Mode=OneWay}"
+                                     Command="{Binding ChooseProxyCommand}" Content="{l:L settings.mode.proxy}" />
               </UniformGrid>
             </Border>
             <TextBlock Classes="caption" Text="{Binding ModeNote}" TextWrapping="Wrap" />

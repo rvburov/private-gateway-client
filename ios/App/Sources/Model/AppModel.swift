@@ -73,6 +73,8 @@ final class AppModel: ObservableObject {
         Notifications.register(texts)
         AppNotifications.shared.attach(self)
         await tunnel.load()
+        // Группы одной подписки, созданные до решения 528 повторным добавлением ссылки, — одна группа.
+        try? await container.servers.mergeSameSubscriptions(selectedId: try? await container.settings.load().selectedServerId)
         await reload()
     }
 

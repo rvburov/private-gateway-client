@@ -293,7 +293,7 @@ public sealed class CheckPageTests : WindowHarness
         var report = Files.Text.ShouldNotBeNull();
         report.ShouldContain("Отчет проверки Private Gateway Client 0.1");
         report.ShouldContain("Состояние: Выключено");
-        report.ShouldContain("[Виден] IP для сайтов — ••• — ваш реальный IP");
+        report.ShouldContain("[Виден] IP для сайтов — *** — ваш реальный IP");
         report.ShouldNotContain("198.51.100.7", customMessage: "реальный IP пользователя в отчет не попадает");
         report.ShouldNotContain("Home", customMessage: "имя Wi-Fi в отчет не попадает");
         report.ShouldContain("service started  ipc=ok");

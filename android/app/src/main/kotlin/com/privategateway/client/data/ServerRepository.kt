@@ -81,7 +81,8 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
 
     /**
      * Добавить серверы; с названием группы — новой группой (подпиской, если есть [url], иначе профилем), без названия — в
-     * «Мои серверы» (как у десктопа: адрес без названия не хранится).
+     * «Мои серверы» (как у десктопа: адрес без названия не хранится). Та же ссылка подписки или то же название профиля без
+     * адреса — в существующую группу, а не во вторую с тем же названием (решение 528).
      */
     suspend fun add(servers: List<ServerDefinition>, group: String? = null, url: URI? = null): AddResult =
         withContext(Dispatchers.IO) { writes.withLock { insert(servers, group?.trim()?.takeIf { it.isNotEmpty() }, url) } }
@@ -102,7 +103,12 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
 
         var position = dao.lastPosition()
         val now = System.currentTimeMillis()
-        val groupId = group?.let { UUID.randomUUID().toString() }
+        val existing = when {
+            group == null -> null
+            url != null -> findSubscription(url)
+            else -> subscriptions.all().firstOrNull { it.sealedUrl == null && it.name.trim().equals(group, ignoreCase = true) }?.id
+        }
+        val groupId = existing ?: group?.let { UUID.randomUUID().toString() }
         val fresh = ArrayList<ServerEntity>()
         val renewed = LinkedHashMap<String, ByteArray>()
         var duplicates = 0
@@ -122,7 +128,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
             fresh.add(entity(server, ++position, now, groupId))
         }
 
-        val subscription = if (group != null && groupId != null) {
+        val subscription = if (group != null && groupId != null && existing == null) {
             SubscriptionEntity(
                 id = groupId,
                 name = group,
@@ -151,6 +157,59 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     suspend fun load(id: String): ServerDefinition? = withContext(Dispatchers.IO) { dao.byId(id)?.let { open(it) } }
 
     suspend fun delete(id: String) = withContext(Dispatchers.IO) { writes.withLock { dao.delete(id) } }
+
+    /** Подписка с этим адресом уже добавлена ([SubscriptionAddress.same]) — ее id; нет — null (решение 528). */
+    suspend fun subscriptionFor(url: URI): String? = withContext(Dispatchers.IO) { findSubscription(url) }
+
+    private suspend fun findSubscription(url: URI): String? =
+        subscriptions.all().firstOrNull { it.sealedUrl != null && openUrl(it.sealedUrl)?.let { known -> SubscriptionAddress.same(known, url) } == true }?.id
+
+    private fun openUrl(sealed: ByteArray): URI? = try {
+        URI(String(box.open(sealed), Charsets.UTF_8))
+    } catch (_: Exception) {
+        null
+    }
+
+    /**
+     * Подписки с одним адресом — одна группа (решение 528). До него повторно добавленная ссылка давала вторую группу: ее
+     * серверы переходят в самую раннюю, повторы удаляются (выбранный [selectedId] остается), поздние группы удаляются.
+     * Повторов нет — ничего не пишется.
+     */
+    suspend fun mergeSameSubscriptions(selectedId: String?) = withContext(Dispatchers.IO) {
+        writes.withLock {
+            val addressed = subscriptions.all().mapNotNull { s -> s.sealedUrl?.let { openUrl(it) }?.let { s to it } }
+            val merged = HashSet<String>()
+            for ((index, pair) in addressed.withIndex()) {
+                val (first, firstUrl) = pair
+                if (first.id in merged) {
+                    continue
+                }
+
+                for ((later, laterUrl) in addressed.drop(index + 1)) {
+                    if (later.id in merged || !SubscriptionAddress.same(firstUrl, laterUrl)) {
+                        continue
+                    }
+
+                    val all = dao.all()
+                    val keys = all.filter { it.subscriptionId == first.id }.mapNotNull { open(it)?.let(ServerKeys::key) }.toHashSet()
+                    database.withTransaction {
+                        for (entity in all.filter { it.subscriptionId == later.id }) {
+                            val key = open(entity)?.let(ServerKeys::key)
+                            if (entity.id != selectedId && key != null && key in keys) {
+                                dao.delete(entity.id)
+                            } else {
+                                dao.moveTo(entity.id, first.id)
+                            }
+                        }
+
+                        subscriptions.delete(later.id)
+                    }
+
+                    merged.add(later.id)
+                }
+            }
+        }
+    }
 
     /** Полный адрес подписки — для загрузки; не открылся (ключ Keystore утерян) или группа — профиль без адреса: null. */
     suspend fun subscriptionUrl(id: String): URI? = withContext(Dispatchers.IO) {
@@ -358,7 +417,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     private fun group(row: SubscriptionWithCount) = GroupItem(
         id = row.subscription.id,
         name = row.subscription.name,
-        maskedUrl = row.subscription.maskedUrl,
+        maskedUrl = row.subscription.maskedUrl?.let { SubscriptionAddress.shown(it) },
         servers = row.servers,
         updatedAt = row.subscription.updatedAt,
         lastAttemptAt = row.subscription.lastAttemptAt,

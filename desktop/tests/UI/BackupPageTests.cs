@@ -39,7 +39,7 @@ public sealed class BackupPageTests : WindowHarness
         Find<Border>(window, "KeysWarning").IsVisible.ShouldBeFalse();
         Text(window, "AutoCopyText").ShouldBe("Появится перед первым восстановлением");
         Find<Button>(window, "RestoreAutoCopyButton").IsVisible.ShouldBeFalse();
-        Find<TextBox>(window, "SavePassword").PasswordChar.ShouldBe('•');
+        Find<TextBox>(window, "SavePassword").PasswordChar.ShouldBe('*', "пароль скрыт звездочками (просьба пользователя 2026-11-01)");
         page.Password = "секретный пароль";
         Snapshot(window, "backup");
     }

@@ -115,6 +115,17 @@ public sealed partial class ImportPageViewModel : ObservableObject
     [ObservableProperty]
     public partial bool IsInsecure { get; private set; }
 
+    /// <summary>
+    /// Эта подписка (тот же адрес) уже добавлена — ее название: «Добавить» обновит ее, а не создаст вторую группу (решение 528).
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasExistingSubscription), nameof(ExistingSubscriptionText))]
+    public partial string? ExistingSubscription { get; private set; }
+
+    public bool HasExistingSubscription => ExistingSubscription is not null;
+
+    public string? ExistingSubscriptionText => ExistingSubscription is { } name ? Loc.Instance.Format("import.subscription.exists", name) : null;
+
     // ── Предпросмотр ─────────────────────────────────────────────────────────
 
     [ObservableProperty]
@@ -336,6 +347,28 @@ public sealed partial class ImportPageViewModel : ObservableObject
             return;
         }
 
+        // Та же подписка уже есть — обновить ее, как кнопкой «Обновить»: новые серверы — в нее, пропавшие из подписки —
+        // удалить (выбранный остается), избранное и названия — прежние.
+        if (_subscriptionUrl is { } url && _store.SubscriptionFor(url) is { } existing)
+        {
+            var group = _store.Subscriptions.First(s => s.Id == existing).Name;
+            SubscriptionUpdate update;
+            try
+            {
+                update = _store.ApplyUpdate(existing, preview.Servers);
+            }
+            catch (InvalidOperationException)
+            {
+                Message = StoreWarning ?? Loc.Instance.Format("import.store.unavailable", _store.SecretStoreName);
+                return;
+            }
+
+            _toast.Show(Loc.Instance.Format("subs.updated", group, update.Added, update.Removed));
+            Reset();
+            _navigator.Navigate(Pages.Servers);
+            return;
+        }
+
         var name = ProfileName.Trim();
         ImportOutcome outcome;
         try
@@ -428,6 +461,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
             _subscriptionUrl = url;
             IsInsecure = url.Scheme == "http";
+            ExistingSubscription = _store.SubscriptionFor(url) is { } existing ? _store.Subscriptions.First(s => s.Id == existing).Name : null;
             trimmed = content.Text;
             // Название из Profile-Title (у PRIVATE GATEWAY — имя устройства), без него — домен подписки.
             suggestedName = content.Title ?? url.Host;
@@ -472,6 +506,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
         Message = null;
         Preview = null;
         IsInsecure = false;
+        ExistingSubscription = null;
         _subscriptionUrl = null;
         ProfileName = string.Empty;
         return _attempt;

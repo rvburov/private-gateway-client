@@ -48,8 +48,8 @@ class SubscriptionsScreenTest {
 
     private val context = ApplicationProvider.getApplicationContext<Context>()
     private val now = System.currentTimeMillis()
-    private val ok = GroupItem("ok", "Провайдер", "https://example.com/sub/••••", 12, now - 60_000, now - 60_000, null, null)
-    private val broken = GroupItem("broken", "Запасная", "https://example.org/s/••••", 3, now - 86_400_000L * 3, now - 5 * 60_000, DownloadFailure.Status, 403)
+    private val ok = GroupItem("ok", "Провайдер", "https://example.com/sub/****", 12, now - 60_000, now - 60_000, null, null)
+    private val broken = GroupItem("broken", "Запасная", "https://example.org/s/****", 3, now - 86_400_000L * 3, now - 5 * 60_000, DownloadFailure.Status, 403)
     private val profile = GroupItem("profile", "Друзья", null, 1, null, null, null, null)
     private val server = ServerItem("s1", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Reality, TransportKind.Tcp, 443, subscriptionId = "ok")
 
@@ -96,7 +96,7 @@ class SubscriptionsScreenTest {
     fun `cards show state, masked address, time and the reason of a failure`() {
         show(SubscriptionsUi(listOf(ok, broken, profile), manualCount = 2))
         compose.onNodeWithText(text(R.string.subs_section, "3"), substring = true, ignoreCase = true).assertExists()
-        compose.onNodeWithText("https://example.com/sub/••••").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("https://example.com/sub/****").performScrollTo().assertIsDisplayed()
         compose.onNode(hasTestTag("group.meta") and hasAnyAncestor(hasTestTag("group.ok")))
             .assertTextContains(servers(12), substring = true)
         compose.onNodeWithTag("group.error").performScrollTo()

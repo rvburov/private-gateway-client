@@ -118,6 +118,11 @@
   <Style Selector="Button.icon:pressed, Button.plain:pressed, Button.link:pressed, Button.nav:pressed, Button.option:pressed, Button.chip:pressed">
     <Setter Property="RenderTransform" Value="scale(0.98)" />
   </Style>
+  <!-- «Обновить серверы» (просьба пользователя 2026-11-01): при нажатии кнопка не сжимается — меняется только стрелка,
+       она крутится, пока идет обновление -->
+  <Style Selector="Button.icon.steady:pressed">
+    <Setter Property="RenderTransform" Value="{x:Null}" />
+  </Style>
   <Style Selector="Button.icon:disabled /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="Transparent" />
   </Style>
@@ -485,6 +490,21 @@
   <Style Selector="Button.secondary:disabled /template/ ContentPresenter#PART_ContentPresenter">
     <Setter Property="Background" Value="{StaticResource PgBrush.Surface.Solid}" />
     <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Strong}" />
+  </Style>
+
+  <!-- Недоступные кнопки-надписи и кнопки-строки (просьба пользователя 2026-11-01): серой заливки темы Fluent нет — фон и
+       рамка остаются своими, текст — серым макета, значки бледнеют вместе с ним; на нажатие кнопка не отвечает -->
+  <Style Selector="Button.link:disabled /template/ ContentPresenter#PART_ContentPresenter, Button.plain:disabled /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.option:disabled /template/ ContentPresenter#PART_ContentPresenter, Button.nav:disabled /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.select:disabled /template/ ContentPresenter#PART_ContentPresenter, Button.small:disabled /template/ ContentPresenter#PART_ContentPresenter,
+                   Button.chip:disabled /template/ ContentPresenter#PART_ContentPresenter">
+    <Setter Property="Background" Value="{Binding $parent[Button].Background}" />
+    <Setter Property="BorderBrush" Value="{Binding $parent[Button].BorderBrush}" />
+    <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Muted}" />
+  </Style>
+  <Style Selector="Button.link:disabled, Button.plain:disabled, Button.option:disabled, Button.nav:disabled, Button.select:disabled,
+                   Button.small:disabled, Button.chip:disabled">
+    <Setter Property="Opacity" Value="0.6" />
   </Style>
 
   <!-- Опасное действие (доска 18): «Удалить» — красная кнопка, «Снять защиту» — красная рамка -->

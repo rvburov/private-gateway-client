@@ -340,6 +340,44 @@ public sealed class ImportPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task The_same_subscription_added_again_updates_its_group_and_says_so()
+    {
+        // У пользователя 2026-11-01: повторно добавленная подписка давала вторую группу с тем же названием (решение 528).
+        var (window, shell, page) = OpenImport();
+        var url = new Uri("https://sub.example.com/api/v1/client/subscribe?token=fake-token-1");
+        var links = System.Text.Encoding.UTF8.GetString(Convert.FromBase64String(Subscription.Trim()))
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        Downloads.Responses[url] = string.Join('\n', links.Take(2));
+        page.OpenLinkCommand.Execute(null);
+        page.LinkText = url.ToString();
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        page.HasExistingSubscription.ShouldBeFalse();
+        page.AddCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        shell.NavigateCommand.Execute(Pages.Add);
+        Dispatcher.UIThread.RunJobs();
+        page = shell.CurrentPage.ShouldBeOfType<ImportPageViewModel>();
+        Downloads.Responses[url] = Subscription;
+        page.OpenLinkCommand.Execute(null);
+        page.LinkText = url.ToString();
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.ExistingSubscriptionText.ShouldBe("Эта подписка уже добавлена — «sub.example.com». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.");
+        Find<TextBlock>(window, "ExistingSubscription").IsEffectivelyVisible.ShouldBeTrue();
+        Find<TextBox>(window, "ProfileName").IsEffectivelyVisible.ShouldBeFalse("название уже есть — менять его здесь незачем");
+
+        page.AddCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        shell.Toast.Text.ShouldBe("«sub.example.com» обновлена: новых 1, удалено 0");
+        var servers = shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>();
+        servers.Groups.ShouldHaveSingleItem().Title.ShouldBe("sub.example.com · 3", "одна группа, а не две");
+    }
+
+    [AvaloniaFact]
     public async Task Profile_title_of_the_subscription_becomes_the_suggested_name()
     {
         var (window, _, page) = OpenImport();

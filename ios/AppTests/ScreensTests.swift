@@ -219,8 +219,8 @@ final class ScreensTests: XCTestCase {
     func testSubscriptionsDrawInEveryStateAndLanguage() throws {
         let now = Date()
         let groups = [
-            GroupItem(id: "s", name: "Работа", maskedUrl: "https://example.com/sub/••••", servers: 12, updatedAt: now, lastAttemptAt: now, failure: nil, status: nil),
-            GroupItem(id: "f", name: "Провайдер", maskedUrl: "https://example.org/••••", servers: 3, updatedAt: now.addingTimeInterval(-3 * 86400),
+            GroupItem(id: "s", name: "Работа", maskedUrl: "https://example.com/sub/****", servers: 12, updatedAt: now, lastAttemptAt: now, failure: nil, status: nil),
+            GroupItem(id: "f", name: "Провайдер", maskedUrl: "https://example.org/****", servers: 3, updatedAt: now.addingTimeInterval(-3 * 86400),
                       lastAttemptAt: now.addingTimeInterval(-300), failure: .status, status: 403),
             GroupItem(id: "p", name: "Профиль", maskedUrl: nil, servers: 1, updatedAt: nil, lastAttemptAt: nil, failure: nil, status: nil),
         ]

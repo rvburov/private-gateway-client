@@ -18,6 +18,8 @@ final class ImportModel: ObservableObject {
     @Published private(set) var qrReading = false
     /// Почему QR не прочитан — ключ текста.
     @Published private(set) var qrProblem: String?
+    /// Эта подписка уже добавлена — ее название: «Добавить» обновит ее, а не создаст вторую группу (решение 528).
+    @Published private(set) var existing: String?
 
     private let container: SharedContainer
     private let source: any SubscriptionSource
@@ -47,6 +49,11 @@ final class ImportModel: ObservableObject {
 
         downloading = false
         preview = result
+        existing = nil
+        if let url = result.url, let id = try? await container.servers.subscriptionFor(url) {
+            existing = try? await container.servers.groups().first { $0.id == id }?.name
+        }
+
         if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, let suggested = result.suggestedName {
             name = suggested
         }
@@ -132,5 +139,6 @@ final class ImportModel: ObservableObject {
         emptyClipboard = false
         qrReading = false
         qrProblem = nil
+        existing = nil
     }
 }

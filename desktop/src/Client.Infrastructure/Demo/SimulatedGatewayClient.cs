@@ -39,7 +39,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
     [
         new(time.GetUtcNow(), JournalLevel.Info, "service", "service started  ipc=ok"),
         // Имя сети в журнал не пишется — как у настоящей службы.
-        new(time.GetUtcNow(), JournalLevel.Info, "network", "net up  wifi «•••»  v4+v6"),
+        new(time.GetUtcNow(), JournalLevel.Info, "network", "net up  wifi «***»  v4+v6"),
     ];
 
     private CancellationTokenSource? _pending;

@@ -40,7 +40,7 @@ class GroupRepositoryTest {
         val group = repository.groups.first().single()
         assertEquals("Провайдер", group.name)
         assertEquals(3, group.servers)
-        assertEquals("https://example.com/sub/••••", group.maskedUrl)
+        assertEquals("https://example.com/sub/****", group.maskedUrl)
         assertTrue(group.canUpdate)
         assertNotNull(group.updatedAt, "подписка по адресу только что загружена")
         assertEquals(url, repository.subscriptionUrl(group.id))
@@ -58,6 +58,41 @@ class GroupRepositoryTest {
                 }
             }
         }
+    }
+
+    @Test
+    fun `the same subscription added again goes into its group and old twins are merged`() = runBlocking<Unit> {
+        // У пользователя 2026-11-01: повторно добавленная подписка давала вторую группу с тем же названием (решение 528).
+        repository.add(servers.take(1), "Провайдер", url)
+        repository.add(servers.take(2), "Провайдер (2)", URI("HTTPS://EXAMPLE.com:443/sub/$token/"))
+        val group = repository.groups.first().single()
+        assertEquals(2, group.servers, "та же ссылка — та же группа")
+        assertEquals(group.id, repository.subscriptionFor(url))
+
+        repository.add(servers.drop(2).take(1), "Провайдер", URI("https://example.com/sub/other-token"))
+        assertEquals(2, repository.groups.first().size, "другой токен — другая подписка")
+
+        repository.add(servers.drop(3).take(1), " профиль ", null)
+        repository.add(servers.drop(4).take(1), "Профиль", null)
+        assertEquals(3, repository.groups.first().size, "то же название профиля без адреса — та же группа")
+    }
+
+    @Test
+    fun `groups of one subscription created before are merged once`() = runBlocking<Unit> {
+        repository.add(servers.take(1), "Провайдер", url)
+        repository.add(servers.drop(1).take(1), "Провайдер", URI("https://example.com/sub/other-token"))
+        val (first, second) = repository.groups.first().map { it.id }
+        // Как до решения 528: вторая группа с тем же адресом.
+        val sealed = database.subscriptions().byId(first)!!.sealedUrl
+        database.openHelper.writableDatabase.execSQL("UPDATE subscriptions SET sealedUrl = ? WHERE id = ?", arrayOf<Any?>(sealed, second))
+
+        repository.mergeSameSubscriptions(null)
+
+        val merged = repository.groups.first().single()
+        assertEquals(first, merged.id)
+        assertEquals(2, merged.servers)
+        repository.mergeSameSubscriptions(null)
+        assertEquals(1, repository.groups.first().size, "повторов больше нет")
     }
 
     @Test
@@ -145,7 +180,7 @@ class GroupRepositoryTest {
         assertEquals("Новое", edited.name)
         assertNull(edited.failure)
         assertNull(edited.status)
-        assertEquals("https://example.org/feed/••••", edited.maskedUrl)
+        assertEquals("https://example.org/feed/****", edited.maskedUrl)
         assertEquals(next, repository.subscriptionUrl(group))
     }
 

@@ -216,8 +216,24 @@ fun ImportScreen(
                     )
                 }
 
+                val existing = state.existing
+                if (existing != null && state.added == null) {
+                    // Та же подписка уже добавлена: «Добавить» обновит ее, а не создаст вторую группу (решение 528).
+                    Text(
+                        stringResource(R.string.import_subscription_exists, existing),
+                        color = PgColor.Text.Secondary,
+                        style = PgType.Small,
+                        modifier = Modifier
+                            .padding(top = PgSpace.S)
+                            .clip(RoundedCornerShape(PgRadius.Button))
+                            .background(PgColor.Accent.Tint)
+                            .padding(PgSpace.M)
+                            .testTag("import.existing"),
+                    )
+                }
+
                 val added = state.added
-                if (added == null && good > 0) {
+                if (added == null && good > 0 && existing == null) {
                     Spacer(Modifier.size(PgSpace.M))
                     NameField(state.name, onName)
                 }

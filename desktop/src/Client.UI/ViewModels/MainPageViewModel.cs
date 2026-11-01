@@ -69,6 +69,16 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             chip.PropertyChanged += OnChipChanged;
         }
 
+        // «Проверить» возвращается, когда запрос проверки закончен: результат приходит в состоянии раньше ответа, и кнопка
+        // успевала показаться недоступной — серой (просьба пользователя 2026-11-01).
+        CheckActionCommand.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(IAsyncRelayCommand.IsRunning))
+            {
+                OnPropertyChanged(nameof(HasCheckAction));
+            }
+        };
+
         Protection.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(ProtectionViewModel.Status) or "")
@@ -283,7 +293,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public bool HasCheckAction => !Status.IsPaused && Status.State switch
     {
-        ConnectionState.Connected => !IsChecking,
+        ConnectionState.Connected => !IsChecking && !CheckActionCommand.IsRunning,
         ConnectionState.Blocked or ConnectionState.Error or ConnectionState.Reconnecting => true,
         _ => false,
     };
@@ -437,11 +447,32 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _navigator.Navigate(Pages.Servers);
     }
 
-    [RelayCommand]
+    /// <summary>Идет обновление серверов — крутится стрелка «Обновить серверы».</summary>
+    [ObservableProperty]
+    public partial bool IsRefreshing { get; private set; }
+
+    /// <summary>
+    /// «Обновить серверы»: пока идет, крутится только стрелка — кнопка остается доступной и прежней (просьба пользователя
+    /// 2026-11-01: недоступная кнопка теряла фон и бледнела). Нажатие во время обновления ничего не делает.
+    /// </summary>
+    [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RefreshServersAsync()
     {
-        await _catalog.RefreshAsync().ConfigureAwait(true);
-        _toast.Show(Loc.Instance["server.refreshed"]);
+        if (IsRefreshing)
+        {
+            return;
+        }
+
+        IsRefreshing = true;
+        try
+        {
+            await _catalog.RefreshAsync().ConfigureAwait(true);
+            _toast.Show(Loc.Instance["server.refreshed"]);
+        }
+        finally
+        {
+            IsRefreshing = false;
+        }
     }
 
     [RelayCommand]
@@ -520,7 +551,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     }
 
     private string Mask(string ip) => IsIpMasked && ip != IpPlaceholder
-        ? string.Concat(ip.Select(c => char.IsAsciiHexDigit(c) ? '•' : c))
+        ? string.Concat(ip.Select(c => char.IsAsciiHexDigit(c) ? '*' : c))
         : ip;
 
     private static string Describe(ServerProfile server, bool withPort)

@@ -120,19 +120,33 @@ final class SubscriptionTests: XCTestCase {
 
     // MARK: Адрес и название
 
+    func testSameSubscriptionIsTheWholeAddressWithItsToken() throws {
+        let url = try XCTUnwrap(URLComponents(string: "https://sub.example.com/sub/fake-token-1"))
+        XCTAssertTrue(SubscriptionAddress.same(url, try XCTUnwrap(URLComponents(string: "HTTPS://SUB.example.com:443/sub/fake-token-1/"))))
+        XCTAssertFalse(SubscriptionAddress.same(url, try XCTUnwrap(URLComponents(string: "https://sub.example.com/sub/FAKE-token-1"))))
+        XCTAssertFalse(SubscriptionAddress.same(url, try XCTUnwrap(URLComponents(string: "https://sub.example.com/sub/fake-token-2"))))
+        XCTAssertFalse(SubscriptionAddress.same(url, try XCTUnwrap(URLComponents(string: "https://sub.example.com/sub/fake-token-1?device=2"))))
+    }
+
+    func testAddressesSavedWithDotsAreShownWithAsterisks() {
+        // Просьба пользователя 2026-11-01: скрытое — звездочками; адреса, сохраненные раньше, — тоже.
+        XCTAssertEqual(SubscriptionAddress.shown("https://example.com/sub/\u{2022}\u{2022}\u{2022}\u{2022}"), "https://example.com/sub/****")
+        XCTAssertEqual(SubscriptionAddress.shown("https://example.com/sub/****"), "https://example.com/sub/****")
+    }
+
     func testMaskKeepsTheHostAndAWordAndHidesTheRest() throws {
         let cases = [
-            ("https://example.com/sub/0123456789abcdef", "https://example.com/sub/••••"),
-            ("https://example.org/clash/abc?token=1", "https://example.org/clash/••••"),
-            ("https://sub.example.com/api/v1/client/subscribe?token=fake", "https://sub.example.com/api/••••"),
-            ("https://example.com/AbCdEf0123456789xyz/clash", "https://example.com/••••"),
-            ("https://example.com/0123456789abcdef", "https://example.com/••••"),
-            ("https://example.com/AbCdEfGhIjKlMnOpQr/clash", "https://example.com/••••"),
-            ("https://example.com/?token=fake", "https://example.com/••••"),
+            ("https://example.com/sub/0123456789abcdef", "https://example.com/sub/****"),
+            ("https://example.org/clash/abc?token=1", "https://example.org/clash/****"),
+            ("https://sub.example.com/api/v1/client/subscribe?token=fake", "https://sub.example.com/api/****"),
+            ("https://example.com/AbCdEf0123456789xyz/clash", "https://example.com/****"),
+            ("https://example.com/0123456789abcdef", "https://example.com/****"),
+            ("https://example.com/AbCdEfGhIjKlMnOpQr/clash", "https://example.com/****"),
+            ("https://example.com/?token=fake", "https://example.com/****"),
             ("https://user:pass@example.com:8443/sub", "https://example.com:8443/sub"),
-            ("http://203.0.113.5:2096/sub/fake-id", "http://203.0.113.5:2096/sub/••••"),
+            ("http://203.0.113.5:2096/sub/fake-id", "http://203.0.113.5:2096/sub/****"),
             ("https://example.com", "https://example.com"),
-            ("https://example.com:443/sub#x", "https://example.com/sub/••••"),
+            ("https://example.com:443/sub#x", "https://example.com/sub/****"),
         ]
         for (url, expected) in cases {
             XCTAssertEqual(SubscriptionAddress.mask(try XCTUnwrap(SubscriptionAddress.parse(url), url)), expected, url)

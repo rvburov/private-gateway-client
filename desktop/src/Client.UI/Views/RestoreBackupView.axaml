@@ -35,7 +35,7 @@
       <StackPanel Spacing="6" IsVisible="{Binding IsLocked}">
         <TextBlock Classes="small" Text="{l:L backup.password}" FontWeight="SemiBold"
                    Foreground="{StaticResource PgBrush.Text.Secondary}" />
-        <TextBox x:Name="RestorePassword" Classes="input" Text="{Binding Password}" PasswordChar="•"
+        <TextBox x:Name="RestorePassword" Classes="input" Text="{Binding Password}" PasswordChar="*"
                  RevealPassword="{Binding IsPasswordVisible}" AutomationProperties.Name="{l:L backup.password}">
           <TextBox.InnerRightContent>
             <Button Classes="icon" Width="36" Height="36" Command="{Binding TogglePasswordCommand}"

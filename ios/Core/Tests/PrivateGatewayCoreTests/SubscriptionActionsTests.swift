@@ -43,7 +43,7 @@ final class SubscriptionActionsTests: XCTestCase {
         let edited = try XCTUnwrap(groups.first)
         XCTAssertEqual(edited.id, id)
         XCTAssertEqual(edited.name, "Новое")
-        XCTAssertEqual(edited.maskedUrl, "https://example.org/new/••••")
+        XCTAssertEqual(edited.maskedUrl, "https://example.org/new/****")
 
         let renamed = try await actions.edit(id, name: "Еще", url: "  ", connected: true)
         XCTAssertEqual(renamed, .saved(nil), "пустой адрес — прежний, без загрузки")

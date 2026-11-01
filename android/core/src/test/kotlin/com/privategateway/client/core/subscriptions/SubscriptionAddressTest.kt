@@ -3,6 +3,7 @@ package com.privategateway.client.core.subscriptions
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import java.net.URI
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
@@ -13,17 +14,17 @@ import kotlin.test.assertTrue
 class SubscriptionAddressTest {
     @ParameterizedTest
     @CsvSource(
-        "https://example.com/sub/0123456789abcdef, https://example.com/sub/••••",
-        "https://example.org/clash/abc?token=1, https://example.org/clash/••••",
-        "https://sub.example.com/api/v1/client/subscribe?token=fake, https://sub.example.com/api/••••",
-        "https://example.com/AbCdEf0123456789xyz/clash, https://example.com/••••",
-        "https://example.com/0123456789abcdef, https://example.com/••••",
-        "https://example.com/AbCdEfGhIjKlMnOpQr/clash, https://example.com/••••",
-        "https://example.com/?token=fake, https://example.com/••••",
+        "https://example.com/sub/0123456789abcdef, https://example.com/sub/****",
+        "https://example.org/clash/abc?token=1, https://example.org/clash/****",
+        "https://sub.example.com/api/v1/client/subscribe?token=fake, https://sub.example.com/api/****",
+        "https://example.com/AbCdEf0123456789xyz/clash, https://example.com/****",
+        "https://example.com/0123456789abcdef, https://example.com/****",
+        "https://example.com/AbCdEfGhIjKlMnOpQr/clash, https://example.com/****",
+        "https://example.com/?token=fake, https://example.com/****",
         "https://user:pass@example.com:8443/sub, https://example.com:8443/sub",
-        "http://203.0.113.5:2096/sub/fake-id, http://203.0.113.5:2096/sub/••••",
+        "http://203.0.113.5:2096/sub/fake-id, http://203.0.113.5:2096/sub/****",
         "https://example.com, https://example.com",
-        "https://example.com:443/sub#x, https://example.com/sub/••••",
+        "https://example.com:443/sub#x, https://example.com/sub/****",
     )
     fun `mask keeps the host and a word and hides the rest`(url: String, expected: String) {
         assertEquals(expected, SubscriptionAddress.mask(assertNotNull(SubscriptionAddress.parse(url))))
@@ -36,6 +37,22 @@ class SubscriptionAddressTest {
         assertNull(SubscriptionAddress.parse("https:///nohost"))
         assertNull(SubscriptionAddress.parse("not a url"))
         assertNull(SubscriptionAddress.parse("ftp://example.com/sub"))
+    }
+
+    @Test
+    fun `same subscription is the whole address with its token`() {
+        val url = URI("https://sub.example.com/sub/fake-token-1")
+        assertTrue(SubscriptionAddress.same(url, URI("HTTPS://SUB.example.com:443/sub/fake-token-1/")))
+        assertFalse(SubscriptionAddress.same(url, URI("https://sub.example.com/sub/FAKE-token-1")))
+        assertFalse(SubscriptionAddress.same(url, URI("https://sub.example.com/sub/fake-token-2")))
+        assertFalse(SubscriptionAddress.same(url, URI("https://sub.example.com/sub/fake-token-1?device=2")))
+    }
+
+    @Test
+    fun `addresses saved with dots are shown with asterisks`() {
+        // Просьба пользователя 2026-11-01: скрытое — звездочками; адреса, сохраненные раньше, — тоже.
+        assertEquals("https://example.com/sub/****", SubscriptionAddress.shown("https://example.com/sub/\u2022\u2022\u2022\u2022"))
+        assertEquals("https://example.com/sub/****", SubscriptionAddress.shown("https://example.com/sub/****"))
     }
 
     @Test

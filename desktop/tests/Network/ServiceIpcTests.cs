@@ -145,8 +145,8 @@ public sealed class ServiceIpcTests
         journal.Add(JournalLevel.Warning, "service", "Работает другой VPN (pgother0): маршрут через 192.0.2.1");
 
         journal.Tail(3).Select(e => e.Message).ShouldBe([
-            "[Info] proxy/vless/outbound: tunneling request to tcp:•••:443 via •••:443",
-            "INFO inbound/tun[tun-in]: inbound connection to •••:80",
+            "[Info] proxy/vless/outbound: tunneling request to tcp:***:443 via ***:443",
+            "INFO inbound/tun[tun-in]: inbound connection to ***:80",
             "Работает другой VPN (pgother0): маршрут через 192.0.2.1",
         ], "адреса сайтов из вывода ядер в журнал не попадают; свои строки служба пишет сама и знает, что в них");
     }
@@ -160,7 +160,7 @@ public sealed class ServiceIpcTests
         journal.Add(JournalLevel.Info, "xray", "auth failed for pw-very-secret-1 at 203.0.113.1");
         journal.Add(JournalLevel.Info, "xray", "abc — короткое не прячется");
 
-        journal.Tail(10).Select(e => e.Message).ShouldBe(["auth failed for *** at •••", "abc — короткое не прячется"], "адрес в выводе ядра тоже скрыт");
+        journal.Tail(10).Select(e => e.Message).ShouldBe(["auth failed for *** at ***", "abc — короткое не прячется"], "адрес в выводе ядра тоже скрыт");
         for (var i = 0; i < ServiceJournal.Capacity + 5; i++)
         {
             journal.Add(JournalLevel.Debug, "service", "строка " + i);

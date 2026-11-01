@@ -81,6 +81,13 @@ public interface IServerStore : IServerCatalog
     Uri? SubscriptionUrl(string subscriptionId);
 
     /// <summary>
+    /// Подписка с этим адресом уже добавлена (<see cref="Import.SubscriptionAddress.Same"/>) — ее id; нет — null. Повторное
+    /// добавление той же ссылки обновляет ее, а не создает новую группу (решение 528).
+    /// </summary>
+    string? SubscriptionFor(Uri url) =>
+        Subscriptions.FirstOrDefault(s => SubscriptionUrl(s.Id) is { } known && Import.SubscriptionAddress.Same(known, url))?.Id;
+
+    /// <summary>
     /// Заменить серверы подписки новым списком. Совпавшие (тот же адрес и данные доступа) остаются
     /// со своим избранным, названием пользователя и временем выбора; новых — добавить, пропавших —
     /// удалить. Выбранный сервер не удаляется и не подменяется: пропал — помечается и остается.

@@ -231,10 +231,14 @@ public sealed class ServersPageTests : WindowHarness
         var (window, shell, page) = OpenServers();
         var icon = Find<Button>(window, "RefreshButton").GetVisualDescendants().OfType<Icon>().Single();
 
+        var button = Find<Button>(window, "RefreshButton");
         var refresh = page.RefreshCommand.ExecuteAsync(null);
         Dispatcher.UIThread.RunJobs();
         page.IsRefreshing.ShouldBeTrue();
         icon.Classes.ShouldContain("spin");
+        (button.IsEffectivelyEnabled, button.Opacity).ShouldBe((true, 1d), "крутится только стрелка — кнопка прежняя (просьба пользователя 2026-11-01)");
+        await page.RefreshCommand.ExecuteAsync(null);
+        page.IsRefreshing.ShouldBeTrue("повторное нажатие ничего не меняет");
 
         Time.Advance(DemoServerCatalog.RefreshDelay);
         await refresh;

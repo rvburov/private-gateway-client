@@ -1,9 +1,17 @@
 import Foundation
 
-/// Адрес подписки — секрет (токен доступа обычно в пути или в запросе): для подписи только «https://example.com/sub/••••»,
+/// Адрес подписки — секрет (токен доступа обычно в пути или в запросе): для подписи только «https://example.com/sub/****»,
 /// как `SubscriptionAddress` десктопа и Android; целиком он хранится запечатанным.
 public enum SubscriptionAddress {
-    public static let hidden = "••••"
+    public static let hidden = "****"
+
+    /// Скрытая часть адресов, сохраненных до звездочек (просьба пользователя 2026-11-01).
+    private static let legacyHidden = "\u{2022}\u{2022}\u{2022}\u{2022}"
+
+    /// Сохраненный ранее адрес для подписи: скрытая часть — звездочками, как у новых.
+    public static func shown(_ stored: String) -> String {
+        stored.replacingOccurrences(of: legacyHidden, with: hidden)
+    }
 
     /// Сегмент пути длиннее — скорее токен, чем слово вроде «sub» или «clash».
     private static let wordLength = 12
@@ -19,12 +27,32 @@ public enum SubscriptionAddress {
         return url
     }
 
+    /// Тот же адрес подписки (решение 528, как `SubscriptionAddress.Same` десктопа): целиком — с путем, токеном и запросом;
+    /// регистр схемы и сервера, порт по умолчанию и последний «/» пути не важны. Другой токен — другая подписка.
+    public static func same(_ left: URLComponents, _ right: URLComponents) -> Bool {
+        canonical(left) == canonical(right)
+    }
+
+    private static func canonical(_ url: URLComponents) -> String {
+        let scheme = url.scheme?.lowercased() ?? ""
+        let defaultPort = scheme == "https" ? 443 : 80
+        let port = url.port.flatMap { $0 == defaultPort ? nil : ":\($0)" } ?? ""
+        let user = url.percentEncodedUser.map { "\($0)@" } ?? ""
+        var path = url.percentEncodedPath
+        while path.hasSuffix("/") {
+            path.removeLast()
+        }
+
+        return scheme + "://" + user + (url.host?.lowercased() ?? "") + port + path
+            + (url.percentEncodedQuery.map { "?\($0)" } ?? "") + (url.percentEncodedFragment.map { "#\($0)" } ?? "")
+    }
+
     /// Подписка без шифрования: ключи серверов шли открытым текстом (import.insecure).
     public static func insecure(_ url: URLComponents) -> Bool {
         url.scheme?.lowercased() == "http"
     }
 
-    /// Схема, сервер и первый сегмент пути, если он похож на слово; остальное — «••••». Имя и пароль перед сервером, остаток
+    /// Схема, сервер и первый сегмент пути, если он похож на слово; остальное — «****». Имя и пароль перед сервером, остаток
     /// пути, запрос и якорь не показываются никогда.
     public static func mask(_ url: URLComponents) -> String {
         let scheme = url.scheme?.lowercased() ?? ""

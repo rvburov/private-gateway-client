@@ -10,6 +10,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Demo;
+using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
@@ -189,7 +190,7 @@ public sealed class MainWindowTests : WindowHarness
 
         main.ToggleIpMaskCommand.Execute(null);
 
-        main.WebIp.ShouldBe("•••.•.•••.••");
+        main.WebIp.ShouldBe("***.*.***.**");
         main.CanCopyIp.ShouldBeFalse();
     }
 
@@ -206,7 +207,7 @@ public sealed class MainWindowTests : WindowHarness
 
         main.ToggleIpMaskCommand.Execute(null);
 
-        main.WebIp.ShouldBe("••••:•••:••••:••••:••••:••••:••••:••••");
+        main.WebIp.ShouldBe("****:***:****:****:****:****:****:****");
         main.RealIp.ShouldBe(main.WebIp);
         main.CanCopyIp.ShouldBeFalse();
     }
@@ -620,6 +621,71 @@ public sealed class MainWindowTests : WindowHarness
 
         main.IsChecking.ShouldBeFalse("проверка закончилась — «Проверяем…» не висит");
         main.HasCheckAction.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
+    public async Task Refresh_servers_on_the_main_screen_spins_only_the_arrow()
+    {
+        // Просьба пользователя 2026-11-01: кнопка в строке сервера не меняется — ни фон, ни прозрачность, ни размер при нажатии;
+        // крутится только стрелка, как в разделе «Серверы».
+        var (window, shell) = Open();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+        var button = Find<Button>(window, "RefreshServers");
+        var icon = button.GetVisualDescendants().OfType<Icon>().Single();
+        var background = button.Background;
+
+        var refresh = main.RefreshServersCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        main.IsRefreshing.ShouldBeTrue();
+        icon.Classes.ShouldContain("spin");
+        (button.IsEffectivelyEnabled, button.Opacity, button.Background).ShouldBe((true, 1d, background));
+        button.Classes.ShouldContain("steady", "при нажатии не сжимается");
+
+        Time.Advance(DemoServerCatalog.RefreshDelay);
+        await refresh;
+        WaitFor(() => !main.IsRefreshing);
+
+        icon.Classes.ShouldNotContain("spin");
+        shell.Toast.Text.ShouldStartWith("Серверы обновлены");
+    }
+
+    [AvaloniaFact]
+    public async Task Check_button_comes_back_only_when_the_check_request_is_over_and_never_gray()
+    {
+        // Просьба пользователя 2026-11-01: результат проверки приходит в состоянии раньше ответа вызова, и «Проверить»
+        // успевала показаться недоступной — с серым фоном.
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+        var reply = new TaskCompletionSource();
+        service!.ChecksReply = reply;
+        Time.Advance(TimeSpan.FromMinutes(1));
+
+        var running = main.CheckActionCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        main.CheckedText.ShouldBe("Проверено только что", "результат пришел");
+        main.HasCheckAction.ShouldBeFalse("запрос еще идет — кнопки нет, а не серая");
+
+        reply.SetResult();
+        await running;
+        Dispatcher.UIThread.RunJobs();
+
+        main.HasCheckAction.ShouldBeTrue();
+        var button = Find<Button>(window, "CheckAction");
+        button.IsEffectivelyEnabled.ShouldBeTrue("возвращается сразу доступной");
+
+        // Недоступная кнопка-надпись — без серой заливки темы, текст серым макета.
+        button.IsEnabled = false;
+        Dispatcher.UIThread.RunJobs();
+        var presenter = button.GetVisualDescendants().OfType<Avalonia.Controls.Presenters.ContentPresenter>().First(p => p.Name == "PART_ContentPresenter");
+        presenter.Background.ShouldBe(button.Background, "фон — свой, без серого");
+        presenter.Foreground.ShouldBe(window.FindResource("PgBrush.Text.Muted"));
+        button.IsEnabled = true;
     }
 
     [AvaloniaFact]
