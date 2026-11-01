@@ -160,15 +160,46 @@ public sealed class GatewayLifecycleTests : IDisposable
         (await gateway.CheckExitAsync()).State.ShouldBe(CheckState.Warning);
     }
 
+    [Fact]
+    public async Task Lost_virtual_machine_rules_are_put_back_without_reporting_a_removed_block()
+    {
+        // Решение 535: пропали только правила Hyper-V — основной блок цел, и журнал не пишет «Блок при обрыве сняла другая
+        // программа» (PGC-SVC-008). Правила ВМ ставятся вместе с блоком.
+        var clock = new FakeTimeProvider();
+        var journal = new ServiceJournal(clock);
+        var firewall = new FakeFirewall();
+        var boot = Path.Combine(_root, "vm-rules.json");
+        BootBlock.Save(boot, new HeldBlock(new KillSwitchPolicy(null, [new(IPAddress.Parse("198.51.100.20"), 443)]),
+            "vpn.example.com", Boot: true, Strict: true));
+        await using var gateway = Create(firewall, clock, boot: boot, canVpn: false, journal: journal);
+        gateway.Status.Protection.KillSwitch.ShouldBe(CheckState.Ok);
+        var enables = firewall.Enables;
+
+        firewall.VirtualMachineRules = false;
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        firewall.Enables.ShouldBeGreaterThan(enables, "правила ВМ ставятся вместе с блоком");
+        firewall.IsIntact.ShouldBeTrue();
+        var messages = journal.Tail(ServiceJournal.Capacity).Select(e => e.Message).ToList();
+        messages.ShouldContain(m => m.Contains("Правила виртуальных машин (Hyper-V) сняла другая программа", StringComparison.Ordinal));
+        messages.ShouldNotContain(m => m.StartsWith(ErrorCodes.BlockRemoved, StringComparison.Ordinal));
+        gateway.Status.Protection.KillSwitch.ShouldBe(CheckState.Ok);
+
+        // Сняли сам блок — по-прежнему PGC-SVC-008.
+        firewall.Intact = false;
+        clock.Advance(TimeSpan.FromSeconds(1));
+        journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message.StartsWith(ErrorCodes.BlockRemoved, StringComparison.Ordinal));
+    }
+
     private Gateway Create(FakeFirewall firewall, TimeProvider? time = null,
-        Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null, string? boot = null, bool canVpn = true)
+        Func<string, CancellationToken, Task<IPAddress[]>>? resolve = null, string? boot = null, bool canVpn = true, ServiceJournal? journal = null)
     {
         // Существующий файл проходит проверку наличия ядер; запуск до него не дойдет — fake firewall отказывает.
         // Несуществующее сетевое пространство изолирует также поиск оставшихся ip rules в конструкторе Linux.
         var file = typeof(Gateway).Assembly.Location;
         return new Gateway(new GatewayOptions(file, canVpn, new Uri("https://example.com/"), SingBoxPath: file, KillSwitch: firewall,
             TunnelNetns: Path.Combine(_root, "no-network-namespace"), Resolve: resolve, BootBlock: boot, BlockWatch: TimeSpan.FromSeconds(1)),
-            time ?? TimeProvider.System, new ServiceJournal(time ?? TimeProvider.System));
+            time ?? TimeProvider.System, journal ?? new ServiceJournal(time ?? TimeProvider.System));
     }
 
     private static TaskCompletionSource NewSignal() => new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -193,7 +224,9 @@ public sealed class GatewayLifecycleTests : IDisposable
     {
         public string Name => "fake";
         public bool IsEnabled => Enabled;
-        public bool IsIntact => Enabled && Intact;
+        public bool IsIntact => Enabled && Intact && VirtualMachineRules;
+        public bool FiltersIntact => Enabled && Intact;
+        public bool VirtualMachineRules { get; set; } = true;
         public bool Enabled { get; set; }
         public bool Intact { get; set; } = true;
         public bool Fails { get; set; }
@@ -211,6 +244,7 @@ public sealed class GatewayLifecycleTests : IDisposable
             if (!DoesNothing)
             {
                 Enabled = true;
+                VirtualMachineRules = true;
             }
         }
 

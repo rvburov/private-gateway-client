@@ -1958,7 +1958,19 @@ public sealed partial class Gateway : IAsyncDisposable
         var (removed, failed, back) = held.Open
             ? ("Правила «только туннель» сняла другая программа — они ставятся снова", "Правила «только туннель» не вернулись", "Правила «только туннель» поставлены снова")
             : ("Блок при обрыве сняла другая программа — он ставится снова", "Блок при обрыве не вернулся", "Блок при обрыве поставлен снова");
-        _journal.Add(JournalLevel.Warning, "service", $"{ErrorCodes.BlockRemoved}: {removed}");
+
+        // Основные правила целы, пропали только правила виртуальных машин (Hyper-V): блок не снят, и так и пишется (решение
+        // 535). Ставятся они вместе с блоком — это и чинит их.
+        if (!_blockBroken && Try(() => killSwitch.FiltersIntact, "Правила блока при обрыве не прочитаны"))
+        {
+            (removed, back) = ("Правила виртуальных машин (Hyper-V) сняла другая программа — блок цел, правила ставятся снова",
+                "Правила виртуальных машин (Hyper-V) поставлены снова");
+            _journal.Add(JournalLevel.Warning, "service", removed);
+        }
+        else
+        {
+            _journal.Add(JournalLevel.Warning, "service", $"{ErrorCodes.BlockRemoved}: {removed}");
+        }
         var wasBroken = _blockBroken;
         _blockBroken = true;
         if (EnableBlock(killSwitch, held.Policy, $"{ErrorCodes.KillSwitchFailed}: {failed} — трафик может идти мимо туннеля"))

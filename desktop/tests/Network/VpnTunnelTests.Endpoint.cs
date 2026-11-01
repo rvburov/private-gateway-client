@@ -86,6 +86,69 @@ public sealed partial class VpnTunnelTests
         (await netns.CurlAsync(direct.Url)).ShouldBe(EndpointTunnelFixture.DirectPage, "после снятия TUN вернулся исходный прямой маршрут");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Xray_dials_the_server_on_the_outside_interface_and_its_traffic_skips_sing_box(bool bound)
+    {
+        // Решение 533: без привязки соединение Xray с сервером заходило в TUN и выходило через server-direct sing-box —
+        // весь зашифрованный трафик второй раз через sing-box. Соседний порт IP сервера при этом остается в туннеле.
+        SkipWithoutNamespaces();
+        using var netns = NetworkNamespace.Create();
+        var (address, _, _) = netns.LinkAsMachine();
+        using var site = new LocalSite(EndpointTunnelFixture.TunneledPage);
+        using var dns = new TestDns(IPAddress.Parse("203.0.113.7"));
+        using var direct = new LocalSite(EndpointTunnelFixture.DirectPage, address);
+        var serverPort = XrayKit.FreePort();
+        var (definition, serverConfig) = XrayKit.Pair("vless", serverPort, address);
+        EndpointTunnelFixture.RouteSite(serverConfig, address, site.Url.Port, dns.Port);
+        using var server = await XrayKit.Start(serverConfig, serverPort);
+        var request = new CoreRequest(definition, ConnectionMode.Vpn,
+            ProtectionSettings.Default with { Dns = DnsChoice.Custom, CustomDns = "8.8.8.8" },
+            ConnectionSettings.Default with { CoreLog = CoreLogLevel.Debug }, RoutingSettings.Default);
+        var outside = VpnTunnel.OutsideInterface(new IpRouteTable(IpCommand.ForThisMachine(netns.Path).ShouldNotBeNull()));
+        outside.ShouldNotBeNull("маршрут по умолчанию пространства — через его пару veth, а не туннель");
+        var output = new CoreOutput(netns);
+        var link = VpnTunnel.NewLink(address) with { Outside = bound ? outside : null };
+        var clientConfig = XrayConfigBuilder.Build(request, link).Config.ShouldNotBeNull();
+        EndpointTunnelFixture.AllowTestAddress(clientConfig, address);
+        using var xray = CoreProcess.StartXray(XrayKit.Xray!, clientConfig, netns.Path, line => output.Add("xray", line));
+        await WaitEndpointAsync(() => EndpointListens(netns, link.Port), "вход Xray", output);
+        var tun = SingBoxConfigBuilder.BuildTun(new TunRequest(link, [address], serverPort, request.Protection, request.Connection,
+            new TunIpv6(Kernel: false, Tunnel: false)));
+        var started = 0;
+        using var singBox = CoreProcess.StartSingBox(XrayKit.SingBox!, tun, netns.Path, line =>
+        {
+            if (line.Contains(SingBoxConfigBuilder.StartedLine, StringComparison.Ordinal))
+            {
+                Volatile.Write(ref started, 1);
+            }
+
+            output.Add("sing-box", line);
+        });
+        try
+        {
+            await WaitEndpointAsync(() => Volatile.Read(ref started) == 1, "sing-box", output);
+            (await output.TraceAsync(() => netns.CurlAsync(direct.Url)))
+                .ShouldBe(EndpointTunnelFixture.TunneledPage, "соседний порт IP сервера — через туннель и с привязкой");
+            direct.Requests.ShouldBe(0);
+            var transit = output.Lines.Where(l => l.Contains(SingBoxConfigBuilder.ServerDirectTag, StringComparison.Ordinal)).ToList();
+            if (bound)
+            {
+                transit.ShouldBeEmpty("соединение Xray с сервером на внешнем интерфейсе в sing-box не попадает");
+            }
+            else
+            {
+                transit.ShouldNotBeEmpty("без привязки то же соединение идет через TUN и server-direct — проверка видит разницу");
+            }
+        }
+        finally
+        {
+            await singBox.StopAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
+            await xray.StopAsync(cancellationToken: CancellationToken.None);
+        }
+    }
+
     private static bool EndpointListens(NetworkNamespace netns, int port)
     {
         try

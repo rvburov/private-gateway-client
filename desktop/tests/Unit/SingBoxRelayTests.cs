@@ -67,6 +67,16 @@ public sealed class SingBoxRelayTests
         outbounds[1]!.AsObject().ContainsKey("congestion_control").ShouldBeFalse("незнакомое значение sing-box не запустил бы");
     }
 
+    [Fact]
+    public void In_vpn_mode_the_relay_dials_the_server_on_the_outside_interface_and_not_through_the_tunnel()
+    {
+        // Решение 533: адрес сервера задан — режим VPN, выход к серверу мимо TUN; без адреса (режим прокси) привязки нет.
+        var server = XrayConfigTests.Link("tuic/bbr");
+        SingBoxConfigBuilder.BuildRelay([new RelayRoute(server, new RelayLink(31500, "u", "p"), "203.0.113.57")])["route"]!["auto_detect_interface"]!
+            .GetValue<bool>().ShouldBeTrue();
+        SingBoxConfigBuilder.BuildRelay([new RelayRoute(server, new RelayLink(31500, "u", "p"))])["route"]!["auto_detect_interface"].ShouldBeNull();
+    }
+
     [Theory]
     [InlineData(CoreLogLevel.Warning, "info")]
     [InlineData(CoreLogLevel.Debug, "debug")]

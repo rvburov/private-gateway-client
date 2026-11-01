@@ -253,6 +253,30 @@ public sealed class UserProxyControllerTests
         proxy.Enables.ShouldBe([10808], "смена владельца готового входа не перезаписывает HKCU");
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void Without_autostart_the_window_comes_back_at_the_next_sign_in_while_it_holds_the_proxy(bool startWithSystem, bool expected)
+    {
+        // Решение 534: прежние настройки возвращает только окно. Служба отключилась, пока окно закрыто, а автозапуска нет —
+        // браузеры остались бы на неработающем 127.0.0.1. С автозапуском окно стартует и так.
+        var recovery = new FakeRecovery();
+        using var rig = new Rig(recovery: recovery, startWithSystem: startWithSystem);
+        rig.Gateway.Raise(ConnectionState.Connected, 10808);
+        recovery.Required.ShouldBe(expected);
+        var writes = recovery.Writes;
+
+        rig.Gateway.Raise(ConnectionState.Reconnecting, port: null);
+        rig.Time.Advance(TimeSpan.FromSeconds(10));
+        rig.Controller.Status.State.ShouldBe(UserProxyState.Held);
+        recovery.Required.ShouldBe(expected, "прокси удерживается — запуск при входе по-прежнему нужен");
+        recovery.Writes.ShouldBe(writes, "запись меняется только при смене решения, а не на каждой сверке раз в 2 с");
+
+        rig.Gateway.Raise(ConnectionState.Off, port: null);
+        rig.Controller.Status.State.ShouldBe(UserProxyState.Restored);
+        recovery.Required.ShouldBeFalse("прежние настройки возвращены — запускать окно при входе незачем");
+    }
+
     [Fact]
     public void Apply_error_is_visible_and_the_snapshot_survives_for_recovery()
     {
@@ -267,15 +291,17 @@ public sealed class UserProxyControllerTests
 
     private sealed class Rig : IDisposable
     {
-        public Rig(ConnectionMode mode = ConnectionMode.Proxy, ServiceKind service = ServiceKind.Installed)
+        public Rig(ConnectionMode mode = ConnectionMode.Proxy, ServiceKind service = ServiceKind.Installed, IProxyLogonRecovery? recovery = null,
+            bool startWithSystem = true)
         {
             Settings = new SettingsService(new MemorySettings(AppSettings.Default with
             {
                 Mode = mode,
+                StartWithSystem = startWithSystem,
                 Connection = ConnectionSettings.Default with { VpnSystemProxy = true },
             }));
             Gateway = new FakeGateway(service) { Mode = mode };
-            Controller = new UserProxyController(Settings, Gateway, Proxy, Backup, Time);
+            Controller = new UserProxyController(Settings, Gateway, Proxy, Backup, Time, recovery);
             Controller.Start();
         }
 
@@ -293,6 +319,17 @@ public sealed class UserProxyControllerTests
         private AppSettings _current = initial;
         public AppSettings Load() => _current;
         public void Save(AppSettings settings) => _current = settings;
+    }
+
+    private sealed class FakeRecovery : IProxyLogonRecovery
+    {
+        public bool Required { get; private set; }
+        public int Writes { get; private set; }
+        public void Require(bool needed)
+        {
+            Required = needed;
+            Writes++;
+        }
     }
 
     private sealed class MemoryBackup : IUserProxyBackupStore

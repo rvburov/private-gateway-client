@@ -44,12 +44,14 @@ public sealed record XrayConfigResult(JsonObject? Config, CoreRejection? Rejecti
 /// Связь Xray с TUN в режиме VPN: вход Shadowsocks на 127.0.0.1:<paramref name="Port"/> с паролем на это подключение
 /// (<paramref name="Password"/> — 128 случайных бит) — другие программы машины в него не войдут; UDP идет датаграммами на тот
 /// же порт (решение 481). Выход — к <paramref name="ServerAddress"/>, адресу сервера, который служба разрешила заранее.
-/// Его транспортный порт sing-box отправляет напрямую, чтобы соединение не вернулось в Xray;
-/// остальные порты того же IP остаются в туннеле. Имя сервера для TLS и заголовков остается
-/// прежним. <paramref name="BypassPort"/> — вход с тем же паролем для программ мимо туннеля, пришедших на адрес FakeDNS
+/// Имя сервера для TLS и заголовков остается прежним. <paramref name="Outside"/> — внешний интерфейс (маршрут по умолчанию
+/// не через туннель): сокет выхода к серверу привязан к нему и в TUN не заходит (решение 533). null — интерфейс не
+/// узнан: соединение идет в TUN, и его адрес и порт sing-box отправляет напрямую (<c>server-direct</c>) — тот же путь,
+/// но через sing-box второй раз. Остальные порты IP сервера в обоих случаях идут через туннель (решение 512).
+/// <paramref name="BypassPort"/> — вход с тем же паролем для программ мимо туннеля, пришедших на адрес FakeDNS
 /// (<see cref="XrayConfigBuilder.NeedsBypassInbound"/>): Xray узнает имя и соединяет напрямую; 0 — входа нет.
 /// </summary>
-public sealed record TunLink(int Port, string Password, string ServerAddress, int BypassPort = 0)
+public sealed record TunLink(int Port, string Password, string ServerAddress, int BypassPort = 0, string? Outside = null)
 {
     /// <summary>
     /// Шифр связи: Shadowsocks AEAD с AES-128-GCM. SOCKS5 Xray-core 26.x для UDP открывает на каждый UDP ASSOCIATE свой порт и
@@ -215,9 +217,19 @@ public static class XrayConfigBuilder
             },
             new JsonObject { ["tag"] = BlockTag, ["protocol"] = "blackhole" },
         };
-        if (request.Connection.TlsFragment)
+        var fragment = request.Connection.TlsFragment ? Fragment() : null;
+        if (fragment is not null)
         {
-            outbounds.Add(Fragment());
+            outbounds.Add(fragment);
+        }
+
+        // Режим VPN: сокет к серверу — сразу на внешнем интерфейсе, мимо TUN (решение 533). Без этого он заходил в TUN, и
+        // весь зашифрованный трафик второй раз шел через sing-box: скорость ниже, процессор занят, а счетчики адаптера
+        // туннеля (скорость на главной) удваивались. Сокет создает выход, через который выход к серверу дозванивается
+        // (фрагментация TLS), иначе — он сам. У ретранслятора Hysteria2 и TUIC выход к нему — 127.0.0.1: привязка не нужна.
+        if (tun is { Outside: { Length: > 0 } outside } && !NeedsRelay(request.Server))
+        {
+            Outside(outbound["streamSettings"]?["sockopt"]?["dialerProxy"] is not null && fragment is not null ? fragment : outbound, outside);
         }
 
         if (tun is not null && fakeDns && request.Connection.VpnSystemProxy)
@@ -478,6 +490,22 @@ public static class XrayConfigBuilder
     };
 
     /// <summary>Выход соединяется с уже разрешенным адресом сервера: в vnext, servers и у WireGuard — в endpoint.</summary>
+    // Привязка сокета выхода к интерфейсу: на Linux — SO_BINDTODEVICE, на Windows — IP_UNICAST_IF, на macOS — IP_BOUND_IF (Xray-core).
+    private static void Outside(JsonObject outbound, string outside)
+    {
+        if (outbound["streamSettings"] is not JsonObject stream)
+        {
+            outbound["streamSettings"] = stream = new JsonObject();
+        }
+
+        if (stream["sockopt"] is not JsonObject sockopt)
+        {
+            stream["sockopt"] = sockopt = new JsonObject();
+        }
+
+        sockopt["interface"] = outside;
+    }
+
     private static void Dial(JsonObject outbound, string address)
     {
         var settings = outbound["settings"]!.AsObject();

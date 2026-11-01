@@ -58,7 +58,7 @@ public static class InfrastructureModule
                     || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>()));
         services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
             sp.GetRequiredService<IGatewayClient>(), !demo && OperatingSystem.IsWindows() ? new CurrentUserWindowsProxy() : null,
-            new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>()));
+            new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
         services.AddSingleton<IServiceInstaller>(sp => demo
             ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));

@@ -97,9 +97,11 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     /// На месте все фильтры последнего включения, а не только первый: другая программа могла снять часть. Включала не эта
     /// служба (блок с прошлого запуска) — как <see cref="IsEnabled"/>.
     /// </summary>
-    public bool IsIntact => (Volatile.Read(ref _filters) is var count and > 0
+    public bool IsIntact => FiltersIntact && VirtualMachineRulesIntact();
+
+    public bool FiltersIntact => Volatile.Read(ref _filters) is var count and > 0
         ? WithEngine(engine => Enumerable.Range(0, count).All(index => FilterExists(engine, index)))
-        : IsEnabled) && VirtualMachineRulesIntact();
+        : IsEnabled;
 
     private bool VirtualMachineRulesIntact()
     {

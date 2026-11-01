@@ -19,7 +19,9 @@ public sealed class UserProxyController : IUserProxyController, IDisposable
     private readonly ISystemProxy? _proxy;
     private readonly UserProxyLease? _lease;
     private readonly TimeProvider _time;
+    private readonly IProxyLogonRecovery? _recovery;
     private readonly Lock _gate = new();
+    private bool? _recoveryRequired;
     private ITimer? _timer;
     private bool _started;
     private bool _changedByOther;
@@ -27,13 +29,21 @@ public sealed class UserProxyController : IUserProxyController, IDisposable
     private AppSettings? _lastSettings;
     private UserProxyStatus _status = new(UserProxyState.Off);
 
-    public UserProxyController(SettingsService settings, IGatewayClient gateway, ISystemProxy? proxy, IUserProxyBackupStore store, TimeProvider time)
+    /// <param name="settings">Настройки окна.</param>
+    /// <param name="gateway">Служба: статус подключения и готовый порт входа.</param>
+    /// <param name="proxy">Прокси пользователя (WinINet); null — не Windows или демо.</param>
+    /// <param name="store">Снимок до включения — переживает аварию окна.</param>
+    /// <param name="time">Часы сверки.</param>
+    /// <param name="recovery">Запуск окна при следующем входе, пока оно держит прокси, а автозапуск выключен; null — без него.</param>
+    public UserProxyController(SettingsService settings, IGatewayClient gateway, ISystemProxy? proxy, IUserProxyBackupStore store, TimeProvider time,
+        IProxyLogonRecovery? recovery = null)
     {
         _settings = settings;
         _gateway = gateway;
         _proxy = proxy;
         _lease = proxy is null ? null : new UserProxyLease(proxy, store);
         _time = time;
+        _recovery = recovery;
     }
 
     public UserProxyStatus Status
@@ -78,6 +88,7 @@ public sealed class UserProxyController : IUserProxyController, IDisposable
                 try
                 {
                     _lease?.Release();
+                    Recover(needed: false);
                 }
                 catch (Exception error) when (error is IOException or UnauthorizedAccessException or SecurityException or JsonException or FormatException)
                 {
@@ -143,6 +154,7 @@ public sealed class UserProxyController : IUserProxyController, IDisposable
                 next = new UserProxyStatus(UserProxyState.Error);
             }
 
+            Recover(next.State is UserProxyState.Applied or UserProxyState.Held && !_settings.Current.StartWithSystem);
             if (next == _status)
             {
                 return;
@@ -152,6 +164,26 @@ public sealed class UserProxyController : IUserProxyController, IDisposable
         }
 
         Changed?.Invoke(this, next);
+    }
+
+    // Прокси держит окно, а при входе оно само не запустится — запуск один раз при следующем входе (решение 534). С автозапуском
+    // окно стартует и так; две записи открыли бы окно вторым запуском. Запись меняется только при смене решения.
+    private void Recover(bool needed)
+    {
+        if (_recovery is null || _recoveryRequired == needed)
+        {
+            return;
+        }
+
+        try
+        {
+            _recovery.Require(needed);
+            _recoveryRequired = needed;
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException or SecurityException)
+        {
+            // Не записалось — попробуем при следующей сверке; прокси от этого не зависит.
+        }
     }
 
     private UserProxyStatus ReconcileCore()

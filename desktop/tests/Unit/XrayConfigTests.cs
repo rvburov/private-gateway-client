@@ -557,6 +557,36 @@ public sealed class XrayConfigTests
             .Rejection.ShouldBe(CoreRejection.Unencrypted, "имя частное, а разрешилось в открытый адрес");
     }
 
+    [Fact]
+    public void Server_socket_is_bound_to_the_outside_interface_in_vpn_mode_and_skips_the_tunnel()
+    {
+        // Решение 533: без привязки соединение Xray с сервером заходило в TUN и второй раз шло через sing-box.
+        var tun = new TunLink(31000, TunKey, "198.51.100.20", Outside: "eth9");
+        static JsonNode? Sockopt(JsonObject config, string tag) => Outbound(config, tag)["streamSettings"]?["sockopt"];
+
+        var vless = XrayConfigBuilder.Build(Request(Link("vless/reality-vision")), tun).Config.ShouldNotBeNull();
+        Sockopt(vless, XrayConfigBuilder.ProxyTag)!["interface"]!.GetValue<string>().ShouldBe("eth9");
+
+        // Фрагментация TLS: сокет создает выход фрагментации — привязан он, а выход к серверу дозванивается через него.
+        var fragmented = XrayConfigBuilder.Build(Request(Link("vless/reality-vision"), connection: ConnectionSettings.Default with { TlsFragment = true }), tun)
+            .Config.ShouldNotBeNull();
+        Sockopt(fragmented, XrayConfigBuilder.ProxyTag)!["dialerProxy"]!.GetValue<string>().ShouldBe(XrayConfigBuilder.FragmentTag);
+        Sockopt(fragmented, XrayConfigBuilder.ProxyTag)!["interface"].ShouldBeNull();
+        Sockopt(fragmented, XrayConfigBuilder.FragmentTag)!["interface"]!.GetValue<string>().ShouldBe("eth9");
+
+        // WireGuard: своих настроек потока не было — привязка их заводит, сокет UDP Xray берет из них.
+        var wireguard = XrayConfigBuilder.Build(Request(Link("wireguard/basic")), tun).Config.ShouldNotBeNull();
+        Sockopt(wireguard, XrayConfigBuilder.ProxyTag)!["interface"]!.GetValue<string>().ShouldBe("eth9");
+
+        // Ретранслятор Hysteria2 и TUIC: выход к нему — 127.0.0.1, привязка сломала бы петлю. Интерфейс не узнан — привязки нет.
+        var relayed = XrayConfigBuilder.Build(Request(Link("hysteria2/obfs-insecure")), tun, relay: new RelayLink(31500, "relay-user", "relay-pass"))
+            .Config.ShouldNotBeNull();
+        Outbound(relayed, XrayConfigBuilder.ProxyTag)["streamSettings"].ShouldBeNull();
+        Sockopt(XrayConfigBuilder.Build(Request(Link("vless/reality-vision")), tun with { Outside = null }).Config.ShouldNotBeNull(),
+            XrayConfigBuilder.ProxyTag).ShouldBeNull();
+        Sockopt(Build(Link("vless/reality-vision"), ConnectionMode.Proxy), XrayConfigBuilder.ProxyTag).ShouldBeNull("в режиме прокси TUN нет");
+    }
+
     private static JsonObject Build(
         ServerDefinition server,
         ConnectionMode mode = ConnectionMode.Vpn,

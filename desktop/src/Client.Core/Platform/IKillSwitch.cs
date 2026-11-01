@@ -94,6 +94,12 @@ public interface IKillSwitch
     /// </summary>
     bool IsIntact => IsEnabled;
 
+    /// <summary>
+    /// Основные правила блока целы — без отдельных правил защиты виртуальных машин (<see cref="VirtualMachines"/>). Пропали
+    /// только они — сторож пишет об этом, а не о снятом блоке (решение 535).
+    /// </summary>
+    bool FiltersIntact => IsIntact;
+
     /// <summary>Поставить правила или заменить прежние одним шагом: щели между старыми и новыми нет.</summary>
     void Enable(KillSwitchPolicy policy);
 

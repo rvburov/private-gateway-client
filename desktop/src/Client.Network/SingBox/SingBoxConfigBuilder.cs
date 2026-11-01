@@ -34,8 +34,8 @@ public sealed record TunRequest(
 
 /// <summary>
 /// Сервер Hysteria2 или TUIC за ретранслятором (<see cref="SingBoxConfigBuilder.BuildRelay"/>): вход для Xray и адрес, к которому
-/// соединяться — разрешенный службой заранее (режим VPN: этот адрес и порт сервера sing-box отправляет напрямую, блок их пропускает);
-/// null — имя из описания.
+/// соединяться — разрешенный службой заранее (режим VPN: выход ретранслятора на внешнем интерфейсе, мимо TUN, решение 533; блок
+/// пропускает этот адрес и порт); null — имя из описания (режим прокси).
 /// </summary>
 public sealed record RelayRoute(ServerDefinition Server, RelayLink Link, string? Address = null);
 
@@ -222,6 +222,8 @@ public static class SingBoxConfigBuilder
 
         // Только транспортный адрес и порт идут напрямую через выбранный физический интерфейс
         // (auto_detect_interface). Сайт на том же IP и другом порту остается в Xray, а не уходит мимо TUN.
+        // Обычно сюда ничего не приходит: Xray и ретранслятор соединяются с сервером на внешнем интерфейсе сами (решение
+        // 533). Правило — запас, если интерфейс не узнан: соединение не уйдет по кругу в Xray.
         if (request.ServerAddresses.Count > 0)
         {
             var serverDirect = new JsonObject { ["type"] = "direct", ["tag"] = ServerDirectTag };
@@ -323,8 +325,22 @@ public static class SingBoxConfigBuilder
             ["log"] = new JsonObject { ["level"] = log == CoreLogLevel.Debug ? "debug" : "info", ["timestamp"] = false },
             ["inbounds"] = inbounds,
             ["outbounds"] = outbounds,
-            ["route"] = new JsonObject { ["rules"] = rules, ["final"] = "relay-out-0" },
+            ["route"] = RelayRouting(rules, routes.Any(r => r.Address is not null)),
         };
+    }
+
+    // Режим VPN (адрес сервера служба нашла заранее): выход к серверу — на внешнем интерфейсе, мимо TUN, как у Xray (решение
+    // 533); интерфейс sing-box следит сам и после смены сети берет новый. В режиме прокси TUN нет, привязка не нужна — и
+    // на Linux служба пользователя без прав ее бы не сделала.
+    private static JsonObject RelayRouting(JsonArray rules, bool vpn)
+    {
+        var route = new JsonObject { ["rules"] = rules, ["final"] = "relay-out-0" };
+        if (vpn)
+        {
+            route["auto_detect_interface"] = true;
+        }
+
+        return route;
     }
 
     // Выход к серверу: TLS — с именем из ссылки (без него — имя сервера) и ALPN ссылки; у TUIC без ALPN — h3, как у его

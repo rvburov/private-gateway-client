@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Cryptography;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Network.SingBox;
 using PrivateGateway.Client.Network.Xray;
 using PrivateGateway.Client.Platform.Linux;
@@ -195,10 +196,15 @@ public sealed class VpnTunnel : IAsyncDisposable
     /// Адреса TUN (тесты); null — первая подсеть, не занятая адаптерами машины (<see cref="MachineNetworks"/>,
     /// <see cref="TunSubnet.Choose"/>).
     /// </param>
+    /// <param name="outside">
+    /// Внешний интерфейс для соединения Xray с сервером мимо TUN (<see cref="TunLink.Outside"/>, решение 533); null — в системе
+    /// маршрут по умолчанию не через туннель (<see cref="OutsideInterface"/>), в сетевом пространстве тестов — без привязки.
+    /// </param>
     /// <param name="cancellationToken">Отмена.</param>
     public static async Task<VpnTunnel> StartAsync(string xray, string singBox, CoreRequest request, IReadOnlyList<IPAddress> serverAddresses,
         TimeSpan timeout, TimeProvider time, string? netns = null, Action<string, string>? output = null, ProbeLink? probe = null,
-        Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, IReadOnlyList<string>? routes = null, TunSubnet? subnet = null, CancellationToken cancellationToken = default)
+        Func<ProbeLink, CancellationToken, Task<bool>>? serverIpv6 = null, IReadOnlyList<string>? routes = null, TunSubnet? subnet = null,
+        string? outside = null, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
         ArgumentNullException.ThrowIfNull(serverAddresses);
@@ -209,7 +215,10 @@ public sealed class VpnTunnel : IAsyncDisposable
 
         // Пока выбираются внутренние порты, фиксированный вход прокси занят нашей парой: они не совпадут.
         using var localProxy = ReserveLocalProxy(request, netns);
-        var link = NewLink(serverAddresses[0], bypass: XrayConfigBuilder.NeedsBypassInbound(request));
+        var link = NewLink(serverAddresses[0], bypass: XrayConfigBuilder.NeedsBypassInbound(request)) with
+        {
+            Outside = outside ?? (netns is null ? OutsideInterface(ServiceHost.Routes()) : null),
+        };
 
         // Hysteria2 и TUIC — через ретранслятор sing-box (CoreRelay): к серверу он соединяется по тому же адресу и порту,
         // которые правило sing-box отправляет напрямую, а блок пропускает.
@@ -368,6 +377,23 @@ public sealed class VpnTunnel : IAsyncDisposable
 
     /// <summary>Вход проверки связи на одно подключение: свободный порт на 127.0.0.1, имя и пароль — по 128 случайных бит.</summary>
     public static ProbeLink NewProbe() => new(LocalPort.FreeForTcpAndUdp(), Secret(), Secret());
+
+    /// <summary>
+    /// Внешний интерфейс: первый маршрут по умолчанию (или половина интернета) не через туннель — так же служба ищет карту для
+    /// проверки DNS мимо туннеля. Маршрутов не прочитать или такого нет — null: Xray соединится через TUN и правило
+    /// <c>server-direct</c> sing-box (решение 533).
+    /// </summary>
+    public static string? OutsideInterface(IRouteTable? routes)
+    {
+        try
+        {
+            return routes?.DefaultRoutes().FirstOrDefault(r => !r.IsTunnel && r.Adapter != SingBoxConfigBuilder.InterfaceName)?.Adapter;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
 
     /// <summary>
     /// Связь Xray с TUN на одно подключение: порт на 127.0.0.1, свободный для TCP и UDP, пароль Shadowsocks — 128
