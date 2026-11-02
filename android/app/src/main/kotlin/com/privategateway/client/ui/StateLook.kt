@@ -24,12 +24,18 @@ enum class ProtectionView {
     Reconnecting,
     Blocked,
     Error,
+
+    /** Пауза для входа в Wi-Fi (решение 557): туннель опущен по просьбе пользователя на 5 минут. */
+    Paused,
     ;
 
     companion object {
-        /** [closed] — сеть закрыл Android без туннеля (MainUi.closedWithoutTunnel); [leak] — выход совпал с реальным IP. */
-        fun of(state: TunnelState, closed: Boolean, leak: Boolean): ProtectionView = when (state) {
-            TunnelState.Off -> if (closed) Strict else Off
+        /**
+         * [closed] — сеть закрыл Android без туннеля (MainUi.closedWithoutTunnel); [leak] — выход совпал с реальным IP;
+         * [paused] — пауза для входа в Wi-Fi. Если и на паузе Android держит сеть закрытой — честнее «Блокировка Android».
+         */
+        fun of(state: TunnelState, closed: Boolean, leak: Boolean, paused: Boolean = false): ProtectionView = when (state) {
+            TunnelState.Off -> if (closed) Strict else if (paused) Paused else Off
             TunnelState.Connecting, TunnelState.Stopping -> Connecting
             TunnelState.Connected -> if (leak) Leak else Connected
             TunnelState.Reconnecting -> Reconnecting
@@ -114,6 +120,18 @@ data class StateLook(
                 PgIcons.MarkAlert,
                 R.string.power_label_leak,
                 R.string.status_leak_title,
+            )
+
+            // Пауза для входа в Wi-Fi — янтарный тон: защиты нет, но по просьбе пользователя и ненадолго (доска 17).
+            ProtectionView.Paused -> StateLook(
+                PgState.Blocked.Ring,
+                PgState.Blocked.Icon,
+                PgState.Blocked.Glow,
+                PgState.Blocked.Fill,
+                PgColor.Status.Caution.Tint,
+                PgIcons.MarkAlert,
+                R.string.power_label_paused,
+                R.string.status_paused_title,
             )
 
             ProtectionView.Error -> StateLook(

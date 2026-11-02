@@ -43,6 +43,12 @@ final class AppModel: ObservableObject {
 
     private static let onboardingKey = "onboarding_done"
 
+    /// Пауза для входа в Wi-Fi (решение 557): до какого времени туннель опущен; nil — паузы нет. Хранится в UserDefaults
+    /// приложения: открыли приложение после конца паузы — защита возвращается сама.
+    @Published private(set) var pausedUntil = UserDefaults.standard.object(forKey: AppModel.pauseKey) as? Date
+    private static let pauseKey = "pause_until"
+    private var pauseTask: Task<Void, Never>?
+
     let texts: PgTexts
     let container: SharedContainer
     /// Версии и лицензии из пакета приложения — читаются один раз.
@@ -120,7 +126,10 @@ final class AppModel: ObservableObject {
             route = .subscriptions
         case .retry?, .connect?:
             Task {
-                if home.off {
+                // «Подключить» в уведомлении о конце паузы для входа в Wi-Fi — конец паузы (решение 557).
+                if pausedUntil != nil {
+                    await endPause()
+                } else if home.off {
                     await retry()
                 }
             }
@@ -159,6 +168,86 @@ final class AppModel: ObservableObject {
         coreVersion = container.coreVersion.read()
         refreshLog()
         refreshStatus()
+        checkPause()
+    }
+
+    /// Пауза для входа в Wi-Fi отеля или кафе (решение 557, `CaptivePortalFlow` десктопа): туннель опускается на 5 минут, чтобы
+    /// открылась страница входа в сеть, подключение по требованию на это время выключено. Защита выключена — пауза не нужна.
+    func pause() async {
+        guard [.connected, .connecting, .reconnecting].contains(home.status.state) || blocked else {
+            post(texts.pauseOff)
+            return
+        }
+
+        setPause(Date().addingTimeInterval(CaptivePause.duration))
+        await tunnel.disconnect()
+        Notifications.schedulePauseEnd(after: CaptivePause.duration, texts)
+        post(texts.pauseStarted, event: true)
+        armPause()
+        await reload()
+    }
+
+    /// Конец паузы — по таймеру, кнопкой «Вернуть защиту» или когда приложение открыли после срока: защита включается снова.
+    func endPause() async {
+        guard pausedUntil != nil else {
+            return
+        }
+
+        setPause(nil)
+        Notifications.cancelPauseEnd()
+        if home.off {
+            await retry()
+        }
+    }
+
+    /// Пауза идет и туннель опущен: на главной «Защита на паузе» с отсчетом, а не «Выключено».
+    var paused: Date? {
+        home.off ? pausedUntil : nil
+    }
+
+    private func setPause(_ until: Date?) {
+        pauseTask?.cancel()
+        pauseTask = nil
+        pausedUntil = until
+        if let until {
+            UserDefaults.standard.set(until, forKey: AppModel.pauseKey)
+        } else {
+            UserDefaults.standard.removeObject(forKey: AppModel.pauseKey)
+        }
+    }
+
+    /// Таймер конца паузы, пока приложение живо.
+    private func armPause() {
+        pauseTask?.cancel()
+        guard let until = pausedUntil else {
+            return
+        }
+
+        pauseTask = Task { [weak self] in
+            let wait = max(0, until.timeIntervalSinceNow)
+            try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
+            guard !Task.isCancelled else {
+                return
+            }
+
+            await self?.endPause()
+        }
+    }
+
+    /// После чтения состояния: защиту включили сами — паузы больше нет; срок вышел, пока приложение спало, — вернуть защиту.
+    private func checkPause() {
+        guard let until = pausedUntil else {
+            return
+        }
+
+        if !home.off {
+            setPause(nil)
+            Notifications.cancelPauseEnd()
+        } else if until <= Date() {
+            Task { await endPause() }
+        } else if pauseTask == nil {
+            armPause()
+        }
     }
 
     /// Журнал туннеля заново — пока «Проверка» на экране, раз в несколько секунд; тот же — экран не перерисовывается.

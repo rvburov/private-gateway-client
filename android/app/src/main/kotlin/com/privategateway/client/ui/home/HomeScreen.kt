@@ -67,6 +67,7 @@ import com.privategateway.client.core.inspect.PhoneNetworkKind
 import com.privategateway.client.core.servers.QuickSwitch
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.servers.ServerItem
+import com.privategateway.client.core.vpn.CaptivePause
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.ui.ChipLook
@@ -108,6 +109,10 @@ class HomeActions(
     val vpnSettings: () -> Unit = {},
     /** Скопировать IP в буфер; «IP скопирован» главная показывает сама. */
     val copy: (String) -> Unit = {},
+    /** «Вход в Wi-Fi» в «Подключении» и «Переподключении»: вопрос о паузе для входа в сеть (решение 557). */
+    val captive: () -> Unit = {},
+    /** «Вернуть защиту» на паузе: подключить снова, не дожидаясь конца пяти минут. */
+    val resume: () -> Unit = {},
 )
 
 /**
@@ -260,6 +265,7 @@ private fun subtitle(ui: MainUi, view: ProtectionView): String {
         // «Блокировать подключения без VPN» — это Android, а не строгий режим приложения (решение 445).
         ProtectionView.Strict -> stringResource(R.string.android_status_off_closed)
         ProtectionView.Off -> stringResource(R.string.status_off_sub)
+        ProtectionView.Paused -> stringResource(R.string.status_paused_sub)
     }
 }
 
@@ -386,7 +392,8 @@ private fun Chip(chip: ProtectionChip, selected: Boolean, modifier: Modifier, on
 /**
  * Строка под плитками без разделителя (CheckedText и HasCheckAction десктопа): в «Защищено» — когда проверено и
  * «Проверить» (пока идет проверка — «Проверяем…», кнопки нет), в «Блокировке» и «Ошибке» — «Повторить», в «Блокировке»
- * Android — «Открыть настройки VPN»; в остальных — только текст. «Вход в Wi-Fi» нет: паузы у телефона нет.
+ * Android — «Открыть настройки VPN»; в «Подключении» и «Переподключении» — «Вход в Wi-Fi» (пауза для входа в сеть, решение
+ * 557), на паузе — оставшееся время и «Вернуть защиту».
  */
 @Composable
 private fun CheckedLine(ui: MainUi, view: ProtectionView, actions: HomeActions) {
@@ -398,6 +405,7 @@ private fun CheckedLine(ui: MainUi, view: ProtectionView, actions: HomeActions) 
         ProtectionView.Connected, ProtectionView.Leak -> checkedText(checked, ui.ip.measuring)
         ProtectionView.Blocked -> stringResource(R.string.checked_blocked)
         ProtectionView.Error -> stringResource(R.string.checked_error)
+        ProtectionView.Paused -> stringResource(R.string.pause_banner) + " · " + pauseLeft(ui.status.pausedUntil)
     }
 
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -410,9 +418,27 @@ private fun CheckedLine(ui: MainUi, view: ProtectionView, actions: HomeActions) 
             ProtectionView.Blocked -> LinkAction(stringResource(R.string.action_retry), PgState.Blocked.Icon, "status.retry", actions.retry)
             ProtectionView.Error -> LinkAction(stringResource(R.string.action_retry), PgState.Error.Icon, "status.retry", actions.retry)
             ProtectionView.Strict -> LinkAction(stringResource(R.string.android_settings_vpn_open), PgState.Blocked.Icon, "status.vpnSettings", actions.vpnSettings)
+            ProtectionView.Connecting, ProtectionView.Reconnecting ->
+                LinkAction(stringResource(R.string.action_captive), PgState.Connecting.Icon, "status.captive", actions.captive)
+            ProtectionView.Paused -> LinkAction(stringResource(R.string.power_action_resume), PgState.Blocked.Icon, "status.resume", actions.resume)
             else -> Unit
         }
     }
+}
+
+/** Сколько осталось паузы — «4:59», каждую секунду заново. */
+@Composable
+private fun pauseLeft(until: Long?): String {
+    val now by produceState(System.currentTimeMillis(), until) {
+        while (until != null && System.currentTimeMillis() < until) {
+            value = System.currentTimeMillis()
+            delay(1000)
+        }
+
+        value = System.currentTimeMillis()
+    }
+
+    return CaptivePause.clock(CaptivePause.left(until ?: now, now))
 }
 
 /** «Проверено только что» первые 10 с, потом «Проверено в 14:05»; пока идет замер — «Проверяем…». */
@@ -490,6 +516,7 @@ private fun IpCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSelec
 
             val meta = when (view) {
                 ProtectionView.Off, ProtectionView.Error -> R.string.ip_meta_off
+                ProtectionView.Paused -> R.string.ip_meta_paused
                 ProtectionView.Strict, ProtectionView.Blocked -> R.string.ip_meta_stopped
                 ProtectionView.Connecting, ProtectionView.Reconnecting -> R.string.ip_meta_waiting
                 // Город, тип сети и AS выхода знает только RIPEstat, а его приложение спрашивает лишь по кнопке на «Проверке».
@@ -501,7 +528,7 @@ private fun IpCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSelec
 
             val direct = ui.ip.direct
             if (direct != null) {
-                val visible = view == ProtectionView.Off || view == ProtectionView.Error || view == ProtectionView.Leak
+                val visible = view == ProtectionView.Off || view == ProtectionView.Error || view == ProtectionView.Leak || view == ProtectionView.Paused
                 val state = stringResource(if (visible) R.string.ip_real_visible else R.string.ip_real_hidden)
                 val label = stringResource(R.string.ip_real)
                 Text(

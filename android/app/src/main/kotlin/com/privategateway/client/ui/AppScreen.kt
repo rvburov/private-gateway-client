@@ -18,8 +18,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.R
 import com.privategateway.client.inspect.CheckViewModel
 import com.privategateway.client.inspect.InspectorViewModel
@@ -47,8 +49,11 @@ import com.privategateway.client.ui.subscriptions.SubscriptionsScreen
 import com.privategateway.client.ui.subscriptions.SubscriptionsViewModel
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.PgBackground
+import com.privategateway.client.ui.theme.PgDialog
+import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgToast
 import com.privategateway.client.ui.theme.PgToastState
+import com.privategateway.client.ui.theme.PgTone
 import kotlinx.coroutines.flow.merge
 
 /** Разделы островка-меню: Главная · Серверы · [кнопка-щит] · Проверка · Настройки. */
@@ -71,6 +76,8 @@ class AppActions(
     val copy: (String) -> Unit = {},
     /** Язык приложения («ru», «en») — Android 13+; null — только язык системы. */
     val language: ((String) -> Unit)? = null,
+    /** Пауза для входа в Wi-Fi: туннель опускается на 5 минут (решение 557). */
+    val pause: () -> Unit = {},
 )
 
 @Composable
@@ -148,6 +155,16 @@ fun AppScreen(
         }
     }
     val welcome = onboarded == false && ui.loaded && !hasServers
+    // Пауза для входа в Wi-Fi (решение 557): «Вход в Wi-Fi» на главной и «Открыть» в «Защите и утечках» спрашивают, можно ли
+    // открыть интернет без VPN на 5 минут. Защита выключена — пауза не нужна; «Блокировать подключения без VPN» — не поможет.
+    var askingPause by rememberSaveable { mutableStateOf(false) }
+    val captive: () -> Unit = {
+        when {
+            ui.status.state == TunnelState.Off || ui.status.state == TunnelState.Error -> toast.show(context.getString(R.string.pause_off))
+            ui.status.lockdown == true -> toast.show(context.getString(R.string.android_pause_lockdown), long = true)
+            else -> askingPause = true
+        }
+    }
 
     CompositionLocalProvider(LocalPgToast provides toast) {
         PgBackground {
@@ -246,6 +263,9 @@ fun AppScreen(
                                 retry = power,
                                 vpnSettings = actions.openVpnSettings,
                                 copy = actions.copy,
+                                captive = captive,
+                                // «Вернуть защиту» на паузе — то же, что щит: подключить к выбранному серверу.
+                                resume = power,
                             ),
                         )
                     }
@@ -336,6 +356,7 @@ fun AppScreen(
                             system,
                             onCheck = { tab = Tab.Check },
                             language = actions.language,
+                            onCaptive = captive,
                             installedApps = { settings.installedApps() },
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
@@ -372,6 +393,26 @@ fun AppScreen(
                     onPower = power,
                     modifier = Modifier.align(Alignment.BottomCenter),
                     look = StateLook.of(ui.view),
+                )
+            }
+
+            if (askingPause) {
+                PgDialog(
+                    stringResource(R.string.pause_dialog_title),
+                    stringResource(R.string.pause_dialog_text),
+                    PgIcons.Clock,
+                    PgTone.Caution,
+                    stringResource(R.string.pause_dialog_keep),
+                    { askingPause = false },
+                    stringResource(R.string.pause_dialog_open),
+                    {
+                        askingPause = false
+                        actions.pause()
+                        toast.show(context.getString(R.string.pause_started), long = true)
+                    },
+                    { askingPause = false },
+                    "dialog.pause",
+                    secondaryDanger = true,
                 )
             }
 

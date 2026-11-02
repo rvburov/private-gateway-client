@@ -1165,6 +1165,8 @@
   "pause.dialog.textStrict": "This lets you sign in to hotel or cafe Wi-Fi. Strict mode keeps the network closed without VPN — during the pause it opens, and websites and the network see your real IP. The network closes again by itself in 5 minutes, or earlier with “Close network”.",
   "pause.running": "The pause is already on — the network sign-in page is open again",
   "pause.failed": "The pause did not start: the service could not open the network — see the log on the Check screen",
+  "android.pause.lockdown": "A pause won't help: “Block connections without VPN” keeps the network closed even without the VPN. To sign in to the Wi-Fi, turn it off in Android's VPN settings and turn it back on after signing in.",
+  "ios.pause.ended": "The Wi-Fi sign-in pause is over — turn protection back on?",
   "prot.group.ks": "Kill switch",
   "prot.group.dns": "DNS",
   "prot.group.ipv6": "IPv6",

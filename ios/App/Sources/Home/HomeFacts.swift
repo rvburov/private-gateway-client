@@ -59,6 +59,8 @@ struct HomeFacts: Equatable {
     var ip = WebIp()
     /// Скорость по счетчикам интерфейса туннеля; nil — счетчиков нет.
     var speed: TunnelSpeed?
+    /// Пауза для входа в Wi-Fi: до какого времени (решение 557); nil — паузы нет.
+    var paused: Date?
 
     /// «Утечка IP»: защита включена, а замер через туннель увидел реальный адрес — тот же, что без защиты в этой сети (правило
     /// `HasExitIpLeak` десктопа).
@@ -82,12 +84,14 @@ enum NetworkLine {
 }
 
 /// Строка под плитками: текст и кнопка справа — правила `CheckedText` и `HasCheckAction` десктопа. «Проверить» — замер
-/// внешнего IP на месте (под защитой он и есть проверка утечки), «Повторить» — подключиться снова. Паузы для входа в Wi-Fi
-/// на телефоне нет, поэтому в «Переподключении» кнопки нет.
+/// внешнего IP на месте (под защитой он и есть проверка утечки), «Повторить» — подключиться снова, «Вход в Wi-Fi» в
+/// «Подключении» и «Переподключении» — вопрос о паузе для входа в сеть, на паузе — отсчет и «Вернуть защиту» (решение 557).
 struct CheckLine: Equatable {
     enum Action: Equatable {
         case check
         case retry
+        case captive
+        case resume
     }
 
     let text: String
@@ -96,7 +100,20 @@ struct CheckLine: Equatable {
     /// «Проверено только что» держится 10 с, дальше — «Проверено в 14:05».
     static let nowFor: TimeInterval = 10
 
-    static func of(_ state: TunnelState, blocked: Bool, ip: WebIp, now: Date, _ texts: PgTexts) -> CheckLine {
+    /// - Parameters:
+    ///   - captive: предлагать «Вход в Wi-Fi» в «Подключении» и «Переподключении» (главная — да).
+    ///   - paused: пауза для входа в Wi-Fi до этого времени — в «Выключено» вместо «Защита выключена».
+    static func of(
+        _ state: TunnelState, blocked: Bool, ip: WebIp, now: Date, _ texts: PgTexts, captive: Bool = false, paused: Date? = nil
+    ) -> CheckLine {
+        if state == .off, let paused {
+            return CheckLine(text: texts.pauseBanner + " · " + CaptivePause.clock(CaptivePause.left(until: paused, now: now)), action: .resume)
+        }
+
+        if captive, state == .connecting || state == .reconnecting {
+            return CheckLine(text: state == .connecting ? texts.checkedConnecting : texts.checkedReconnecting, action: .captive)
+        }
+
         switch state {
         case .connected:
             if ip.checking {
@@ -124,6 +141,11 @@ struct CheckLine: Equatable {
 
     /// Цвет кнопки — тон состояния: «Повторить» в «Блокировке» — оранжевый, в «Ошибке» — красный, «Проверить» — синий.
     static func tone(_ state: TunnelState, blocked: Bool) -> PgRGBA {
+        if state == .off {
+            // «Вернуть защиту» на паузе — янтарный тон паузы.
+            return PgState.Blocked.icon
+        }
+
         guard state == .error else {
             return PgState.Connecting.icon
         }
@@ -150,7 +172,7 @@ struct WebIpLook: Equatable {
     /// Реальный адрес виден сайтам (защиты нет или утечка), иначе — скрыт.
     let realVisible: Bool
 
-    static func of(_ state: TunnelState, blocked: Bool, ip: WebIp, masked: Bool, _ texts: PgTexts) -> WebIpLook {
+    static func of(_ state: TunnelState, blocked: Bool, ip: WebIp, masked: Bool, _ texts: PgTexts, paused: Bool = false) -> WebIpLook {
         let leak = HomeFacts(blocked: blocked, ip: ip).leak(state)
         let shown: String?
         let meta: String?
@@ -162,7 +184,7 @@ struct WebIpLook: Equatable {
             visible = leak
         case .off:
             shown = ip.direct
-            meta = texts.ipMetaOff
+            meta = paused ? texts.ipMetaPaused : texts.ipMetaOff
             visible = true
         case .error where !blocked:
             shown = ip.direct

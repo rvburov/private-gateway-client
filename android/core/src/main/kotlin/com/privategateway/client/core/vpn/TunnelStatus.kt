@@ -35,7 +35,33 @@ data class TunnelStatus(
     val alwaysOn: Boolean? = null,
     val lockdown: Boolean? = null,
     val attempt: Int = 0,
-)
+    /**
+     * Пауза для входа в Wi-Fi (доска 17): до какого времени эпохи (мс) туннель опущен, чтобы открылась страница входа в сеть;
+     * состояние в это время — [TunnelState.Off]. null — паузы нет.
+     */
+    val pausedUntil: Long? = null,
+) {
+    /** Пауза идет — на главной «Защита на паузе» с отсчетом и «Вернуть защиту», а не «Выключено». */
+    val paused: Boolean get() = state == TunnelState.Off && pausedUntil != null
+}
+
+/**
+ * Пауза для входа в Wi-Fi отеля или кафе (решение 557) — `CaptivePortalFlow` десктопа: туннель опускается на [DURATION_MS] и
+ * поднимается сам, раньше — «Вернуть защиту». При системной «Блокировать подключения без VPN» пауза не поможет: Android
+ * держит сеть закрытой и без туннеля — ее окно не предлагает.
+ */
+object CaptivePause {
+    const val DURATION_MS = 5 * 60_000L
+
+    /** Сколько осталось, мс, не меньше нуля. */
+    fun left(until: Long, now: Long): Long = (until - now).coerceAtLeast(0)
+
+    /** Остаток для полосы паузы: «4:59», «0:05»; секунды — вверх, чтобы «0:00» не висело секунду до конца. */
+    fun clock(leftMs: Long): String {
+        val seconds = (leftMs + 999) / 1000
+        return "%d:%02d".format(seconds / 60, seconds % 60)
+    }
+}
 
 /** Коды ошибок туннеля — те же, что у десктопа (docs/architecture/errors.md). */
 object TunnelErrors {

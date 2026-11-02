@@ -38,6 +38,8 @@ struct SettingsView<Subscriptions: View>: View {
     var onRouting: (RoutingSettings) -> Void = { _ in }
     /// «Проверка и логи» — вкладка «Проверка» островка.
     var onCheck: () -> Void = {}
+    /// «Вход в Wi-Fi отеля или кафе» в «Защите и утечках» — вопрос о паузе (решение 557).
+    var onCaptive: () -> Void = {}
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
@@ -47,7 +49,7 @@ struct SettingsView<Subscriptions: View>: View {
         case .protection:
             ProtectionView(
                 texts: texts, tunnel: settings.tunnel, killSwitch: settings.killSwitch, alwaysOn: settings.alwaysOn, onTunnel: onTunnel,
-                onKillSwitch: onKillSwitch, onAlwaysOn: onAlwaysOn, onBack: { page = .main }
+                onKillSwitch: onKillSwitch, onAlwaysOn: onAlwaysOn, onBack: { page = .main }, onCaptive: onCaptive
             )
         case .core:
             CoreView(

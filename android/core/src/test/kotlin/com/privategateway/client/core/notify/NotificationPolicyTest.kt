@@ -101,6 +101,18 @@ class NotificationPolicyTest {
         assertNull(forChange(status(TunnelState.Off), status(TunnelState.Off)))
     }
 
+    /** Пауза для входа в Wi-Fi (решение 557) — по просьбе пользователя: «Защита выключена» о ней не приходит, возврат — обычный. */
+    @Test
+    fun `pause for wi-fi sign-in is not a disconnect`() {
+        val paused = status(TunnelState.Off).copy(pausedUntil = 1_000)
+        assertTrue(paused.paused)
+        assertFalse(status(TunnelState.Off).paused)
+        assertFalse(connected.copy(pausedUntil = 1_000).paused, "пауза — только когда туннель опущен")
+        assertNull(forChange(connected, paused))
+        assertNull(forChange(status(TunnelState.Stopping), paused))
+        assertEquals("notify.on.text", forChange(status(TunnelState.Connecting), connected)?.textKey)
+    }
+
     @Test
     fun `going through connecting and stopping says nothing`() {
         assertNull(forChange(status(TunnelState.Off), status(TunnelState.Connecting)))

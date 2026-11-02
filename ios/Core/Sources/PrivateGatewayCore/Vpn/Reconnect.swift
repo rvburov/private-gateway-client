@@ -258,6 +258,23 @@ public protocol GuardEvents: Sendable {
     func gaveUp(_ error: String) async
 }
 
+/// Пауза для входа в Wi-Fi отеля или кафе (решение 557) — `CaptivePause` Android: туннель опускается на `duration` и
+/// поднимается сам, раньше — «Вернуть защиту».
+public enum CaptivePause {
+    public static let duration: TimeInterval = 5 * 60
+
+    /// Сколько осталось, с, не меньше нуля.
+    public static func left(until: Date, now: Date) -> TimeInterval {
+        max(0, until.timeIntervalSince(now))
+    }
+
+    /// Остаток для полосы паузы: «4:59», «0:05»; секунды — вверх, чтобы «0:00» не висело секунду до конца.
+    public static func clock(_ left: TimeInterval) -> String {
+        let seconds = Int(left.rounded(.up))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+}
+
 /// Проверка профиля до «Защищено» (решение 556) — `StartCheck` Android: ядро запустилось — это еще не связь. Неверный ключ,
 /// неработающий сервер подписки или блокировка провайдером видны только по пробе через туннель. Пробы — до `tries` подряд
 /// (одна неудача бывает и у живого сервера); не ответила ни одна — «Ошибка: сервер не отвечает» с уведомлением, а не

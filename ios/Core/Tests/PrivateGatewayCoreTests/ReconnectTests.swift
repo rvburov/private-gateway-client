@@ -10,6 +10,18 @@ final class ReconnectTests: XCTestCase {
     private let timing = ReconnectTiming()
     private let backoff = ReconnectPolicy.backoff60Seconds
 
+    /// Пауза для входа в Wi-Fi (решение 557): пять минут, остаток не уходит в минус, отсчет — минуты и секунды вверх.
+    func testCaptivePauseClock() {
+        XCTAssertEqual(CaptivePause.duration, 300)
+        let start = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(CaptivePause.left(until: start.addingTimeInterval(60), now: start), 60)
+        XCTAssertEqual(CaptivePause.left(until: start, now: start.addingTimeInterval(5)), 0)
+        XCTAssertEqual(CaptivePause.clock(300), "5:00")
+        XCTAssertEqual(CaptivePause.clock(299), "4:59")
+        XCTAssertEqual(CaptivePause.clock(4.001), "0:05")
+        XCTAssertEqual(CaptivePause.clock(0), "0:00")
+    }
+
     /// Проверка профиля до «Защищено» (решение 556): одна неудача прощается, две подряд — «Сервер не отвечает», а не вечные попытки.
     func testStartCheckForgivesOneSilentProbeAndFailsAfterTwo() async {
         func run(_ answers: [Bool]) async -> (Bool, Int) {

@@ -104,7 +104,7 @@ object CheckRows {
         ProtectionView.Connecting -> Phase.Connecting
         ProtectionView.Reconnecting -> Phase.Holding
         ProtectionView.Strict, ProtectionView.Blocked -> Phase.Stopped
-        ProtectionView.Off, ProtectionView.Error -> Phase.Off
+        ProtectionView.Off, ProtectionView.Error, ProtectionView.Paused -> Phase.Off
     }
 
     private fun row(id: String, @StringRes title: Int, look: ChipLook, @StringRes chip: Int, vararg detail: CheckText) =

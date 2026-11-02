@@ -91,7 +91,7 @@ data class MainUi(
     val leak: Boolean get() = exit != null && exit == ip.direct
 
     /** Что показывает главная: состояние туннеля, блок Android и утечка (доска 09). */
-    val view: ProtectionView get() = ProtectionView.of(status.state, closedWithoutTunnel, leak)
+    val view: ProtectionView get() = ProtectionView.of(status.state, closedWithoutTunnel, leak, status.paused)
 
     /**
      * IP, который видят сайты (WebIp десктопа): под защитой — измеренный выход, без защиты и при ошибке без блока — реальный;
@@ -100,7 +100,7 @@ data class MainUi(
     val webAddress: String?
         get() = when (view) {
             ProtectionView.Connected, ProtectionView.Leak -> exit
-            ProtectionView.Off, ProtectionView.Error -> ip.direct
+            ProtectionView.Off, ProtectionView.Error, ProtectionView.Paused -> ip.direct
             else -> null
         }
 

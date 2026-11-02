@@ -209,6 +209,26 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(CheckLine.tone(.error, blocked: false), PgState.Error.icon)
     }
 
+    /// Пауза для входа в Wi-Fi (решение 557): «Вход в Wi-Fi» в подключении, на паузе — отсчет, «Вернуть защиту» и свой вид.
+    @MainActor
+    func testWiFiSignInPauseOnTheHomeScreen() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        XCTAssertEqual(CheckLine.of(.reconnecting, blocked: false, ip: WebIp(), now: now, texts, captive: true).action, .captive)
+        XCTAssertEqual(CheckLine.of(.connecting, blocked: false, ip: WebIp(), now: now, texts, captive: true).action, .captive)
+        XCTAssertNil(CheckLine.of(.off, blocked: false, ip: WebIp(), now: now, texts, captive: true).action, "без защиты пауза не нужна")
+
+        let paused = CheckLine.of(.off, blocked: false, ip: WebIp(), now: now, texts, paused: now.addingTimeInterval(299))
+        XCTAssertEqual(paused, CheckLine(text: texts.pauseBanner + " · 4:59", action: .resume))
+        XCTAssertEqual(CheckLine.tone(.off, blocked: false), PgState.Blocked.icon)
+
+        let look = StateLook.of(.off, texts, paused: true)
+        XCTAssertEqual(look.title, texts.statusPausedTitle)
+        XCTAssertEqual(look.power, texts.powerLabelPaused)
+        XCTAssertEqual(StateLook.of(.off, texts).title, texts.statusOffTitle)
+        XCTAssertEqual(StatusText.subtitle(TunnelStatus(), blocked: false, leak: false, server: nil, texts, paused: true), texts.statusPausedSub)
+        XCTAssertEqual(WebIpLook.of(.off, blocked: false, ip: WebIp(direct: "198.51.100.7"), masked: false, texts, paused: true).meta, texts.ipMetaPaused)
+    }
+
     @MainActor
     func testWebIpCardFollowsTheState() {
         let ip = WebIp(exit: "203.0.113.24", direct: "198.51.100.7", info: AddressInfo(

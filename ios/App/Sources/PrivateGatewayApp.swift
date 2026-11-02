@@ -68,7 +68,7 @@ struct RootView: View {
                 page
                 Island(
                     texts: model.texts, tab: tab, state: model.home.status.state, hasServer: model.home.inUse != nil, blocked: model.blocked,
-                    leak: homeFacts.leak(model.home.status.state),
+                    leak: homeFacts.leak(model.home.status.state), paused: model.paused != nil,
                     onTab: { next in
                         tab = next
                         cardOpen = false
@@ -211,7 +211,8 @@ struct RootView: View {
                     checkPage = .main
                     tab = .check
                 },
-                onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }
+                onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }, onCaptive: askPause,
+                onResume: { Task { await model.endPause() } }
             )
         case .servers:
             ServersView(
@@ -255,7 +256,8 @@ struct RootView: View {
                 onCheck: {
                     checkPage = .main
                     tab = .check
-                }
+                },
+                onCaptive: askPause
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,
@@ -299,7 +301,7 @@ struct RootView: View {
     private var homeFacts: HomeFacts {
         var ip = inspector.web
         ip.info = inspector.ip.info
-        return HomeFacts(blocked: model.blocked, uplink: inspector.uplink, ip: ip, speed: speed.speed)
+        return HomeFacts(blocked: model.blocked, uplink: inspector.uplink, ip: ip, speed: speed.speed, paused: model.paused)
     }
 
     /// Что «Проверка» знает о защите и сети: состояние туннеля и профиля VPN, «Блокировка», «Утечка IP», внешний IP и реальный
@@ -372,6 +374,19 @@ struct RootView: View {
         case .choose:
             tab = .servers
             cardOpen = false
+        }
+    }
+
+    /// «Вход в Wi-Fi» (главная, «Защита и утечки»): защита выключена — пауза не нужна; иначе вопрос, как у десктопа (доска 18):
+    /// «Открыть на 5 минут» — опасная вторая кнопка (решение 557).
+    private func askPause() {
+        guard !model.home.off || model.blocked else {
+            layers.show(model.texts.pauseOff)
+            return
+        }
+
+        layers.confirm(HomeDialogs.pause(model.texts)) {
+            Task { await model.pause() }
         }
     }
 

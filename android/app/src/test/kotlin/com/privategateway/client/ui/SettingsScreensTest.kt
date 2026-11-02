@@ -116,10 +116,10 @@ class SettingsScreensTest {
         compose.onNodeWithTag("routing").assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
 
-        // Страниц «Резервная копия» и «О программе» у телефона пока нет — и строк тоже.
+        // Страницы «Резервная копия» у телефона пока нет — и строки тоже; «О программе» есть (решение 555).
         compose.onNodeWithTag("settings").assertIsDisplayed()
         compose.onNodeWithText(text(R.string.settings_adv_backup_title)).assertDoesNotExist()
-        compose.onNodeWithText(text(R.string.settings_adv_about_title)).assertDoesNotExist()
+        compose.onNodeWithTag("settings.about").performScrollTo().assertIsDisplayed()
     }
 
     @Test
@@ -265,9 +265,9 @@ class SettingsScreensTest {
         compose.onNodeWithTag("prot.ks.open").performScrollTo().assertTextEquals(text(R.string.android_settings_vpn_open)).performClick()
         assertEquals(3, opened)
 
-        // Строк, которых телефон не умеет, нет — ни как работающих, ни как выключенных.
+        // Строк, которых телефон не умеет, нет — ни как работающих, ни как выключенных. «Вход в Wi-Fi» есть (решение 557).
         compose.onNodeWithText(text(R.string.prot_strict_title)).assertDoesNotExist()
-        compose.onNodeWithText(text(R.string.prot_captive_title)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.prot_captive_title)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.prot_dnsBlock_title)).assertDoesNotExist()
         compose.onNodeWithText(text(R.string.prot_fakeDns_title)).assertDoesNotExist()
         compose.onNodeWithText(text(R.string.prot_leaks_title)).assertDoesNotExist()

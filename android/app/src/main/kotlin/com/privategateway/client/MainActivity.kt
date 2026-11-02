@@ -82,6 +82,7 @@ class MainActivity : ComponentActivity() {
             copySecret = ::copySecret,
             copy = ::copyText,
             language = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ::setLanguage else null,
+            pause = { GatewayVpnService.pause(this) },
         )
         setContent {
             PgTheme {

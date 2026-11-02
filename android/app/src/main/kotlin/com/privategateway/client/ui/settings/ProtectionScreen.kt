@@ -65,9 +65,9 @@ import com.privategateway.client.ui.theme.pgTopDivider
 /**
  * «Защита и утечки» для телефона (доска 5): шапка с «Назад» стоит, прокручивается список. Группы — «Блок при обрыве» (что
  * сообщил Android о «Постоянной VPN» и блоке без VPN и переход в его настройки: включает их только пользователь), DNS в
- * туннеле (меню, «Свой адрес…» — нижний лист), IPv6 и локальная сеть. Строк, которых телефон не умеет, нет: строгий режим и
- * пауза для входа в Wi-Fi приложения, блок DNS провайдера, FakeDNS, автопроверка утечек, обнаружение устройств и работа рядом
- * с другим VPN (на телефоне VPN один). Под защитой изменения применяет служба туннеля — переподключением без окна утечки.
+ * туннеле (меню, «Свой адрес…» — нижний лист), IPv6 и локальная сеть. В «Блоке при обрыве» — «Вход в Wi-Fi отеля или кафе»
+ * («Открыть» — вопрос о паузе на 5 минут, решение 557). Строк, которых телефон не умеет, нет: строгий режим приложения, блок DNS
+ * провайдера, FakeDNS, автопроверка утечек, обнаружение устройств и работа рядом с другим VPN (на телефоне VPN один). Под защитой изменения применяет служба туннеля — переподключением без окна утечки.
  */
 @Composable
 fun ProtectionScreen(
@@ -76,6 +76,7 @@ fun ProtectionScreen(
     onBack: () -> Unit,
     system: SystemVpnView = SystemVpnView(SystemVpn(), SystemVpnSource.Unknown),
     openVpnSettings: () -> Unit = {},
+    onCaptive: () -> Unit = {},
 ) {
     var editingDns by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("protection")) {
@@ -93,6 +94,9 @@ fun ProtectionScreen(
             GroupTitle(stringResource(R.string.prot_group_ks), top = 0.dp)
             PgCard(Modifier.fillMaxWidth(), contentPadding = GroupPadding) {
                 KillSwitch(system, openVpnSettings)
+                PgSetting(stringResource(R.string.prot_captive_title), stringResource(R.string.prot_captive_text), divider = true, padding = Rows) {
+                    PgSecondaryButton(stringResource(R.string.prot_captive_open), "prot.captive", onCaptive)
+                }
             }
 
             GroupTitle(stringResource(R.string.prot_group_dns), top = PgSpace.Card)

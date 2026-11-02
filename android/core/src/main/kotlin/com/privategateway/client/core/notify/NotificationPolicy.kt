@@ -56,6 +56,8 @@ object NotificationPolicy {
                 Notice(NoticeKind.ProtectionFailed, "notify.failed.$traffic", listOf(NoticeAction.Open))
             after.state == TunnelState.Connected && moved ->
                 Notice(NoticeKind.Connected, if (before.state == TunnelState.Reconnecting) "notify.on.back" else "notify.on.text", emptyList())
+            // Пауза для входа в Wi-Fi — по просьбе самого пользователя: «Защита выключена» о ней не сообщает.
+            after.paused -> return null
             after.state == TunnelState.Off && moved ->
                 Notice(NoticeKind.Disconnected, "notify.off.text", listOf(NoticeAction.Connect))
             else -> return null

@@ -30,6 +30,7 @@ import com.privategateway.client.R
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
+import com.privategateway.client.core.vpn.CaptivePause
 import com.privategateway.client.core.vpn.CoreDnsFollower
 import com.privategateway.client.core.vpn.GuardEvents
 import com.privategateway.client.core.vpn.SystemVpn
@@ -119,6 +120,9 @@ class GatewayVpnService : VpnService() {
     /** Наблюдение за связью и переподключение, пока защита включена. */
     private var guard: Job? = null
 
+    /** Возврат защиты после паузы для входа в Wi-Fi (решение 557); null — паузы нет. */
+    private var resume: Job? = null
+
     @Volatile
     private var guardian: TunnelGuard? = null
 
@@ -160,6 +164,11 @@ class GatewayVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
+        if (intent?.action == ACTION_PAUSE) {
+            pause()
+            return START_NOT_STICKY
+        }
+
         // Окно, «Постоянная VPN» (действие android.net.VpnService) и перезапуск системой — подключение к выбранному.
         connect(startId)
         return START_STICKY
@@ -197,6 +206,8 @@ class GatewayVpnService : VpnService() {
 
     private fun connect(startId: Int) {
         foreground(notification(getString(R.string.status_connecting_title), null))
+        resume?.cancel()
+        resume = null
         work?.cancel()
         stopGuard()
         work = scope.launch {
@@ -417,6 +428,8 @@ class GatewayVpnService : VpnService() {
     }
 
     private fun disconnect(startId: Int) {
+        resume?.cancel()
+        resume = null
         work?.cancel()
         stopGuard()
         scope.launch {
@@ -431,6 +444,51 @@ class GatewayVpnService : VpnService() {
             }
         }
     }
+
+    /**
+     * Пауза для входа в Wi-Fi отеля или кафе (решение 557, доска 17): туннель и ядро опускаются, чтобы открылась страница
+     * входа в сеть; через [CaptivePause.DURATION_MS] защита возвращается сама, раньше — «Вернуть защиту» (подключение). Служба
+     * остается на переднем плане с отсчетом в уведомлении. При системной «Блокировать подключения без VPN» паузу окно не
+     * предлагает: Android держит сеть закрытой и без туннеля.
+     */
+    private fun pause() {
+        resume?.cancel()
+        work?.cancel()
+        stopGuard()
+        val until = System.currentTimeMillis() + CaptivePause.DURATION_MS
+        work = scope.launch {
+            lock.withLock {
+                val server = up?.id ?: monitor.status.value.serverId
+                stopCore()
+                up = null
+                journal.info("paused for wi-fi sign-in")
+                monitor.set(TunnelStatus(serverId = server, pausedUntil = until))
+                foreground(paused(until))
+            }
+        }
+        resume = scope.launch {
+            delay(CaptivePause.DURATION_MS)
+            journal.info("pause ended")
+            connect(lastStart)
+        }
+    }
+
+    /** Уведомление паузы: «Защита на паузе», «Интернет без VPN для входа в Wi-Fi», обратный отсчет и «Вернуть защиту». */
+    private fun paused(until: Long): Notification = NotificationCompat.Builder(this, PrivateGatewayApp.CHANNEL_TUNNEL)
+        .setSmallIcon(R.drawable.pg_notification)
+        .setContentTitle(getString(R.string.status_paused_title))
+        .setContentText(getString(R.string.pause_banner))
+        .setContentIntent(openApp())
+        .setOngoing(true)
+        .setOnlyAlertOnce(true)
+        .setCategory(NotificationCompat.CATEGORY_SERVICE)
+        .setWhen(until)
+        .setShowWhen(true)
+        .setUsesChronometer(true)
+        .setChronometerCountDown(true)
+        .addAction(0, getString(R.string.power_action_resume), connectIntent(this))
+        .addAction(0, getString(R.string.android_notify_disconnect), disconnectIntent(this))
+        .build()
 
     /** Ядро — до карты: ядро читает свою копию дескриптора, а карту закрывает только приложение. */
     private fun stopCore() {
@@ -558,11 +616,24 @@ class GatewayVpnService : VpnService() {
         private const val SETTINGS_QUIET_MS = 700L
         const val ACTION_CONNECT = "com.privategateway.client.CONNECT"
         const val ACTION_DISCONNECT = "com.privategateway.client.DISCONNECT"
+        const val ACTION_PAUSE = "com.privategateway.client.PAUSE"
 
         /** Подключить: разрешение на VPN (VpnService.prepare) окно уже получило. */
         fun connect(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, GatewayVpnService::class.java).setAction(ACTION_CONNECT))
         }
+
+        /** Пауза для входа в Wi-Fi (решение 557): служба уже на переднем плане — защита включена. */
+        fun pause(context: Context) {
+            context.startService(Intent(context, GatewayVpnService::class.java).setAction(ACTION_PAUSE))
+        }
+
+        private fun connectIntent(context: Context): PendingIntent = PendingIntent.getForegroundService(
+            context,
+            2,
+            Intent(context, GatewayVpnService::class.java).setAction(ACTION_CONNECT),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
 
         fun disconnect(context: Context) {
             context.startService(Intent(context, GatewayVpnService::class.java).setAction(ACTION_DISCONNECT))

@@ -23,6 +23,10 @@ struct HomeView: View {
     var onCheckNow: () -> Void = {}
     /// «Повторить» в «Ошибке» и «Блокировке» — подключиться снова.
     var onRetry: () -> Void = {}
+    /// «Вход в Wi-Fi» в «Подключении» и «Переподключении» — вопрос о паузе для входа в сеть (решение 557).
+    var onCaptive: () -> Void = {}
+    /// «Вернуть защиту» на паузе.
+    var onResume: () -> Void = {}
 
     var body: some View {
         ScrollView {
@@ -108,7 +112,7 @@ struct StatusCard: View {
 
     var body: some View {
         let leak = facts.leak(status.state)
-        let look = StateLook.of(status.state, texts, blocked: facts.blocked, leak: leak)
+        let look = StateLook.of(status.state, texts, blocked: facts.blocked, leak: leak, paused: facts.paused != nil)
         let chips = ProtectionChips.of(status.state, killSwitch: killSwitch, texts, blocked: facts.blocked, leak: leak)
         VStack(alignment: .leading, spacing: PgSpace.l) {
             HStack(alignment: .top, spacing: 0) {
@@ -122,7 +126,7 @@ struct StatusCard: View {
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(look.title).pgText(PgType.status).foregroundStyle(Color(look.icon)).accessibilityIdentifier("status.title")
-                    Text(StatusText.subtitle(status, blocked: facts.blocked, leak: leak, server: home.inUse, texts))
+                    Text(StatusText.subtitle(status, blocked: facts.blocked, leak: leak, server: home.inUse, texts, paused: facts.paused != nil))
                         .pgText(PgType.small)
                         .foregroundStyle(Color(PgColor.Text.secondary))
                         .lineLimit(1)
@@ -178,8 +182,9 @@ struct StatusCard: View {
                 .accessibilityIdentifier("chip.info")
             }
 
-            TimelineView(.periodic(from: Date(), by: 5)) { context in
-                checkRow(CheckLine.of(status.state, blocked: facts.blocked, ip: facts.ip, now: context.date, texts))
+            // На паузе отсчет идет каждую секунду, иначе строка обновляется раз в 5 с.
+            TimelineView(.periodic(from: Date(), by: facts.paused == nil ? 5 : 1)) { context in
+                checkRow(CheckLine.of(status.state, blocked: facts.blocked, ip: facts.ip, now: context.date, texts, captive: true, paused: facts.paused))
             }
         }
         .padding(.top, 14)
@@ -198,16 +203,43 @@ struct StatusCard: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityIdentifier("checked")
             if let action = line.action {
-                Button(action: action == .check ? onCheckNow : onRetry) {
-                    Text(action == .check ? texts.actionCheck : texts.actionRetry)
+                Button(action: lineAction(action)) {
+                    Text(lineLabel(action))
                         .pgText(PgType.small.with(weight: PgType.bodyStrong.weight))
                         .foregroundStyle(Color(CheckLine.tone(status.state, blocked: facts.blocked)))
                         .padding(.vertical, PgSpace.xxs)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(PgPressStyle())
-                .accessibilityIdentifier(action == .check ? "check" : "retry")
+                .accessibilityIdentifier(lineIdentifier(action))
             }
+        }
+    }
+
+    private func lineAction(_ action: CheckLine.Action) -> () -> Void {
+        switch action {
+        case .check: return onCheckNow
+        case .retry: return onRetry
+        case .captive: return onCaptive
+        case .resume: return onResume
+        }
+    }
+
+    private func lineLabel(_ action: CheckLine.Action) -> String {
+        switch action {
+        case .check: return texts.actionCheck
+        case .retry: return texts.actionRetry
+        case .captive: return texts.actionCaptive
+        case .resume: return texts.powerActionResume
+        }
+    }
+
+    private func lineIdentifier(_ action: CheckLine.Action) -> String {
+        switch action {
+        case .check: return "check"
+        case .retry: return "retry"
+        case .captive: return "captive"
+        case .resume: return "resume"
         }
     }
 
@@ -234,7 +266,11 @@ struct StatusCard: View {
 
 /// Подзаголовок состояния — `StatusSubtitle` десктопа.
 enum StatusText {
-    static func subtitle(_ status: TunnelStatus, blocked: Bool, leak: Bool, server: ServerItem?, _ texts: PgTexts) -> String {
+    static func subtitle(_ status: TunnelStatus, blocked: Bool, leak: Bool, server: ServerItem?, _ texts: PgTexts, paused: Bool = false) -> String {
+        if status.state == .off, paused {
+            return texts.statusPausedSub
+        }
+
         switch status.state {
         case .connected:
             if leak {
@@ -331,7 +367,7 @@ struct WebIpCard: View {
     }
 
     var body: some View {
-        let look = WebIpLook.of(home.status.state, blocked: facts.blocked, ip: facts.ip, masked: masked, texts)
+        let look = WebIpLook.of(home.status.state, blocked: facts.blocked, ip: facts.ip, masked: masked, texts, paused: facts.paused != nil)
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 3) {
                 Overline(text: texts.ipTitle)

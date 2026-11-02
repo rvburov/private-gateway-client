@@ -18,6 +18,8 @@ struct ProtectionView: View {
     let onKillSwitch: (Bool) -> Void
     let onAlwaysOn: (Bool) -> Void
     let onBack: () -> Void
+    /// «Вход в Wi-Fi отеля или кафе» → «Открыть»: вопрос о паузе на 5 минут (решение 557).
+    let onCaptive: () -> Void
 
     /// Открыт ли лист «Свой адрес DNS».
     @State private var editingDns: Bool
@@ -25,7 +27,7 @@ struct ProtectionView: View {
     init(
         texts: PgTexts, tunnel: TunnelSettings, killSwitch: Bool, alwaysOn: Bool = false, editingDns: Bool = false,
         onTunnel: @escaping (TunnelSettings) -> Void, onKillSwitch: @escaping (Bool) -> Void, onAlwaysOn: @escaping (Bool) -> Void = { _ in },
-        onBack: @escaping () -> Void
+        onBack: @escaping () -> Void, onCaptive: @escaping () -> Void = {}
     ) {
         self.texts = texts
         self.tunnel = tunnel
@@ -35,6 +37,7 @@ struct ProtectionView: View {
         self.onKillSwitch = onKillSwitch
         self.onAlwaysOn = onAlwaysOn
         self.onBack = onBack
+        self.onCaptive = onCaptive
         _editingDns = State(initialValue: editingDns)
     }
 
@@ -53,6 +56,11 @@ struct ProtectionView: View {
                             title: texts.iosProtAlwaysTitle, text: texts.iosProtAlwaysText, isOn: alwaysOn, padded: true, identifier: "alwaysOn",
                             onChange: onAlwaysOn
                         )
+                        PgDivider().padding(.horizontal, PgSpace.card)
+                        PgSettingRow(title: texts.protCaptiveTitle, caption: texts.protCaptiveText) {
+                            PgActionButton(label: texts.protCaptiveOpen, kind: .secondary, identifier: "prot.captive", action: onCaptive)
+                                .fixedSize()
+                        }
                     }
 
                     SettingsGroup(title: texts.protGroupDns) {

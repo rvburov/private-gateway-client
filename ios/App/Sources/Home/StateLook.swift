@@ -19,7 +19,15 @@ struct StateLook: Equatable {
     ///   - blocked: «Ошибка», а туннель оставлен и держит трафик закрытым — «Блокировка» (`AppModel.blocked`).
     ///   - leak: «Защищено», а замер через туннель увидел реальный IP — «Утечка IP» (`HomeFacts.leak`): тон «Ошибки», своя
     ///     подпись под щитом.
-    static func of(_ state: TunnelState, _ texts: PgTexts, blocked: Bool = false, leak: Bool = false) -> StateLook {
+    ///   - paused: «Выключено» по паузе для входа в Wi-Fi (решение 557) — янтарный тон, «Защита на паузе», подпись «Пауза».
+    static func of(_ state: TunnelState, _ texts: PgTexts, blocked: Bool = false, leak: Bool = false, paused: Bool = false) -> StateLook {
+        if state == .off, paused {
+            return StateLook(
+                ring: PgState.Blocked.ring, icon: PgState.Blocked.icon, glow: PgState.Blocked.glow, fill: PgState.Blocked.fill,
+                tint: PgColor.Status.Caution.tint, mark: PgIcons.markAlert, power: texts.powerLabelPaused, title: texts.statusPausedTitle
+            )
+        }
+
         if state == .error, blocked {
             return StateLook(
                 ring: PgState.Blocked.ring, icon: PgState.Blocked.icon, glow: PgState.Blocked.glow, fill: PgState.Blocked.fill,
@@ -192,6 +200,14 @@ enum HomeDialogs {
         PgDialog(
             kind: .warning, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogUnprotectTitle, text: texts.dialogUnprotectText,
             primary: texts.dialogUnprotectKeep, secondary: texts.dialogUnprotectDrop, secondaryDanger: true
+        )
+    }
+
+    /// «Вход в Wi-Fi»: открыть интернет без VPN на 5 минут (решение 557). «Да» — опасная вторая «Открыть на 5 минут».
+    static func pause(_ texts: PgTexts) -> PgDialog {
+        PgDialog(
+            kind: .warning, icon: PgIcons.clock, title: texts.pauseDialogTitle, text: texts.pauseDialogText, primary: texts.pauseDialogKeep,
+            secondary: texts.pauseDialogOpen, secondaryDanger: true
         )
     }
 }

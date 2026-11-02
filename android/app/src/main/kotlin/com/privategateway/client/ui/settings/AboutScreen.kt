@@ -35,6 +35,7 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
@@ -164,7 +165,7 @@ private fun abi(): String = abiName(Build.SUPPORTED_ABIS.firstOrNull())
 @Composable
 private fun ValueRow(title: String, value: String, tag: String, divider: Boolean) {
     Row(
-        Modifier.fillMaxWidth().pgTopDivider(divider).padding(vertical = 13.dp).testTag(tag),
+        Modifier.fillMaxWidth().pgTopDivider(divider).padding(vertical = 13.dp).semantics(mergeDescendants = true) {}.testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(title, Modifier.weight(1f), color = PgColor.Text.Primary, style = PgType.BodyStrong)

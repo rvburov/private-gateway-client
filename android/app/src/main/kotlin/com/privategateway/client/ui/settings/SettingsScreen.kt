@@ -85,6 +85,7 @@ fun SettingsScreen(
     onCheck: () -> Unit = {},
     language: ((String) -> Unit)? = null,
     installedApps: suspend () -> List<PhoneApp> = { emptyList() },
+    onCaptive: () -> Unit = {},
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -98,7 +99,14 @@ fun SettingsScreen(
     when (page) {
         SettingsPage.Protection -> {
             BackHandler { page = SettingsPage.Main }
-            ProtectionScreen(tunnel, onTunnel, onBack = { page = SettingsPage.Main }, system = system, openVpnSettings = openVpnSettings)
+            ProtectionScreen(
+                tunnel,
+                onTunnel,
+                onBack = { page = SettingsPage.Main },
+                system = system,
+                openVpnSettings = openVpnSettings,
+                onCaptive = onCaptive,
+            )
         }
 
         SettingsPage.Core -> {

@@ -72,6 +72,28 @@ enum Notifications {
         center.add(UNNotificationRequest(identifier: notice.tag, content: content, trigger: nil))
     }
 
+    /// Метка уведомления «Пауза кончилась» (решение 557).
+    static let pauseTag = "pause"
+
+    /// Пауза для входа в Wi-Fi: через `after` секунд — уведомление «Пауза кончилась — включить защиту снова?» с «Подключить»
+    /// (приложение в фоне таймер не держит — защиту возвращает нажатие или само приложение, когда его откроют).
+    static func schedulePauseEnd(after: TimeInterval, _ texts: PgTexts) {
+        let content = UNMutableNotificationContent()
+        content.title = texts.statusPausedTitle
+        content.body = texts.iosPauseEnded
+        content.categoryIdentifier = category([.connect])
+        content.userInfo = [tagKey: pauseTag]
+        content.sound = .default
+        let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, after), repeats: false)
+        center.add(UNNotificationRequest(identifier: pauseTag, content: content, trigger: trigger))
+    }
+
+    /// Пауза кончилась или защиту вернули раньше: уведомление о ее конце больше не нужно.
+    static func cancelPauseEnd() {
+        center.removePendingNotificationRequests(withIdentifiers: [pauseTag])
+        center.removeDeliveredNotifications(withIdentifiers: [pauseTag])
+    }
+
     /// Убрать уведомление о защите: беда прошла или сменилась другой.
     static func withdrawProtection() {
         center.removeDeliveredNotifications(withIdentifiers: [Notice.protectionTag])
