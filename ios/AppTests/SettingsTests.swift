@@ -168,7 +168,24 @@ final class SettingsTests: XCTestCase {
             XCTAssertEqual(RoutingLook.actionOptions(texts).map(\.title), [texts.routingActionDirect, texts.routingActionProxy, texts.routingActionBlock])
             XCTAssertEqual(RoutingLook.lanText(false, texts), texts.routingLanDenied)
             XCTAssertEqual(RoutingLook.lanText(true, texts), texts.routingLanAllowed)
+            // geosite телефон не принимает — подсказка и ошибка его не предлагают, остальное перечисляют как у десктопа.
+            for text in [RoutingLook.patternHint(texts), RoutingLook.patternBad(texts)] {
+                XCTAssertFalse(text.contains("geosite"), text)
+                XCTAssertFalse(text.contains(", ,"), text)
+            }
+
+            XCTAssertTrue(RoutingLook.patternHint(texts).contains("example.com"))
+            XCTAssertTrue(RoutingLook.patternHint(texts).contains("*.local"))
+            XCTAssertTrue(RoutingLook.patternHint(texts).contains("203.0.113.0/24"))
+            XCTAssertLessThan(RoutingLook.patternBad(texts).count, texts.routingRuleBad.count)
         }
+
+        XCTAssertEqual(
+            RoutingLook.patternHint(PgTexts(.russian)),
+            "example.com — сайт и его поддомены, *.local — все имена в зоне, 203.0.113.0/24 — адреса подсети."
+        )
+        XCTAssertEqual(RoutingLook.patternBad(PgTexts(.russian)), "Нужен домен, *.домен, адрес или подсеть")
+        XCTAssertEqual(RoutingLook.patternBad(PgTexts(.english)), "Enter a domain, *.domain, an address or a subnet")
 
         XCTAssertEqual(RoutingLook.newAction(split: true), .direct)
         XCTAssertEqual(RoutingLook.newAction(split: false), .block, "«Напрямую» в режиме «Весь трафик» не действует")

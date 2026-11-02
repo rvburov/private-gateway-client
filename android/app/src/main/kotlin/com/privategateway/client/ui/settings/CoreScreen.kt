@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -90,8 +91,11 @@ fun CoreScreen(
                 PgSetting(stringResource(R.string.core_xray_title), stringResource(R.string.core_xray_text), padding = CoreRows) {
                     ValueBox(core ?: "—", "core.xray.version")
                 }
-                // Hysteria2 и TUIC у десктопа ведет sing-box; у телефона второго ядра нет (решение 423): они не подключаются.
-                PgSetting(stringResource(R.string.core_second_title), null, divider = true, padding = CoreRows) {
+                // Hysteria2 и TUIC у десктопа ведет sing-box; у телефона второго ядра нет (решение 423): они не подключаются —
+                // подпись та же, что в карточке такого сервера, с заглавной буквы (как у iOS).
+                val locale = LocalConfiguration.current.locales[0]
+                val second = stringResource(R.string.android_card_core_none).replaceFirstChar { it.titlecase(locale) }
+                PgSetting(stringResource(R.string.core_second_title), second, divider = true, padding = CoreRows) {
                     ValueBox(stringResource(R.string.core_version_none), "core.second.version")
                 }
                 PgSetting(stringResource(R.string.core_log_title), stringResource(R.string.core_log_text), divider = true, padding = CoreRows) {

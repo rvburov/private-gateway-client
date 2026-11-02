@@ -250,6 +250,22 @@ enum RoutingLook {
     static func lanText(_ allowLan: Bool, _ texts: PgTexts) -> String {
         allowLan ? texts.routingLanAllowed : texts.routingLanDenied
     }
+
+    /// Подсказка под полем шаблона — без «geosite:категория»: базы geosite у ядра телефона нет, такой шаблон не принимается
+    /// (`SitePattern`), а текст десктопа его предлагает.
+    static func patternHint(_ texts: PgTexts) -> String {
+        withoutGeosite(texts.routingRuleHint)
+    }
+
+    /// Ошибка под полем шаблона — тоже без «geosite:категория».
+    static func patternBad(_ texts: PgTexts) -> String {
+        withoutGeosite(texts.routingRuleBad)
+    }
+
+    /// Перечень через «, » без пункта с «geosite:» — так устроены подсказка и ошибка на обоих языках.
+    static func withoutGeosite(_ text: String) -> String {
+        text.components(separatedBy: ", ").filter { !$0.contains("geosite:") }.joined(separator: ", ")
+    }
 }
 
 /// Предупреждение раздельного режима (.banner.warning доски 13, Border.notice десктопа): значок Warning 18 и текст small
@@ -354,7 +370,7 @@ private struct AddRuleButton: View {
 /// крестик; поле «Сайт или адрес» моноширинным до 253 знаков с подсказкой (неверный шаблон — под полем красным, почему);
 /// «Что делать» — сегменты «Напрямую / Через VPN / Блокировать», при «Напрямую» в режиме «Весь трафик» — подпись, что такое
 /// правило пока не действует; внизу «Отмена» и «Добавить» или красная «Удалить» и «Сохранить». Шаблон geosite телефон не
-/// принимает: базы geosite у ядра телефона нет (`SitePattern`).
+/// принимает: базы geosite у ядра телефона нет (`SitePattern`), поэтому подсказка и ошибка под полем его не предлагают.
 struct SiteRuleSheet: View {
     let texts: PgTexts
     /// Правило, которое правят; nil — новое.
@@ -404,13 +420,13 @@ struct SiteRuleSheet: View {
                             }
                         }
                         if bad {
-                            Text(texts.routingRuleBad)
+                            Text(RoutingLook.patternBad(texts))
                                 .pgText(PgType.caption)
                                 .foregroundStyle(Color(PgColor.Status.Danger.text))
                                 .fixedSize(horizontal: false, vertical: true)
                                 .accessibilityIdentifier("rule.bad")
                         } else {
-                            Text(texts.routingRuleHint)
+                            Text(RoutingLook.patternHint(texts))
                                 .pgText(PgType.caption)
                                 .foregroundStyle(Color(PgColor.Text.muted))
                                 .fixedSize(horizontal: false, vertical: true)

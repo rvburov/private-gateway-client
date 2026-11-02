@@ -41,6 +41,7 @@ import com.privategateway.client.ui.settings.Behavior
 import com.privategateway.client.ui.settings.CoreScreen
 import com.privategateway.client.ui.settings.RoutingScreen
 import com.privategateway.client.ui.settings.SettingsScreen
+import com.privategateway.client.ui.settings.withoutGeosite
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.ui.theme.PgToast
@@ -50,6 +51,8 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 
 /**
  * «Подключение и ядро» (доска 6) и «Маршрутизация» (доска 13) без устройства: что показано, что выбирается и сохраняется в
@@ -98,6 +101,8 @@ class AdvancedSettingsTest {
         compose.onNodeWithText(text(R.string.core_second_title)).assertIsDisplayed()
         compose.onNodeWithTag("core.second.version").assertTextEquals(text(R.string.core_version_none))
         compose.onNodeWithText(text(R.string.core_second_text)).assertDoesNotExist()
+        val second = text(R.string.android_card_core_none)
+        compose.onNodeWithText(second.substring(0, 1).uppercase() + second.substring(1)).assertIsDisplayed()
 
         // По умолчанию — как у десктопа.
         compose.onNodeWithTag("core.log").assertTextEquals(text(R.string.core_log_warning))
@@ -265,10 +270,12 @@ class AdvancedSettingsTest {
         compose.onNodeWithTag("routing.rule.save").assertTextEquals(text(R.string.routing_rule_add))
         compose.onNodeWithTag("routing.rule.cancel").assertTextEquals(text(R.string.dialog_cancel))
 
-        // Базы geosite на телефоне нет — такой шаблон не сохраняется, как и не домен.
+        // Базы geosite на телефоне нет — подсказка его не предлагает, такой шаблон не сохраняется, как и не домен.
+        compose.onNodeWithTag("routing.rule.hint", useUnmergedTree = true).assertTextEquals(withoutGeosite(text(R.string.routing_rule_hint)))
         compose.onNodeWithTag("routing.rule.pattern").performTextInput("geosite:google")
         compose.onNodeWithTag("routing.rule.save").performClick()
-        compose.onNodeWithTag("routing.rule.bad", useUnmergedTree = true).assertTextEquals(text(R.string.routing_rule_bad))
+        compose.onNodeWithTag("routing.rule.bad", useUnmergedTree = true).assertTextEquals(withoutGeosite(text(R.string.routing_rule_bad)))
+        compose.onNodeWithTag("routing.rule.hint", useUnmergedTree = true).assertDoesNotExist()
         assertEquals(RoutingSettings(), tunnel.routing)
 
         // Адрес с «https://» и путем сокращается до домена, строчными.
@@ -312,6 +319,24 @@ class AdvancedSettingsTest {
         compose.onNodeWithTag("routing.rule.delete").performClick()
         compose.onNodeWithTag("routing.rule.sheet").assertDoesNotExist()
         assertEquals(listOf(SiteRule("ads.example.org", RuleAction.Proxy)), tunnel.routing.rules)
+    }
+
+    @Test
+    fun `rule hint and error do not offer geosite the phone has no base for`() {
+        assertEquals(
+            "example.com — сайт и его поддомены, *.local — все имена в зоне, 203.0.113.0/24 — адреса подсети.",
+            withoutGeosite("example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети."),
+        )
+        assertEquals("Нужен домен, *.домен, адрес или подсеть", withoutGeosite("Нужен домен, *.домен, geosite:категория, адрес или подсеть"))
+        // Тексты приложения на языке теста: geosite нет, остальные пункты на месте, пустых пунктов нет.
+        for (id in listOf(R.string.routing_rule_hint, R.string.routing_rule_bad)) {
+            val shown = withoutGeosite(text(id))
+            assertFalse(shown.contains("geosite"), shown)
+            assertFalse(shown.contains(", ,"), shown)
+            assertTrue(shown.length < text(id).length, "пункт geosite убран: $shown")
+        }
+
+        assertTrue(withoutGeosite(text(R.string.routing_rule_hint)).contains("203.0.113.0/24"))
     }
 
     @Test

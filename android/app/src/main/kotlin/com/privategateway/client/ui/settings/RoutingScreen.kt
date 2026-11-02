@@ -484,7 +484,7 @@ private fun DashedButton(label: String, tag: String, onClick: () -> Unit) {
  * с подсказкой, сегменты «Напрямую · Через VPN · Блокировать», под ними — что «Напрямую» в режиме «Весь трафик» пока не
  * действует; внизу «Отмена» и «Добавить» или «Удалить» (красная) и «Сохранить». Новое правило — «Напрямую» в раздельном
  * режиме, «Блокировать» в режиме «Весь трафик». Шаблон, который телефон не берет (и geosite), не сохраняется — лист
- * говорит, какой нужен.
+ * говорит, какой нужен; подсказка и ошибка под полем geosite не предлагают (как у iOS).
  */
 @Composable
 private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) -> Unit, onDelete: () -> Unit, onClose: () -> Unit) {
@@ -527,9 +527,9 @@ private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) ->
                     keyboard = KeyboardOptions(keyboardType = KeyboardType.Uri),
                 )
                 if (bad) {
-                    Text(stringResource(R.string.routing_rule_bad), Modifier.testTag("routing.rule.bad"), color = PgColor.Status.Danger.Text, style = PgType.Caption)
+                    Text(withoutGeosite(stringResource(R.string.routing_rule_bad)), Modifier.testTag("routing.rule.bad"), color = PgColor.Status.Danger.Text, style = PgType.Caption)
                 } else {
-                    Text(stringResource(R.string.routing_rule_hint), color = PgColor.Text.Muted, style = PgType.Caption)
+                    Text(withoutGeosite(stringResource(R.string.routing_rule_hint)), Modifier.testTag("routing.rule.hint"), color = PgColor.Text.Muted, style = PgType.Caption)
                 }
             }
 
@@ -553,6 +553,12 @@ private fun RuleSheet(original: SiteRule?, split: Boolean, onSave: (SiteRule) ->
         }
     }
 }
+
+/**
+ * Подсказка или ошибка под полем шаблона без пункта «geosite:категория»: базы geosite у ядра телефона нет, и такой шаблон
+ * не принимается (`SitePattern`), а тексты десктопа его предлагают. Оба текста на обоих языках — перечень через «, ».
+ */
+internal fun withoutGeosite(text: String): String = text.split(", ").filterNot { it.contains("geosite:") }.joinToString(", ")
 
 /**
  * Лист «Добавить программу»: программы телефона со значком запуска (PhoneApps), по названию; нажатие добавляет программу и
