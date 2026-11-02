@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
             clipboard = ::clipboardText,
             copySecret = ::copySecret,
             send = ::send,
+            copy = ::copyText,
         )
         setContent {
             PgTheme {
@@ -173,6 +174,12 @@ class MainActivity : ComponentActivity() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             Toast.makeText(this, R.string.card_share_copied, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    /** IP с главной — в буфер обычным текстом: это не ключ сервера. «IP скопирован» показывает само окно. */
+    private fun copyText(text: String) {
+        val clipboard = getSystemService(ClipboardManager::class.java) ?: return
+        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.ip_title), text))
     }
 
     private fun send(text: String) {

@@ -75,10 +75,19 @@ private val NavBottom = 9.dp
 /**
  * Островок внизу (IslandNav десктопа, app.js): белая плашка surface.solid с выступом вокруг кнопки-щита — один контур
  * [IslandShape] с обводкой line.divider и тенью shadow.island; четыре раздела и подпись состояния под щитом. Полоса пунктов —
- * от space.island до края экрана, как .pg-island-nav макета.
+ * от space.island до края экрана, как .pg-island-nav макета. [look] — вид щита и подписи: главная знает больше состояния
+ * туннеля («Блокировка» Android, «Утечка IP»).
  */
 @Composable
-fun Island(tab: Tab, state: TunnelState, hasServer: Boolean, onTab: (Tab) -> Unit, onPower: () -> Unit, modifier: Modifier = Modifier) {
+fun Island(
+    tab: Tab,
+    state: TunnelState,
+    hasServer: Boolean,
+    onTab: (Tab) -> Unit,
+    onPower: () -> Unit,
+    modifier: Modifier = Modifier,
+    look: StateLook = StateLook.of(state),
+) {
     val bump = PgLayout.Island.BumpRadius
     Box(
         modifier
@@ -112,13 +121,13 @@ fun Island(tab: Tab, state: TunnelState, hasServer: Boolean, onTab: (Tab) -> Uni
         ) {
             NavItem(Tab.Home, tab, PgIcons.NavHome, null, R.string.nav_home, onTab, Modifier.weight(1f))
             NavItem(Tab.Servers, tab, PgIcons.NavServers, PgIcons.NavServersDetail, R.string.nav_servers, onTab, Modifier.weight(1f))
-            PowerLabel(state, hasServer, Modifier.width(PowerColumn).fillMaxHeight())
+            PowerLabel(state, hasServer, look, Modifier.width(PowerColumn).fillMaxHeight())
             NavItem(Tab.Check, tab, PgIcons.NavCheck, PgIcons.NavCheckDetail, R.string.nav_check, onTab, Modifier.weight(1f))
             NavItem(Tab.Settings, tab, PgIcons.NavSettings, PgIcons.NavSettingsDetail, R.string.nav_settings, onTab, Modifier.weight(1f))
         }
 
         // Центр щита — на верхней кромке плашки, как в макете (выступ — дуга вокруг него).
-        PowerButton(state, onPower, Modifier.align(Alignment.TopCenter).offset(y = bump - PgLayout.PowerButton.Size / 2))
+        PowerButton(state, onPower, Modifier.align(Alignment.TopCenter).offset(y = bump - PgLayout.PowerButton.Size / 2), look)
     }
 }
 
@@ -157,8 +166,7 @@ private fun NavItem(item: Tab, current: Tab, icon: String, detail: String?, labe
 
 /** Подпись под кнопкой-щитом у низа полосы — состояние словом («Защищено», «Выключено»), не только цветом. */
 @Composable
-private fun PowerLabel(state: TunnelState, hasServer: Boolean, modifier: Modifier) {
-    val look = StateLook.of(state)
+private fun PowerLabel(state: TunnelState, hasServer: Boolean, look: StateLook, modifier: Modifier) {
     val label = if (!hasServer && state == TunnelState.Off) R.string.power_label_noServer else look.power
     Box(modifier.padding(bottom = NavBottom), contentAlignment = Alignment.BottomCenter) {
         Text(stringResource(label), color = look.icon, style = PgType.NavMobileActive, textAlign = TextAlign.Center, maxLines = 1)
@@ -170,8 +178,7 @@ private fun PowerLabel(state: TunnelState, hasServer: Boolean, modifier: Modifie
  * нажатии круг заливается state.fill и сжимается до 0,96 — без ряби. При подключении по кольцу бежит дуга accent.base, 0,9 с.
  */
 @Composable
-fun PowerButton(state: TunnelState, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val look = StateLook.of(state)
+fun PowerButton(state: TunnelState, onClick: () -> Unit, modifier: Modifier = Modifier, look: StateLook = StateLook.of(state)) {
     val on = state == TunnelState.Connected || state == TunnelState.Connecting || state == TunnelState.Reconnecting
     val description = stringResource(if (on) R.string.power_action_disconnect else R.string.power_action_connect)
     val ring = PgLayout.PowerButton.RingWidth

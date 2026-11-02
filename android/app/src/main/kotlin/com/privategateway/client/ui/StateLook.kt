@@ -9,8 +9,38 @@ import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgState
 
 /**
- * Вид состояния защиты — цвета state.* макета: зеленый — защищено, синий — подключение, красный — выключено или ошибка.
- * Состояние всегда показано иконкой и текстом, не только цветом.
+ * Что показывает главная (доска 09): состояние туннеля и то, что телефон знает сверх него. [Strict] — туннеля нет, а сеть
+ * закрыл Android («Блокировать подключения без VPN», решение 445) — «Блокировка · строгий режим» макета; [Blocked] — защита
+ * не включилась или переподключение сдалось, а сеть держит тот же блок Android — «Блокировка»; [Error] — ошибка без блока:
+ * трафик идет напрямую; [Leak] — защита включена, а замер внешнего IP увидел реальный — «Утечка IP». Остановка туннеля
+ * выглядит как подключение, как и раньше.
+ */
+enum class ProtectionView {
+    Off,
+    Strict,
+    Connecting,
+    Connected,
+    Leak,
+    Reconnecting,
+    Blocked,
+    Error,
+    ;
+
+    companion object {
+        /** [closed] — сеть закрыл Android без туннеля (MainUi.closedWithoutTunnel); [leak] — выход совпал с реальным IP. */
+        fun of(state: TunnelState, closed: Boolean, leak: Boolean): ProtectionView = when (state) {
+            TunnelState.Off -> if (closed) Strict else Off
+            TunnelState.Connecting, TunnelState.Stopping -> Connecting
+            TunnelState.Connected -> if (leak) Leak else Connected
+            TunnelState.Reconnecting -> Reconnecting
+            TunnelState.Error -> if (closed) Blocked else Error
+        }
+    }
+}
+
+/**
+ * Вид состояния защиты — цвета state.* макета: зеленый — защищено, синий — подключение, оранжевый — блокировка, красный —
+ * выключено, ошибка или утечка. Состояние всегда показано иконкой и текстом, не только цветом.
  */
 data class StateLook(
     val ring: Color,
@@ -24,8 +54,11 @@ data class StateLook(
     @param:StringRes val title: Int,
 ) {
     companion object {
-        fun of(state: TunnelState): StateLook = when (state) {
-            TunnelState.Connected -> StateLook(
+        /** Вид по одному состоянию туннеля — без того, что знает главная (блок Android, замер IP). */
+        fun of(state: TunnelState): StateLook = of(ProtectionView.of(state, closed = false, leak = false))
+
+        fun of(view: ProtectionView): StateLook = when (view) {
+            ProtectionView.Connected -> StateLook(
                 PgState.Connected.Ring,
                 PgState.Connected.Icon,
                 PgState.Connected.Glow,
@@ -36,7 +69,7 @@ data class StateLook(
                 R.string.status_connected_title,
             )
 
-            TunnelState.Connecting, TunnelState.Stopping -> StateLook(
+            ProtectionView.Connecting -> StateLook(
                 PgState.Connecting.Ring,
                 PgState.Connecting.Icon,
                 PgState.Connecting.Glow,
@@ -48,7 +81,7 @@ data class StateLook(
             )
 
             // Переподключение — вид подключения, как у десктопа: туннель держит трафик, пока идут попытки.
-            TunnelState.Reconnecting -> StateLook(
+            ProtectionView.Reconnecting -> StateLook(
                 PgState.Connecting.Ring,
                 PgState.Connecting.Icon,
                 PgState.Connecting.Glow,
@@ -59,7 +92,31 @@ data class StateLook(
                 R.string.status_reconnecting_title,
             )
 
-            TunnelState.Error -> StateLook(
+            // Блокировка: трафик остановлен, утечки нет — тон state.blocked, плашка status.warning (ToneBrush десктопа).
+            ProtectionView.Strict, ProtectionView.Blocked -> StateLook(
+                PgState.Blocked.Ring,
+                PgState.Blocked.Icon,
+                PgState.Blocked.Glow,
+                PgState.Blocked.Fill,
+                PgColor.Status.Warning.Tint,
+                PgIcons.MarkAlert,
+                R.string.power_label_blocked,
+                if (view == ProtectionView.Strict) R.string.status_strict_title else R.string.status_blocked_title,
+            )
+
+            // «Утечка IP» — тон и знак «Ошибки», подпись под щитом своя (доска 09).
+            ProtectionView.Leak -> StateLook(
+                PgState.Error.Ring,
+                PgState.Error.Icon,
+                PgState.Error.Glow,
+                PgState.Error.Fill,
+                PgColor.Status.Danger.Tint,
+                PgIcons.MarkAlert,
+                R.string.power_label_leak,
+                R.string.status_leak_title,
+            )
+
+            ProtectionView.Error -> StateLook(
                 PgState.Error.Ring,
                 PgState.Error.Icon,
                 PgState.Error.Glow,
@@ -67,10 +124,10 @@ data class StateLook(
                 PgColor.Status.Danger.Tint,
                 PgIcons.MarkAlert,
                 R.string.power_label_error,
-                R.string.power_label_error,
+                R.string.status_error_title,
             )
 
-            TunnelState.Off -> StateLook(
+            ProtectionView.Off -> StateLook(
                 PgState.Off.Ring,
                 PgState.Off.Icon,
                 PgState.Off.Glow,
@@ -84,16 +141,21 @@ data class StateLook(
     }
 }
 
-/** Вид чипа проверки: работает, ждет, выключено, предупреждение. */
-enum class ChipLook(val tint: Color, val base: Color, val mark: String) {
-    Ok(PgColor.Status.Success.Tint, PgColor.Status.Success.Base, PgIcons.ChipOk),
-    Waiting(PgColor.Accent.Tint, PgColor.Accent.Base, PgIcons.ChipDots),
-    Off(PgColor.Status.Danger.Tint, PgColor.Status.Danger.Base, PgIcons.ChipDash),
-    Warning(PgColor.Status.Caution.Tint, PgColor.Status.Caution.Base, PgIcons.ChipWarn),
+/**
+ * Вид плитки проверки — CheckBrush десктопа и .tone-* макета: фон, фон выбранной плитки, кружок и рамка выбранной, цвет
+ * значения. Работает — зеленый, ждет — синий, остановлено (утечки нет) — оранжевый, частично — янтарный, открыто — красный.
+ */
+enum class ChipLook(val tint: Color, val hover: Color, val base: Color, val text: Color, val mark: String) {
+    Ok(PgColor.Status.Success.Tint, PgColor.Status.Success.Hover, PgColor.Status.Success.Base, PgColor.Status.Success.Text, PgIcons.ChipOk),
+    Waiting(PgColor.Accent.Tint, PgColor.Accent.Hover, PgColor.Accent.Base, PgColor.Accent.Text, PgIcons.ChipDots),
+    Stopped(PgColor.Status.Warning.Tint, PgColor.Status.Warning.Hover, PgColor.Status.Warning.Base, PgColor.Status.Warning.Text, PgIcons.ChipDash),
+    Off(PgColor.Status.Danger.Tint, PgColor.Status.Danger.Hover, PgColor.Status.Danger.Base, PgColor.Status.Danger.Text, PgIcons.ChipDash),
+    Warning(PgColor.Status.Caution.Tint, PgColor.Status.Caution.Hover, PgColor.Status.Caution.Base, PgColor.Status.Caution.Text, PgIcons.ChipWarn),
 }
 
-/** Чип защиты на главной и строка на «Проверке»: заголовок, значение, вид и объяснение. */
+/** Плитка защиты на главной и строка на «Проверке»: [id] (all, dns, ipv6, ks), заголовок, значение, вид и пояснение. */
 data class ProtectionChip(
+    val id: String,
     @param:StringRes val title: Int,
     @param:StringRes val value: Int,
     val look: ChipLook,
@@ -101,39 +163,51 @@ data class ProtectionChip(
 )
 
 /**
- * Четыре чипа главной (доска 25): весь трафик, DNS, IPv6, блок при обрыве — по состоянию туннеля. IPv6 закрыт самим
- * Android: у туннеля нет адреса IPv6 (TunPlan). Блок при обрыве на Android — системный: Android сообщает о нем только
- * работающему туннелю, без туннеля — «в настройках Android». [closed] — туннеля нет, а Android закрыл интернет
- * («Блокировать подключения без VPN», решение 445): как сработавший блок десктопа — трафик остановлен, утечки нет.
+ * Четыре плитки главной (доски 09 и 25): весь трафик, DNS, IPv6, блок при обрыве — по состоянию туннеля, как
+ * `ProtectionChecks.For` десктопа. В подключении и переподключении трафик ждет в карте туннеля: «поднимается», а DNS и IPv6
+ * уже не уходят мимо — зеленые. IPv6 закрыт самим Android: у туннеля нет адреса IPv6 (TunPlan). Блок при обрыве на Android —
+ * системный: Android сообщает о нем только туннелю ([lockdown]); без туннеля и без блока трафик идет напрямую — «выключен».
+ * [closed] — туннеля нет, а Android закрыл интернет («Блокировать подключения без VPN», решение 445): как сработавший блок
+ * десктопа — трафик остановлен, утечки нет. [leak] — под защитой замер увидел реальный IP: «реальный IP открыт».
  */
 object ProtectionChips {
-    fun of(state: TunnelState, lockdown: Boolean?, closed: Boolean = false): List<ProtectionChip> {
+    fun of(state: TunnelState, lockdown: Boolean?, closed: Boolean = false, leak: Boolean = false): List<ProtectionChip> {
         val connected = state == TunnelState.Connected
         // Переподключение: карта туннеля осталась, трафик ждет — «поднимается», а не «идет напрямую».
         val waiting = state == TunnelState.Connecting || state == TunnelState.Reconnecting || state == TunnelState.Stopping
-        fun pick(ok: Int, wait: Int, off: Int, stopped: Int, stoppedLook: ChipLook) = when {
-            connected -> ok to ChipLook.Ok
-            waiting -> wait to ChipLook.Waiting
-            closed -> stopped to stoppedLook
+        val stopped = closed && !connected && !waiting
+        fun pick(ok: Int, off: Int, stoppedValue: Int) = when {
+            connected || waiting -> ok to ChipLook.Ok
+            stopped -> stoppedValue to ChipLook.Ok
             else -> off to ChipLook.Off
         }
 
-        val (all, allLook) = pick(R.string.check_all_ok, R.string.check_all_waiting, R.string.check_all_off, R.string.check_all_stopped, ChipLook.Warning)
-        val (dns, dnsLook) = pick(R.string.check_dns_ok, R.string.check_dns_waiting, R.string.check_dns_off, R.string.check_dns_stopped, ChipLook.Ok)
-        val (ipv6, ipv6Look) = pick(R.string.check_ipv6_ok, R.string.check_ipv6_waiting, R.string.check_ipv6_off, R.string.check_ipv6_stopped, ChipLook.Ok)
+        val all = when {
+            connected && leak -> ProtectionChip("all", R.string.check_all_title, R.string.check_all_same_ip, ChipLook.Warning, R.string.check_all_same_ip_text)
+            connected -> ProtectionChip("all", R.string.check_all_title, R.string.check_all_ok, ChipLook.Ok, R.string.check_all_text)
+            waiting -> ProtectionChip("all", R.string.check_all_title, R.string.check_all_waiting, ChipLook.Waiting, R.string.check_all_text)
+            stopped -> ProtectionChip("all", R.string.check_all_title, R.string.check_all_stopped, ChipLook.Stopped, R.string.check_all_text)
+            else -> ProtectionChip("all", R.string.check_all_title, R.string.check_all_off, ChipLook.Off, R.string.check_all_text)
+        }
+
+        val (dns, dnsLook) = pick(R.string.check_dns_ok, R.string.check_dns_off, R.string.check_dns_stopped)
+        val (ipv6, ipv6Look) = pick(R.string.check_ipv6_ok, R.string.check_ipv6_off, R.string.check_ipv6_stopped)
         val (ks, ksLook) = when {
-            closed && !connected && !waiting -> R.string.check_ks_stopped to ChipLook.Ok
-            !connected && state != TunnelState.Reconnecting -> R.string.android_check_ks_system to ChipLook.Warning
+            stopped -> R.string.check_ks_stopped to ChipLook.Ok
+            !connected && !waiting -> R.string.check_ks_off to ChipLook.Off
             lockdown == true -> R.string.check_ks_ok to ChipLook.Ok
             lockdown == false -> R.string.check_ks_off to ChipLook.Off
-            else -> R.string.check_ks_warning to ChipLook.Warning
+            // До Android 10 система не говорит, включен ли блок без VPN.
+            connected -> R.string.check_ks_warning to ChipLook.Warning
+            // Подключение: туннелю Android еще ничего не сообщил — блок там, в его настройках.
+            else -> R.string.android_check_ks_system to ChipLook.Warning
         }
 
         return listOf(
-            ProtectionChip(R.string.check_all_title, all, allLook, R.string.check_all_text),
-            ProtectionChip(R.string.check_dns_title, dns, dnsLook, R.string.check_dns_text),
-            ProtectionChip(R.string.check_ipv6_title, ipv6, ipv6Look, R.string.check_ipv6_text),
-            ProtectionChip(R.string.check_ks_title, ks, ksLook, R.string.android_check_ks_text),
+            all,
+            ProtectionChip("dns", R.string.check_dns_title, dns, dnsLook, R.string.check_dns_text),
+            ProtectionChip("ipv6", R.string.check_ipv6_title, ipv6, ipv6Look, R.string.check_ipv6_text),
+            ProtectionChip("ks", R.string.check_ks_title, ks, ksLook, R.string.android_check_ks_text),
         )
     }
 }

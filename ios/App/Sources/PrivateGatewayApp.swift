@@ -32,6 +32,8 @@ struct RootView: View {
     @ObservedObject var model: AppModel
     @StateObject private var importing: ImportModel
     @StateObject private var inspector = InspectorModel()
+    /// Скорость туннеля для главной — по счетчикам интерфейса туннеля, пока главная на экране под защитой.
+    @StateObject private var speed = SpeedMeter()
     /// Слои окна: диалог подтверждения, меню у кнопки и подсказка сверху — их зовут блоки любого экрана.
     @StateObject private var layers = PgLayers()
     @State private var tab = AppTab.home
@@ -56,7 +58,8 @@ struct RootView: View {
             } else {
                 page
                 Island(
-                    texts: model.texts, tab: tab, state: model.home.status.state, hasServer: model.home.inUse != nil,
+                    texts: model.texts, tab: tab, state: model.home.status.state, hasServer: model.home.inUse != nil, blocked: model.blocked,
+                    leak: homeFacts.leak(model.home.status.state),
                     onTab: { next in
                         tab = next
                         card = nil
@@ -72,7 +75,36 @@ struct RootView: View {
             importing.onAdded = { [model] in
                 Task { await model.reload() }
             }
+            // Сеть телефона — для строки сети главной и «Проверки»; следим, пока окно живо.
+            inspector.start()
             await model.start()
+            measureWebIp()
+        }
+        .onChange(of: model.home.status.state) { state in
+            // Внешний IP главной: подключились — адрес выхода, выключились — реальный; прежний адрес выхода больше не тот.
+            if state != .connected {
+                inspector.forgetExit()
+            }
+
+            measureWebIp()
+        }
+        .onChange(of: model.home.status.serverId) { _ in
+            // Под защитой сменили сервер, туннель не опускался: у нового сервера — свой адрес выхода.
+            if model.home.status.state == .connected {
+                measureWebIp()
+            }
+        }
+        .onChange(of: inspector.networkKey) { _ in
+            // Другая сеть — другой реальный IP (и под защитой — повод проверить выход заново).
+            measureWebIp()
+        }
+        .task(id: speedWanted) {
+            guard speedWanted else {
+                speed.stop()
+                return
+            }
+
+            await speed.run()
         }
         .onChange(of: model.message) { message in
             // Сообщение модели — подсказкой сверху окна (доска 19): итог действия — 1,8 с, событие (выбранный сервер пропал из
@@ -127,9 +159,14 @@ struct RootView: View {
         switch tab {
         case .home:
             HomeView(
-                texts: model.texts, home: model.home, killSwitch: model.settings.killSwitch, onAdd: { adding = true }, onServers: { tab = .servers },
-                onSelect: { id in Task { await model.select(id) } }, onRefresh: { Task { await model.refreshLatency() } },
-                onCheck: { tab = .check }
+                texts: model.texts, home: model.home, killSwitch: model.settings.killSwitch, facts: homeFacts, onAdd: { adding = true },
+                onServers: { tab = .servers }, onSelect: { id in Task { await model.select(id) } },
+                onRefresh: {
+                    // «Обновить серверы»: задержка серверов (без защиты) и внешний IP заново.
+                    Task { await model.refreshLatency() }
+                    measureWebIp()
+                },
+                onCheck: { tab = .check }, onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }
             )
         case .servers:
             if let card {
@@ -146,10 +183,9 @@ struct RootView: View {
                 ip: inspector.ip, log: model.log, probe: $inspector.probe,
                 onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected) } },
                 onDescribe: { Task { await inspector.describe() } }, onProbe: { Task { await inspector.runProbe() } },
-                onRefreshLog: { Task { await model.reload() } }
+                onRefreshLog: { Task { await model.reload() } }, blocked: model.blocked, leak: homeFacts.leak(model.home.status.state)
             )
             .onAppear { inspector.start() }
-            .onDisappear { inspector.stop() }
         case .settings:
             SettingsView(
                 texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,
@@ -190,12 +226,42 @@ struct RootView: View {
         )
     }
 
+    /// Что главная знает сверх состояния туннеля: «Блокировка», сеть, внешний IP (сведения RIPEstat — если о нем спросили на
+    /// «Проверке») и скорость туннеля.
+    private var homeFacts: HomeFacts {
+        var ip = inspector.web
+        ip.info = inspector.ip.info
+        return HomeFacts(blocked: model.blocked, uplink: inspector.uplink, ip: ip, speed: speed.speed)
+    }
+
+    /// Скорость нужна, пока главная на экране под защитой.
+    private var speedWanted: Bool {
+        tab == .home && !adding && phase == .active && model.home.status.state == .connected
+    }
+
+    /// Внешний IP для главной: под защитой — адрес выхода (он же проверка утечки), без защиты и в «Ошибке» без туннеля —
+    /// реальный. В «Подключении», «Переподключении» и «Блокировке» мерить нечего: прямой путь закрыт, а выхода еще нет.
+    private func measureWebIp() {
+        let state = model.home.status.state
+        guard state == .connected || state == .off || (state == .error && !model.blocked) else {
+            return
+        }
+
+        Task { await inspector.measureIp(protected: state == .connected) }
+    }
+
     /// Кнопка-щит: подключаться не к чему — серверов нет (добавить) или ни один не выбран (к списку: сервер выбирает только
-    /// пользователь).
+    /// пользователь). В «Блокировке» снять защиту — открыть сайтам реальный IP: сначала вопрос (доска 18), как у десктопа.
     private func power() {
         switch model.home.power {
         case .toggle:
-            Task { await model.togglePower() }
+            if model.blocked {
+                layers.confirm(HomeDialogs.unprotect(model.texts)) {
+                    Task { await model.togglePower() }
+                }
+            } else {
+                Task { await model.togglePower() }
+            }
         case .add:
             adding = true
         case .choose:

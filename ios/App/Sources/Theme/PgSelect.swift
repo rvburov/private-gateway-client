@@ -84,8 +84,8 @@ struct PgSelect<Value: Hashable>: View {
     }
 }
 
-/// Рамка кнопки выбора: line.strong, при нажатии — accent.base (app.css .btn-select:active).
-private struct PgSelectStyle: ButtonStyle {
+/// Рамка кнопки выбора: line.strong, при нажатии — accent.base (app.css .btn-select:active). Ее же носит «Сменить ▾» главной.
+struct PgSelectStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background(RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(PgColor.Surface.solid)))
@@ -97,33 +97,40 @@ private struct PgSelectStyle: ButtonStyle {
 }
 
 /// Меню у кнопки (.popup + .btn-option, Popup десктопа): белое, скругление radius.card, рамка line.border, тень
-/// shadow.popup, поля 6, ширина по содержимому, не уже 220; пункт — строка layout.touchTarget, текущий — синим полужирным без
-/// заливки, опасный — красным.
+/// shadow.popup, поля 6, ширина по содержимому — не уже 220 и не шире 340; над пунктами — надзаголовок, если он есть; пункт —
+/// строка layout.touchTarget, текущий — синим полужирным без заливки, опасный — красным; пункт быстрой смены — значок страны,
+/// название полужирным, протокол второй строкой и задержка справа; ссылки — под чертой, синим.
 struct PgMenuView: View {
     let menu: PgMenu
     let onPick: (Int) -> Void
 
     var body: some View {
+        let firstLink = menu.items.firstIndex(where: \.link)
         VStack(alignment: .leading, spacing: 0) {
+            if let title = menu.title {
+                Overline(text: title)
+                    .padding(.horizontal, PgSpace.m)
+                    .padding(.top, PgSpace.xs)
+                    .padding(.bottom, PgSpace.xxs)
+            }
+
             ForEach(menu.items.indices, id: \.self) { index in
                 let item = menu.items[index]
+                if index == firstLink {
+                    PgDivider().padding(.horizontal, PgSpace.xs).padding(.vertical, 2)
+                }
+
                 Button {
                     onPick(index)
                 } label: {
-                    Text(item.title)
-                        .pgText(item.current ? PgType.body.with(weight: PgType.bodyStrong.weight) : PgType.body)
-                        .foregroundStyle(Color(Self.ink(item)))
-                        .lineLimit(1)
-                        .padding(.horizontal, PgSpace.m)
-                        .frame(maxWidth: .infinity, minHeight: PgLayout.touchTarget, alignment: .leading)
-                        .contentShape(Rectangle())
+                    row(item)
                 }
                 .buttonStyle(PgPressStyle())
                 .accessibilityAddTraits(item.current ? [.isButton, .isSelected] : .isButton)
             }
         }
         .padding(PgSpace.xs)
-        .frame(minWidth: 220, alignment: .leading)
+        .frame(minWidth: 220, maxWidth: 340, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: PgRadius.card, style: .continuous).fill(Color(PgColor.Surface.solid)))
         .overlay(RoundedRectangle(cornerRadius: PgRadius.card, style: .continuous).stroke(Color(PgColor.Line.border), lineWidth: 1))
         .pgShadow(PgShadow.popup)
@@ -131,8 +138,51 @@ struct PgMenuView: View {
         .accessibilityAddTraits(.isModal)
     }
 
+    private func row(_ item: PgMenuItem) -> some View {
+        HStack(spacing: 0) {
+            if let badge = item.badge {
+                Text(badge)
+                    .pgText(PgTextStyle(size: PgType.overline.size, weight: 700))
+                    .foregroundStyle(Color(PgColor.Accent.text))
+                    .frame(width: 30, height: 22)
+                    .background(RoundedRectangle(cornerRadius: PgRadius.chip, style: .continuous).fill(Color(PgColor.Accent.tint)))
+                    .accessibilityHidden(true)
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(item.title)
+                    .pgText(Self.style(item))
+                    .foregroundStyle(Color(Self.ink(item)))
+                    .lineLimit(1)
+                if let caption = item.caption {
+                    Text(caption).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted)).lineLimit(1)
+                }
+            }
+            .padding(.horizontal, item.badge == nil ? 0 : PgSpace.m)
+            .padding(.vertical, item.caption == nil ? 0 : PgSpace.xs)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let trailing = item.trailing {
+                Text(trailing).pgText(PgType.mono).foregroundStyle(Color(item.trailingColor ?? PgColor.Text.muted)).lineLimit(1)
+            }
+        }
+        .padding(.horizontal, PgSpace.m)
+        .frame(maxWidth: .infinity, minHeight: PgLayout.touchTarget, alignment: .leading)
+        .contentShape(Rectangle())
+    }
+
+    /// Ссылка — small полужирным (.btn-link), пункт с второй строкой — полужирным всегда (.t-strong), обычный — body,
+    /// текущий — полужирным.
+    private static func style(_ item: PgMenuItem) -> PgTextStyle {
+        if item.link {
+            return PgType.small.with(weight: PgType.bodyStrong.weight)
+        }
+
+        return item.current || item.caption != nil ? PgType.body.with(weight: PgType.bodyStrong.weight) : PgType.body
+    }
+
     private static func ink(_ item: PgMenuItem) -> PgRGBA {
-        if item.current {
+        if item.current || item.link {
             return PgColor.Accent.text
         }
 

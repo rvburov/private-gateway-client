@@ -4,18 +4,30 @@ import SwiftUI
 import UIKit
 
 /// Пункт меню у кнопки (.popup): подпись; текущий — синим полужирным без заливки (.btn-option.current), опасное действие —
-/// красным.
+/// красным. Пункт быстрой смены сервера (доска 01) — еще значок страны слева, протокол второй строкой и задержка справа;
+/// ссылка («Все серверы ›») — под чертой внизу меню, синим.
 struct PgMenuItem: Equatable {
     let title: String
     var current = false
     var danger = false
+    /// Код страны в значке слева (.badge.country); пустой — пустой значок, nil — значка нет.
+    var badge: String? = nil
+    /// Вторая строка под подписью (протокол сервера).
+    var caption: String? = nil
+    /// Справа моноширинным (задержка) и его цвет; цвета нет — text.muted.
+    var trailing: String? = nil
+    var trailingColor: PgRGBA? = nil
+    /// Ссылка под чертой (.btn-link): синим, без отметки текущего.
+    var link = false
 }
 
-/// Открытое меню: у какой кнопки оно стоит (`pgMenuAnchor`), пункты и что делать с выбранным.
+/// Открытое меню: у какой кнопки оно стоит (`pgMenuAnchor`), пункты, что делать с выбранным и надзаголовок над пунктами
+/// («Быстрая смена · вручную»).
 struct PgMenu {
     let anchor: UUID
     let items: [PgMenuItem]
     let onPick: (Int) -> Void
+    var title: String? = nil
 }
 
 /// Слои поверх окна (app.css «Слой поверх окна», OverlayViewModel и ToastViewModel десктопа): диалог подтверждения с
@@ -204,7 +216,10 @@ struct PgLayersOverlay: View {
     /// Нажатие мимо меню закрывает его.
     private func menuLayer(_ menu: PgMenu, at rect: CGRect, in size: CGSize) -> some View {
         let gap = CGFloat(PgSpace.s)
-        let height = CGFloat(menu.items.count) * CGFloat(PgLayout.touchTarget) + 2 * CGFloat(PgSpace.xs)
+        // Пункт с второй строкой выше обычного, надзаголовок и черта перед ссылкой — тоже место.
+        let rows = menu.items.reduce(CGFloat(0)) { sum, item in sum + CGFloat(PgLayout.touchTarget) + (item.caption == nil ? 0 : 8) }
+        let extra = (menu.title == nil ? 0 : 26) + (menu.items.contains(where: \.link) ? 5 : 0)
+        let height = rows + CGFloat(extra) + 2 * CGFloat(PgSpace.xs)
         let below = rect.maxY + gap + height <= size.height - gap
         let trailing = max(gap, size.width - rect.maxX)
         let offset = below ? rect.maxY + gap : size.height - rect.minY + gap

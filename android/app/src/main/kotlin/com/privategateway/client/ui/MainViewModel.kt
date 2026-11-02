@@ -5,6 +5,8 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.privategateway.client.R
+import com.privategateway.client.core.inspect.PhoneNetworkKind
+import com.privategateway.client.core.inspect.PublicAddress
 import com.privategateway.client.core.links.ImportBatch
 import com.privategateway.client.core.links.ImportParser
 import com.privategateway.client.core.servers.ServerItem
@@ -21,18 +23,24 @@ import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.inspect.PhoneNetworkSource
+import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.subscriptions.SubscriptionNotice
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.ui.qr.QrImages
 import com.privategateway.client.ui.qr.QrRead
+import com.privategateway.client.vpn.ByteCounters
+import com.privategateway.client.vpn.ByteSample
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.LatencyMeter
 import com.privategateway.client.vpn.MeasureResult
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
+import com.privategateway.client.vpn.TrafficSpeed
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -41,7 +49,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -52,6 +63,7 @@ import javax.inject.Inject
 /**
  * Состояние окна: туннель, список серверов и их группы (подписки и профили), выбранный и рабочий сервер. Рабочий — тот,
  * через который идет защита (его назвала служба); защита выключена — выбранный (как ServerFacts.InUse у десктопа).
+ * [ip] — замеры внешнего IP для главной; [network] — сеть, через которую телефон выходит в интернет (null — сети нет).
  */
 data class MainUi(
     val status: TunnelStatus = TunnelStatus(),
@@ -60,9 +72,31 @@ data class MainUi(
     val subscriptions: List<SubscriptionRef> = emptyList(),
     val measuring: Boolean = false,
     val blocked: Boolean = false,
+    val ip: WebIp = WebIp(),
+    val network: PhoneNetworkKind? = null,
 ) {
     /** Android закрыл интернет без туннеля — «Блокировать подключения без VPN» (решение 445). */
     val closedWithoutTunnel: Boolean get() = SystemVpnView.closedWithoutTunnel(status.state, blocked)
+
+    /** Адрес выхода, измеренный в этом подключении; прежнего подключения не в счет. */
+    private val exit: String? get() = ip.exit?.takeIf { status.state == TunnelState.Connected && ip.session == status.since }
+
+    /** Защита включена, а замер видит реальный IP: выход совпал с адресом, измеренным без защиты в этой же сети. */
+    val leak: Boolean get() = exit != null && exit == ip.direct
+
+    /** Что показывает главная: состояние туннеля, блок Android и утечка (доска 09). */
+    val view: ProtectionView get() = ProtectionView.of(status.state, closedWithoutTunnel, leak)
+
+    /**
+     * IP, который видят сайты (WebIp десктопа): под защитой — измеренный выход, без защиты и при ошибке без блока — реальный;
+     * в подключении и блокировке — никакого: прямой путь закрыт, а выхода еще нет. Не измерен — null.
+     */
+    val webAddress: String?
+        get() = when (view) {
+            ProtectionView.Connected, ProtectionView.Leak -> exit
+            ProtectionView.Off, ProtectionView.Error -> ip.direct
+            else -> null
+        }
 
     /** Защита идет или поднимается через этот сервер (строка «активен», «Используется сейчас» в карточке). */
     fun active(id: String): Boolean = status.state != TunnelState.Off && status.state != TunnelState.Error && status.serverId == id
@@ -133,16 +167,40 @@ class MainViewModel @Inject constructor(
     private val meter: LatencyMeter,
     private val updater: SubscriptionUpdater,
     private val qr: QrImages,
+    private val web: WebFetch,
+    private val networks: PhoneNetworkSource,
+    private val counters: ByteCounters,
 ) : ViewModel() {
+    private val webIp = MutableStateFlow(WebIp())
+
+    // Состояние замеров внешнего IP — до init: подписка в init идет сразу (Main.immediate) и уже пишет сюда.
+    private var lastPath: IpPath? = null
+    private var lastNetwork: List<String>? = null
+    private var ipAttempt = 0
+
     val ui: StateFlow<MainUi> = combine(
         monitor.status.combine(monitor.blocked) { status, blocked -> status to blocked },
         servers.servers,
         settings.selectedServerId,
         servers.subscriptionRefs,
-        meter.measuring,
-    ) { (status, blocked), list, selected, groups, measuring ->
-        MainUi(status, list, selected, groups, measuring, blocked)
+        combine(meter.measuring, webIp, networks.networks) { measuring, ip, list -> Triple(measuring, ip, HomeNetwork.pick(list)?.kind) },
+    ) { (status, blocked), list, selected, groups, (measuring, ip, network) ->
+        MainUi(status, list, selected, groups, measuring, blocked, ip, network)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MainUi())
+
+    /**
+     * Скорость туннеля для главной: раз в секунду, пока ее показывает окно и защита включена; иначе null («—»). Счетчики
+     * читаются не в главном потоке: на новых Android это запрос к системе.
+     */
+    val speed: StateFlow<TrafficSpeed?> = flow<TrafficSpeed?> {
+        var before: ByteSample? = null
+        while (true) {
+            val now = if (monitor.status.value.state == TunnelState.Connected) counters.read() else null
+            emit(TrafficSpeed.between(before, now))
+            before = now
+            delay(SPEED_TICK_MS)
+        }
+    }.flowOn(Dispatchers.IO).stateIn(viewModelScope, SharingStarted.WhileSubscribed(SPEED_KEEP_MS), null)
 
     private val notices = MutableSharedFlow<Message>(extraBufferCapacity = 8)
 
@@ -152,6 +210,15 @@ class MainViewModel @Inject constructor(
     init {
         // Группы одной подписки, созданные до решения 528 повторным добавлением ссылки, — одна группа.
         viewModelScope.launch { servers.mergeSameSubscriptions(settings.selectedServerId.first()) }
+        networks.start()
+        // Внешний IP — сам, когда меняется путь запросов приложения: подключились — выход (проверка, нет ли утечки),
+        // выключено без блока Android или сменилась сеть — реальный IP.
+        viewModelScope.launch {
+            combine(monitor.status, monitor.blocked, networks.networks) { status, blocked, list ->
+                val network = HomeNetwork.identity(list)
+                path(status, blocked, network) to network
+            }.distinctUntilChanged().collect { (path, network) -> follow(path, network) }
+        }
         viewModelScope.launch {
             updater.notices.collect { notice ->
                 notices.emit(
@@ -257,16 +324,96 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * «Обновить»: задержка всех серверов через ядро — только без защиты (решение 430). Замер уже идет — нажатие не
-     * считается; защита включена или включилась во время замера — сообщение, почему не мерили.
+     * «Обновить серверы»: задержка всех серверов через ядро — только без защиты (решение 430). Итог — текстом десктопа
+     * («Серверы обновлены · пинг проверен»: у него эта кнопка тоже перемеряет пинг). Замер уже идет — нажатие не считается;
+     * защита включена или включилась во время замера — сообщение, почему не мерили.
      */
     fun refreshLatency() {
         viewModelScope.launch {
             when (meter.measure()) {
-                MeasureResult.Done -> notices.emit(Message(R.string.android_servers_ping_done))
+                MeasureResult.Done -> notices.emit(Message(R.string.server_refreshed))
                 MeasureResult.Busy -> notices.emit(Message(R.string.android_servers_ping_busy))
                 MeasureResult.Blocked -> notices.emit(Message(R.string.android_servers_ping_blocked))
                 MeasureResult.Running -> Unit
+            }
+        }
+    }
+
+    /**
+     * Путь запросов приложения сейчас: под защитой — через туннель подключения [IpPath.session]; выключено или ошибка без
+     * блока Android и есть сеть — напрямую; в подключении, переподключении и под блоком — никакого: мерить нечего.
+     */
+    private data class IpPath(val viaTunnel: Boolean, val session: Long?)
+
+    private fun path(status: TunnelStatus, blocked: Boolean, network: List<String>?): IpPath? = when {
+        status.state == TunnelState.Connected -> IpPath(viaTunnel = true, session = status.since)
+        (status.state == TunnelState.Off || status.state == TunnelState.Error) && !blocked && network != null -> IpPath(viaTunnel = false, session = null)
+        else -> null
+    }
+
+    private fun currentPath(): IpPath? = path(monitor.status.value, monitor.blocked.value, HomeNetwork.identity(networks.networks.value))
+
+    /** Другая сеть — прежний реальный IP не тот; новый путь (или прямой путь в новой сети) — замер. */
+    private fun follow(path: IpPath?, network: List<String>?) {
+        val moved = network != lastNetwork
+        if (moved) {
+            lastNetwork = network
+            webIp.update { it.copy(direct = null) }
+        }
+
+        if (path != null && (path != lastPath || moved && !path.viaTunnel)) {
+            measure(path, retry = path.viaTunnel)
+        }
+
+        lastPath = path
+    }
+
+    /**
+     * «Проверить» на главной: внешний IP снова — под защитой это проверка выхода (совпал с реальным — утечка), время
+     * проверки — в «Проверено …». Замер уже идет — нажатие не считается.
+     */
+    fun verify() {
+        val path = currentPath() ?: return
+        if (!webIp.value.measuring) {
+            measure(path, retry = false)
+        }
+    }
+
+    /**
+     * Замер внешнего IP тем путем, что сейчас ([path]). Ответ засчитывается, только если путь за время замера не сменился:
+     * иначе запрос мог уйти другим путем, и адрес выхода оказался бы реальным (или наоборот). Сразу после подключения ядро
+     * может еще не ответить — [retry]: вторая попытка через 2 с. Новый замер отменяет итог прежнего.
+     */
+    private fun measure(path: IpPath, retry: Boolean) {
+        val attempt = ++ipAttempt
+        webIp.update {
+            if (path.viaTunnel && it.session != path.session) {
+                it.copy(exit = null, session = path.session, checkedAt = null, measuring = true)
+            } else {
+                it.copy(measuring = true)
+            }
+        }
+
+        viewModelScope.launch {
+            var address = PublicAddress.traceIp(web.get(PublicAddress.TRACE))
+            if (address == null && retry && attempt == ipAttempt && currentPath() == path) {
+                delay(EXIT_RETRY_MS)
+                if (attempt == ipAttempt && currentPath() == path) {
+                    address = PublicAddress.traceIp(web.get(PublicAddress.TRACE))
+                }
+            }
+
+            if (attempt != ipAttempt) {
+                return@launch
+            }
+
+            val same = currentPath() == path
+            webIp.update {
+                when {
+                    !same -> it.copy(measuring = false)
+                    path.viaTunnel -> it.copy(exit = address ?: it.exit, checkedAt = System.currentTimeMillis(), measuring = false)
+                    else -> it.copy(direct = address ?: it.direct, measuring = false)
+                }
             }
         }
     }
@@ -431,5 +578,15 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             coreVersion.value = withContext(Dispatchers.IO) { runCatching { engine.version() }.getOrNull() }
         }
+    }
+
+    private companion object {
+        /** Скорость туннеля — раз в секунду, как у десктопа. */
+        const val SPEED_TICK_MS = 1_000L
+
+        /** Окно на 5 с ушло (поворот экрана) — счетчики еще читаются: не начинать заново с «—». */
+        const val SPEED_KEEP_MS = 5_000L
+
+        const val EXIT_RETRY_MS = 2_000L
     }
 }

@@ -19,6 +19,9 @@ struct CheckView: View {
     var onDescribe: () -> Void = {}
     var onProbe: () -> Void = {}
     var onRefreshLog: () -> Void = {}
+    /// «Блокировка» и «Утечка IP» — те же пункты защиты, что на главной.
+    var blocked = false
+    var leak = false
 
     var body: some View {
         ScrollView {
@@ -34,7 +37,7 @@ struct CheckView: View {
                 }
 
                 VStack(alignment: .leading, spacing: PgSpace.l) {
-                    ForEach(ProtectionChips.of(status.state, killSwitch: killSwitch, texts), id: \.title) { chip in
+                    ForEach(ProtectionChips.of(status.state, killSwitch: killSwitch, texts, blocked: blocked, leak: leak), id: \.title) { chip in
                         VStack(alignment: .leading, spacing: PgSpace.xxs) {
                             HStack(spacing: PgSpace.m) {
                                 ZStack {

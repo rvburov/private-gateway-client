@@ -31,6 +31,9 @@ final class AppModel: ObservableObject {
     @Published var route: AppRoute?
     /// Журнал расширения туннеля для «Проверки».
     @Published private(set) var log: [String] = []
+    /// «Блокировка»: расширение сдалось (сервер не отвечает), а туннель оставлен — блок при обрыве держит трафик закрытым.
+    /// Состояние туннеля — «Ошибка», но трафик не идет напрямую; щит снимает защиту, «Повторить» — подключает снова.
+    @Published private(set) var blocked = false
 
     let texts: PgTexts
     let container: SharedContainer
@@ -93,7 +96,7 @@ final class AppModel: ObservableObject {
         case .retry?, .connect?:
             Task {
                 if home.off {
-                    await togglePower()
+                    await retry()
                 }
             }
         default:
@@ -136,6 +139,8 @@ final class AppModel: ObservableObject {
 
         let before = home.status.state
         home.status = TunnelView.status(system: tunnel.system, report: container.status.read(), appError: appError)
+        // «Ошибка» при поднятом туннеле — расширение оставило его без ядра (TunnelView): трафик закрыт, а не идет напрямую.
+        blocked = home.status.state == .error && (tunnel.system == .connected || tunnel.system == .reasserting)
         // Защита подключилась — подпискам «только через VPN» теперь можно обновиться.
         if before != .connected, home.status.state == .connected {
             Task { await checkSubscriptions() }
@@ -233,9 +238,10 @@ final class AppModel: ObservableObject {
         message = text
     }
 
-    /// Кнопка включения: включить или выключить защиту. Подключаться не к чему — `home.power` скажет окну, куда вести.
+    /// Кнопка включения: включить или выключить защиту; в «Блокировке» — снять ее (окно сначала спрашивает). Подключаться не
+    /// к чему — `home.power` скажет окну, куда вести.
     func togglePower() async {
-        if home.off {
+        if home.off, !blocked {
             // Разрешение на уведомления — при первом включении защиты: тогда понятно, о чем они.
             if settings.notifications != .off {
                 await Notifications.requestPermission()
@@ -245,6 +251,12 @@ final class AppModel: ObservableObject {
         } else {
             await tunnel.disconnect()
         }
+    }
+
+    /// «Повторить» в «Ошибке» и «Блокировке», «Повторить» и «Подключить» в уведомлении: подключиться снова — туннель
+    /// поднимается, а оставленный без ядра перезапускает ядро, не опускаясь (`TunnelController.connect`).
+    func retry() async {
+        await run { try await self.tunnel.connect() }
     }
 
     func select(_ id: String) async {

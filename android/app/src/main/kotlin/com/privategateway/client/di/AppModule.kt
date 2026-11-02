@@ -17,6 +17,8 @@ import com.privategateway.client.inspect.PhoneNetworkSource
 import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.ui.qr.DeviceQrImages
 import com.privategateway.client.ui.qr.QrImages
+import com.privategateway.client.vpn.AppByteCounters
+import com.privategateway.client.vpn.ByteCounters
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.LibXrayEngine
 import com.privategateway.client.vpn.NetworkDns
@@ -88,4 +90,7 @@ abstract class BindingsModule {
 
     @Binds
     abstract fun webFetch(fetch: DeviceWebFetch): WebFetch
+
+    @Binds
+    abstract fun byteCounters(counters: AppByteCounters): ByteCounters
 }

@@ -23,6 +23,7 @@ import com.privategateway.client.R
 import com.privategateway.client.inspect.InspectorViewModel
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.check.InspectorActions
+import com.privategateway.client.ui.home.HomeActions
 import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.qr.QrCameraScreen
 import com.privategateway.client.ui.servers.CardActions
@@ -60,6 +61,8 @@ class AppActions(
     val copySecret: (String) -> Unit = {},
     /** Отправить ссылку сервера — системный выбор программы. */
     val send: (String) -> Unit = {},
+    /** Скопировать текст в буфер обычным текстом (IP с главной). */
+    val copy: (String) -> Unit = {},
 )
 
 @Composable
@@ -163,16 +166,36 @@ fun AppScreen(
                     }
                 }
 
+                val power: () -> Unit = {
+                    when (ui.power) {
+                        PowerAction.Toggle -> actions.power()
+                        PowerAction.Add -> adding = true
+                        PowerAction.Choose -> tab = Tab.Servers
+                    }
+                }
                 val open = card
                 when (tab) {
-                    Tab.Home -> HomeScreen(
-                        ui,
-                        onServers = { tab = Tab.Servers },
-                        onCheck = { tab = Tab.Check },
-                        onAdd = { adding = true },
-                        onSelect = viewModel::select,
-                        onRefresh = viewModel::refreshLatency,
-                    )
+                    Tab.Home -> {
+                        // Скорость туннеля читается, только пока главная на экране.
+                        val speed by viewModel.speed.collectAsStateWithLifecycle()
+                        HomeScreen(
+                            ui,
+                            onServers = { tab = Tab.Servers },
+                            onCheck = { tab = Tab.Check },
+                            onAdd = { adding = true },
+                            onSelect = viewModel::select,
+                            onRefresh = viewModel::refreshLatency,
+                            speed = speed,
+                            actions = HomeActions(
+                                verify = viewModel::verify,
+                                // «Повторить» — то же, что щит в «Ошибке»: подключить снова к выбранному.
+                                retry = power,
+                                vpnSettings = actions.openVpnSettings,
+                                copy = actions.copy,
+                            ),
+                        )
+                    }
+
                     Tab.Servers -> if (open != null) {
                         ServerCardScreen(
                             ui,
@@ -255,19 +278,20 @@ fun AppScreen(
 
                 }
 
-                val power: () -> Unit = {
-                    when (ui.power) {
-                        PowerAction.Toggle -> actions.power()
-                        PowerAction.Add -> adding = true
-                        PowerAction.Choose -> tab = Tab.Servers
-                    }
-                }
                 // Пункт островка всегда ведет на свой экран: «Серверы» — к списку, открытая карточка закрывается (как на iOS).
                 val select: (Tab) -> Unit = {
                     tab = it
                     card = null
                 }
-                Island(tab, ui.status.state, hasServer = ui.inUse != null, onTab = select, onPower = power, Modifier.align(Alignment.BottomCenter))
+                Island(
+                    tab,
+                    ui.status.state,
+                    hasServer = ui.inUse != null,
+                    onTab = select,
+                    onPower = power,
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                    look = StateLook.of(ui.view),
+                )
             }
 
             PgToast(toast, Modifier.align(Alignment.TopCenter))

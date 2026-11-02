@@ -21,11 +21,14 @@ struct Island: View {
     let tab: AppTab
     let state: TunnelState
     let hasServer: Bool
+    /// «Блокировка» и «Утечка IP» — свои подпись и цвет под щитом (`StateLook`).
+    var blocked = false
+    var leak = false
     let onTab: (AppTab) -> Void
     let onPower: () -> Void
 
     var body: some View {
-        let look = StateLook.of(state, texts)
+        let look = StateLook.of(state, texts, blocked: blocked, leak: leak)
         // Верх плашки — на уровне центра щита: выступ поднимается над плашкой ровно на свой радиус.
         let top = CGFloat(PgLayout.Island.bumpRadius)
         let shape = IslandShape(side: CGFloat(PgLayout.Island.sideMarginMobile), top: top)
@@ -56,7 +59,7 @@ struct Island: View {
             .frame(height: PgLayout.Island.height)
             .padding(.top, top)
 
-            PowerButton(look: look, texts: texts, state: state, action: onPower)
+            PowerButton(look: look, texts: texts, state: state, blocked: blocked, action: onPower)
                 .padding(.top, top - CGFloat(PgLayout.PowerButton.size) / 2)
         }
         .frame(height: top + CGFloat(PgLayout.Island.height), alignment: .top)

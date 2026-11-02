@@ -70,7 +70,7 @@ fun CheckScreen(
         }
 
         PgCard(Modifier.fillMaxWidth()) {
-            val chips = ProtectionChips.of(ui.status.state, ui.status.lockdown, ui.closedWithoutTunnel)
+            val chips = ProtectionChips.of(ui.status.state, ui.status.lockdown, ui.closedWithoutTunnel, ui.leak)
             for ((index, chip) in chips.withIndex()) {
                 if (index > 0) {
                     Spacer(Modifier.size(PgSpace.L))
@@ -83,7 +83,7 @@ fun CheckScreen(
 
                     Spacer(Modifier.width(PgSpace.M))
                     Text(stringResource(chip.title), style = PgType.BodyStrong, modifier = Modifier.weight(1f))
-                    Text(stringResource(chip.value), color = chip.look.base, style = PgType.Small)
+                    Text(stringResource(chip.value), color = chip.look.text, style = PgType.Small)
                 }
 
                 Text(stringResource(chip.text), color = PgColor.Text.Secondary, style = PgType.Small, modifier = Modifier.padding(top = PgSpace.Xxs))

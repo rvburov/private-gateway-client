@@ -10,12 +10,17 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
 import com.privategateway.client.waitForAsync
+import com.privategateway.client.core.inspect.PhoneNetwork
+import com.privategateway.client.core.inspect.PhoneNetworkKind
+import com.privategateway.client.core.inspect.PublicAddress
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.R
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.inspect.PhoneNetworkSource
+import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.ui.qr.QrImages
@@ -25,18 +30,23 @@ import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SubscriptionContent
 import com.privategateway.client.core.subscriptions.SubscriptionDownloadException
 import com.privategateway.client.core.subscriptions.SubscriptionSource
+import com.privategateway.client.vpn.ByteCounters
+import com.privategateway.client.vpn.ByteSample
 import com.privategateway.client.vpn.CoreEngine
 import com.privategateway.client.vpn.LatencyMeter
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelMonitor
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.resetMain
@@ -48,7 +58,9 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
 import java.net.URI
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
@@ -78,6 +90,37 @@ class MainViewModelTest {
         override suspend fun read(image: Uri): QrRead = result
     }
     private val control = FakeControl()
+
+    /** Ответы «сети» на запрос внешнего IP (Cloudflare trace): что вернуть, задает тест; ответ может ждать. */
+    @Volatile private var answer: suspend () -> String? = { null }
+    private val asked = CopyOnWriteArrayList<String>()
+    private val web = object : WebFetch {
+        override suspend fun get(url: String): String? {
+            asked += url
+            return answer()
+        }
+    }
+
+    private val wifi = PhoneNetwork(
+        PhoneNetworkKind.Wifi, "wlan0", isDefault = true, addresses = listOf("192.0.2.23/24"), gateways = listOf("192.0.2.1"),
+        dns = listOf("192.0.2.1"), privateDns = null, mtu = 1500, metered = false, validated = true, captive = false,
+    )
+
+    /** Сети телефона без телефона: список меняет тест. */
+    private class Networks(list: List<PhoneNetwork>) : PhoneNetworkSource {
+        override val networks = MutableStateFlow(list)
+
+        override fun start() = Unit
+    }
+
+    private val networks = Networks(listOf(wifi))
+
+    /** Счетчики байт туннеля: каждое чтение — на 1 с позже, 1 250 000 байт принято и 125 000 отправлено (10 и 1 Мбит/с). */
+    private val ticks = AtomicLong(0)
+    private val counters = ByteCounters {
+        val tick = ticks.incrementAndGet()
+        ByteSample(tick * 1_250_000, tick * 125_000, tick * 1_000)
+    }
 
     /** Команды службе туннеля — только счет. */
     private class FakeControl : TunnelControl {
@@ -125,7 +168,20 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
-        model = MainViewModel(monitor, servers, settings, FakeEngine(), SubscriptionTransport { uri, _ -> source.download(uri) }, control, LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() }, SubscriptionUpdater(SubscriptionTransport { uri, _ -> source.download(uri) }, servers, settings, monitor), images)
+        model = MainViewModel(
+            monitor,
+            servers,
+            settings,
+            FakeEngine(),
+            SubscriptionTransport { uri, _ -> source.download(uri) },
+            control,
+            LatencyMeter(FakeEngine(), servers, settings, monitor) { emptyList() },
+            SubscriptionUpdater(SubscriptionTransport { uri, _ -> source.download(uri) }, servers, settings, monitor),
+            images,
+            web,
+            networks,
+            counters,
+        )
     }
 
     @After
@@ -437,6 +493,106 @@ class MainViewModelTest {
         val ready = wait { model.importing.first { it.batch != null } }
         assertEquals(1, ready.batch?.found)
         assertNull(ready.qrProblem, "новый разбор убирает прежнюю подсказку")
+    }
+
+    @Test
+    fun `real ip is measured without protection, the exit after connecting, and an equal one is a leak`() {
+        // Без защиты запрос идет напрямую — это реальный IP; сайты видят его.
+        answer = { "fl=1\nip=198.51.100.7\n" }
+        model.verify()
+        val off = wait { model.ui.first { it.ip.direct == "198.51.100.7" && !it.ip.measuring } }
+        assertEquals(ProtectionView.Off, off.view)
+        assertEquals("198.51.100.7", off.webAddress)
+        assertEquals(PhoneNetworkKind.Wifi, off.network)
+
+        // Подключились — сам замер выхода через туннель, время проверки — для «Проверено …».
+        answer = { "ip=203.0.113.24\n" }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L))
+        val on = wait { model.ui.first { it.ip.exit == "203.0.113.24" && !it.ip.measuring } }
+        assertEquals(ProtectionView.Connected, on.view)
+        assertEquals("203.0.113.24", on.webAddress)
+        assertNotNull(on.ip.checkedAt)
+        assertEquals("198.51.100.7", on.ip.direct, "реальный IP остается для сравнения")
+        assertEquals(List(asked.size) { PublicAddress.TRACE }, asked.toList(), "тот же запрос, что «Внешний IP» на «Проверке»")
+
+        // «Проверить»: выход совпал с реальным IP — трафик мимо туннеля, «Утечка IP».
+        answer = { "ip=198.51.100.7\n" }
+        model.verify()
+        val leak = wait { model.ui.first { it.leak } }
+        assertEquals(ProtectionView.Leak, leak.view)
+        assertEquals(ProtectionChip("all", R.string.check_all_title, R.string.check_all_same_ip, ChipLook.Warning, R.string.check_all_same_ip_text), ProtectionChips.of(leak.status.state, leak.status.lockdown, leak.closedWithoutTunnel, leak.leak).first())
+
+        // Новое подключение — выход прежнего не в счет, пока не измерен свой.
+        answer = { CompletableDeferred<String?>().await() }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 2L))
+        val next = wait { model.ui.first { it.status.since == 2L && it.ip.measuring } }
+        assertNull(next.webAddress)
+        assertEquals(ProtectionView.Connected, next.view)
+    }
+
+    @Test
+    fun `an answer that came after the path changed is not trusted`() {
+        val gate = CompletableDeferred<String?>()
+        answer = { gate.await() }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L))
+        wait { model.ui.first { it.ip.measuring && it.ip.session == 1L } }
+        // Связь пропала, пока шел замер: ответ мог прийти другим путем — это был бы не адрес выхода.
+        monitor.set(TunnelStatus(TunnelState.Reconnecting, serverId = "nl", attempt = 1))
+        gate.complete("ip=198.51.100.7\n")
+        val ui = wait { model.ui.first { !it.ip.measuring } }
+        assertNull(ui.ip.exit)
+        assertNull(ui.ip.checkedAt)
+    }
+
+    @Test
+    fun `another network forgets the real ip and measures it again, android closing the network does not`() {
+        answer = { "ip=198.51.100.7\n" }
+        model.verify()
+        wait { model.ui.first { it.ip.direct == "198.51.100.7" } }
+
+        answer = { "ip=203.0.113.99\n" }
+        val cellular = wifi.copy(kind = PhoneNetworkKind.Cellular, name = "rmnet0", addresses = listOf("198.51.100.200/30"))
+        networks.networks.value = listOf(cellular)
+        val moved = wait { model.ui.first { it.ip.direct == "203.0.113.99" } }
+        assertEquals(PhoneNetworkKind.Cellular, moved.network)
+
+        // Сеть закрыл Android («Блокировать подключения без VPN»): прямого пути нет — не мерить.
+        val before = asked.size
+        monitor.setBlocked(true)
+        model.verify()
+        wait { delay(100) }
+        assertEquals(before, asked.size)
+        assertEquals(ProtectionView.Strict, wait { model.ui.first { it.blocked } }.view)
+        monitor.setBlocked(false)
+    }
+
+    @Test
+    fun `refresh says the desktop result and why it did not measure under protection`() {
+        val said = CopyOnWriteArrayList<Int>()
+        val listener = CoroutineScope(Dispatchers.Unconfined).launch { model.messages.collect { said += it.text } }
+        try {
+            model.refreshLatency()
+            waitUntil { said.isNotEmpty() }
+            assertEquals(listOf(R.string.server_refreshed), said.toList())
+
+            monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L))
+            model.refreshLatency()
+            waitUntil { said.size == 2 }
+            assertEquals(R.string.android_servers_ping_busy, said[1])
+        } finally {
+            listener.cancel()
+        }
+    }
+
+    @Test
+    fun `tunnel speed comes from the byte counters only under protection`() {
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl", since = 1L))
+        val speed = wait { model.speed.first { it != null } }
+        assertEquals(10.0, speed!!.downMbps, 1e-9)
+        assertEquals(1.0, speed.upMbps, 1e-9)
+
+        monitor.set(TunnelStatus())
+        assertNull(wait { model.speed.first { it == null } })
     }
 
     @Test

@@ -31,16 +31,25 @@ struct ProbeState: Equatable, Sendable {
 /// Инспектор сети на «Проверке» — как `InspectorViewModel` Android, в пределах того, что iOS дает приложению: сети iPhone
 /// (`NWPathMonitor`: вид, имя, по умолчанию ли, дорогая ли, есть ли выход в интернет), внешний IP (Cloudflare trace) и что
 /// о нем знает RIPEstat — только по кнопке, замеры DNS, TCP и TLS (`ProbeRunner`). Запросы идут из процесса приложения: при
-/// включенной защите — через туннель. Ничего не пишет в журнал: адреса и узлы — на экране и только.
+/// включенной защите — через туннель. Ничего не пишет в журнал: адреса и узлы — на экране и только. Тот же замер внешнего IP
+/// и та же сеть — на главной (`WebIp`, `Uplink`).
 @MainActor
 final class InspectorModel: ObservableObject {
     @Published private(set) var networks: [PhoneNetwork] = []
     @Published private(set) var ip = PublicIp()
     /// Поля замера правит экран, итог пишет модель.
     @Published var probe = ProbeState()
+    /// Внешний IP для главной: адрес выхода под защитой и реальный — без нее, в этой же сети.
+    @Published private(set) var web = WebIp()
+    /// Через какую сеть iPhone выходит в интернет; nil — iOS еще не сказала.
+    @Published private(set) var uplink: Uplink?
+    /// Сеть, в которой мерили реальный IP: вид и интерфейс. Сменилась — прежний реальный IP не годится (как у службы десктопа).
+    @Published private(set) var networkKey: String?
 
     private var monitor: NWPathMonitor?
     private let session: URLSession
+    /// Номер замера внешнего IP: итог прежнего, запоздавшего, не затирает новый.
+    private var measureCount = 0
 
     init() {
         let configuration = URLSessionConfiguration.ephemeral
@@ -52,7 +61,7 @@ final class InspectorModel: ObservableObject {
         session = URLSession(configuration: configuration)
     }
 
-    /// Экран открыт: следить за сетями. Закрыт — `stop`.
+    /// Окно открыто: следить за сетями (строка сети главной и «Проверка»). `stop` — перестать.
     func start() {
         guard monitor == nil else {
             return
@@ -61,8 +70,10 @@ final class InspectorModel: ObservableObject {
         let monitor = NWPathMonitor()
         monitor.pathUpdateHandler = { [weak self] path in
             let networks = Self.networks(path)
+            let uplink = Self.uplink(of: path)
             Task { @MainActor [weak self] in
                 self?.networks = networks
+                self?.update(uplink.kind, interface: uplink.interface)
             }
         }
         monitor.start(queue: DispatchQueue(label: "com.privategateway.client.inspect"))
@@ -88,6 +99,38 @@ final class InspectorModel: ObservableObject {
         return PhoneNetworks.order(list)
     }
 
+    /// Сеть выхода в интернет: под VPN путь идет через туннель, а `usesInterfaceType` называет сеть под ним. Пути нет —
+    /// `offline`; вид не назван — `other`.
+    nonisolated static func uplink(of path: NWPath) -> (kind: Uplink, interface: String?) {
+        guard path.status == .satisfied else {
+            return (.offline, nil)
+        }
+
+        let kinds: [(type: NWInterface.InterfaceType, kind: Uplink)] = [(.wifi, .wifi), (.cellular, .cellular), (.wiredEthernet, .ethernet)]
+        for pair in kinds where path.usesInterfaceType(pair.type) {
+            return (pair.kind, path.availableInterfaces.first { $0.type == pair.type }?.name)
+        }
+
+        for interface in path.availableInterfaces {
+            if let pair = kinds.first(where: { $0.type == interface.type }) {
+                return (pair.kind, interface.name)
+            }
+        }
+
+        return (.other, nil)
+    }
+
+    /// Новая сеть выхода: другая сеть — реальный IP прежней сети забывается (`NetworkKey`).
+    private func update(_ kind: Uplink, interface: String?) {
+        uplink = kind
+        let next = NetworkKey.next(networkKey, kind: kind, interface: interface)
+        if next.changed {
+            web.direct = nil
+        }
+
+        networkKey = next.key
+    }
+
     private nonisolated static func kind(_ interface: NWInterface) -> PhoneNetworkKind {
         switch interface.type {
         case .wifi: return .wifi
@@ -99,16 +142,44 @@ final class InspectorModel: ObservableObject {
         }
     }
 
-    /// Внешний IP: при включенной защите — адрес выхода сервера, без нее — провайдера. Сведения о прежнем адресе сбрасываются.
+    /// Внешний IP: при включенной защите — адрес выхода сервера, без нее — провайдера (реальный). Сведения о прежнем адресе
+    /// сбрасываются; итог запоздавшего замера, когда начался новый, не считается. Под защитой прежний адрес выхода до итога
+    /// не показывается: сервер мог смениться.
     func measureIp(protected: Bool) async {
+        measureCount += 1
+        let number = measureCount
         ip = PublicIp(measuring: true)
+        web.checking = true
+        if protected {
+            web.exit = nil
+        }
+
         let session = session
         let body = await Self.text(PublicAddress.trace, session)
-        if let address = PublicAddress.traceIp(body) {
+        guard number == measureCount else {
+            return
+        }
+
+        let address = PublicAddress.traceIp(body)
+        if let address {
             ip = PublicIp(address: address, viaServer: protected)
         } else {
             ip = PublicIp(failed: true)
         }
+
+        web.checking = false
+        if protected {
+            web.exit = address
+            web.checkedAt = Date()
+        } else if let address {
+            web.direct = address
+        }
+    }
+
+    /// Защита больше не «Защищено»: адрес выхода и время проверки устарели — следующее подключение измерит заново.
+    func forgetExit() {
+        web.exit = nil
+        web.checkedAt = nil
     }
 
     /// Кто провайдер: частный адрес — не спрашивать; иначе обзор сети и место из RIPEstat — запросы только с самим адресом.
