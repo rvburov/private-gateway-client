@@ -320,6 +320,10 @@ public sealed class ServiceIpcTests
         };
     }
 
+    /// <summary>Состояние для сообщения теста: с кодом и текстом ошибки, если она есть, — по CI видно, почему не подключилось.</summary>
+    private static string Describe(V1.Status status) =>
+        status.Error is { } error ? $"{status.State} ({error.Code}: {error.Message})" : status.State.ToString();
+
     /// <summary>
     /// Читать поток состояния, пока не придет нужное; не пришло за 20 с — ошибка теста с пройденными состояниями и, если дан
     /// <paramref name="journal"/>, концом журнала службы: по прогону CI видно, где встало.
@@ -343,7 +347,7 @@ public sealed class ServiceIpcTests
         }
         catch (Exception e) when (e is OperationCanceledException or RpcException && timeout.IsCancellationRequested && !Ct.IsCancellationRequested)
         {
-            throw new TimeoutException($"За 20 с нужного состояния нет: {string.Join(", ", seen.Select(s => s.State))}"
+            throw new TimeoutException($"За 20 с нужного состояния нет: {string.Join(", ", seen.Select(Describe))}"
                 + (journal is null ? string.Empty
                     : "\nЖурнал службы:\n" + string.Join('\n', journal.Tail(60).Select(j => $"{j.Level} {j.Source}: {j.Message}"))), e);
         }

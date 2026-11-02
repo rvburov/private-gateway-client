@@ -190,7 +190,7 @@ public sealed class CaptivePauseTests : IDisposable
         var port = XrayKit.FreePort();
         var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await service.Client.ConnectAsync(ServiceIpcTests.Request(definition, port, systemProxy), cancellationToken: Ct);
-        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
         return new Connected(service, watch, port, server);
     }
 
