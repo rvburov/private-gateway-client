@@ -43,19 +43,37 @@ public sealed class AppRelauncherTests : IDisposable
         var window = Path.Combine(_root, "window.sh");
         File.WriteAllText(window, $"#!/bin/sh\necho opened > '{marker}'\n");
         File.SetUnixFileMode(window, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
-        using var installer = Process.Start(new ProcessStartInfo("/bin/sleep", "2") { UseShellExecute = false })!;
-
-        new AppRelauncher(window).RelaunchAfter(installer.Id);
-
-        await Task.Delay(TimeSpan.FromSeconds(1), TestContext.Current.CancellationToken);
-        File.Exists(marker).ShouldBeFalse("установщик еще работает");
-        await installer.WaitForExitAsync(TestContext.Current.CancellationToken);
-        for (var i = 0; i < 50 && !File.Exists(marker); i++)
+        // «Установщик» работает, пока тест не велит закончить: с «sleep 2» на загруженной машине CI (macOS Intel) запуск
+        // помощника съедал секунду запаса, установщик успевал выйти до проверки «окна еще нет», и тест падал без ошибки в коде.
+        var finish = Path.Combine(_root, "finish");
+        using var installer = Process.Start(new ProcessStartInfo("/bin/sh")
         {
-            await Task.Delay(100, TestContext.Current.CancellationToken);
-        }
+            ArgumentList = { "-c", "while [ ! -e \"$1\" ]; do sleep 0.1; done", "sh", finish },
+            UseShellExecute = false,
+        })!;
+        try
+        {
+            new AppRelauncher(window).RelaunchAfter(installer.Id);
 
-        File.Exists(marker).ShouldBeTrue("установщик закончил — окно открыто");
-        new AppRelauncher(null).RelaunchAfter(installer.Id);
+            await Task.Delay(TimeSpan.FromSeconds(1.5), TestContext.Current.CancellationToken);
+            installer.HasExited.ShouldBeFalse();
+            File.Exists(marker).ShouldBeFalse("установщик еще работает");
+            await File.WriteAllTextAsync(finish, string.Empty, TestContext.Current.CancellationToken);
+            await installer.WaitForExitAsync(TestContext.Current.CancellationToken);
+            for (var i = 0; i < 150 && !File.Exists(marker); i++)
+            {
+                await Task.Delay(100, TestContext.Current.CancellationToken);
+            }
+
+            File.Exists(marker).ShouldBeTrue("установщик закончил — окно открыто");
+            new AppRelauncher(null).RelaunchAfter(installer.Id);
+        }
+        finally
+        {
+            if (!installer.HasExited)
+            {
+                installer.Kill();
+            }
+        }
     }
 }
