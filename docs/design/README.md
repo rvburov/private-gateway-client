@@ -16,6 +16,7 @@ macOS, Linux) и мобильные версии (Android · Kotlin + Compose, i
 docs/design/
 ├── README.md        — этот файл: список экранов, правила, открытые вопросы
 ├── html/            — макет v1.1: index.html, boards/NN-*.html, assets/ (токены, значки, стили, шрифты)
+├── mobile-parity.md — чем экраны Android и iOS пока отличаются от макета v1.1 (задание по доскам)
 ├── screens/         — PNG всех 26 досок макета (снимок v1.0)
 └── mockup/          — исходники макета v1.0: canvas.json + *.dc.html (по файлу на доску)
 
