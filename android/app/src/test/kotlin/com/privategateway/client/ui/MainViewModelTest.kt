@@ -277,8 +277,9 @@ class MainViewModelTest {
         val expected = wait { model.importing.first { it.batch != null } }
         release.countDown()
         // Дождаться всех продолжений модели: старый результат не должен вновь появиться после завершения загрузки. Постоянных
-        // корутин у модели три: состояние экрана (ui), слежение за путем запросов для замера IP и события обновления подписок.
-        waitUntil { model.viewModelScope.coroutineContext.job.children.count() <= 3 }
+        // корутин у модели четыре: состояние экрана (ui), наблюдатель подписчиков скорости (stateIn с WhileSubscribed держит
+        // его и без подписчиков), слежение за путем запросов для замера IP и события обновления подписок.
+        waitUntil { model.viewModelScope.coroutineContext.job.children.count() <= 4 }
         assertEquals(expected, model.importing.value)
     }
 
