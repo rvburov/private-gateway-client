@@ -584,6 +584,13 @@ public sealed class XrayConfigTests
         Outbound(relayed, XrayConfigBuilder.ProxyTag)["streamSettings"].ShouldBeNull();
         Sockopt(XrayConfigBuilder.Build(Request(Link("vless/reality-vision")), tun with { Outside = null }).Config.ShouldNotBeNull(),
             XrayConfigBuilder.ProxyTag).ShouldBeNull();
+        // Сервер на самой машине: сокет на внешнем адаптере до петли не дозвонился бы (долгий прогон VPN на Windows).
+        foreach (var local in new[] { "127.0.0.1", "::1" })
+        {
+            Sockopt(XrayConfigBuilder.Build(Request(Link("vless/reality-vision")), tun with { ServerAddress = local }).Config.ShouldNotBeNull(),
+                XrayConfigBuilder.ProxyTag).ShouldBeNull(local);
+        }
+
         Sockopt(Build(Link("vless/reality-vision"), ConnectionMode.Proxy), XrayConfigBuilder.ProxyTag).ShouldBeNull("в режиме прокси TUN нет");
     }
 

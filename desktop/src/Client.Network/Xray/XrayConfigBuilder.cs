@@ -227,7 +227,9 @@ public static class XrayConfigBuilder
         // весь зашифрованный трафик второй раз шел через sing-box: скорость ниже, процессор занят, а счетчики адаптера
         // туннеля (скорость на главной) удваивались. Сокет создает выход, через который выход к серверу дозванивается
         // (фрагментация TLS), иначе — он сам. У ретранслятора Hysteria2 и TUIC выход к нему — 127.0.0.1: привязка не нужна.
-        if (tun is { Outside: { Length: > 0 } outside } && !NeedsRelay(request.Server))
+        // Сервер на самой машине (127.0.0.1, ::1) — тоже без привязки: сокет на внешнем адаптере до петли не дозвонится, а в
+        // TUN соединение с петлей и так не заходит.
+        if (tun is { Outside: { Length: > 0 } outside } && !NeedsRelay(request.Server) && !OnThisMachine(tun.ServerAddress))
         {
             Outside(outbound["streamSettings"]?["sockopt"]?["dialerProxy"] is not null && fragment is not null ? fragment : outbound, outside);
         }
@@ -491,6 +493,8 @@ public static class XrayConfigBuilder
 
     /// <summary>Выход соединяется с уже разрешенным адресом сервера: в vnext, servers и у WireGuard — в endpoint.</summary>
     // Привязка сокета выхода к интерфейсу: на Linux — SO_BINDTODEVICE, на Windows — IP_UNICAST_IF, на macOS — IP_BOUND_IF (Xray-core).
+    private static bool OnThisMachine(string address) => IPAddress.TryParse(address, out var ip) && IPAddress.IsLoopback(ip);
+
     private static void Outside(JsonObject outbound, string outside)
     {
         if (outbound["streamSettings"] is not JsonObject stream)
