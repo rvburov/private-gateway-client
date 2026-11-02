@@ -321,8 +321,9 @@ struct ChipView: View {
     }
 }
 
-/// Кнопка-щит (layout.powerButton): кольцо цвета состояния, щит с отметкой; при подключении по кольцу бежит дуга. Подпись
-/// состояния — под кнопкой в островке.
+/// Кнопка-щит (layout.powerButton, Button.power десктопа): белый круг с кольцом цвета состояния внутри 80 пунктов, щит с
+/// отметкой линией 1,9; при подключении по кольцу бежит дуга (оборот за 0,9 с). Нажатие — заливка state.*.fill и сжатие
+/// (`PowerPressStyle`). Подпись состояния — под кнопкой в островке.
 struct PowerButton: View {
     let look: StateLook
     let texts: PgTexts
@@ -334,25 +335,25 @@ struct PowerButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                Circle().fill(Color(PgColor.Surface.solid))
-                Circle().stroke(Color(look.ring), lineWidth: PgLayout.PowerButton.ringWidth)
+                Circle().strokeBorder(Color(look.ring), lineWidth: PgLayout.PowerButton.ringWidth)
                 if state == .connecting || state == .reconnecting {
                     TimelineView(.animation) { context in
-                        let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 1.1) / 1.1
+                        let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
                         Circle()
+                            .inset(by: PgLayout.PowerButton.ringWidth / 2)
                             .trim(from: 0, to: 100.0 / 360)
                             .stroke(Color(PgState.Connecting.spinner), style: StrokeStyle(lineWidth: PgLayout.PowerButton.ringWidth, lineCap: .round))
                             .rotationEffect(.degrees(turn * 360))
                     }
                 }
 
-                PgIcon(data: PgIcons.shield, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 2)
-                PgIcon(data: look.mark, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 2.2)
+                PgIcon(data: PgIcons.shield, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 1.9)
+                PgIcon(data: look.mark, color: Color(look.icon), size: PgLayout.PowerButton.iconSize, lineWidth: 1.9)
             }
             .frame(width: PgLayout.PowerButton.size, height: PgLayout.PowerButton.size)
-            .shadow(color: Color(look.glow), radius: 14)
+            .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PowerPressStyle(look: look))
         .disabled(state == .stopping)
         .accessibilityLabel(look.power)
         .accessibilityHint(on ? texts.powerActionDisconnect : texts.powerActionConnect)

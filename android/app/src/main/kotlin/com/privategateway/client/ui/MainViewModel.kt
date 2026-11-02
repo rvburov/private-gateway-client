@@ -83,8 +83,11 @@ data class MainUi(
         }
 }
 
-/** Короткое сообщение окна: текст и подстановки. */
-class Message(@param:StringRes val text: Int, vararg val args: String)
+/**
+ * Короткое сообщение окна: текст и подстановки. [long] — сообщение о событии, а не итог нажатия: подсказка держится 6 с
+ * вместо 1,8 с, его надо успеть прочесть (как LongDuration у десктопа).
+ */
+class Message(@param:StringRes val text: Int, vararg val args: String, val long: Boolean = false)
 
 enum class PowerAction {
     /** Включить или выключить защиту. */
@@ -153,9 +156,9 @@ class MainViewModel @Inject constructor(
             updater.notices.collect { notice ->
                 notices.emit(
                     when (notice) {
-                        is SubscriptionNotice.Gone -> Message(R.string.subs_notice_missing, notice.server, notice.subscription)
-                        is SubscriptionNotice.Changed -> Message(R.string.subs_notice_changed, notice.server, notice.subscription)
-                        is SubscriptionNotice.Stale -> Message(R.string.subs_failed, notice.subscription)
+                        is SubscriptionNotice.Gone -> Message(R.string.subs_notice_missing, notice.server, notice.subscription, long = true)
+                        is SubscriptionNotice.Changed -> Message(R.string.subs_notice_changed, notice.server, notice.subscription, long = true)
+                        is SubscriptionNotice.Stale -> Message(R.string.subs_failed, notice.subscription, long = true)
                     },
                 )
             }

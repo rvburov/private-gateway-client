@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.vector.PathParser
@@ -36,6 +38,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import kotlin.math.sqrt
 
 /**
  * Тема приложения — только из токенов макета (PgColor, PgType, PgSpace…, сгенерированы из design-tokens.json). Только
@@ -67,7 +70,11 @@ fun PgTheme(content: @Composable () -> Unit) {
     }
 }
 
-/** Фон окна с цветными пятнами макета (color.decor) — под стеклянными карточками. */
+/**
+ * Фон окна, как .pg-app макета и MainWindow десктопа: цвет bg.window, три пятна color.decor на своих местах и над ними слой
+ * стекла glass.fill (.pg-glass) — под карточками. Места и размеры пятен — в dp от верхнего левого угла экрана, как в рамке
+ * телефона макета (412 × 892, строка состояния внутри).
+ */
 @Composable
 fun PgBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(
@@ -75,17 +82,26 @@ fun PgBackground(modifier: Modifier = Modifier, content: @Composable BoxScope.()
             .fillMaxSize()
             .background(PgColor.Bg.Window)
             .drawBehind {
-                val blobs = listOf(
-                    Triple(PgColor.Decor.Blob1, Offset(size.width * 0.05f, size.height * 0.06f), size.width * 0.75f),
-                    Triple(PgColor.Decor.Blob2, Offset(size.width * 1.0f, size.height * 0.45f), size.width * 0.7f),
-                    Triple(PgColor.Decor.Blob3, Offset(size.width * 0.1f, size.height * 0.95f), size.width * 0.8f),
-                )
-                for ((color, center, radius) in blobs) {
-                    drawCircle(Brush.radialGradient(listOf(color, Color.Transparent), center, radius), radius, center)
-                }
+                blob(PgColor.Decor.Blob1, -110f, -90f, 360f, 360f)
+                blob(PgColor.Decor.Blob2, 220f, 220f, 340f, 340f)
+                blob(PgColor.Decor.Blob3, 10f, 590f, 380f, 320f)
+                drawRect(PgGlass.Fill)
             },
         content = content,
     )
+}
+
+/**
+ * Пятно — radial-gradient(circle | ellipse, цвет 35 %, прозрачно 70 %) в рамке [width] × [height] dp: у CSS луч градиента
+ * идет до дальнего угла рамки (полудиагональ), эллипс — тот же круг, сжатый по высоте.
+ */
+private fun DrawScope.blob(color: Color, left: Float, top: Float, width: Float, height: Float) {
+    val center = Offset((left + width / 2) * density, (top + height / 2) * density)
+    val radius = width / 2 * sqrt(2f) * density
+    val brush = Brush.radialGradient(0.35f to color, 0.7f to Color.Transparent, center = center, radius = radius)
+    scale(1f, height / width, pivot = center) {
+        drawCircle(brush, radius, center)
+    }
 }
 
 /** Тень макета (shadow.*) средствами Android: самый размытый слой задает высоту, его цвет — цвет тени. */
@@ -98,6 +114,12 @@ fun Modifier.pgShadow(layers: List<PgShadowLayer>, shape: Shape): Modifier {
 /** Стеклянная карточка: заливка surface.card, рамка line.border, скругление radius.card, тень shadow.card. */
 @Composable
 fun PgCard(modifier: Modifier = Modifier, padding: Dp = PgSpace.Card, content: @Composable ColumnScope.() -> Unit) {
+    PgCard(modifier, PaddingValues(padding), content)
+}
+
+/** Карточка со своими полями: строки настроек и строки-ссылки сами до краев карточки (.card с padding 4px 0). */
+@Composable
+fun PgCard(modifier: Modifier = Modifier, contentPadding: PaddingValues, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(PgRadius.Card)
     Column(
         modifier
@@ -105,12 +127,15 @@ fun PgCard(modifier: Modifier = Modifier, padding: Dp = PgSpace.Card, content: @
             .clip(shape)
             .background(PgColor.Surface.Card)
             .border(1.dp, PgColor.Line.Border, shape)
-            .padding(padding),
+            .padding(contentPadding),
         content = content,
     )
 }
 
-/** Иконка макета: контур 24×24 (PgIcons), рисуется линией; [filled] — еще и заливкой (щит в кнопке). */
+/**
+ * Иконка макета: контур 24×24 (PgIcons), рисуется линией; [filled] — еще и заливкой того же цвета, [fill] — заливкой своим
+ * цветом (активный пункт островка — accent.navActiveFill).
+ */
 @Composable
 fun PgIcon(
     path: String,
@@ -120,14 +145,16 @@ fun PgIcon(
     size: Dp = 20.dp,
     strokeWidth: Float = 1.8f,
     filled: Boolean = false,
+    fill: Color? = null,
 ) {
     val shape = remember(path) { PathParser().parsePathString(path).toPath() }
     val described = if (contentDescription != null) Modifier.semantics { this.contentDescription = contentDescription } else Modifier
     Canvas(modifier.size(size).then(described)) {
         val factor = this.size.minDimension / 24f
         scale(factor, factor, pivot = Offset.Zero) {
-            if (filled) {
-                drawPath(shape, color)
+            val inside = fill ?: color.takeIf { filled }
+            if (inside != null) {
+                drawPath(shape, inside)
             }
 
             drawPath(shape, color, style = Stroke(width = strokeWidth, cap = StrokeCap.Round, join = StrokeJoin.Round))

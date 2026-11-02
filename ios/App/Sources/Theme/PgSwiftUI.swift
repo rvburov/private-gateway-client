@@ -43,6 +43,19 @@ extension PgTextStyle {
 }
 
 extension PgTextStyle {
+    /// То же начертание другой насыщенности: полужирный выбранного сегмента и текущего пункта меню (600 — как bodyStrong),
+    /// Medium подсказки и кнопки выбора (500 — как в app.css).
+    func with(weight: Int) -> PgTextStyle {
+        PgTextStyle(size: size, weight: weight, tracking: tracking, lineHeight: lineHeight, mono: mono, uppercase: uppercase)
+    }
+
+    /// То же начертание с другой высотой строки: текст диалога — размером small и высотой строки тела, как в app.css.
+    func with(lineHeight: Double?) -> PgTextStyle {
+        PgTextStyle(size: size, weight: weight, tracking: tracking, lineHeight: lineHeight, mono: mono, uppercase: uppercase)
+    }
+}
+
+extension PgTextStyle {
     /// Самый крупный «Размер текста», под который рассчитаны экраны: дальше текст не растет, иначе островок и карточки
     /// перестают помещаться.
     static let largestSize = DynamicTypeSize.accessibility2
@@ -126,38 +139,43 @@ struct PgShadowModifier: ViewModifier {
     }
 }
 
+extension Path {
+    /// Контур SVG (`d`, разбор — `SvgPath`) в масштабе `scale` от точки `origin`: иконки макета и контур островка.
+    /// Неразобранный контур — пустой.
+    init(svg data: String, scale: CGFloat = 1, origin: CGPoint = .zero) {
+        self.init()
+        guard let commands = try? SvgPath.parse(data) else {
+            return
+        }
+
+        func point(_ point: PgPoint) -> CGPoint {
+            CGPoint(x: origin.x + point.x * scale, y: origin.y + point.y * scale)
+        }
+
+        for command in commands {
+            switch command {
+            case let .move(to):
+                move(to: point(to))
+            case let .line(to):
+                addLine(to: point(to))
+            case let .cubic(first, second, to):
+                addCurve(to: point(to), control1: point(first), control2: point(second))
+            case let .quad(control, to):
+                addQuadCurve(to: point(to), control: point(control))
+            case .close:
+                closeSubpath()
+            }
+        }
+    }
+}
+
 /// Контур иконки макета (24×24, `PgIcons`) в размер прямоугольника; неразобранный контур — пустой (тесты пакета разбирают
 /// каждую иконку).
 struct PgIconShape: Shape {
     let data: String
 
     func path(in rect: CGRect) -> Path {
-        var path = Path()
-        guard let commands = try? SvgPath.parse(data) else {
-            return path
-        }
-
-        let scale = min(rect.width, rect.height) / 24
-        func point(_ point: PgPoint) -> CGPoint {
-            CGPoint(x: rect.minX + point.x * scale, y: rect.minY + point.y * scale)
-        }
-
-        for command in commands {
-            switch command {
-            case let .move(to):
-                path.move(to: point(to))
-            case let .line(to):
-                path.addLine(to: point(to))
-            case let .cubic(first, second, to):
-                path.addCurve(to: point(to), control1: point(first), control2: point(second))
-            case let .quad(control, to):
-                path.addQuadCurve(to: point(to), control: point(control))
-            case .close:
-                path.closeSubpath()
-            }
-        }
-
-        return path
+        Path(svg: data, scale: min(rect.width, rect.height) / 24, origin: rect.origin)
     }
 }
 
@@ -176,22 +194,34 @@ struct PgIcon: View {
     }
 }
 
-/// Фон окна с цветными пятнами макета (color.decor) — под стеклянными карточками.
+/// Фон окна (app.css .pg-app): bg.window, три цветных пятна color.decor и поверх них стекло glass.fill (.pg-glass), под
+/// которым пятна бледнеют. Места и размеры пятен — как в app.css, от левого верхнего угла рамки телефона 393 пункта.
 struct PgBackground: View {
     var body: some View {
-        GeometryReader { proxy in
-            ZStack {
-                Color(PgColor.Bg.window)
-                blob(PgColor.Decor.blob1, x: 0.05, y: 0.06, radius: 0.75, in: proxy.size)
-                blob(PgColor.Decor.blob2, x: 1.0, y: 0.45, radius: 0.7, in: proxy.size)
-                blob(PgColor.Decor.blob3, x: 0.1, y: 0.95, radius: 0.8, in: proxy.size)
-            }
+        ZStack(alignment: .topLeading) {
+            Color(PgColor.Bg.window)
+            blob(PgColor.Decor.blob1, x: -110, y: -90, width: 360, height: 360)
+            blob(PgColor.Decor.blob2, x: 220, y: 220, width: 340, height: 340)
+            blob(PgColor.Decor.blob3, x: 10, y: 590, width: 380, height: 320)
+            Color(PgGlass.fill)
         }
         .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 
-    private func blob(_ color: PgRGBA, x: CGFloat, y: CGFloat, radius: CGFloat, in size: CGSize) -> some View {
-        RadialGradient(colors: [Color(color), .clear], center: UnitPoint(x: x, y: y), startRadius: 0, endRadius: size.width * radius)
+    /// Пятно — radial-gradient(цвет 35 %, прозрачный 70 %) до дальнего угла своего прямоугольника; овал — тот же круг,
+    /// сжатый по высоте. Прозрачный край — тот же цвет без непрозрачности: переход без серой каймы.
+    private func blob(_ color: PgRGBA, x: CGFloat, y: CGFloat, width: CGFloat, height: CGFloat) -> some View {
+        let side = max(width, height)
+        let gradient = Gradient(stops: [
+            Gradient.Stop(color: Color(color), location: 0.35),
+            Gradient.Stop(color: Color(color).opacity(0), location: 0.7),
+        ])
+        return RadialGradient(gradient: gradient, center: .center, startRadius: 0, endRadius: side / 2 * CGFloat(2).squareRoot())
+            .frame(width: side, height: side)
+            .scaleEffect(x: width / side, y: height / side)
+            .frame(width: width, height: height)
+            .offset(x: x, y: y)
     }
 }
 

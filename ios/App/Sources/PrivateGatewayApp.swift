@@ -32,6 +32,8 @@ struct RootView: View {
     @ObservedObject var model: AppModel
     @StateObject private var importing: ImportModel
     @StateObject private var inspector = InspectorModel()
+    /// Слои окна: диалог подтверждения, меню у кнопки и подсказка сверху — их зовут блоки любого экрана.
+    @StateObject private var layers = PgLayers()
     @State private var tab = AppTab.home
     @State private var adding = false
     /// Открытая карточка сервера (доска 11) — страница поверх списка серверов.
@@ -59,32 +61,28 @@ struct RootView: View {
                         tab = next
                         card = nil
                         settingsPage = .main
+                        layers.closeMenu()
                     },
                     onPower: power
                 )
             }
         }
+        .pgLayers(layers)
         .task {
             importing.onAdded = { [model] in
                 Task { await model.reload() }
             }
             await model.start()
         }
-        .overlay(alignment: .top) {
-            if let message = model.message {
-                MessageBanner(text: message) { model.message = nil }
-            }
-        }
-        .task(id: model.message) {
-            // Сообщение висит 4 секунды, как короткое сообщение Android.
-            guard model.message != nil else {
+        .onChange(of: model.message) { message in
+            // Сообщение модели — подсказкой сверху окна (доска 19): итог действия — 1,8 с, событие (выбранный сервер пропал из
+            // подписки или изменился) — 6 с. Модель сразу освобождается для следующего, в том числе такого же.
+            guard let message else {
                 return
             }
 
-            try? await Task.sleep(nanoseconds: 4_000_000_000)
-            if !Task.isCancelled {
-                model.message = nil
-            }
+            layers.show(message, for: model.messageIsEvent ? PgToastDuration.event : PgToastDuration.action)
+            model.message = nil
         }
         .task(id: phase) {
             // Пока окно на экране — не пора ли обновить подписки: сразу и раз в 10 минут.

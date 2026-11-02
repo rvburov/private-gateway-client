@@ -21,8 +21,12 @@ final class AppModel: ObservableObject {
     @Published private(set) var groups: [GroupItem] = []
     @Published private(set) var manualCount = 0
     @Published private(set) var updating: Set<String> = []
-    /// Короткое сообщение окна — итог действия, выбранный сервер пропал или изменился; окно показывает его и убирает.
+    /// Короткое сообщение окна — итог действия, выбранный сервер пропал или изменился; окно показывает его подсказкой сверху
+    /// и сбрасывает.
     @Published var message: String?
+    /// Сообщение — событие (выбранный сервер пропал из подписки или изменился), а не итог действия: подсказка держится дольше
+    /// (6 с вместо 1,8 с), его надо успеть прочесть.
+    @Published private(set) var messageIsEvent = false
     /// Нажали уведомление, которое ведет на свой экран; окно переходит туда и сбрасывает.
     @Published var route: AppRoute?
     /// Журнал расширения туннеля для «Проверки».
@@ -156,8 +160,8 @@ final class AppModel: ObservableObject {
 
         await reload()
         switch result {
-        case .done: message = texts.androidServersPingDone
-        case .busy: message = texts.androidServersPingBusy
+        case .done: post(texts.androidServersPingDone)
+        case .busy: post(texts.androidServersPingBusy)
         case .running: break
         }
     }
@@ -167,7 +171,7 @@ final class AppModel: ObservableObject {
         let notices = await subscriptionActions.updater.updateDue(connected: connected)
         await reload()
         if let notice = notices.first {
-            say(TextKeys.notice(notice))
+            say(TextKeys.notice(notice), event: true)
         }
     }
 
@@ -213,14 +217,20 @@ final class AppModel: ObservableObject {
 
     private func tell(_ report: UpdateReport, name: String) {
         if let notice = report.notices.first {
-            say(TextKeys.notice(notice))
+            say(TextKeys.notice(notice), event: true)
         } else if let text = TextKeys.updated(report.outcome, name: name) {
             say(text)
         }
     }
 
-    private func say(_ text: (key: String, arguments: [String])) {
-        message = texts.text(key: text.key, text.arguments)
+    private func say(_ text: (key: String, arguments: [String]), event: Bool = false) {
+        post(texts.text(key: text.key, text.arguments), event: event)
+    }
+
+    /// Сообщение окну: итог действия или событие (`event`) — его подсказка держится дольше.
+    private func post(_ text: String?, event: Bool = false) {
+        messageIsEvent = event
+        message = text
     }
 
     /// Кнопка включения: включить или выключить защиту. Подключаться не к чему — `home.power` скажет окну, куда вести.

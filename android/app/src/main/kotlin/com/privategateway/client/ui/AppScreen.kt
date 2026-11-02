@@ -2,37 +2,12 @@ package com.privategateway.client.ui
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,23 +16,10 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.selected
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.R
-import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.inspect.InspectorViewModel
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.check.InspectorActions
@@ -74,15 +36,10 @@ import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.subscriptions.SubscriptionsActions
 import com.privategateway.client.ui.subscriptions.SubscriptionsScreen
 import com.privategateway.client.ui.subscriptions.SubscriptionsViewModel
+import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.PgBackground
-import com.privategateway.client.ui.theme.PgColor
-import com.privategateway.client.ui.theme.PgIcon
-import com.privategateway.client.ui.theme.PgIcons
-import com.privategateway.client.ui.theme.PgLayout
-import com.privategateway.client.ui.theme.PgShadow
-import com.privategateway.client.ui.theme.PgState
-import com.privategateway.client.ui.theme.PgType
-import com.privategateway.client.ui.theme.pgShadow
+import com.privategateway.client.ui.theme.PgToast
+import com.privategateway.client.ui.theme.PgToastState
 import kotlinx.coroutines.flow.merge
 
 /** Разделы островка-меню: Главная · Серверы · [кнопка-щит] · Проверка · Настройки. */
@@ -126,9 +83,11 @@ fun AppScreen(
     var card by rememberSaveable { mutableStateOf<String?>(null) }
     val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    // Сообщения окна — своей подсказкой сверху (.toast макета), а не системным Toast: 1,8 с после действия, 6 с о событии.
+    val toast = remember { PgToastState() }
     LaunchedEffect(viewModel, subscriptions) {
         merge(viewModel.messages, subscriptions.messages).collect {
-            Toast.makeText(context, context.getString(it.text, *it.args), Toast.LENGTH_LONG).show()
+            toast.show(context.getString(it.text, *it.args), long = it.long)
         }
     }
     LaunchedEffect(requested) {
@@ -146,286 +105,172 @@ fun AppScreen(
     }
     val hasCamera = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
 
-    PgBackground {
-        if (adding) {
-            BackHandler(onBack = closeImport)
-            // Системный выбор картинки: приложению — только выбранная, без доступа ко всем фото.
-            val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { image ->
-                image?.let(viewModel::previewQr)
-            }
-            // Доступ к камере спрашивается по нажатию «Сканировать камерой», а не при запуске; отказ — подсказка в карточке QR.
-            val cameraAccess = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-                if (granted) {
-                    scanning = true
-                } else {
-                    viewModel.cameraProblem(R.string.android_import_qr_camera_denied)
+    CompositionLocalProvider(LocalPgToast provides toast) {
+        PgBackground {
+            if (adding) {
+                BackHandler(onBack = closeImport)
+                // Системный выбор картинки: приложению — только выбранная, без доступа ко всем фото.
+                val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { image ->
+                    image?.let(viewModel::previewQr)
                 }
-            }
-            if (scanning) {
-                QrCameraScreen(
-                    onFound = { text ->
-                        scanning = false
-                        viewModel.preview(text)
-                    },
-                    onFailed = {
-                        scanning = false
-                        viewModel.cameraProblem(R.string.android_import_qr_camera_failed)
-                    },
-                    onClose = { scanning = false },
-                )
-            } else {
-                val scan = {
-                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                // Доступ к камере спрашивается по нажатию «Сканировать камерой», а не при запуске; отказ — подсказка в карточке QR.
+                val cameraAccess = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+                    if (granted) {
                         scanning = true
                     } else {
-                        cameraAccess.launch(Manifest.permission.CAMERA)
+                        viewModel.cameraProblem(R.string.android_import_qr_camera_denied)
                     }
                 }
-                ImportScreen(
-                    importing,
-                    actions.clipboard,
-                    viewModel::edit,
-                    viewModel::preview,
-                    viewModel::name,
-                    viewModel::add,
-                    closeImport,
-                    onScan = scan.takeIf { hasCamera },
-                ) {
-                    picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                }
-            }
-        } else {
-            BackHandler(enabled = tab != Tab.Home) {
-                if (tab == Tab.Servers && card != null) {
-                    card = null
-                } else {
-                    tab = Tab.Home
-                }
-            }
-
-            val open = card
-            when (tab) {
-                Tab.Home -> HomeScreen(
-                    ui,
-                    onServers = { tab = Tab.Servers },
-                    onCheck = { tab = Tab.Check },
-                    onAdd = { adding = true },
-                    onSelect = viewModel::select,
-                    onRefresh = viewModel::refreshLatency,
-                )
-                Tab.Servers -> if (open != null) {
-                    ServerCardScreen(
-                        ui,
-                        open,
-                        CardActions(
-                            back = { card = null },
-                            connect = { id -> viewModel.connectTo(id, actions.power) },
-                            favorite = viewModel::setFavorite,
-                            rename = viewModel::rename,
-                            delete = { id ->
-                                card = null
-                                viewModel.delete(id)
-                            },
-                            address = viewModel::address,
-                            share = viewModel::shareLink,
-                            copy = actions.copySecret,
-                            send = actions.send,
-                        ),
+                if (scanning) {
+                    QrCameraScreen(
+                        onFound = { text ->
+                            scanning = false
+                            viewModel.preview(text)
+                        },
+                        onFailed = {
+                            scanning = false
+                            viewModel.cameraProblem(R.string.android_import_qr_camera_failed)
+                        },
+                        onClose = { scanning = false },
                     )
                 } else {
-                    ServersScreen(
-                        ui,
-                        query,
-                        ServersActions(
-                            select = viewModel::select,
-                            open = { card = it },
-                            add = { adding = true },
-                            refresh = viewModel::refreshLatency,
-                            search = servers::search,
-                            tab = servers::tab,
-                            toggleProtocol = servers::toggleProtocol,
-                            sort = servers::sort,
-                            reset = servers::reset,
-                        ),
-                    )
+                    val scan = {
+                        if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                            scanning = true
+                        } else {
+                            cameraAccess.launch(Manifest.permission.CAMERA)
+                        }
+                    }
+                    ImportScreen(
+                        importing,
+                        actions.clipboard,
+                        viewModel::edit,
+                        viewModel::preview,
+                        viewModel::name,
+                        viewModel::add,
+                        closeImport,
+                        onScan = scan.takeIf { hasCamera },
+                    ) {
+                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                    }
+                }
+            } else {
+                BackHandler(enabled = tab != Tab.Home) {
+                    if (tab == Tab.Servers && card != null) {
+                        card = null
+                    } else {
+                        tab = Tab.Home
+                    }
                 }
 
-                Tab.Check -> {
-                    val inspect by inspector.ui.collectAsStateWithLifecycle()
-                    CheckScreen(
+                val open = card
+                when (tab) {
+                    Tab.Home -> HomeScreen(
                         ui,
-                        core,
-                        viewModel::loadCoreVersion,
-                        inspect,
-                        InspectorActions(inspector::measureIp, inspector::describe, inspector::kind, inspector::target, inspector::port, inspector::run),
+                        onServers = { tab = Tab.Servers },
+                        onCheck = { tab = Tab.Check },
+                        onAdd = { adding = true },
+                        onSelect = viewModel::select,
+                        onRefresh = viewModel::refreshLatency,
                     )
-                }
-                Tab.Settings -> {
-                    val tunnel by settings.tunnel.collectAsStateWithLifecycle()
-                    val behavior by settings.behavior.collectAsStateWithLifecycle()
-                    val page by settings.requestedPage.collectAsStateWithLifecycle()
-                    val system by settings.systemVpn.collectAsStateWithLifecycle()
-                    SettingsScreen(
-                        core,
-                        viewModel::loadCoreVersion,
-                        actions.openVpnSettings,
-                        tunnel,
-                        settings::setTunnel,
-                        behavior,
-                        settings::setBehavior,
-                        page,
-                        settings::pageShown,
-                        system,
-                    ) { back ->
-                        val state by subscriptions.ui.collectAsStateWithLifecycle()
-                        SubscriptionsScreen(
-                            state,
+                    Tab.Servers -> if (open != null) {
+                        ServerCardScreen(
                             ui,
-                            SubscriptionsActions(
-                                settings = subscriptions::setSettings,
-                                add = { adding = true },
-                                update = subscriptions::update,
-                                edit = subscriptions::edit,
-                                remove = subscriptions::remove,
+                            open,
+                            CardActions(
+                                back = { card = null },
+                                connect = { id -> viewModel.connectTo(id, actions.power) },
+                                favorite = viewModel::setFavorite,
+                                rename = viewModel::rename,
+                                delete = { id ->
+                                    card = null
+                                    viewModel.delete(id)
+                                },
+                                address = viewModel::address,
+                                share = viewModel::shareLink,
+                                copy = actions.copySecret,
+                                send = actions.send,
                             ),
-                            back,
+                        )
+                    } else {
+                        ServersScreen(
+                            ui,
+                            query,
+                            ServersActions(
+                                select = viewModel::select,
+                                open = { card = it },
+                                add = { adding = true },
+                                refresh = viewModel::refreshLatency,
+                                search = servers::search,
+                                tab = servers::tab,
+                                toggleProtocol = servers::toggleProtocol,
+                                sort = servers::sort,
+                                reset = servers::reset,
+                            ),
                         )
                     }
+
+                    Tab.Check -> {
+                        val inspect by inspector.ui.collectAsStateWithLifecycle()
+                        CheckScreen(
+                            ui,
+                            core,
+                            viewModel::loadCoreVersion,
+                            inspect,
+                            InspectorActions(inspector::measureIp, inspector::describe, inspector::kind, inspector::target, inspector::port, inspector::run),
+                        )
+                    }
+                    Tab.Settings -> {
+                        val tunnel by settings.tunnel.collectAsStateWithLifecycle()
+                        val behavior by settings.behavior.collectAsStateWithLifecycle()
+                        val page by settings.requestedPage.collectAsStateWithLifecycle()
+                        val system by settings.systemVpn.collectAsStateWithLifecycle()
+                        SettingsScreen(
+                            core,
+                            viewModel::loadCoreVersion,
+                            actions.openVpnSettings,
+                            tunnel,
+                            settings::setTunnel,
+                            behavior,
+                            settings::setBehavior,
+                            page,
+                            settings::pageShown,
+                            system,
+                        ) { back ->
+                            val state by subscriptions.ui.collectAsStateWithLifecycle()
+                            SubscriptionsScreen(
+                                state,
+                                ui,
+                                SubscriptionsActions(
+                                    settings = subscriptions::setSettings,
+                                    add = { adding = true },
+                                    update = subscriptions::update,
+                                    edit = subscriptions::edit,
+                                    remove = subscriptions::remove,
+                                ),
+                                back,
+                            )
+                        }
+                    }
+
                 }
 
-            }
-
-            val power: () -> Unit = {
-                when (ui.power) {
-                    PowerAction.Toggle -> actions.power()
-                    PowerAction.Add -> adding = true
-                    PowerAction.Choose -> tab = Tab.Servers
+                val power: () -> Unit = {
+                    when (ui.power) {
+                        PowerAction.Toggle -> actions.power()
+                        PowerAction.Add -> adding = true
+                        PowerAction.Choose -> tab = Tab.Servers
+                    }
                 }
+                // Пункт островка всегда ведет на свой экран: «Серверы» — к списку, открытая карточка закрывается (как на iOS).
+                val select: (Tab) -> Unit = {
+                    tab = it
+                    card = null
+                }
+                Island(tab, ui.status.state, hasServer = ui.inUse != null, onTab = select, onPower = power, Modifier.align(Alignment.BottomCenter))
             }
-            Island(tab, ui.status.state, hasServer = ui.inUse != null, onTab = { tab = it }, onPower = power, Modifier.align(Alignment.BottomCenter))
-        }
-    }
-}
 
-/** Островок внизу: четыре раздела и кнопка-щит в выемке посередине (layout.island, layout.powerButton). */
-@Composable
-fun Island(tab: Tab, state: TunnelState, hasServer: Boolean, onTab: (Tab) -> Unit, onPower: () -> Unit, modifier: Modifier = Modifier) {
-    val shape = RoundedCornerShape(PgLayout.Island.CornerRadius)
-    val lift = PgLayout.PowerButton.Size / 2
-    Box(
-        modifier
-            .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = PgLayout.Island.SideMarginMobile)
-            .padding(bottom = PgLayout.Island.BottomMargin)
-            .height(PgLayout.Island.Height + lift),
-    ) {
-        Row(
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .height(PgLayout.Island.Height)
-                .pgShadow(PgShadow.Island, shape)
-                .clip(shape)
-                .background(PgColor.Surface.Card)
-                .border(1.dp, PgColor.Line.Border, shape),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            NavItem(Tab.Home, tab, PgIcons.NavHome, null, R.string.nav_home, onTab, Modifier.weight(1f))
-            NavItem(Tab.Servers, tab, PgIcons.NavServers, PgIcons.NavServersDetail, R.string.nav_servers, onTab, Modifier.weight(1f))
-            PowerLabel(state, hasServer, Modifier.width(PgLayout.PowerButton.Size).fillMaxHeight())
-            NavItem(Tab.Check, tab, PgIcons.NavCheck, PgIcons.NavCheckDetail, R.string.nav_check, onTab, Modifier.weight(1f))
-            NavItem(Tab.Settings, tab, PgIcons.NavSettings, PgIcons.NavSettingsDetail, R.string.nav_settings, onTab, Modifier.weight(1f))
-        }
-
-        // Выемка: круг цвета островка за кнопкой (layout.island.bumpRadius).
-        Box(
-            Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = lift - PgLayout.Island.BumpRadius + 4.dp)
-                .size(PgLayout.Island.BumpRadius * 2)
-                .clip(CircleShape)
-                .background(PgColor.Surface.Card),
-        )
-        PowerButton(state, onPower, Modifier.align(Alignment.TopCenter).offset(y = 4.dp))
-    }
-}
-
-@Composable
-private fun NavItem(item: Tab, current: Tab, icon: String, detail: String?, label: Int, onTab: (Tab) -> Unit, modifier: Modifier) {
-    val active = item == current
-    val color = if (active) PgColor.Accent.Text else PgColor.Text.Muted
-    Column(
-        modifier
-            .fillMaxHeight()
-            .semantics { selected = active }
-            .clickable(role = Role.Tab) { onTab(item) }
-            .testTag("nav.${item.name.lowercase()}"),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Box {
-            PgIcon(icon, null, color = color, size = 22.dp)
-            if (detail != null) {
-                PgIcon(detail, null, color = color, size = 22.dp)
-            }
-        }
-
-        Spacer(Modifier.height(2.dp))
-        Text(stringResource(label), color = color, style = if (active) PgType.NavMobileActive else PgType.NavMobile, maxLines = 1)
-    }
-}
-
-/** Подпись под кнопкой-щитом — состояние словом («Защищено», «Выключено»), не только цветом. */
-@Composable
-private fun PowerLabel(state: TunnelState, hasServer: Boolean, modifier: Modifier) {
-    val look = StateLook.of(state)
-    val label = if (!hasServer && state == TunnelState.Off) R.string.power_label_noServer else look.power
-    Box(modifier.padding(bottom = 8.dp), contentAlignment = Alignment.BottomCenter) {
-        Text(stringResource(label), color = look.icon, style = PgType.NavMobileActive, textAlign = TextAlign.Center, maxLines = 1)
-    }
-}
-
-/** Кнопка-щит 80 dp: кольцо цвета состояния, щит с отметкой; при подключении по кольцу бежит дуга. */
-@Composable
-fun PowerButton(state: TunnelState, onClick: () -> Unit, modifier: Modifier = Modifier) {
-    val look = StateLook.of(state)
-    val on = state == TunnelState.Connected || state == TunnelState.Connecting || state == TunnelState.Reconnecting
-    val description = stringResource(if (on) R.string.power_action_disconnect else R.string.power_action_connect)
-    val ring = PgLayout.PowerButton.RingWidth
-    Box(
-        modifier
-            .size(PgLayout.PowerButton.Size)
-            .shadow(14.dp, CircleShape, clip = false, ambientColor = look.glow.copy(alpha = 1f), spotColor = look.glow.copy(alpha = 1f))
-            .clip(CircleShape)
-            .background(PgColor.Surface.Solid)
-            .border(ring, look.ring, CircleShape)
-            .clickable(enabled = state != TunnelState.Stopping, role = Role.Button, onClickLabel = description, onClick = onClick)
-            .semantics { contentDescription = description }
-            .testTag("power"),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (state == TunnelState.Connecting || state == TunnelState.Reconnecting) {
-            val spin = rememberInfiniteTransition(label = "spinner")
-            val angle by spin.animateFloat(0f, 360f, infiniteRepeatable(tween(1100, easing = LinearEasing)), label = "angle")
-            Canvas(Modifier.size(PgLayout.PowerButton.Size)) {
-                val width = ring.toPx()
-                drawArc(
-                    PgState.Connecting.Spinner,
-                    angle,
-                    100f,
-                    false,
-                    topLeft = androidx.compose.ui.geometry.Offset(width / 2, width / 2),
-                    size = androidx.compose.ui.geometry.Size(size.width - width, size.height - width),
-                    style = Stroke(width, cap = StrokeCap.Round),
-                )
-            }
-        }
-
-        Box {
-            PgIcon(PgIcons.Shield, null, color = look.icon, size = PgLayout.PowerButton.IconSize, strokeWidth = 2f)
-            PgIcon(look.mark, null, color = look.icon, size = PgLayout.PowerButton.IconSize, strokeWidth = 2.2f)
+            PgToast(toast, Modifier.align(Alignment.TopCenter))
         }
     }
 }

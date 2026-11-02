@@ -8,6 +8,8 @@ struct StateLook: Equatable {
     let ring: PgRGBA
     let icon: PgRGBA
     let glow: PgRGBA
+    /// Заливка круга щита при нажатии (state.*.fill).
+    let fill: PgRGBA
     let tint: PgRGBA
     let mark: String
     let power: String
@@ -17,29 +19,29 @@ struct StateLook: Equatable {
         switch state {
         case .connected:
             return StateLook(
-                ring: PgState.Connected.ring, icon: PgState.Connected.icon, glow: PgState.Connected.glow, tint: PgColor.Status.Success.tint,
-                mark: PgIcons.markOk, power: texts.powerLabelConnected, title: texts.statusConnectedTitle
+                ring: PgState.Connected.ring, icon: PgState.Connected.icon, glow: PgState.Connected.glow, fill: PgState.Connected.fill,
+                tint: PgColor.Status.Success.tint, mark: PgIcons.markOk, power: texts.powerLabelConnected, title: texts.statusConnectedTitle
             )
         case .connecting, .stopping:
             return StateLook(
-                ring: PgState.Connecting.ring, icon: PgState.Connecting.icon, glow: PgState.Connecting.glow, tint: PgColor.Accent.tint,
-                mark: PgIcons.markWait, power: texts.powerLabelConnecting, title: texts.statusConnectingTitle
+                ring: PgState.Connecting.ring, icon: PgState.Connecting.icon, glow: PgState.Connecting.glow, fill: PgState.Connecting.fill,
+                tint: PgColor.Accent.tint, mark: PgIcons.markWait, power: texts.powerLabelConnecting, title: texts.statusConnectingTitle
             )
         case .reconnecting:
             // Переподключение — вид подключения, как у десктопа: туннель держит трафик, пока идут попытки.
             return StateLook(
-                ring: PgState.Connecting.ring, icon: PgState.Connecting.icon, glow: PgState.Connecting.glow, tint: PgColor.Accent.tint,
-                mark: PgIcons.markWait, power: texts.powerLabelReconnecting, title: texts.statusReconnectingTitle
+                ring: PgState.Connecting.ring, icon: PgState.Connecting.icon, glow: PgState.Connecting.glow, fill: PgState.Connecting.fill,
+                tint: PgColor.Accent.tint, mark: PgIcons.markWait, power: texts.powerLabelReconnecting, title: texts.statusReconnectingTitle
             )
         case .error:
             return StateLook(
-                ring: PgState.Error.ring, icon: PgState.Error.icon, glow: PgState.Error.glow, tint: PgColor.Status.Danger.tint,
-                mark: PgIcons.markAlert, power: texts.powerLabelError, title: texts.statusErrorTitle
+                ring: PgState.Error.ring, icon: PgState.Error.icon, glow: PgState.Error.glow, fill: PgState.Error.fill,
+                tint: PgColor.Status.Danger.tint, mark: PgIcons.markAlert, power: texts.powerLabelError, title: texts.statusErrorTitle
             )
         case .off:
             return StateLook(
-                ring: PgState.Off.ring, icon: PgState.Off.icon, glow: PgState.Off.glow, tint: PgColor.Status.Danger.tint,
-                mark: PgIcons.markOff, power: texts.powerLabelOff, title: texts.statusOffTitle
+                ring: PgState.Off.ring, icon: PgState.Off.icon, glow: PgState.Off.glow, fill: PgState.Off.fill,
+                tint: PgColor.Status.Danger.tint, mark: PgIcons.markOff, power: texts.powerLabelOff, title: texts.statusOffTitle
             )
         }
     }
