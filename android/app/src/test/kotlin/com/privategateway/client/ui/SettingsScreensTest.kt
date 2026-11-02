@@ -99,7 +99,8 @@ class SettingsScreensTest {
         // «Подключение и ядро» и «Маршрутизация» — в порядке доски 4, сразу за «Защитой и утечками», и ведут на свои страницы.
         compose.onNodeWithText(text(R.string.settings_adv_core_text)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText(text(R.string.settings_adv_routing_text)).performScrollTo().assertIsDisplayed()
-        val top = { tag: String -> compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.top }
+        // Место строки без обрезки видимой областью: у строк ниже края экрана обрезанный boundsInRoot совпадает.
+        val top = { tag: String -> compose.onNodeWithTag(tag).fetchSemanticsNode().positionInRoot.y }
         assertTrue(top("settings.protection") < top("settings.core"))
         assertTrue(top("settings.core") < top("settings.routing"))
         assertTrue(top("settings.routing") < top("settings.profiles"))
