@@ -115,21 +115,36 @@ public sealed class CoreLedger(string path)
 
         try
         {
-            if (!process.HasExited
-                && (process.StartTime.ToUniversalTime() - entry.Started).Duration() <= StartTolerance
-                && process.MainModule?.FileName is { } file
-                && string.Equals(VpnTunnel.RealPath(file), entry.Path, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            if (process.HasExited || (process.StartTime.ToUniversalTime() - entry.Started).Duration() > StartTolerance)
             {
-                return process;
+                process.Dispose();
+                return null;
             }
         }
         catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
         {
-            // Вышел, пока смотрели, или чужой — не трогать.
+            // Вышел, пока смотрели, — не трогать.
+            process.Dispose();
+            return null;
         }
 
-        process.Dispose();
-        return null;
+        try
+        {
+            if (process.MainModule?.FileName is { } file
+                && !string.Equals(VpnTunnel.RealPath(file), entry.Path, OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+            {
+                // Тот же номер, но другая программа — чужой процесс.
+                process.Dispose();
+                return null;
+            }
+        }
+        catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception or NotSupportedException)
+        {
+            // Модуль не читается у выходящего процесса: на Windows ядра умершей службы снимает ее объект задания, не сразу.
+            // Номер и время запуска совпали — это то самое ядро: дождаться его выхода, иначе новое встает на занятый порт.
+        }
+
+        return process;
     }
 
     private List<Entry> Read()
