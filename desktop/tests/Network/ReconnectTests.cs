@@ -418,7 +418,8 @@ public sealed partial class ReconnectTests
 
         public static async Task<ProxyRig> CreateAsync(ReconnectTiming? timing = null, INetworkEvents? network = null, IRouteTable? routes = null,
             (ISystemProxy Proxy, string Backup)? systemProxy = null, Func<ServerProbe, CancellationToken, Task<bool>>? probe = null,
-            Func<IReadOnlyList<RunningProcess>>? processes = null, TimeSpan? othersWatch = null)
+            Func<IReadOnlyList<RunningProcess>>? processes = null, TimeSpan? othersWatch = null,
+            Func<NetworkInfo>? currentNetwork = null, TimeProvider? time = null)
         {
             Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
             var site = new LocalSite("проверка");
@@ -427,7 +428,7 @@ public sealed partial class ReconnectTests
             serverConfig["outbounds"] = new JsonArray(
                 new JsonObject { ["protocol"] = "freedom", ["settings"] = new JsonObject { ["redirect"] = $"127.0.0.1:{site.Url.Port}" } });
             var server = await XrayKit.Start(serverConfig, serverPort);
-            var service = await RunningService.StartAsync(site.Url, systemProxy: systemProxy,
+            var service = await RunningService.StartAsync(site.Url, systemProxy: systemProxy, time: time,
                 options: o => o with
                 {
                     Reconnect = timing ?? Fast,
@@ -435,7 +436,8 @@ public sealed partial class ReconnectTests
                     Routes = routes,
                     Probe = probe ?? o.Probe,
                     Processes = processes,
-                    OtherClientsWatch = othersWatch
+                    OtherClientsWatch = othersWatch,
+                    CurrentNetwork = currentNetwork,
                 });
             return new ProxyRig(site, serverConfig, serverPort, definition, server, service);
         }

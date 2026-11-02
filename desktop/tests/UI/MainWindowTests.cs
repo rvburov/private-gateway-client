@@ -47,7 +47,7 @@ public sealed class MainWindowTests : WindowHarness
     /// </summary>
     [AvaloniaTheory]
     [InlineData(ServiceKind.None, "Сеть не известна — служба не запущена")]
-    [InlineData(ServiceKind.Installed, "Нет сети")]
+    [InlineData(ServiceKind.Installed, "Сеть не определена")]
     public void Network_line_without_a_service_says_the_network_is_unknown(ServiceKind kind, string line)
     {
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, kind));

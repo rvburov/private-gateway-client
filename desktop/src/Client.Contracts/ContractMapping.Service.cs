@@ -369,6 +369,7 @@ public static partial class ContractMapping
             NetworkChangedAt = status.NetworkChangedAt is { } changed ? Timestamp.FromDateTimeOffset(changed) : null,
             LocalProxyPort = (uint)(status.LocalProxyPort ?? 0),
             UserProxyManagedByWindow = status.UserProxyManagedByWindow,
+            NetworkUnavailable = status.NetworkUnavailable,
             VirtualMachines = status.VirtualMachines is { } vm
                 ? new V1.VirtualMachineProtection { State = vm.State.ToContract(), Reason = vm.Reason }
                 : null,
@@ -406,7 +407,10 @@ public static partial class ContractMapping
             status.OtherClients.Count == 0 ? null : new OtherClientList(status.OtherClients.ToCore()),
             status.VirtualMachines is { } vm ? new PrivateGateway.Client.Core.VirtualMachineProtection(vm.State.ToCore(), vm.Reason) : null,
             status.LocalProxyPort is > 0 and <= 65535 ? (int)status.LocalProxyPort : null,
-            status.UserProxyManagedByWindow);
+            status.UserProxyManagedByWindow)
+        {
+            NetworkUnavailable = status.NetworkUnavailable,
+        };
     }
 
     public static V1.OtherClient ToContract(this OtherClient client)

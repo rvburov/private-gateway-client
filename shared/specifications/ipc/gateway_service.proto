@@ -212,6 +212,9 @@ message Status {
   VirtualMachineProtection virtual_machines = 16;
   // Фактический владелец настроек прокси текущего подключения.
   bool user_proxy_managed_by_window = 17;
+  // Служба подтвердила отсутствие доступной внешней сети. false также бывает у старой службы
+  // или при неизвестном состоянии адаптеров: само по себе это не подтверждение доступа в интернет.
+  bool network_unavailable = 18;
 }
 
 message VirtualMachineProtection {

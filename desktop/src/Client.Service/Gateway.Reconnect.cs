@@ -126,6 +126,12 @@ public sealed partial class Gateway
                 continue;
             }
 
+            if (status.NetworkUnavailable)
+            {
+                await SuspendForNetworkAsync(session).ConfigureAwait(false);
+                return;
+            }
+
             if (OtherVpnStarted(session))
             {
                 return;
@@ -154,24 +160,41 @@ public sealed partial class Gateway
     /// </summary>
     private async Task<bool> ProbeAsync(TimeSpan? timeout = null)
     {
-        if (_probe is not { } link)
+        if (Status.NetworkUnavailable || _probe is not { } link)
+        {
+            return false;
+        }
+
+        CancellationToken cancellation;
+        try
+        {
+            cancellation = _starting.Token;
+        }
+        catch (ObjectDisposedException)
         {
             return false;
         }
 
         var probe = new ServerProbe(link.Port, new NetworkCredential(link.User, link.Password), _options.LatencyTarget, timeout ?? Timing.ProbeTimeout);
-        if (_options.Probe is { } custom)
+        try
         {
-            return await custom(probe, CancellationToken.None).ConfigureAwait(false);
-        }
+            if (_options.Probe is { } custom)
+            {
+                return await custom(probe, cancellation).WaitAsync(cancellation).ConfigureAwait(false);
+            }
 
-        var result = await LatencyProbe.CheckAsync(probe, CancellationToken.None).ConfigureAwait(false);
-        if (!result.Reached)
+            var result = await LatencyProbe.CheckAsync(probe, cancellation).ConfigureAwait(false);
+            if (!result.Reached)
+            {
+                _journal.Add(JournalLevel.Warning, "service", "Проверка связи через ядро: " + result.Description);
+            }
+
+            return result.Reached;
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {
-            _journal.Add(JournalLevel.Warning, "service", "Проверка связи через ядро: " + result.Description);
+            return false;
         }
-
-        return result.Reached;
     }
 
     /// <summary>
@@ -185,7 +208,22 @@ public sealed partial class Gateway
         (_directIp, _directIp6, _directWebrtc) = (null, null, null);
         var now = _time.GetUtcNow();
         var network = ReadNetwork();
-        Update(s => s with { Exit = s.Exit with { DirectIp = null }, NetworkChangedAt = now, Network = network ?? s.Network });
+        if (network?.Kind == NetworkKind.None)
+        {
+            Interlocked.Increment(ref _networkLoss);
+        }
+        Update(s => s with
+        {
+            Exit = s.Exit with { DirectIp = null },
+            NetworkChangedAt = now,
+            Network = network ?? s.Network,
+            NetworkUnavailable = network?.Kind == NetworkKind.None,
+        });
+        if (network?.Kind == NetworkKind.None)
+        {
+            _ = SuspendForNetworkAsync(Volatile.Read(ref _session), observedLoss: true);
+            return;
+        }
 
         // Другая основная сеть (macOS): ее DNS — тоже на туннель, прежней — свой.
         if (Volatile.Read(ref _tunnel) is { } tunnel)
@@ -217,6 +255,11 @@ public sealed partial class Gateway
     {
         var status = Status;
         var session = Volatile.Read(ref _session);
+        if (status.NetworkUnavailable)
+        {
+            _ = SuspendForNetworkAsync(session);
+            return;
+        }
         if (status.State is ConnectionState.Connected or ConnectionState.Reconnecting && OtherVpnStarted(session))
         {
             return;
@@ -247,6 +290,10 @@ public sealed partial class Gateway
         catch (ObjectDisposedException)
         {
             // Служба остановилась.
+        }
+        catch (OperationCanceledException) when (_networkWaitStop.IsCancellationRequested)
+        {
+            // Ожидание сети или пауза перед повтором отменены остановкой службы.
         }
     }
 
@@ -428,6 +475,10 @@ public sealed partial class Gateway
         {
             // Служба остановилась.
         }
+        catch (OperationCanceledException) when (_networkWaitStop.IsCancellationRequested)
+        {
+            // Ожидание внешней сети завершено вместе со службой.
+        }
     }
 
     /// <summary>
@@ -440,40 +491,75 @@ public sealed partial class Gateway
     private async Task ReconnectLoopAsync(int session, string code)
     {
         var timing = Timing;
-        for (var attempt = 1; ; attempt++)
+        var attempt = 1;
+        var due = _time.GetUtcNow() + Reconnect.Delay(attempt, timing.FirstPause, timing.MaxPause);
+        while (true)
         {
+            ConnectionStatus status;
+            CoreRequest? request;
+            Task changed;
+            lock (_gate)
+            {
+                status = _status;
+                request = _request;
+                changed = _reconnectChanged.Task;
+                if (session != _session || status.State != ConnectionState.Reconnecting || status.IsPaused || request is null)
+                {
+                    return;
+                }
+            }
+
+            var now = _time.GetUtcNow();
+            var remaining = timing.GiveUpAfter - (now - _lostAt);
+            if (Reconnect.GivesUp(request.Connection.Reconnect, now - _lostAt, timing.GiveUpAfter))
+            {
+                await GiveUpAsync(session, status.NetworkUnavailable ? ErrorCodes.NetworkUnavailable : code).ConfigureAwait(false);
+                return;
+            }
+
+            TimeSpan? untilLimit = request.Connection.Reconnect == ReconnectPolicy.UpTo5Minutes ? remaining : null;
+            if (status.NetworkUnavailable)
+            {
+                code = ErrorCodes.NetworkUnavailable;
+                await WaitForReconnectAsync(changed, null,
+                    untilLimit is { } limit && limit < OfflineRecheck ? limit : OfflineRecheck).ConfigureAwait(false);
+                RefreshOfflineNetwork(session);
+                continue;
+            }
+
             var nudge = Volatile.Read(ref _nudge);
-            await Task.WhenAny(Task.Delay(Reconnect.Delay(attempt, timing.FirstPause, timing.MaxPause), _time), nudge.Task).ConfigureAwait(false);
+            var pause = due - now;
+            if (pause > TimeSpan.Zero && !nudge.Task.IsCompleted)
+            {
+                await WaitForReconnectAsync(changed, nudge.Task,
+                    untilLimit is { } limit && limit < pause ? limit : pause).ConfigureAwait(false);
+                continue;
+            }
 
             // Подгон забран. Смена сети во время попытки подгоняет следующую: ее сигнал ждет конца попытки, а не пропадает.
             Interlocked.CompareExchange(ref _nudge, NewNudge(), nudge);
+            if (!IsReconnecting(session) || Status.NetworkUnavailable)
+            {
+                continue;
+            }
+
+            var networkLoss = Volatile.Read(ref _networkLoss);
+            var (up, failure) = await RestartAsync(session, attempt).ConfigureAwait(false);
+            if (up && !Status.NetworkUnavailable && (timing.Every is null || await ProbeAsync().ConfigureAwait(false))
+                && await RestoredAsync(session, attempt, networkLoss).ConfigureAwait(false))
+            {
+                return;
+            }
+
+            code = networkLoss != Volatile.Read(ref _networkLoss) ? ErrorCodes.NetworkUnavailable
+                : up ? ErrorCodes.ServerNotResponding : failure.Length > 0 ? failure : code;
             if (!IsReconnecting(session))
             {
                 return;
             }
 
-            _journal.Add(JournalLevel.Info, "service", $"Переподключение, попытка {attempt}");
-            var (up, failure) = await RestartAsync(session).ConfigureAwait(false);
-            if (up && (timing.Every is null || await ProbeAsync().ConfigureAwait(false)))
-            {
-                await RestoredAsync(session, attempt).ConfigureAwait(false);
-                return;
-            }
-
-            code = up ? ErrorCodes.ServerNotResponding : failure;
-            if (!IsReconnecting(session))
-            {
-                return;
-            }
-
-            if (Reconnect.GivesUp(_request!.Connection.Reconnect, _time.GetUtcNow() - _lostAt, timing.GiveUpAfter))
-            {
-                await GiveUpAsync(session, code).ConfigureAwait(false);
-                return;
-            }
-
-            var next = attempt + 1;
-            Update(s => s.State == ConnectionState.Reconnecting ? s with { Attempt = next } : s);
+            attempt++;
+            due = _time.GetUtcNow() + Reconnect.Delay(attempt, timing.FirstPause, timing.MaxPause);
         }
     }
 
@@ -482,23 +568,35 @@ public sealed partial class Gateway
     /// это время; в режиме VPN он обновляется, когда появился новый адаптер туннеля. Перебираются только ранее
     /// разрешенные адреса того же профиля: под блоком имя заново не ищется и набор исключений не расширяется.
     /// </summary>
-    private async Task<(bool Up, string Failure)> RestartAsync(int session)
+    private async Task<(bool Up, string Failure)> RestartAsync(int session, int attempt)
     {
         CoreRequest request;
         CancellationToken starting;
         Task<VpnTunnel>? pending = null;
         Func<bool> relayReady = static () => true;
-        await _switch.WaitAsync().ConfigureAwait(false);
+        await _switch.WaitAsync(_networkWaitStop.Token).ConfigureAwait(false);
         try
         {
-            if (!IsReconnecting(session) || _request is not { } current)
+            if (!IsReconnecting(session) || Status.NetworkUnavailable || _request is not { } current)
             {
                 return (false, ErrorCodes.CoreFailed);
             }
 
             // Под замком: пауза меняет источник отмены под ним же.
             request = current;
+            if (Reconnect.GivesUp(request.Connection.Reconnect, _time.GetUtcNow() - _lostAt, Timing.GiveUpAfter))
+            {
+                return (false, string.Empty);
+            }
             await StopCoreAsync().ConfigureAwait(false);
+            if (!IsReconnecting(session) || Status.NetworkUnavailable)
+            {
+                return (false, ErrorCodes.NetworkUnavailable);
+            }
+            if (Reconnect.GivesUp(request.Connection.Reconnect, _time.GetUtcNow() - _lostAt, Timing.GiveUpAfter))
+            {
+                return (false, string.Empty);
+            }
             starting = _starting.Token;
             if (request.Mode == ConnectionMode.Vpn && _addresses.Count > 1)
             {
@@ -511,6 +609,9 @@ public sealed partial class Gateway
             {
                 return (false, ErrorCodes.KillSwitchFailed);
             }
+
+            Update(s => s.State == ConnectionState.Reconnecting ? s with { Attempt = attempt } : s);
+            _journal.Add(JournalLevel.Info, "service", $"Переподключение, попытка {attempt}");
 
             if (request.Mode == ConnectionMode.Proxy)
             {
@@ -571,13 +672,21 @@ public sealed partial class Gateway
                 return (false, ErrorCodes.CoreFailed);
             }
             _pendingTunnel = null;
-            if (!IsReconnecting(session))
+            bool publish;
+            lock (_gate)
+            {
+                publish = session == _session && _status.State == ConnectionState.Reconnecting && !_status.NetworkUnavailable;
+                if (publish)
+                {
+                    _tunnel = tunnel;
+                }
+            }
+            if (!publish)
             {
                 await tunnel.DisposeAsync().ConfigureAwait(false);
                 return (false, ErrorCodes.CoreFailed);
             }
 
-            _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
             _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
             if (tunnel.Relay is { } relay)
@@ -631,21 +740,34 @@ public sealed partial class Gateway
         return false;
     }
 
-    private async Task RestoredAsync(int session, int attempt)
+    private async Task<bool> RestoredAsync(int session, int attempt, int networkLoss)
     {
-        await _switch.WaitAsync().ConfigureAwait(false);
+        await _switch.WaitAsync(_networkWaitStop.Token).ConfigureAwait(false);
         try
         {
-            if (!IsReconnecting(session))
+            if (!IsReconnecting(session) || Status.NetworkUnavailable || networkLoss != Volatile.Read(ref _networkLoss))
             {
-                return;
+                return false;
             }
 
             // Переподключение после подключения, на которое сервер не ответил, системного прокси еще не ставило.
+            var proxyWasActive = _systemProxy?.IsActive == true;
             ApplySystemProxy();
-            _journal.Add(JournalLevel.Info, "service", $"Связь с сервером восстановлена (попытка {attempt})");
-            Move(s => s, ConnectionState.Connected);
-            AfterConnected(session);
+            lock (_gate)
+            {
+                if (!_status.NetworkUnavailable && networkLoss == Volatile.Read(ref _networkLoss))
+                {
+                    _journal.Add(JournalLevel.Info, "service", $"Связь с сервером восстановлена (попытка {attempt})");
+                    Move(s => s, ConnectionState.Connected);
+                    AfterConnected(session);
+                    return true;
+                }
+            }
+            if (!proxyWasActive)
+            {
+                _systemProxy?.Release();
+            }
+            return false;
         }
         finally
         {
@@ -659,7 +781,7 @@ public sealed partial class Gateway
     /// </summary>
     private async Task GiveUpAsync(int session, string code)
     {
-        await _switch.WaitAsync().ConfigureAwait(false);
+        await _switch.WaitAsync(_networkWaitStop.Token).ConfigureAwait(false);
         try
         {
             if (!IsReconnecting(session))
@@ -675,7 +797,8 @@ public sealed partial class Gateway
             }
             else if (_request is { Mode: ConnectionMode.Vpn } && _blocking)
             {
-                Move(s => s, ConnectionState.Blocked);
+                Move(s => s, ConnectionState.Blocked,
+                    code == ErrorCodes.NetworkUnavailable ? s => s with { ErrorCode = code } : null);
                 _journal.Add(JournalLevel.Warning, "service", "Сервер не отвечает, попытки кончились: блок при обрыве держит трафик, другой сервер сам не выбирается");
                 return;
             }

@@ -131,6 +131,59 @@ public sealed class ContractRoundTripTests
         newer.ToCore().OtherClients.ShouldBe(others.OtherClients, "признак, которого окно не знает, пропускается, остальное остается");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Confirmed_network_unavailability_survives_the_trip_to_the_window(bool unavailable)
+    {
+        var status = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with
+        {
+            State = ConnectionState.Reconnecting,
+            NetworkUnavailable = unavailable,
+        };
+
+        var contract = status.ToContract();
+
+        contract.NetworkUnavailable.ShouldBe(unavailable);
+        V1.Status.Parser.ParseFrom(contract.ToByteArray()).ToCore().ShouldBe(status);
+    }
+
+    [Fact]
+    public void An_older_service_with_unknown_network_does_not_confirm_missing_adapters()
+    {
+        // Старый отправитель знает только прежние поля Status и не пишет network_unavailable.
+        var legacy = new V1.Status
+        {
+            State = V1.ConnectionState.Reconnecting,
+            Mode = V1.Mode.Vpn,
+            Protection = new V1.ProtectionStatus
+            {
+                AllTraffic = V1.CheckState.Waiting,
+                Dns = V1.CheckState.Ok,
+                Ipv6 = V1.CheckState.Ok,
+                KillSwitch = V1.CheckState.Ok,
+            },
+            Network = new V1.NetworkInfo { Kind = V1.NetworkKind.None },
+        };
+
+        var status = V1.Status.Parser.ParseFrom(legacy.ToByteArray()).ToCore();
+
+        status.Network.ShouldBe(NetworkInfo.Unknown);
+        status.NetworkUnavailable.ShouldBeFalse("неизвестная сеть старой службы не должна останавливать попытки VPN");
+    }
+
+    [Fact]
+    public void Network_observation_is_preserved_when_connection_state_changes()
+    {
+        var status = ConnectionStatus.Initial(DateTimeOffset.UnixEpoch) with { NetworkUnavailable = true };
+
+        foreach (var next in new[] { ConnectionState.Connecting, ConnectionState.Reconnecting, ConnectionState.Blocked, ConnectionState.Off })
+        {
+            status = status.MoveTo(next, DateTimeOffset.UnixEpoch);
+            status.NetworkUnavailable.ShouldBeTrue("переход состояния VPN не является новым наблюдением сети ОС");
+        }
+    }
+
     [Fact]
     public void Other_client_signs_round_trip()
     {

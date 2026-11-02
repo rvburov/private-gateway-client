@@ -135,13 +135,26 @@ public sealed class NetworkInspector(INetworkDetails? details, TimeProvider time
         };
     }
 
-    /// <summary>То же по адаптерам машины.</summary>
-    public static NetworkInfo Current() => Current(NetworkInterface.GetAllNetworkInterfaces().Select(a =>
+    /// <summary>То же по адаптерам машины. Ошибка чтения не подтверждает отсутствие сети и передается вызывающему.</summary>
+    public static NetworkInfo Current() => Current(NetworkInterface.GetAllNetworkInterfaces);
+
+    /// <summary>То же с источником адаптеров; петля и туннели отбрасываются до чтения их состояния и шлюзов.</summary>
+    public static NetworkInfo Current(Func<NetworkInterface[]> readAdapters)
     {
-        var up = Try(() => a.OperationalStatus) == OperationalStatus.Up;
-        var gateway = up && Try(() => Gateways(a.GetIPProperties().GatewayAddresses.Select(g => g.Address)).Count > 0);
-        return (Kind(a.NetworkInterfaceType, a.Name, a.Description), up, gateway);
-    }));
+        ArgumentNullException.ThrowIfNull(readAdapters);
+        return Current(readAdapters().Select(a =>
+        {
+            var kind = Kind(a.NetworkInterfaceType, a.Name, a.Description);
+            if (kind is AdapterKind.Loopback or AdapterKind.Tunnel)
+            {
+                return (kind, false, false);
+            }
+
+            var up = a.OperationalStatus == OperationalStatus.Up;
+            var gateway = up && Gateways(a.GetIPProperties().GatewayAddresses.Select(g => g.Address)).Count > 0;
+            return (kind, up, gateway);
+        }));
+    }
 
     /// <summary>Шлюзы адаптера: «0.0.0.0» и «::» — это «шлюза нет» (так ОС пишет сеть без шлюза), их нет и в списке.</summary>
     public static List<IPAddress> Gateways(IEnumerable<IPAddress> gateways) =>

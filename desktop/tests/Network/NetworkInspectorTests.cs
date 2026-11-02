@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.NetworkInformation;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Inspector;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Settings;
@@ -104,6 +105,38 @@ public sealed class NetworkInspectorTests
         NetworkInspector.Gateways([IPAddress.Any, IPAddress.Parse("192.0.2.1"), IPAddress.IPv6Any, IPAddress.Parse("fe80::1")])
             .ShouldBe([IPAddress.Parse("192.0.2.1"), IPAddress.Parse("fe80::1")]);
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void A_failed_physical_adapter_property_does_not_confirm_missing_network(bool statusFails)
+    {
+        var failure = new NetworkInformationException();
+        var adapter = new FailingAdapter(NetworkInterfaceType.Wireless80211, "Wi-Fi", "physical", statusFails, failure);
+
+        var error = Should.Throw<NetworkInformationException>(() => NetworkInspector.Current(() => [adapter]));
+
+        error.ShouldBeSameAs(failure, "ошибка ОС должна дойти до вызывающего, а не превратиться в отсутствие сети");
+        adapter.StatusReads.ShouldBe(1);
+        adapter.PropertyReads.ShouldBe(statusFails ? 0 : 1);
+    }
+
+    [Theory]
+    [InlineData(NetworkInterfaceType.Loopback, "lo", "loopback")]
+    [InlineData(NetworkInterfaceType.Tunnel, "adapter", "tunnel")]
+    [InlineData(NetworkInterfaceType.Ethernet, "pgtun0", "own tunnel")]
+    [InlineData(NetworkInterfaceType.Ethernet, "adapter", "Wintun")]
+    public void Tunnel_and_loopback_properties_are_not_needed_for_the_external_network(
+        NetworkInterfaceType type, string name, string description)
+    {
+        var adapter = new FailingAdapter(type, name, description, true, new PlatformNotSupportedException());
+
+        var network = NetworkInspector.Current(() => [adapter]);
+
+        network.ShouldBe(NetworkInfo.Unknown, "виртуальный адаптер не является внешней сетью");
+        adapter.StatusReads.ShouldBe(0, "ненужный адаптер исключается до чтения его состояния");
+        adapter.PropertyReads.ShouldBe(0, "его неподдерживаемые свойства шлюза не мешают определению внешней сети");
+    }
+
     [Fact]
     public void Mac_is_written_with_colons_and_missing_one_is_null()
     {
@@ -174,5 +207,36 @@ public sealed class NetworkInspectorTests
         public IReadOnlyList<NetworkRoute> Routes() => [new NetworkRoute("198.51.100.0/24", IPAddress.Parse("192.0.2.1"), "eth9", 7)];
 
         public DhcpLease? Dhcp(string adapter) => null;
+    }
+
+    private sealed class FailingAdapter(NetworkInterfaceType type, string name, string description, bool statusFails, Exception failure) : NetworkInterface
+    {
+        public int StatusReads { get; private set; }
+        public int PropertyReads { get; private set; }
+        public override string Description => description;
+        public override string Id => name;
+        public override string Name => name;
+        public override NetworkInterfaceType NetworkInterfaceType => type;
+        public override OperationalStatus OperationalStatus
+        {
+            get
+            {
+                StatusReads++;
+                return statusFails ? throw failure : OperationalStatus.Up;
+            }
+        }
+
+        public override IPInterfaceProperties GetIPProperties()
+        {
+            PropertyReads++;
+            throw failure;
+        }
+
+        public override bool IsReceiveOnly => throw new NotSupportedException();
+        public override long Speed => throw new NotSupportedException();
+        public override bool SupportsMulticast => throw new NotSupportedException();
+        public override PhysicalAddress GetPhysicalAddress() => throw new NotSupportedException();
+        public override IPv4InterfaceStatistics GetIPv4Statistics() => throw new NotSupportedException();
+        public override bool Supports(NetworkInterfaceComponent networkInterfaceComponent) => throw new NotSupportedException();
     }
 }

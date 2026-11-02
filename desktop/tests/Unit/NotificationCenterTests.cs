@@ -99,6 +99,40 @@ public sealed class NotificationCenterTests : IDisposable
     }
 
     [Fact]
+    public void One_physical_outage_is_reported_once_and_expired_attempts_get_their_own_notice()
+    {
+        _window.IsActive = _window.IsVisible = true;
+        _gateway.Status = _gateway.Status with { NetworkUnavailable = true };
+        _gateway.Announce();
+        Move(ConnectionState.Reconnecting);
+        _gateway.Status = _gateway.Status with { Attempt = 101 };
+        _gateway.Announce();
+        _window.Toasts.ShouldBe([NoticeKind.NetworkUnavailable]);
+
+        Move(ConnectionState.Blocked, ErrorCodes.NetworkUnavailable);
+        _window.Toasts.ShouldBe([NoticeKind.NetworkUnavailable, NoticeKind.ReconnectStoppedOffline], "новое требование ручного повтора не скрывается ограничением частоты offline");
+        _gateway.Announce();
+        _window.Toasts.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public void Restored_network_clears_the_old_notice_and_a_new_outage_is_not_suppressed_for_ten_minutes()
+    {
+        _gateway.Status = _gateway.Status with { NetworkUnavailable = true };
+        _gateway.Announce();
+        _notifier.Shown.Count.ShouldBe(1);
+
+        _gateway.Status = _gateway.Status with { NetworkUnavailable = false };
+        _gateway.Announce();
+        _notifier.Closed.ShouldBe([Notice.ProtectionTag]);
+
+        _gateway.Status = _gateway.Status with { NetworkUnavailable = true };
+        _gateway.Announce();
+        _notifier.Shown.Count.ShouldBe(2, "это новый физический обрыв, а не повтор того же события");
+        _notifier.Shown.ShouldAllBe(n => n.Important);
+    }
+
+    [Fact]
     public void First_failure_and_a_new_manual_retry_are_visible_without_waiting_ten_minutes()
     {
         _window.IsActive = _window.IsVisible = true;

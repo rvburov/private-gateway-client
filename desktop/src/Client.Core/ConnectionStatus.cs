@@ -118,6 +118,12 @@ public sealed record ConnectionStatus(
     int? LocalProxyPort = null,
     bool UserProxyManagedByWindow = false)
 {
+    /// <summary>
+    /// Служба подтвердила отсутствие доступной внешней сети. Неизвестная сеть и старая служба не выставляют этот
+    /// признак: <see cref="NetworkInfo.Unknown"/> само по себе не означает, что адаптеры недоступны.
+    /// </summary>
+    public bool NetworkUnavailable { get; init; }
+
     /// <summary>Пауза для входа в Wi-Fi: трафик идет мимо туннеля до <see cref="CaptivePauseUntil"/>.</summary>
     public bool IsPaused => CaptivePauseUntil is not null && State != ConnectionState.Off;
 

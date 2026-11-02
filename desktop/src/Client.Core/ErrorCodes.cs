@@ -39,6 +39,9 @@ public static class ErrorCodes
     /// <summary>Адрес сервера не найден: имя не разрешилось (или под блоком при обрыве без туннеля).</summary>
     public const string ServerNotFound = "PGC-NET-002";
 
+    /// <summary>Подключение остановлено при подтвержденном отсутствии доступной внешней сети.</summary>
+    public const string NetworkUnavailable = "PGC-NET-003";
+
     /// <summary>Работает другой VPN или системный прокси.</summary>
     public const string OtherVpn = "PGC-NET-010";
 }

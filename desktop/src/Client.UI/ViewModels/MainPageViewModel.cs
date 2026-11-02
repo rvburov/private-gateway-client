@@ -123,13 +123,19 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string StatusTitle => IsPreflight ? Loc.Instance["status.preflight.title"] : Protection.Title;
 
-    private bool IsPreflight => Status is
+    private bool IsPreflight => !Protection.HasNetworkProblem && Status is
     {
         State: ConnectionState.Connecting, Mode: ConnectionMode.Vpn,
         Protection: { AllTraffic: CheckState.Off, KillSwitch: CheckState.Off }
     };
 
     public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"]
+        : Protection.HasNetworkProblem ? Loc.Instance[Status.State switch
+        {
+            ConnectionState.Reconnecting => "status.offline.waiting",
+            ConnectionState.Blocked or ConnectionState.Error => "status.offline.stopped",
+            _ => "status.offline.active",
+        }]
         : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
         : Status.State switch
         {
@@ -162,26 +168,40 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string ConnectionProblemText => ConnectionProblem is { } notice ? ProblemTexts.Text(notice).Body : string.Empty;
 
-    public string ConnectionProblemAction => Loc.Instance[ConnectionProblem?.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked
-        ? "notify.action.changeServer" : "nav.check"];
+    public string ConnectionProblemAction
+    {
+        get
+        {
+            var notice = ConnectionProblem;
+            return Loc.Instance[notice?.Actions.Contains(NoticeAction.CheckNetwork) == true ? "notify.action.checkNetwork" : notice?.Kind switch
+            {
+                NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked => "notify.action.changeServer",
+                _ => "nav.check",
+            }];
+        }
+    }
 
     public string ConnectionProblemPage => ConnectionProblem?.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked
         ? Pages.Servers : Pages.Check;
 
     private Notice? ConnectionProblem => NotificationPolicy.Current(Status, Server?.Name, _time.GetUtcNow());
 
-    public string NetworkText => Status.Network switch
-    {
-        { Kind: NetworkKind.WiFi, Name: null or "" } => Loc.Instance["network.wifiNoName"],
-        { Kind: NetworkKind.WiFi, IsOpen: true } n => Loc.Instance.Format("network.wifiOpen", Cut(n.Name!, 20)),
-        { Kind: NetworkKind.WiFi } n => Loc.Instance.Format("network.wifi", Cut(n.Name!, 20)),
-        { Kind: NetworkKind.Ethernet } => Loc.Instance["network.ethernet"],
-        { Kind: NetworkKind.UsbModem } => Loc.Instance["network.usb"],
-        { Kind: NetworkKind.Mobile } => Loc.Instance["network.mobile"],
-        // Сеть машины называет служба: ее нет — сеть не известна, а не «нет сети».
-        _ when _gateway.Service == ServiceKind.None => Loc.Instance["network.unknown"],
-        _ => Loc.Instance["network.none"],
-    };
+    private bool NeedsNetworkCheck => Protection.HasNetworkProblem
+        || Status is { State: ConnectionState.Blocked or ConnectionState.Error, ErrorCode: ErrorCodes.NetworkUnavailable };
+
+    public string NetworkText => _gateway.Service == ServiceKind.None || Status.ErrorCode == ErrorCodes.ServiceNotRunning
+        ? Loc.Instance["network.unknown"] : Status.NetworkUnavailable ? Loc.Instance["network.none"] : Status.Network switch
+        {
+            { Kind: NetworkKind.WiFi, Name: null or "" } => Loc.Instance["network.wifiNoName"],
+            { Kind: NetworkKind.WiFi, IsOpen: true } n => Loc.Instance.Format("network.wifiOpen", Cut(n.Name!, 20)),
+            { Kind: NetworkKind.WiFi } n => Loc.Instance.Format("network.wifi", Cut(n.Name!, 20)),
+            { Kind: NetworkKind.Ethernet } => Loc.Instance["network.ethernet"],
+            { Kind: NetworkKind.UsbModem } => Loc.Instance["network.usb"],
+            { Kind: NetworkKind.Mobile } => Loc.Instance["network.mobile"],
+            // Сеть машины называет служба: ее нет — сеть не известна, а не «нет сети».
+            _ when _gateway.Service == ServiceKind.None => Loc.Instance["network.unknown"],
+            _ => Loc.Instance["network.undetermined"],
+        };
 
     /// <summary>Ключ иконки сети: Icon.Net.*.</summary>
     public string NetworkIcon => "Icon.Net." + Status.Network.Kind switch
@@ -193,7 +213,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _ => "None",
     };
 
-    public bool HasTimer => Status.State == ConnectionState.Connected && !Status.IsPaused;
+    public bool HasTimer => Status.State == ConnectionState.Connected && !Status.IsPaused && !Protection.HasNetworkProblem;
 
     /// <summary>Пауза для входа в Wi-Fi: полоса с обратным отсчетом и «Вернуть защиту» в карточке состояния.</summary>
     public bool IsPaused => Status.IsPaused;
@@ -274,6 +294,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     {
         get
         {
+            if (Protection.HasNetworkProblem)
+            {
+                return Loc.Instance["checked.offline"];
+            }
+
             if (Status.State != ConnectionState.Connected || Status.IsPaused)
             {
                 return Loc.Instance[Status is { IsPaused: true, StrictBlock: true } ? "checked.pausedStrict" : "checked." + StateKey];
@@ -312,7 +337,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     /// сеть отеля без входа не пустит и VPN; «Переподключение»: сервер за порталом отеля не ответит, пока не войти в сеть),
     /// «Перезапустить службу».
     /// </summary>
-    public string CheckActionText => Status.State switch
+    public string CheckActionText => NeedsNetworkCheck ? Loc.Instance["notify.action.checkNetwork"] : Status.State switch
     {
         ConnectionState.Blocked when Status.StrictBlock => Loc.Instance["action.captive"],
         ConnectionState.Reconnecting => Loc.Instance["action.captive"],
@@ -321,14 +346,14 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         _ => Loc.Instance["action.check"],
     };
 
-    public bool HasCheckAction => !Status.IsPaused && Status.State switch
+    public bool HasCheckAction => NeedsNetworkCheck || !Status.IsPaused && Status.State switch
     {
         ConnectionState.Connected => !IsChecking && !CheckActionCommand.IsRunning,
         ConnectionState.Blocked or ConnectionState.Error or ConnectionState.Reconnecting => true,
         _ => false,
     };
 
-    public Tone CheckActionTone => Status.State switch
+    public Tone CheckActionTone => Protection.HasNetworkProblem ? Protection.Tone : Status.State switch
     {
         ConnectionState.Blocked => Tone.Blocked,
         ConnectionState.Error => Tone.Error,
@@ -344,6 +369,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     /// <summary>IP, который видят сайты: в туннеле — выходной сервера, без защиты — реальный.</summary>
     public string WebIp => Mask(Status.State switch
     {
+        _ when Protection.HasNetworkProblem => IpPlaceholder,
         _ when Status.IsPaused => Status.Exit.DirectIp ?? IpPlaceholder,
         ConnectionState.Connected => Status.Exit.Ip ?? IpPlaceholder,
         ConnectionState.Off => Status.Exit.DirectIp ?? IpPlaceholder,
@@ -352,18 +378,19 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public bool CanCopyIp => WebIp != IpPlaceholder && !IsIpMasked;
 
-    public string WebIpMeta => Status.IsPaused ? Loc.Instance["ip.meta.paused"] : Status.State switch
-    {
-        ConnectionState.Connected when Status.IsProxy => string.Join(" · ",
-            new[] { Status.Exit.City, Loc.Instance["ip.meta.proxy"] }.Where(s => !string.IsNullOrEmpty(s))),
-        ConnectionState.Connected => string.Join(" · ",
-            new[] { Status.Exit.City, Status.Exit.NetworkType, Status.Exit.Asn }.Where(s => !string.IsNullOrEmpty(s))),
-        ConnectionState.Off => Loc.Instance["ip.meta.off"],
-        ConnectionState.Error when Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning =>
-            Loc.Instance["ip.meta.unverified"],
-        ConnectionState.Blocked or ConnectionState.Error => Loc.Instance["ip.meta.stopped"],
-        _ => Loc.Instance["ip.meta.waiting"],
-    };
+    public string WebIpMeta => Protection.HasNetworkProblem ? Loc.Instance["ip.meta.offline"]
+        : Status.IsPaused ? Loc.Instance["ip.meta.paused"] : Status.State switch
+        {
+            ConnectionState.Connected when Status.IsProxy => string.Join(" · ",
+                new[] { Status.Exit.City, Loc.Instance["ip.meta.proxy"] }.Where(s => !string.IsNullOrEmpty(s))),
+            ConnectionState.Connected => string.Join(" · ",
+                new[] { Status.Exit.City, Status.Exit.NetworkType, Status.Exit.Asn }.Where(s => !string.IsNullOrEmpty(s))),
+            ConnectionState.Off => Loc.Instance["ip.meta.off"],
+            ConnectionState.Error when Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning =>
+                Loc.Instance["ip.meta.unverified"],
+            ConnectionState.Blocked or ConnectionState.Error => Loc.Instance["ip.meta.stopped"],
+            _ => Loc.Instance["ip.meta.waiting"],
+        };
 
     public bool HasRealIp => Status.Exit.DirectIp is not null;
 
@@ -413,21 +440,21 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     // ── Скорость ─────────────────────────────────────────────────────────────
 
-    public string PingText => Status.State == ConnectionState.Connected && Status.Traffic.LatencyMs is { } ms
+    public string PingText => !Protection.HasNetworkProblem && Status.State == ConnectionState.Connected && Status.Traffic.LatencyMs is { } ms
         ? ms.ToString(CultureInfo.InvariantCulture)
         : IpPlaceholder;
 
     // Скорость служба считает по адаптеру туннеля — только в режиме VPN; в режиме прокси общего счетчика нет, и «0,0» был бы
     // неправдой.
-    public string DownText => Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn }
+    public string DownText => !Protection.HasNetworkProblem && Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn }
         ? Status.Traffic.DownloadMbps.ToString("0.0", Loc.Instance.Culture)
         : IpPlaceholder;
 
-    public string UpText => Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn }
+    public string UpText => !Protection.HasNetworkProblem && Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn }
         ? Status.Traffic.UploadMbps.ToString("0.0", Loc.Instance.Culture)
         : IpPlaceholder;
 
-    public bool IsPingGood => Status.State == ConnectionState.Connected;
+    public bool IsPingGood => Status.State == ConnectionState.Connected && !Protection.HasNetworkProblem;
 
     // ── Команды ──────────────────────────────────────────────────────────────
 
@@ -508,6 +535,12 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task CheckActionAsync()
     {
+        if (NeedsNetworkCheck)
+        {
+            _navigator.Navigate(Pages.Check);
+            return;
+        }
+
         switch (Status.State)
         {
             case ConnectionState.Connected:

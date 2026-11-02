@@ -86,7 +86,7 @@ public sealed class NotificationCenter : IDisposable
             // нельзя выдать их результат здесь, а затем еще раз после очистки истории на Connecting.
             if (current.State != initial.State || current.ServerId != initial.ServerId || current.Since != initial.Since
                 || current.Mode != initial.Mode || current.ErrorCode != initial.ErrorCode || current.StrictBlock != initial.StrictBlock
-                || current.CaptivePauseUntil != initial.CaptivePauseUntil)
+                || current.CaptivePauseUntil != initial.CaptivePauseUntil || current.NetworkUnavailable != initial.NetworkUnavailable)
             {
                 return;
             }
@@ -113,6 +113,22 @@ public sealed class NotificationCenter : IDisposable
     {
         var before = _last ?? status;
         _last = status;
+        if (before.NetworkUnavailable && (!status.NetworkUnavailable || status.State == ConnectionState.Off))
+        {
+            // Следующий отдельный обрыв сети должен быть заметен и раньше десяти минут; прежнее уведомление об offline
+            // после восстановления уже не описывает текущую сеть. Ошибка остановленных попыток остается в состоянии.
+            foreach (var key in _shown.Keys.Where(k => k.Kind is NoticeKind.NetworkUnavailable or NoticeKind.ReconnectStoppedOffline).ToArray())
+            {
+                _shown.Remove(key);
+            }
+
+            if (_protectionShown is NoticeKind.NetworkUnavailable or NoticeKind.ReconnectStoppedOffline)
+            {
+                _protectionShown = null;
+                _ = _notifier.CloseAsync(Notice.ProtectionTag);
+            }
+        }
+
         if (status.State == ConnectionState.Connecting
             && (before.State != ConnectionState.Connecting || before.ServerId != status.ServerId || before.Since != status.Since))
         {

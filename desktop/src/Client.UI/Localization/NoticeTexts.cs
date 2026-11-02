@@ -29,6 +29,8 @@ public sealed class NoticeTexts : INoticeTexts
     {
         NoticeKind.ConnectionFailed => "notify.connectFailed.title",
         NoticeKind.NetworkBlocked => "notify.blocked.title",
+        NoticeKind.NetworkUnavailable => "notify.offline.title",
+        NoticeKind.ReconnectStoppedOffline => "notify.offline.stopped.title",
         NoticeKind.ConnectionLost => "notify.lost.title",
         NoticeKind.ServerDown => "notify.down.title",
         NoticeKind.WifiSignIn => "notify.signIn.title",

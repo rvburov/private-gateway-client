@@ -16,6 +16,110 @@ public class NotificationPolicyTests
 
     private static Notice? For(ConnectionStatus before, ConnectionStatus after) => NotificationPolicy.For(before, after, "Нидерланды 01", Now);
 
+    [Theory]
+    [InlineData(ConnectionState.Connecting)]
+    [InlineData(ConnectionState.Connected)]
+    [InlineData(ConnectionState.Reconnecting)]
+    public void Confirmed_network_loss_is_announced_even_without_a_state_transition(ConnectionState state)
+    {
+        var before = Status(state);
+        var offline = before with { NetworkUnavailable = true, Attempt = 101 };
+        var notice = For(before, offline).ShouldNotBeNull();
+
+        (notice.Kind, notice.IsImportant).ShouldBe((NoticeKind.NetworkUnavailable, true));
+        notice.Actions.ShouldBe([NoticeAction.CheckNetwork]);
+        For(offline, offline with { Attempt = 102 }).ShouldBeNull("новые цифры ожидания не дают одинаковых уведомлений");
+        NotificationPolicy.Current(offline, "Мой", Now)!.Kind.ShouldBe(NoticeKind.NetworkUnavailable);
+        NotificationPolicy.HasNetworkProblem(before).ShouldBeFalse("неизвестный NetworkKind.None сам по себе не является отсутствием сети");
+        NotificationPolicy.HasNetworkProblem(offline).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(ConnectionMode.Vpn, CheckState.Ok, CheckState.Stopped, "blocked")]
+    [InlineData(ConnectionMode.Vpn, CheckState.Off, CheckState.Off, "direct")]
+    [InlineData(ConnectionMode.Proxy, CheckState.Warning, CheckState.Waiting, "proxy")]
+    [InlineData(ConnectionMode.Vpn, CheckState.Warning, CheckState.Stopped, "unverified")]
+    public void Offline_notice_reports_the_observed_protection_without_advising_a_server_change(
+        ConnectionMode mode, CheckState block, CheckState all, string traffic)
+    {
+        var before = Status(ConnectionState.Reconnecting, mode);
+        var offline = before with
+        {
+            NetworkUnavailable = true,
+            Protection = before.Protection with { KillSwitch = block, AllTraffic = all },
+        };
+
+        For(before, offline)!.TextKey.ShouldBe("notify.offline.waiting." + traffic);
+        For(before, offline)!.Actions.ShouldBe([NoticeAction.CheckNetwork]);
+        NotificationPolicy.Current(offline with { CaptivePauseUntil = Now.AddMinutes(5) }, "Мой", Now).ShouldBeNull("намеренная пауза не обещает автоматического возврата после одной смены сети");
+    }
+
+    [Fact]
+    public void Offline_stop_is_distinct_from_waiting_and_keeps_its_historical_reason_after_restore()
+    {
+        var connected = Connected with { NetworkUnavailable = true };
+        var waiting = Status(ConnectionState.Reconnecting) with { NetworkUnavailable = true };
+        For(connected, waiting).ShouldBeNull("уже сообщили об одном физическом обрыве");
+        var stopped = Status(ConnectionState.Blocked) with { NetworkUnavailable = true, ErrorCode = ErrorCodes.NetworkUnavailable };
+        var limit = For(waiting, stopped).ShouldNotBeNull();
+        (limit.Kind, limit.TextKey).ShouldBe((NoticeKind.ReconnectStoppedOffline, "notify.offline.stopped.blocked"));
+        limit.Actions.ShouldBe([NoticeAction.CheckNetwork]);
+
+        var restored = stopped with { NetworkUnavailable = false };
+        For(stopped, restored).ShouldBeNull("восстановление сети не возобновляет уже остановленную попытку");
+        var history = NotificationPolicy.Current(restored, "Мой", Now).ShouldNotBeNull();
+        (history.Kind, history.TextKey).ShouldBe((NoticeKind.ReconnectStoppedOffline, "notify.offline.stopped.blocked"));
+        NotificationPolicy.HasNetworkProblem(restored).ShouldBeFalse("прошлая ошибка не заменяет новый факт о сети");
+    }
+
+    [Fact]
+    public void Restoring_the_network_does_not_invent_a_wifi_portal_and_off_stays_quiet()
+    {
+        var offline = Status(ConnectionState.Reconnecting) with { NetworkUnavailable = true, Attempt = 101 };
+        var restored = offline with
+        {
+            NetworkUnavailable = false,
+            NetworkChangedAt = Now,
+            Network = new NetworkInfo(NetworkKind.WiFi, null, false, false),
+        };
+        For(offline, restored).ShouldBeNull("сначала должна пройти настоящая попытка через вернувшуюся сеть");
+        NotificationPolicy.SignInLikely(offline with { NetworkChangedAt = Now }, Now).ShouldBeFalse("без физической сети не нужен совет войти через браузер");
+
+        var off = Status(ConnectionState.Off) with { NetworkUnavailable = true };
+        For(offline, off).ShouldBeNull();
+        NotificationPolicy.Current(off, null, Now).ShouldBeNull();
+        NotificationPolicy.HasNetworkProblem(off).ShouldBeFalse("обычное выключенное состояние не выдает новое уведомление");
+    }
+
+    [Fact]
+    public void New_firewall_failure_is_not_hidden_by_an_existing_offline_notice()
+    {
+        var waiting = Status(ConnectionState.Reconnecting) with { NetworkUnavailable = true };
+        var broken = waiting with
+        {
+            ErrorCode = ErrorCodes.KillSwitchFailed,
+            Protection = waiting.Protection with { KillSwitch = CheckState.Warning, AllTraffic = CheckState.Warning },
+        };
+        var failure = For(waiting, broken).ShouldNotBeNull();
+        (failure.Kind, failure.TextKey, failure.Code).ShouldBe((NoticeKind.ProtectionFailed, "notify.offline.protectionFailed", ErrorCodes.KillSwitchFailed));
+        failure.Actions.ShouldBe([NoticeAction.CheckNetwork]);
+        For(broken, broken with { Attempt = 101 }).ShouldBeNull("не повторять одну и ту же ошибку правил при каждом изменении счетчика");
+        NotificationPolicy.Current(broken, "Мой", Now)!.TextKey.ShouldBe("notify.offline.protectionFailed");
+    }
+
+    [Fact]
+    public void Losing_the_service_does_not_replace_restart_with_a_cached_offline_observation()
+    {
+        var offline = Status(ConnectionState.Reconnecting) with { NetworkUnavailable = true };
+        var missing = Status(ConnectionState.Error) with { NetworkUnavailable = true, ErrorCode = ErrorCodes.ServiceNotRunning };
+        var notice = For(offline, missing).ShouldNotBeNull();
+
+        notice.Kind.ShouldBe(NoticeKind.ServiceStopped);
+        notice.Actions.ShouldBe([NoticeAction.Restart]);
+        NotificationPolicy.HasNetworkProblem(missing).ShouldBeFalse("после потери IPC текущую сеть спросить нельзя");
+        NotificationPolicy.Current(missing, "Мой", Now).ShouldBeNull("уведомление о службе сохраняет штатную паузу на перезапуск");
+    }
+
     [Fact]
     public void Lost_connection_says_what_happens_with_the_traffic()
     {

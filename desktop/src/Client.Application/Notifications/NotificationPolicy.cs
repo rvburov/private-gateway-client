@@ -24,6 +24,26 @@ public static class NotificationPolicy
         var moved = before.State != after.State;
         var changed = moved || before.ErrorCode != after.ErrorCode || before.StrictBlock != after.StrictBlock;
         var code = after.ErrorCode;
+        if (HasNetworkProblem(after))
+        {
+            return !HasNetworkProblem(before) || (Stopped(after) && !Stopped(before))
+                || (code == ErrorCodes.KillSwitchFailed && before.ErrorCode != code)
+                ? Offline(after, server) : null;
+        }
+
+        if (Stopped(after) && code == ErrorCodes.NetworkUnavailable)
+        {
+            return changed ? Offline(after, server) : null;
+        }
+
+        // Обычное выключение при физически отсутствующей сети не является новой ошибкой. Восстановление сети в том же
+        // Reconnecting тоже еще не подтверждает ни ответ сервера, ни необходимость входа в Wi-Fi.
+        if (after is { State: ConnectionState.Off, NetworkUnavailable: true }
+            || (before.NetworkUnavailable && !after.NetworkUnavailable && !moved))
+        {
+            return null;
+        }
+
         Notice? notice = after.State switch
         {
             ConnectionState.Reconnecting when moved && before is { State: ConnectionState.Connecting, IsPaused: false } =>
@@ -84,6 +104,11 @@ public static class NotificationPolicy
             return null;
         }
 
+        if (HasNetworkProblem(status) || (Stopped(status) && status.ErrorCode == ErrorCodes.NetworkUnavailable))
+        {
+            return Offline(status, server);
+        }
+
         if (status.State == ConnectionState.Reconnecting)
         {
             return new Notice(NoticeKind.ConnectionFailed, "notify.connectFailed." + Traffic(status), [NoticeAction.ChangeServer, NoticeAction.Retry])
@@ -119,10 +144,31 @@ public static class NotificationPolicy
     public static bool SignInLikely(ConnectionStatus status, DateTimeOffset now)
     {
         ArgumentNullException.ThrowIfNull(status);
-        return status is { State: ConnectionState.Reconnecting, Attempt: >= 2, NetworkChangedAt: { } changed }
+        return status is { State: ConnectionState.Reconnecting, NetworkUnavailable: false, Attempt: >= 2, NetworkChangedAt: { } changed }
             && now - changed <= SignInWindow
             && status.Network.Kind is not (NetworkKind.Mobile or NetworkKind.UsbModem)
             && ConnectionController.CanPause(status);
+    }
+
+    /// <summary>Только подтвержденное наблюдение ОС, а не неизвестное имя/тип сети или отсутствие ответа сервера.</summary>
+    public static bool HasNetworkProblem(ConnectionStatus status) =>
+        status.NetworkUnavailable && !status.IsPaused && status.State != ConnectionState.Off
+        && status.ErrorCode != ErrorCodes.ServiceNotRunning;
+
+    private static bool Stopped(ConnectionStatus status) => status.State is ConnectionState.Blocked or ConnectionState.Error;
+
+    private static Notice Offline(ConnectionStatus status, string? server)
+    {
+        if (status.ErrorCode == ErrorCodes.KillSwitchFailed)
+        {
+            return new Notice(NoticeKind.ProtectionFailed, "notify.offline.protectionFailed", [NoticeAction.CheckNetwork])
+            { Server = server, ServerId = status.ServerId, Code = status.ErrorCode };
+        }
+
+        var phase = Stopped(status) ? "stopped" : status.State == ConnectionState.Reconnecting ? "waiting" : "active";
+        return new Notice(Stopped(status) ? NoticeKind.ReconnectStoppedOffline : NoticeKind.NetworkUnavailable,
+            "notify.offline." + phase + "." + Traffic(status), [NoticeAction.CheckNetwork])
+        { Server = server, ServerId = status.ServerId };
     }
 
     /// <summary>Что с трафиком: закрыт блоком, идет напрямую или стоит у прокси.</summary>

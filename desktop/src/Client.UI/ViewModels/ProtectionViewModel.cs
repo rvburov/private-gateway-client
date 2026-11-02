@@ -2,6 +2,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -40,28 +41,34 @@ public sealed partial class ProtectionViewModel : ObservableObject
     }
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(Tone), nameof(Label), nameof(Mark), nameof(IsBusy), nameof(ActionText), nameof(StateKey), nameof(Title))]
+    [NotifyPropertyChangedFor(nameof(Tone), nameof(Label), nameof(Mark), nameof(IsBusy), nameof(ActionText), nameof(StateKey), nameof(Title), nameof(HasNetworkProblem))]
     public partial ConnectionStatus Status { get; private set; }
 
-    public Tone Tone => ToneOf.State(Status);
+    public Tone Tone => HasNetworkProblem
+        ? Status.Mode == ConnectionMode.Vpn && Status.Protection.KillSwitch == CheckState.Ok
+            && Status.Protection.AllTraffic is not (CheckState.Off or CheckState.Warning) ? Tone.Blocked : Tone.Error
+        : ToneOf.State(Status);
+
+    public bool HasNetworkProblem => NotificationPolicy.HasNetworkProblem(Status);
 
     /// <summary>Ключ текстов состояния: «paused», «proxy», «strict» или имя состояния — для главного экрана и трея.</summary>
     public string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.HasExitIpLeak ? "leak" : Status.StrictBlock ? "strict" : Status.State.ToString().ToLowerInvariant();
 
     /// <summary>Заголовок состояния: «IP скрыт», «Прокси включен», «Защита на паузе».</summary>
-    public string Title => Loc.Instance[$"status.{StateKey}.title"];
+    public string Title => HasNetworkProblem ? Loc.Instance["status.offline.title"] : Loc.Instance[$"status.{StateKey}.title"];
 
     public bool HasServer => _catalog.Selected is not null;
 
     /// <summary>Подпись под кнопкой.</summary>
-    public string Label => Status.HasExitIpLeak ? Loc.Instance["power.label.leak"]
+    public string Label => HasNetworkProblem ? Loc.Instance["power.label.offline"]
+        : Status.HasExitIpLeak ? Loc.Instance["power.label.leak"]
         : Status.IsPaused ? Loc.Instance["power.label.paused"]
         : Status.IsProxy ? Loc.Instance["power.label.proxy"]
         : !HasServer && Status.State == ConnectionState.Off ? Loc.Instance["power.label.noServer"]
         : Loc.Instance["power.label." + Status.State.ToString().ToLowerInvariant()];
 
     /// <summary>Знак внутри щита: ключ иконки Icon.Mark.*.</summary>
-    public string Mark => Status.IsPaused || Status.IsProxy || Status.HasExitIpLeak ? "Icon.Mark.Alert" : Status.State switch
+    public string Mark => HasNetworkProblem || Status.IsPaused || Status.IsProxy || Status.HasExitIpLeak ? "Icon.Mark.Alert" : Status.State switch
     {
         ConnectionState.Connected => "Icon.Mark.Ok",
         ConnectionState.Connecting or ConnectionState.Reconnecting => "Icon.Mark.Wait",
@@ -70,7 +77,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
     };
 
     /// <summary>Крутится кольцо ожидания.</summary>
-    public bool IsBusy => Status.State is ConnectionState.Connecting or ConnectionState.Reconnecting;
+    public bool IsBusy => !HasNetworkProblem && Status.State is ConnectionState.Connecting or ConnectionState.Reconnecting;
 
     /// <summary>Что сделает нажатие — подсказка и имя для чтения с экрана. На паузе строгой «Блокировки» — подключить.</summary>
     public string ActionText => Status is { IsPaused: true, StrictBlock: false } ? Loc.Instance["power.action.resume"]

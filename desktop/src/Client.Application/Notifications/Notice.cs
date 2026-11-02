@@ -46,6 +46,12 @@ public enum NoticeKind
 
     /// <summary>Во время подключения запустилась другая программа VPN или прокси (решение 507).</summary>
     OtherClient,
+
+    /// <summary>ОС подтвердила отсутствие сети; попытки VPN пока не могут пройти.</summary>
+    NetworkUnavailable,
+
+    /// <summary>Попытки остановились без сети: после восстановления нужно подключиться вручную.</summary>
+    ReconnectStoppedOffline,
 }
 
 /// <summary>Кнопки уведомления; надписи — <c>notify.action.*</c>.</summary>
@@ -83,6 +89,9 @@ public enum NoticeAction
 
     /// <summary>«Обновить»: окно, «О программе»; служба ставит сама — загрузка начинается сразу.</summary>
     Update,
+
+    /// <summary>«Проверить сеть»: открыть диагностику без смены сервера и снятия защиты.</summary>
+    CheckNetwork,
 }
 
 /// <summary>
@@ -113,7 +122,8 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
 
     /// <summary>Важное (обрыв, блокировка интернета, вход в Wi-Fi, сбой службы) — со звуком; остальные — обычные, без звука.</summary>
     public bool IsImportant => Kind is NoticeKind.ConnectionFailed or NoticeKind.NetworkBlocked or NoticeKind.ConnectionLost or NoticeKind.ServerDown or NoticeKind.WifiSignIn
-        or NoticeKind.ServiceStopped or NoticeKind.ProtectionFailed or NoticeKind.OtherClient;
+        or NoticeKind.ServiceStopped or NoticeKind.ProtectionFailed or NoticeKind.OtherClient
+        or NoticeKind.NetworkUnavailable or NoticeKind.ReconnectStoppedOffline;
 
     /// <summary>
     /// Метка: новое уведомление с той же меткой заменяет прежнее в центре уведомлений ОС — о защите там одно, последнее.

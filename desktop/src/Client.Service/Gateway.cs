@@ -233,7 +233,7 @@ public sealed partial class Gateway : IAsyncDisposable
         // Какая сеть у машины — для главного экрана («Wi-Fi», «Ethernet»); дальше — при каждой ее смене.
         if (ReadNetwork() is { } info)
         {
-            _status = _status with { Network = info };
+            _status = _status with { Network = info, NetworkUnavailable = info.Kind == NetworkKind.None };
         }
 
         var held = options.BootBlock is { } path ? Service.BootBlock.Read(path) : null;
@@ -647,6 +647,11 @@ public sealed partial class Gateway : IAsyncDisposable
                 BeginConnecting(core.Mode, serverId);
                 _journal.Add(JournalLevel.Info, "service",
                     $"Подключение в режиме VPN: {core.Server.Protocol}, блок при обрыве {(killSwitchOn ? "включен" : "выключен")}");
+                if (Status.NetworkUnavailable)
+                {
+                    _ = SuspendForNetworkAsync(session);
+                    return new V1.ConnectReply { Accepted = true };
+                }
                 _ = StartTunnelAsync(session, core, addresses, killSwitchOn);
                 return new V1.ConnectReply { Accepted = true };
             }
@@ -655,6 +660,12 @@ public sealed partial class Gateway : IAsyncDisposable
             ReleaseBlock();
             BeginConnecting(core.Mode, serverId);
             _journal.Add(JournalLevel.Info, "service", $"Подключение в режиме прокси: {core.Server.Protocol}, порт {core.Connection.ProxyPort}");
+
+            if (Status.NetworkUnavailable)
+            {
+                _ = SuspendForNetworkAsync(session);
+                return new V1.ConnectReply { Accepted = true };
+            }
 
             StartProxy(session, core);
             return new V1.ConnectReply { Accepted = true };
@@ -1027,6 +1038,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        await _networkWaitStop.CancelAsync().ConfigureAwait(false);
         Interlocked.Increment(ref _connectGeneration);
         CancelPreflight();
         lock (_gate)
@@ -1081,6 +1093,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
         _starting.Dispose();
         _switch.Dispose();
+        _networkWaitStop.Dispose();
     }
 
     /// <summary>
@@ -1270,8 +1283,11 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private async Task ConfirmAsync(int session, string connected)
     {
+        var networkLoss = Volatile.Read(ref _networkLoss);
         var timeout = TimeSpan.FromSeconds(_request?.Connection.ConnectTimeoutSeconds ?? 10);
-        var answered = Timing.Every is null || await ProbeAsync(timeout).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false);
+        var answered = !Status.NetworkUnavailable &&
+            (Timing.Every is null || await ProbeAsync(timeout).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false));
+        var failureCode = ErrorCodes.ServerNotResponding;
         await _switch.WaitAsync().ConfigureAwait(false);
         try
         {
@@ -1283,25 +1299,43 @@ public sealed partial class Gateway : IAsyncDisposable
                 }
             }
 
-            if (answered)
+            if (answered && !Status.NetworkUnavailable && networkLoss == Volatile.Read(ref _networkLoss))
             {
                 // Сначала системный прокси: «Защищено» в окне — когда браузеры уже идут через прокси. Запись в журнале — до
                 // смены состояния: кто увидел «Защищено», найдет ее и на диске, даже если служба сразу упадет.
+                var proxyWasActive = _systemProxy?.IsActive == true;
                 ApplySystemProxy();
-                _journal.Add(JournalLevel.Info, "service", connected);
-                Move(s => s, ConnectionState.Connected);
-                AfterConnected(session);
-                return;
+                lock (_gate)
+                {
+                    // Событие сети обновляет статус без _switch: проверка и публикация должны быть атомарны с ним.
+                    if (!_status.NetworkUnavailable && networkLoss == Volatile.Read(ref _networkLoss))
+                    {
+                        _journal.Add(JournalLevel.Info, "service", connected);
+                        Move(s => s, ConnectionState.Connected);
+                        AfterConnected(session);
+                        return;
+                    }
+                }
+                if (!proxyWasActive)
+                {
+                    // Впервые включенный прокси не должен остаться на ядре отвергнутого подтверждения.
+                    _systemProxy?.Release();
+                }
             }
 
+            var offlineFailure = Status.NetworkUnavailable || networkLoss != Volatile.Read(ref _networkLoss);
+            failureCode = offlineFailure ? ErrorCodes.NetworkUnavailable : ErrorCodes.ServerNotResponding;
             if (_request is not { Connection.Reconnect: not ReconnectPolicy.Never })
             {
-                Fail(session, ErrorCodes.ServerNotResponding, "Сервер не ответил при подключении — переподключение выключено");
+                Fail(session, failureCode, offlineFailure ? "Внешняя сеть отключилась при подтверждении — переподключение выключено"
+                    : "Сервер не ответил при подключении — переподключение выключено");
                 return;
             }
 
             _lostAt = _time.GetUtcNow();
-            _journal.Add(JournalLevel.Warning, "service", "Сервер не ответил при подключении — переподключение к тому же серверу");
+            _journal.Add(JournalLevel.Warning, "service", offlineFailure
+                ? "Внешняя сеть отключилась при подтверждении — ожидаем восстановления сети"
+                : "Сервер не ответил при подключении — переподключение к тому же серверу");
             Volatile.Write(ref _nudge, NewNudge());
             Move(s => s, ConnectionState.Reconnecting);
         }
@@ -1310,7 +1344,7 @@ public sealed partial class Gateway : IAsyncDisposable
             _switch.Release();
         }
 
-        _ = ReconnectAsync(session, ErrorCodes.ServerNotResponding);
+        _ = ReconnectAsync(session, failureCode);
     }
 
     /// <summary>
@@ -1432,6 +1466,12 @@ public sealed partial class Gateway : IAsyncDisposable
                     return;
                 }
 
+                if (Status.NetworkUnavailable)
+                {
+                    _ = SuspendForNetworkAsync(next);
+                    return;
+                }
+
                 _ = StartTunnelAsync(next, request, _addresses, _killSwitchOn, reuseIpv6: true);
                 return;
             }
@@ -1442,6 +1482,11 @@ public sealed partial class Gateway : IAsyncDisposable
                 var next = ++_session;
                 BeginConnecting(proxy.Mode, Status.ServerId ?? string.Empty);
                 _journal.Add(JournalLevel.Info, "service", $"Пауза для входа в Wi-Fi закончилась ({why}): ядро запускается снова");
+                if (Status.NetworkUnavailable)
+                {
+                    _ = SuspendForNetworkAsync(next);
+                    return;
+                }
                 StartProxy(next, proxy);
                 return;
             }
@@ -1478,6 +1523,7 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 watcher.TryWrite(_status);
             }
+            WakeReconnectWaiters();
         }
     }
 
@@ -1501,6 +1547,7 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 watcher.TryWrite(_status);
             }
+            WakeReconnectWaiters();
         }
     }
 
@@ -1539,6 +1586,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
     private async Task StopCoreAsync()
     {
+        WakeReconnectWaiters();
         await DrainPreflightAsync().ConfigureAwait(false);
         // Вызывается под _switch: новый запуск не начинается, пока старый не закончил все изменения сети и очистку.
         // Ожидается только создание, а не StartTunnelAsync/RestartAsync, которые для публикации сами ждут _switch.
@@ -1707,16 +1755,23 @@ public sealed partial class Gateway : IAsyncDisposable
             bool current;
             lock (_gate)
             {
-                current = session == _session && _status.State == ConnectionState.Connecting;
+                current = session == _session && _status.State == ConnectionState.Connecting && !_status.NetworkUnavailable;
+                if (current)
+                {
+                    _tunnel = tunnel;
+                }
             }
 
             if (!current)
             {
                 await tunnel.DisposeAsync().ConfigureAwait(false);
+                if (Status.NetworkUnavailable)
+                {
+                    _ = SuspendForNetworkAsync(session, observedLoss: true);
+                }
                 return;
             }
 
-            _tunnel = tunnel;
             tunnel.Exited += (_, _) => OnTunnelExited(session);
             _journal.Add(JournalLevel.Info, "service", $"Туннель поднят: Xray — процесс {tunnel.Processes.Xray}, sing-box — процесс {tunnel.Processes.SingBox}");
             if (tunnel.Relay is { } relay)
@@ -2261,7 +2316,7 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             return _options.CurrentNetwork?.Invoke();
         }
-        catch (Exception e) when (e is System.Net.NetworkInformation.NetworkInformationException or IOException or InvalidOperationException)
+        catch (Exception e) when (e is System.Net.NetworkInformation.NetworkInformationException or IOException or InvalidOperationException or PlatformNotSupportedException)
         {
             _journal.Add(JournalLevel.Warning, "service", "Сеть машины не прочитана: " + e.Message);
             return null;

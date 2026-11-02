@@ -63,6 +63,9 @@ public sealed class NoticeActions(
             case NoticeAction.OpenSubscriptions:
                 shell.Navigate(Pages.Profiles);
                 break;
+            case NoticeAction.CheckNetwork:
+                shell.Navigate(Pages.Check);
+                break;
 
             // Карточка «О программе» покажет загрузку и «Перезапустить клиент»; служба не ставит — там же «Открыть выпуск».
             case NoticeAction.Update:
