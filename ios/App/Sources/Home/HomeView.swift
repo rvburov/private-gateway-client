@@ -32,7 +32,10 @@ struct HomeView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: PgSpace.m) {
                 header
-                StatusCard(texts: texts, home: home, killSwitch: killSwitch, facts: facts, onCheckNow: onCheckNow, onRetry: onRetry)
+                StatusCard(
+                    texts: texts, home: home, killSwitch: killSwitch, facts: facts, onCheckNow: onCheckNow, onRetry: onRetry, onCaptive: onCaptive,
+                    onResume: onResume
+                )
                 WebIpCard(texts: texts, home: home, facts: facts, onAdd: onAdd, onServers: onServers, onSelect: onSelect, onRefresh: onRefresh)
                 SpeedCard(texts: texts, look: SpeedLook.of(home.status.state, home: home, speed: facts.speed, texts), onPing: onCheck)
             }
@@ -91,13 +94,16 @@ struct StatusCard: View {
     let facts: HomeFacts
     let onCheckNow: () -> Void
     let onRetry: () -> Void
+    let onCaptive: () -> Void
+    let onResume: () -> Void
 
     /// Выбранная плитка — ее пояснение под плитками; повторное нажатие закрывает.
     @State private var selected: Int?
 
     init(
         texts: PgTexts, home: HomeState, killSwitch: Bool, facts: HomeFacts = HomeFacts(), selected: Int? = nil,
-        onCheckNow: @escaping () -> Void = {}, onRetry: @escaping () -> Void = {}
+        onCheckNow: @escaping () -> Void = {}, onRetry: @escaping () -> Void = {}, onCaptive: @escaping () -> Void = {},
+        onResume: @escaping () -> Void = {}
     ) {
         self.texts = texts
         self.home = home
@@ -105,6 +111,8 @@ struct StatusCard: View {
         self.facts = facts
         self.onCheckNow = onCheckNow
         self.onRetry = onRetry
+        self.onCaptive = onCaptive
+        self.onResume = onResume
         _selected = State(initialValue: selected)
     }
 
