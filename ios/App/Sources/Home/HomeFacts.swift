@@ -200,9 +200,14 @@ struct WebIpLook: Equatable {
     }
 }
 
-/// Задержка сервера: быстрый — зеленым, медленный — серым, нет ответа — «нет» оранжевым, не мерили — «—».
+/// Задержка сервера: быстрый — зеленым, медленный — серым, нет ответа — «нет» оранжевым, не мерили — «—». Сервер, за который
+/// ядро телефона не берется (Hysteria2, TUIC), не мерили вовсе — тоже «—», а не «нет ответа»: он не молчал, его не спрашивали.
 enum LatencyLook {
     static func of(_ latency: Latency?, _ texts: PgTexts) -> (text: String, color: PgRGBA, hint: String) {
+        if latency?.failure == .unsupported {
+            return ("—", PgColor.Text.muted, texts.androidCardCoreNone)
+        }
+
         let ms = latency?.ms.map { "\($0) \(texts.unitMs)" } ?? ""
         switch LatencyKind.of(latency) {
         case .good: return (ms, PgColor.Status.Success.text, ms)

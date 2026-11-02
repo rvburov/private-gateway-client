@@ -47,7 +47,8 @@ struct PgTextAction: View {
 
 /// Кнопка действия (.btn-primary, .btn-secondary; Button.primary и Button.secondary десктопа): основная — заливка
 /// accent.base и белый полужирный текст, вторая — белая с рамкой line.strong; опасная — красная (status.danger). Во всю
-/// ширину, скругление radius.input, высота не меньше layout.touchTarget; при нажатии — сжатие до 0,98.
+/// ширину, скругление radius.input, высота не меньше layout.touchTarget; при нажатии — сжатие до 0,98. Крупная кнопка
+/// (.sc-connect карточки сервера) — своя высота `height` и начертание `style`.
 struct PgActionButton: View {
     enum Kind {
         case primary
@@ -59,16 +60,18 @@ struct PgActionButton: View {
     var danger = false
     var enabled = true
     var identifier = ""
+    var height: Double = PgLayout.touchTarget
+    var style: PgTextStyle?
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Text(label)
-                .pgText(kind == .primary ? PgType.bodyStrong : PgType.body)
+                .pgText(style ?? (kind == .primary ? PgType.bodyStrong : PgType.body))
                 .foregroundStyle(Color(ink))
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, kind == .primary ? 18 : 14)
-                .frame(maxWidth: .infinity, minHeight: PgLayout.touchTarget)
+                .frame(maxWidth: .infinity, minHeight: height)
                 .background(RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(paint)))
                 .overlay {
                     if kind == .secondary {
@@ -99,6 +102,28 @@ struct PgActionButton: View {
 
     private var border: PgRGBA {
         danger ? PgColor.Status.Danger.line : PgColor.Line.strong
+    }
+}
+
+/// Значок, который крутится, пока идет работа (data-spin макета, Classes.spin десктопа): оборот за 0,9 с; кнопка вокруг него
+/// не меняется и не гаснет (.btn-icon.steady) — «Обновить серверы» в «Серверах» и на главной.
+struct PgSpinningIcon: View {
+    let data: String
+    let spinning: Bool
+    var color = Color(PgColor.Text.primary)
+    var size: CGFloat = 20
+    var lineWidth: CGFloat = 1.8
+
+    var body: some View {
+        if spinning {
+            TimelineView(.animation) { context in
+                let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
+                PgIcon(data: data, color: color, size: size, lineWidth: lineWidth)
+                    .rotationEffect(.degrees(turn * 360))
+            }
+        } else {
+            PgIcon(data: data, color: color, size: size, lineWidth: lineWidth)
+        }
     }
 }
 

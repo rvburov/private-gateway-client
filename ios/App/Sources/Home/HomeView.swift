@@ -413,7 +413,7 @@ struct HomeServerRow: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: onRefresh) {
-                refreshIcon
+                PgSpinningIcon(data: PgIcons.refresh, spinning: home.measuring, color: Color(PgColor.Accent.text), size: 20, lineWidth: 2)
                     .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
                     .background(RoundedRectangle(cornerRadius: PgRadius.button, style: .continuous).fill(Color(PgColor.Accent.tint)))
                     .contentShape(Rectangle())
@@ -483,20 +483,6 @@ struct HomeServerRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityIdentifier("server.name")
     }
-
-    /// Стрелка «Обновить»: идет замер — крутится (оборот за 0,9 с), сама кнопка не меняется.
-    @ViewBuilder
-    private var refreshIcon: some View {
-        if home.measuring {
-            TimelineView(.animation) { context in
-                let turn = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 0.9) / 0.9
-                PgIcon(data: PgIcons.refresh, color: Color(PgColor.Accent.text), size: 20, lineWidth: 2)
-                    .rotationEffect(.degrees(turn * 360))
-            }
-        } else {
-            PgIcon(data: PgIcons.refresh, color: Color(PgColor.Accent.text), size: 20, lineWidth: 2)
-        }
-    }
 }
 
 /// «Пинг · ↓ Загрузка · ↑ Отдача» (MainPage десктопа): три колонки через черту; «Пинг» зеленым и ведет на «Проверку».
@@ -546,35 +532,6 @@ struct SpeedCard: View {
         .frame(maxWidth: .infinity)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
-    }
-}
-
-/// Значок страны: две буквы кода на подложке (цветные флаги шрифт рисует не везде); кода нет — щит.
-struct CountryBadge: View {
-    let code: String
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(PgColor.Accent.tint))
-            if code.isEmpty {
-                PgIcon(data: PgIcons.shield, color: Color(PgColor.Accent.text), size: 18)
-            } else {
-                Text(code).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text))
-            }
-        }
-        .frame(width: PgLayout.touchTarget - 4, height: PgLayout.touchTarget - 4)
-        .accessibilityHidden(true)
-    }
-}
-
-/// Задержка: быстрый — зеленым, медленный — серым, нет ответа — «нет» оранжевым, не мерили — «—» (`LatencyLook`).
-struct LatencyText: View {
-    let texts: PgTexts
-    let latency: Latency?
-
-    var body: some View {
-        let look = LatencyLook.of(latency, texts)
-        Text(look.text).pgText(PgType.mono).foregroundStyle(Color(look.color)).lineLimit(1).accessibilityLabel(look.hint)
     }
 }
 
