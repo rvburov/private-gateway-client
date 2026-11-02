@@ -235,9 +235,12 @@ class ScreensTest {
         compose.onNodeWithTag("ip.address").assertTextEquals("198.51.100.7")
         compose.onNodeWithTag("ip.meta").assertTextEquals(text(R.string.ip_meta_off))
 
-        // Что значит код — на «Проверке», куда ведет строка.
+        // Что значит код — на «Проверке», куда ведет строка: в строке «Сетевое ядро», отдельной карточки ошибки нет.
         check = true
-        compose.onNodeWithText(text(R.string.error_PGC_NET_010)).assertIsDisplayed()
+        compose.onNodeWithTag("check.row.core.detail")
+            .assertTextEquals(text(R.string.diag_core_stopped) + " · " + text(R.string.error_PGC_NET_010))
+            .assertIsDisplayed()
+        compose.onNodeWithTag("check.row.core.chip").assertTextEquals(text(R.string.diag_state_stopped_chip))
     }
 
     @Test

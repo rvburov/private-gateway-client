@@ -352,16 +352,41 @@ final class ScreensTests: XCTestCase {
             address: "203.0.113.24", asn: 64500, holder: "EXAMPLE-AS", prefix: "203.0.113.0/24", country: "NL", city: "Amsterdam", failure: nil
         ))
         let ips = [PublicIp(), PublicIp(measuring: true), PublicIp(failed: true), known, PublicIp(address: "192.0.2.1", info: .failed("192.0.2.1", .private))]
+        let at = Date(timeIntervalSince1970: 1_793_029_320)
+        let log = [
+            TunnelLogEntry(time: at, level: .info, message: "connected"), TunnelLogEntry(time: at.addingTimeInterval(79), level: .warning, message: "connection lost, attempt 1"),
+            TunnelLogEntry(time: at.addingTimeInterval(140), level: .error, message: "gave up: PGC-NET-001 and a long tail that does not fit into one line of the log card"),
+        ]
+        let delay = DelayBreakdown(toServer: 38, through: 42, fresh: 160, measuredAt: at)
+        let about = AboutInfo(app: "0.1.0", system: "iOS 18.1", arch: "arm64", core: "26.3.27")
         for language in PgTexts.Language.allCases {
             for state in TunnelState.allCases {
                 for (index, ip) in ips.enumerated() {
-                    let status = TunnelStatus(state: state, serverId: "a", error: state == .error ? TunnelErrors.serverNotResponding : nil)
+                    // «Ошибка» — то без туннеля, то «Блокировка»; на одних кадрах идет проверка, на других найден прокси и VPN.
+                    let proxy = index == 2 ? ProxyFindings(http: "192.0.2.5:3128", pac: "https://example.com/[скрыто]", vpn: ["utun3"]) : ProxyFindings()
+                    let input = CheckInput(
+                        state: state, system: state == .connected ? .connected : .disconnected,
+                        error: state == .error ? TunnelErrors.serverNotResponding : nil, blocked: state == .error && index % 2 == 1, leak: index == 4,
+                        killSwitch: index != 3, core: "26.3.27", ip: ip, direct: "198.51.100.7", proxy: proxy, running: index == 1
+                    )
+                    let findings = CheckFindings(running: index == 1, measuringDelay: index == 2, delay: index == 0 ? nil : delay, proxy: proxy)
                     let view = CheckView(
-                        texts: PgTexts(language), status: status, killSwitch: true, core: "26.3.27", networks: state == .off ? [] : networks, ip: ip,
-                        log: state == .connected ? ["2026-10-27 13:05:42 connected", "2026-10-27 13:07:01 connection lost, attempt 1"] : [],
-                        probe: .constant(Self.probes[index % Self.probes.count])
+                        texts: PgTexts(language), input: input, findings: findings, server: servers[index % servers.count],
+                        networks: state == .off ? [] : networks, log: state == .connected ? log : [], about: about, page: .constant(.main),
+                        probe: .constant(Self.probes[index % Self.probes.count]), focusDelay: index == 3
                     )
                     XCTAssertNotNil(try? render(view, height: 3200), "\(state)")
+                }
+            }
+
+            // Подстраницы: сеть iPhone с внешним IP и проверка узла в каждом виде замера.
+            for (index, probe) in Self.probes.enumerated() {
+                for page in [CheckPage.network, .probe] {
+                    let view = CheckView(
+                        texts: PgTexts(language), input: CheckInput(state: .connected, ip: ips[index % ips.count]), networks: networks,
+                        page: .constant(page), probe: .constant(probe)
+                    )
+                    XCTAssertNotNil(try? render(view, height: 2400), "\(page)")
                 }
             }
         }

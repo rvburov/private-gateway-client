@@ -95,8 +95,13 @@ enum CheckRows {
         let phase = Phase.of(input)
         switch id {
         case .tunnel:
+            // «Блокировка» — туннель поднят (iOS говорит «подключено» или «переподключается»), а трафик остановлен.
+            if input.blocked {
+                return (.stopped, nil)
+            }
+
             switch input.system {
-            case .connected: return (input.blocked ? .stopped : .ok, nil)
+            case .connected: return (.ok, nil)
             case .connecting, .reasserting, .disconnecting: return (.waiting, nil)
             case .disconnected, .invalid: return (.off, nil)
             }
@@ -110,14 +115,19 @@ enum CheckRows {
             }
         case .allTraffic:
             switch phase {
-            case .on: return input.leak ? (.warning, "same_ip") : (.ok, nil)
+            case .on:
+                if input.leak {
+                    return (.warning, "same_ip")
+                }
+
+                return (.ok, nil)
             case .waiting: return (.waiting, nil)
             case .blocked: return (.stopped, nil)
             case .failed, .off: return (.off, nil)
             }
         case .killSwitch:
             switch phase {
-            case .on, .waiting: return (input.killSwitch ? .ok : .off, nil)
+            case .on, .waiting: return (input.killSwitch ? CheckOutcome.ok : .off, nil)
             case .blocked: return (.ok, nil)
             case .failed, .off: return (.off, nil)
             }
@@ -138,7 +148,11 @@ enum CheckRows {
                     return (.ok, nil)
                 }
 
-                return input.ip.failed ? (.warning, "no_answer") : (.waiting, "measuring")
+                if input.ip.failed {
+                    return (.warning, "no_answer")
+                }
+
+                return (.waiting, "measuring")
             case .waiting: return (.waiting, nil)
             case .blocked: return (.stopped, nil)
             case .failed, .off: return (.off, nil)

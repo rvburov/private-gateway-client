@@ -46,6 +46,10 @@ struct RootView: View {
     @State private var query = ServerListQuery()
     /// Открытая страница «Настроек».
     @State private var settingsPage = SettingsPage.main
+    /// «Проверка»: прокси системы, задержка, идет ли проверка; открытая страница и прокрутка к «Задержке» с плитки «Пинг».
+    @StateObject private var check = CheckModel()
+    @State private var checkPage = CheckPage.main
+    @State private var focusDelay = false
     @Environment(\.scenePhase) private var phase
 
     init(model: AppModel) {
@@ -67,6 +71,7 @@ struct RootView: View {
                         tab = next
                         cardOpen = false
                         settingsPage = .main
+                        checkPage = .main
                         layers.closeMenu()
                     },
                     onPower: power
@@ -95,7 +100,12 @@ struct RootView: View {
                 inspector.forgetExit()
             }
 
-            measureWebIp()
+            // «Проверка» на экране — проверить заново: на экране не остается устаревший «OK» (внешний IP меряет она же).
+            if tab == .check {
+                runChecks()
+            } else {
+                measureWebIp()
+            }
         }
         .onChange(of: model.home.status.serverId) { _ in
             // Под защитой сменили сервер, туннель не опускался: у нового сервера — свой адрес выхода.
@@ -106,6 +116,17 @@ struct RootView: View {
         .onChange(of: inspector.networkKey) { _ in
             // Другая сеть — другой реальный IP (и под защитой — повод проверить выход заново).
             measureWebIp()
+        }
+        .task(id: journalWanted) {
+            // Журнал туннеля обновляется сам, пока «Проверка» на экране: расширение пишет его в общую папку.
+            guard journalWanted else {
+                return
+            }
+
+            while !Task.isCancelled {
+                model.refreshLog()
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
         }
         .task(id: speedWanted) {
             guard speedWanted else {
@@ -182,7 +203,13 @@ struct RootView: View {
                     Task { await model.refreshLatency() }
                     measureWebIp()
                 },
-                onCheck: { tab = .check }, onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }
+                onCheck: {
+                    // «Пинг» — подробности на «Проверке»: экран прокручивается к «Задержке», замер идет вместе с проверкой.
+                    focusDelay = true
+                    checkPage = .main
+                    tab = .check
+                },
+                onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }
             )
         case .servers:
             ServersView(
@@ -200,20 +227,32 @@ struct RootView: View {
             }
         case .check:
             CheckView(
-                texts: model.texts, status: model.home.status, killSwitch: model.settings.killSwitch, core: model.coreVersion, networks: inspector.networks,
-                ip: inspector.ip, log: model.log, probe: $inspector.probe,
+                texts: model.texts, input: checkInput, findings: check.findings, server: model.home.inUse, networks: inspector.networks, log: model.log,
+                about: model.about, page: $checkPage, probe: $inspector.probe, focusDelay: focusDelay, onRun: runChecks,
+                onDelay: {
+                    Task {
+                        await check.measureDelay(connected: model.home.status.state == .connected, toServer: { await model.serverDelay() })
+                    }
+                },
+                onFocused: { focusDelay = false },
                 onMeasure: { Task { await inspector.measureIp(protected: model.home.status.state == .connected) } },
-                onDescribe: { Task { await inspector.describe() } }, onProbe: { Task { await inspector.runProbe() } },
-                onRefreshLog: { Task { await model.reload() } }, blocked: model.blocked, leak: homeFacts.leak(model.home.status.state)
+                onDescribe: { Task { await inspector.describe() } }, onProbe: { Task { await inspector.runProbe() } }
             )
-            .onAppear { inspector.start() }
+            .onAppear {
+                inspector.start()
+                // Экран открыли — проверить сразу: проверки только читают состояние.
+                runChecks()
+            }
         case .settings:
             SettingsView(
                 texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,
                 onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } },
                 onAlwaysOn: { on in Task { await model.setAlwaysOn(on) } }, onConnectOnLaunch: { on in Task { await model.setConnectOnLaunch(on) } },
                 onNotifications: { level in Task { await model.setNotifications(level) } }, onReconnect: { policy in Task { await model.setReconnect(policy) } },
-                onCheck: { tab = .check }
+                onCheck: {
+                    checkPage = .main
+                    tab = .check
+                }
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,
@@ -260,6 +299,33 @@ struct RootView: View {
         return HomeFacts(blocked: model.blocked, uplink: inspector.uplink, ip: ip, speed: speed.speed)
     }
 
+    /// Что «Проверка» знает о защите и сети: состояние туннеля и профиля VPN, «Блокировка», «Утечка IP», внешний IP и реальный
+    /// IP этой сети, прокси и VPN других приложений, идет ли проверка.
+    private var checkInput: CheckInput {
+        let state = model.home.status.state
+        return CheckInput(
+            state: state, system: model.systemVpn, error: model.home.status.error, blocked: model.blocked, leak: homeFacts.leak(state),
+            killSwitch: model.settings.killSwitch, core: model.coreVersion, ip: inspector.ip, direct: inspector.web.direct, proxy: check.findings.proxy,
+            running: check.findings.running
+        )
+    }
+
+    /// Журнал туннеля обновляется, пока «Проверка» на экране.
+    private var journalWanted: Bool {
+        tab == .check && !adding && phase == .active
+    }
+
+    /// «Проверить», открытие «Проверки» и смена состояния защиты на ней: прокси и VPN других приложений, внешний IP, журнал,
+    /// затем задержка (`CheckModel`).
+    private func runChecks() {
+        model.refreshLog()
+        Task {
+            await check.run(
+                connected: { model.home.status.state == .connected }, measureIp: { await measureIpNow() }, toServer: { await model.serverDelay() }
+            )
+        }
+    }
+
     /// Скорость нужна, пока главная на экране под защитой.
     private var speedWanted: Bool {
         tab == .home && !adding && phase == .active && model.home.status.state == .connected
@@ -274,6 +340,16 @@ struct RootView: View {
         }
 
         Task { await inspector.measureIp(protected: state == .connected) }
+    }
+
+    /// То же, но с ожиданием итога — для «Проверки»: строка «IP для сайтов» ждет замера.
+    private func measureIpNow() async {
+        let state = model.home.status.state
+        guard state == .connected || state == .off || (state == .error && !model.blocked) else {
+            return
+        }
+
+        await inspector.measureIp(protected: state == .connected)
     }
 
     /// Кнопка-щит: подключаться не к чему — серверов нет (добавить) или ни один не выбран (к списку: сервер выбирает только

@@ -21,7 +21,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.R
+import com.privategateway.client.inspect.CheckViewModel
 import com.privategateway.client.inspect.InspectorViewModel
+import com.privategateway.client.ui.check.CheckActions
+import com.privategateway.client.ui.check.CheckReport
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.check.InspectorActions
 import com.privategateway.client.ui.home.HomeActions
@@ -78,6 +81,7 @@ fun AppScreen(
     subscriptions: SubscriptionsViewModel,
     actions: AppActions,
     inspector: InspectorViewModel,
+    checks: CheckViewModel,
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
@@ -95,8 +99,8 @@ fun AppScreen(
     val context = LocalContext.current
     // Сообщения окна — своей подсказкой сверху (.toast макета), а не системным Toast: 1,8 с после действия, 6 с о событии.
     val toast = remember { PgToastState() }
-    LaunchedEffect(viewModel, subscriptions) {
-        merge(viewModel.messages, subscriptions.messages).collect {
+    LaunchedEffect(viewModel, subscriptions, checks) {
+        merge(viewModel.messages, subscriptions.messages, checks.messages).collect {
             toast.show(context.getString(it.text, *it.args), long = it.long)
         }
     }
@@ -215,7 +219,11 @@ fun AppScreen(
                         HomeScreen(
                             ui,
                             onServers = { tab = Tab.Servers },
-                            onCheck = { tab = Tab.Check },
+                            // Плитка «Пинг» ведет к «Задержке» на «Проверке» и меряет ее заново (доски 01 и 7).
+                            onCheck = {
+                                tab = Tab.Check
+                                checks.focusDelay()
+                            },
                             onAdd = { adding = true },
                             onSelect = viewModel::select,
                             onRefresh = viewModel::refreshLatency,
@@ -270,12 +278,32 @@ fun AppScreen(
 
                     Tab.Check -> {
                         val inspect by inspector.ui.collectAsStateWithLifecycle()
+                        val check by checks.ui.collectAsStateWithLifecycle()
+                        val tunnel by settings.tunnel.collectAsStateWithLifecycle()
+                        // «Экспорт отчета»: системное окно «Сохранить» — приложению только выбранный файл, без разрешения на память.
+                        val report = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) { file ->
+                            file?.let { checks.save(it, CheckReport.build(context, ui, check, inspect.networks, core, tunnel, language)) }
+                        }
+                        // Проверить: внешний IP заново (его ведет MainViewModel, как для главной) и то, что проверка меряет сама.
+                        val run = {
+                            viewModel.verify()
+                            checks.run()
+                        }
                         CheckScreen(
                             ui,
                             core,
                             viewModel::loadCoreVersion,
+                            check,
+                            CheckActions(
+                                open = run,
+                                run = run,
+                                export = { report.launch(CheckReport.fileName(System.currentTimeMillis())) },
+                                measureDelay = checks::measureDelay,
+                                delayShown = checks::delayShown,
+                            ),
                             inspect,
                             InspectorActions(inspector::measureIp, inspector::describe, inspector::kind, inspector::target, inspector::port, inspector::run),
+                            tunnel,
                         )
                     }
                     Tab.Settings -> {

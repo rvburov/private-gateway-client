@@ -3,30 +3,42 @@ package com.privategateway.client.ui.check
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
 import com.privategateway.client.core.inspect.AddressFailure
 import com.privategateway.client.core.inspect.AddressInfo
 import com.privategateway.client.core.inspect.PhoneNetwork
-import com.privategateway.client.core.inspect.PhoneNetworkKind
 import com.privategateway.client.core.inspect.ProbeKind
 import com.privategateway.client.core.inspect.ProbeOutcome
 import com.privategateway.client.core.inspect.ProbeResult
@@ -36,11 +48,14 @@ import com.privategateway.client.inspect.InspectorUi
 import com.privategateway.client.inspect.ProbeUi
 import com.privategateway.client.inspect.PublicIpUi
 import com.privategateway.client.ui.theme.Overline
-import com.privategateway.client.ui.theme.PgButton
 import com.privategateway.client.ui.theme.PgCard
-import com.privategateway.client.ui.theme.PgChoiceRow
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgLayout
+import com.privategateway.client.ui.theme.PgPageHeader
+import com.privategateway.client.ui.theme.PgPrimaryButton
 import com.privategateway.client.ui.theme.PgRadius
+import com.privategateway.client.ui.theme.PgSecondaryButton
+import com.privategateway.client.ui.theme.PgSegments
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 import java.time.Duration
@@ -60,23 +75,64 @@ data class InspectorActions(
     val run: () -> Unit = {},
 )
 
+/** Виды замера «Проверки узла» на телефоне: пинга и пути нет — ICMP приложениям Android недоступен (решение 448). */
+internal val ProbeKinds = listOf(ProbeKind.Dns, ProbeKind.Tcp, ProbeKind.Tls)
+
+@StringRes
+internal fun probeKindLabel(kind: ProbeKind): Int = when (kind) {
+    ProbeKind.Dns -> R.string.probe_kind_dns
+    ProbeKind.Tcp -> R.string.probe_kind_tcp
+    ProbeKind.Tls -> R.string.probe_kind_tls
+}
+
+/** Каркас подстраницы «Проверки»: шапка с «Назад» стоит на месте, прокручивается только содержимое. */
+@Composable
+private fun InspectorPage(title: String, tag: String, onBack: () -> Unit, content: @Composable () -> Unit) {
+    Column(Modifier.fillMaxSize().statusBarsPadding().testTag(tag)) {
+        Box(Modifier.padding(horizontal = PgSpace.WindowSideMobile)) {
+            PgPageHeader(title, onBack)
+        }
+
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(start = PgSpace.WindowSideMobile, top = PgSpace.L, end = PgSpace.WindowSideMobile, bottom = PgLayout.ScrollBottomPadding),
+            verticalArrangement = Arrangement.spacedBy(PgSpace.L),
+        ) {
+            content()
+        }
+    }
+}
+
 /**
- * Инспектор сети на «Проверке» (пункт 9.5, решение 448): сети телефона, внешний IP и его провайдер, замеры DNS, TCP и
- * TLS — подписи и итоги те же, что у десктопа. [protected] — идет ли сейчас защита: замер и внешний IP идут через нее.
+ * «Сеть телефона» — строка инспектора «Сеть машины» (NetworkPage десктопа) для телефона: сети, как их видит Android (адреса,
+ * шлюзы, DNS, частный DNS, MTU), и внешний IP с провайдером (RIPEstat — по кнопке, как у десктопа). Только чтение.
  */
 @Composable
-fun InspectorSection(ui: InspectorUi, protected: Boolean, actions: InspectorActions) {
-    NetworksCard(ui.networks)
-    PublicIpCard(ui.publicIp, actions)
-    ProbeCard(ui.probe, protected, actions)
+fun NetworkPage(ui: InspectorUi, actions: InspectorActions, onBack: () -> Unit) {
+    InspectorPage(stringResource(R.string.android_inspect_title), "inspect.network.page", onBack) {
+        NetworksCard(ui.networks)
+        PublicIpCard(ui.publicIp, actions)
+    }
+}
+
+/**
+ * «Проверка узла» (ProbePage десктопа): вид замера — сегментами, узел и порт, путь замера (через туннель или напрямую) и
+ * итог. [protected] — идет ли сейчас защита: замер идет через нее.
+ */
+@Composable
+fun ProbePage(probe: ProbeUi, protected: Boolean, actions: InspectorActions, onBack: () -> Unit) {
+    InspectorPage(stringResource(R.string.page_probe_title), "inspect.probe.page", onBack) {
+        ProbeCard(probe, protected, actions)
+    }
 }
 
 @Composable
 private fun NetworksCard(networks: List<PhoneNetwork>) {
     PgCard(Modifier.fillMaxWidth().testTag("inspect.networks")) {
-        Overline(stringResource(R.string.android_inspect_title))
-        Spacer(Modifier.size(PgSpace.Xs))
-        Text(stringResource(R.string.android_inspect_note), color = PgColor.Text.Secondary, style = PgType.Small)
+        Text(stringResource(R.string.android_inspect_note), color = PgColor.Text.Muted, style = PgType.Caption)
         if (networks.isEmpty()) {
             Spacer(Modifier.size(PgSpace.S))
             Text(stringResource(R.string.android_inspect_none), color = PgColor.Text.Muted, style = PgType.Body)
@@ -91,15 +147,7 @@ private fun NetworksCard(networks: List<PhoneNetwork>) {
 
 @Composable
 private fun Network(network: PhoneNetwork) {
-    val kind = stringResource(
-        when (network.kind) {
-            PhoneNetworkKind.Wifi -> R.string.network_kind_wifi
-            PhoneNetworkKind.Cellular -> R.string.network_kind_cellular
-            PhoneNetworkKind.Ethernet -> R.string.network_kind_ethernet
-            PhoneNetworkKind.Vpn -> R.string.network_kind_tunnel
-            PhoneNetworkKind.Other -> R.string.network_kind_other
-        },
-    )
+    val kind = stringResource(NetworkTexts.kind(network.kind))
     val marks = listOfNotNull(
         stringResource(R.string.android_inspect_default).takeIf { network.isDefault },
         stringResource(R.string.network_metered).takeIf { network.metered },
@@ -142,6 +190,7 @@ private fun Fact(@StringRes title: Int, values: List<String>) {
     }
 }
 
+/** Внешний IP: «Измерить» — основная кнопка, «Кто провайдер» — второстепенная (.btn-secondary), обе во всю ширину. */
 @Composable
 private fun PublicIpCard(ip: PublicIpUi, actions: InspectorActions) {
     PgCard(Modifier.fillMaxWidth().testTag("inspect.ip")) {
@@ -158,10 +207,24 @@ private fun PublicIpCard(ip: PublicIpUi, actions: InspectorActions) {
         }
 
         Spacer(Modifier.size(PgSpace.M))
-        PgButton(stringResource(if (ip.measuring) R.string.network_public_measuring else R.string.network_public_measure), !ip.measuring, "inspect.ip.measure", actions.measureIp)
+        PgPrimaryButton(
+            stringResource(if (ip.measuring) R.string.network_public_measuring else R.string.network_public_measure),
+            "inspect.ip.measure",
+            actions.measureIp,
+            Modifier.fillMaxWidth(),
+            enabled = !ip.measuring,
+            height = PgLayout.TouchTarget,
+        )
         if (ip.address != null) {
             Spacer(Modifier.size(PgSpace.S))
-            PgButton(stringResource(if (ip.describing) R.string.network_public_asking else R.string.network_public_describe), !ip.describing, "inspect.ip.describe", actions.describe)
+            PgSecondaryButton(
+                stringResource(if (ip.describing) R.string.network_public_asking else R.string.network_public_describe),
+                "inspect.ip.describe",
+                actions.describe,
+                Modifier.fillMaxWidth(),
+                enabled = !ip.describing,
+                height = PgLayout.TouchTarget,
+            )
         }
 
         ip.info?.let { Provider(it) }
@@ -195,12 +258,9 @@ private fun Provider(info: AddressInfo) {
 private fun ProbeCard(probe: ProbeUi, protected: Boolean, actions: InspectorActions) {
     PgCard(Modifier.fillMaxWidth().testTag("inspect.probe")) {
         Overline(stringResource(R.string.probe_kind))
-        Spacer(Modifier.size(PgSpace.Xs))
-        val kinds = listOf(ProbeKind.Dns to R.string.probe_kind_dns, ProbeKind.Tcp to R.string.probe_kind_tcp, ProbeKind.Tls to R.string.probe_kind_tls)
-        for ((kind, label) in kinds) {
-            PgChoiceRow(stringResource(label), null, probe.kind == kind, "inspect.probe.${kind.name}") { actions.kind(kind) }
-        }
-
+        Spacer(Modifier.size(PgSpace.S))
+        PgSegments(ProbeKinds, probe.kind, { stringResource(probeKindLabel(it)) }, "inspect.probe.kind", actions.kind)
+        Spacer(Modifier.size(PgSpace.S))
         Text(
             stringResource(
                 when (probe.kind) {
@@ -209,10 +269,10 @@ private fun ProbeCard(probe: ProbeUi, protected: Boolean, actions: InspectorActi
                     ProbeKind.Tls -> R.string.probe_method_tls
                 },
             ),
-            color = PgColor.Text.Secondary,
-            style = PgType.Small,
+            color = PgColor.Text.Muted,
+            style = PgType.Caption,
         )
-        Spacer(Modifier.size(PgSpace.S))
+        Spacer(Modifier.size(PgSpace.M))
         Field(stringResource(R.string.probe_target), probe.target, stringResource(R.string.probe_target_placeholder), KeyboardType.Uri, "inspect.probe.target", actions.target)
         if (probe.kind != ProbeKind.Dns) {
             Spacer(Modifier.size(PgSpace.S))
@@ -222,7 +282,7 @@ private fun ProbeCard(probe: ProbeUi, protected: Boolean, actions: InspectorActi
         Spacer(Modifier.size(PgSpace.S))
         Text(stringResource(if (protected) R.string.probe_path_vpn else R.string.android_probe_path_direct), color = PgColor.Text.Muted, style = PgType.Caption)
         Spacer(Modifier.size(PgSpace.M))
-        PgButton(stringResource(R.string.probe_run), !probe.running, "inspect.probe.run", actions.run)
+        PgPrimaryButton(stringResource(R.string.probe_run), "inspect.probe.run", actions.run, Modifier.fillMaxWidth(), enabled = !probe.running, height = PgLayout.TouchTarget)
         probe.error?.let {
             Text(stringResource(it), color = PgColor.Status.Warning.Text, style = PgType.Small, modifier = Modifier.padding(top = PgSpace.S).testTag("inspect.probe.error"))
         }
@@ -231,11 +291,17 @@ private fun ProbeCard(probe: ProbeUi, protected: Boolean, actions: InspectorActi
     }
 }
 
+/**
+ * Поле замера — вид поля ввода макета (.input, как PgInput): белое, рамка line.strong, в фокусе — 1,5 accent.base. Свое, а не
+ * PgInput: узлу и порту нужна своя клавиатура (адрес, цифры).
+ */
 @Composable
 private fun Field(label: String, value: String, placeholder: String, keyboard: KeyboardType, tag: String, onChange: (String) -> Unit) {
     Text(label, color = PgColor.Text.Secondary, style = PgType.Caption)
     Spacer(Modifier.size(PgSpace.Xxs))
     val shape = RoundedCornerShape(PgRadius.Input)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
     BasicTextField(
         value = value,
         onValueChange = onChange,
@@ -243,12 +309,15 @@ private fun Field(label: String, value: String, placeholder: String, keyboard: K
         textStyle = PgType.Mono.copy(color = PgColor.Text.Primary),
         cursorBrush = SolidColor(PgColor.Accent.Base),
         keyboardOptions = KeyboardOptions(keyboardType = keyboard),
+        interactionSource = interaction,
         modifier = Modifier
             .fillMaxWidth()
+            .heightIn(min = PgLayout.TouchTarget)
             .clip(shape)
-            .background(PgColor.Surface.Inset)
-            .border(1.dp, PgColor.Line.Border, shape)
-            .padding(PgSpace.M)
+            .background(PgColor.Surface.Solid)
+            .border(if (focused) 1.5.dp else 1.dp, if (focused) PgColor.Accent.Base else PgColor.Line.Strong, shape)
+            .padding(horizontal = PgSpace.L, vertical = PgSpace.M)
+            .semantics { contentDescription = label }
             .testTag(tag),
         decorationBox = { inner ->
             if (value.isEmpty()) {

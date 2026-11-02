@@ -24,6 +24,7 @@ import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.inspect.CheckViewModel
 import com.privategateway.client.inspect.InspectorViewModel
 import com.privategateway.client.notify.AppWindow
 import com.privategateway.client.ui.AppActions
@@ -51,6 +52,7 @@ class MainActivity : ComponentActivity() {
     private val servers: ServersViewModel by viewModels()
     private val subscriptions: SubscriptionsViewModel by viewModels()
     private val inspector: InspectorViewModel by viewModels()
+    private val checks: CheckViewModel by viewModels()
 
     @Inject lateinit var appWindow: AppWindow
 
@@ -83,7 +85,7 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             PgTheme {
-                AppScreen(viewModel, settings, servers, subscriptions, actions, inspector)
+                AppScreen(viewModel, settings, servers, subscriptions, actions, inspector, checks)
             }
         }
 

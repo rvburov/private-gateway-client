@@ -128,7 +128,7 @@ enum ChipLook: Equatable {
     }
 }
 
-/// Чип защиты на главной и строка на «Проверке»: заголовок, значение, вид и объяснение.
+/// Чип защиты на главной: заголовок, значение, вид и объяснение. У «Проверки» свои строки — `CheckRows` (тексты diag.*).
 struct ProtectionChip: Equatable {
     let title: String
     let value: String

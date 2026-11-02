@@ -227,7 +227,8 @@ class GatewayVpnService : VpnService() {
     } catch (e: Exception) {
         // Сбой Android или ядра — не авария всего приложения: ошибка с кодом, текст — в журнал через SecretMasker.
         Log.w(TAG, "connect: " + SecretMasker.mask(e.toString()))
-        journal.error("connect: $e")
+        // В журнал «Проверки» — только вид сбоя: в тексте исключения бывает адрес сервера.
+        journal.error("connect failed  " + e.javaClass.simpleName)
         TunnelErrors.CORE_FAILED
     }
 
@@ -352,7 +353,8 @@ class GatewayVpnService : VpnService() {
         if (failure != null) {
             // Текст ядра — в журнал Android через SecretMasker: ссылок, UUID и ключей в журнале нет.
             Log.w(TAG, "core: " + SecretMasker.mask(failure))
-            journal.error("core: $failure")
+            // Текст ядра бывает с адресом сервера — в журнал «Проверки» он не идет.
+            journal.error("core did not start")
             return TunnelErrors.CORE_FAILED
         }
 
@@ -369,11 +371,11 @@ class GatewayVpnService : VpnService() {
         builder.establish()
     } catch (e: IllegalStateException) {
         Log.w(TAG, "establish: " + SecretMasker.mask(e.message))
-        journal.error("establish: " + e.message.orEmpty())
+        journal.error("establish refused  " + e.javaClass.simpleName)
         null
     } catch (e: SecurityException) {
         Log.w(TAG, "establish: " + SecretMasker.mask(e.message))
-        journal.error("establish: " + e.message.orEmpty())
+        journal.error("establish refused  " + e.javaClass.simpleName)
         null
     }
 
@@ -452,7 +454,7 @@ class GatewayVpnService : VpnService() {
             underlying = callback
         } catch (e: RuntimeException) {
             Log.w(TAG, "network callback: " + SecretMasker.mask(e.message))
-            journal.warning("network callback: " + e.message.orEmpty())
+            journal.warning("network callback refused  " + e.javaClass.simpleName)
         }
     }
 
@@ -462,7 +464,7 @@ class GatewayVpnService : VpnService() {
         val endpoint = networkDns?.let { follower.network(it) } ?: return
         engine.changeDns(endpoint)?.let {
             Log.w(TAG, "core dns: " + SecretMasker.mask(it))
-            journal.warning("core dns: $it")
+            journal.warning("core dns change failed")
         }
     }
 

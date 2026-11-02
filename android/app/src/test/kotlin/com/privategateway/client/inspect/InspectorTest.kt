@@ -1,13 +1,15 @@
 package com.privategateway.client.inspect
 
 import android.content.Context
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -29,7 +31,8 @@ import com.privategateway.client.core.inspect.PublicAddress
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.ui.check.InspectorActions
-import com.privategateway.client.ui.check.InspectorSection
+import com.privategateway.client.ui.check.NetworkPage
+import com.privategateway.client.ui.check.ProbePage
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.TunnelMonitor
 import kotlinx.coroutines.Dispatchers
@@ -200,31 +203,54 @@ class InspectorTest {
     }
 
     @Test
-    fun `section shows the networks the address the provider and the probe`() {
+    fun `pages show the networks the address the provider and the probe`() {
         val ui = InspectorUi(
             networks = listOf(wifi),
             publicIp = PublicIpUi(address = "203.0.113.24", viaServer = true, info = AddressInfo("203.0.113.24", 64500, "EXAMPLE-AS", "203.0.113.0/24", "NL", null, null)),
             probe = ProbeUi(kind = ProbeKind.Tcp, target = "example.org", result = ProbeResult(ProbeKind.Tcp, "example.org", 443, listOf(ProbeStep(1, "203.0.113.10", 42, ProbeOutcome.Ok)))),
         )
         var measured = 0
+        var described = 0
+        val kinds = mutableListOf<ProbeKind>()
+        var back = 0
+        var probe by mutableStateOf(false)
         compose.setContent {
             PgTheme {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
-                    InspectorSection(ui, protected = true, InspectorActions(measureIp = { measured++ }))
+                if (probe) {
+                    ProbePage(ui.probe, protected = true, InspectorActions(kind = { kinds += it })) { back++ }
+                } else {
+                    NetworkPage(ui, InspectorActions(measureIp = { measured++ }, describe = { described++ })) { back++ }
                 }
             }
         }
 
+        // «Сеть телефона»: шапка с «Назад» и название страницы, сети и внешний IP с провайдером.
+        compose.onNodeWithText(context.getString(R.string.android_inspect_title)).assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.network_kind_wifi) + " · wlan0").assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.android_inspect_default)).assertIsDisplayed()
         compose.onNodeWithText(context.getString(R.string.android_inspect_privateDns_auto)).assertIsDisplayed()
         compose.onNodeWithTag("inspect.ip.address").performScrollTo().assertTextContains("203.0.113.24")
         compose.onNodeWithText(context.getString(R.string.network_public_exit)).performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("AS64500 · EXAMPLE-AS").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText(context.getString(R.string.probe_path_vpn)).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("inspect.probe.summary").performScrollTo().assertTextContains(context.getString(R.string.probe_summary_tcp, "443", "42"))
         compose.onNodeWithTag("inspect.ip.measure").performScrollTo().performClick()
         assertEquals(1, measured)
+        compose.onNodeWithTag("inspect.ip.describe").performScrollTo().performClick()
+        assertEquals(1, described)
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performClick()
+        assertEquals(1, back)
+
+        // «Проверка узла»: вид замера — сегментами (пинга и пути у телефона нет), путь через туннель и итог.
+        probe = true
+        compose.onNodeWithText(context.getString(R.string.page_probe_title)).assertIsDisplayed()
+        compose.onNodeWithTag("inspect.probe.kind.Tcp").assertIsSelected()
+        compose.onNodeWithTag("inspect.probe.kind.Dns").assertIsNotSelected()
+        compose.onNodeWithText(context.getString(R.string.probe_kind_ping)).assertDoesNotExist()
+        compose.onNodeWithText(context.getString(R.string.probe_path_vpn)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("inspect.probe.summary").performScrollTo().assertTextContains(context.getString(R.string.probe_summary_tcp, "443", "42"))
+        compose.onNodeWithTag("inspect.probe.kind.Tls").performClick()
+        assertEquals(listOf(ProbeKind.Tls), kinds)
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performClick()
+        assertEquals(2, back)
     }
 
     @Test
