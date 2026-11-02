@@ -108,7 +108,7 @@
             </div>
             <div class="check-row tone-success">
               <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
-              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: Windows Filtering Platform</span></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: <span data-os-word="engine">Windows Filtering Platform</span></span></span>
               <span class="check-chip">OK</span>
             </div>
             <div class="check-row tone-success">
@@ -131,7 +131,7 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Не найдены</span></span>
               <span class="check-chip">Нет</span>
             </div>
-            <div class="check-row tone-caution">
+            <div class="check-row tone-caution" data-os="windows">
               <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Туннель поднят. Путь трафика виртуальных машин и блокировка при обрыве отдельно не проверены. Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span></span>
               <span class="check-chip">Не проверено</span>
@@ -281,7 +281,7 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Проверяется</span></span>
               <span class="check-chip">…</span>
             </div>
-            <div class="check-row tone-accent">
+            <div class="check-row tone-accent" data-os="windows">
               <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Проверяется</span></span>
               <span class="check-chip">…</span>
@@ -407,7 +407,7 @@
             </div>
             <div class="check-row tone-success">
               <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
-              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: Windows Filtering Platform</span></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: <span data-os-word="engine">Windows Filtering Platform</span></span></span>
               <span class="check-chip">OK</span>
             </div>
             <div class="check-row tone-success">
@@ -430,7 +430,7 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Не найдены</span></span>
               <span class="check-chip">Нет</span>
             </div>
-            <div class="check-row tone-caution">
+            <div class="check-row tone-caution" data-os="windows">
               <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Оба правила Hyper-V включены и блокируют входящие и исходящие соединения. Проверка трафика ВМ не выполнена. Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span></span>
               <span class="check-chip">Не проверено</span>
@@ -580,7 +580,7 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Найден системный прокси другой программы</span></span>
               <span class="check-chip">Внимание</span>
             </div>
-            <div class="check-row tone-danger">
+            <div class="check-row tone-danger" data-os="windows">
               <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Блокировка виртуальных машин выключена. Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span></span>
               <span class="check-chip">Выключено</span>

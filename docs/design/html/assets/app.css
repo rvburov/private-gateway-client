@@ -396,7 +396,8 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
 .pg-island > svg path { fill: var(--pg-color-surface-solid); stroke: var(--pg-color-line-divider); stroke-width: 1; }
 .pg-island-nav { position: absolute; left: 24px; right: 24px; top: 70px; bottom: 12px; display: grid; grid-template-columns: var(--nav-columns);
   pointer-events: auto; }
-.btn-nav { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; padding-bottom: 9px;
+/* Пункт островка — по центру полосы, как Button.nav программы (кнопка по высоте содержимого); подпись щита — у низа */
+.btn-nav { align-self: center; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; padding-bottom: 9px;
   color: var(--pg-color-text-muted); font-size: var(--nav-size); font-weight: var(--pg-type-nav-weight); text-align: center; }
 .btn-nav .pg-icon path { stroke-width: 1.7; }
 .btn-nav.active { color: var(--pg-color-accent-base); font-weight: var(--pg-type-nav-weight-active); }

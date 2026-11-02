@@ -62,20 +62,20 @@
         <div class="setting">
           <div class="setting-text">
             <span class="setting-title">Kill Switch (fail-closed)</span>
-            <span class="setting-caption">Обрыв, сбой ядра или службы — весь трафик блокируется брандмауэром Windows. Исключение: только адрес выбранного сервера.</span>
+            <span class="setting-caption">Обрыв, сбой ядра или службы — весь трафик блокируется <span data-os-word="firewall">брандмауэром Windows</span>. Исключение: только адрес выбранного сервера.</span>
           </div>
           <button class="switch on" data-ks role="switch" aria-checked="true" aria-label="Kill Switch (fail-closed)" data-confirm-off="dlg-ks"></button>
         </div>
         <!-- Защита виртуальных машин (Windows): состояние сообщает служба -->
-        <div class="pg-stack" style="gap: 3px; padding: 0 0 12px">
+        <div class="pg-stack" data-os="windows" style="gap: 3px; padding: 0 0 12px">
           <span class="t-strong">Защита WSL2 и Hyper-V</span>
           <span class="t-caption t-caution t-wrap">Туннель поднят. Путь трафика виртуальных машин и блокировка при обрыве отдельно не проверены.</span>
           <span class="t-caption t-wrap">Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span>
         </div>
         <div class="divider"></div>
-        <div class="setting">
+        <div class="setting" data-os="desktop">
           <div class="setting-text">
-            <span class="setting-title">Защита при загрузке Windows</span>
+            <span class="setting-title">Защита при загрузке <span data-os-word="name">Windows</span></span>
             <span class="setting-caption">Блокировка действует до старта службы, без окна утечки.</span>
           </div>
           <button class="switch on" role="switch" aria-checked="true" aria-label="Защита при загрузке Windows"></button>

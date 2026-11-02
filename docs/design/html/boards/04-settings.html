@@ -78,7 +78,7 @@
             <button class="segment on" data-mode="vpn" role="radio" aria-checked="true">VPN · вся система</button>
             <button class="segment" data-mode="proxy" data-confirm="dlg-proxy" role="radio" aria-checked="false">Только прокси</button>
           </div>
-          <span class="t-caption t-wrap" data-when="vpn">Весь трафик Windows идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
+          <span class="t-caption t-wrap" data-when="vpn">Весь трафик <span data-os-word="name">Windows</span> идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
           <span class="t-caption t-wrap" data-when="proxy">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
         </div>
 
@@ -90,9 +90,9 @@
           <button class="switch on" role="switch" aria-checked="true" aria-label="Блок при обрыве (Kill Switch)" data-confirm-off="dlg-ks"></button>
         </div>
 
-        <div class="setting">
+        <div class="setting" data-os="desktop">
           <div class="setting-text">
-            <span class="setting-title">Запуск вместе с Windows</span>
+            <span class="setting-title">Запуск вместе с <span data-os-word="name">Windows</span></span>
             <span class="setting-caption">Свернуто в трей</span>
           </div>
           <button class="switch on" role="switch" aria-checked="true" aria-label="Запуск вместе с Windows"></button>
@@ -106,7 +106,7 @@
           <button class="switch" role="switch" aria-checked="false" aria-label="Подключаться при запуске"></button>
         </div>
 
-        <div class="setting">
+        <div class="setting" data-os="desktop">
           <div class="setting-text">
             <span class="setting-title">Сворачивать в трей</span>
             <span class="setting-caption">Закрытие окна не отключает VPN</span>
@@ -220,7 +220,7 @@
             <button class="segment" data-mode="vpn" role="radio" aria-checked="false">VPN · вся система</button>
             <button class="segment on" data-mode="proxy" data-confirm="dlg-proxy-2" role="radio" aria-checked="true">Только прокси</button>
           </div>
-          <span class="t-caption t-wrap" data-when="vpn">Весь трафик Windows идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
+          <span class="t-caption t-wrap" data-when="vpn">Весь трафик <span data-os-word="name">Windows</span> идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
           <span class="t-caption t-wrap" data-when="proxy">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
         </div>
 
@@ -232,9 +232,9 @@
           <button class="switch on" role="switch" aria-checked="true" aria-label="Блок при обрыве (Kill Switch)" data-confirm-off="dlg-ks-2"></button>
         </div>
 
-        <div class="setting">
+        <div class="setting" data-os="desktop">
           <div class="setting-text">
-            <span class="setting-title">Запуск вместе с Windows</span>
+            <span class="setting-title">Запуск вместе с <span data-os-word="name">Windows</span></span>
             <span class="setting-caption">Свернуто в трей</span>
           </div>
           <button class="switch on" role="switch" aria-checked="true" aria-label="Запуск вместе с Windows"></button>
@@ -248,7 +248,7 @@
           <button class="switch" role="switch" aria-checked="false" aria-label="Подключаться при запуске"></button>
         </div>
 
-        <div class="setting">
+        <div class="setting" data-os="desktop">
           <div class="setting-text">
             <span class="setting-title">Сворачивать в трей</span>
             <span class="setting-caption">Закрытие окна не отключает VPN</span>

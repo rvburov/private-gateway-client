@@ -58,6 +58,17 @@
     leak: { label: "Утечка IP", mark: "Mark.Alert" },
   };
   var CONNECT_MS = 1400;
+  // Слова ОС, которые программа подставляет сама (AppInfo.OsName, FirewallName, SecretStoreName, «О программе»):
+  // <span data-os-word="name">Windows</span> на рамке macOS станет «macOS»
+  var OS = {
+    windows: { name: "Windows", firewall: "брандмауэром Windows", engine: "Windows Filtering Platform", store: "Windows DPAPI", build: "Windows 11 · x64" },
+    macos: { name: "macOS", firewall: "брандмауэром macOS (pf)", engine: "pf", store: "Связка ключей macOS", build: "macOS 15 · arm64" },
+    linux: { name: "Linux", firewall: "правилами nftables", engine: "nftables", store: "Secret Service", build: "Linux · x64" },
+    android: { name: "Android", firewall: "системой Android («Блокировать подключения без VPN»)", engine: "«Блокировать подключения без VPN» в настройках Android",
+      store: "Android Keystore", build: "Android 15 · arm64" },
+    ios: { name: "iOS", firewall: "системой iOS (includeAllNetworks)", engine: "includeAllNetworks", store: "Связка ключей iOS", build: "iOS 18 · arm64" },
+  };
+  var OS_GROUPS = { desktop: ["windows", "macos", "linux"], phone: ["android", "ios"] };
 
   var params = new URLSearchParams(location.search);
   var device = DEVICES.some(function (d) { return d.id === params.get("device"); }) ? params.get("device") : "windows";
@@ -178,6 +189,19 @@
     if (state === "connected") { connect(root); } else { applyState(root, state); }
   }
 
+  // Платформа рамки: слова ОС и строки, которых на этой ОС нет (data-os="windows" — Hyper-V, data-os="desktop" — трей)
+  function applyOs(root, dev) {
+    var words = OS[dev] || OS.windows;
+    root.querySelectorAll("[data-os-word]").forEach(function (el) {
+      if (words[el.dataset.osWord]) { el.textContent = words[el.dataset.osWord]; }
+    });
+    root.querySelectorAll("[data-os]").forEach(function (el) {
+      var list = [];
+      el.dataset.os.split(/\s+/).forEach(function (k) { list = list.concat(OS_GROUPS[k] || [k]); });
+      if (list.indexOf(dev) < 0) { el.hidden = true; }
+    });
+  }
+
   function frameFor(screen) {
     var dev = screen.dataset.device || device;
     var phone = dev === "android" || dev === "ios";
@@ -229,6 +253,7 @@
       icons.appendChild(icon("Net.WiFi", null, "2"));
     }
     wrap.appendChild(frame);
+    applyOs(app, dev);
     app.querySelectorAll(".pg-island").forEach(function (island) { buildIsland(island, dev); });
     applyState(app, screen.dataset.state || "connected");
     return wrap;

@@ -56,7 +56,7 @@ docs/design/html/
 - `app.js` оборачивает каждый `.pg-screen` в рамку выбранного устройства. Свое устройство у экрана —
   `data-device="windows|macos|linux|android|ios"` (доски 20–22, 25–26 показывают ОС рядом).
 - `data-state` — состояние защиты экрана: `connected`, `connecting`, `reconnecting`, `blocked`, `strict`, `error`,
-  `off`, `proxy`, `paused`. От него цвет щита, подпись под ним и знак в щите (`data-state-mark`), блоки
+  `off`, `proxy`, `paused`, `leak` («Утечка IP»). От него цвет щита, подпись под ним и знак в щите (`data-state-mark`), блоки
   `data-show-state="connected connecting"` видны только в этих состояниях. Щит островка переключает защиту.
 - `.pg-island` с `data-active="home|servers|check|settings"` — островок с щитом; пункты ведут на доски 1, 2, 7, 4.
   На листах и экранах без островка (первый запуск, ошибки) его нет — как в программе.
@@ -67,20 +67,23 @@ docs/design/html/
 | Атрибут / класс | Что делает |
 | --- | --- |
 | `data-nav="04-settings.html"` | переход на другую доску (устройство сохраняется) |
-| `.switch` | тумблер; `data-confirm-off="id"` / `data-confirm-on="id"` — сначала диалог, подтверждает кнопка `data-confirm-yes` |
+| `.switch` | тумблер; `data-confirm-off="id"` / `data-confirm-on="id"` — сначала диалог, подтверждает кнопка `data-confirm-yes` (у нее могут быть свои `data-set-state`, `data-remove`, `data-toast`) |
 | `.segments > .segment` | сегменты; `data-confirm="id"` у сегмента — переход только после подтверждения (как «Только прокси») |
 | `.check` | флажок |
 | `data-open="id"` | открыть `.dialog`, `.sheet` (с затемнением) или `.popup` (меню у кнопки) этого экрана |
 | `data-close` | закрыть слой; щелчок по затемнению и Esc — тоже |
-| `.popup .btn-option[data-value]` | выбрать пункт: текст в `[data-select-label]` кнопки-владельца, пункт — `.current` |
+| `.popup .btn-option[data-value]` | выбрать пункт: текст в `[data-select-label]` кнопки-владельца, пункт — `.current`; с `data-confirm="id"` — только после «Да»; `data-open`, `data-set-state`, `data-toast` у пункта тоже работают |
 | `.tabs > .tab[data-panel]` + `[data-tab-panel]` | вкладки |
 | `.btn-chip[data-info]` + `[data-chip-info]` | плитка проверки: выбор и пояснение под плитками |
 | `data-toast="Текст"` | всплывающая подсказка сверху |
 | `data-spin` | значок кнопки крутится 1,5 с («Обновить серверы» — кнопка не сжимается: `.btn-icon.steady`) |
 | `data-reveal` + `[data-masked][data-plain]` в `[data-reveal-scope]` | глаз: скрыто — звездочками, как в программе |
-| `data-set-state="off"` | перевести экран в состояние защиты |
+| `data-set-state="off"` | перевести экран в состояние защиты (`connected` — через «Подключение», 1,4 с) |
+| `data-remove="селектор"` | спрятать строки экрана («Удалить» подписку или сервер) |
 | `data-goto="step2"` + `[data-page="step2"]` | шаги внутри экрана (страницы `.pg-page` с `data-page`, лишние — `hidden`) |
 | `.fav` | звезда избранного |
+| `data-os-word="name"` (`firewall`, `engine`, `store`, `build`) | слово ОС по рамке, как подставляет программа: «Windows» → «macOS», «брандмауэром Windows» → «правилами nftables», «Windows DPAPI» → «Связка ключей iOS» |
+| `data-os="windows"`, `data-os="desktop"`, `data-os="phone"` | строка есть только на этих ОС, как в программе: Hyper-V — только Windows, трей и «Запуск вместе с …» — только десктоп |
 
 ## Блоки (`app.css`) — те же, что в программе
 
@@ -107,6 +110,6 @@ docs/design/html/
 2. Тексты — из `shared/specifications/localization/ru.json`, как в программе; буквы «е с точками» нет.
 3. Данные — демо программы (`DemoServerCatalog`): адреса только из диапазонов документации (192.0.2.0/24,
    198.51.100.0/24, 203.0.113.0/24), домены example.com/example.org. Скрытое — звездочками.
-4. Экран один и тот же на всех устройствах: никаких веток «если Android». Отличия ОС — только рамка и шрифт
-   (`app.js`), системные окна ОС — на досках 20–22 и 26.
+4. Экран один и тот же на всех устройствах: те же блоки в том же порядке. Отличия ОС — рамка, шрифт, слова ОС
+   (`data-os-word`) и строки, которых на этой ОС нет вовсе (`data-os`: Hyper-V, трей); системные окна ОС — на досках 20–22 и 26.
 5. Новый блок — сначала в `app.css`, потом на досках.
