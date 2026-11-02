@@ -225,7 +225,8 @@ final class AppModel: ObservableObject {
         if let notice = report.notices.first {
             say(TextKeys.notice(notice), event: true)
         } else if let text = TextKeys.updated(report.outcome, name: name) {
-            say(text)
+            // «Сначала включите защиту» — просьба, а не итог: держится дольше, как LongDuration десктопа.
+            say(text, event: report.outcome == .blocked(.protectionOff))
         }
     }
 

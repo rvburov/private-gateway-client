@@ -100,16 +100,17 @@ struct ImportView: View {
     private var clipboard: some View {
         ImportSourceCard(
             icon: PgIcons.clipboard, title: texts.importClipboardTitle, caption: texts.importClipboardText, chosen: model.source == .clipboard,
-            identifier: "import.source.clipboard"
-        ) {
-            PasteButton(payloadType: String.self) { strings in
-                Task { await model.paste(strings.first) }
+            identifier: "import.source.clipboard",
+            accessory: {
+                PasteButton(payloadType: String.self) { strings in
+                    Task { await model.paste(strings.first) }
+                }
+                .labelStyle(.iconOnly)
+                .buttonBorderShape(.capsule)
+                .tint(Color(PgColor.Accent.base))
+                .accessibilityIdentifier("import.clipboard")
             }
-            .labelStyle(.iconOnly)
-            .buttonBorderShape(.capsule)
-            .tint(Color(PgColor.Accent.base))
-            .accessibilityIdentifier("import.clipboard")
-        }
+        )
     }
 
     /// «QR-код»: камерой или с картинки — меню у карточки; iPhone без сканера VisionKit — сразу выбор картинки.

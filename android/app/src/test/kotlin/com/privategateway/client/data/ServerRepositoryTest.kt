@@ -91,15 +91,31 @@ class ServerRepositoryTest {
     }
 
     @Test
+    fun `preview counts duplicates the same way as adding and writes nothing`() = runBlocking<Unit> {
+        val servers = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
+        repository.add(servers.take(1))
+
+        // Сохраненный, новый и повтор внутри самого текста — как CountDuplicates десктопа.
+        val incoming = listOf(servers[0].copy(name = "Другое название"), servers[1], servers[1], servers[2])
+        assertEquals(ImportCount(duplicates = 2, renewals = 0), repository.count(incoming))
+        assertEquals(1, repository.servers.first().size, "предпросмотр ничего не пишет")
+        assertEquals(AddResult(2, 2), repository.add(incoming))
+    }
+
+    @Test
     fun `the same server imported again takes the pinned certificate and keeps its name`() = runBlocking<Unit> {
         val insecure = assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#Self-signed").server)
         assertEquals(AddResult(1, 0), repository.add(listOf(insecure)))
         val id = repository.servers.first().single().id
         repository.rename(id, "Мой сервер")
 
-        // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484).
+        // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484): предпросмотр
+        // считает это заранее, добавление — в итоге.
         val pinned = assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned").server)
-        assertEquals(AddResult(0, 1), repository.add(listOf(pinned)))
+        assertEquals(ImportCount(duplicates = 1, renewals = 1), repository.count(listOf(pinned)))
+        assertEquals(ImportCount(duplicates = 1, renewals = 0), repository.count(listOf(insecure)), "та же защита — обновлять нечего")
+        assertEquals(AddResult(0, 1, renewed = 1), repository.add(listOf(pinned)))
+        assertEquals(ImportCount(duplicates = 1, renewals = 0), repository.count(listOf(pinned)), "защита уже взята")
 
         val loaded = assertNotNull(repository.load(id))
         assertEquals(listOf("a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"), loaded.security.pinnedPeerCertSha256)
@@ -122,7 +138,8 @@ class ServerRepositoryTest {
             assertNotNull(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=$pin#A").server),
             assertNotNull(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&pcs=$pin#B").server),
         )
-        assertEquals(AddResult(0, 2), repository.add(pinned))
+        assertEquals(ImportCount(duplicates = 2, renewals = 1), repository.count(pinned))
+        assertEquals(AddResult(0, 2, renewed = 1), repository.add(pinned))
 
         assertNull(assertNotNull(repository.load(ids.getValue("A"))).security.pinnedPeerCertSha256)
         assertEquals(listOf(pin), assertNotNull(repository.load(ids.getValue("B"))).security.pinnedPeerCertSha256)
@@ -145,7 +162,7 @@ class ServerRepositoryTest {
         slow.setFavorite(id, true)
         box.release.countDown()
 
-        assertEquals(AddResult(0, 1), import.await())
+        assertEquals(AddResult(0, 1, renewed = 1), import.await())
         assertTrue(slow.servers.first().single().favorite)
         assertEquals(listOf("ab".repeat(32)), assertNotNull(slow.load(id)).security.pinnedPeerCertSha256)
     }

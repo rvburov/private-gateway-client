@@ -42,7 +42,9 @@ import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.home.HomeActions
 import com.privategateway.client.ui.home.HomeScreen
+import com.privategateway.client.ui.servers.ImportActions
 import com.privategateway.client.ui.servers.ImportScreen
+import com.privategateway.client.ui.servers.importDone
 import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.ui.theme.PgToast
@@ -57,6 +59,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 
 /** Экраны без устройства (Robolectric): что видно в каждом состоянии и что делают нажатия. Экран — как в макете (доска 25). */
 @RunWith(AndroidJUnit4::class)
@@ -415,64 +418,223 @@ class ScreensTest {
         assertEquals(1, opened)
     }
 
-    @Test
-    fun `import previews the text and offers to add what parsed`() {
-        val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
-        val input = link + "\nnot-a-link\n"
-        val previewed = mutableListOf<String>()
-        var state by mutableStateOf(ImportUi())
+    /** «Добавить профиль» с источником и текстом, которые меняют нажатия, — как MainViewModel; остальное записывается. */
+    private class ImportHarness(initial: ImportUi = ImportUi()) {
+        var state by mutableStateOf(initial)
+        val checked = mutableListOf<String>()
+        var clipboard = 0
         var added = 0
-        compose.setContent { PgTheme { ImportScreen(state, { null }, { state = state.copy(text = it) }, { previewed += it }, { state = state.copy(name = it) }, { added++ }, {}) } }
+        var images = 0
+        var files = 0
+        var scans = 0
+        var closed = 0
+        var camera by mutableStateOf(true)
+        private val scan: () -> Unit = { scans++ }
 
-        compose.onNodeWithTag("import.check").assertIsNotEnabled()
-        compose.onNodeWithTag("import.clipboard").performClick()
-        compose.onNodeWithText(text(R.string.import_empty_clipboard)).assertIsDisplayed()
-        compose.onNodeWithTag("import.text").performTextInput(input)
-        compose.onNodeWithTag("import.check").assertIsEnabled().performClick()
-        assertEquals(listOf(input), previewed)
+        val actions: ImportActions
+            get() = ImportActions(
+                source = { state = ImportUi(text = state.text, source = it) },
+                clipboard = {
+                    clipboard++
+                    state = ImportUi(text = state.text, source = ImportSource.Clipboard)
+                },
+                text = { state = state.copy(text = it) },
+                check = { checked += it },
+                name = { state = state.copy(name = it) },
+                add = { added++ },
+                close = { closed++ },
+                pickImage = { images++ },
+                pickFile = { files++ },
+                scan = scan.takeIf { camera },
+            )
+    }
 
-        assertEquals(input, state.text, "текст живет в модели окна, а не в сохраненном состоянии")
-        state = state.copy(batch = ImportParser.parse(input))
-        compose.onNodeWithText(text(R.string.import_line, "2", text(R.string.import_error_bad_link))).performScrollTo().assertIsDisplayed()
-        compose.onNodeWithTag("import.add").performScrollTo().assertIsDisplayed().performClick()
-        assertEquals(1, added)
-
-        state = state.copy(adding = true)
-        compose.onNodeWithTag("import.add").performScrollTo().assertIsNotEnabled()
-
-        state = state.copy(added = 1)
-        compose.onNodeWithTag("import.done").performScrollTo().assertIsDisplayed()
+    private fun showImport(harness: ImportHarness) {
+        compose.setContent { PgTheme { ImportScreen(harness.state, harness.actions) } }
     }
 
     @Test
-    fun `import offers the camera only when the phone has one`() {
-        var scans = 0
-        val scan: () -> Unit = { scans++ }
-        var camera by mutableStateOf(true)
-        compose.setContent { PgTheme { ImportScreen(ImportUi(), { null }, {}, {}, {}, {}, {}, onScan = scan.takeIf { camera }) } }
-        compose.onNodeWithTag("import.qr.camera").performScrollTo().assertIsDisplayed().performClick()
-        assertEquals(1, scans)
+    fun `import shows four source cards and the tapped one is chosen`() {
+        val harness = ImportHarness()
+        showImport(harness)
+        compose.onNodeWithText(text(R.string.page_add_title)).assertIsDisplayed()
+        for (tag in listOf("import.clipboard", "import.qr", "import.link", "import.file")) {
+            compose.onNodeWithTag(tag).performScrollTo().assertIsDisplayed().assertIsNotSelected()
+        }
+        compose.onNodeWithText(text(R.string.import_file_text)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.android_import_hint)).assertDoesNotExist()
+        compose.onNodeWithTag("import.text").assertDoesNotExist()
+        compose.onNodeWithTag("import.add").assertDoesNotExist()
 
-        camera = false
-        compose.onNodeWithTag("import.qr.camera").assertDoesNotExist()
-        compose.onNodeWithTag("import.qr.image").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("import.clipboard").performClick()
+        assertEquals(1, harness.clipboard)
+        compose.onNodeWithTag("import.clipboard").assertIsSelected()
+
+        compose.onNodeWithTag("import.file").performScrollTo().performClick()
+        assertEquals(1, harness.files, "карточка файла открывает окно «Открыть»")
+        compose.onNodeWithTag("import.file").assertIsSelected()
+        compose.onNodeWithTag("import.clipboard").assertIsNotSelected()
+
+        compose.onNodeWithTag("import.back").performClick()
+        assertEquals(1, harness.closed)
+    }
+
+    @Test
+    fun `link card opens the field and check below it, only while chosen`() {
+        val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
+        val harness = ImportHarness()
+        showImport(harness)
+        compose.onNodeWithTag("import.link").performScrollTo().performClick()
+        compose.onNodeWithTag("import.link").assertIsSelected()
+        compose.onNodeWithTag("import.check").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("import.text").performTextInput(link)
+        compose.onNodeWithTag("import.check").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(listOf(link), harness.checked)
+        assertEquals(link, harness.state.text, "текст живет в модели окна, а не в сохраненном состоянии")
+
+        // Повторное нажатие на раскрытую карточку проверенное не стирает.
+        harness.state = harness.state.copy(batch = ImportParser.parse(link))
+        compose.onNodeWithTag("import.link").performScrollTo().performClick()
+        compose.onNodeWithTag("import.preview").performScrollTo().assertIsDisplayed()
+
+        compose.onNodeWithTag("import.clipboard").performScrollTo().performClick()
+        compose.onNodeWithTag("import.text").assertDoesNotExist()
+        compose.onNodeWithTag("import.check").assertDoesNotExist()
+    }
+
+    @Test
+    fun `preview tiles count found, new, duplicates and errors and the button adds the new ones`() {
+        val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
+        val input = links.joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) } + "\nnot-a-link\n"
+        val batch = ImportParser.parse(input)
+        val harness = ImportHarness(ImportUi(batch = batch, duplicates = 1, source = ImportSource.Clipboard))
+        showImport(harness)
+
+        compose.onNodeWithTag("import.count.found", useUnmergedTree = true).performScrollTo().assertTextEquals("4")
+        compose.onNodeWithTag("import.count.new", useUnmergedTree = true).assertTextEquals("2")
+        compose.onNodeWithTag("import.count.duplicates", useUnmergedTree = true).assertTextEquals("1")
+        compose.onNodeWithTag("import.count.failed", useUnmergedTree = true).assertTextEquals("1")
+        compose.onNodeWithText(text(R.string.import_line, "4", text(R.string.import_error_bad_link))).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("import.format", useUnmergedTree = true).assertTextContains(text(R.string.import_format_links), substring = true)
+        compose.onNodeWithTag("import.name").performScrollTo().assertIsDisplayed()
+
+        // Кнопка — вне прокрутки, по числу новых (а не найденных): «Добавить 2 сервера».
+        val language = Texts.language(context.resources.configuration.locales)
+        compose.onNodeWithTag("import.add").assertIsDisplayed().assertTextEquals(text(Texts.importAdd(2, language), "2")).performClick()
+        assertEquals(1, harness.added)
+
+        harness.state = harness.state.copy(adding = true)
+        compose.onNodeWithTag("import.add").assertIsNotEnabled()
+    }
+
+    @Test
+    fun `nothing new says so, renewals only offer to update protection`() {
+        val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
+        val harness = ImportHarness(ImportUi(batch = ImportParser.parse(link), duplicates = 1, source = ImportSource.Clipboard))
+        showImport(harness)
+        compose.onNodeWithTag("import.add").assertTextEquals(text(R.string.import_nothing)).assertIsNotEnabled()
+        compose.onNodeWithTag("import.name").assertDoesNotExist()
+
+        harness.state = harness.state.copy(renewals = 1)
+        val language = Texts.language(context.resources.configuration.locales)
+        compose.onNodeWithTag("import.add").assertTextEquals(text(Texts.importRenew(1, language), "1")).assertIsEnabled()
+    }
+
+    @Test
+    fun `more than three bad lines are counted in one line of the warning`() {
+        val bad = (1..5).joinToString("\n") { "not-a-link-$it" }
+        val harness = ImportHarness(ImportUi(batch = ImportParser.parse(bad), source = ImportSource.Clipboard))
+        showImport(harness)
+        compose.onNodeWithTag("import.errors").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.import_line, "3", text(R.string.import_error_bad_link))).assertExists()
+        compose.onNodeWithText(text(R.string.import_line, "4", text(R.string.import_error_bad_link))).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.import_more, "2")).assertExists()
+    }
+
+    @Test
+    fun `text without servers says so instead of a preview`() {
+        val harness = ImportHarness(ImportUi(batch = ImportParser.parse(""), source = ImportSource.Clipboard))
+        showImport(harness)
+        compose.onNodeWithTag("import.empty").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("import.preview").assertDoesNotExist()
+        compose.onNodeWithTag("import.add").assertDoesNotExist()
+    }
+
+    @Test
+    fun `qr card offers the camera and an image, without a camera it opens the image at once`() {
+        val harness = ImportHarness()
+        showImport(harness)
+        compose.onNodeWithTag("import.qr").performScrollTo().performClick()
+        compose.onNodeWithTag("import.qr").assertIsSelected()
+        // Закрытое меню не составляется вовсе (PgMenu): «есть» — значит открыто.
+        compose.onNodeWithTag("import.qr.menu").assertExists()
+        compose.onNodeWithTag("import.qr.camera").performClick()
+        assertEquals(1, harness.scans)
+        compose.onNodeWithTag("import.qr.menu").assertDoesNotExist()
+
+        compose.onNodeWithTag("import.qr").performClick()
+        compose.onNodeWithTag("import.qr.image").performClick()
+        assertEquals(1, harness.images)
+
+        harness.camera = false
+        compose.onNodeWithTag("import.qr").performClick()
+        compose.onNodeWithTag("import.qr.menu").assertDoesNotExist()
+        assertEquals(2, harness.images, "без камеры — сразу выбор картинки")
+        assertEquals(1, harness.scans)
     }
 
     @Test
     fun `subscription download shows progress, the reason it failed and the http warning`() {
         val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
-        var state by mutableStateOf(ImportUi(text = "https://example.com/sub/abcdef", downloading = true))
-        compose.setContent { PgTheme { ImportScreen(state, { null }, {}, {}, { state = state.copy(name = it) }, {}, {}) } }
-        compose.onNodeWithTag("import.downloading").assertIsDisplayed()
+        val harness = ImportHarness(ImportUi(text = "https://example.com/sub/abcdef", downloading = true, source = ImportSource.Link))
+        showImport(harness)
+        compose.onNodeWithTag("import.downloading").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("import.check").assertIsNotEnabled()
 
-        state = ImportUi(text = state.text, failure = FailureReason.Forbidden(403))
-        compose.onNodeWithText(text(R.string.import_download_failed, text(R.string.import_download_forbidden, "403"))).assertIsDisplayed()
+        harness.state = ImportUi(text = harness.state.text, failure = FailureReason.Forbidden(403), source = ImportSource.Link)
+        compose.onNodeWithText(text(R.string.import_download_failed, text(R.string.import_download_forbidden, "403"))).performScrollTo().assertIsDisplayed()
 
-        state = ImportUi(text = state.text, batch = ImportParser.parse(link), insecure = true, name = "example.com")
+        harness.state = ImportUi(text = harness.state.text, batch = ImportParser.parse(link), insecure = true, name = "example.com", source = ImportSource.Link)
         compose.onNodeWithTag("import.insecure").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("import.name").performScrollTo().assertIsDisplayed()
         compose.onNodeWithText("example.com").assertIsDisplayed()
+    }
+
+    @Test
+    fun `an added subscription warns in place of the name and the name is not longer than 64`() {
+        val link = Fixtures.testdata.resolve("links/vless/reality-vision.txt").readText().trim()
+        val harness = ImportHarness(ImportUi(batch = ImportParser.parse(link), existing = "Провайдер", source = ImportSource.Link))
+        showImport(harness)
+        compose.onNodeWithTag("import.existing").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.import_subscription_exists, "Провайдер")).assertIsDisplayed()
+        compose.onNodeWithTag("import.name").assertDoesNotExist()
+
+        harness.state = harness.state.copy(existing = null)
+        compose.onNodeWithTag("import.name").performScrollTo().performTextInput("x".repeat(70))
+        assertEquals(64, harness.state.name.length)
+    }
+
+    @Test
+    fun `empty clipboard and an unreadable file are said under the cards`() {
+        val harness = ImportHarness(ImportUi(source = ImportSource.Clipboard, problem = Message(R.string.import_empty_clipboard)))
+        showImport(harness)
+        compose.onNodeWithText(text(R.string.import_empty_clipboard)).performScrollTo().assertIsDisplayed()
+
+        harness.state = ImportUi(source = ImportSource.File, problem = Message(R.string.import_file_failed, "huge.txt"))
+        compose.onNodeWithText(text(R.string.import_file_failed, "huge.txt")).performScrollTo().assertIsDisplayed()
+    }
+
+    @Test
+    fun `the toast after adding says what happened`() {
+        assertEquals(null, importDone(ImportUi(), "ru"))
+        val added = assertNotNull(importDone(ImportUi(added = 3), "ru"))
+        assertEquals(R.string.import_added_few, added.text)
+        assertEquals(listOf("3"), added.args.toList())
+        assertEquals(R.string.import_renewed_one, importDone(ImportUi(added = 0, renewals = 1), "ru")?.text)
+        assertEquals(R.string.import_nothing, importDone(ImportUi(added = 0), "ru")?.text)
+        val updated = assertNotNull(importDone(ImportUi(added = 1, removed = 2, existing = "Провайдер"), "ru"))
+        assertEquals(R.string.subs_updated, updated.text)
+        assertEquals(listOf("Провайдер", "1", "2"), updated.args.toList())
     }
 
     @Test

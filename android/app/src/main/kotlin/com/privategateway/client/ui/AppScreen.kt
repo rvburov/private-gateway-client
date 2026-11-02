@@ -16,6 +16,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -117,9 +118,11 @@ fun AppScreen(
         fromSubscriptions = false
         viewModel.closeImport()
     }
-    // Добавлено — итог подсказкой и «Серверы» (доска 3: «Добавить N серверов» ведет к списку), экран добавления сброшен.
+    // Добавлено — итог подсказкой и «Серверы» (доска 3: «Добавить N серверов» ведет к списку), экран добавления сброшен. Язык
+    // форм чисел — из LocalConfiguration: конфигурацию через LocalContext Compose не отслеживает (и Lint это запрещает).
+    val language = Texts.language(LocalConfiguration.current.locales)
     LaunchedEffect(importing.added) {
-        val done = importDone(importing, Texts.language(context.resources.configuration.locales)) ?: return@LaunchedEffect
+        val done = importDone(importing, language) ?: return@LaunchedEffect
         toast.show(context.getString(done.text, *done.args))
         adding = false
         scanning = false

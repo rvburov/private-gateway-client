@@ -74,8 +74,9 @@ struct RootView: View {
         }
         .pgLayers(layers)
         .task {
-            importing.onAdded = { [model] in
+            importing.onAdded = { result, existing in
                 Task { await model.reload() }
+                imported(result, existing: existing)
             }
             // Сеть телефона — для строки сети главной и «Проверки»; следим, пока окно живо.
             inspector.start()
@@ -107,6 +108,13 @@ struct RootView: View {
             }
 
             await speed.run()
+        }
+        .onChange(of: model.home.servers) { _ in
+            // Список серверов изменился, пока открыт предпросмотр «Добавить» (обновление подписки, удаление): дубли и «уже
+            // добавлена» — заново, иначе кнопка обещала бы не то, что сделает добавление.
+            if adding {
+                Task { await importing.recount() }
+            }
         }
         .onChange(of: model.message) { message in
             // Сообщение модели — подсказкой сверху окна (доска 19): итог действия — 1,8 с, событие (выбранный сервер пропал из
@@ -281,9 +289,21 @@ struct RootView: View {
         }
     }
 
+    /// «Назад» из «Добавить профиль» — туда, откуда открыли (вкладка и страница настроек остались прежними), как Back десктопа.
     private func closeImport() {
         adding = false
         importing.reset()
+    }
+
+    /// «Добавить» сохранило серверы (доска 03, ImportPage десктопа): итог подсказкой сверху, экран «Добавить профиль» сброшен,
+    /// вкладка — «Серверы».
+    private func imported(_ result: AddResult, existing: String?) {
+        layers.show(ImportLook.added(result, existing: existing, model.texts))
+        closeImport()
+        tab = .servers
+        cardOpen = false
+        settingsPage = .main
+        layers.closeMenu()
     }
 }
 

@@ -79,17 +79,16 @@ class DeviceImportFiles @Inject constructor(@param:ApplicationContext private va
     private fun limited(input: InputStream): ByteArray? {
         val out = ByteArrayOutputStream()
         val buffer = ByteArray(16 * 1024)
-        while (true) {
-            val read = input.read(buffer)
-            if (read < 0) {
-                return out.toByteArray()
-            }
-
+        var read = input.read(buffer)
+        while (read >= 0) {
             if (out.size() + read > ImportFile.MAX_BYTES) {
                 return null
             }
 
             out.write(buffer, 0, read)
+            read = input.read(buffer)
         }
+
+        return out.toByteArray()
     }
 }

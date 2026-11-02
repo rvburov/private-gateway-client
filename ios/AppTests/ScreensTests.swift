@@ -136,17 +136,20 @@ final class ScreensTests: XCTestCase {
         let container = SharedContainer(directory: directory, vault: MemoryVault())
         let model = ImportModel(container: container, source: FixedSource(text: links.joined(separator: "\n")))
         var added = 0
-        model.onAdded = { added += 1 }
+        model.onAdded = { _, _ in added += 1 }
 
         await model.check("https://example.com/sub/0123456789abcdef")
         let batch = try XCTUnwrap(model.preview?.batch)
         XCTAssertEqual(batch.found, links.count)
         XCTAssertEqual(model.name, "Мой VPN", "название — из Profile-Title")
+        XCTAssertNil(model.existing, "такой подписки еще нет — поле названия видно")
+        let fresh = ImportLook.fresh(batch, count: model.count)
         XCTAssertNotNil(try render(ImportView(model: model, texts: PgTexts(.russian), onClose: {})))
 
         await model.add()
         let good = batch.found - batch.failed
         XCTAssertEqual((model.added ?? 0) + model.duplicates, good)
+        XCTAssertEqual(model.added, fresh, "новых — столько, сколько обещала кнопка «Добавить N серверов»")
         XCTAssertEqual(added, 1)
         let stored = try await container.servers.servers()
         XCTAssertEqual(stored.count, model.added)
@@ -238,6 +241,10 @@ final class ScreensTests: XCTestCase {
                 texts: texts, settings: SubscriptionSettings(), groups: groups, manualCount: 0, home: home, editing: "f", actions: SubscriptionsActions(), onBack: {}
             )
             XCTAssertNotNil(try render(editing, height: 1600))
+            // Лист «Изменить» — системный лист поверх экрана: снимок экрана его не видит, поэтому лист рисуется отдельно.
+            for group in groups {
+                XCTAssertNotNil(try render(SubscriptionEditView(texts: texts, group: group, onSave: { _, _ in true }, onClose: {})), group.name)
+            }
             let empty = SubscriptionsView(texts: texts, settings: SubscriptionSettings(), groups: [], manualCount: 0, home: HomeState(), actions: SubscriptionsActions(), onBack: {})
             XCTAssertNotNil(try render(empty))
         }
@@ -257,10 +264,12 @@ final class ScreensTests: XCTestCase {
 
         await model.updateSubscription(group)
         XCTAssertEqual(model.message, PgTexts(.russian).subsBlockedOff, "только через VPN, а защита выключена")
+        XCTAssertTrue(model.messageIsEvent, "просьба включить защиту держится дольше итога")
 
         await model.setSubscriptionSettings(SubscriptionSettings(onlyViaVpn: false))
         await model.updateSubscription(group)
         XCTAssertEqual(model.message?.hasPrefix("«Мой VPN» обновлена"), true, model.message ?? "")
+        XCTAssertFalse(model.messageIsEvent, "итог «Обновить» — 1,8 с")
         XCTAssertGreaterThan(model.groups.first?.servers ?? 0, 2)
         XCTAssertTrue(model.updating.isEmpty)
 

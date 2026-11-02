@@ -105,8 +105,6 @@ class ImportActions(
  */
 @Composable
 fun ImportScreen(state: ImportUi, actions: ImportActions) {
-    // Текст — в модели окна, а не в сохраненном состоянии: конфиг на сотни КБ в Bundle уронил бы процесс (и VPN с ним),
-    // а ключи серверов попали бы в системный процесс.
     val language = Texts.language(LocalConfiguration.current.locales)
     val batch = state.batch?.takeIf { it.found > 0 }
     Column(
@@ -316,6 +314,8 @@ private fun QrSource(selected: Boolean, actions: ImportActions) {
 /** «Ввести ссылку» раскрыта: поле в несколько строк моноширинным и «Проверить» — второстепенная кнопка справа. */
 @Composable
 private fun LinkBox(state: ImportUi, actions: ImportActions) {
+    // Текст — в модели окна, а не в сохраненном состоянии: конфиг на сотни КБ в Bundle уронил бы процесс (и VPN с ним),
+    // а ключи серверов попали бы в системный процесс.
     val text = state.text
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(PgSpace.S)) {
         PgInput(

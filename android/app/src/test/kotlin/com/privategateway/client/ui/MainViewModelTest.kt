@@ -25,6 +25,10 @@ import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.ui.qr.QrImages
 import com.privategateway.client.ui.qr.QrRead
+import com.privategateway.client.ui.servers.FileRead
+import com.privategateway.client.ui.servers.ImportFile
+import com.privategateway.client.ui.servers.ImportFiles
+import com.privategateway.client.ui.servers.importDone
 import com.privategateway.client.core.subscriptions.DownloadFailure
 import com.privategateway.client.core.subscriptions.FailureReason
 import com.privategateway.client.core.subscriptions.SubscriptionContent
@@ -90,6 +94,15 @@ class MainViewModelTest {
         override suspend fun read(image: Uri): QrRead = result
     }
     private val control = FakeControl()
+
+    /** Окно «Открыть» без окна: что «прочиталось» из файла, задает тест. */
+    private class FakeFiles : ImportFiles {
+        @Volatile var result: FileRead = FileRead.Failed(null)
+
+        override suspend fun read(file: Uri): FileRead = result
+    }
+
+    private val files = FakeFiles()
 
     /** Ответы «сети» на запрос внешнего IP (Cloudflare trace): что вернуть, задает тест; ответ может ждать. */
     @Volatile private var answer: suspend () -> String? = { null }
@@ -181,6 +194,7 @@ class MainViewModelTest {
             web,
             networks,
             counters,
+            files,
         )
     }
 
@@ -245,6 +259,117 @@ class MainViewModelTest {
         val result = wait { model.importing.first { it.added != null } }
         assertEquals(0, result.added)
         assertEquals(1, result.duplicates)
+    }
+
+    @Test
+    fun `preview counts new servers, duplicates and renewals before adding`() {
+        val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
+        wait { servers.add(links.take(1)) }
+
+        // Сохраненный под другим названием и повтор в самом тексте — дубли; новых — два (ImportPreview десктопа).
+        val text = listOf(links[0].copy(name = "Другое название"), links[1], links[1], links[2])
+            .joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) }
+        model.preview(text)
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(4, ready.batch?.found)
+        assertEquals(2, ready.duplicates)
+        assertEquals(2, ready.fresh)
+        assertEquals(0, ready.renewals)
+        assertEquals(1, wait { servers.servers.first() }.size, "предпросмотр ничего не добавляет")
+
+        model.add()
+        val done = wait { model.importing.first { it.added != null } }
+        assertEquals(2, done.added)
+        assertEquals(R.string.import_added_few, importDone(done, "ru")?.text, "итог — «Добавлено 2 сервера»")
+    }
+
+    @Test
+    fun `a chosen source is kept through the preview and a new source drops the old preview and name`() {
+        val link = com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first())
+        model.selectSource(ImportSource.Link)
+        model.edit(link)
+        model.preview(link)
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(ImportSource.Link, ready.source)
+        model.name("Свой профиль")
+
+        model.selectSource(ImportSource.Clipboard)
+        val switched = model.importing.value
+        assertEquals(ImportSource.Clipboard, switched.source)
+        assertNull(switched.batch, "прежний предпросмотр не нужен")
+        assertEquals("", switched.name, "название — заново, как у десктопа")
+        assertEquals(link, switched.text, "текст поля ссылки остается")
+    }
+
+    @Test
+    fun `clipboard without text says so and with text previews it without touching the field`() {
+        model.edit("свой текст")
+        model.fromClipboard("   ")
+        assertEquals(R.string.import_empty_clipboard, model.importing.value.problem?.text)
+        assertEquals(ImportSource.Clipboard, model.importing.value.source)
+
+        model.fromClipboard(com.privategateway.client.core.links.LinkWriter.write(Fixtures.servers().first()))
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(1, ready.batch?.found)
+        assertNull(ready.problem)
+        assertEquals("свой текст", ready.text, "текст из буфера в поле не попадает")
+    }
+
+    @Test
+    fun `a file is parsed and names the profile by itself, an unreadable one is named in the message`() {
+        val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(2)
+        files.result = FileRead.Found("work-servers.yaml", links.joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) })
+        model.selectSource(ImportSource.File)
+        model.previewFile(Uri.parse("content://documents/document/1"))
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals(ImportSource.File, ready.source)
+        assertEquals(2, ready.batch?.found)
+        assertEquals("work-servers", ready.name, "название — имя файла без расширения")
+
+        files.result = FileRead.Failed("huge.txt")
+        model.previewFile(Uri.parse("content://documents/document/2"))
+        val failed = wait { model.importing.first { it.problem != null } }
+        assertEquals(R.string.import_file_failed, failed.problem?.text)
+        assertEquals(listOf("huge.txt"), failed.problem?.args?.toList())
+        assertNull(failed.batch)
+    }
+
+    @Test
+    fun `profile name from a file drops only the extension`() {
+        assertEquals("work-servers", ImportFile.profileName("work-servers.yaml"))
+        assertEquals("my.servers", ImportFile.profileName("my.servers.txt"))
+        assertEquals("sub", ImportFile.profileName("sub"))
+        assertEquals(".hidden", ImportFile.profileName(".hidden"))
+    }
+
+    @Test
+    fun `adding the same subscription again updates it and says so`() {
+        val links = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(3)
+        source.content = SubscriptionContent(links.take(2).joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) }, "Провайдер")
+        model.preview("https://example.com/sub/abcdef")
+        wait { model.importing.first { it.batch != null } }
+        model.add()
+        wait { model.importing.first { it.added != null } }
+        model.closeImport()
+        // Выбранный сервер, пропавший из подписки, остается до другого выбора: здесь выбора нет — пропавший удаляется.
+        wait { settings.select(null) }
+
+        // Подписка теперь отдает второй и третий: первый удалится, третий добавится — в той же группе (решение 528).
+        source.content = SubscriptionContent(links.drop(1).joinToString("\n") { com.privategateway.client.core.links.LinkWriter.write(it) }, "Провайдер")
+        model.preview("https://example.com/sub/abcdef")
+        val ready = wait { model.importing.first { it.batch != null } }
+        assertEquals("Провайдер", ready.existing)
+        assertEquals(1, ready.duplicates)
+        assertEquals(1, ready.fresh)
+
+        model.add()
+        val done = wait { model.importing.first { it.added != null } }
+        assertEquals(1, done.added)
+        assertEquals(1, done.removed)
+        val message = assertNotNull(importDone(done, "ru"))
+        assertEquals(R.string.subs_updated, message.text)
+        assertEquals(listOf("Провайдер", "1", "1"), message.args.toList())
+        assertEquals(1, wait { servers.groups.first() }.size, "вторая группа не появилась")
     }
 
     @Test
