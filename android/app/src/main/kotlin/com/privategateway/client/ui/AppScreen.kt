@@ -59,8 +59,6 @@ class AppActions(
     val clipboard: () -> String?,
     /** Скопировать ссылку сервера: в буфере она помечена как секрет (Android не показывает ее в подсказке). */
     val copySecret: (String) -> Unit = {},
-    /** Отправить ссылку сервера — системный выбор программы. */
-    val send: (String) -> Unit = {},
     /** Скопировать текст в буфер обычным текстом (IP с главной). */
     val copy: (String) -> Unit = {},
 )
@@ -82,7 +80,7 @@ fun AppScreen(
     var adding by rememberSaveable { mutableStateOf(false) }
     // Сканер QR камерой — поверх «Добавить».
     var scanning by rememberSaveable { mutableStateOf(false) }
-    // Открытая карточка сервера (доска 11) — страница поверх списка серверов.
+    // Открытая карточка сервера (доска 11) — нижний лист поверх списка серверов.
     var card by rememberSaveable { mutableStateOf<String?>(null) }
     val requested by viewModel.requestedTab.collectAsStateWithLifecycle()
     val context = LocalContext.current
@@ -196,26 +194,7 @@ fun AppScreen(
                         )
                     }
 
-                    Tab.Servers -> if (open != null) {
-                        ServerCardScreen(
-                            ui,
-                            open,
-                            CardActions(
-                                back = { card = null },
-                                connect = { id -> viewModel.connectTo(id, actions.power) },
-                                favorite = viewModel::setFavorite,
-                                rename = viewModel::rename,
-                                delete = { id ->
-                                    card = null
-                                    viewModel.delete(id)
-                                },
-                                address = viewModel::address,
-                                share = viewModel::shareLink,
-                                copy = actions.copySecret,
-                                send = actions.send,
-                            ),
-                        )
-                    } else {
+                    Tab.Servers -> {
                         ServersScreen(
                             ui,
                             query,
@@ -231,6 +210,26 @@ fun AppScreen(
                                 reset = servers::reset,
                             ),
                         )
+                        // Карточка — нижний лист поверх списка (доска 11); «Сервер удален» говорит модель после удаления.
+                        if (open != null) {
+                            ServerCardScreen(
+                                ui,
+                                open,
+                                CardActions(
+                                    close = { card = null },
+                                    connect = { id -> viewModel.connectTo(id, actions.power) },
+                                    favorite = viewModel::setFavorite,
+                                    rename = viewModel::rename,
+                                    delete = { id ->
+                                        card = null
+                                        viewModel.delete(id)
+                                    },
+                                    address = viewModel::address,
+                                    share = viewModel::shareLink,
+                                    copy = actions.copySecret,
+                                ),
+                            )
+                        }
                     }
 
                     Tab.Check -> {
@@ -294,7 +293,10 @@ fun AppScreen(
                 )
             }
 
-            PgToast(toast, Modifier.align(Alignment.TopCenter))
+            // Пока открыта карточка сервера, подсказку показывает ее лист: окно листа закрывает собой это окно.
+            if (adding || tab != Tab.Servers || card == null) {
+                PgToast(toast, Modifier.align(Alignment.TopCenter))
+            }
         }
     }
 }

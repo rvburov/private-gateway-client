@@ -149,9 +149,19 @@ fun PgDialog(
  * Нижний лист (.sheet с .grabber): белый, сверху скругление radius.panel и тень shadow.sheet, начинается на 92 ниже строки
  * состояния и идет до низа экрана; ручка control.grabber 40 × 5. Содержимое прокручивается; лист закрывают нажатие на
  * затемнение и «Назад» (в макете так же — протягивания нет). Теги: лист — [tag], затемнение — «[tag].scrim».
+ *
+ * [scroll] = false — лист сам не прокручивается: содержимое во всю его высоту раскладывает себя само (карточка сервера:
+ * заголовок и кнопки стоят, прокручивается середина — Modifier.weight). [toast] — подсказки окна поверх листа: окно листа
+ * закрывает собой окно приложения, где подсказка показывается обычно (пока лист открыт, окно свою не показывает).
  */
 @Composable
-fun PgSheet(onDismiss: () -> Unit, tag: String, content: @Composable ColumnScope.() -> Unit) {
+fun PgSheet(
+    onDismiss: () -> Unit,
+    tag: String,
+    toast: PgToastState? = null,
+    scroll: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     PgLayer(onDismiss, tag, Alignment.BottomCenter) {
         val shape = RoundedCornerShape(topStart = PgRadius.Panel, topEnd = PgRadius.Panel)
         Column(
@@ -177,13 +187,17 @@ fun PgSheet(onDismiss: () -> Unit, tag: String, content: @Composable ColumnScope
                 Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .verticalScroll(rememberScrollState())
+                    .then(if (scroll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
                     .padding(horizontal = PgSpace.WindowSideMobile)
                     .navigationBarsPadding()
                     .imePadding()
                     .padding(bottom = 20.dp),
                 content = content,
             )
+        }
+
+        if (toast != null) {
+            PgToast(toast, Modifier.align(Alignment.TopCenter))
         }
     }
 }

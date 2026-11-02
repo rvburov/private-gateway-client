@@ -204,7 +204,10 @@ class MainViewModel @Inject constructor(
 
     private val notices = MutableSharedFlow<Message>(extraBufferCapacity = 8)
 
-    /** Короткие сообщения окна: итог замера задержки, выбранный сервер пропал или изменился, подписка не обновилась. */
+    /**
+     * Короткие сообщения окна: итог замера задержки, сервер удален, выбранный сервер пропал или изменился, подписка не
+     * обновилась.
+     */
     val messages: SharedFlow<Message> = notices.asSharedFlow()
 
     init {
@@ -294,7 +297,10 @@ class MainViewModel @Inject constructor(
         return true
     }
 
-    /** Удалить сервер; защита идет через него — VPN отключается, другой сервер пользователь выберет сам (доска 18). */
+    /**
+     * Удалить сервер; защита идет через него — VPN отключается, другой сервер пользователь выберет сам (доска 18). Когда
+     * сервер удален, — «Сервер удален» (доска 11, как DeleteAsync десктопа).
+     */
     fun delete(id: String) {
         val status = monitor.status.value
         if (status.state != TunnelState.Off && status.serverId == id) {
@@ -306,6 +312,8 @@ class MainViewModel @Inject constructor(
             if (settings.selectedServerId.first() == id) {
                 settings.select(null)
             }
+
+            notices.emit(Message(R.string.card_deleted))
         }
     }
 

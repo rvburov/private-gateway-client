@@ -319,6 +319,26 @@ class ControlsTest {
     }
 
     @Test
+    fun `sheet shows the window toast above itself`() {
+        val toast = PgToastState()
+        compose.setContent {
+            PgTheme {
+                PgSheet({}, "sheet.card", toast = toast, scroll = false) {
+                    Text(text(R.string.card_share))
+                }
+            }
+        }
+
+        compose.onNodeWithText(text(R.string.card_share)).assertIsDisplayed()
+        compose.onNodeWithTag("toast").assertDoesNotExist()
+        // Окно листа закрывает окно приложения: подсказка, показанная, пока лист открыт, — в окне листа, поверх него.
+        toast.show(text(R.string.card_share_noKey))
+        compose.onNodeWithTag("toast").assertIsDisplayed().assertTextEquals(text(R.string.card_share_noKey))
+        compose.mainClock.advanceTimeBy(2_000)
+        compose.onNodeWithTag("toast").assertDoesNotExist()
+    }
+
+    @Test
     fun `toast shows from any screen and goes away by itself after 1,8 s`() {
         val toast = PgToastState()
         compose.setContent {

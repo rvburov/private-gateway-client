@@ -74,7 +74,6 @@ class MainActivity : ComponentActivity() {
             openVpnSettings = ::openVpnSettings,
             clipboard = ::clipboardText,
             copySecret = ::copySecret,
-            send = ::send,
             copy = ::copyText,
         )
         setContent {
@@ -180,11 +179,6 @@ class MainActivity : ComponentActivity() {
     private fun copyText(text: String) {
         val clipboard = getSystemService(ClipboardManager::class.java) ?: return
         clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.ip_title), text))
-    }
-
-    private fun send(text: String) {
-        val intent = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text)
-        startActivity(Intent.createChooser(intent, getString(R.string.android_share_send)))
     }
 
     private fun clipboardText(): String? {

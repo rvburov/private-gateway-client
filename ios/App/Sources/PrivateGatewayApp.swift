@@ -25,8 +25,8 @@ struct PrivateGatewayApp: App {
     }
 }
 
-/// Окно — как `AppScreen` Android: разделы островка (главная, серверы, проверка, настройки), карточка сервера поверх списка, «Добавить» поверх
-/// всего. Вернулись в приложение — серверы, настройки и состояние перечитываются: их мог поменять «Пункт управления» или
+/// Окно — как `AppScreen` Android: разделы островка (главная, серверы, проверка, настройки), карточка сервера нижним листом поверх
+/// списка, «Добавить» поверх всего. Вернулись в приложение — серверы, настройки и состояние перечитываются: их мог поменять «Пункт управления» или
 /// расширение туннеля.
 struct RootView: View {
     @ObservedObject var model: AppModel
@@ -38,8 +38,10 @@ struct RootView: View {
     @StateObject private var layers = PgLayers()
     @State private var tab = AppTab.home
     @State private var adding = false
-    /// Открытая карточка сервера (доска 11) — страница поверх списка серверов.
+    /// Карточка сервера (доска 11) — нижний лист поверх списка серверов: какой сервер и открыт ли лист. Сервер остается, пока
+    /// лист уезжает вниз, — лист не пустеет на ходу.
     @State private var card: String?
+    @State private var cardOpen = false
     @State private var query = ServerListQuery()
     /// Открытая страница «Настроек».
     @State private var settingsPage = SettingsPage.main
@@ -62,7 +64,7 @@ struct RootView: View {
                     leak: homeFacts.leak(model.home.status.state),
                     onTab: { next in
                         tab = next
-                        card = nil
+                        cardOpen = false
                         settingsPage = .main
                         layers.closeMenu()
                     },
@@ -134,7 +136,7 @@ struct RootView: View {
             }
 
             adding = false
-            card = nil
+            cardOpen = false
             switch route {
             case .servers:
                 tab = .servers
@@ -169,13 +171,18 @@ struct RootView: View {
                 onCheck: { tab = .check }, onCheckNow: measureWebIp, onRetry: { Task { await model.retry() } }
             )
         case .servers:
-            if let card {
-                ServerCardView(texts: model.texts, home: model.home, id: card, actions: cardActions)
-            } else {
-                ServersView(
-                    texts: model.texts, home: model.home, query: $query, onSelect: { id in Task { await model.select(id) } }, onOpen: { card = $0 },
-                    onAdd: { adding = true }, onRefresh: { Task { await model.refreshLatency() } }
-                )
+            ServersView(
+                texts: model.texts, home: model.home, query: $query, onSelect: { id in Task { await model.select(id) } },
+                onOpen: { id in
+                    card = id
+                    cardOpen = true
+                },
+                onAdd: { adding = true }, onRefresh: { Task { await model.refreshLatency() } }
+            )
+            .pgSheet(isPresented: $cardOpen) {
+                if let card {
+                    ServerCardView(texts: model.texts, home: model.home, id: card, actions: cardActions)
+                }
             }
         case .check:
             CheckView(
@@ -213,12 +220,16 @@ struct RootView: View {
 
     private var cardActions: CardActions {
         CardActions(
-            back: { card = nil },
-            connect: { id in Task { await model.connectTo(id) } },
+            back: { cardOpen = false },
+            connect: { id in
+                // «Подключиться» закрывает лист (data-close макета, CloseSheet десктопа) — видно, как поднимается защита.
+                cardOpen = false
+                Task { await model.connectTo(id) }
+            },
             favorite: { id, favorite in Task { await model.setFavorite(id, favorite) } },
             rename: { id, name in Task { await model.rename(id, name) } },
             delete: { id in
-                card = nil
+                cardOpen = false
                 Task { await model.delete(id) }
             },
             address: { id in await model.address(id) },
@@ -266,7 +277,7 @@ struct RootView: View {
             adding = true
         case .choose:
             tab = .servers
-            card = nil
+            cardOpen = false
         }
     }
 

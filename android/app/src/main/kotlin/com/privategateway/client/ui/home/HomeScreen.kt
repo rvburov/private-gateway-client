@@ -739,21 +739,3 @@ private fun SpeedColumn(title: String, value: String, unit: String, color: Color
 private fun SpeedDivider() {
     Box(Modifier.width(1.dp).fillMaxHeight().background(PgColor.Line.Divider))
 }
-
-/** Значок страны: две буквы кода на подложке (цветные флаги шрифт рисует не везде); кода нет — щит. */
-@Composable
-fun CountryBadge(code: String) {
-    Box(
-        Modifier
-            .size(PgLayout.TouchTarget - 4.dp)
-            .clip(RoundedCornerShape(PgRadius.Input))
-            .background(PgColor.Accent.Tint),
-        contentAlignment = Alignment.Center,
-    ) {
-        if (code.isEmpty()) {
-            PgIcon(PgIcons.Shield, null, color = PgColor.Accent.Text, size = 18.dp)
-        } else {
-            Text(code, color = PgColor.Accent.Text, style = PgType.BodyStrong)
-        }
-    }
-}

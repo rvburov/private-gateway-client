@@ -151,9 +151,10 @@ final class AppModel: ObservableObject {
 
     private var protectionOff: Bool { home.status.state == .off }
 
-    /// «Обновить» на главной и в «Серверах»: задержка всех серверов через ядро — только без защиты. Замер уже идет — нажатие
-    /// не считается; защита включена или включилась во время замера — сообщение, почему не мерили. Список перечитывается
-    /// после каждой порции.
+    /// «Обновить серверы» на главной и в «Серверах»: список заново и задержка всех серверов через ядро — только без защиты.
+    /// Замер уже идет — нажатие не считается (кнопка не гаснет, крутится только стрелка); замерили — «Серверы обновлены · пинг
+    /// проверен», как у десктопа; защита включена или включилась во время замера — сообщение, почему не мерили. Список
+    /// перечитывается после каждой порции.
     func refreshLatency() async {
         home.measuring = true
         let result = await meter.measure { [weak self] in
@@ -165,7 +166,7 @@ final class AppModel: ObservableObject {
 
         await reload()
         switch result {
-        case .done: post(texts.androidServersPingDone)
+        case .done: post(texts.serverRefreshed)
         case .busy: post(texts.androidServersPingBusy)
         case .running: break
         }
@@ -269,9 +270,12 @@ final class AppModel: ObservableObject {
         await run { try await self.actions.connectTo(id, state: state) }
     }
 
+    /// Удалить сервер (после «да» в карточке); удалился — «Сервер удален».
     func delete(_ id: String) async {
         let status = home.status
-        await run { try await self.actions.delete(id, status: status) }
+        if await run({ try await self.actions.delete(id, status: status) }) {
+            post(texts.cardDeleted)
+        }
     }
 
     func setFavorite(_ id: String, _ favorite: Bool) async {
@@ -320,16 +324,20 @@ final class AppModel: ObservableObject {
         try? await container.servers.shareLink(id)
     }
 
-    /// Действие и перечитанное состояние. Отказ туннеля (iOS не дала поднять VPN) — ошибкой с кодом; файл не записался —
-    /// перечитанное состояние покажет, что ничего не изменилось.
-    private func run(_ body: () async throws -> Void) async {
+    /// Действие и перечитанное состояние; true — действие прошло без ошибки. Отказ туннеля (iOS не дала поднять VPN) — ошибкой
+    /// с кодом; файл не записался — перечитанное состояние покажет, что ничего не изменилось.
+    @discardableResult
+    private func run(_ body: () async throws -> Void) async -> Bool {
         appError = nil
+        var done = false
         do {
             try await body()
+            done = true
         } catch let failure as TunnelFailure {
             appError = failure.code
         } catch {}
 
         await reload()
+        return done
     }
 }

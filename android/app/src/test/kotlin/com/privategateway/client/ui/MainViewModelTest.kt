@@ -446,6 +446,21 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `deleting says the server is deleted once it is gone`() {
+        val (first, second) = twoServers()
+        val said = CopyOnWriteArrayList<Int>()
+        val listener = CoroutineScope(Dispatchers.Unconfined).launch { model.messages.collect { said += it.text } }
+        try {
+            model.delete(first)
+            waitUntil { said.isNotEmpty() }
+            assertEquals(listOf(R.string.card_deleted), said.toList())
+            assertEquals(listOf(second), wait { servers.servers.first() }.map { it.id }, "«Сервер удален» — когда его уже нет в списке")
+        } finally {
+            listener.cancel()
+        }
+    }
+
+    @Test
     fun `rename keeps a valid own name and the link name clears it`() {
         val (first, _) = twoServers()
         wait { model.ui.first { it.servers.size == 2 } }
