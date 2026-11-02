@@ -12,10 +12,18 @@ struct PgOption<Value: Hashable>: Identifiable {
     }
 }
 
+/// Пункт-ссылка под чертой внизу меню выбора («Свой адрес…» у «DNS в туннеле», .btn-plain доски 05): выбранным не
+/// становится — открывает свое (лист), выбор приходит из `selection` потом.
+struct PgMenuLink {
+    let title: String
+    let action: () -> Void
+}
+
 /// Выбор из списка (.btn-select, Button.select): белая кнопка высотой 36 со скруглением 10 и рамкой line.strong, подпись
 /// выбранного small Medium и синяя галочка вниз; нажатие открывает меню у кнопки (.popup) — текущий пункт синим полужирным
 /// без заливки. Опасный выбор — через диалог (`confirm`): отметка приходит из `selection` после «да». Меню и диалог рисуют
-/// слои окна (`PgLayers`).
+/// слои окна (`PgLayers`). Выбранного нет среди пунктов (свой адрес DNS) — на кнопке `valueTitle`, в меню текущего нет;
+/// `link` — пункт под чертой внизу меню.
 struct PgSelect<Value: Hashable>: View {
     let options: [PgOption<Value>]
     let selection: Value
@@ -24,6 +32,8 @@ struct PgSelect<Value: Hashable>: View {
     var enabled = true
     var identifier = ""
     var confirm: (Value) -> PgDialog? = { _ in nil }
+    var valueTitle: String?
+    var link: PgMenuLink?
     let onSelect: (Value) -> Void
 
     @Environment(\.pgLayers) private var layers
@@ -35,7 +45,7 @@ struct PgSelect<Value: Hashable>: View {
                 return
             }
 
-            layers.openMenu(Self.menu(anchor: anchor, options: options, selection: selection, layers: layers, confirm: confirm, onSelect: onSelect))
+            layers.openMenu(Self.menu(anchor: anchor, options: options, selection: selection, layers: layers, confirm: confirm, link: link, onSelect: onSelect))
         } label: {
             HStack(spacing: PgSpace.xs) {
                 Text(title)
@@ -59,19 +69,28 @@ struct PgSelect<Value: Hashable>: View {
     }
 
     private var title: String {
-        options.first { $0.value == selection }?.title ?? ""
+        valueTitle ?? options.first { $0.value == selection }?.title ?? ""
     }
 
     /// Меню выбора: пункты по порядку, текущий отмечен; выбран текущий — ничего, другой — сразу или после «да» в диалоге
-    /// `confirm`.
+    /// `confirm`; ссылка `link` — последней, под чертой, открывает свое.
     @MainActor
     static func menu(
         anchor: UUID, options: [PgOption<Value>], selection: Value, layers: PgLayers, confirm: @escaping (Value) -> PgDialog?,
-        onSelect: @escaping (Value) -> Void
+        link: PgMenuLink? = nil, onSelect: @escaping (Value) -> Void
     ) -> PgMenu {
         let values = options.map(\.value)
-        let items = options.map { PgMenuItem(title: $0.title, current: $0.value == selection) }
+        var items = options.map { PgMenuItem(title: $0.title, current: $0.value == selection) }
+        if let link {
+            items.append(PgMenuItem(title: link.title, link: true))
+        }
+
         return PgMenu(anchor: anchor, items: items) { [weak layers] index in
+            guard values.indices.contains(index) else {
+                link?.action()
+                return
+            }
+
             let value = values[index]
             guard value != selection else {
                 return

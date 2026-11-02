@@ -70,27 +70,31 @@ struct PgSettingRow<Trailing: View>: View {
 
 /// Строка-ссылка в карточке (.link-row): плитка значка 34 со скруглением radius.input (.row-icon, тон — `PgTone`),
 /// заголовок полужирным, подпись caption в одну строку, стрелка «›» по правому краю цветом text.muted; высота не меньше 52,
-/// поля 16. Строки разделяет `PgDivider`; недоступная — серым, прозрачность 0,6.
+/// поля 16. Крупная (`large`, «Для опытных» доски 04) — плитка 36 со значком 20, поля 10 сверху и снизу, стрелка линией 2.
+/// Строки разделяет `PgDivider`; недоступная — серым, прозрачность 0,6.
 struct PgLinkRow: View {
     let icon: String
     var detail: String?
     let title: String
     var caption: String?
     var tone = PgTone.accent
+    var large = false
     var enabled = true
     var identifier = ""
     let action: () -> Void
 
     var body: some View {
+        let glyph: CGFloat = large ? 20 : 18
+        let tile: CGFloat = large ? 36 : 34
         Button(action: action) {
             HStack(spacing: PgSpace.l) {
                 ZStack {
-                    PgIcon(data: icon, color: Color(tone.ink), size: 18, lineWidth: 1.9)
+                    PgIcon(data: icon, color: Color(tone.ink), size: glyph, lineWidth: 1.9)
                     if let detail {
-                        PgIcon(data: detail, color: Color(tone.ink), size: 18, lineWidth: 1.9)
+                        PgIcon(data: detail, color: Color(tone.ink), size: glyph, lineWidth: 1.9)
                     }
                 }
-                .frame(width: 34, height: 34)
+                .frame(width: tile, height: tile)
                 .background(RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(tone.tint)))
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -101,9 +105,10 @@ struct PgLinkRow: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                PgIcon(data: PgIcons.chevronRight, color: Color(PgColor.Text.muted), size: 16)
+                PgIcon(data: PgIcons.chevronRight, color: Color(PgColor.Text.muted), size: 16, lineWidth: large ? 2 : 1.8)
             }
             .padding(.horizontal, PgSpace.card)
+            .padding(.vertical, large ? PgSpace.m : 0)
             .frame(minHeight: 52)
             .contentShape(Rectangle())
         }

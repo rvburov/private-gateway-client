@@ -15,8 +15,8 @@ public struct SubscriptionSettings: Equatable, Sendable {
 }
 
 /// Настройки приложения, общие с расширением туннеля, — как `SettingsRepository` Android: выбранный сервер (меняется только
-/// нажатием пользователя), туннель — DNS, IPv6 через сервер, локальная сеть, — блок при обрыве, подписки, уведомления и
-/// переподключение.
+/// нажатием пользователя), туннель — DNS, IPv6 через сервер, локальная сеть, — блок при обрыве, подписки, уведомления,
+/// переподключение и подключение при запуске.
 public struct AppSettings: Equatable, Sendable {
     public var selectedServerId: String?
     public var tunnel: TunnelSettings
@@ -32,11 +32,14 @@ public struct AppSettings: Equatable, Sendable {
     /// iOS включает защиту сама, пока ее не выключат кнопкой в приложении. По умолчанию выключена, как «Постоянная VPN»
     /// Android.
     public var alwaysOn: Bool
+    /// «Подключаться при запуске» (доска 04, `ConnectOnLaunch` десктопа): открыли приложение, а защита выключена — подключиться
+    /// к выбранному серверу. Расширению туннеля не нужна; по умолчанию выключена, как на десктопе.
+    public var connectOnLaunch: Bool
 
     public init(
         selectedServerId: String? = nil, tunnel: TunnelSettings = TunnelSettings(), killSwitch: Bool = true,
         subscriptions: SubscriptionSettings = SubscriptionSettings(), notifications: NotificationLevel = .default, reconnect: ReconnectPolicy = .backoff60Seconds,
-        alwaysOn: Bool = false
+        alwaysOn: Bool = false, connectOnLaunch: Bool = false
     ) {
         self.selectedServerId = selectedServerId
         self.tunnel = tunnel
@@ -45,6 +48,7 @@ public struct AppSettings: Equatable, Sendable {
         self.notifications = notifications
         self.reconnect = reconnect
         self.alwaysOn = alwaysOn
+        self.connectOnLaunch = connectOnLaunch
     }
 }
 
@@ -64,6 +68,7 @@ extension AppSettings: Codable {
         case notifications = "notify_level"
         case reconnect = "reconnect_policy"
         case alwaysOn = "always_on"
+        case connectOnLaunch = "connect_on_launch"
     }
 
     public init(from decoder: any Decoder) throws {
@@ -88,7 +93,7 @@ extension AppSettings: Codable {
                 notifySelected: read(.notifySelected) ?? defaults.subscriptions.notifySelected
             ),
             notifications: NotificationLevel.read(read(.notifications)), reconnect: ReconnectPolicy.read(read(.reconnect)),
-            alwaysOn: read(.alwaysOn) ?? defaults.alwaysOn
+            alwaysOn: read(.alwaysOn) ?? defaults.alwaysOn, connectOnLaunch: read(.connectOnLaunch) ?? defaults.connectOnLaunch
         )
     }
 
@@ -106,6 +111,7 @@ extension AppSettings: Codable {
         try values.encode(notifications.rawValue, forKey: .notifications)
         try values.encode(reconnect.rawValue, forKey: .reconnect)
         try values.encode(alwaysOn, forKey: .alwaysOn)
+        try values.encode(connectOnLaunch, forKey: .connectOnLaunch)
     }
 }
 
@@ -150,6 +156,10 @@ public actor SettingsStore {
 
     public func setAlwaysOn(_ on: Bool) throws {
         try change { $0.alwaysOn = on }
+    }
+
+    public func setConnectOnLaunch(_ on: Bool) throws {
+        try change { $0.connectOnLaunch = on }
     }
 
     public func setSubscriptions(_ subscriptions: SubscriptionSettings) throws {
