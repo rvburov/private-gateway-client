@@ -36,6 +36,7 @@ import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.TunPlan
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelGuard
+import com.privategateway.client.core.vpn.StartCheck
 import com.privategateway.client.core.vpn.TunnelProbe
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
@@ -200,7 +201,7 @@ class GatewayVpnService : VpnService() {
         stopGuard()
         work = scope.launch {
             val connected = lock.withLock {
-                val error = attempt(0)
+                val error = attempt(0) ?: verify()
                 if (destroyed) {
                     stopCore()
                     monitor.set(if (error != null) TunnelStatus(state = TunnelState.Error, error = error) else TunnelStatus())
@@ -231,6 +232,21 @@ class GatewayVpnService : VpnService() {
         // В журнал «Проверки» — только вид сбоя: в тексте исключения бывает адрес сервера.
         journal.error("connect failed  " + e.javaClass.simpleName)
         TunnelErrors.CORE_FAILED
+    }
+
+    /**
+     * Профиль должен ответить через туннель до «Защищено» (решение 556, `StartCheck`): иначе неверный ключ или неработающий
+     * сервер подписки выглядели бы защитой, а потом бесконечным «Переподключением», пока «Блокировать подключения без VPN»
+     * держит интернет закрытым. Не ответил — код «Сервер не отвечает»: «Ошибка» и уведомление с «Повторить» и «Выбрать сервер».
+     */
+    private suspend fun verify(): String? {
+        val timeout = settings.tunnel.first().connection.probeTimeoutMs.toInt()
+        if (StartCheck.answers { withContext(Dispatchers.IO) { TunnelProbe.answers(timeoutMs = timeout) } }) {
+            return null
+        }
+
+        journal.error("no answer through the tunnel before protected")
+        return TunnelErrors.SERVER_NOT_RESPONDING
     }
 
     /** Под замком: защита не включилась или переподключение сдалось — «Ошибка» с кодом, ядра и карты нет. */

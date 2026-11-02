@@ -158,6 +158,13 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         try requireCurrent(session)
         locked { subscriptionProxy = proxy }
         if reporting {
+            // Профиль должен ответить через туннель до «Защищено» (решение 556): иначе неверный ключ или неработающий сервер
+            // подписки выглядели бы защитой, а потом бесконечным «Переподключением» за закрытым блоком при обрыве.
+            guard await StartCheck.answers(probe: { await self.probe() }) else {
+                throw TunnelFailure(TunnelErrors.serverNotResponding, detail: "no answer through the tunnel before protected")
+            }
+
+            try requireCurrent(session)
             report(TunnelStatus(state: .connected, serverId: launch.serverId, since: Date()))
             container.log.add("connected")
         }

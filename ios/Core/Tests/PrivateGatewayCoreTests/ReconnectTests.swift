@@ -10,6 +10,28 @@ final class ReconnectTests: XCTestCase {
     private let timing = ReconnectTiming()
     private let backoff = ReconnectPolicy.backoff60Seconds
 
+    /// Проверка профиля до «Защищено» (решение 556): одна неудача прощается, две подряд — «Сервер не отвечает», а не вечные попытки.
+    func testStartCheckForgivesOneSilentProbeAndFailsAfterTwo() async {
+        func run(_ answers: [Bool]) async -> (Bool, Int) {
+            var calls = 0
+            let answered = await StartCheck.answers {
+                calls += 1
+                return calls <= answers.count ? answers[calls - 1] : true
+            }
+            return (answered, calls)
+        }
+
+        let first = await run([true])
+        XCTAssertTrue(first.0)
+        XCTAssertEqual(first.1, 1)
+        let second = await run([false, true])
+        XCTAssertTrue(second.0)
+        XCTAssertEqual(second.1, 2)
+        let never = await run([false, false, true])
+        XCTAssertFalse(never.0)
+        XCTAssertEqual(never.1, StartCheck.tries)
+    }
+
     func testPauseDoublesUpToTheCeiling() {
         XCTAssertEqual((1...9).map { timing.delay($0) / second }, [1, 2, 4, 8, 16, 32, 60, 60, 60])
         XCTAssertEqual(timing.delay(Int.max), 60 * second, "и через много попыток — без переполнения")
