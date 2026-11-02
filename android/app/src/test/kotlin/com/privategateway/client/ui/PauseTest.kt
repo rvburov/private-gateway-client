@@ -1,6 +1,7 @@
 package com.privategateway.client.ui
 
 import android.content.Context
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
@@ -15,7 +16,9 @@ import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.ui.home.HomeActions
 import com.privategateway.client.ui.home.HomeScreen
+import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.PgTheme
+import com.privategateway.client.ui.theme.PgToastState
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -47,9 +50,12 @@ class PauseTest {
         var captive = 0
         var resumed = 0
         val ui = mutableStateOf(MainUi(status = TunnelStatus(state = TunnelState.Reconnecting, attempt = 2), loaded = true))
+        val toast = PgToastState()
         compose.setContent {
             PgTheme {
-                HomeScreen(ui.value, {}, {}, {}, actions = HomeActions(captive = { captive++ }, resume = { resumed++ }))
+                CompositionLocalProvider(LocalPgToast provides toast) {
+                    HomeScreen(ui.value, {}, {}, {}, actions = HomeActions(captive = { captive++ }, resume = { resumed++ }))
+                }
             }
         }
 

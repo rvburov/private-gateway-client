@@ -75,8 +75,8 @@ fun ProtectionScreen(
     onChange: (TunnelSettings) -> Unit,
     onBack: () -> Unit,
     system: SystemVpnView = SystemVpnView(SystemVpn(), SystemVpnSource.Unknown),
-    openVpnSettings: () -> Unit = {},
     onCaptive: () -> Unit = {},
+    openVpnSettings: () -> Unit = {},
 ) {
     var editingDns by rememberSaveable { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("protection")) {

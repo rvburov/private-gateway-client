@@ -191,6 +191,35 @@ public sealed class BackupTests : IDisposable
         home.Catalog.Subscriptions.ShouldHaveSingleItem().UpdatedAt.ShouldBe(_time.GetUtcNow(), "группа без адреса не ждет обновления");
     }
 
+    /// <summary>
+    /// Общий эталон shared/testdata/backup: тот же файл открывают Android и iOS (решение 559). Десктоп открывает его паролем и
+    /// не открывает чужим: обертка, PBKDF2 и AES-GCM у трех платформ одни.
+    /// </summary>
+    [Fact]
+    public void Shared_fixture_opens_with_its_password_on_every_platform()
+    {
+        var text = File.ReadAllText(Path.Combine(FindRoot(), "shared", "testdata", "backup", "envelope-v1.pgbackup"));
+        var content = BackupService.Read(text, "correct horse battery staple");
+        content.CreatedAt.ShouldBe(new DateTimeOffset(2026, 11, 2, 12, 0, 0, TimeSpan.Zero));
+        content.HasSettings.ShouldBeTrue();
+        content.HasServers.ShouldBeFalse();
+        content.HasKeys.ShouldBeFalse();
+        Error(() => BackupService.Read(text, "wrong horse battery staple")).ShouldBe(BackupError.WrongPassword);
+    }
+
+    private static string FindRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir is not null; dir = dir.Parent)
+        {
+            if (File.Exists(Path.Combine(dir.FullName, "PrivateGateway.slnx")))
+            {
+                return dir.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("Не найден корень репозитория (PrivateGateway.slnx)");
+    }
+
     private static BackupError Error(Action read) => Should.Throw<BackupException>(read).Error;
 
     private static string Changed(string file, string key, JsonNode value)

@@ -1,0 +1,10 @@
+{
+  "format": "private-gateway-backup",
+  "version": 1,
+  "kdf": "pbkdf2-sha256",
+  "iterations": 600000,
+  "salt": "AAECAwQFBgcICQoLDA0ODw==",
+  "nonce": "ZGVmZ2hpamtsbW5v",
+  "created": "2026-11-02T12:00:00.0000000+00:00",
+  "data": "8cLM8NlqjADlmGnHSTGO6PagmLQ8EQR4pIVj00F32bxplz1rf2oT1pBr4Y/rn0b8QyHMB6swVcDpfcfMpA/cSzwdP5HE7uOgIXEd2wSjqe/jvl1Pm4N0cVWJgV7VWJnXOg9S+M1pU8l2FrbA3duObH++"
+}

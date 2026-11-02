@@ -172,8 +172,8 @@ class ScreensTest {
         compose.onNodeWithTag("status.sub").assertTextEquals(text(R.string.status_reconnecting_sub, "2"))
         compose.onNodeWithTag("status.checked").assertTextEquals(text(R.string.checked_reconnecting))
         compose.onNodeWithText(text(R.string.check_ks_ok)).assertIsDisplayed()
-        // Паузы для входа в Wi-Fi у телефона нет — и кнопки «Вход в Wi-Fi» тоже.
-        compose.onNodeWithText(text(R.string.action_captive)).assertDoesNotExist()
+        // «Вход в Wi-Fi» — пауза для входа в сеть (решение 557).
+        compose.onNodeWithTag("status.captive").assertTextEquals(text(R.string.action_captive))
         compose.onNodeWithTag("status.retry").assertDoesNotExist()
     }
 
