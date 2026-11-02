@@ -243,14 +243,14 @@ enum SettingsLook {
     }
 
     /// Подпись внизу (settings.footer десктопа) без службы — ее у телефона нет: «Private Gateway Client 0.1.0 · Ядро: Xray-core
-    /// 26.3.27»; версию ядра сообщает расширение туннеля после первого подключения.
+    /// 26.3.27»; версию ядра сообщает расширение туннеля после первого подключения. Все части — из словаря.
     static func footer(_ about: AboutInfo, _ texts: PgTexts) -> String {
         var text = texts.aboutName
         if !about.app.isEmpty {
             text += " " + about.app
         }
 
-        text += " · " + texts.cardCore + ": Xray-core"
+        text += " · " + texts.cardCore + ": " + texts.coreXrayTitle
         if let core = about.core, !core.isEmpty {
             text += " " + core
         }

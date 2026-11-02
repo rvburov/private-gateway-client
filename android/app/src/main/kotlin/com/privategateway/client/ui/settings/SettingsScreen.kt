@@ -239,7 +239,8 @@ private fun Notifications(behavior: Behavior, onBehavior: (Behavior) -> Unit) {
  */
 @Composable
 private fun LanguageRow(language: ((String) -> Unit)?) {
-    val current = Texts.language(LocalConfiguration.current.locales)
+    // Язык телефона без своих текстов (немецкий и т. п.) — приложение на английском (values/), и выбран English.
+    val current = if (Texts.language(LocalConfiguration.current.locales) == "ru") "ru" else "en"
     Column(
         Modifier.fillMaxWidth().pgTopDivider(true).padding(BasicRow),
         verticalArrangement = Arrangement.spacedBy(PgSpace.Xs),
@@ -326,6 +327,7 @@ private fun notifyLabel(level: NotificationLevel): Int = when (level) {
 }
 
 /** Подпись уровня уведомлений. У «Выключены» подписи десктопа — про значок в трее; трея у телефона нет, своей подписи пока нет. */
+@StringRes
 private fun notifyNote(level: NotificationLevel): Int? = when (level) {
     NotificationLevel.All -> R.string.settings_notifications_all_note
     NotificationLevel.ImportantOnly -> R.string.settings_notifications_important_note

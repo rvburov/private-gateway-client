@@ -164,7 +164,7 @@ class SettingsScreensTest {
         compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, TunnelSettings(), {}, language = language) } }
 
         // Выбран тот язык, на котором приложение сейчас; тот же — ничего, другой — Android.
-        val current = Texts.language(context.resources.configuration.locales)
+        val current = if (Texts.language(context.resources.configuration.locales) == "ru") "ru" else "en"
         val other = if (current == "ru") "en" else "ru"
         compose.onNodeWithTag("language.$current").performScrollTo().assertIsSelected().assertIsEnabled()
         compose.onNodeWithTag("language.$other").assertIsNotSelected()
@@ -275,7 +275,7 @@ class SettingsScreensTest {
         compose.onNodeWithTag("dns").performScrollTo().assertTextEquals(text(R.string.prot_dns_quad9))
         compose.onNodeWithTag("addr").performScrollTo().assertTextEquals(text(R.string.prot_addr_ipv4))
         compose.onNodeWithTag("lan").performScrollTo().assertIsOn()
-        compose.onNodeWithTag("dns").performClick()
+        compose.onNodeWithTag("dns").performScrollTo().performClick()
         compose.onNodeWithTag("dns.Quad9Doh").assertIsSelected()
         compose.onNodeWithTag("dns.Profile").assertIsNotSelected()
     }
@@ -317,7 +317,7 @@ class SettingsScreensTest {
         compose.onNodeWithTag("dns.sheet").assertDoesNotExist()
         assertEquals(TunnelSettings(), tunnel)
 
-        compose.onNodeWithTag("dns").performClick()
+        compose.onNodeWithTag("dns").performScrollTo().performClick()
         compose.onNodeWithTag("dns.Custom").performClick()
         compose.onNodeWithTag("dns.custom.text").performTextClearance()
         compose.onNodeWithTag("dns.custom.text").performTextInput(" https://192.0.2.53/dns-query ")
@@ -325,8 +325,7 @@ class SettingsScreensTest {
         assertEquals(TunnelSettings(DnsChoice.Custom, "https://192.0.2.53/dns-query"), tunnel)
         compose.onNodeWithTag("dns.sheet").assertDoesNotExist()
         // Выбран свой адрес — на кнопке сам адрес, в меню отмечен «Свой адрес…».
-        compose.onNodeWithTag("dns").performScrollTo().assertTextEquals("https://192.0.2.53/dns-query")
-        compose.onNodeWithTag("dns").performClick()
+        compose.onNodeWithTag("dns").performScrollTo().assertTextEquals("https://192.0.2.53/dns-query").performClick()
         compose.onNodeWithTag("dns.Custom").assertIsSelected()
     }
 }
