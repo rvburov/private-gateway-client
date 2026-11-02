@@ -257,7 +257,8 @@ struct RootView: View {
                     checkPage = .main
                     tab = .check
                 },
-                onCaptive: askPause
+                onCaptive: askPause,
+                backup: { onBack in AnyView(BackupView(texts: model.texts, model: model, onBack: onBack)) }
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,

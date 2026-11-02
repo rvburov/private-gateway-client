@@ -10,6 +10,7 @@ enum SettingsPage: Hashable {
     case core
     case routing
     case subscriptions
+    case backup
     case about
     case licenses
 }
@@ -40,6 +41,8 @@ struct SettingsView<Subscriptions: View>: View {
     var onCheck: () -> Void = {}
     /// «Вход в Wi-Fi отеля или кафе» в «Защите и утечках» — вопрос о паузе (решение 557).
     var onCaptive: () -> Void = {}
+    /// «Резервная копия» (решение 559): страница с моделью окна; nil — страницы нет (предпросмотр, тесты).
+    var backup: ((_ onBack: @escaping () -> Void) -> AnyView)?
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
@@ -63,6 +66,10 @@ struct SettingsView<Subscriptions: View>: View {
             )
         case .subscriptions:
             subscriptions { page = .main }
+        case .backup:
+            if let backup {
+                backup { page = .main }
+            }
         case .about:
             AboutView(texts: texts, about: about, onLicenses: { page = .licenses }, onReport: onCheck) { page = .main }
         case .licenses:
@@ -171,7 +178,7 @@ struct SettingsView<Subscriptions: View>: View {
     }
 
     /// «Для опытных» (доска 04): строки-ссылки с плиткой значка через полосы по порядку доски — только на то, что на телефоне
-    /// есть («Резервная копия» появится со своей страницей).
+    /// есть.
     @ViewBuilder
     private var advanced: some View {
         PgLinkRow(
@@ -196,6 +203,11 @@ struct SettingsView<Subscriptions: View>: View {
             icon: PgIcons.advCheck, title: texts.settingsAdvCheckTitle, caption: texts.settingsAdvCheckText, large: true, identifier: "settings.check",
             action: onCheck
         )
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgLinkRow(
+            icon: PgIcons.advBackup, title: texts.settingsAdvBackupTitle, caption: texts.settingsAdvBackupText, large: true,
+            identifier: "settings.backup"
+        ) { page = .backup }
         PgDivider().padding(.horizontal, PgSpace.card)
         PgLinkRow(
             icon: PgIcons.advAbout, title: texts.settingsAdvAboutTitle, caption: texts.settingsAdvAboutText, large: true, identifier: "settings.about"

@@ -181,4 +181,31 @@ final class AppSettingsTests: XCTestCase {
             XCTFail("файл не прочитать — запись не идет")
         } catch {}
     }
+
+    /// Настройки в резервной копии (решение 559): строками, без выбранного сервера; обратно — в свои типы, выбранный не меняется.
+    func testSettingsGoIntoTheBackupAsTextAndComeBackTyped() {
+        let saved = AppSettings(
+            selectedServerId: "srv-1", tunnel: TunnelSettings(dns: .custom, customDns: "192.0.2.53", ipv6: true), killSwitch: false,
+            connectOnLaunch: true, connection: ConnectionSettings(mtu: 1360, connectTimeout: 15)
+        )
+        let values = saved.backupValues()
+        XCTAssertNil(values["selected_server"], "выбранный сервер сменится вместе со списком")
+        XCTAssertEqual(values["tunnel_dns"], "custom")
+        XCTAssertEqual(values["kill_switch"], "false")
+        XCTAssertEqual(values["tunnel_mtu"], "1360")
+        XCTAssertEqual(values["connect_on_launch"], "true")
+
+        let restored = AppSettings(selectedServerId: "srv-2").restoring(values)
+        XCTAssertEqual(restored.selectedServerId, "srv-2")
+        XCTAssertEqual(restored.tunnel, saved.tunnel)
+        XCTAssertFalse(restored.killSwitch)
+        XCTAssertTrue(restored.connectOnLaunch)
+        XCTAssertEqual(restored.connection.mtu, 1360)
+        XCTAssertEqual(restored.connection.connectTimeout, 15)
+
+        // Чужое и испорченное — значение по умолчанию, остальное остается.
+        let broken = AppSettings().restoring(["kill_switch": "может быть", "tunnel_mtu": "много", "unknown": "x"])
+        XCTAssertTrue(broken.killSwitch)
+        XCTAssertNil(broken.connection.mtu)
+    }
 }

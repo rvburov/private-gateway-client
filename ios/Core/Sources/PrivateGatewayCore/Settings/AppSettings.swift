@@ -260,11 +260,97 @@ public actor SettingsStore {
         try change { $0.routing = routing.normalized }
     }
 
+    /// Настройки для резервной копии (решение 559): значения ключей строками, имена — как у Android.
+    public func backupValues() throws -> [String: String] {
+        try load().backupValues()
+    }
+
+    /// Вернуть настройки из копии; выбранный сервер остается прежним.
+    public func restore(_ values: [String: String]) throws {
+        try change { $0 = $0.restoring(values) }
+    }
+
     private func change(_ body: (inout AppSettings) -> Void) throws {
         var settings = try load()
         body(&settings)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         try file.write(encoder.encode(settings))
+    }
+}
+
+/// Значение настройки в файле: флаг, число или строка — чтобы строки копии вернулись в тот же тип.
+private enum SettingScalar: Codable {
+    case bool(Bool)
+    case int(Int)
+    case string(String)
+
+    init(from decoder: any Decoder) throws {
+        let value = try decoder.singleValueContainer()
+        if let flag = try? value.decode(Bool.self) {
+            self = .bool(flag)
+        } else if let number = try? value.decode(Int.self) {
+            self = .int(number)
+        } else {
+            self = .string(try value.decode(String.self))
+        }
+    }
+
+    func encode(to encoder: any Encoder) throws {
+        var value = encoder.singleValueContainer()
+        switch self {
+        case let .bool(flag): try value.encode(flag)
+        case let .int(number): try value.encode(number)
+        case let .string(text): try value.encode(text)
+        }
+    }
+
+    var text: String {
+        switch self {
+        case let .bool(flag): return flag ? "true" : "false"
+        case let .int(number): return String(number)
+        case let .string(text): return text
+        }
+    }
+}
+
+extension AppSettings {
+    /// Чего в копии нет: выбранный сервер сменится вместе со списком серверов.
+    private static let notBackedUp: Set<String> = ["selected_server"]
+
+    /// Ключи, которых может не быть в файле (значение «нет»), но которые в копии — числа.
+    private static let numbers: Set<String> = ["tunnel_mtu", "conn_timeout"]
+
+    /// Настройки для копии: значения ключей файла (те же имена, что у DataStore Android) строками.
+    public func backupValues() -> [String: String] {
+        guard let data = try? JSONEncoder().encode(self), let values = try? JSONDecoder().decode([String: SettingScalar].self, from: data) else {
+            return [:]
+        }
+
+        return values.filter { !Self.notBackedUp.contains($0.key) }.mapValues(\.text)
+    }
+
+    /// Настройки из копии поверх этих: строки — в тип того же ключа; чужое и испорченное — значение по умолчанию (как при
+    /// чтении файла), выбранный сервер — прежний.
+    public func restoring(_ values: [String: String]) -> AppSettings {
+        guard let data = try? JSONEncoder().encode(self), var current = try? JSONDecoder().decode([String: SettingScalar].self, from: data) else {
+            return self
+        }
+
+        for (key, text) in values where !Self.notBackedUp.contains(key) {
+            switch current[key] {
+            case .bool?: current[key] = Bool(text).map(SettingScalar.bool) ?? current[key]
+            case .int?: current[key] = Int(text).map(SettingScalar.int) ?? current[key]
+            case .string?: current[key] = .string(text)
+            case nil: current[key] = Self.numbers.contains(key) ? Int(text).map(SettingScalar.int) : .string(text)
+            }
+        }
+
+        guard let merged = try? JSONEncoder().encode(current), var restored = try? JSONDecoder().decode(AppSettings.self, from: merged) else {
+            return self
+        }
+
+        restored.selectedServerId = selectedServerId
+        return restored
     }
 }
