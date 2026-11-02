@@ -3,7 +3,14 @@ package com.privategateway.client.core.xray
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.SecurityOptions
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.settings.ConnectionSettings
+import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.RoutingMode
+import com.privategateway.client.core.settings.RoutingSettings
+import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.SiteRule
+import com.privategateway.client.core.settings.TlsFingerprint
 import com.privategateway.client.core.settings.TunnelSettings
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -239,6 +246,91 @@ class XrayConfigTest {
         assertEquals(XrayResponse(true, null), XrayResponse.parse("""{"success":true,"data":{},"error":""}"""))
         assertEquals(XrayResponse(false, "boom"), XrayResponse.parse("""{"success":false,"data":null,"error":"boom"}"""))
         assertFalse(XrayResponse.parse("not json").success)
+    }
+
+    @Test
+    fun `core log level mtu and sniffing come from the settings`() {
+        assertEquals("warning", build(reality, CoreSettings(), 1)["log"]!!.jsonObject["loglevel"]!!.jsonPrimitive.content)
+        assertEquals("info", build(reality, CoreSettings(logLevel = CoreLogLevel.Info), 1)["log"]!!.jsonObject["loglevel"]!!.jsonPrimitive.content)
+        val debug = build(reality, CoreSettings(logLevel = CoreLogLevel.Debug), 1)["log"]!!.jsonObject
+        assertEquals("debug", debug["loglevel"]!!.jsonPrimitive.content)
+        assertEquals("none", debug["access"]!!.jsonPrimitive.content, "журнал соединений выключен и при отладке")
+
+        val tun = build(reality, TunnelSettings(connection = ConnectionSettings(mtu = 1280, sniffing = false)).core(), 1)["inbounds"]!!
+            .jsonArray.single().jsonObject
+        assertEquals(1280, tun["settings"]!!.jsonObject["mtu"]!!.jsonPrimitive.int)
+        assertFalse(tun["sniffing"]!!.jsonObject["enabled"]!!.jsonPrimitive.boolean)
+        assertTrue(build(reality, TunnelSettings().core(), 1)["inbounds"]!!.jsonArray.single().jsonObject["sniffing"]!!.jsonObject["enabled"]!!.jsonPrimitive.boolean)
+    }
+
+    @Test
+    fun `tls fragmentation dials the server through its own outbound`() {
+        val config = build(reality, CoreSettings(fragment = true), 1)
+        assertEquals(listOf("proxy", "direct", "block", "fragment", "dns-out"), config["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content })
+        val stream = outbound(config, "proxy")["streamSettings"]!!.jsonObject
+        assertEquals("fragment", stream["sockopt"]!!.jsonObject["dialerProxy"]!!.jsonPrimitive.content)
+        val fragment = outbound(config, "fragment")
+        assertEquals("freedom", fragment["protocol"]!!.jsonPrimitive.content)
+        val packets = fragment["settings"]!!.jsonObject["fragment"]!!.jsonObject
+        assertEquals(listOf("tlshello", "100-200", "10-20"), listOf("packets", "length", "interval").map { packets[it]!!.jsonPrimitive.content })
+
+        // Выключена — ни выхода, ни sockopt, как раньше.
+        val plain = build(reality, CoreSettings(), 1)
+        assertNull(outbound(plain, "proxy")["streamSettings"]!!.jsonObject["sockopt"])
+        assertTrue(plain["outbounds"]!!.jsonArray.none { it.jsonObject["tag"]!!.jsonPrimitive.content == "fragment" })
+
+        // Настройка доходит от «Подключения и ядра».
+        val fromSettings = build(reality, TunnelSettings(connection = ConnectionSettings(tlsFragment = true)).core(), 1)
+        assertEquals(config["outbounds"], fromSettings["outbounds"])
+    }
+
+    @Test
+    fun `mux and fingerprint come from the connection settings`() {
+        val tls = server("trojan://pw@198.51.100.7:443?sni=example.org&fp=firefox#T")
+        val chosen = outbound(build(tls, TunnelSettings(connection = ConnectionSettings(fingerprint = TlsFingerprint.Chrome, mux = true)).core(), 1), "proxy")
+        assertEquals("chrome", chosen["streamSettings"]!!.jsonObject["tlsSettings"]!!.jsonObject["fingerprint"]!!.jsonPrimitive.content)
+        assertTrue(chosen["mux"]!!.jsonObject["enabled"]!!.jsonPrimitive.boolean)
+
+        val profile = outbound(build(tls, TunnelSettings().core(), 1), "proxy")
+        assertEquals("firefox", profile["streamSettings"]!!.jsonObject["tlsSettings"]!!.jsonObject["fingerprint"]!!.jsonPrimitive.content, "«Из профиля»")
+        assertNull(profile["mux"])
+    }
+
+    @Test
+    fun `site rules follow the service rules in list order`() {
+        val routing = RoutingSettings(
+            RoutingMode.Split,
+            rules = listOf(
+                SiteRule("example.com", RuleAction.Direct),
+                SiteRule("*.local", RuleAction.Block),
+                SiteRule("203.0.113.0/24", RuleAction.Proxy),
+                SiteRule("2001:db8::1", RuleAction.Direct),
+            ),
+        )
+        val rules = rules(build(reality, TunnelSettings(routing = routing).core(), 1))
+        val ipv6Block = rules.indexOfFirst { it["ip"] == JsonArray(listOf(JsonPrimitive("::/0"))) }
+        val own = rules.drop(ipv6Block + 1)
+        assertEquals(4, own.size, "правила пользователя — после служебных")
+        assertEquals(JsonArray(listOf(JsonPrimitive("domain:example.com"))), own[0]["domain"])
+        assertEquals("direct", own[0]["outboundTag"]!!.jsonPrimitive.content)
+        assertEquals(JsonArray(listOf(JsonPrimitive("domain:local"))), own[1]["domain"], "«*.local» — зона целиком")
+        assertEquals("block", own[1]["outboundTag"]!!.jsonPrimitive.content)
+        assertEquals(JsonArray(listOf(JsonPrimitive("203.0.113.0/24"))), own[2]["ip"], "подсеть — условием IP")
+        assertNull(own[2]["domain"])
+        assertEquals("proxy", own[2]["outboundTag"]!!.jsonPrimitive.content)
+        assertEquals(JsonArray(listOf(JsonPrimitive("2001:db8::1"))), own[3]["ip"])
+        assertTrue(own.all { it["inboundTag"] == null })
+    }
+
+    @Test
+    fun `direct site rules are idle outside the split mode`() {
+        val rules = listOf(SiteRule("example.com", RuleAction.Direct), SiteRule("ads.example.org", RuleAction.Block))
+        val all = rules(build(reality, TunnelSettings(routing = RoutingSettings(rules = rules)).core(), 1))
+        assertTrue(all.none { it["domain"] == JsonArray(listOf(JsonPrimitive("domain:example.com"))) }, "«Напрямую» в режиме «Весь трафик» мимо VPN не ведет")
+        assertEquals("block", all.single { it["domain"] == JsonArray(listOf(JsonPrimitive("domain:ads.example.org"))) }["outboundTag"]!!.jsonPrimitive.content)
+
+        val split = rules(build(reality, TunnelSettings(routing = RoutingSettings(RoutingMode.Split, rules = rules)).core(), 1))
+        assertEquals("direct", split.single { it["domain"] == JsonArray(listOf(JsonPrimitive("domain:example.com"))) }["outboundTag"]!!.jsonPrimitive.content)
     }
 
     private fun server(link: String) = LinkParser.parse(link).server ?: error("ссылка не разобралась: ${LinkParser.parse(link).error}")

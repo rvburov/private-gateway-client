@@ -1,6 +1,9 @@
 package com.privategateway.client.core.xray
 
 import com.privategateway.client.core.links.LinkParser
+import com.privategateway.client.core.settings.CoreLogLevel
+import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.SiteRule
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.DynamicTest
 import org.junit.jupiter.api.TestFactory
@@ -20,7 +23,10 @@ import kotlin.test.fail
 class ReferenceConfigTest {
     private val testData = File(System.getProperty("testdata") ?: error("Нет пути к shared/testdata"))
 
-    /** Все, что по умолчанию выключено и меняет конфиг: свой DNS в сети, IPv6, локальная сеть, Mux, отпечаток, журнал. */
+    /**
+     * Все, что по умолчанию выключено и меняет конфиг: свой DNS в сети, IPv6, локальная сеть, Mux, отпечаток, журнал,
+     * фрагментация TLS и правила для сайтов — домен, зона, адрес и подсеть IPv6 с каждым действием.
+     */
     private val everything = CoreSettings(
         dns = "https://dns.quad9.net/dns-query",
         allowLan = true,
@@ -29,9 +35,19 @@ class ReferenceConfigTest {
         fingerprint = "random",
         sniffing = false,
         mtu = 1400,
-        debugLog = true,
+        logLevel = CoreLogLevel.Debug,
         lanDns = "192.168.1.53",
+        fragment = true,
+        rules = listOf(
+            SiteRule("example.com", RuleAction.Direct),
+            SiteRule("*.local", RuleAction.Block),
+            SiteRule("203.0.113.5", RuleAction.Proxy),
+            SiteRule("2001:db8::/32", RuleAction.Direct),
+        ),
     )
+
+    /** «Информация» — третий уровень журнала: его имя ядро тоже должно принять. */
+    private val info = CoreSettings(logLevel = CoreLogLevel.Info, fragment = true)
 
     @TestFactory
     fun `xray of libXray accepts the config of each reference link`() = fixtures().map { (fixture, link) ->
@@ -51,6 +67,7 @@ class ReferenceConfigTest {
             accepted(xray, XrayConfig.build(server, everything, tunFd = 42, SubscriptionProxy(19999, "test-user", "test-password")).json!!, "$fixture, вход подписок")
             accepted(xray, PingBatch.outbounds(server, CoreSettings()).json!!, "$fixture, замер задержки")
             accepted(xray, PingBatch.outbounds(server, everything).json!!, "$fixture, замер задержки, все включено")
+            accepted(xray, XrayConfig.build(server, info, tunFd = 42).json!!, "$fixture, туннель, журнал «Информация»")
         }
     }
 

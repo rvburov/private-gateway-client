@@ -6,6 +6,8 @@ import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.SystemVpnSource
 import com.privategateway.client.core.vpn.SystemVpnView
+import com.privategateway.client.data.PhoneApp
+import com.privategateway.client.data.PhoneApps
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -20,7 +22,11 @@ import javax.inject.Inject
 
 /** Настройки окна «Настройки». Под защитой их применяет служба сама (переподключение без окна утечки, решение 410). */
 @HiltViewModel
-class SettingsViewModel @Inject constructor(private val settings: SettingsRepository, monitor: TunnelMonitor) : ViewModel() {
+class SettingsViewModel @Inject constructor(
+    private val settings: SettingsRepository,
+    monitor: TunnelMonitor,
+    private val phoneApps: PhoneApps,
+) : ViewModel() {
     val tunnel: StateFlow<TunnelSettings> = settings.tunnel.stateIn(viewModelScope, SharingStarted.Eagerly, TunnelSettings())
 
     /** «Постоянная VPN» и блок без VPN: под защитой — что сообщил Android, без нее — запомненное (решение 445). */
@@ -60,6 +66,9 @@ class SettingsViewModel @Inject constructor(private val settings: SettingsReposi
             }
         }
     }
+
+    /** Программы телефона для «Добавить программу» («Маршрутизация»): читаются, когда открыт выбор, — не заранее. */
+    suspend fun installedApps(): List<PhoneApp> = phoneApps.launchable()
 
     fun request(next: SettingsPage) {
         page.value = next

@@ -4,9 +4,12 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.privategateway.client.core.notify.NotificationLevel
+import com.privategateway.client.core.settings.ConnectionSettings
 import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.RoutingSettings
 import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
@@ -18,8 +21,8 @@ import javax.inject.Singleton
 
 /**
  * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя), настройки туннеля — DNS,
- * IPv6 через сервер, локальная сеть мимо туннеля, — подписок, уведомлений, переподключения и подключения при запуске.
- * Неизвестное значение (из будущей версии) — значение по умолчанию.
+ * IPv6 через сервер, локальная сеть мимо туннеля, подключение и ядро, маршрутизация, — подписок, уведомлений,
+ * переподключения и подключения при запуске. Неизвестное значение (из будущей версии) — значение по умолчанию.
  */
 @Singleton
 class SettingsRepository @Inject constructor(private val store: DataStore<Preferences>) {
@@ -41,6 +44,17 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
             customDns = preferences[CUSTOM_DNS],
             ipv6 = preferences[IPV6] ?: false,
             allowLan = preferences[ALLOW_LAN] ?: false,
+            connection = ConnectionSettings.read(
+                preferences[CORE_LOG],
+                preferences[MTU],
+                preferences[STRICT_ROUTES],
+                preferences[SNIFFING],
+                preferences[FINGERPRINT],
+                preferences[MUX],
+                preferences[TLS_FRAGMENT],
+                preferences[CONNECT_TIMEOUT],
+            ),
+            routing = RoutingSettings.read(preferences[ROUTING_MODE], preferences[ROUTING_APPS], preferences[ROUTING_RULES]),
         )
     }
 
@@ -56,6 +70,28 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
 
             preferences[IPV6] = settings.ipv6
             preferences[ALLOW_LAN] = settings.allowLan
+
+            // «Подключение и ядро»: «Авто» у MTU — ключа нет.
+            val connection = settings.connection
+            preferences[CORE_LOG] = connection.coreLog.name
+            val mtu = connection.mtu?.takeIf { ConnectionSettings.validMtu(it) }
+            if (mtu == null) {
+                preferences.remove(MTU)
+            } else {
+                preferences[MTU] = mtu
+            }
+
+            preferences[STRICT_ROUTES] = connection.strictRoutes
+            preferences[SNIFFING] = connection.sniffing
+            preferences[FINGERPRINT] = connection.fingerprint.name
+            preferences[MUX] = connection.mux
+            preferences[TLS_FRAGMENT] = connection.tlsFragment
+            preferences[CONNECT_TIMEOUT] = connection.connectTimeoutSeconds
+
+            // «Маршрутизация»: списки — текстом JSON.
+            preferences[ROUTING_MODE] = settings.routing.mode.name
+            preferences[ROUTING_APPS] = settings.routing.appsJson()
+            preferences[ROUTING_RULES] = settings.routing.rulesJson()
         }
     }
 
@@ -120,6 +156,17 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val CUSTOM_DNS = stringPreferencesKey("tunnel_custom_dns")
         val IPV6 = booleanPreferencesKey("tunnel_ipv6")
         val ALLOW_LAN = booleanPreferencesKey("tunnel_allow_lan")
+        val CORE_LOG = stringPreferencesKey("core_log")
+        val MTU = intPreferencesKey("tunnel_mtu")
+        val STRICT_ROUTES = booleanPreferencesKey("tunnel_strict_routes")
+        val SNIFFING = booleanPreferencesKey("tunnel_sniffing")
+        val FINGERPRINT = stringPreferencesKey("conn_fingerprint")
+        val MUX = booleanPreferencesKey("conn_mux")
+        val TLS_FRAGMENT = booleanPreferencesKey("conn_tls_fragment")
+        val CONNECT_TIMEOUT = intPreferencesKey("conn_timeout")
+        val ROUTING_MODE = stringPreferencesKey("routing_mode")
+        val ROUTING_APPS = stringPreferencesKey("routing_apps")
+        val ROUTING_RULES = stringPreferencesKey("routing_rules")
         val NOTIFY_LEVEL = stringPreferencesKey("notify_level")
         val RECONNECT = stringPreferencesKey("reconnect_policy")
         val CONNECT_ON_LAUNCH = booleanPreferencesKey("connect_on_launch")

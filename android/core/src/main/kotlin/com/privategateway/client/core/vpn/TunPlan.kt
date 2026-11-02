@@ -14,14 +14,24 @@ data class Prefix(val address: String, val length: Int) {
  * DNS). IPv6 — только с настройкой «IPv6 через сервер»: без адреса и маршрута IPv6 Android сам закрывает IPv6 для всех
  * программ (allowFamily не вызывается) — программа сразу получает «сеть недоступна» и уходит на IPv4, мимо туннеля IPv6
  * не идет.
+ *
+ * [disallowedApps] — программы мимо VPN раздельного режима (addDisallowedApplication): их трафик Android в карту не пускает.
+ * [allowBypass] — строгие маршруты выключены (allowBypass): программа может сама уйти мимо карты, привязавшись к другой сети.
  */
-data class TunPlan(val addresses: List<Prefix>, val routes: List<Prefix>, val dnsServers: List<String>, val mtu: Int) {
+data class TunPlan(
+    val addresses: List<Prefix>,
+    val routes: List<Prefix>,
+    val dnsServers: List<String>,
+    val mtu: Int,
+    val disallowedApps: List<String> = emptyList(),
+    val allowBypass: Boolean = false,
+) {
     companion object {
         /** Свой адрес IPv6 туннеля — из частного диапазона fd00::/8 (ULA), в интернете его нет. */
         const val TUN_ADDRESS6 = "fd66:7067:6763::1"
         const val TUN_PREFIX6 = 126
 
-        fun of(settings: CoreSettings): TunPlan {
+        fun of(settings: CoreSettings, disallowedApps: List<String> = emptyList(), strictRoutes: Boolean = true): TunPlan {
             val addresses = mutableListOf(Prefix(XrayConfig.TUN_ADDRESS, XrayConfig.TUN_PREFIX))
             val routes = mutableListOf(Prefix("0.0.0.0", 0))
             if (settings.ipv6) {
@@ -29,7 +39,7 @@ data class TunPlan(val addresses: List<Prefix>, val routes: List<Prefix>, val dn
                 routes.add(Prefix("::", 0))
             }
 
-            return TunPlan(addresses, routes, listOf(XrayConfig.TUN_DNS), settings.mtu)
+            return TunPlan(addresses, routes, listOf(XrayConfig.TUN_DNS), settings.mtu, disallowedApps, !strictRoutes)
         }
     }
 }

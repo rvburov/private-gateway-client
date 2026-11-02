@@ -5,7 +5,11 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.IpAddress
+import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.SiteRule
+import com.privategateway.client.core.settings.SitePattern
 import java.util.Locale
 
 /** Почему ядро Xray не возьмется за сервер — как у десктопа (`CoreRejection`). */
@@ -41,8 +45,11 @@ data class XrayConfigResult(val json: String?, val rejection: CoreRejection?) {
  * @property fingerprint отпечаток TLS (uTLS): null — из профиля сервера.
  * @property sniffing распознавание имени сайта в TLS, HTTP и QUIC — только для правил.
  * @property mtu MTU туннеля.
- * @property debugLog подробный журнал ядра (без адресов сайтов: журнал соединений всегда выключен).
+ * @property logLevel подробность журнала ядра. Журнал соединений выключен всегда; с «Информацией» и «Отладкой» ядро само
+ *   пишет в системный журнал Android имена сайтов и адрес сервера — поэтому по умолчанию только предупреждения.
  * @property lanDns свой DNS в частной сети (`TunnelSettings.lanDns`): запросы самого Xray к нему идут напрямую.
+ * @property fragment фрагментация TLS ClientHello против DPI: выход сервера дозванивается через выход фрагментации.
+ * @property rules правила для сайтов, которые сейчас действуют (`RoutingSettings.coreRules`), по порядку списка.
  */
 data class CoreSettings(
     val dns: String = XrayConfig.DEFAULT_DNS,
@@ -52,8 +59,10 @@ data class CoreSettings(
     val fingerprint: String? = null,
     val sniffing: Boolean = true,
     val mtu: Int = 1500,
-    val debugLog: Boolean = false,
+    val logLevel: CoreLogLevel = CoreLogLevel.Warning,
     val lanDns: String? = null,
+    val fragment: Boolean = false,
+    val rules: List<SiteRule> = emptyList(),
 )
 
 /**
@@ -69,6 +78,7 @@ object XrayConfig {
     const val BLOCK_TAG = "block"
     const val DNS_TAG = "dns-out"
     const val SUBSCRIPTION_TAG = "subscriptions-in"
+    const val FRAGMENT_TAG = "fragment"
 
     /**
      * Выход DNS: A и AAAA (типы 1 и 28) отвечает сам, остальное — отказ REFUSED (код 5). Правилами `rules`: прежний
@@ -108,7 +118,7 @@ object XrayConfig {
         outbound.rejection?.let { return XrayConfigResult(null, it) }
 
         val config = linkedMapOf<String, Any?>(
-            "log" to linkedMapOf("loglevel" to if (settings.debugLog) "debug" else "warning", "access" to "none", "dnsLog" to false),
+            "log" to linkedMapOf("loglevel" to settings.logLevel.xray, "access" to "none", "dnsLog" to false),
             "env" to linkedMapOf("xray.tun.fd" to tunFd.toString()),
             "dns" to linkedMapOf("servers" to listOf(settings.dns), "queryStrategy" to if (settings.ipv6) "UseIP" else "UseIPv4"),
             "inbounds" to listOfNotNull(
@@ -133,7 +143,7 @@ object XrayConfig {
                     )
                 },
             ),
-            "outbounds" to listOf(
+            "outbounds" to listOfNotNull(
                 outbound.json,
                 linkedMapOf(
                     "tag" to DIRECT_TAG,
@@ -141,6 +151,7 @@ object XrayConfig {
                     "settings" to linkedMapOf("domainStrategy" to if (settings.ipv6) "AsIs" else "UseIPv4"),
                 ),
                 linkedMapOf("tag" to BLOCK_TAG, "protocol" to "blackhole"),
+                fragment().takeIf { outbound.json?.let { usesFragment(it) } == true },
                 // Запросы не A и AAAA — сразу отказ REFUSED, как раньше «nonIPQuery: reject» (DNS_RULES); без правил Xray 26 — пустой NOERROR.
                 linkedMapOf("tag" to DNS_TAG, "protocol" to "dns", "settings" to linkedMapOf("rules" to DNS_RULES)),
             ),
@@ -172,8 +183,37 @@ object XrayConfig {
             rules.add(linkedMapOf("type" to "field", "inboundTag" to listOf(TUN_TAG), "ip" to listOf("::/0"), "outboundTag" to BLOCK_TAG))
         }
 
+        // Правила для сайтов — по порядку списка, после служебных (как у десктопа). Адрес и подсеть — условием IP: с ним
+        // сравнивается адрес соединения; имя — условием домена: его ядро узнает из sniffing. «Напрямую» — через сокет ядра,
+        // выведенный из туннеля (protect), к провайдеру.
+        for (rule in settings.rules) {
+            val address = SitePattern.isAddress(rule.pattern)
+            rules.add(
+                linkedMapOf(
+                    "type" to "field",
+                    (if (address) "ip" else "domain") to listOf(if (address) rule.pattern else SitePattern.domainCondition(rule.pattern)),
+                    "outboundTag" to when (rule.action) {
+                        RuleAction.Direct -> DIRECT_TAG
+                        RuleAction.Block -> BLOCK_TAG
+                        RuleAction.Proxy -> PROXY_TAG
+                    },
+                ),
+            )
+        }
+
         return rules
     }
+
+    /** Выход фрагментации TLS ClientHello против DPI — как у десктопа: выход сервера дозванивается через него. */
+    internal fun fragment(): Map<String, Any?> = linkedMapOf(
+        "tag" to FRAGMENT_TAG,
+        "protocol" to "freedom",
+        "settings" to linkedMapOf("fragment" to linkedMapOf("packets" to "tlshello", "length" to "100-200", "interval" to "10-20")),
+    )
+
+    /** Выход сервера дозванивается через выход фрагментации — тогда тот нужен в конфиге рядом с ним. */
+    internal fun usesFragment(outbound: Map<String, Any?>): Boolean =
+        ((outbound["streamSettings"] as? Map<*, *>)?.get("sockopt") as? Map<*, *>)?.get("dialerProxy") == FRAGMENT_TAG
 
     /** Выход сервера (словарь для JSON) или причина отказа. */
     internal class Outbound(val json: Map<String, Any?>?, val rejection: CoreRejection?)
@@ -338,6 +378,10 @@ object XrayConfig {
             }
 
             TransportSecurity.None -> stream["security"] = "none"
+        }
+
+        if (settings.fragment) {
+            stream["sockopt"] = linkedMapOf("dialerProxy" to FRAGMENT_TAG)
         }
 
         return stream

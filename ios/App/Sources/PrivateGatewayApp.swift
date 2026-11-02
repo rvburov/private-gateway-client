@@ -249,6 +249,7 @@ struct RootView: View {
                 onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } },
                 onAlwaysOn: { on in Task { await model.setAlwaysOn(on) } }, onConnectOnLaunch: { on in Task { await model.setConnectOnLaunch(on) } },
                 onNotifications: { level in Task { await model.setNotifications(level) } }, onReconnect: { policy in Task { await model.setReconnect(policy) } },
+                onConnection: { next in Task { await model.setConnection(next) } }, onRouting: { next in Task { await model.setRouting(next) } },
                 onCheck: {
                     checkPage = .main
                     tab = .check

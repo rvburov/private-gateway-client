@@ -46,6 +46,22 @@ class PingBatchTest {
     }
 
     @Test
+    fun `tls fragmentation goes into the ping config with its outbound`() {
+        // Выход сервера дозванивается через выход фрагментации: без него рядом libXray не построил бы конфиг замера.
+        val config = json(PingBatch.outbounds(trojan, CoreSettings(fragment = true)).json ?: error("отказ"))
+        val outbounds = config["outbounds"]!!.jsonArray.map { it.jsonObject }
+        assertEquals(listOf("proxy", "fragment"), outbounds.map { it["tag"]!!.jsonPrimitive.content })
+        assertEquals("fragment", outbounds[0]["streamSettings"]!!.jsonObject["sockopt"]!!.jsonObject["dialerProxy"]!!.jsonPrimitive.content)
+        val tunnel = json(XrayConfig.build(trojan, CoreSettings(fragment = true), 1).json!!)["outbounds"]!!.jsonArray
+        assertEquals(tunnel[0], outbounds[0], "тот же выход, что в туннеле")
+        assertTrue(tunnel.any { it == outbounds[1] }, "тот же выход фрагментации, что в туннеле")
+
+        // WireGuard не дозванивается через выходы потока — выхода фрагментации рядом нет.
+        val wireGuard = json(PingBatch.outbounds(link("wireguard/basic"), CoreSettings(fragment = true)).json ?: error("отказ"))
+        assertEquals(listOf("proxy"), wireGuard["outbounds"]!!.jsonArray.map { it.jsonObject["tag"]!!.jsonPrimitive.content })
+    }
+
+    @Test
     fun `request is api 3 ping batch with configs timeout and url`() {
         assertEquals(
             """{"apiVersion":3,"method":"pingBatch","payload":{"configs":[{"xrayJson":"{\"outbounds\":[]}","outboundTag":"proxy"}],""" +

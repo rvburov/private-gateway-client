@@ -62,9 +62,10 @@ public struct SubscriptionProxy: Codable, Equatable, Sendable {
     /// этот DNS напрямую, даже если HTTP-вход принудительно идет в proxy. Сравниваем с теми же CIDR, что у правил Xray,
     /// а не только с RFC1918: там есть петля, CGN, link-local, тестовые и групповые сети. Имя DNS не разрешаем ради
     /// проверки: неизвестный адрес/формат не доказывает защищенный путь и потому отказывает.
+    /// Правила «Напрямую» раздельного режима — тоже прямое исключение: под правило адреса может попасть и сам DNS.
     public static func isAllowed(protocol proto: ProxyProtocol, settings: CoreSettings) -> Bool {
         guard proto == .wireGuard else { return true }
-        guard settings.lanDns == nil else { return false }
+        guard settings.lanDns == nil, !settings.routing.hasBypassSites else { return false }
         // Без AllowLan прямого исключения нет: запрос в локальную сеть Xray блокирует. Не запрещаем такой путь только
         // из-за имени публичного DoH; это та же политика, что у десктопа и Android.
         guard settings.allowLan else { return true }

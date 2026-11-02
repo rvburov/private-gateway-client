@@ -9,6 +9,42 @@ public enum IpAddress {
         ipv4(text) ?? ipv6(text)
     }
 
+    /// Запись адреса по байтам: IPv4 — четыре числа через точку; IPv6 — по RFC 5952: строчные шестнадцатеричные группы без
+    /// ведущих нулей, самая длинная серия из двух и больше нулевых групп (первая из равных) — «::».
+    public static func format(_ bytes: [UInt8]) -> String {
+        if bytes.count == 4 {
+            return bytes.map { String($0) }.joined(separator: ".")
+        }
+
+        let words = stride(from: 0, to: bytes.count - 1, by: 2).map { UInt16(bytes[$0]) << 8 | UInt16(bytes[$0 + 1]) }
+        var best = (start: 0, length: 0)
+        var index = 0
+        while index < words.count {
+            guard words[index] == 0 else {
+                index += 1
+                continue
+            }
+
+            var end = index
+            while end < words.count, words[end] == 0 {
+                end += 1
+            }
+
+            if end - index > best.length {
+                best = (start: index, length: end - index)
+            }
+
+            index = end
+        }
+
+        let groups = words.map { String($0, radix: 16) }
+        guard best.length >= 2 else {
+            return groups.joined(separator: ":")
+        }
+
+        return groups[..<best.start].joined(separator: ":") + "::" + groups[(best.start + best.length)...].joined(separator: ":")
+    }
+
     private static func ipv4(_ text: Substring) -> [UInt8]? {
         let parts = text.split(separator: ".", omittingEmptySubsequences: false)
         guard parts.count == 4 else {

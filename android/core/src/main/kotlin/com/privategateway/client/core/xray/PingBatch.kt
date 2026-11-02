@@ -50,10 +50,16 @@ object PingBatch {
     /** Задержка-признак тайм-аута (`nodep.PingDelayTimeout`). */
     const val DELAY_TIMEOUT = 11_000L
 
-    /** Конфиг для замера — только выход сервера, `{"outbounds":[…]}` с меткой [XrayConfig.PROXY_TAG], или отказ ядра. */
+    /**
+     * Конфиг для замера — выход сервера, `{"outbounds":[…]}` с меткой [XrayConfig.PROXY_TAG], или отказ ядра. С фрагментацией
+     * TLS рядом — ее выход: выход сервера дозванивается через него, как в туннеле (у десктопа так же).
+     */
     fun outbounds(server: ServerDefinition, settings: CoreSettings): XrayConfigResult {
         val outbound = XrayConfig.outbound(server, settings)
-        return XrayConfigResult(outbound.json?.let { JsonText.value(linkedMapOf("outbounds" to listOf(it))) }, outbound.rejection)
+        val json = outbound.json?.let {
+            JsonText.value(linkedMapOf("outbounds" to listOfNotNull(it, XrayConfig.fragment().takeIf { _ -> XrayConfig.usesFragment(it) })))
+        }
+        return XrayConfigResult(json, outbound.rejection)
     }
 
     /**

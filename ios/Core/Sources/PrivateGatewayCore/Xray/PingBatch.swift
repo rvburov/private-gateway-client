@@ -64,11 +64,14 @@ public enum PingBatch {
     /// Задержка-признак тайм-аута (`nodep.PingDelayTimeout`).
     public static let delayTimeout = 11_000
 
-    /// Конфиг для замера — только выход сервера, `{"outbounds":[…]}` с меткой `XrayConfig.proxyTag`, или отказ ядра.
+    /// Конфиг для замера — только выход сервера, `{"outbounds":[…]}` с меткой `XrayConfig.proxyTag`, или отказ ядра. С
+    /// фрагментацией TLS — еще выход фрагментации, через который выход сервера соединяется: путь проверяется с настройками
+    /// подключения, как у десктопа.
     public static func outbounds(_ server: ServerDefinition, _ settings: CoreSettings) -> XrayConfigResult {
         switch XrayConfig.outbound(server, settings) {
         case let .success(outbound):
-            return XrayConfigResult(json: JsonText.write(.object([("outbounds", .array([outbound]))])), rejection: nil)
+            let all = settings.tlsFragment ? [outbound, XrayConfig.fragment] : [outbound]
+            return XrayConfigResult(json: JsonText.write(.object([("outbounds", .array(all))])), rejection: nil)
         case let .failure(refusal):
             return XrayConfigResult(json: nil, rejection: refusal.reason)
         }

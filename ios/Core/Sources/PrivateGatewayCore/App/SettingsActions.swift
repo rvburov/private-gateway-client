@@ -1,7 +1,8 @@
 /// Изменение настроек из окна — как `SettingsViewModel` Android вместе со службой: настройка записывается в общую папку, и под
-/// защитой то, что получает ядро (DNS, IPv6, локальная сеть) или профиль VPN (блок при обрыве, локальная сеть), сразу
-/// уходит в работу — переподключением без окна утечки (решение 410). Что ядро не получает (неверный свой DNS равен «из
-/// профиля», подписки) — без переподключения.
+/// защитой то, что получает ядро и туннель (DNS, IPv6, локальная сеть, «Подключение и ядро», правила «Маршрутизации») или
+/// профиль VPN (блок при обрыве, локальная сеть), сразу уходит в работу — переподключением без окна утечки (решение 410). Что
+/// ядро не получает (неверный свой DNS равен «из профиля», таймаут подключения, «Напрямую» в режиме «Весь трафик»,
+/// подписки) — без переподключения.
 public struct SettingsActions: Sendable {
     public let settings: SettingsStore
     public let control: any TunnelControl
@@ -24,6 +25,17 @@ public struct SettingsActions: Sendable {
         try await apply(state) { try await settings.setAlwaysOn(on) }
     }
 
+    /// «Подключение и ядро»: журнал, MTU, определение домена, отпечаток TLS, Mux, фрагментация; таймаут расширение читает
+    /// само на каждой пробе — ради него переподключаться не нужно.
+    public func setConnection(_ next: ConnectionSettings, state: TunnelState) async throws {
+        try await apply(state) { try await settings.setConnection(next) }
+    }
+
+    /// «Маршрутизация»: режим и правила для сайтов.
+    public func setRouting(_ next: RoutingSettings, state: TunnelState) async throws {
+        try await apply(state) { try await settings.setRouting(next) }
+    }
+
     public func setSubscriptions(_ next: SubscriptionSettings) async throws {
         try await settings.setSubscriptions(next)
     }
@@ -33,7 +45,7 @@ public struct SettingsActions: Sendable {
         try await change()
         let after = try await settings.load()
         let running = state == .connecting || state == .connected || state == .reconnecting
-        if running, before.tunnel.needsReconnect(after.tunnel) || VpnProfile.of(before) != VpnProfile.of(after) {
+        if running, before.needsReconnect(after) || VpnProfile.of(before) != VpnProfile.of(after) {
             try await control.connect()
         }
     }

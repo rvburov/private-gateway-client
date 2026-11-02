@@ -53,7 +53,7 @@ public struct TunnelLaunch: Sendable {
             throw TunnelFailure(TunnelErrors.noServer)
         }
 
-        let core = app.tunnel.core()
+        let core = app.core()
         if XrayConfig.build(server, core, tunFd: 0).rejection != nil {
             throw TunnelFailure(TunnelErrors.unsupported)
         }

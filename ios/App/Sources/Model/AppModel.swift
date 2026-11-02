@@ -358,6 +358,19 @@ final class AppModel: ObservableObject {
         await run { try await self.container.settings.setReconnect(policy) }
     }
 
+    /// «Подключение и ядро»: под защитой то, что получают ядро и туннель (журнал, MTU, определение домена, отпечаток TLS, Mux,
+    /// фрагментация), сразу в работу — ядро перезапускается в том же туннеле; таймаут расширение читает само на каждой пробе.
+    func setConnection(_ next: ConnectionSettings) async {
+        let state = home.status.state
+        await run { try await self.settingsActions.setConnection(next, state: state) }
+    }
+
+    /// «Маршрутизация»: режим и правила для сайтов — под защитой сразу в работу, как настройки туннеля.
+    func setRouting(_ next: RoutingSettings) async {
+        let state = home.status.state
+        await run { try await self.settingsActions.setRouting(next, state: state) }
+    }
+
     /// Адрес сервера для карточки («адрес:порт») — из ссылки в Связке ключей, только по просьбе открытой карточки.
     func address(_ id: String) async -> String? {
         try? await container.servers.address(id)

@@ -54,8 +54,17 @@ public struct TunnelSettings: Equatable, Hashable, Sendable {
         return custom
     }
 
+    /// Настройки ядра с подключением и маршрутизацией по умолчанию.
     public func core() -> CoreSettings {
-        CoreSettings(dns: dnsServer, allowLan: allowLan, ipv6: ipv6, lanDns: lanDns)
+        core(ConnectionSettings(), RoutingSettings())
+    }
+
+    /// Настройки ядра и туннеля: DNS, IPv6 и локальная сеть отсюда, остальное — из «Подключения и ядра» и «Маршрутизации».
+    public func core(_ connection: ConnectionSettings, _ routing: RoutingSettings) -> CoreSettings {
+        CoreSettings(
+            dns: dnsServer, allowLan: allowLan, ipv6: ipv6, mux: connection.mux, fingerprint: connection.fingerprint.xray, sniffing: connection.sniffing,
+            mtu: connection.tunMtu, logLevel: connection.coreLog, lanDns: lanDns, tlsFragment: connection.tlsFragment, routing: routing
+        )
     }
 
     /// Нужно ли переподключиться, чтобы `next` вошли в работу, — только то, что получает ядро. Неверный свой адрес равен

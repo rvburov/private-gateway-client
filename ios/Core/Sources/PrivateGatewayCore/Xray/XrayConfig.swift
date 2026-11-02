@@ -38,14 +38,19 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
     public var sniffing: Bool
     /// MTU туннеля.
     public var mtu: Int
-    /// Подробный журнал ядра (без адресов сайтов: журнал соединений всегда выключен).
-    public var debugLog: Bool
+    /// Подробность журнала ядра (журнал соединений выключен на любом уровне).
+    public var logLevel: CoreLogLevel
     /// Свой DNS в частной сети (`TunnelSettings.lanDns`): запросы самого Xray к нему идут напрямую.
     public var lanDns: String?
+    /// Фрагментация TLS ClientHello: выход к серверу соединяется через выход `XrayConfig.fragmentTag`.
+    public var tlsFragment: Bool
+    /// Правила для сайтов («Маршрутизация»): ядро получает `RoutingSettings.activeRules`.
+    public var routing: RoutingSettings
 
     public init(
         dns: String = XrayConfig.defaultDns, allowLan: Bool = false, ipv6: Bool = false, mux: Bool = false, fingerprint: String? = nil,
-        sniffing: Bool = true, mtu: Int = 1500, debugLog: Bool = false, lanDns: String? = nil
+        sniffing: Bool = true, mtu: Int = ConnectionSettings.autoMtu, logLevel: CoreLogLevel = .warning, lanDns: String? = nil, tlsFragment: Bool = false,
+        routing: RoutingSettings = RoutingSettings()
     ) {
         self.dns = dns
         self.allowLan = allowLan
@@ -54,16 +59,18 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
         self.fingerprint = fingerprint
         self.sniffing = sniffing
         self.mtu = mtu
-        self.debugLog = debugLog
+        self.logLevel = logLevel
         self.lanDns = lanDns
+        self.tlsFragment = tlsFragment
+        self.routing = routing
     }
 }
 
 /// Конфиг Xray-core для телефона — тот же, что собирает `XrayConfig` Android: расширение туннеля собирает его само — из
 /// описания сервера и настроек, а не из готового текста (модель угроз, как у службы десктопа). Вход — TUN: дескриптор
 /// интерфейса Xray получает через `env` (`xray.tun.fd`); выход — выбранный сервер (те же поля, что у десктопа), прямой,
-/// блок и DNS. Запросы DNS из туннеля отвечает DNS ядра через сервер. Журнал соединений выключен: адреса сайтов в журнал не
-/// попадают.
+/// блок, DNS и, с фрагментацией TLS, выход фрагментации. Запросы DNS из туннеля отвечает DNS ядра через сервер; правила для
+/// сайтов — после локальной сети и IPv6, как у десктопа. Журнал соединений выключен: адреса сайтов в журнал не попадают.
 public enum XrayConfig {
     public static let tunTag = "tun-in"
     public static let proxyTag = "proxy"
@@ -71,6 +78,7 @@ public enum XrayConfig {
     public static let blockTag = "block"
     public static let dnsTag = "dns-out"
     public static let subscriptionTag = "subscription-in"
+    public static let fragmentTag = "fragment"
 
     /// Выход DNS: A и AAAA (типы 1 и 28) отвечает сам, остальное — отказ REFUSED (код 5). Правилами `rules`: прежний
     /// «nonIPQuery» Xray-core 26.x объявил к удалению. Как у десктопа и Android. Вычисляемое: хранимое статическое значение
@@ -112,7 +120,7 @@ public enum XrayConfig {
         }
 
         let log: Json = .object([
-            ("loglevel", .string(settings.debugLog ? "debug" : "warning")), ("access", .string("none")), ("dnsLog", .bool(false)),
+            ("loglevel", .string(settings.logLevel.xray)), ("access", .string("none")), ("dnsLog", .bool(false)),
         ])
         let dns: Json = .object([("servers", .array([.string(settings.dns)])), ("queryStrategy", .string(settings.ipv6 ? "UseIP" : "UseIPv4"))])
         // Домен из TLS, HTTP и QUIC — только для правил: соединение идет туда, куда просили.
@@ -152,12 +160,17 @@ public enum XrayConfig {
             ]), at: 0)
         }
         let routing: Json = .object([("domainStrategy", .string("IPIfNonMatch")), ("rules", .array(routingRules))])
+        var outbounds = [proxy, direct, block, dnsOut]
+        if settings.tlsFragment {
+            outbounds.append(fragment)
+        }
+
         let config: Json = .object([
             ("log", log),
             ("env", .object([("xray.tun.fd", .string(String(tunFd)))])),
             ("dns", dns),
             ("inbounds", .array(inbounds)),
-            ("outbounds", .array([proxy, direct, block, dnsOut])),
+            ("outbounds", .array(outbounds)),
             ("routing", routing),
         ])
         return XrayConfigResult(json: JsonText.write(config), rejection: nil)
@@ -186,7 +199,44 @@ public enum XrayConfig {
             ]))
         }
 
+        // Правила для сайтов («Маршрутизация») — после локальной сети и IPv6, по порядку списка, как у десктопа: «Напрямую» —
+        // только в раздельном режиме (прямой выход ядра — из расширения туннеля, мимо сервера). Адрес и подсеть — условием IP,
+        // имя — доменом с поддоменами. Шаблон, которого ядро телефона не примет (geosite: базы нет), сюда не попадает.
+        for rule in settings.routing.activeRules {
+            guard let pattern = SitePattern.normalize(rule.pattern) else {
+                continue
+            }
+
+            let address = SitePattern.isAddress(pattern)
+            let key = address ? "ip" : "domain"
+            let condition = address ? pattern : SitePattern.domainCondition(pattern)
+            rules.append(.object([("type", .string("field")), (key, .array([.string(condition)])), ("outboundTag", .string(outboundTag(rule.action)))]))
+        }
+
         return rules
+    }
+
+    /// Выход правила для сайта.
+    private static func outboundTag(_ action: RuleAction) -> String {
+        switch action {
+        case .direct: return directTag
+        case .proxy: return proxyTag
+        case .block: return blockTag
+        }
+    }
+
+    /// Выход фрагментации TLS против DPI — как у десктопа: ClientHello уходит кусками по 100–200 байт с паузами 10–20 мс;
+    /// выход к серверу соединяется через него (`sockopt.dialerProxy`). Ему можно все (`finalRules`): соединяется он только с
+    /// сервером, и сервер в частной сети не закрывается. Вычисляемое — как `dnsRules`.
+    static var fragment: Json {
+        .object([
+            ("tag", .string(fragmentTag)),
+            ("protocol", .string("freedom")),
+            ("settings", .object([
+                ("finalRules", .array([.object([("action", .string("allow"))])])),
+                ("fragment", .object([("packets", .string("tlshello")), ("length", .string("100-200")), ("interval", .string("10-20"))])),
+            ])),
+        ])
     }
 
     /// Отказ ядра как ошибка — для `Result`.
@@ -397,6 +447,10 @@ public enum XrayConfig {
             ])))
         case .none:
             stream.append(("security", .string("none")))
+        }
+
+        if settings.tlsFragment {
+            stream.append(("sockopt", .object([("dialerProxy", .string(fragmentTag))])))
         }
 
         return .object(stream)

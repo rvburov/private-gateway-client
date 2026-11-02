@@ -119,6 +119,25 @@ struct PgLinkRow: View {
     }
 }
 
+/// Значение только для чтения справа в строке настройки (версия ядра; .setting > .t-mono доски 06, Border.value десктопа):
+/// моноширинным caption полужирным в рамке line.border на control.segmentTrack, скругление 8, поля 8 × 4, в одну строку.
+struct PgValueBox: View {
+    let text: String
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        Text(text)
+            .pgText(PgTextStyle(size: PgType.caption.size, weight: PgType.bodyStrong.weight, mono: true))
+            .foregroundStyle(Color(PgColor.Text.primary))
+            .lineLimit(1)
+            .padding(.horizontal, PgSpace.s)
+            .padding(.vertical, PgSpace.xxs)
+            .background(shape.fill(Color(PgColor.Control.segmentTrack)))
+            .overlay(shape.strokeBorder(Color(PgColor.Line.border), lineWidth: 1))
+            .fixedSize()
+    }
+}
+
 /// Полоса между строками карточки (.divider; .setting + .setting и .link-row + .link-row макета): 1 пункт line.divider.
 struct PgDivider: View {
     var body: some View {

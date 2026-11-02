@@ -51,7 +51,7 @@ public actor LatencyMeter {
             }
         }
 
-        let core = ((try? await settings.load()) ?? AppSettings()).tunnel.core()
+        let core = ((try? await settings.load()) ?? AppSettings()).core()
         let plan = PingBatch.plan(targets, core)
         try? await servers.setLatency(plan.unsupported)
         for part in plan.chunks {

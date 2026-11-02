@@ -7,14 +7,17 @@ import UIKit
 enum SettingsPage: Hashable {
     case main
     case protection
+    case core
+    case routing
     case subscriptions
     case licenses
 }
 
 /// «Настройки» (доска 04, SettingsPage десктопа): заголовок, «Основные» одной карточкой — блок при обрыве (выключение — через
-/// вопрос), подключение при запуске, переподключение (до страницы «Подключение и ядро»), уведомления сегментами с подписью по
-/// выбору, язык — системный выбор языка приложения в Настройках iOS; «Для опытных» — строки-ссылки на страницы, которые есть
-/// на телефоне, и вкладку «Проверка»; внизу — версия приложения и ядра. Режима «Только прокси» на телефоне нет (решение 527).
+/// вопрос), подключение при запуске, уведомления сегментами с подписью по выбору, язык — системный выбор языка приложения в
+/// Настройках iOS; «Для опытных» — строки-ссылки на страницы, которые есть на телефоне (переподключение — на странице
+/// «Подключение и ядро»), и вкладку «Проверка»; внизу — версия приложения и ядра. Режима «Только прокси» на телефоне нет
+/// (решение 527).
 /// Изменения под защитой применяются сразу — перезапуском ядра или туннеля (`SettingsActions`). Открытая страница — у окна:
 /// «Добавить» поверх и возврат не сбрасывают ее.
 struct SettingsView<Subscriptions: View>: View {
@@ -28,6 +31,10 @@ struct SettingsView<Subscriptions: View>: View {
     var onConnectOnLaunch: (Bool) -> Void = { _ in }
     var onNotifications: (NotificationLevel) -> Void = { _ in }
     var onReconnect: (ReconnectPolicy) -> Void = { _ in }
+    /// «Подключение и ядро»: журнал ядра, MTU, определение домена, отпечаток TLS, Mux, фрагментация, таймаут.
+    var onConnection: (ConnectionSettings) -> Void = { _ in }
+    /// «Маршрутизация»: режим и правила для сайтов.
+    var onRouting: (RoutingSettings) -> Void = { _ in }
     /// «Проверка и логи» — вкладка «Проверка» островка.
     var onCheck: () -> Void = {}
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
@@ -40,6 +47,16 @@ struct SettingsView<Subscriptions: View>: View {
             ProtectionView(
                 texts: texts, tunnel: settings.tunnel, killSwitch: settings.killSwitch, alwaysOn: settings.alwaysOn, onTunnel: onTunnel,
                 onKillSwitch: onKillSwitch, onAlwaysOn: onAlwaysOn, onBack: { page = .main }
+            )
+        case .core:
+            CoreView(
+                texts: texts, connection: settings.connection, reconnect: settings.reconnect, coreVersion: about.core, onConnection: onConnection,
+                onReconnect: onReconnect, onBack: { page = .main }
+            )
+        case .routing:
+            RoutingView(
+                texts: texts, routing: settings.routing, allowLan: settings.tunnel.allowLan, onRouting: onRouting, onLan: { page = .protection },
+                onBack: { page = .main }
             )
         case .subscriptions:
             subscriptions { page = .main }
@@ -95,14 +112,6 @@ struct SettingsView<Subscriptions: View>: View {
             identifier: "settings.connectOnLaunch", onChange: onConnectOnLaunch
         )
         PgDivider().padding(.horizontal, PgSpace.card)
-        // Переподключение — строка «Подключения и ядра» (доска 06); пока той страницы на телефоне нет, оно здесь, в том же виде.
-        PgSettingRow(title: texts.coreReconnectTitle, caption: texts.coreReconnectText) {
-            PgSelect(
-                options: SettingsLook.reconnectOptions(texts), selection: settings.reconnect, label: texts.coreReconnectTitle, identifier: "settings.reconnect",
-                onSelect: onReconnect
-            )
-        }
-        PgDivider().padding(.horizontal, PgSpace.card)
         notifications
         PgDivider().padding(.horizontal, PgSpace.card)
         language
@@ -155,15 +164,23 @@ struct SettingsView<Subscriptions: View>: View {
         .accessibilityIdentifier("settings.language")
     }
 
-    /// «Для опытных» (доска 04): строки-ссылки с плиткой значка через полосы — только на то, что на телефоне есть. «Подключение
-    /// и ядро», «Маршрутизация», «Резервная копия» и «О программе» появятся вместе со своими страницами; до «О программе» на
-    /// ее месте — «Лицензии открытых компонентов».
+    /// «Для опытных» (доска 04): строки-ссылки с плиткой значка через полосы по порядку доски — только на то, что на телефоне
+    /// есть. «Резервная копия» и «О программе» появятся вместе со своими страницами; до «О программе» на ее месте —
+    /// «Лицензии открытых компонентов».
     @ViewBuilder
     private var advanced: some View {
         PgLinkRow(
             icon: PgIcons.advProtection, title: texts.settingsAdvProtectionTitle, caption: texts.settingsAdvProtectionText, large: true,
             identifier: "settings.protection"
         ) { page = .protection }
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgLinkRow(icon: PgIcons.advCore, title: texts.settingsAdvCoreTitle, caption: texts.settingsAdvCoreText, large: true, identifier: "settings.core") {
+            page = .core
+        }
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgLinkRow(
+            icon: PgIcons.advRouting, title: texts.settingsAdvRoutingTitle, caption: texts.settingsAdvRoutingText, large: true, identifier: "settings.routing"
+        ) { page = .routing }
         PgDivider().padding(.horizontal, PgSpace.card)
         PgLinkRow(
             icon: PgIcons.advProfiles, title: texts.settingsAdvProfilesTitle, caption: texts.settingsAdvProfilesText, large: true,
@@ -221,14 +238,6 @@ enum SettingsLook {
         case .importantOnly: return texts.settingsNotificationsImportantNote
         case .off: return nil
         }
-    }
-
-    /// Переподключение — пункты меню по порядку «Подключения и ядра» (доска 06).
-    static func reconnectOptions(_ texts: PgTexts) -> [PgOption<ReconnectPolicy>] {
-        [
-            PgOption(value: ReconnectPolicy.backoff60Seconds, title: texts.coreReconnectBackoff),
-            PgOption(value: ReconnectPolicy.upTo5Minutes, title: texts.coreReconnect5min), PgOption(value: ReconnectPolicy.never, title: texts.coreReconnectNever),
-        ]
     }
 
     /// Язык приложения сейчас — «Русский» или «English», как сегменты макета.

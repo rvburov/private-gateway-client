@@ -1,5 +1,6 @@
 package com.privategateway.client.core.settings
 
+import com.privategateway.client.core.vpn.TunPlan
 import com.privategateway.client.core.xray.CoreSettings
 import com.privategateway.client.core.xray.XrayConfig
 
@@ -15,14 +16,17 @@ enum class DnsChoice {
 }
 
 /**
- * Настройки туннеля Android: DNS, IPv6 через сервер, локальная сеть. По умолчанию — как решено для защиты: локальная сеть
- * закрыта, IPv6 закрывает сам Android (решение 397), DNS — DoH по адресу.
+ * Настройки туннеля Android: DNS, IPv6 через сервер, локальная сеть («Защита и утечки»), подключение и ядро ([connection],
+ * доска 6) и маршрутизация ([routing], доска 13). По умолчанию — как решено для защиты: локальная сеть закрыта, IPv6
+ * закрывает сам Android (решение 397), DNS — DoH по адресу, весь трафик — через VPN.
  */
 data class TunnelSettings(
     val dns: DnsChoice = DnsChoice.Profile,
     val customDns: String? = null,
     val ipv6: Boolean = false,
     val allowLan: Boolean = false,
+    val connection: ConnectionSettings = ConnectionSettings(),
+    val routing: RoutingSettings = RoutingSettings(),
 ) {
     /** Сервер DNS для ядра; свой адрес не годится — DNS по умолчанию (экран настроек такой адрес не сохраняет). */
     val dnsServer: String
@@ -39,14 +43,31 @@ data class TunnelSettings(
     val lanDns: String?
         get() = if (dns == DnsChoice.Custom) customDns?.trim()?.takeIf { PrivateNetwork.contains(it) } else null
 
-    fun core(): CoreSettings = CoreSettings(dns = dnsServer, allowLan = allowLan, ipv6 = ipv6, lanDns = lanDns)
+    /** Что получает ядро: DNS, локальная сеть, IPv6, настройки подключения и правила для сайтов, которые сейчас действуют. */
+    fun core(): CoreSettings = CoreSettings(
+        dns = dnsServer,
+        allowLan = allowLan,
+        ipv6 = ipv6,
+        mux = connection.mux,
+        fingerprint = connection.fingerprint.xray,
+        sniffing = connection.sniffing,
+        mtu = connection.tunMtu,
+        logLevel = connection.coreLog,
+        lanDns = lanDns,
+        fragment = connection.tlsFragment,
+        rules = routing.coreRules,
+    )
+
+    /** Что получает VpnService.Builder: карта туннеля, программы мимо нее (раздельный режим) и строгие маршруты. */
+    fun plan(): TunPlan = TunPlan.of(core(), routing.disallowedApps, connection.strictRoutes)
 
     /**
      * Нужно ли переподключиться, чтобы [next] вошли в работу, — как `ProtectionSync.Affects` десктопа: только то, что
-     * получает ядро. Неверный свой адрес равен «Из профиля» (ядро получает DNS по умолчанию), и ради него переподключаться
-     * не нужно.
+     * получают ядро и карта туннеля. Неверный свой адрес равен «Из профиля» (ядро получает DNS по умолчанию), и ради него
+     * переподключаться не нужно; таймаут подключения действует со следующей пробы связи, а правило «Напрямую» в режиме «Весь
+     * трафик» и выключенная программа мимо VPN ничего не меняют.
      */
-    fun needsReconnect(next: TunnelSettings): Boolean = core() != next.core()
+    fun needsReconnect(next: TunnelSettings): Boolean = core() != next.core() || plan() != next.plan()
 
     companion object {
         const val QUAD9_DOH = "https://9.9.9.9/dns-query"

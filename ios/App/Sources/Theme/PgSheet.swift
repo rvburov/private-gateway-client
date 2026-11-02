@@ -40,6 +40,35 @@ struct PgSheet<Content: View>: View {
     }
 }
 
+/// Шапка нижнего листа (.sheet доски: «Свой MTU», правило для сайта): заголовок type.status в одну строку и крестик
+/// «Закрыть» — значок 20 линией 2,2 цветом text.secondary в поле касания layout.touchTarget.
+struct PgSheetHeader: View {
+    let title: String
+    /// Подпись крестика для VoiceOver.
+    let closeLabel: String
+    var identifier = ""
+    let onClose: () -> Void
+
+    var body: some View {
+        HStack(spacing: PgSpace.s) {
+            Text(title)
+                .pgText(PgType.status)
+                .foregroundStyle(Color(PgColor.Text.primary))
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+            Button(action: onClose) {
+                PgIcon(data: PgIcons.close, color: Color(PgColor.Text.secondary), size: 20, lineWidth: 2.2)
+                    .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(PgPressStyle())
+            .accessibilityLabel(closeLabel)
+            .accessibilityIdentifier(identifier)
+        }
+    }
+}
+
 /// Скругление radius.panel и белый фон системного листа: задать их можно только с iOS 16.4, раньше они системные.
 private struct PgSheetLook: ViewModifier {
     @ViewBuilder

@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
 import android.net.LinkProperties
@@ -265,12 +266,16 @@ class GatewayVpnService : VpnService() {
     /**
      * Наблюдение за связью (TunnelGuard): проба через туннель, переподключение к тому же серверу с паузами по политике
      * «Переподключение», при отказе — «Ошибка» с кодом. Сеть сменилась ([watchNetwork]) или телефон проснулся — сразу.
+     * Ответа сервера проба ждет «Таймаут подключения» («Подключение и ядро»): новый срок — со следующей пробы.
      */
     private fun startGuard() {
         val guardian = TunnelGuard(
             clock = SystemClock::elapsedRealtime,
             policy = { settings.reconnect.first() },
-            probe = { withContext(Dispatchers.IO) { TunnelProbe.answers() } },
+            probe = {
+                val timeout = settings.tunnel.first().connection.probeTimeoutMs.toInt()
+                withContext(Dispatchers.IO) { TunnelProbe.answers(timeoutMs = timeout) }
+            },
             restart = { number -> lock.withLock { attempt(number) } },
             events = object : GuardEvents {
                 override suspend fun reconnecting(attempt: Int) {
@@ -318,7 +323,7 @@ class GatewayVpnService : VpnService() {
         val name = servers.servers.first().firstOrNull { it.id == id }?.displayName ?: server.name
         val tunnel = settings.tunnel.first()
         val core = tunnel.core()
-        val plan = TunPlan.of(core)
+        val plan = tunnel.plan()
 
         // DNS сети — до туннеля: потом сеть по умолчанию — уже он сам. Дальше DNS ведет слежение за сетью.
         val follower = CoreDnsFollower(activeNetworkDns())
@@ -329,6 +334,22 @@ class GatewayVpnService : VpnService() {
         plan.addresses.forEach { builder.addAddress(it.address, it.length) }
         plan.routes.forEach { builder.addRoute(it.address, it.length) }
         plan.dnsServers.forEach { builder.addDnsServer(it) }
+        // Раздельный режим («Маршрутизация»): программы мимо VPN Android в карту не пускает — их трафик идет к провайдеру
+        // напрямую. Само приложение — всегда в туннеле: через него идут проба связи и подписки. Удаленная с телефона
+        // программа пропускается: иначе отказ Android сорвал бы все подключение.
+        plan.disallowedApps.filter { it != packageName }.forEach { app ->
+            try {
+                builder.addDisallowedApplication(app)
+            } catch (_: PackageManager.NameNotFoundException) {
+                journal.warning("bypass app is not installed")
+            }
+        }
+
+        // Строгие маршруты выключены — программа может сама уйти мимо карты, привязавшись к Wi-Fi или мобильной сети.
+        if (plan.allowBypass) {
+            builder.allowBypass()
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             // Платная ли сеть — как у сети под туннелем, а не «всегда платная», как считает Android для VPN по умолчанию.
             builder.setMetered(false)

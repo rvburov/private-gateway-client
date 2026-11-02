@@ -4,6 +4,7 @@ import com.privategateway.client.core.xray.CoreSettings
 import com.privategateway.client.core.xray.XrayConfig
 import org.junit.jupiter.api.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class TunPlanTest {
@@ -23,6 +24,21 @@ class TunPlanTest {
         assertEquals(listOf(Prefix("172.19.0.1", 30), Prefix("fd66:7067:6763::1", 126)), plan.addresses)
         assertEquals(listOf(Prefix("0.0.0.0", 0), Prefix("::", 0)), plan.routes)
         assertEquals(1400, plan.mtu)
+    }
+
+    @Test
+    fun `by default no app bypasses the tunnel and apps cannot side step it`() {
+        val plan = TunPlan.of(CoreSettings())
+        assertEquals(emptyList(), plan.disallowedApps)
+        assertFalse(plan.allowBypass, "строгие маршруты по умолчанию: allowBypass не вызывается")
+    }
+
+    @Test
+    fun `split apps and relaxed routes go to the builder`() {
+        val plan = TunPlan.of(CoreSettings(), listOf("org.example.game", "org.example.bank"), strictRoutes = false)
+        assertEquals(listOf("org.example.game", "org.example.bank"), plan.disallowedApps)
+        assertTrue(plan.allowBypass)
+        assertEquals(TunPlan.of(CoreSettings()).routes, plan.routes, "маршруты карты те же: программы исключает сам Android")
     }
 
     @Test

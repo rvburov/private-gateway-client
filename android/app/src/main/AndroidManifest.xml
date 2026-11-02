@@ -14,6 +14,14 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
+    <!-- «Программы мимо VPN» (доска 13): с Android 11 чужие программы видны только по запросу — те, что со значком запуска. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <!-- HTTP-подписки поддерживаются с явным предупреждением. Проверка TLS для HTTPS остается системной. -->
     <application
         android:name=".PrivateGatewayApp"

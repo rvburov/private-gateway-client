@@ -207,9 +207,10 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     /// Проба связи через туннель — как `TunnelProbe` Android: запрос к проверочному адресу через сам туннель (сокет привязан
     /// к интерфейсу utun — свои соединения расширения iOS иначе пускает мимо), ответ доходит только через ядро и сервер защиты.
     /// Пробу не удалось даже начать (нет интерфейса, система не дала привязать сокет) — это не обрыв: наблюдение считает
-    /// связь живой, причина — в журнал туннеля, один раз.
+    /// связь живой, причина — в журнал туннеля, один раз. Ответа ждать не дольше таймаута подключения из «Подключения и ядра»
+    /// (читается на каждой пробе — его смена действует без переподключения); настройки не прочитать — срок по умолчанию.
     private func probe() async -> Bool {
-        let timeout = ReconnectTiming().probeTimeout
+        let timeout = (try? container.settings.loadNow())?.connection.probeTimeout ?? ReconnectTiming().probeTimeout
         let answer = await withCheckedContinuation { (continuation: CheckedContinuation<ProbeAnswer, Never>) in
             DispatchQueue.global(qos: .utility).async {
                 continuation.resume(returning: TunnelInterface.name().map { SocketProbe.run(interface: $0, timeout: timeout) } ?? .unavailable("no utun"))
