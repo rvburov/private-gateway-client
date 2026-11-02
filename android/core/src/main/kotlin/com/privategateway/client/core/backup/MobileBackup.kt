@@ -5,8 +5,11 @@ import com.privategateway.client.core.links.JsonTree
 import java.time.Instant
 import java.time.OffsetDateTime
 
-/** Сервер в копии телефона: ссылка с ключами (как «Поделиться»), свое название и избранное. */
-data class BackupServer(val link: String, val name: String?, val favorite: Boolean = false)
+/**
+ * Сервер в копии телефона: ссылка с ключами (как «Поделиться»), свое название, избранное и профиль — группа из ссылок без
+ * адреса (null — «Мои серверы»). Серверы подписок в копию не идут: они загрузятся снова по адресу подписки.
+ */
+data class BackupServer(val link: String, val name: String?, val favorite: Boolean = false, val group: String? = null)
 
 /** Подписка в копии: адрес и название группы. Адрес сохраняется и без ключей серверов — по нему они загрузятся снова. */
 data class BackupSubscription(val url: String, val name: String)
@@ -30,7 +33,7 @@ data class MobileBackup(
         "format" to FORMAT,
         "version" to VERSION,
         "createdAt" to createdAt.toString(),
-        "servers" to servers?.map { linkedMapOf("link" to it.link, "name" to it.name, "favorite" to it.favorite) },
+        "servers" to servers?.map { linkedMapOf("link" to it.link, "name" to it.name, "favorite" to it.favorite, "group" to it.group) },
         "subscriptions" to subscriptions?.map { linkedMapOf("url" to it.url, "name" to it.name) },
         "settings" to settings?.toSortedMap(),
     ).toByteArray()
@@ -62,7 +65,7 @@ data class MobileBackup(
             val servers = (root["servers"] as? List<*>)?.mapNotNull { item ->
                 val server = item as? Map<*, *> ?: return@mapNotNull null
                 val link = server["link"] as? String ?: return@mapNotNull null
-                BackupServer(link, server["name"] as? String, server["favorite"] == true)
+                BackupServer(link, server["name"] as? String, server["favorite"] == true, server["group"] as? String)
             }
             val subscriptions = (root["subscriptions"] as? List<*>)?.mapNotNull { item ->
                 val subscription = item as? Map<*, *> ?: return@mapNotNull null

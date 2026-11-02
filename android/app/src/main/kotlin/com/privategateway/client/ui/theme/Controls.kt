@@ -47,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -546,6 +547,7 @@ fun PgInput(
     style: TextStyle = PgType.Body,
     singleLine: Boolean = true,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
+    visual: VisualTransformation = VisualTransformation.None,
 ) {
     val shape = RoundedCornerShape(PgRadius.Input)
     val interaction = remember { MutableInteractionSource() }
@@ -555,6 +557,7 @@ fun PgInput(
         onValueChange = onChange,
         singleLine = singleLine,
         keyboardOptions = keyboard,
+        visualTransformation = visual,
         textStyle = style.copy(color = PgColor.Text.Primary),
         cursorBrush = SolidColor(PgColor.Accent.Base),
         interactionSource = interaction,

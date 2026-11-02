@@ -22,7 +22,7 @@ class MobileBackupTest {
             created,
             servers = listOf(
                 BackupServer("vless://11111111-2222-3333-4444-555555555555@198.51.100.20:443?security=tls#NL", "Нидерланды «01»", favorite = true),
-                BackupServer("trojan://password@203.0.113.7:443#DE", null),
+                BackupServer("trojan://password@203.0.113.7:443#DE", null, group = "Работа"),
             ),
             subscriptions = listOf(BackupSubscription("https://example.com/sub/token", "Мой VPN")),
             settings = mapOf("tunnel_dns" to "Cloudflare", "connect_on_launch" to "true"),

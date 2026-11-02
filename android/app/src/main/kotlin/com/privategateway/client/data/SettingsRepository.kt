@@ -15,6 +15,7 @@ import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
 import com.privategateway.client.core.vpn.SystemVpn
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -157,6 +158,30 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         }
     }
 
+    /**
+     * Настройки для резервной копии (решение 559): значения ключей строками, имена — как у iOS. Без выбранного сервера (он
+     * сменится вместе со списком), без того, что Android сообщил о системе, и без флага первого запуска.
+     */
+    suspend fun export(): Map<String, String> {
+        val preferences = store.data.first()
+        return BACKED_UP.mapNotNull { key -> preferences[key]?.let { key.name to it.toString() } }.toMap()
+    }
+
+    /** Вернуть настройки из копии: известные ключи с верным типом; чужие и испорченные значения пропускаются. */
+    suspend fun import(values: Map<String, String>) {
+        store.edit { preferences ->
+            for (key in BACKED_UP) {
+                val text = values[key.name] ?: continue
+                @Suppress("UNCHECKED_CAST")
+                when {
+                    key in BOOLEANS -> text.toBooleanStrictOrNull()?.let { preferences[key as Preferences.Key<Boolean>] = it }
+                    key in INTS -> text.toIntOrNull()?.let { preferences[key as Preferences.Key<Int>] = it }
+                    else -> preferences[key as Preferences.Key<String>] = text
+                }
+            }
+        }
+    }
+
     private companion object {
         val SELECTED = stringPreferencesKey("selected_server")
         val SUBS_REFRESH = stringPreferencesKey("subs_refresh")
@@ -183,5 +208,15 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val SYSTEM_ALWAYS_ON = booleanPreferencesKey("system_always_on")
         val SYSTEM_LOCKDOWN = booleanPreferencesKey("system_lockdown")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+
+        private val BOOLEANS: Set<Preferences.Key<*>> = setOf(SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH)
+        private val INTS: Set<Preferences.Key<*>> = setOf(MTU, CONNECT_TIMEOUT)
+
+        /** Что идет в резервную копию — настройки пользователя, а не состояние телефона. */
+        val BACKED_UP: List<Preferences.Key<*>> = listOf(
+            SUBS_REFRESH, SUBS_ONLY_VPN, SUBS_NOTIFY, DNS, CUSTOM_DNS, IPV6, ALLOW_LAN, CORE_LOG, MTU, STRICT_ROUTES, SNIFFING,
+            FINGERPRINT, MUX, TLS_FRAGMENT, CONNECT_TIMEOUT, ROUTING_MODE, ROUTING_APPS, ROUTING_RULES, NOTIFY_LEVEL, RECONNECT,
+            CONNECT_ON_LAUNCH,
+        )
     }
 }

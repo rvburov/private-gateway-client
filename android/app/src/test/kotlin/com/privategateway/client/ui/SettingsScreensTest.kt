@@ -116,9 +116,9 @@ class SettingsScreensTest {
         compose.onNodeWithTag("routing").assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
 
-        // Страницы «Резервная копия» у телефона пока нет — и строки тоже; «О программе» есть (решение 555).
+        // «Резервная копия» (решение 559) и «О программе» (решение 555) — свои страницы.
         compose.onNodeWithTag("settings").assertIsDisplayed()
-        compose.onNodeWithText(text(R.string.settings_adv_backup_title)).assertDoesNotExist()
+        compose.onNodeWithTag("settings.backup").performScrollTo().assertIsDisplayed()
         compose.onNodeWithTag("settings.about").performScrollTo().assertIsDisplayed()
     }
 

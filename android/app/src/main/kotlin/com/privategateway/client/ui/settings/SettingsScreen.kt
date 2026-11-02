@@ -58,6 +58,7 @@ enum class SettingsPage {
     Core,
     Routing,
     Subscriptions,
+    Backup,
     About,
     Licenses,
 }
@@ -86,6 +87,7 @@ fun SettingsScreen(
     language: ((String) -> Unit)? = null,
     installedApps: suspend () -> List<PhoneApp> = { emptyList() },
     onCaptive: () -> Unit = {},
+    backup: @Composable (onBack: () -> Unit) -> Unit = {},
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -128,6 +130,11 @@ fun SettingsScreen(
         SettingsPage.Subscriptions -> {
             BackHandler { page = SettingsPage.Main }
             subscriptions { page = SettingsPage.Main }
+        }
+
+        SettingsPage.Backup -> {
+            BackHandler { page = SettingsPage.Main }
+            backup { page = SettingsPage.Main }
         }
 
         SettingsPage.About -> {
@@ -292,7 +299,7 @@ private fun LanguageRow(language: ((String) -> Unit)?) {
     }
 }
 
-/** «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть («Резервная копия» — со своей страницей). */
+/** «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть. */
 @Composable
 private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
     AdvancedRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection", false) {
@@ -312,6 +319,10 @@ private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
     }
 
     AdvancedRow(PgIcons.AdvCheck, R.string.settings_adv_check_title, R.string.settings_adv_check_text, "settings.check", true, onCheck)
+    AdvancedRow(PgIcons.AdvBackup, R.string.settings_adv_backup_title, R.string.settings_adv_backup_text, "settings.backup", true) {
+        onPage(SettingsPage.Backup)
+    }
+
     AdvancedRow(PgIcons.AdvAbout, R.string.settings_adv_about_title, R.string.settings_adv_about_text, "settings.about", true) {
         onPage(SettingsPage.About)
     }

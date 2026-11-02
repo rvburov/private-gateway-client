@@ -77,7 +77,9 @@
 <p class="pg-board-note">Резервная копия (BackupPage программы) — подстраница настроек: «Назад» ведет в «Настройки», островок виден.
   Флажки выбирают части копии: предупреждение о подписках видно при отмеченных серверах, о ключах — при отмеченных ключах; ключи
   без серверов недоступны. Пароль скрыт звездочками, глаз показывает его. «Выбрать файл .pgbackup» открывает лист «Восстановить из
-  копии»: пароль → «Открыть» → что в копии → «Восстановить». «Восстановить» у автокопии спрашивает «Вернуть автокопию?».</p>
+  копии»: пароль → «Открыть» → что в копии → «Восстановить». «Восстановить» у автокопии спрашивает «Вернуть автокопию?». Файл
+  .pgbackup один у всех платформ (решение 559); телефон хранит в копии серверы ссылками и подписки адресами: серверы из нее
+  добавляются к своим, подписки загружаются заново; копию компьютера телефон узнает и говорит, что восстанавливает копии телефона.</p>
 
 <div class="pg-screens">
   <!-- ===================== Сохранить и восстановить ===================== -->
@@ -119,9 +121,9 @@
           <button class="bk-drop" data-open="sheet-restore" aria-label="Выбрать файл .pgbackup">
             <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
             <span class="t-accent">Выбрать файл .pgbackup</span>
-            <span class="t-caption">или перетащите его сюда</span>
+            <span class="t-caption" data-os="desktop">или перетащите его сюда</span>
           </button>
-          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           <div class="divider"></div>
           <div class="pg-row" style="margin-top: 2px">
             <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
@@ -154,7 +156,7 @@
           </div>
           <div class="pg-stack pg-gap-6" data-page="opened" hidden>
             <span class="t-wrap">Копия от 24 октября 2026, 15:42: серверы и подписки (7, с ключами), настройки.</span>
-            <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+            <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           </div>
         </div>
         <div class="bk-sheet-actions">
@@ -219,9 +221,9 @@
           <button class="bk-drop" data-open="sheet-restore-2" aria-label="Выбрать файл .pgbackup">
             <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
             <span class="t-accent">Выбрать файл .pgbackup</span>
-            <span class="t-caption">или перетащите его сюда</span>
+            <span class="t-caption" data-os="desktop">или перетащите его сюда</span>
           </button>
-          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           <div class="divider"></div>
           <div class="pg-row" style="margin-top: 2px">
             <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
@@ -252,7 +254,7 @@
           </div>
           <div class="pg-stack pg-gap-6" data-page="opened" hidden>
             <span class="t-wrap">Копия от 24 октября 2026, 15:42: серверы и подписки (7, с ключами), настройки.</span>
-            <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+            <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           </div>
         </div>
         <div class="bk-sheet-actions">
@@ -305,9 +307,9 @@
           <button class="bk-drop" data-open="sheet-locked" aria-label="Выбрать файл .pgbackup">
             <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
             <span class="t-accent">Выбрать файл .pgbackup</span>
-            <span class="t-caption">или перетащите его сюда</span>
+            <span class="t-caption" data-os="desktop">или перетащите его сюда</span>
           </button>
-          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           <div class="divider"></div>
           <div class="pg-row" style="margin-top: 2px">
             <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
@@ -400,9 +402,9 @@
           <button class="bk-drop" data-open="sheet-opened" aria-label="Выбрать файл .pgbackup">
             <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
             <span class="t-accent">Выбрать файл .pgbackup</span>
-            <span class="t-caption">или перетащите его сюда</span>
+            <span class="t-caption" data-os="desktop">или перетащите его сюда</span>
           </button>
-          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           <div class="divider"></div>
           <div class="pg-row" style="margin-top: 2px">
             <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
@@ -428,7 +430,7 @@
           <span class="t-caption t-muted pg-ellipsis" style="font-family: var(--font-mono)">private-gateway-2026-10-24.pgbackup</span>
           <div class="pg-stack pg-gap-6">
             <span class="t-wrap">Копия от 24 октября 2026, 15:42: серверы и подписки (7, с ключами), настройки.</span>
-            <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+            <span class="t-caption t-wrap" data-os="desktop">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span><span class="t-caption t-wrap" data-os="phone">Серверы из копии добавятся к вашим, подписки загрузятся заново по их адресам, настройки заменятся. Перед этим приложение само сохранит автокопию.</span>
           </div>
         </div>
         <div class="bk-sheet-actions">

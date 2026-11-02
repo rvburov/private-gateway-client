@@ -41,6 +41,8 @@ import com.privategateway.client.ui.servers.ServersActions
 import com.privategateway.client.ui.servers.ServersScreen
 import com.privategateway.client.ui.servers.ServersViewModel
 import com.privategateway.client.ui.servers.importDone
+import com.privategateway.client.ui.settings.BackupPage
+import com.privategateway.client.ui.settings.BackupViewModel
 import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.settings.SettingsViewModel
@@ -93,6 +95,7 @@ fun AppScreen(
     actions: AppActions,
     inspector: InspectorViewModel,
     checks: CheckViewModel,
+    backups: BackupViewModel? = null,
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val importing by viewModel.importing.collectAsStateWithLifecycle()
@@ -117,6 +120,9 @@ fun AppScreen(
     }
     LaunchedEffect(actions) {
         actions.events.collect { toast.show(it, long = true) }
+    }
+    LaunchedEffect(backups) {
+        backups?.messages?.collect { toast.show(context.getString(it.text, *it.args), long = it.long) }
     }
     LaunchedEffect(requested) {
         requested?.let {
@@ -365,6 +371,11 @@ fun AppScreen(
                             language = actions.language,
                             onCaptive = captive,
                             installedApps = { settings.installedApps() },
+                            backup = { back ->
+                                if (backups != null) {
+                                    BackupPage(backups, back)
+                                }
+                            },
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
                             SubscriptionsScreen(
