@@ -83,6 +83,8 @@ class GatewayVpnService : VpnService() {
 
     @Inject lateinit var subscriptionNetwork: OwnVpnNetwork
 
+    @Inject lateinit var journal: TunnelJournal
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
     private var work: Job? = null
@@ -163,6 +165,7 @@ class GatewayVpnService : VpnService() {
 
     override fun onRevoke() {
         // Разрешение отозвано: VPN другой программы занял место или пользователь отключил нас в настройках Android.
+        journal.warning("vpn revoked by Android")
         subscriptionNetwork.clear()
         disconnect(lastStart)
     }
@@ -224,11 +227,13 @@ class GatewayVpnService : VpnService() {
     } catch (e: Exception) {
         // Сбой Android или ядра — не авария всего приложения: ошибка с кодом, текст — в журнал через SecretMasker.
         Log.w(TAG, "connect: " + SecretMasker.mask(e.toString()))
+        journal.error("connect: $e")
         TunnelErrors.CORE_FAILED
     }
 
     /** Под замком: защита не включилась или переподключение сдалось — «Ошибка» с кодом, ядра и карты нет. */
     private fun fail(error: String, startId: Int) {
+        journal.error("stopped  error=$error")
         stopCore()
         up = null
         monitor.set(TunnelStatus(state = TunnelState.Error, error = error))
@@ -243,6 +248,7 @@ class GatewayVpnService : VpnService() {
         val alwaysOn = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isAlwaysOn else null
         val lockdown = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) isLockdownEnabled else null
         val since = SystemClock.elapsedRealtime()
+        journal.info("tunnel up  lockdown=" + (lockdown?.toString() ?: "unknown"))
         monitor.set(TunnelStatus(state = TunnelState.Connected, serverId = current.id, since = since, alwaysOn = alwaysOn, lockdown = lockdown))
         // Без туннеля Android этих флагов не сообщает — окно покажет их «по последнему подключению» (решение 445).
         scope.launch { settings.setSystemVpn(SystemVpn(alwaysOn, lockdown)) }
@@ -267,6 +273,7 @@ class GatewayVpnService : VpnService() {
             restart = { number -> lock.withLock { attempt(number) } },
             events = object : GuardEvents {
                 override suspend fun reconnecting(attempt: Int) {
+                    journal.warning("no answer through the tunnel  reconnecting attempt=$attempt")
                     monitor.update { it.copy(state = TunnelState.Reconnecting, since = null, attempt = attempt) }
                     foreground(notification(getString(R.string.status_reconnecting_title), up?.name))
                 }
@@ -293,6 +300,12 @@ class GatewayVpnService : VpnService() {
 
     /** Поднять туннель и ядро; [attempt] — номер попытки переподключения (0 — подключение). Удалось — null, иначе код ошибки. */
     private suspend fun start(attempt: Int): String? {
+        if (attempt == 0) {
+            journal.info("connect  mode=vpn")
+        } else {
+            journal.info("reconnect  attempt=$attempt")
+        }
+
         val id = settings.selectedServerId.first() ?: return TunnelErrors.NO_SERVER
         if (attempt == 0) {
             monitor.set(TunnelStatus(state = TunnelState.Connecting, serverId = id))
@@ -339,6 +352,7 @@ class GatewayVpnService : VpnService() {
         if (failure != null) {
             // Текст ядра — в журнал Android через SecretMasker: ссылок, UUID и ключей в журнале нет.
             Log.w(TAG, "core: " + SecretMasker.mask(failure))
+            journal.error("core: $failure")
             return TunnelErrors.CORE_FAILED
         }
 
@@ -355,9 +369,11 @@ class GatewayVpnService : VpnService() {
         builder.establish()
     } catch (e: IllegalStateException) {
         Log.w(TAG, "establish: " + SecretMasker.mask(e.message))
+        journal.error("establish: " + e.message.orEmpty())
         null
     } catch (e: SecurityException) {
         Log.w(TAG, "establish: " + SecretMasker.mask(e.message))
+        journal.error("establish: " + e.message.orEmpty())
         null
     }
 
@@ -369,6 +385,7 @@ class GatewayVpnService : VpnService() {
                 monitor.update { it.copy(state = TunnelState.Stopping) }
                 stopCore()
                 up = null
+                journal.info("tunnel down")
                 monitor.set(TunnelStatus())
                 ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelfResult(startId)
@@ -418,6 +435,7 @@ class GatewayVpnService : VpnService() {
                 val previous = lastNetwork
                 lastNetwork = network
                 if (previous != null && previous != network) {
+                    journal.info("network changed")
                     guardian?.nudge()
                 }
             }
@@ -434,6 +452,7 @@ class GatewayVpnService : VpnService() {
             underlying = callback
         } catch (e: RuntimeException) {
             Log.w(TAG, "network callback: " + SecretMasker.mask(e.message))
+            journal.warning("network callback: " + e.message.orEmpty())
         }
     }
 
@@ -441,7 +460,10 @@ class GatewayVpnService : VpnService() {
     private fun followNetwork() {
         val follower = dns ?: return
         val endpoint = networkDns?.let { follower.network(it) } ?: return
-        engine.changeDns(endpoint)?.let { Log.w(TAG, "core dns: " + SecretMasker.mask(it)) }
+        engine.changeDns(endpoint)?.let {
+            Log.w(TAG, "core dns: " + SecretMasker.mask(it))
+            journal.warning("core dns: $it")
+        }
     }
 
     private fun foreground(notification: Notification) {

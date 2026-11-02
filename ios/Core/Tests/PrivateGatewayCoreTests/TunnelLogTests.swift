@@ -27,4 +27,29 @@ final class TunnelLogTests: XCTestCase {
         XCTAssertTrue(kept.last?.hasSuffix("event \(TunnelLog.limit + 49)") ?? false)
         XCTAssertTrue(kept.first?.hasSuffix("event 50") ?? false, "старые строки уходят")
     }
+
+    func testEntriesKeepTheLevelAndTheTime() {
+        let file = MemoryFile()
+        let at = Date(timeIntervalSince1970: 1_793_029_320)
+        let log = TunnelLog(file: file, clock: { at })
+        log.add("connected")
+        log.add("connection lost, attempt 1", level: .warning)
+        log.add("gave up: PGC-NET-001", level: .error)
+        XCTAssertEqual(log.lines().first, "2026-10-26 15:42:00 INF connected", "уровень — тремя буквами после времени")
+        XCTAssertEqual(log.entries(), [
+            TunnelLogEntry(time: at, level: .info, message: "connected"),
+            TunnelLogEntry(time: at, level: .warning, message: "connection lost, attempt 1"),
+            TunnelLogEntry(time: at, level: .error, message: "gave up: PGC-NET-001"),
+        ])
+    }
+
+    func testOldLinesWithoutALevelAreInfo() {
+        let at = Date(timeIntervalSince1970: 1_793_029_320)
+        XCTAssertEqual(TunnelLog.entry("2026-10-26 15:42:00 connected"), TunnelLogEntry(time: at, level: .info, message: "connected"))
+        XCTAssertEqual(TunnelLog.entry("2026-10-26 15:42:00 ERRATA"), TunnelLogEntry(time: at, level: .info, message: "ERRATA"), "слово — не уровень")
+        XCTAssertEqual(TunnelLog.entry("not a stamp"), TunnelLogEntry(time: nil, level: .info, message: "not a stamp"))
+        for level in TunnelLogLevel.allCases {
+            XCTAssertEqual(TunnelLog.entry("2026-10-26 15:42:00 \(level.rawValue) x").level, level)
+        }
+    }
 }

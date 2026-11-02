@@ -65,6 +65,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                 return try? JSONEncoder().encode(proxy)
             }
         }
+        if messageData == TunnelMessages.delay {
+            return await serverDelay()
+        }
         guard messageData == TunnelMessages.reload else {
             return nil
         }
@@ -102,6 +105,27 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             self.stopCore()
             self.report(TunnelStatus())
         }
+    }
+
+    /// «До сервера» для «Задержки» на «Проверке»: соединение TCP с сервером в работе мимо туннеля (свои соединения расширения
+    /// iOS в туннель не пускает) — медиана трех замеров, только время соединения, без поиска имени. Защиты нет, сервер по UDP
+    /// или ни один замер не удался — пустой ответ. Очередь действий с ядром не занимает: замер только читает.
+    private func serverDelay() async -> Data {
+        guard locked({ !stopping && reported.state == .connected }),
+              let launch = try? await TunnelLaunch.prepare(settings: container.settings, servers: container.servers),
+              ServerDelay.measures(launch.server.protocol)
+        else {
+            return TunnelMessages.delayAnswer(nil)
+        }
+
+        var samples: [Int] = []
+        for _ in 0..<ServerDelay.samples {
+            if let ms = await ProbeRunner.tcp(launch.server.host, launch.server.port).steps.first?.timeMs {
+                samples.append(ms)
+            }
+        }
+
+        return TunnelMessages.delayAnswer(ServerDelay.median(samples))
     }
 
     /// iPhone проснулся — проба связи сразу, а не через минуту.
@@ -204,7 +228,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             }
             if first {
                 log.error("probe unavailable: \(reason, privacy: .public)")
-                container.log.add("probe unavailable: \(reason)")
+                container.log.add("probe unavailable: \(reason)", level: .warning)
             }
             return true
         }
@@ -222,7 +246,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
                 guard self.current(session) else { return TunnelErrors.coreFailed }
                 let failure = error as? TunnelFailure ?? TunnelFailure(TunnelErrors.coreFailed, detail: "\(error)")
                 self.log.error("reconnect \(attempt, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
-                self.container.log.add("reconnect \(attempt): \(failure.code) \(failure.detail ?? "")")
+                self.container.log.add("reconnect \(attempt): \(failure.code) \(failure.detail ?? "")", level: .warning)
                 return failure.code
             }
         }
@@ -239,7 +263,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     }
 
     private func markReconnecting(_ attempt: Int) {
-        container.log.add("connection lost, attempt \(attempt)")
+        container.log.add("connection lost, attempt \(attempt)", level: .warning)
         reasserting = true
         report(TunnelStatus(state: .reconnecting, serverId: currentServer, attempt: attempt))
     }
@@ -260,7 +284,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
     fileprivate func gaveUp(_ error: String, session: UInt64) async {
         await work.run {
             guard self.current(session), !Task.isCancelled else { return }
-            self.container.log.add("gave up: \(error)")
+            self.container.log.add("gave up: \(error)", level: .error)
             self.stopCore()
             self.reasserting = false
             self.report(TunnelStatus(state: .error, serverId: self.currentServer, error: error))
@@ -281,7 +305,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         stopCore()
         guard current(session) else { return failure }
         log.error("\(step, privacy: .public): \(failure.code, privacy: .public) \(failure.detail ?? "", privacy: .public)")
-        container.log.add("\(step): \(failure.code) \(failure.detail ?? "")")
+        container.log.add("\(step): \(failure.code) \(failure.detail ?? "")", level: .error)
         stopWatching()
         report(TunnelStatus(state: .error, error: failure.code))
         return failure
@@ -292,7 +316,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         let response = XrayResponse.parse(LibXrayInvoke(XrayConfig.invoke("stopXray")))
         if !response.success {
             log.error("stop: \(SecretMasker.mask(response.error), privacy: .public)")
-            container.log.add("core stop: \(response.error ?? "")")
+            container.log.add("core stop: \(response.error ?? "")", level: .warning)
         }
     }
 

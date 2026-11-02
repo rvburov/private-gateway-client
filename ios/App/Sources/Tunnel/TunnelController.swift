@@ -150,6 +150,16 @@ final class TunnelController: TunnelControl {
         return await Self.subscriptionProxy(manager)
     }
 
+    /// «До сервера» для «Задержки» на «Проверке» — меряет расширение туннеля (мимо туннеля), только у подключенного профиля;
+    /// не измерено или расширение не ответило — nil.
+    func serverDelay() async -> Int? {
+        guard let manager, manager.connection.status == .connected, let session = manager.connection as? NETunnelProviderSession else {
+            return nil
+        }
+
+        return TunnelMessages.delayMs(try? await Self.message(session, TunnelMessages.delay))
+    }
+
     static func protectedSubscriptionProxy() async -> SubscriptionProxy? {
         guard let manager = try? await managers().first else { return nil }
         return await subscriptionProxy(manager)

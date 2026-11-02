@@ -29,8 +29,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var messageIsEvent = false
     /// Нажали уведомление, которое ведет на свой экран; окно переходит туда и сбрасывает.
     @Published var route: AppRoute?
-    /// Журнал расширения туннеля для «Проверки».
-    @Published private(set) var log: [String] = []
+    /// Журнал расширения туннеля для «Проверки»: записи по порядку, последние — в конце.
+    @Published private(set) var log: [TunnelLogEntry] = []
+    /// Состояние профиля VPN в системе (`NEVPNStatus`) — строка «Туннель» на «Проверке».
+    @Published private(set) var systemVpn = SystemVpnStatus.invalid
     /// «Блокировка»: расширение сдалось (сервер не отвечает), а туннель оставлен — блок при обрыве держит трафик закрытым.
     /// Состояние туннеля — «Ошибка», но трафик не идет напрямую; щит снимает защиту, «Повторить» — подключает снова.
     @Published private(set) var blocked = false
@@ -130,8 +132,21 @@ final class AppModel: ObservableObject {
         }
 
         coreVersion = container.coreVersion.read()
-        log = container.log.lines()
+        refreshLog()
         refreshStatus()
+    }
+
+    /// Журнал туннеля заново — пока «Проверка» на экране, раз в несколько секунд; тот же — экран не перерисовывается.
+    func refreshLog() {
+        let entries = container.log.entries()
+        if entries != log {
+            log = entries
+        }
+    }
+
+    /// «До сервера» для «Задержки» на «Проверке» — от расширения туннеля; не измерено — nil.
+    func serverDelay() async -> Int? {
+        await tunnel.serverDelay()
     }
 
     func refreshStatus() {
@@ -140,6 +155,7 @@ final class AppModel: ObservableObject {
         }
 
         let before = home.status.state
+        systemVpn = tunnel.system
         home.status = TunnelView.status(system: tunnel.system, report: container.status.read(), appError: appError)
         // «Ошибка» при поднятом туннеле — расширение оставило его без ядра (TunnelView): трафик закрыт, а не идет напрямую.
         blocked = home.status.state == .error && (tunnel.system == .connected || tunnel.system == .reasserting)

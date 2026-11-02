@@ -11,9 +11,13 @@ import com.privategateway.client.data.KeystoreSecretBox
 import com.privategateway.client.data.SecretBox
 import com.privategateway.client.data.ServerDao
 import com.privategateway.client.data.SubscriptionDao
+import com.privategateway.client.inspect.DevicePhoneHints
+import com.privategateway.client.inspect.DeviceReportFiles
 import com.privategateway.client.inspect.DeviceWebFetch
+import com.privategateway.client.inspect.PhoneHintSource
 import com.privategateway.client.inspect.PhoneNetworkReader
 import com.privategateway.client.inspect.PhoneNetworkSource
+import com.privategateway.client.inspect.ReportFiles
 import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.ui.qr.DeviceQrImages
 import com.privategateway.client.ui.qr.QrImages
@@ -22,11 +26,13 @@ import com.privategateway.client.ui.servers.ImportFiles
 import com.privategateway.client.vpn.AppByteCounters
 import com.privategateway.client.vpn.ByteCounters
 import com.privategateway.client.vpn.CoreEngine
+import com.privategateway.client.vpn.DeviceTunnelDelay
 import com.privategateway.client.vpn.LibXrayEngine
 import com.privategateway.client.vpn.NetworkDns
 import com.privategateway.client.vpn.ServiceTunnelControl
 import com.privategateway.client.vpn.SystemNetworkDns
 import com.privategateway.client.vpn.TunnelControl
+import com.privategateway.client.vpn.TunnelDelay
 import com.privategateway.client.subscriptions.DeviceSubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionTransport
 import dagger.Binds
@@ -99,4 +105,13 @@ abstract class BindingsModule {
 
     @Binds
     abstract fun byteCounters(counters: AppByteCounters): ByteCounters
+
+    @Binds
+    abstract fun phoneHints(hints: DevicePhoneHints): PhoneHintSource
+
+    @Binds
+    abstract fun tunnelDelay(delay: DeviceTunnelDelay): TunnelDelay
+
+    @Binds
+    abstract fun reportFiles(files: DeviceReportFiles): ReportFiles
 }
