@@ -129,13 +129,16 @@ public sealed partial class ImportPageViewModel : ObservableObject
     // ── Предпросмотр ─────────────────────────────────────────────────────────
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(HasPreview), nameof(FormatText), nameof(FoundText), nameof(NewText),
+    [NotifyPropertyChangedFor(nameof(HasPreview), nameof(HasSubscriptionVariants), nameof(FormatText), nameof(FoundText), nameof(NewText),
         nameof(DuplicatesText), nameof(FailedText), nameof(FailedLabel), nameof(ErrorLines), nameof(HasErrors),
         nameof(AddText), nameof(CanAdd))]
     [NotifyCanExecuteChangedFor(nameof(AddCommand))]
     public partial ImportPreview? Preview { get; private set; }
 
     public bool HasPreview => Preview is not null;
+
+    /// <summary>Несколько полученных профилей остаются вариантами одной подписки с одним адресом обновления.</summary>
+    public bool HasSubscriptionVariants => _subscriptionUrl is not null && Preview is { Found: > 1 };
 
     /// <summary>«base64 · VLESS / Hy2 / TUIC», «Clash · VLESS / Trojan».</summary>
     public string FormatText => Preview is not { } p

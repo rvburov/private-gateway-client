@@ -479,13 +479,14 @@ public sealed partial class Gateway
 
     /// <summary>
     /// Ядра заново с тем же запросом: старые останавливаются, новые поднимаются. Блок при обрыве стоит все
-    /// это время; в режиме VPN он обновляется, когда появился новый адаптер туннеля. Адрес сервера — прежний:
-    /// под блоком имя заново не найти.
+    /// это время; в режиме VPN он обновляется, когда появился новый адаптер туннеля. Перебираются только ранее
+    /// разрешенные адреса того же профиля: под блоком имя заново не ищется и набор исключений не расширяется.
     /// </summary>
     private async Task<(bool Up, string Failure)> RestartAsync(int session)
     {
         CoreRequest request;
         CancellationToken starting;
+        Task<VpnTunnel>? pending = null;
         Func<bool> relayReady = static () => true;
         await _switch.WaitAsync().ConfigureAwait(false);
         try
@@ -496,8 +497,16 @@ public sealed partial class Gateway
             }
 
             // Под замком: пауза меняет источник отмены под ним же.
-            (request, starting) = (current, _starting.Token);
+            request = current;
             await StopCoreAsync().ConfigureAwait(false);
+            starting = _starting.Token;
+            if (request.Mode == ConnectionMode.Vpn && _addresses.Count > 1)
+            {
+                // Только уже разрешенные адреса того же профиля: firewall держит тот же набор конечных точек,
+                // а нерабочий первый адрес не закрепляет каждую попытку навсегда за одним путем.
+                _addresses = [.. _addresses.Skip(1), _addresses[0]];
+                _journal.Add(JournalLevel.Info, "service", "Переподключение: следующий из ранее разрешенных адресов того же сервера");
+            }
             if (!BlockWithoutTunnel())
             {
                 return (false, ErrorCodes.KillSwitchFailed);
@@ -515,6 +524,10 @@ public sealed partial class Gateway
                     return (false, ErrorCodes.CoreFailed);
                 }
             }
+            else
+            {
+                pending = BeginTunnelStart(request, _addresses, reuseIpv6: true, starting);
+            }
         }
         finally
         {
@@ -530,9 +543,7 @@ public sealed partial class Gateway
         VpnTunnel tunnel;
         try
         {
-            tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, request, _addresses, timeout, _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(CoreLines.Level(source, line), source, line), _probe, ServerIpv6(request, reuse: true), _options.TunnelRoutes,
-                cancellationToken: starting).ConfigureAwait(false);
+            tunnel = await pending!.ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -545,9 +556,21 @@ public sealed partial class Gateway
             return (false, ErrorCodes.CoreFailed);
         }
 
-        await _switch.WaitAsync().ConfigureAwait(false);
         try
         {
+            await _switch.WaitAsync(starting).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (starting.IsCancellationRequested)
+        {
+            return (false, ErrorCodes.CoreFailed);
+        }
+        try
+        {
+            if (!ReferenceEquals(_pendingTunnel, pending))
+            {
+                return (false, ErrorCodes.CoreFailed);
+            }
+            _pendingTunnel = null;
             if (!IsReconnecting(session))
             {
                 await tunnel.DisposeAsync().ConfigureAwait(false);

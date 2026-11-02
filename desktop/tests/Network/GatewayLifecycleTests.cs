@@ -97,7 +97,7 @@ public sealed class GatewayLifecycleTests : IDisposable
         var checks = gateway.Status.Protection;
         (checks.AllTraffic, checks.KillSwitch, checks.Dns, checks.Ipv6)
             .ShouldBe((CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning));
-        (await gateway.CheckExitAsync()).State.ShouldBe(CheckState.Warning, "отчет проверки тоже не обещает остановленный трафик");
+        (await gateway.CheckExitAsync(cancellationToken: TestContext.Current.CancellationToken)).State.ShouldBe(CheckState.Warning, "отчет проверки тоже не обещает остановленный трафик");
         var report = await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: TestContext.Current.CancellationToken);
         report.Results.Single(r => r.Id == DiagnosticCheck.Core.ToContractId()).State.ShouldBe(V1.CheckState.Warning,
             "ядро могло остаться живым: его сохраняют до возврата firewall");
@@ -157,7 +157,7 @@ public sealed class GatewayLifecycleTests : IDisposable
 
         gateway.Status.State.ShouldBe(ConnectionState.Error);
         gateway.Status.Protection.KillSwitch.ShouldBe(CheckState.Warning, "успех команды Enable не доказывает действие фильтров");
-        (await gateway.CheckExitAsync()).State.ShouldBe(CheckState.Warning);
+        (await gateway.CheckExitAsync(cancellationToken: TestContext.Current.CancellationToken)).State.ShouldBe(CheckState.Warning);
     }
 
     [Fact]

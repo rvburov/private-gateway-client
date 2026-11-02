@@ -130,6 +130,8 @@
 
         <!-- Группы -->
         <TextBlock x:Name="SectionTitle" Classes="overline" Text="{Binding SectionTitle}" Margin="6,4,6,-4" />
+        <TextBlock x:Name="SubscriptionVariantsHint" Classes="caption" Text="{l:L subs.variants.hint}"
+                   TextWrapping="Wrap" Margin="6,0" IsVisible="{Binding !IsEmpty}" />
         <TextBlock x:Name="Empty" Classes="small" Text="{l:L subs.empty}" TextWrapping="Wrap" Margin="6,0"
                    IsVisible="{Binding IsEmpty}" />
         <ItemsControl ItemsSource="{Binding Cards}">

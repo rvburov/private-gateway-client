@@ -81,8 +81,35 @@ public sealed class CoreProcess : IDisposable
     public static CoreProcess StartXray(string executable, JsonObject config, string? netns = null, Action<string>? output = null)
     {
         var folder = Path.GetDirectoryName(Path.GetFullPath(executable))!;
-        return Start(executable, ["run", "-config", "stdin:"], config, folder, new Dictionary<string, string> { ["XRAY_LOCATION_ASSET"] = folder }, netns,
-            output);
+        return Start(executable, ["run", "-config", "stdin:"], config, folder, XrayEnvironment(config, folder), netns, output);
+    }
+
+    private static Dictionary<string, string> XrayEnvironment(JsonObject config, string folder)
+    {
+        var environment = new Dictionary<string, string> { ["XRAY_LOCATION_ASSET"] = folder };
+        if (!OperatingSystem.IsLinux() || config["outbounds"] is not JsonArray outbounds)
+        {
+            return environment;
+        }
+
+        var visionThroughFragment = outbounds.OfType<JsonObject>().Any(outbound =>
+            outbound["protocol"]?.GetValue<string>() == "vless"
+            && outbound["settings"]?["vnext"] is JsonArray servers
+            && servers.Any(server => server?["users"] is JsonArray users
+                && users.Any(user => user?["flow"]?.GetValue<string>() is "xtls-rprx-vision" or "xtls-rprx-vision-udp443"))
+            && outbound["streamSettings"]?["sockopt"]?["dialerProxy"]?.GetValue<string>() is { } dialer
+            && outbounds.OfType<JsonObject>().Any(other => other["tag"]?.GetValue<string>() == dialer
+                && other["protocol"]?.GetValue<string>() == "freedom" && other["settings"]?["fragment"] is JsonObject));
+        if (visionThroughFragment)
+        {
+            // Xray 26.10.21: Linux splice у freedom в цепочке dialerProxy может обойти слой Vision и испортить TLS 1.3.
+            // Для такого дочернего ядра используется обычное копирование; фрагментация ClientHello и проверка TLS сохраняются.
+            // Каноническое имя у Xray имеет приоритет над вариантом в верхнем регистре — задаем оба только этому процессу.
+            environment["xray.buf.splice"] = "disable";
+            environment["XRAY_BUF_SPLICE"] = "disable";
+        }
+
+        return environment;
     }
 
     /// <summary>sing-box (<c>run -c stdin</c>) — TUN режима VPN. <paramref name="netns"/> и <paramref name="output"/> — как у <see cref="StartXray"/>.</summary>

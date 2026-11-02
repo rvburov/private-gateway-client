@@ -38,6 +38,17 @@
 | Сервер для теста совместимости | `internal/xray/config.go` (`Render`) | форма конфига сервера (VLESS + REALITY + Vision на raw) повторена в тесте как JSON; ключ REALITY — тестовый | `PrivateGatewayCompatibilityTests` | повторен формат |
 | Название подписки | `internal/httpapi/subscription.go` | заголовок `Profile-Title: base64:…` читается как название группы | `SubscriptionDownloaderTests`, `ImportPageTests` | написано заново |
 
+Уточнение 2026-11-02: проверены файлы
+[subscription.go](https://github.com/rvburov/private-gateway/blob/724b12299bdf964f34cc68b9c0296448ce802438/internal/httpapi/subscription.go)
+и [config.go](https://github.com/rvburov/private-gateway/blob/724b12299bdf964f34cc68b9c0296448ce802438/internal/xray/config.go)
+коммита `724b12299bdf964f34cc68b9c0296448ce802438`. `subscriptionURIs` отдает общий список XHTTP первым и TCP Vision
+вторым при включенном XHTTP; известным legacy-клиентам остается TCP. Выбор зависит от `User-Agent`, адрес подписки
+один. У двух транспортов отдельные порт, ключ REALITY и short ID, общий UUID; Vision задается только TCP.
+Лицензия в корне этого коммита не объявлена: исходный Go-код не копируется и не переводится. Использованы факты
+формата и поведения для объяснения интерфейса и собственной регрессии импорта на ненастоящих данных
+(`ImportPageTests.Tcp_vision_and_xhttp_from_one_address_remain_two_profiles_in_one_subscription`). Доступность реального
+порта и текущее содержимое секретной подписки этим чтением не проверялись.
+
 ## WireGuard для Windows — справочник по WFP
 
 `WireGuard/wireguard-windows`, коммит `6ece77bc487c8aa697e3c092197621c4f3e5ccb8` (25.10.2026),
@@ -85,3 +96,20 @@
 | Задача | Проверенный источник | Лицензия | Что сделано | Проверка | Решение |
 | --- | --- | --- | --- | --- | --- |
 | Причина потери sniffing обычным HTTP и ограничения внутреннего loopback | XTLS/Xray-core v26.10.21, коммит `1b1647cd9ddf0abc34b981d4611fc03bcac1ca74`: [proxy/http/server.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/proxy/http/server.go), [proxy/loopback/loopback.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/proxy/loopback/loopback.go) | MPL-2.0, LICENSE проверен | Изучены замена session.Content в handlePlainHTTP и SkipDNSResolve у loopback. Go-код не переносился, ядро не менялось. Собственный JSON-конфиг направляет только fake IP дополнительного входа в существующий Shadowsocks-вход TUN | Настоящие DNS и HTTP/SOCKS того же Xray на localhost, правила имен/IP и неизвестный fake IP; отдельный Windows-тест сохраняет реальный TUN | Решение 524: сохранить восстановление имени и обычную маршрутизацию, не ослаблять тест |
+
+## Xray: Vision, фрагментация и Linux splice — 2026-11-02
+
+Проверены XTLS/Xray-core v26.10.21, коммит `1b1647cd9ddf0abc34b981d4611fc03bcac1ca74`,
+[LICENSE](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/LICENSE) (MPL-2.0),
+[proxy/freedom/freedom.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/proxy/freedom/freedom.go),
+[proxy/proxy.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/proxy/proxy.go)
+и [common/platform/platform.go](https://github.com/XTLS/Xray-core/blob/1b1647cd9ddf0abc34b981d4611fc03bcac1ca74/common/platform/platform.go).
+Изучены возможность raw splice в freedom цепочки dialerProxy и официальный выключатель `xray.buf.splice`;
+каноническое имя имеет приоритет над `XRAY_BUF_SPLICE`. Go-код не копировался и не переводился.
+
+Собственный `CoreProcess.StartXray` задает оба имени со значением `disable` только в окружении дочернего процесса
+на Linux, когда конфиг содержит Vision, дозванивающийся через freedom с fragment. Окружение приложения,
+другие конфиги и Windows/macOS не меняются. TLS-фрагментация, REALITY и проверка сертификатов сохраняются.
+Регрессия — `PrivateGatewayCompatibilityTests.Https`: прямой HTTPS-контроль с точным сертификатом, TCP Vision/XHTTP,
+прокси/VPN-входы и включенная/выключенная фрагментация, TLS 1.3 на Linux и отдельный TLS 1.2. Первые неудачные
+стенды без исправного прямого HTTPS не считались доказательством дефекта приложения.

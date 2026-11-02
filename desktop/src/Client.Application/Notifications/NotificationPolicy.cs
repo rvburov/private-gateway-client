@@ -26,23 +26,29 @@ public static class NotificationPolicy
         var code = after.ErrorCode;
         Notice? notice = after.State switch
         {
+            ConnectionState.Reconnecting when moved && before is { State: ConnectionState.Connecting, IsPaused: false } =>
+                new(NoticeKind.ConnectionFailed, "notify.connectFailed." + Traffic(after), [NoticeAction.ChangeServer, NoticeAction.Retry]),
             ConnectionState.Reconnecting when SignInLikely(after, now) && !SignInLikely(before, now) =>
                 new(NoticeKind.WifiSignIn, "notify.signIn.text", [NoticeAction.SignIn, NoticeAction.Later]),
             ConnectionState.Reconnecting when moved && before is { State: ConnectionState.Connected, IsPaused: false } =>
                 new(NoticeKind.ConnectionLost, "notify.lost." + Traffic(after), [NoticeAction.ChangeServer, NoticeAction.Open]),
 
             // «Блокировка» строгого режима без ошибки — защиту выключили вручную, сеть закрыта.
-            ConnectionState.Blocked when changed && after.StrictBlock && code is null =>
+            ConnectionState.Blocked when changed && after.StrictBlock && code is null && Traffic(after) == "blocked" =>
                 new(NoticeKind.Disconnected, "notify.off.strict", [NoticeAction.Connect]),
+            ConnectionState.Blocked when changed && before.State == ConnectionState.Connecting && code == ErrorCodes.ServerNotResponding =>
+                new(NoticeKind.ConnectionFailed, "notify.connectRejected." + Traffic(after), [NoticeAction.ChangeServer, NoticeAction.Retry]),
             ConnectionState.Blocked when changed && code is null or ErrorCodes.ServerNotResponding =>
-                new(NoticeKind.ServerDown, "notify.down.blocked", [NoticeAction.Retry, NoticeAction.ChooseServer]),
+                new(NoticeKind.ServerDown, "notify.down." + Traffic(after), [NoticeAction.Retry, NoticeAction.ChooseServer]),
             ConnectionState.Blocked when changed =>
-                new(NoticeKind.ProtectionFailed, "notify.failed.blocked", [NoticeAction.Open]),
+                new(NoticeKind.ProtectionFailed, "notify.failed." + Traffic(after), [NoticeAction.Open]),
 
             // Служба пропала, пока защита была включена или включалась; без защиты пропажу заметит следующее подключение.
             ConnectionState.Error when changed && code == ErrorCodes.ServiceNotRunning =>
                 before.State is ConnectionState.Off or ConnectionState.Error ? null
                     : new(NoticeKind.ServiceStopped, "notify.service.text", [NoticeAction.Restart]),
+            ConnectionState.Error when changed && before.State == ConnectionState.Connecting && code == ErrorCodes.ServerNotResponding =>
+                new(NoticeKind.ConnectionFailed, "notify.connectRejected." + Traffic(after), [NoticeAction.ChangeServer, NoticeAction.Retry]),
             ConnectionState.Error when changed && code == ErrorCodes.ServerNotResponding =>
                 new(NoticeKind.ServerDown, "notify.down." + Traffic(after), [NoticeAction.Retry, NoticeAction.ChooseServer]),
             ConnectionState.Error when changed =>
@@ -58,7 +64,52 @@ public static class NotificationPolicy
                 new(NoticeKind.Disconnected, "notify.off.text", [NoticeAction.Connect]),
             _ => null,
         };
-        return notice is null ? null : notice with { Server = server, Code = notice.Kind == NoticeKind.ProtectionFailed ? code ?? "PGC-SVC" : null };
+        return notice is null ? null : notice with
+        {
+            Server = server,
+            ServerId = after.ServerId,
+            Code = notice.Kind == NoticeKind.ProtectionFailed ? code ?? "PGC-SVC" : null,
+        };
+    }
+
+    /// <summary>
+    /// Окно открылось при уже известном отказе: переход мог произойти, пока окна не было. Успешное подключение и обычное
+    /// выключенное состояние при запуске молчат; блокировка и неудача остаются видны без ожидания следующего события.
+    /// </summary>
+    public static Notice? Current(ConnectionStatus status, string? server, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(status);
+        if (status.IsPaused)
+        {
+            return null;
+        }
+
+        if (status.State == ConnectionState.Reconnecting)
+        {
+            return new Notice(NoticeKind.ConnectionFailed, "notify.connectFailed." + Traffic(status), [NoticeAction.ChangeServer, NoticeAction.Retry])
+            { Server = server, ServerId = status.ServerId };
+        }
+
+        if (status.State is ConnectionState.Error or ConnectionState.Blocked && status.ErrorCode == ErrorCodes.ServerNotResponding)
+        {
+            return new Notice(NoticeKind.ConnectionFailed, "notify.connectRejected." + Traffic(status), [NoticeAction.ChangeServer, NoticeAction.Retry])
+            { Server = server, ServerId = status.ServerId };
+        }
+
+        if (status.State == ConnectionState.Blocked && status.ErrorCode is null)
+        {
+            if (Traffic(status) is not "blocked")
+            {
+                return new Notice(NoticeKind.ProtectionFailed, "notify.blocked." + Traffic(status), [NoticeAction.Open]);
+            }
+
+            return new Notice(NoticeKind.NetworkBlocked, status.StrictBlock ? "notify.blocked.strict" : "notify.blocked.saved",
+                [NoticeAction.ChooseServer, NoticeAction.Open]);
+        }
+
+        return status.State is ConnectionState.Error or ConnectionState.Blocked && status.ErrorCode != ErrorCodes.ServiceNotRunning
+            ? For(ConnectionStatus.Initial(now), status, server, now)
+            : null;
     }
 
     /// <summary>
@@ -78,5 +129,6 @@ public static class NotificationPolicy
     private static string Traffic(ConnectionStatus status) =>
         status.Mode == ConnectionMode.Proxy ? "proxy"
         : status.Protection.KillSwitch == CheckState.Off || status.Protection.AllTraffic == CheckState.Off ? "direct"
+        : status.Protection.KillSwitch == CheckState.Warning || status.Protection.AllTraffic == CheckState.Warning ? "unverified"
         : "blocked";
 }

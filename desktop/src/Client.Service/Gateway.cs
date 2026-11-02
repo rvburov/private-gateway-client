@@ -83,7 +83,8 @@ public sealed record GatewayOptions(
     Func<(long Received, long Sent)?>? TunnelCounters = null,
     TimeSpan? TrafficWatch = null,
     Func<IReadOnlyList<RunningProcess>>? Processes = null,
-    TimeSpan? OtherClientsWatch = null);
+    TimeSpan? OtherClientsWatch = null,
+    Func<CoreRequest, IPAddress, CancellationToken, Task<ProbeReachability>>? Preflight = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,
@@ -185,6 +186,8 @@ public sealed partial class Gateway : IAsyncDisposable
     // Режим VPN: адреса сервера и блок при обрыве — чтобы поднять туннель снова после паузы.
     private IReadOnlyList<IPAddress> _addresses = [];
     private bool _killSwitchOn;
+    // Только текущая сессия: запасной путь без привязки берется, если его проверила свежая проба того же профиля/IP.
+    private bool _useOutsideBinding = true;
 
     // Блок, который держит служба (и после паузы, когда правила сняты): вернуть его после паузы и при остановке,
     // узнать тот же сервер, когда имя под блоком не найти. Поставлен этим запуском или прочитан из файла блока.
@@ -199,6 +202,10 @@ public sealed partial class Gateway : IAsyncDisposable
     // Запуски туннеля, которые идут сейчас (подключение, попытка переподключения): пауза для входа в Wi-Fi их прерывает —
     // TUN не встанет поверх страницы входа в сеть.
     private CancellationTokenSource _starting = new();
+
+    // Только создание ядер и TUN, без ожидания _switch для публикации: остановка под _switch может отменить и
+    // дождаться этой задачи. Пока результата нет в _tunnel, им владеет это поле; затем владение передается _tunnel.
+    private Task<VpnTunnel>? _pendingTunnel;
 
     // Сторож блока (EnsureBlock) и признак, что его такт уже ждет замка.
     private readonly ITimer _blockWatch;
@@ -420,6 +427,7 @@ public sealed partial class Gateway : IAsyncDisposable
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
         var generation = Interlocked.Increment(ref _connectGeneration);
+        CancelPreflight();
         // Намерение принято: отмена ожидания RPC не бросает подготовку посередине. Ее заменяют только
         // новое действие пользователя и остановка службы; DNS и остальные шаги ограничены по времени.
         cancellationToken = CancellationToken.None;
@@ -581,6 +589,13 @@ public sealed partial class Gateway : IAsyncDisposable
             return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, UnencryptedServer, generation, cancellationToken).ConfigureAwait(false);
         }
 
+        var preflight = await TryPreflightAsync(request, core, addresses, generation).ConfigureAwait(false);
+        if (preflight.Reply is { } refusal)
+        {
+            return refusal;
+        }
+
+        addresses = preflight.Addresses;
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         int session;
         try
@@ -608,6 +623,7 @@ public sealed partial class Gateway : IAsyncDisposable
             if (vpn)
             {
                 (_addresses, _killSwitchOn) = (addresses, killSwitchOn);
+                _useOutsideBinding = preflight.UseOutsideBinding;
 
                 // Блок — до запуска ядер: в «Подключение» трафик уже не уходит мимо туннеля. Туннеля еще нет — и разрешения
                 // ему нет: адаптер прошлого подключения на Windows может еще не уйти, и с ним не встали бы фильтры пересылки.
@@ -800,6 +816,7 @@ public sealed partial class Gateway : IAsyncDisposable
     {
         cancellationToken.ThrowIfCancellationRequested();
         Interlocked.Increment(ref _connectGeneration);
+        CancelPreflight();
         cancellationToken = CancellationToken.None;
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
@@ -896,9 +913,6 @@ public sealed partial class Gateway : IAsyncDisposable
                 }
 
                 _session++;
-                var starting = Interlocked.Exchange(ref _starting, new CancellationTokenSource());
-                await starting.CancelAsync().ConfigureAwait(false);
-                starting.Dispose();
                 await StopCoreAsync().ConfigureAwait(false);
                 _systemProxy?.Release();
                 what = "попытки подключения остановлены, трафик идет напрямую";
@@ -1014,6 +1028,7 @@ public sealed partial class Gateway : IAsyncDisposable
     public async ValueTask DisposeAsync()
     {
         Interlocked.Increment(ref _connectGeneration);
+        CancelPreflight();
         lock (_gate)
         {
             _pauseEnd?.Dispose();
@@ -1026,35 +1041,42 @@ public sealed partial class Gateway : IAsyncDisposable
         }
         ForgetPingClient();
 
-        // Переподключение, проверка связи и запуски туннеля останавливаются: подключения больше нет.
-        Interlocked.Increment(ref _session);
-        await _starting.CancelAsync().ConfigureAwait(false);
         if (_options.Network is { } network)
         {
             network.Changed -= OnNetworkChanged;
             network.Resumed -= OnResumed;
         }
 
-        await StopCoreAsync().ConfigureAwait(false);
-        BlockWithoutTunnel();
-        _systemProxy?.Release();
+        await _switch.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            // Те же владение и очередь, что у Disconnect: остановка службы тоже ждет локально создаваемые ядра.
+            Interlocked.Increment(ref _session);
+            await StopCoreAsync().ConfigureAwait(false);
+            BlockWithoutTunnel();
+            _systemProxy?.Release();
 
-        // Остановка на паузе для входа в Wi-Fi: защита не выключалась — блок возвращается, как при любой остановке, без туннеля:
-        // его уже нет. Правила «только туннель» (блок при обрыве выключен) без туннеля не возвращаются — сеть открыта, как выбрал
-        // пользователь, и файл блока забыт.
-        if (Status.IsPaused && !_blocking && _held is { Open: false } held)
-        {
-            Restore(held with { Policy = held.Policy with { TunnelInterface = null, TunnelDns = null } }, "возвращен: служба остановлена на паузе");
-        }
-        else if (Status.IsPaused && !_blocking && _held is { Open: true })
-        {
-            _held = null;
-            RememberBlock(null);
-        }
+            // Остановка на паузе для входа в Wi-Fi: защита не выключалась — блок возвращается, как при любой остановке, без туннеля:
+            // его уже нет. Правила «только туннель» (блок при обрыве выключен) без туннеля не возвращаются — сеть открыта, как выбрал
+            // пользователь, и файл блока забыт.
+            if (Status.IsPaused && !_blocking && _held is { Open: false } held)
+            {
+                Restore(held with { Policy = held.Policy with { TunnelInterface = null, TunnelDns = null } }, "возвращен: служба остановлена на паузе");
+            }
+            else if (Status.IsPaused && !_blocking && _held is { Open: true })
+            {
+                _held = null;
+                RememberBlock(null);
+            }
 
-        if (_blocking)
+            if (_blocking)
+            {
+                _journal.Add(JournalLevel.Warning, "service", "Служба остановлена, блок при обрыве оставлен: трафик заблокирован до выключения защиты");
+            }
+        }
+        finally
         {
-            _journal.Add(JournalLevel.Warning, "service", "Служба остановлена, блок при обрыве оставлен: трафик заблокирован до выключения защиты");
+            _switch.Release();
         }
 
         _starting.Dispose();
@@ -1496,6 +1518,7 @@ public sealed partial class Gateway : IAsyncDisposable
             {
                 Mode = mode,
                 ServerId = serverId,
+                Since = NewAttemptSince(s.Since),
                 Protection = ProtectionChecks.For(ConnectionState.Connecting, mode),
                 Exit = Exit(s),
                 CaptivePauseUntil = null,
@@ -1507,8 +1530,38 @@ public sealed partial class Gateway : IAsyncDisposable
         }
     }
 
+    /// <summary>Даже два намерения в один такт часов имеют разные отметки: окно отменяет проверки прежней попытки.</summary>
+    private DateTimeOffset NewAttemptSince(DateTimeOffset previous)
+    {
+        var now = _time.GetUtcNow();
+        return now > previous ? now : previous.AddTicks(1);
+    }
+
     private async Task StopCoreAsync()
     {
+        await DrainPreflightAsync().ConfigureAwait(false);
+        // Вызывается под _switch: новый запуск не начинается, пока старый не закончил все изменения сети и очистку.
+        // Ожидается только создание, а не StartTunnelAsync/RestartAsync, которые для публикации сами ждут _switch.
+        var starting = Interlocked.Exchange(ref _starting, new CancellationTokenSource());
+        await starting.CancelAsync().ConfigureAwait(false);
+        if (Interlocked.Exchange(ref _pendingTunnel, null) is { } pending)
+        {
+            VpnTunnel? unpublished = null;
+            try
+            {
+                unpublished = await pending.ConfigureAwait(false);
+            }
+            catch (Exception e) when (e is OperationCanceledException or TunnelException or System.ComponentModel.Win32Exception or IOException)
+            {
+                // Отмененный/неудачный запуск сам останавливает локальные ядра; ошибки запуска сообщает его наблюдатель.
+            }
+            if (unpublished is not null)
+            {
+                await unpublished.DisposeAsync().ConfigureAwait(false);
+            }
+        }
+        starting.Dispose();
+
         if (Interlocked.Exchange(ref _core, null) is { } core)
         {
             await core.StopAsync().ConfigureAwait(false);
@@ -1618,13 +1671,11 @@ public sealed partial class Gateway : IAsyncDisposable
     {
         // Первая часть идет под замком вызвавшего (подключение, конец паузы) — как и смена источника отмены паузой.
         var starting = _starting.Token;
+        var pending = BeginTunnelStart(core, addresses, reuseIpv6, starting);
         VpnTunnel tunnel;
         try
         {
-            tunnel = await VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
-                TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
-                (source, line) => _journal.Add(CoreLines.Level(source, line), source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelRoutes,
-                cancellationToken: starting).ConfigureAwait(false);
+            tunnel = await pending.ConfigureAwait(false);
         }
         catch (Exception e) when (e is TunnelException or System.ComponentModel.Win32Exception or IOException)
         {
@@ -1637,9 +1688,22 @@ public sealed partial class Gateway : IAsyncDisposable
             return;
         }
 
-        await _switch.WaitAsync().ConfigureAwait(false);
         try
         {
+            await _switch.WaitAsync(starting).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (starting.IsCancellationRequested)
+        {
+            // StopCoreAsync забрал владение еще не опубликованным результатом и дожидается его очистки.
+            return;
+        }
+        try
+        {
+            if (!ReferenceEquals(_pendingTunnel, pending))
+            {
+                return;
+            }
+            _pendingTunnel = null;
             bool current;
             lock (_gate)
             {
@@ -1683,6 +1747,18 @@ public sealed partial class Gateway : IAsyncDisposable
         await ConfirmAsync(session, core.Routing.HasBypassApps || core.Routing.HasBypassSites
             ? "Подключено: трафик через туннель, обход раздельного режима — напрямую"
             : "Подключено: весь трафик через туннель").ConfigureAwait(false);
+    }
+
+    /// <summary>Создание туннеля с учетом владения: только под _switch; результат до публикации останавливает StopCoreAsync.</summary>
+    private Task<VpnTunnel> BeginTunnelStart(CoreRequest core, IReadOnlyList<IPAddress> addresses, bool reuseIpv6, CancellationToken starting)
+    {
+        var pending = VpnTunnel.StartAsync(_options.XrayPath!, _options.SingBoxPath!, core, addresses,
+            TimeSpan.FromSeconds(core.Connection.ConnectTimeoutSeconds), _time, _options.TunnelNetns,
+            (source, line) => _journal.Add(CoreLines.Level(source, line), source, line), _probe, ServerIpv6(core, reuseIpv6), _options.TunnelRoutes,
+            outside: _useOutsideBinding ? null : string.Empty,
+            cancellationToken: starting);
+        _pendingTunnel = pending;
+        return pending;
     }
 
     /// <summary>

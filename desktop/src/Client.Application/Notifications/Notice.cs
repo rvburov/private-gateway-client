@@ -5,6 +5,12 @@ namespace PrivateGateway.Client.Application.Notifications;
 /// <summary>О чем бывают уведомления (доски 19 и 22).</summary>
 public enum NoticeKind
 {
+    /// <summary>Первая попытка не подтвердила связь: защита еще не была включена.</summary>
+    ConnectionFailed,
+
+    /// <summary>При открытии окна сеть уже закрыта сохраненной или строгой блокировкой.</summary>
+    NetworkBlocked,
+
     /// <summary>«Защищено» сменилось «Переподключением»: связь с сервером пропала.</summary>
     ConnectionLost,
 
@@ -89,6 +95,9 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
 {
     public string? Server { get; init; }
 
+    /// <summary>Локальный идентификатор профиля: одинаковые названия не объединяют разные события.</summary>
+    public string? ServerId { get; init; }
+
     public string? Subscription { get; init; }
 
     /// <summary>Код ошибки защиты (<see cref="Core.ErrorCodes"/>).</summary>
@@ -103,7 +112,7 @@ public sealed record Notice(NoticeKind Kind, string TextKey, IReadOnlyList<Notic
     public string? Version { get; init; }
 
     /// <summary>Важное (обрыв, блокировка интернета, вход в Wi-Fi, сбой службы) — со звуком; остальные — обычные, без звука.</summary>
-    public bool IsImportant => Kind is NoticeKind.ConnectionLost or NoticeKind.ServerDown or NoticeKind.WifiSignIn
+    public bool IsImportant => Kind is NoticeKind.ConnectionFailed or NoticeKind.NetworkBlocked or NoticeKind.ConnectionLost or NoticeKind.ServerDown or NoticeKind.WifiSignIn
         or NoticeKind.ServiceStopped or NoticeKind.ProtectionFailed or NoticeKind.OtherClient;
 
     /// <summary>

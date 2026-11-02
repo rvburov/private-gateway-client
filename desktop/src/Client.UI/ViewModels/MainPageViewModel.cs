@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -22,6 +23,8 @@ namespace PrivateGateway.Client.UI.ViewModels;
 public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 {
     private const string IpPlaceholder = "—";
+
+    private static readonly NoticeTexts ProblemTexts = new();
 
     private readonly IGatewayClient _gateway;
     private readonly IServerCatalog _catalog;
@@ -118,12 +121,19 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public Tone Tone => Protection.Tone;
 
-    public string StatusTitle => Protection.Title;
+    public string StatusTitle => IsPreflight ? Loc.Instance["status.preflight.title"] : Protection.Title;
+
+    private bool IsPreflight => Status is
+    {
+        State: ConnectionState.Connecting, Mode: ConnectionMode.Vpn,
+        Protection: { AllTraffic: CheckState.Off, KillSwitch: CheckState.Off }
+    };
 
     public string StatusSubtitle => Status.IsPaused ? Loc.Instance["status.paused.sub"]
         : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
         : Status.State switch
         {
+            ConnectionState.Connecting when IsPreflight => Loc.Instance["status.preflight.sub"],
             ConnectionState.Connected when Status.HasExitIpLeak => Loc.Instance["status.leak.sub"],
             ConnectionState.Connected => Server is { } server && !ServerFacts.IsEncrypted(server)
                 ? Loc.Instance["status.connected.subPlain"]
@@ -144,6 +154,21 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 Status.ErrorCode ?? "PGC-SVC"),
             _ => Loc.Instance[$"status.{StateKey}.sub"],
         };
+
+    /// <summary>Причина отказа остается на главной и после исчезновения короткого уведомления.</summary>
+    public bool HasConnectionProblem => ConnectionProblem is not null;
+
+    public string ConnectionProblemTitle => ConnectionProblem is { } notice ? ProblemTexts.Text(notice).Title : string.Empty;
+
+    public string ConnectionProblemText => ConnectionProblem is { } notice ? ProblemTexts.Text(notice).Body : string.Empty;
+
+    public string ConnectionProblemAction => Loc.Instance[ConnectionProblem?.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked
+        ? "notify.action.changeServer" : "nav.check"];
+
+    public string ConnectionProblemPage => ConnectionProblem?.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked
+        ? Pages.Servers : Pages.Check;
+
+    private Notice? ConnectionProblem => NotificationPolicy.Current(Status, Server?.Name, _time.GetUtcNow());
 
     public string NetworkText => Status.Network switch
     {
@@ -254,6 +279,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
                 return Loc.Instance[Status is { IsPaused: true, StrictBlock: true } ? "checked.pausedStrict" : "checked." + StateKey];
             }
 
+            if (Status.HasExitIpLeak)
+            {
+                return Loc.Instance["checked.leak"];
+            }
+
             if (IsChecking)
             {
                 return Loc.Instance["checked.running"];
@@ -268,7 +298,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             var at = Status.Protection.CheckedAt;
             if (at is null)
             {
-                return Loc.Instance["checked.connecting"];
+                return Loc.Instance["checked.unverified"];
             }
 
             return _time.GetUtcNow() - at.Value < TimeSpan.FromSeconds(10)

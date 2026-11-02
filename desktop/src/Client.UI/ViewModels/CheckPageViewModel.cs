@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Avalonia.Threading;
@@ -19,10 +20,16 @@ namespace PrivateGateway.Client.UI.ViewModels;
 /// обезличенный отчет в файл. Проверки только читают состояние; при смене состояния защиты
 /// они повторяются сами, чтобы на экране не оставался устаревший «OK».
 /// </summary>
-public sealed partial class CheckPageViewModel : ObservableObject
+public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 {
     /// <summary>Сколько последних записей журнала показывать на экране и в отчете.</summary>
     public const int JournalShown = 50;
+
+    /// <summary>Общий предел запроса проверок, включая поиск мешающих настроек.</summary>
+    public static readonly TimeSpan CheckTimeout = TimeSpan.FromSeconds(30);
+
+    /// <summary>Замер задержки не удерживает результаты проверок и имеет свой предел.</summary>
+    public static readonly TimeSpan DelayTimeout = TimeSpan.FromSeconds(30);
 
     private const string Hidden = "***";
 
@@ -37,7 +44,12 @@ public sealed partial class CheckPageViewModel : ObservableObject
     private readonly CheckFocus _focus;
     private DiagnosticReport? _report;
     private ServiceDetails? _reportServiceDetails;
-    private ConnectionState? _reportState;
+    private CheckSession _session;
+    private ConnectionStatus _lastStatus;
+    private CancellationTokenSource? _checksStop;
+    private CancellationTokenSource? _delayStop;
+    private int _journalQueued;
+    private bool _disposed;
     private bool _rerun;
 
     public CheckPageViewModel(
@@ -54,14 +66,7 @@ public sealed partial class CheckPageViewModel : ObservableObject
     {
         ArgumentNullException.ThrowIfNull(focus);
         _focus = focus;
-        // Плитка «Пинг» на уже открытом раньше экране: свежий замер — к прокрутке на блок.
-        focus.DelayRequested += (_, _) => Dispatcher.UIThread.Post(() =>
-        {
-            if (!IsRunning && !IsMeasuringDelay)
-            {
-                MeasureDelayCommand.Execute(null);
-            }
-        });
+        focus.DelayRequested += OnDelayRequested;
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(gateway);
         _navigator = navigator;
@@ -73,25 +78,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
         _files = files;
         _toast = toast;
         _time = time;
-        gateway.JournalAdded += (_, _) => Dispatcher.UIThread.Post(RefreshJournal);
-        Loc.Instance.LanguageChanged += (_, _) => Refresh();
-        Protection.PropertyChanged += (_, e) =>
-        {
-            if (e.PropertyName is not (nameof(ProtectionViewModel.Status) or ""))
-            {
-                return;
-            }
-
-            // Другое состояние — проверить заново; то же — обновить строки: IP для сайтов служба присылает в состоянии.
-            if (Protection.Status.State != _reportState)
-            {
-                RunAgain();
-            }
-            else
-            {
-                Refresh();
-            }
-        };
+        _lastStatus = protection.Status;
+        _session = CheckSession.Of(_lastStatus);
+        gateway.JournalAdded += OnJournalAdded;
+        Loc.Instance.LanguageChanged += OnLanguageChanged;
+        Protection.PropertyChanged += OnProtectionChanged;
         Refresh();
         RefreshJournal();
         // Экран открыли — проверить сразу: проверки только читают состояние.
@@ -99,6 +90,85 @@ public sealed partial class CheckPageViewModel : ObservableObject
     }
 
     public ProtectionViewModel Protection { get; }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _focus.DelayRequested -= OnDelayRequested;
+        _gateway.JournalAdded -= OnJournalAdded;
+        Loc.Instance.LanguageChanged -= OnLanguageChanged;
+        Protection.PropertyChanged -= OnProtectionChanged;
+        _checksStop?.Cancel();
+        _delayStop?.Cancel();
+        GC.SuppressFinalize(this);
+    }
+
+    private void OnDelayRequested(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+    {
+        if (!_disposed && !IsRunning && !IsMeasuringDelay)
+        {
+            MeasureDelayCommand.Execute(null);
+        }
+    });
+
+    private void OnLanguageChanged(object? sender, EventArgs e) => Refresh();
+
+    private void OnProtectionChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (_disposed || e.PropertyName is not (nameof(ProtectionViewModel.Status) or ""))
+        {
+            return;
+        }
+
+        var status = Protection.Status;
+        var session = CheckSession.Of(status);
+        var before = _lastStatus;
+        _lastStatus = status;
+        if (session != _session)
+        {
+            _session = session;
+            _checksStop?.Cancel();
+            _delayStop?.Cancel();
+            _report = null;
+            Delay = null;
+            RunAgain();
+        }
+        else if (before.Protection != status.Protection || before.Exit != status.Exit || before.ErrorCode != status.ErrorCode)
+        {
+            // Счетчики трафика приходят каждую секунду и не требуют заново строить строки проверки.
+            Refresh();
+        }
+    }
+
+    private void OnJournalAdded(object? sender, JournalEntry e)
+    {
+        if (_disposed || Interlocked.Exchange(ref _journalQueued, 1) != 0)
+        {
+            return;
+        }
+
+        // Сколько бы строк ядро ни прислало до следующего прохода UI, в очереди стоит только одно обновление.
+        Dispatcher.UIThread.Post(() =>
+        {
+            Interlocked.Exchange(ref _journalQueued, 0);
+            if (!_disposed)
+            {
+                RefreshJournal();
+            }
+        }, DispatcherPriority.Background);
+    }
+
+    private readonly record struct CheckSession(ConnectionState State, ConnectionMode Mode, string? Server, DateTimeOffset Since,
+        bool Paused, DateTimeOffset? NetworkChangedAt)
+    {
+        public static CheckSession Of(ConnectionStatus status) =>
+            new(status.State, status.Mode, status.ServerId, status.Since, status.IsPaused, status.NetworkChangedAt);
+    }
 
     /// <summary>«Сеть машины» — сетевой инспектор.</summary>
     [RelayCommand]
@@ -189,20 +259,37 @@ public sealed partial class CheckPageViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanMeasureDelay))]
     private async Task MeasureDelayAsync()
     {
-        if (Protection.Status is not { State: ConnectionState.Connected, IsPaused: false })
+        if (_disposed || Protection.Status is not { State: ConnectionState.Connected, IsPaused: false })
         {
             Delay = null;
             return;
         }
 
+        _delayStop?.Cancel();
+        using var stop = new CancellationTokenSource(DelayTimeout, _time);
+        _delayStop = stop;
+        var session = _session;
         IsMeasuringDelay = true;
         try
         {
-            Delay = await _gateway.MeasureDelayAsync().ConfigureAwait(true);
+            var delay = await _gateway.MeasureDelayAsync(stop.Token).WaitAsync(stop.Token).ConfigureAwait(true);
+            stop.Token.ThrowIfCancellationRequested();
+            if (!_disposed && session == _session)
+            {
+                Delay = delay;
+            }
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested)
+        {
+            // Подключение сменилось или замер не уложился в предел: прежнее число не становится новым результатом.
         }
         finally
         {
-            IsMeasuringDelay = false;
+            if (ReferenceEquals(_delayStop, stop))
+            {
+                _delayStop = null;
+                IsMeasuringDelay = false;
+            }
         }
     }
 
@@ -238,6 +325,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RunAsync()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (IsRunning)
         {
             _rerun = true;
@@ -245,27 +337,69 @@ public sealed partial class CheckPageViewModel : ObservableObject
         }
 
         IsRunning = true;
-        Refresh();
+        _delayStop?.Cancel();
         try
         {
             do
             {
                 _rerun = false;
-                // Состояние, для которого идет проверка: его смена во время проверки — повод повторить.
-                _reportState = Protection.Status.State;
-                _report = await _gateway.RunChecksAsync().ConfigureAwait(true);
-                await FindHindrancesAsync().ConfigureAwait(true);
-                if (!IsMeasuringDelay)
+                _report = null;
+                Hindrances.Clear();
+                Refresh();
+                var session = _session;
+                using var stop = new CancellationTokenSource(CheckTimeout, _time);
+                _checksStop = stop;
+                try
                 {
-                    await MeasureDelayAsync().ConfigureAwait(true);
+                    var report = await _gateway.RunChecksAsync(stop.Token).WaitAsync(stop.Token).ConfigureAwait(true);
+                    stop.Token.ThrowIfCancellationRequested();
+                    if (_disposed || session != _session)
+                    {
+                        continue;
+                    }
+
+                    // Результаты видны сразу; измерение задержки идет отдельно и их больше не удерживает.
+                    _report = report;
+                    Refresh();
+                    await FindHindrancesAsync(stop.Token).ConfigureAwait(true);
+                }
+                catch (OperationCanceledException) when (stop.IsCancellationRequested)
+                {
+                    if (!_disposed && session == _session && !_rerun)
+                    {
+                        if (_report is null)
+                        {
+                            _report = new DiagnosticReport([.. Enum.GetValues<DiagnosticCheck>()
+                                .Select(check => new DiagnosticResult(check, CheckState.Warning, "timeout"))], _time.GetUtcNow());
+                        }
+                        else
+                        {
+                            // Проверки уже получены, не завершился только поиск помех: его отказ не отменяет их результат.
+                            Hindrances.Clear();
+                            Hindrances.Add(new HindranceRowViewModel(Loc.Instance["diag.hinder.title"], Loc.Instance["diag.timeout"],
+                                Loc.Instance["diag.timeout.chip"], CheckState.Warning));
+                        }
+                    }
+                }
+                finally
+                {
+                    if (ReferenceEquals(_checksStop, stop))
+                    {
+                        _checksStop = null;
+                    }
                 }
             }
-            while (_rerun);
+            while (_rerun && !_disposed);
         }
         finally
         {
             IsRunning = false;
             Refresh();
+        }
+
+        if (!_disposed && _report is not null && Protection.Status is { State: ConnectionState.Connected, IsPaused: false })
+        {
+            _ = MeasureDelayAsync();
         }
     }
 
@@ -273,21 +407,22 @@ public sealed partial class CheckPageViewModel : ObservableObject
     /// Настройки компьютера, которые могут мешать, — читает окно (<see cref="IMachineSettings"/>); слушают ли их входы прокси и
     /// какие другие программы VPN и прокси работают — отвечает служба. Без службы — настройки без проверки входов.
     /// </summary>
-    private async Task FindHindrancesAsync()
+    private async Task FindHindrancesAsync(CancellationToken cancellationToken = default)
     {
         var settings = _settings.Current;
         IReadOnlyList<Hindrance> found;
         try
         {
-            found = await Task.Run(() => _machine.Read(settings)).ConfigureAwait(true);
+            found = await Task.Run(() => _machine.Read(settings), cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(true);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or System.Security.SecurityException)
         {
             found = [];
         }
 
-        var probe = await _gateway.CheckEntriesAsync([.. found.Select(h => h.Endpoint).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)])
-            .ConfigureAwait(true);
+        var probe = await _gateway.CheckEntriesAsync([.. found.Select(h => h.Endpoint).OfType<string>().Distinct(StringComparer.OrdinalIgnoreCase)], cancellationToken)
+            .WaitAsync(cancellationToken).ConfigureAwait(true);
+        cancellationToken.ThrowIfCancellationRequested();
         Hindrances.Clear();
         foreach (var hindrance in found)
         {
@@ -363,6 +498,8 @@ public sealed partial class CheckPageViewModel : ObservableObject
     /// </summary>
     public string BuildReport(IEnumerable<string>? inspector = null)
     {
+        // Экспорт может прийти раньше объединенного обновления очереди UI: отчет все равно берет свежий хвост.
+        RefreshJournal();
         var loc = Loc.Instance;
         var lines = new List<string>
         {
@@ -453,6 +590,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     private void Refresh()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         var rows = Enum.GetValues<DiagnosticCheck>()
             .Where(check => check != DiagnosticCheck.VirtualMachines || OperatingSystem.IsWindows()
                 || _report?[check] is { Reason: not "not_applicable" and not "simulated" })
@@ -460,13 +602,13 @@ public sealed partial class CheckPageViewModel : ObservableObject
         {
             var result = _report?[check] ?? (check == DiagnosticCheck.VirtualMachines && _report is not null
                 ? new DiagnosticResult(check, CheckState.Waiting, "not_checked") : null);
-            var state = IsRunning || result is null ? CheckState.Waiting : result.State;
-            var reason = IsRunning ? null : ViaProxy(check, state) ? "proxy" : result?.Reason;
+            var state = result is null ? CheckState.Waiting : result.State;
+            var reason = ViaProxy(check, state) ? "proxy" : result?.Reason;
             return new CheckRowViewModel(
                 check,
                 Loc.Instance[$"diag.{Id(check)}.title"],
                 result is null ? Loc.Instance["diag.checking"] : Detail(check, result.State, ViaProxy(check, result.State) ? "proxy" : result.Reason),
-                IsRunning ? Loc.Instance["diag.state.waiting.chip"] : Chip(check, state, reason),
+                Chip(check, state, reason),
                 state);
         }).ToList();
 
@@ -483,14 +625,46 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     private void RefreshJournal()
     {
-        Journal.Clear();
-        foreach (var entry in _gateway.Journal.TakeLast(JournalShown).Reverse())
+        if (_disposed)
         {
-            Journal.Add(new JournalLineViewModel(
-                entry.Time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture),
-                entry.Level,
-                entry.Source,
-                SecretMasker.Mask(entry.Message)));
+            return;
+        }
+
+        var lines = _gateway.Journal.TakeLast(JournalShown).Reverse().Select(entry => new JournalLineViewModel(
+            entry.Time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture),
+            entry.Level,
+            entry.Source,
+            SecretMasker.Mask(entry.Message))).ToList();
+        for (var i = 0; i < lines.Count; i++)
+        {
+            if (i < Journal.Count && Journal[i] == lines[i])
+            {
+                continue;
+            }
+
+            var existing = -1;
+            for (var j = i + 1; j < Journal.Count; j++)
+            {
+                if (Journal[j] == lines[i])
+                {
+                    existing = j;
+                    break;
+                }
+            }
+
+            if (existing >= 0)
+            {
+                Journal.Move(existing, i);
+            }
+            else
+            {
+                Journal.Insert(i, lines[i]);
+            }
+        }
+
+        while (Journal.Count > lines.Count)
+        {
+            Journal.RemoveAt(Journal.Count - 1);
         }
 
         OnPropertyChanged(nameof(HasJournal));
@@ -507,6 +681,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
     /// <summary>Пояснение: по коду уточнения, иначе по состоянию проверки, иначе общее.</summary>
     private string Detail(DiagnosticCheck check, CheckState state, string? reason)
     {
+        if (reason == "timeout")
+        {
+            return Loc.Instance["diag.timeout"];
+        }
+
         var id = Id(check);
         var stateKey = state.ToString().ToLowerInvariant();
         var status = Protection.Status;
@@ -534,6 +713,11 @@ public sealed partial class CheckPageViewModel : ObservableObject
 
     private static string Chip(DiagnosticCheck check, CheckState state, string? reason)
     {
+        if (reason == "timeout")
+        {
+            return Loc.Instance["diag.timeout.chip"];
+        }
+
         var id = Id(check);
         var stateKey = state.ToString().ToLowerInvariant();
         return First($"diag.{id}.{reason}.chip", $"diag.{id}.{stateKey}.chip", $"diag.state.{stateKey}.chip");

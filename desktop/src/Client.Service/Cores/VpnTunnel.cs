@@ -212,6 +212,7 @@ public sealed class VpnTunnel : IAsyncDisposable
         {
             throw new TunnelException("Нет адреса сервера");
         }
+        cancellationToken.ThrowIfCancellationRequested();
 
         // Пока выбираются внутренние порты, фиксированный вход прокси занят нашей парой: они не совпадут.
         using var localProxy = ReserveLocalProxy(request, netns);
@@ -232,6 +233,7 @@ public sealed class VpnTunnel : IAsyncDisposable
         var started = time.GetTimestamp();
         var xrayStarted = 0;
         localProxy?.Dispose();
+        cancellationToken.ThrowIfCancellationRequested();
         var xrayCore = CoreRelay.StartXray(xray, xrayConfig, singBox,
             relay is null ? [] : [new RelayRoute(request.Server, relay, serverAddresses[0].ToString())], request.Connection.CoreLog, out var relayReady, netns,
             line =>
@@ -264,6 +266,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             var ipv6 = request.Protection.Ipv6Allowed && AdapterIpv6()
                 && (serverOverIpv6 || (probe is not null && serverIpv6 is not null
                     && await AskAsync(serverIpv6, probe, (timeout - time.GetElapsedTime(started)) / 2, time, output, cancellationToken).ConfigureAwait(false)));
+            cancellationToken.ThrowIfCancellationRequested();
 
             // Адреса TUN — в подсети, которую не держит ни один адаптер: 172.19.0.1 бывает занят (Hyper-V, WSL, Docker, TUN
             // других клиентов), и Windows второй раз его не ставит — sing-box выходит при запуске.
@@ -282,6 +285,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             var retried = false;
             while (true)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 var ready = 0;
                 var tun = new TunRequest(link, serverAddresses, request.Server.Port, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
                     DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
@@ -614,6 +618,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     private static async Task WaitAsync(Func<bool> ready, string name, CoreProcess core, TimeSpan left, TimeProvider time,
         CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var started = time.GetTimestamp();
         while (!ready())
         {
@@ -629,6 +634,7 @@ public sealed class VpnTunnel : IAsyncDisposable
 
             await Task.Delay(TimeSpan.FromMilliseconds(100), time, cancellationToken).ConfigureAwait(false);
         }
+        cancellationToken.ThrowIfCancellationRequested();
     }
 
     private static bool Listens(int port)

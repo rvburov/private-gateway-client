@@ -23,21 +23,28 @@ public sealed class NotificationCenterTests : IDisposable
     private readonly SettingsService _settings = new(new MemorySettings());
     private readonly SubscriptionUpdater _updater;
     private readonly NotificationCenter _center;
+    private readonly FakeCatalog _catalog;
     private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "pg-notice-" + Guid.NewGuid().ToString("N")));
 
     public NotificationCenterTests()
     {
-        var catalog = new FakeCatalog(new ServerProfile("srv-1", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Tls,
-            "203.0.113.10", 443, "tcp", null))
+        _catalog = new FakeCatalog(new ServerProfile("srv-1", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Tls,
+            "203.0.113.10", 443, "tcp", null), new ServerProfile("srv-2", "Германия 02", "DE", ProxyProtocol.Vless,
+            TransportSecurity.Reality, "203.0.113.20", 8443, "tcp", null))
         { SelectedId = "srv-1" };
         var store = new SqliteServerCatalog(new SqliteDatabase(_paths), new FakeSecrets(), _time);
         _updater = new SubscriptionUpdater(store, new UnusedDownloader(), _gateway, _settings, _time, NullLogger<SubscriptionUpdater>.Instance);
-        _center = new NotificationCenter(_gateway, catalog, _updater, _settings, _notifier, _window, new PlainTexts(), _time);
+        _center = new NotificationCenter(_gateway, _catalog, _updater, _settings, _notifier, _window, new PlainTexts(), _time);
 
+        StartWithoutContext(_center);
+    }
+
+    private static void StartWithoutContext(NotificationCenter center)
+    {
         // Без контекста окна центр работает сразу в потоке события.
         var context = SynchronizationContext.Current;
         SynchronizationContext.SetSynchronizationContext(null);
-        _center.Start();
+        center.Start();
         SynchronizationContext.SetSynchronizationContext(context);
     }
 
@@ -89,6 +96,86 @@ public sealed class NotificationCenterTests : IDisposable
 
         _notifier.Shown.ShouldBeEmpty();
         _window.Toasts.ShouldBe([NoticeKind.ConnectionLost]);
+    }
+
+    [Fact]
+    public void First_failure_and_a_new_manual_retry_are_visible_without_waiting_ten_minutes()
+    {
+        _window.IsActive = _window.IsVisible = true;
+        _settings.Update(s => s with { Notifications = NotificationLevel.Off });
+        Move(ConnectionState.Connecting);
+        Move(ConnectionState.Reconnecting);
+        _window.Toasts.ShouldBe([NoticeKind.ConnectionFailed], "нет успешного Connected, но отказ уже известен");
+
+        _gateway.Status = _gateway.Status with { Attempt = 2 };
+        _gateway.Announce();
+        _window.Toasts.Count.ShouldBe(1, "автоматические повторы не заполняют окно одинаковыми сообщениями");
+
+        Move(ConnectionState.Connecting);
+        Move(ConnectionState.Reconnecting);
+        _window.Toasts.ShouldBe([NoticeKind.ConnectionFailed, NoticeKind.ConnectionFailed], "результат нового явного действия не скрывается старым ограничением частоты");
+        _notifier.Shown.ShouldBeEmpty("настройка ОС выключена, но активное окно все равно сообщает об ошибке");
+    }
+
+    [Fact]
+    public void Failure_of_another_server_is_not_silenced_by_the_previous_server()
+    {
+        Move(ConnectionState.Reconnecting);
+        _gateway.Status = _gateway.Status with { ServerId = "srv-2" };
+        Move(ConnectionState.Connected);
+        Move(ConnectionState.Reconnecting);
+
+        _notifier.Shown.ShouldBe([
+            (Notice.ProtectionTag, "notify.lost.title|Нидерланды 01", true),
+            (Notice.ProtectionTag, "notify.lost.title|Германия 02", true),
+        ]);
+    }
+
+    [Fact]
+    public void Reopening_the_window_shows_an_existing_block_once()
+    {
+        _center.Dispose();
+        _gateway.Status = _gateway.Status with
+        {
+            State = ConnectionState.Blocked,
+            ErrorCode = null,
+            ServerId = null,
+            Protection = ProtectionChecks.For(ConnectionState.Blocked),
+        };
+        _window.IsActive = _window.IsVisible = true;
+        using var reopened = new NotificationCenter(_gateway, _catalog, _updater, _settings, _notifier, _window, new PlainTexts(), _time);
+        StartWithoutContext(reopened);
+        reopened.Start();
+        _gateway.Announce();
+
+        _window.Toasts.ShouldBe([NoticeKind.NetworkBlocked], "сеть уже закрыта при запуске окна — ждать нового перехода нельзя");
+        _notifier.Shown.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Auto_connect_before_the_initial_ui_callback_does_not_announce_one_failure_twice()
+    {
+        _center.Dispose();
+        _gateway.Status = ConnectionStatus.Initial(_time.GetUtcNow()) with { ServerId = "srv-1" };
+        _window.IsActive = _window.IsVisible = true;
+        using var started = new NotificationCenter(_gateway, _catalog, _updater, _settings, _notifier, _window, new PlainTexts(), _time);
+        var queue = new QueuedContext();
+        var original = SynchronizationContext.Current;
+        try
+        {
+            SynchronizationContext.SetSynchronizationContext(queue);
+            started.Start();
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(original);
+        }
+
+        Move(ConnectionState.Connecting);
+        Move(ConnectionState.Reconnecting);
+        queue.Drain();
+
+        _window.Toasts.ShouldBe([NoticeKind.ConnectionFailed], "начальное состояние не подменяется результатом более поздней попытки");
     }
 
     [Fact]
@@ -226,6 +313,21 @@ public sealed class NotificationCenterTests : IDisposable
         public List<NoticeKind> Toasts { get; } = [];
 
         public void ShowInWindow(Notice notice) => Toasts.Add(notice.Kind);
+    }
+
+    private sealed class QueuedContext : SynchronizationContext
+    {
+        private readonly Queue<Action> _callbacks = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _callbacks.Enqueue(() => d(state));
+
+        public void Drain()
+        {
+            while (_callbacks.TryDequeue(out var callback))
+            {
+                callback();
+            }
+        }
     }
 
     /// <summary>Текст без локализации: заголовок — ключ события (у обновления — ключ текста), текст — сервер или версия.</summary>

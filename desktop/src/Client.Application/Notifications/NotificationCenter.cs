@@ -62,7 +62,8 @@ public sealed class NotificationCenter : IDisposable
     public event EventHandler<NoticeReply>? Replied;
 
     /// <summary>
-    /// Слушать службу и подписки. Первое состояние — точка отсчета: при запуске окна о том, что уже было, уведомлений нет.
+    /// Слушать службу и подписки. Обычное первое состояние — точка отсчета; уже известный отказ или блокировку нужно
+    /// показать сразу: ее переход мог произойти до открытия окна.
     /// </summary>
     public void Start()
     {
@@ -72,11 +73,29 @@ public sealed class NotificationCenter : IDisposable
         }
 
         _context = SynchronizationContext.Current;
-        _last = _gateway.Status;
+        var initial = _gateway.Status;
+        _last = initial;
         _gateway.StatusChanged += OnStatusChanged;
         _updater.SelectedServerChanged += OnSelectedServerChanged;
         _updater.ScheduledUpdateFailed += OnScheduledUpdateFailed;
         _notifier.Replied += OnReplied;
+        Post(() =>
+        {
+            var current = _gateway.Status;
+            // Автоподключение может уже прислать новые состояния, пока эта задача ждала UI. Их обработают свои события:
+            // нельзя выдать их результат здесь, а затем еще раз после очистки истории на Connecting.
+            if (current.State != initial.State || current.ServerId != initial.ServerId || current.Since != initial.Since
+                || current.Mode != initial.Mode || current.ErrorCode != initial.ErrorCode || current.StrictBlock != initial.StrictBlock
+                || current.CaptivePauseUntil != initial.CaptivePauseUntil)
+            {
+                return;
+            }
+
+            if (NotificationPolicy.Current(current, ServerName(current), _time.GetUtcNow()) is { } notice)
+            {
+                Deliver(notice);
+            }
+        });
     }
 
     public void Dispose()
@@ -94,13 +113,24 @@ public sealed class NotificationCenter : IDisposable
     {
         var before = _last ?? status;
         _last = status;
+        if (status.State == ConnectionState.Connecting
+            && (before.State != ConnectionState.Connecting || before.ServerId != status.ServerId || before.Since != status.Since))
+        {
+            // Явная новая попытка или смена сервера: прежний отказ не должен скрывать результат еще на десять минут.
+            // Автоматические повторы остаются в Reconnecting и историю не сбрасывают.
+            foreach (var key in _shown.Keys.Where(k => k.Kind is not (NoticeKind.ServerGone or NoticeKind.ServerChanged
+                or NoticeKind.ServersNotUpdated or NoticeKind.UpdateAvailable)).ToArray())
+            {
+                _shown.Remove(key);
+            }
+        }
         if (status.ErrorCode != ErrorCodes.ServiceNotRunning)
         {
             _serviceWait?.Dispose();
             _serviceWait = null;
         }
 
-        var server = _catalog.Servers.FirstOrDefault(s => s.Id == status.ServerId)?.Name ?? _catalog.Selected?.Name;
+        var server = ServerName(status);
         if (NotificationPolicy.For(before, status, server, _time.GetUtcNow()) is not { } notice)
         {
             return;
@@ -115,6 +145,9 @@ public sealed class NotificationCenter : IDisposable
 
         Deliver(notice);
     }
+
+    private string? ServerName(ConnectionStatus status) =>
+        _catalog.Servers.FirstOrDefault(s => s.Id == status.ServerId)?.Name ?? _catalog.Selected?.Name;
 
     private void ServiceStillGone(Notice notice)
     {
@@ -185,7 +218,7 @@ public sealed class NotificationCenter : IDisposable
     private void Deliver(Notice notice)
     {
         var now = _time.GetUtcNow();
-        var key = (notice.Kind, notice.Subscription ?? string.Empty);
+        var key = (notice.Kind, notice.Subscription ?? notice.ServerId ?? string.Empty);
         var state = notice.Kind is NoticeKind.Connected or NoticeKind.Disconnected;
         if (_shown.TryGetValue(key, out var at) && now - at < RepeatAfter)
         {

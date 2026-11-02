@@ -22,6 +22,7 @@
 | Запуск, подсеть и остановка TUN | [VpnTunnel.cs](../../desktop/src/Client.Service/Cores/VpnTunnel.cs) |
 | Подключение и состояние службы | [Gateway.cs](../../desktop/src/Client.Service/Gateway.cs) |
 | Пробы связи и переподключение | [Gateway.Reconnect.cs](../../desktop/src/Client.Service/Gateway.Reconnect.cs) |
+| Проверка профиля до первого VPN из открытой сети | [Gateway.Preflight.cs](../../desktop/src/Client.Service/Gateway.Preflight.cs), [ConnectionPreflight.cs](../../desktop/src/Client.Service/Cores/ConnectionPreflight.cs) |
 | Измерения DNS, IPv6 и IP | [Gateway.Leaks.cs](../../desktop/src/Client.Service/Gateway.Leaks.cs) |
 | Пользовательское управление и статусы прокси | [IUserProxyController.cs](../../desktop/src/Client.Application/Connection/IUserProxyController.cs), [UserProxyController.cs](../../desktop/src/Client.Infrastructure/Service/UserProxyController.cs) |
 | Владение снимком и возврат после сбоя | [UserProxyLease.cs](../../desktop/src/Client.Infrastructure/Service/UserProxyLease.cs) |
@@ -67,6 +68,21 @@ TUN и учет скорости TUN не распространяются ав�
 Маршрут к серверу и блокировка описаны в [core.md](core.md)
 и [kill-switch.md](kill-switch.md). После исправления исключение всего IP не используется: отдельный выход
 sing-box `server-direct` сопоставляет адреса сервера и `ServerPort`. DNS туннеля идет в Xray перед этим правилом.
+
+Перед первым включением из открытой сети профиль проверяется настоящим Xray до TUN и новой блокировки, в общем
+таймауте подключения. При действующем блоке или опубликованном ядре этот этап не открывает защиту: действует
+ограниченная защищенная попытка с уведомлением. Успех старого пинга не заменяет проверку, старое «нет» не является
+вечным запретом. Повторы перебирают только ранее разрешенные IP того же профиля, сохраняя набор firewall endpoints.
+
+Если привязанный к физической карте путь не ответил, тот же профиль и IP могут проверяться без принудительной
+привязки в оставшемся общем сроке. Только настоящий ответ выбирает этот fallback для сессии; `outside: string.Empty`
+передается во всех Init/Resume/Reconnect, обычный Confirm после создания TUN сохраняется. В таком случае транспорт
+может снова пройти через `server-direct`: дополнительная обработка и счетчики скорости отличаются от быстрого
+привязанного пути. Другие порты адреса сервера остаются в туннеле, проверка TLS не отключается.
+
+Незавершенный запуск хранится в `_pendingTunnel` отдельно от публикации. Остановка под `_switch` отменяет и ожидает
+только создание/очистку, а не publisher, который сам ждет `_switch`. Это предотвращает поздний TUN после завершенного
+Disconnect и взаимную блокировку. Ожидание временного ядра предварительной проверки также заканчивается до Off.
 
 ## Платформы
 

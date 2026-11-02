@@ -69,6 +69,8 @@ public sealed partial class Gateway
             var exitIp = _options.ExitIp ?? LatencyProbe.ExitIpAsync;
             var four = exitIp(new ServerProbe(link.Port, credentials, trace, Ipv6Timeout), cancellationToken);
             var six = exitIp(new ServerProbe(link.Port, credentials, trace6, Ipv6Timeout), cancellationToken);
+            // Отмена одного запроса не оставляет второй жить после завершения остановки запуска.
+            await Task.WhenAll(four, six).ConfigureAwait(false);
             switch (Ipv6Verdict(await four.ConfigureAwait(false), await six.ConfigureAwait(false)))
             {
                 case true:
@@ -95,7 +97,8 @@ public sealed partial class Gateway
     /// ошибка — вывод сохраненной проверки блока. Неудача восстановления блока не означает, что трафик остановлен.
     /// </summary>
     /// <param name="reportSilence">Писать в журнал, что проверочный адрес не ответил; false — попытка будет еще.</param>
-    public async Task<(CheckState State, string? Reason)> CheckExitAsync(bool reportSilence = true)
+    /// <param name="cancellationToken">Окно прекратило проверку или сменило подключение.</param>
+    public async Task<(CheckState State, string? Reason)> CheckExitAsync(bool reportSilence = true, CancellationToken cancellationToken = default)
     {
         var status = Status;
         if (status.IsPaused || status.State == ConnectionState.Off)
@@ -118,15 +121,16 @@ public sealed partial class Gateway
             // не ждет — время, как у пробы.
             if (!vpn)
             {
-                _directIp = await DirectIpAsync(Timing.ProbeTimeout).ConfigureAwait(false) ?? _directIp;
+                _directIp = await DirectIpAsync(Timing.ProbeTimeout, cancellationToken).ConfigureAwait(false) ?? _directIp;
             }
 
             ip = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(vpn
                 ? new ServerProbe(0, null, trace, Timing.ProbeTimeout)
-                : new ServerProbe(link!.Port, new NetworkCredential(link.User, link.Password), trace, Timing.ProbeTimeout), CancellationToken.None)
+                : new ServerProbe(link!.Port, new NetworkCredential(link.User, link.Password), trace, Timing.ProbeTimeout), cancellationToken)
                 .ConfigureAwait(false);
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         var direct = _directIp;
         Update(s => session == _session && s.State == ConnectionState.Connected
             ? Honest(s with
@@ -139,7 +143,8 @@ public sealed partial class Gateway
                     AllTraffic = vpn && ip is not null && direct is not null
                         ? ip == direct ? CheckState.Warning : ProtectionChecks.For(s.State, s.Mode).AllTraffic
                         : s.Protection.AllTraffic,
-                    CheckedAt = _time.GetUtcNow(),
+                    // Время подтверждения есть только у полученного ответа; молчание не выглядит свежим успехом.
+                    CheckedAt = ip is null ? null : _time.GetUtcNow(),
                 },
             })
             : s);
@@ -194,7 +199,7 @@ public sealed partial class Gateway
     /// (<c>leak</c>), IPv6 мимо туннеля — в состоянии, ошибка — в журнале; открыт настройками — <c>outside</c>, как по
     /// состоянию. Иначе (нет ответа, через туннель, другое состояние, нет проверочного адреса) — по состоянию.
     /// </summary>
-    public async Task<(CheckState State, string? Reason)> CheckIpv6Async()
+    public async Task<(CheckState State, string? Reason)> CheckIpv6Async(CancellationToken cancellationToken = default)
     {
         var status = Status;
         if (status is not { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } || _options.Trace6 is not { } trace6)
@@ -206,8 +211,9 @@ public sealed partial class Gateway
         ConnectionStatus Policy(ConnectionStatus s) => Honest(s with { Protection = s.Protection with { Ipv6 = ProtectionChecks.For(s.State, s.Mode).Ipv6 } });
 
         var session = Volatile.Read(ref _session);
-        var seen = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace6, Timing.ProbeTimeout), CancellationToken.None)
+        var seen = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace6, Timing.ProbeTimeout), cancellationToken)
             .ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
         var leaks = Ipv6Leaks(_directIp6, seen, Policy(status).Protection.Ipv6Tunnel) == true;
 
         // Утечка — в состоянии, пока подключение то же; ее нет — IPv6 снова по состоянию (прошлый замер мог ее показать).
@@ -231,14 +237,15 @@ public sealed partial class Gateway
     /// журнале. Закрыто или мерить нечем — по состоянию (<see cref="DnsReason"/>); следующий замер без ответа возвращает строку и
     /// чип к состоянию.
     /// </summary>
-    public async Task<(CheckState State, string? Reason)> CheckDnsAsync()
+    public async Task<(CheckState State, string? Reason)> CheckDnsAsync(CancellationToken cancellationToken = default)
     {
         var status = Status;
         if (status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } && _options.OutsideDns is { } resolver)
         {
             var session = Volatile.Read(ref _session);
-            if (await (_options.DnsPastTunnel ?? DnsThroughCardAsync)(resolver, CancellationToken.None).ConfigureAwait(false) is { } open)
+            if (await (_options.DnsPastTunnel ?? DnsThroughCardAsync)(resolver, cancellationToken).ConfigureAwait(false) is { } open)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 Update(s => session != _session || s.State != ConnectionState.Connected ? s
                     : open ? s with { Protection = s.Protection with { Dns = CheckState.Warning } }
                     : Honest(s with { Protection = s.Protection with { Dns = ProtectionChecks.For(s.State, s.Mode).Dns } }));
@@ -307,9 +314,10 @@ public sealed partial class Gateway
     /// Реальный IP — напрямую, мимо ядра, не дольше <paramref name="timeout"/> (по умолчанию — сколько подключение готово ждать);
     /// проверочного адреса нет или он не ответил — null.
     /// </summary>
-    private Task<string?> DirectIpAsync(TimeSpan? timeout = null) => DirectIpAsync(_options.Trace, timeout ?? DirectTimeout);
+    private Task<string?> DirectIpAsync(TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
+        DirectIpAsync(_options.Trace, timeout ?? DirectTimeout, cancellationToken);
 
-    /// <summary>Реальные IP по IPv4 и по IPv6 — сразу, напрямую (<see cref="DirectIpAsync(TimeSpan?)"/>); адреса IPv6 нет — null.</summary>
+    /// <summary>Реальные IP по IPv4 и по IPv6 — сразу, напрямую (<see cref="DirectIpAsync(TimeSpan?, CancellationToken)"/>); адреса IPv6 нет — null.</summary>
     private async Task<(string? Ip, string? Ip6)> DirectIpsAsync()
     {
         var ip = DirectIpAsync();
@@ -318,7 +326,7 @@ public sealed partial class Gateway
             IPAddress.TryParse(await ip6.ConfigureAwait(false), out var address) && address.AddressFamily == AddressFamily.InterNetworkV6 ? address.ToString() : null);
     }
 
-    private async Task<string?> DirectIpAsync(Uri? trace, TimeSpan timeout) => trace is not null
-        ? await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace, timeout), CancellationToken.None).ConfigureAwait(false)
+    private async Task<string?> DirectIpAsync(Uri? trace, TimeSpan timeout, CancellationToken cancellationToken = default) => trace is not null
+        ? await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace, timeout), cancellationToken).ConfigureAwait(false)
         : null;
 }

@@ -3,6 +3,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -314,6 +315,45 @@ public sealed class ImportPageTests : WindowHarness
 
         page.NewText.ShouldBe("1");
         page.AddText.ShouldBe("Добавить 1 сервер");
+    }
+
+    [AvaloniaFact]
+    public async Task Tcp_vision_and_xhttp_from_one_address_remain_two_profiles_in_one_subscription()
+    {
+        var (window, shell, page) = OpenImport();
+        var url = new Uri("https://sub.example.com/sub/fake-two-transports");
+        const string key = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
+        const string alternateKey = "AgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgI";
+        const string account = "vless://11111111-2222-3333-4444-555555555555@198.51.100.20:";
+        Downloads.Responses[url] =
+            $"{account}8444?encryption=none&type=xhttp&security=reality&sni=example.com&fp=chrome&pbk={alternateKey}&sid=02&path=%2Fabcdefghijklmnop&mode=auto#Gateway%20XHTTP\n"
+            + $"{account}8443?encryption=none&type=tcp&security=reality&sni=example.com&fp=chrome&pbk={key}&sid=01&flow=xtls-rprx-vision#Gateway%20TCP%20Vision";
+
+        page.OpenLinkCommand.Execute(null);
+        page.LinkText = url.ToString();
+        await page.CheckLinkCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.HasSubscriptionVariants.ShouldBeTrue();
+        page.NewText.ShouldBe("2");
+        Find<TextBlock>(window, "SubscriptionVariantsHint").IsVisible.ShouldBeTrue();
+        page.AddCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        var store = Service<IServerStore>();
+        store.Subscriptions.ShouldHaveSingleItem().CanUpdate.ShouldBeTrue();
+        var definitions = store.Servers.Select(s => store.Definition(s.Id)!).ToList();
+        definitions.Count.ShouldBe(2);
+        var tcp = definitions.Single(d => d.Transport.Kind == TransportKind.Tcp);
+        var xhttp = definitions.Single(d => d.Transport.Kind == TransportKind.Xhttp);
+        tcp.Options.Flow.ShouldBe("xtls-rprx-vision");
+        tcp.Security.RealityPublicKey.ShouldBe(key, "у TCP свой ключ, профиль XHTTP не должен его перезаписать");
+        tcp.Security.RealityShortId.ShouldBe("01");
+        xhttp.Options.Flow.ShouldBeNull();
+        xhttp.Security.RealityPublicKey.ShouldBe(alternateKey);
+        xhttp.Security.RealityShortId.ShouldBe("02");
+        definitions.Select(d => d.Credentials.Uuid).Distinct().ShouldHaveSingleItem();
+        shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>().Groups.ShouldHaveSingleItem().Rows.Count.ShouldBe(2);
     }
 
     [AvaloniaFact]

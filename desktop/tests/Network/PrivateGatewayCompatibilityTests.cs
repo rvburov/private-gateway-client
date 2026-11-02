@@ -15,7 +15,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// Маска REALITY — свой сервер TLS 1.3 на 127.0.0.1 (второй Xray с самоподписанным сертификатом: TLS
 /// на Go, как у настоящих сайтов), ключи — заведомо тестовые.
 /// </summary>
-public sealed class PrivateGatewayCompatibilityTests
+public sealed partial class PrivateGatewayCompatibilityTests
 {
     /// <summary>32 байта 0x01 — заведомо тестовый закрытый ключ X25519.</summary>
     private const string RealityPrivate = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";

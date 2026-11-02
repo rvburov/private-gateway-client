@@ -15,10 +15,12 @@ namespace PrivateGateway.Client.UI.ViewModels;
 /// «Служба не запущена» или «Нужны права администратора» открывает экран ошибки (доска 16). О пропавшем или
 /// изменившемся выбранном сервере говорит центр уведомлений: всплывашкой в окне или уведомлением ОС.
 /// </summary>
-public sealed partial class ShellViewModel : ObservableObject, INavigator
+public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisposable
 {
     private readonly Dictionary<string, Func<object>> _pages;
     private readonly Dictionary<string, object> _created = [];
+    private readonly IGatewayClient _gateway;
+    private bool _disposed;
 
     public ShellViewModel(
         ProtectionViewModel protection,
@@ -54,6 +56,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         ArgumentNullException.ThrowIfNull(mainPage);
         ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
+        _gateway = gateway;
         Protection = protection;
         Toast = toast;
         Overlay = overlay;
@@ -86,8 +89,35 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
         // Первый запуск — приветствие (доска 10), дальше — сразу главная.
         Navigate(settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome);
 
-        gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => ShowProblem(status));
+        gateway.StatusChanged += OnStatusChanged;
     }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _gateway.StatusChanged -= OnStatusChanged;
+        // Страницы созданы фабриками ActivatorUtilities, поэтому контейнер ими не владеет: завершает их окно.
+        foreach (var page in _created.Values.OfType<IDisposable>().Distinct())
+        {
+            page.Dispose();
+        }
+
+        _created.Clear();
+        GC.SuppressFinalize(this);
+    }
+
+    private void OnStatusChanged(object? sender, ConnectionStatus status) => Dispatcher.UIThread.Post(() =>
+    {
+        if (!_disposed)
+        {
+            ShowProblem(status);
+        }
+    });
 
     public ProtectionViewModel Protection { get; }
 
@@ -120,6 +150,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator
     [RelayCommand]
     public void Navigate(string page)
     {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_pages.TryGetValue(page, out var factory))
         {
             throw new ArgumentOutOfRangeException(nameof(page), page, "Нет такой страницы");

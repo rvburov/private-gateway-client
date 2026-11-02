@@ -1,3 +1,4 @@
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
@@ -12,12 +13,95 @@ using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
+using PrivateGateway.Client.UI.ViewModels;
 
 namespace PrivateGateway.Client.Tests.UI;
 
 /// <summary>Уведомления (доски 19 и 22) в окне: тексты на языке интерфейса, всплывашка в активном окне, кнопки уведомлений.</summary>
 public sealed class NotificationTests : WindowHarness
 {
+    [AvaloniaFact]
+    public async Task First_connection_failure_is_shown_and_remains_actionable_after_the_toast()
+    {
+        var service = default(ScriptedService);
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = connecting => connecting.MoveTo(ConnectionState.Reconnecting, Time.GetUtcNow()),
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        Service<NoticeWindow>().Attach(window, window.Show);
+        Service<SettingsService>().Update(s => s with { Notifications = NotificationLevel.Off });
+        Service<NoticeActions>().Start();
+        window.Activate();
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Reconnecting);
+        Dispatcher.UIThread.RunJobs();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        Notifier.Shown.ShouldBeEmpty("ошибка при активном окне показывается внутри даже при выключенных уведомлениях ОС");
+        shell.Toast.Text.ShouldStartWith("Не удалось подключиться · Не удалось подтвердить связь через «Мой».");
+        shell.Toast.Text.ShouldContain("Интернет заблокирован");
+        var message = shell.Toast.Text;
+        main.HasConnectionProblem.ShouldBeTrue("до этой неудачи ни одного успешного подключения не было");
+        main.ConnectionProblemAction.ShouldBe("Сменить сервер");
+
+        shell.Toast.IsVisible = false;
+        service!.Push(s => s with { Attempt = s.Attempt + 1 });
+        Dispatcher.UIThread.RunJobs();
+        Find<Button>(window, "ConnectionProblemBanner").IsVisible.ShouldBeTrue("причина остается после короткой всплывашки");
+        Text(window, "ConnectionProblemText").ShouldNotBeNull().ShouldContain("Интернет заблокирован");
+        shell.Toast.IsVisible.ShouldBeFalse("следующая автоматическая попытка не показывает ту же всплывашку снова");
+        shell.Toast.Text.ShouldBe(message);
+
+        Loc.Instance.SetLanguage("en");
+        main.ConnectionProblemText.ShouldContain("Internet is blocked");
+        main.ConnectionProblemAction.ShouldBe("Change server");
+        Press(window, "ConnectionProblemBanner");
+        shell.CurrentKey.ShouldBe(Pages.Servers);
+        service.Status.State.ShouldBe(ConnectionState.Reconnecting, "переход к списку не выбирает другой сервер автоматически и не открывает сеть");
+    }
+
+    [AvaloniaFact]
+    public async Task Preflight_and_its_rejection_do_not_claim_the_open_network_is_blocked()
+    {
+        var service = default(ScriptedService);
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = connecting => connecting with { Protection = ProtectionChecks.For(ConnectionState.Off) },
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        Service<NoticeWindow>().Attach(window, window.Show);
+        Service<NoticeActions>().Start();
+        window.Activate();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        main.StatusTitle.ShouldBe("Проверяем сервер…");
+        main.StatusSubtitle.ShouldContain("Пока трафик идет напрямую");
+        main.HasConnectionProblem.ShouldBeFalse("пока проверка не завершилась, отказ не известен");
+        shell.Toast.IsVisible.ShouldBeFalse();
+
+        service!.Push(s => s.MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+        {
+            ErrorCode = ErrorCodes.ServerNotResponding,
+            Protection = ProtectionChecks.For(ConnectionState.Off),
+        });
+        Dispatcher.UIThread.RunJobs();
+
+        shell.Toast.Text.ShouldContain("Проверка подключения через «Мой» не прошла");
+        shell.Toast.Text.ShouldContain("VPN не включен, трафик идет напрямую");
+        shell.Toast.Text.ShouldNotContain("Интернет заблокирован");
+        main.ConnectionProblemText.ShouldContain("VPN не включен, трафик идет напрямую");
+        main.ConnectionProblemAction.ShouldBe("Сменить сервер");
+        main.HasConnectionProblem.ShouldBeTrue();
+
+        service.Push(s => s.MoveTo(ConnectionState.Connecting, Time.GetUtcNow()).MoveTo(ConnectionState.Connected, Time.GetUtcNow()));
+        Dispatcher.UIThread.RunJobs();
+        main.HasConnectionProblem.ShouldBeFalse("успешное новое подключение убирает причину прошлого отказа");
+    }
+
     [AvaloniaFact]
     public async Task Hidden_window_gets_os_notices_and_their_buttons_open_the_right_screen()
     {

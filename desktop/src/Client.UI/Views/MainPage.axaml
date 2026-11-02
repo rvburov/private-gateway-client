@@ -53,6 +53,25 @@
       <!-- Состояние защиты -->
       <Border Classes="card" Margin="20,0" Padding="16,14,14,12">
         <StackPanel Spacing="12">
+          <!-- Отказ не исчезает вместе со всплывашкой: причина, состояние сети и переход к выбору сервера. -->
+          <Button x:Name="ConnectionProblemBanner" Classes="bypass" IsVisible="{Binding HasConnectionProblem}"
+                  Command="{Binding NavigateCommand}" CommandParameter="{Binding ConnectionProblemPage}"
+                  AutomationProperties.Name="{Binding ConnectionProblemText}">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+              <c:Icon Data="{StaticResource Icon.Warning}" Width="16" Height="16" StrokeThickness="2"
+                      Foreground="{StaticResource PgBrush.Status.Warning.Text}" VerticalAlignment="Center" />
+              <StackPanel Grid.Column="1" Margin="10,0" Spacing="3">
+                <TextBlock x:Name="ConnectionProblemTitle" Text="{Binding ConnectionProblemTitle}" TextWrapping="Wrap"
+                           FontSize="{StaticResource PgFontSize.Small}" FontWeight="SemiBold" />
+                <TextBlock x:Name="ConnectionProblemText" Text="{Binding ConnectionProblemText}" TextWrapping="Wrap"
+                           FontSize="{StaticResource PgFontSize.Caption}" Foreground="{StaticResource PgBrush.Status.Warning.Text}" />
+                <TextBlock Text="{Binding ConnectionProblemAction}" FontSize="{StaticResource PgFontSize.Caption}"
+                           FontWeight="SemiBold" Foreground="{StaticResource PgBrush.Accent.Text}" />
+              </StackPanel>
+              <c:Icon Grid.Column="2" Classes="chevron" Data="{StaticResource Icon.ChevronRight}" Width="14" Height="14" StrokeThickness="2"
+                      VerticalAlignment="Center" />
+            </Grid>
+          </Button>
           <!-- Пауза для входа в Wi-Fi: отсчет и «Вернуть защиту» («Закрыть сеть» в строгом режиме) -->
           <Border x:Name="PauseBanner" IsVisible="{Binding IsPaused}" CornerRadius="12" Padding="10,8,8,8"
                   BorderThickness="1" Background="{StaticResource PgBrush.Status.Caution.Tint}"
@@ -97,7 +116,7 @@
             <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2">
               <TextBlock x:Name="StatusTitle" Classes="status" Text="{Binding StatusTitle}"
                          Foreground="{Binding Tone, Converter={StaticResource ToneBrush}, ConverterParameter=Icon}" />
-              <TextBlock Classes="small" Text="{Binding StatusSubtitle}" TextTrimming="CharacterEllipsis" />
+              <TextBlock Classes="small" Text="{Binding StatusSubtitle}" TextWrapping="Wrap" />
               <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,1,0,0">
                 <c:Icon Data="{Binding NetworkIcon, Converter={StaticResource IconKey}}" Width="13" Height="13"
                         StrokeThickness="2" Foreground="{StaticResource PgBrush.Text.Muted}" />

@@ -29,7 +29,74 @@ public class NotificationPolicyTests
             .ShouldBe("notify.lost.proxy");
 
         For(Connected with { CaptivePauseUntil = Now.AddMinutes(5) }, Status(ConnectionState.Reconnecting)).ShouldBeNull("с паузы — не обрыв");
-        For(Status(ConnectionState.Connecting), Status(ConnectionState.Reconnecting) with { Attempt = 1 }).ShouldBeNull("еще не было защиты — не обрыв");
+        For(Status(ConnectionState.Connecting), Status(ConnectionState.Reconnecting) with { Attempt = 1 })!.Kind
+            .ShouldBe(NoticeKind.ConnectionFailed, "первая неудача имеет свое уведомление, а не молчит до первого успешного подключения");
+    }
+
+    [Fact]
+    public void Initial_failure_is_reported_before_any_success_and_automatic_attempts_do_not_repeat_it()
+    {
+        var connecting = Status(ConnectionState.Connecting);
+        var failed = Status(ConnectionState.Reconnecting) with { Attempt = 1 };
+
+        var first = For(connecting, failed).ShouldNotBeNull();
+        (first.Kind, first.TextKey, first.ServerId, first.IsImportant)
+            .ShouldBe((NoticeKind.ConnectionFailed, "notify.connectFailed.blocked", "srv-1", true));
+        first.Actions.ShouldBe([NoticeAction.ChangeServer, NoticeAction.Retry]);
+
+        For(failed, failed with { Attempt = 2 }).ShouldBeNull("автоматическая попытка — не новая ошибка пользователя");
+        For(connecting, failed with { Mode = ConnectionMode.Proxy })!.TextKey.ShouldBe("notify.connectFailed.proxy");
+        For(connecting, failed with { Protection = ProtectionChecks.For(ConnectionState.Off) })!.TextKey.ShouldBe("notify.connectFailed.direct");
+        For(connecting with { CaptivePauseUntil = Now.AddMinutes(5) }, failed).ShouldBeNull("намеренная пауза не является отказом первой попытки");
+    }
+
+    [Theory]
+    [InlineData(ConnectionState.Error, CheckState.Off, "notify.connectRejected.direct")]
+    [InlineData(ConnectionState.Blocked, CheckState.Ok, "notify.connectRejected.blocked")]
+    [InlineData(ConnectionState.Error, CheckState.Warning, "notify.connectRejected.unverified")]
+    public void Rejected_preflight_reports_the_observed_network_state(ConnectionState state, CheckState block, string key)
+    {
+        var failed = Status(state) with
+        {
+            ErrorCode = ErrorCodes.ServerNotResponding,
+            Protection = ProtectionChecks.For(state) with { KillSwitch = block, AllTraffic = block == CheckState.Off ? CheckState.Off : CheckState.Stopped },
+        };
+
+        var notice = For(Status(ConnectionState.Connecting), failed).ShouldNotBeNull();
+
+        (notice.Kind, notice.TextKey).ShouldBe((NoticeKind.ConnectionFailed, key));
+        notice.Actions.ShouldBe([NoticeAction.ChangeServer, NoticeAction.Retry]);
+    }
+
+    [Fact]
+    public void Opening_the_window_reports_existing_blocking_without_inventing_a_dead_server()
+    {
+        var saved = Status(ConnectionState.Blocked) with { ServerId = null };
+        var notice = NotificationPolicy.Current(saved, null, Now).ShouldNotBeNull();
+        (notice.Kind, notice.TextKey, notice.IsImportant).ShouldBe((NoticeKind.NetworkBlocked, "notify.blocked.saved", true));
+        notice.Actions.ShouldBe([NoticeAction.ChooseServer, NoticeAction.Open]);
+
+        NotificationPolicy.Current(saved with { StrictBlock = true }, null, Now)!.TextKey.ShouldBe("notify.blocked.strict");
+        NotificationPolicy.Current(saved with { CaptivePauseUntil = Now.AddMinutes(5) }, null, Now).ShouldBeNull();
+        NotificationPolicy.Current(Status(ConnectionState.Off), null, Now).ShouldBeNull();
+        NotificationPolicy.Current(Connected, "Мой", Now).ShouldBeNull();
+        NotificationPolicy.Current(Status(ConnectionState.Connecting), "Мой", Now).ShouldBeNull("проверка еще не закончилась — отказ не известен");
+
+        var unverified = saved with { Protection = saved.Protection with { KillSwitch = CheckState.Warning } };
+        NotificationPolicy.Current(unverified, null, Now)!.TextKey.ShouldBe("notify.blocked.unverified", "не обещать блокировку без подтверждения");
+    }
+
+    [Fact]
+    public void Lost_and_failed_protection_do_not_claim_an_unverified_block_is_active()
+    {
+        var bad = Status(ConnectionState.Reconnecting) with { Protection = ProtectionChecks.For(ConnectionState.Reconnecting) with { KillSwitch = CheckState.Warning } };
+        For(Connected, bad)!.TextKey.ShouldBe("notify.lost.unverified");
+
+        For(bad, Status(ConnectionState.Error) with
+        {
+            ErrorCode = ErrorCodes.KillSwitchFailed,
+            Protection = ProtectionChecks.For(ConnectionState.Error) with { KillSwitch = CheckState.Warning },
+        })!.TextKey.ShouldBe("notify.failed.unverified");
     }
 
     [Fact]

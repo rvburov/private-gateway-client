@@ -27,6 +27,8 @@ public sealed class NoticeTexts : INoticeTexts
     /// <summary>Заголовок события.</summary>
     public static string TitleKey(NoticeKind kind) => kind switch
     {
+        NoticeKind.ConnectionFailed => "notify.connectFailed.title",
+        NoticeKind.NetworkBlocked => "notify.blocked.title",
         NoticeKind.ConnectionLost => "notify.lost.title",
         NoticeKind.ServerDown => "notify.down.title",
         NoticeKind.WifiSignIn => "notify.signIn.title",

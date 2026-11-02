@@ -269,9 +269,10 @@ public sealed class GatewayRpc(
     public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
         // Замеры IP для сайтов по IPv4 и по IPv6 и DNS мимо туннеля — сразу: каждый ждет ответа.
-        var exit = gateway.CheckExitAsync();
-        var ipv6 = gateway.CheckIpv6Async();
-        var dns = gateway.CheckDnsAsync();
+        var cancellationToken = context?.CancellationToken ?? default;
+        var exit = gateway.CheckExitAsync(cancellationToken: cancellationToken);
+        var ipv6 = gateway.CheckIpv6Async(cancellationToken);
+        var dns = gateway.CheckDnsAsync(cancellationToken);
         var (exitState, exitReason) = await exit.ConfigureAwait(false);
         var (ipv6State, ipv6Reason) = await ipv6.ConfigureAwait(false);
         var (dnsState, dnsReason) = await dns.ConfigureAwait(false);

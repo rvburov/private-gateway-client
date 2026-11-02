@@ -1650,7 +1650,15 @@ public sealed partial class VpnModeTests
         }
 
         public GatewayOptions Vpn(GatewayOptions options) =>
-            options with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = KillSwitch, TunnelNetns = Netns.Path };
+            options with
+            {
+                CanVpn = true,
+                SingBoxPath = XrayKit.SingBox,
+                KillSwitch = KillSwitch,
+                TunnelNetns = Netns.Path,
+                // Этот стенд проверяет TUN, firewall и переподключение; пробу до TUN с настоящим профилем проверяет GatewayPreflightTests.
+                Preflight = (_, _, _) => Task.FromResult(ProbeReachability.Responded(HttpStatusCode.NoContent)),
+            };
 
         /// <summary>Сервер перестал отвечать.</summary>
         public void StopServer()

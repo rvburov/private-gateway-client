@@ -174,7 +174,10 @@ public sealed class LeakCheckTests
         exit.Reason.ShouldBe("no_answer");
         stand.Service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e =>
             e.Message == "Проверка утечек: проверочный адрес не ответил через сервер — IP для сайтов не измерен");
-        var status = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.Protection.CheckedAt is not null))[^1];
+        // RunChecks уже завершил замер: читаем свежий снимок RPC, а не ждем несуществующего успешного времени.
+        var status = await stand.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct);
+        status.State.ShouldBe(V1.ConnectionState.Connected, "молчание проверочного адреса не означает ручное отключение");
+        status.Protection.CheckedAt.ShouldBeNull("без ответа проверка не подтверждена и не получает время успеха");
         status.Exit.Ip.ShouldBeEmpty("IP не измерен — не выдумывать");
     }
 
