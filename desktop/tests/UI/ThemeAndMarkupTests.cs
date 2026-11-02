@@ -60,6 +60,24 @@ public partial class ThemeAndMarkupTests
     }
 
     [Fact]
+    public void Installer_wizard_has_its_own_pictures_in_the_style_of_the_program()
+    {
+        // Мастер MSI — со своими картинками (scripts/gen-icons.cs), а не с красными картинками WiX: 24-битный BMP нужного
+        // размера, и Product.wxs их подключает.
+        var folder = Path.Combine(Repo.Root, "desktop", "packaging", "windows");
+        foreach (var (name, width, height) in new[] { ("banner.bmp", 493, 58), ("dialog.bmp", 493, 312) })
+        {
+            var bmp = File.ReadAllBytes(Path.Combine(folder, name));
+            Encoding.ASCII.GetString(bmp, 0, 2).ShouldBe("BM", name);
+            (BitConverter.ToInt32(bmp, 18), BitConverter.ToInt32(bmp, 22), BitConverter.ToUInt16(bmp, 28)).ShouldBe((width, height, (ushort)24), name);
+        }
+
+        var product = File.ReadAllText(Path.Combine(folder, "Product.wxs"));
+        product.ShouldContain("WixVariable Id=\"WixUIBannerBmp\" Value=\"$(sys.SOURCEFILEDIR)banner.bmp\"");
+        product.ShouldContain("WixVariable Id=\"WixUIDialogBmp\" Value=\"$(sys.SOURCEFILEDIR)dialog.bmp\"");
+    }
+
+    [Fact]
     public void Html_mockup_is_generated_from_current_tokens_and_icons()
     {
         // Макет v1.1 (docs/design/html) берет цвета, размеры и значки из тех же источников, что программа: токены

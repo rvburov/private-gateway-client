@@ -140,7 +140,7 @@ public sealed partial class Gateway
             NoteOtherClients(session);
 
             // Одна неудача бывает и у живого сервера — вторая проба сразу.
-            if (await ProbeAsync().ConfigureAwait(false) || await ProbeAsync().ConfigureAwait(false))
+            if (await ProbeAsync(quiet: true).ConfigureAwait(false) || await ProbeAsync().ConfigureAwait(false))
             {
                 continue;
             }
@@ -157,8 +157,11 @@ public sealed partial class Gateway
     /// <summary>
     /// Отвечает ли сервер: запрос к проверочному адресу через вход проверки ядра — прямо в выход сервера,
     /// мимо правил маршрутизации; ждать не дольше <paramref name="timeout"/> (по умолчанию — <see cref="ReconnectTiming.ProbeTimeout"/>).
+    /// <paramref name="quiet"/> — первая из двух проб: ее неудачу в журнал не писать. Одна неудача бывает и у живого сервера
+    /// (у пользователя на раздаче iPhone первая проба раз в минуту обрывалась на TLS, вторая проходила), и предупреждение
+    /// каждую минуту забивало журнал, хотя защита работала; настоящую неудачу запишет вторая проба.
     /// </summary>
-    private async Task<bool> ProbeAsync(TimeSpan? timeout = null)
+    private async Task<bool> ProbeAsync(TimeSpan? timeout = null, bool quiet = false)
     {
         if (Status.NetworkUnavailable || _probe is not { } link)
         {
@@ -184,7 +187,7 @@ public sealed partial class Gateway
             }
 
             var result = await LatencyProbe.CheckAsync(probe, cancellation).ConfigureAwait(false);
-            if (!result.Reached)
+            if (!result.Reached && !quiet)
             {
                 _journal.Add(JournalLevel.Warning, "service", "Проверка связи через ядро: " + result.Description);
             }
@@ -282,7 +285,7 @@ public sealed partial class Gateway
     {
         try
         {
-            if (!await ProbeAsync().ConfigureAwait(false) && !await ProbeAsync().ConfigureAwait(false) && watch == Volatile.Read(ref _watch))
+            if (!await ProbeAsync(quiet: true).ConfigureAwait(false) && !await ProbeAsync().ConfigureAwait(false) && watch == Volatile.Read(ref _watch))
             {
                 await LostAsync(session, ErrorCodes.ServerNotResponding, "Сеть сменилась, сервер не отвечает").ConfigureAwait(false);
             }

@@ -3,6 +3,8 @@
 //     → shared/specifications/icons/app.svg — Linux: значок записи .desktop (hicolor/scalable/apps);
 //     → shared/specifications/icons/app.ico — Windows: файл окна, ярлыки, «Установленные приложения» (MSI);
 //     → shared/specifications/icons/app.icns — macOS: значок программы (Private Gateway.app, scripts/package-macos.sh).
+//     → desktop/packaging/windows/banner.bmp, dialog.bmp — картинки мастера установки MSI в стиле программы: светлый фон
+//       окна (color.bg.window), синяя панель (color.accent.base) и тот же щит; без них WiX рисует свои красные картинки.
 //
 // Запуск из корня репозитория (файловое приложение .NET 10, отдельного проекта нет):
 //   dotnet run scripts/gen-icons.cs
@@ -83,6 +85,30 @@ using (var file = new BinaryWriter(File.Create(Path.Combine(output, "app.icns"))
     }
 }
 
+// Картинки мастера установки WiX (WixUI): полоса сверху 493×58 и боковая панель приветствия и итога 493×312 (текст
+// мастера стоит справа от 164 точек). 24-битный BMP — формат, который принимает установщик Windows.
+var accent = SKColor.Parse(tokens.RootElement.GetProperty("color").GetProperty("accent").GetProperty("base").GetString()!);
+var window = SKColor.Parse(tokens.RootElement.GetProperty("color").GetProperty("bg").GetProperty("window").GetString()!);
+var packaging = Path.Combine(root, "desktop", "packaging", "windows");
+File.WriteAllBytes(Path.Combine(packaging, "banner.bmp"), Bitmap(493, 58, canvas =>
+{
+    canvas.Clear(SKColors.White);
+    using var line = new SKPaint { Color = window };
+    canvas.DrawRect(0, 56, 493, 2, line);
+    DrawShield(canvas, shield, mark, accent, SKColors.White, 437, 7, 44);
+}));
+File.WriteAllBytes(Path.Combine(packaging, "dialog.bmp"), Bitmap(493, 312, canvas =>
+{
+    canvas.Clear(SKColors.White);
+    using var panel = new SKPaint
+    {
+        Shader = SKShader.CreateLinearGradient(new SKPoint(0, 0), new SKPoint(0, 312),
+            [accent, new SKColor((byte)(accent.Red * 0.62), (byte)(accent.Green * 0.62), (byte)(accent.Blue * 0.62))], SKShaderTileMode.Clamp),
+    };
+    canvas.DrawRect(0, 0, 164, 312, panel);
+    DrawShield(canvas, shield, mark, SKColors.White, accent, 32, 96, 100);
+}));
+
 Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
     $"Значок: {output}/app.svg, app.ico ({string.Join(", ", sizes)} px) и app.icns ({string.Join(", ", icns.Select(e => e.Size).Distinct())} px), icon-sha256 {hash}"));
 
@@ -102,6 +128,65 @@ static byte[] Render(int size, string shield, string mark, SKColor color)
     using var image = surface.Snapshot();
     using var png = image.Encode(SKEncodedImageFormat.Png, 100);
     return png.ToArray();
+}
+
+// Щит цвета shieldColor с галочкой цвета markColor в квадрате size в точке (x, y).
+static void DrawShield(SKCanvas canvas, string shield, string mark, SKColor shieldColor, SKColor markColor, float x, float y, float size)
+{
+    canvas.Save();
+    canvas.Translate(x, y);
+    canvas.Scale(size / 24f);
+    using var shieldPaint = new SKPaint { Color = shieldColor, IsAntialias = true, Style = SKPaintStyle.StrokeAndFill, StrokeWidth = 2, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round };
+    using var markPaint = new SKPaint { Color = markColor, IsAntialias = true, Style = SKPaintStyle.Stroke, StrokeWidth = 2.6f, StrokeJoin = SKStrokeJoin.Round, StrokeCap = SKStrokeCap.Round };
+    using var shieldPath = SKPath.ParseSvgPathData(shield);
+    using var markPath = SKPath.ParseSvgPathData(mark);
+    canvas.DrawPath(shieldPath, shieldPaint);
+    canvas.DrawPath(markPath, markPaint);
+    canvas.Restore();
+}
+
+// 24-битный BMP снизу вверх, строки выровнены по 4 байта.
+static byte[] Bitmap(int width, int height, Action<SKCanvas> draw)
+{
+    using var surface = SKSurface.Create(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
+    draw(surface.Canvas);
+    using var image = surface.Snapshot();
+    using var pixels = image.PeekPixels();
+    var source = pixels.GetPixelSpan();
+    var stride = ((width * 3) + 3) & ~3;
+    var size = 54 + (stride * height);
+    using var stream = new MemoryStream(size);
+    using var bmp = new BinaryWriter(stream);
+    bmp.Write("BM"u8);
+    bmp.Write(size);
+    bmp.Write(0);
+    bmp.Write(54);
+    bmp.Write(40);
+    bmp.Write(width);
+    bmp.Write(height);
+    bmp.Write((ushort)1);
+    bmp.Write((ushort)24);
+    bmp.Write(0);
+    bmp.Write(stride * height);
+    bmp.Write(2835);
+    bmp.Write(2835);
+    bmp.Write(0);
+    bmp.Write(0);
+    var row = new byte[stride];
+    for (var y = height - 1; y >= 0; y--)
+    {
+        for (var x = 0; x < width; x++)
+        {
+            var at = ((y * width) + x) * 4;
+            row[x * 3] = source[at];
+            row[(x * 3) + 1] = source[at + 1];
+            row[(x * 3) + 2] = source[at + 2];
+        }
+
+        bmp.Write(row);
+    }
+
+    return stream.ToArray();
 }
 
 static string FindRoot()

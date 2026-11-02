@@ -4,6 +4,8 @@ name: Выпуск на GitHub
 # (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
 # секрет UPDATE_SIGNING_KEY) и заметки из коммитов с прошлого тега. Версия с «-» — бета: выпуск помечен prerelease,
 # канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
+# К выпуску прикладывается приложение Android (APK с отладочной подписью — ставится вручную, «из неизвестных
+# источников»; подпись выпуска — когда будет ключ). Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
 on:
   push:
     tags: ['v*']
@@ -35,9 +37,57 @@ jobs:
     needs: gate
     uses: ./.github/workflows/publish.yml
 
+  android:
+    name: Android (APK)
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+          cache-dependency-path: |
+            android/**/*.gradle.kts
+            android/gradle/libs.versions.toml
+            android/gradle/wrapper/gradle-wrapper.properties
+
+      # Ядро libXray — тот же закрепленный коммит и кеш, что в ci.yml.
+      - id: libxray
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: android/app/libs/libXray.aar
+          key: libxray-${{ hashFiles('android/libxray.version', 'scripts/get-libxray.sh') }}
+
+      - if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Ядро libXray (gomobile)
+        if: steps.libxray.outputs.cache-hit != 'true'
+        run: scripts/get-libxray.sh
+
+      - name: APK
+        run: |
+          version=${GITHUB_REF_NAME#v}
+          android/gradlew -p android :app:assembleDebug
+          mkdir -p artifacts/android
+          apk=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
+          cp "$apk" "artifacts/android/PrivateGateway-$version-android.apk"
+          (cd artifacts/android && sha256sum "PrivateGateway-$version-android.apk" > "PrivateGateway-$version-android.apk.sha256")
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: android-apk
+          path: artifacts/android/
+
   release:
     name: Выпуск
-    needs: [gate, build]
+    needs: [gate, build, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -66,6 +116,11 @@ jobs:
           pattern: release-*
           path: artifacts/builds
 
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: android-apk
+          path: artifacts/android
+
       # За время сборки тег или результат повторной проверки могли измениться. Не подписываем старое доказательство.
       - name: Повторная проверка перед подписью
         env:
@@ -85,6 +140,18 @@ jobs:
           rollout=20
           [[ "$version" != *-* ]] || rollout=100
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) dotnet run scripts/release.cs assemble "$version" artifacts/builds artifacts/release "$rollout"
+          cp artifacts/android/* artifacts/release/
+          sed "s/{version}/$version/g" >> artifacts/notes.md <<'NOTES'
+
+          ## Где что скачать
+
+          - **Windows** — установщик `.msi` (мастер установки) или архив `.zip`.
+          - **Linux** — пакеты `.deb` и `.rpm` или архив `.tar.gz`.
+          - **Android** — `PrivateGateway-{version}-android.apk`: предварительная сборка с отладочной подписью. Скачайте на
+            телефон, откройте и разрешите установку из этого источника. Проверка — `.apk.sha256`.
+          - **Apple (macOS, iPhone, iPad)** — в разработке. Сборка macOS в списке файлов — для проверки, без подписи Apple;
+            приложение для iPhone и iPad появится после подписи Apple (TestFlight, App Store).
+          NOTES
 
       - name: Выпуск на GitHub
         env:

@@ -1286,7 +1286,7 @@ public sealed partial class Gateway : IAsyncDisposable
         var networkLoss = Volatile.Read(ref _networkLoss);
         var timeout = TimeSpan.FromSeconds(_request?.Connection.ConnectTimeoutSeconds ?? 10);
         var answered = !Status.NetworkUnavailable &&
-            (Timing.Every is null || await ProbeAsync(timeout).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false));
+            (Timing.Every is null || await ProbeAsync(timeout, quiet: true).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false));
         var failureCode = ErrorCodes.ServerNotResponding;
         await _switch.WaitAsync().ConfigureAwait(false);
         try

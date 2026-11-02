@@ -65,6 +65,10 @@
 
     <!-- Мастер: стандартный WixUI_InstallDir без шага лицензии — «Далее» с приветствия ведет сразу к выбору папки. -->
     <ui:WixUI Id="WixUI_InstallDir" InstallDirectory="INSTALLFOLDER" />
+    <!-- Картинки мастера в стиле программы (светлый фон, синяя панель, щит) — scripts/gen-icons.cs из токенов и Icons.axaml;
+         без них WiX показывает свои красные картинки. -->
+    <WixVariable Id="WixUIBannerBmp" Value="$(sys.SOURCEFILEDIR)banner.bmp" />
+    <WixVariable Id="WixUIDialogBmp" Value="$(sys.SOURCEFILEDIR)dialog.bmp" />
     <UI>
       <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog" Value="InstallDirDlg" Order="2" Condition="NOT Installed" />
       <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog" Value="WelcomeDlg" Order="2" />
