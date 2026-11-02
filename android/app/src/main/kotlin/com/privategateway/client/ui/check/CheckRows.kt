@@ -65,7 +65,7 @@ object CheckRows {
         val rows = listOf(
             tunnelRow(ui.view),
             core(ui, core),
-            allTraffic(ui.view),
+            allTraffic(ui.view, tunnel),
             killSwitch(ui),
             dns(ui.view, tunnel),
             ipv6(ui.view, tunnel),
@@ -141,11 +141,19 @@ object CheckRows {
         }
     }
 
-    private fun allTraffic(view: ProtectionView): CheckRow {
+    /**
+     * «Весь трафик»: под защитой с программами или сайтами мимо VPN раздельного режима («Маршрутизация») — «Частично», как
+     * «split» десктопа: они идут к провайдеру мимо туннеля и блока при обрыве.
+     */
+    private fun allTraffic(view: ProtectionView, tunnel: TunnelSettings): CheckRow {
         val title = R.string.diag_all_traffic_title
+        val bypass = tunnel.routing.hasBypassApps || tunnel.routing.hasBypassSites
         return when {
             view == ProtectionView.Leak ->
                 row("all_traffic", title, ChipLook.Warning, R.string.diag_all_traffic_same_ip_chip, CheckText.of(R.string.diag_all_traffic_same_ip))
+
+            bypass && phase(view) == Phase.Up ->
+                row("all_traffic", title, ChipLook.Warning, R.string.diag_all_traffic_warning_chip, CheckText.of(R.string.diag_all_traffic_split))
 
             else -> when (phase(view)) {
                 Phase.Up -> row("all_traffic", title, ChipLook.Ok, R.string.diag_state_ok_chip, CheckText.of(R.string.diag_all_traffic_ok))

@@ -49,6 +49,24 @@ final class TunnelLaunchTests: XCTestCase {
         XCTAssertTrue(config.contains(TunnelSettings.quad9Doh))
     }
 
+    /// «Подключение и ядро» и «Маршрутизация» доходят до расширения: MTU — в план туннеля iOS и вход TUN ядра, фрагментация,
+    /// журнал и правила для сайтов — в конфиг Xray.
+    func testConnectionAndRoutingReachTheTunnelAndTheCore() async throws {
+        _ = try await select(Self.fixture("vless/reality-vision"))
+        try await settings.setConnection(ConnectionSettings(coreLog: .debug, mtu: 1360, tlsFragment: true))
+        try await settings.setRouting(RoutingSettings(mode: .split, rules: [SiteRule(pattern: "example.com", action: .direct)]))
+
+        let launch = try await TunnelLaunch.prepare(settings: settings, servers: servers)
+        let app = try await settings.load()
+        XCTAssertEqual(launch.core, app.core())
+        XCTAssertEqual(launch.plan.mtu, 1360)
+        let config = try launch.config(tunFd: 7)
+        XCTAssertTrue(config.contains(#""mtu":1360"#), config)
+        XCTAssertTrue(config.contains(#""loglevel":"debug""#), config)
+        XCTAssertTrue(config.contains(#""dialerProxy":"fragment""#), config)
+        XCTAssertTrue(config.contains(#""domain:example.com""#), config)
+    }
+
     func testWireGuardWithAnExplicitLanDnsDoesNotExposeAProtectedSubscriptionProxy() async throws {
         let wireguard = try Self.fixture("wireguard/basic")
         _ = try await select(wireguard)

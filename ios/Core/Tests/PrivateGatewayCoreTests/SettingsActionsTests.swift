@@ -45,6 +45,36 @@ final class SettingsActionsTests: XCTestCase {
         XCTAssertEqual(control.connects, 2)
     }
 
+    func testConnectionAndRoutingTheCoreGetsReconnectUnderProtection() async throws {
+        try await actions.setConnection(ConnectionSettings(mtu: 1280), state: .connected)
+        XCTAssertEqual(control.connects, 1, "MTU — в план туннеля и в ядро")
+        try await actions.setConnection(ConnectionSettings(mtu: 1280, tlsFragment: true), state: .reconnecting)
+        XCTAssertEqual(control.connects, 2)
+        let direct = [SiteRule(pattern: "example.com", action: .direct)]
+        try await actions.setRouting(RoutingSettings(mode: .split, rules: direct), state: .connected)
+        XCTAssertEqual(control.connects, 3, "«Напрямую» раздельного режима — в конфиг ядра")
+        try await actions.setRouting(RoutingSettings(mode: .allTraffic, rules: direct), state: .connecting)
+        XCTAssertEqual(control.connects, 4, "весь трафик — правило «Напрямую» уходит из конфига")
+        let stored = try await settings.load()
+        XCTAssertEqual(stored.connection, ConnectionSettings(mtu: 1280, tlsFragment: true))
+        XCTAssertEqual(stored.routing.rules, [SiteRule(pattern: "example.com", action: .direct)])
+    }
+
+    func testWhatTheExtensionReadsItselfOrTheCoreDoesNotGetChangesNothing() async throws {
+        // Таймаут расширение читает само на каждой пробе; «Напрямую» в режиме «Весь трафик» ядро не получает.
+        try await actions.setConnection(ConnectionSettings(connectTimeout: 30), state: .connected)
+        try await actions.setRouting(RoutingSettings(mode: .allTraffic, rules: [SiteRule(pattern: "example.com", action: .direct)]), state: .connected)
+        XCTAssertEqual(control.connects, 0)
+        let stored = try await settings.load()
+        XCTAssertEqual(stored.connection.connectTimeout, 30)
+        XCTAssertEqual(stored.routing.rules.count, 1, "правило хранится — действует, когда включат раздельный режим")
+        try await actions.setRouting(RoutingSettings(mode: .split), state: .connected)
+        XCTAssertEqual(control.connects, 0, "раздельный режим без правил «Напрямую» конфиг не меняет")
+
+        try await actions.setRouting(RoutingSettings(mode: .split, rules: stored.routing.rules), state: .off)
+        XCTAssertEqual(control.connects, 0, "без защиты — только запись")
+    }
+
     func testAlwaysOnGoesToTheProfileUnderProtectionAndIsOnlyStoredWithout() async throws {
         try await actions.setAlwaysOn(true, state: .off)
         XCTAssertEqual(control.connects, 0, "без защиты — только запись: профиль получит ее следующее подключение")

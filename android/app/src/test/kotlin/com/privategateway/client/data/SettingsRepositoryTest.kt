@@ -2,9 +2,18 @@ package com.privategateway.client.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.privategateway.client.core.settings.BypassApp
+import com.privategateway.client.core.settings.ConnectionSettings
+import com.privategateway.client.core.settings.CoreLogLevel
 import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.RoutingMode
+import com.privategateway.client.core.settings.RoutingSettings
+import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.SiteRule
 import com.privategateway.client.core.settings.SubscriptionSettings
+import com.privategateway.client.core.settings.TlsFingerprint
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.subscriptions.RefreshInterval
 import com.privategateway.client.core.vpn.SystemVpn
@@ -87,6 +96,55 @@ class SettingsRepositoryTest {
         // Значение из будущей версии — по умолчанию, а не авария.
         store.edit { it[stringPreferencesKey("tunnel_dns")] = "SomethingNew" }
         assertEquals(DnsChoice.Profile, settings.tunnel.first().dns)
+    }
+
+    @Test
+    fun `connection and routing settings come back as saved and survive a restart`() = runBlocking<Unit> {
+        val file = folder.root.resolve("settings.preferences_pb")
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { file })
+        assertEquals(ConnectionSettings(), settings.tunnel.first().connection, "по умолчанию — как у десктопа")
+        assertEquals(RoutingSettings(), settings.tunnel.first().routing, "по умолчанию весь трафик через VPN")
+
+        val chosen = TunnelSettings(
+            DnsChoice.Quad9Doh,
+            connection = ConnectionSettings(CoreLogLevel.Info, 1420, false, false, TlsFingerprint.Chrome, true, true, 30),
+            routing = RoutingSettings(
+                RoutingMode.Split,
+                listOf(BypassApp("org.example.game", "Игра"), BypassApp("org.example.call", "Звонки", enabled = false)),
+                listOf(SiteRule("example.com", RuleAction.Direct), SiteRule("203.0.113.0/24", RuleAction.Block)),
+            ),
+        )
+        settings.setTunnel(chosen)
+        assertEquals(chosen, settings.tunnel.first())
+        scope.cancel()
+        scope.coroutineContext[Job]?.join()
+
+        // Новый процесс — новый DataStore на том же файле; «Авто» у MTU снова — ключ убран.
+        val again = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            val reopened = SettingsRepository(PreferenceDataStoreFactory.create(scope = again) { file })
+            assertEquals(chosen, reopened.tunnel.first())
+            reopened.setTunnel(chosen.copy(connection = chosen.connection.copy(mtu = null)))
+            assertEquals(null, reopened.tunnel.first().connection.mtu)
+        } finally {
+            again.cancel()
+        }
+    }
+
+    @Test
+    fun `broken or future connection and routing values fall back to the defaults`() = runBlocking<Unit> {
+        val store = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") }
+        val settings = SettingsRepository(store)
+        store.edit {
+            it[stringPreferencesKey("core_log")] = "Trace"
+            it[intPreferencesKey("tunnel_mtu")] = 9000
+            it[stringPreferencesKey("conn_fingerprint")] = "Edge"
+            it[intPreferencesKey("conn_timeout")] = 0
+            it[stringPreferencesKey("routing_mode")] = "Everything"
+            it[stringPreferencesKey("routing_apps")] = "not json"
+            it[stringPreferencesKey("routing_rules")] = """[{"pattern":"geosite:google","action":"Block"}]"""
+        }
+        assertEquals(TunnelSettings(), settings.tunnel.first(), "ни аварии, ни MTU, который режет пакеты, ни правила, которое ядро не примет")
     }
 
     @Test

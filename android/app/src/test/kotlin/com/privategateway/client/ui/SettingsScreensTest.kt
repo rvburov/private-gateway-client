@@ -45,6 +45,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 /**
  * «Настройки» (доска 4) и «Защита и утечки» (доска 5) без устройства: что выбрано, что сохраняется, куда ведут строки, неверный
@@ -93,11 +94,24 @@ class SettingsScreensTest {
         compose.onNodeWithTag("subscriptions.page").assertIsDisplayed().performClick()
         compose.onNodeWithTag("settings.licenses").performScrollTo().performClick()
         compose.onNodeWithTag("licenses").assertIsDisplayed()
-
-        // Страниц «Подключение и ядро», «Маршрутизация», «Резервная копия» и «О программе» у телефона пока нет — и строк тоже.
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
-        compose.onNodeWithText(text(R.string.settings_adv_core_title)).assertDoesNotExist()
-        compose.onNodeWithText(text(R.string.settings_adv_routing_title)).assertDoesNotExist()
+
+        // «Подключение и ядро» и «Маршрутизация» — в порядке доски 4, сразу за «Защитой и утечками», и ведут на свои страницы.
+        compose.onNodeWithText(text(R.string.settings_adv_core_text)).performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.settings_adv_routing_text)).performScrollTo().assertIsDisplayed()
+        val top = { tag: String -> compose.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.top }
+        assertTrue(top("settings.protection") < top("settings.core"))
+        assertTrue(top("settings.core") < top("settings.routing"))
+        assertTrue(top("settings.routing") < top("settings.profiles"))
+        compose.onNodeWithTag("settings.core").performScrollTo().performClick()
+        compose.onNodeWithTag("core").assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+        compose.onNodeWithTag("settings.routing").performScrollTo().performClick()
+        compose.onNodeWithTag("routing").assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+
+        // Страниц «Резервная копия» и «О программе» у телефона пока нет — и строк тоже.
+        compose.onNodeWithTag("settings").assertIsDisplayed()
         compose.onNodeWithText(text(R.string.settings_adv_backup_title)).assertDoesNotExist()
         compose.onNodeWithText(text(R.string.settings_adv_about_title)).assertDoesNotExist()
     }
@@ -127,27 +141,35 @@ class SettingsScreensTest {
     }
 
     @Test
-    fun `basic settings are chosen on the main page`() {
+    fun `basic settings are chosen on the main page and reconnect on the core page`() {
         var behavior by mutableStateOf(Behavior())
         compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, TunnelSettings(), {}, behavior, { behavior = it }) } }
 
-        // По умолчанию — как у десктопа: «Только важные», «Экспоненц. до 60 с», без подключения при запуске.
+        // По умолчанию — как у десктопа: «Только важные», без подключения при запуске.
         compose.onNodeWithTag("notify.ImportantOnly").performScrollTo().assertIsSelected()
         compose.onNodeWithTag("notify.note").assertTextEquals(text(R.string.settings_notifications_important_note))
-        compose.onNodeWithTag("reconnect").performScrollTo().assertTextEquals(text(R.string.core_reconnect_backoff))
         compose.onNodeWithTag("settings.connectOnLaunch").performScrollTo().assertIsOff()
+        // Переподключения в «Основных» больше нет: это строка «Подключения и ядра» (доска 6).
+        compose.onNodeWithTag("reconnect").assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.core_reconnect_title)).assertDoesNotExist()
 
         compose.onNodeWithTag("notify.All").performScrollTo().performClick()
         compose.onNodeWithTag("notify.note").assertTextEquals(text(R.string.settings_notifications_all_note))
+        compose.onNodeWithTag("settings.connectOnLaunch").performScrollTo().performClick()
+
+        // «Экспоненц. до 60 с» по умолчанию; выбор — меню строки «Переподключение» на странице «Подключение и ядро».
+        compose.onNodeWithTag("settings.core").performScrollTo().performClick()
+        compose.onNodeWithTag("reconnect").performScrollTo().assertTextEquals(text(R.string.core_reconnect_backoff))
         compose.onNodeWithTag("reconnect").performScrollTo().performClick()
         compose.onNodeWithTag("reconnect.Backoff60Seconds").assertIsSelected()
         compose.onNodeWithTag("reconnect.Never").performClick()
         compose.onNodeWithTag("reconnect.menu").assertDoesNotExist()
-        compose.onNodeWithTag("settings.connectOnLaunch").performScrollTo().performClick()
         assertEquals(Behavior(NotificationLevel.All, ReconnectPolicy.Never, connectOnLaunch = true), behavior)
+        compose.onNodeWithTag("reconnect").performScrollTo().assertTextEquals(text(R.string.core_reconnect_never))
+        compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+
         compose.onNodeWithTag("notify.All").performScrollTo().assertIsSelected()
         compose.onNodeWithTag("notify.ImportantOnly").assertIsNotSelected()
-        compose.onNodeWithTag("reconnect").performScrollTo().assertTextEquals(text(R.string.core_reconnect_never))
         compose.onNodeWithTag("settings.connectOnLaunch").assertIsOn()
 
         // У «Выключены» подпись десктопа — про трей; у телефона трея нет, и подписи нет.

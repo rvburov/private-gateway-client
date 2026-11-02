@@ -7,10 +7,16 @@ import XCTest
 /// собирает обработчики, как `TestXray` libXray, без запуска. Туннель, замер задержки, настройки по умолчанию и все
 /// включенное. Тот же тест у Android — `ReferenceConfigTest`, у десктопа — `ReferenceConfigTests`.
 final class ReferenceConfigTests: XCTestCase {
-    /// Все, что по умолчанию выключено и меняет конфиг: свой DNS в сети, IPv6, локальная сеть, Mux, отпечаток, журнал.
+    /// Все, что по умолчанию выключено и меняет конфиг: свой DNS в сети, IPv6, локальная сеть, Mux, отпечаток, журнал,
+    /// фрагментация TLS и правила для сайтов раздельного режима — домен, «*.зона», подсети IPv4 и IPv6 и адрес с каждым действием.
     private let everything = CoreSettings(
         dns: "https://dns.quad9.net/dns-query", allowLan: true, ipv6: true, mux: true, fingerprint: "random", sniffing: false, mtu: 1400,
-        debugLog: true, lanDns: "192.168.1.53"
+        logLevel: .debug, lanDns: "192.168.1.53", tlsFragment: true,
+        siteRules: [
+            SiteRule(pattern: "example.com", action: .direct), SiteRule(pattern: "*.local", action: .direct),
+            SiteRule(pattern: "ads.example.org", action: .block), SiteRule(pattern: "198.51.100.0/24", action: .proxy),
+            SiteRule(pattern: "2001:db8::/32", action: .block), SiteRule(pattern: "203.0.113.5", action: .direct),
+        ]
     )
 
     func testXrayOfLibXrayAcceptsTheConfigOfEachReferenceLink() throws {

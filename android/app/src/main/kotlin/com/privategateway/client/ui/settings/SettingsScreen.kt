@@ -37,6 +37,7 @@ import com.privategateway.client.core.vpn.ReconnectPolicy
 import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.SystemVpnSource
 import com.privategateway.client.core.vpn.SystemVpnView
+import com.privategateway.client.data.PhoneApp
 import com.privategateway.client.licenses.OpenComponents
 import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.theme.PgCard
@@ -45,8 +46,6 @@ import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
 import com.privategateway.client.ui.theme.PgLinkRow
 import com.privategateway.client.ui.theme.PgSegments
-import com.privategateway.client.ui.theme.PgSelect
-import com.privategateway.client.ui.theme.PgSetting
 import com.privategateway.client.ui.theme.PgSettingSwitch
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
@@ -56,6 +55,8 @@ import com.privategateway.client.ui.theme.pgTopDivider
 enum class SettingsPage {
     Main,
     Protection,
+    Core,
+    Routing,
     Subscriptions,
     Licenses,
 }
@@ -66,6 +67,7 @@ enum class SettingsPage {
  * только пользователь в настройках Android), поэтому вместо переключателя — что сообщил Android и переход в его настройки.
  * [onCheck] — «Проверка и логи»: вкладка «Проверка» островка. [language] — выбрать язык приложения (Android 13+); null —
  * язык как в системе. [requested] — открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
+ * [installedApps] — программы телефона для «Программы мимо VPN» («Маршрутизация»).
  */
 @Composable
 fun SettingsScreen(
@@ -81,6 +83,7 @@ fun SettingsScreen(
     system: SystemVpnView = SystemVpnView(SystemVpn(), SystemVpnSource.Unknown),
     onCheck: () -> Unit = {},
     language: ((String) -> Unit)? = null,
+    installedApps: suspend () -> List<PhoneApp> = { emptyList() },
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -95,6 +98,22 @@ fun SettingsScreen(
         SettingsPage.Protection -> {
             BackHandler { page = SettingsPage.Main }
             ProtectionScreen(tunnel, onTunnel, onBack = { page = SettingsPage.Main }, system = system, openVpnSettings = openVpnSettings)
+        }
+
+        SettingsPage.Core -> {
+            BackHandler { page = SettingsPage.Main }
+            CoreScreen(core, loadCore, tunnel, onTunnel, behavior, onBehavior) { page = SettingsPage.Main }
+        }
+
+        SettingsPage.Routing -> {
+            BackHandler { page = SettingsPage.Main }
+            RoutingScreen(
+                tunnel,
+                onTunnel,
+                onBack = { page = SettingsPage.Main },
+                onProtection = { page = SettingsPage.Protection },
+                installedApps = installedApps,
+            )
         }
 
         SettingsPage.Subscriptions -> {
@@ -114,8 +133,8 @@ fun SettingsScreen(
 }
 
 /**
- * Поведение приложения из «Основных»: уведомления, «Подключаться при запуске» и переподключение. Переподключение у десктопа —
- * строка «Подключения и ядра» (доска 6); пока этой страницы у телефона нет, оно здесь.
+ * Поведение приложения: уведомления и «Подключаться при запуске» («Основные») и переподключение — строка группы «Соединение»
+ * страницы «Подключение и ядро» (доска 6). Туннель оно не меняет, поэтому хранится не в настройках туннеля.
  */
 data class Behavior(
     val notifications: NotificationLevel = NotificationLevel.DEFAULT,
@@ -172,7 +191,7 @@ private fun MainSettings(
 
 /**
  * «Основные»: блок при обрыве (что сообщил Android и откуда это известно; нажатие — настройки VPN), «Подключаться при
- * запуске», переподключение, уведомления сегментами с подписью по выбору и язык.
+ * запуске», уведомления сегментами с подписью по выбору и язык. Переподключение — на странице «Подключение и ядро».
  */
 @Composable
 private fun Basic(
@@ -202,12 +221,6 @@ private fun Basic(
         divider = true,
         padding = BasicRow,
     )
-
-    PgSetting(stringResource(R.string.core_reconnect_title), stringResource(R.string.core_reconnect_text), divider = true, padding = BasicRow) {
-        PgSelect(ReconnectPolicy.entries, behavior.reconnect, { stringResource(reconnectLabel(it)) }, "reconnect", {
-            onBehavior(behavior.copy(reconnect = it))
-        })
-    }
 
     Notifications(behavior, onBehavior)
     LanguageRow(language)
@@ -265,14 +278,21 @@ private fun LanguageRow(language: ((String) -> Unit)?) {
 }
 
 /**
- * «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть. «Подключение и ядро»,
- * «Маршрутизация» и «Резервная копия» появятся со своими страницами; на месте «О программе», пока ее страницы нет, — лицензии
- * открытых компонентов: без этой строки их не открыть.
+ * «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть. «Резервная копия» появится со
+ * своей страницей; на месте «О программе», пока ее страницы нет, — лицензии открытых компонентов: без этой строки их не открыть.
  */
 @Composable
 private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
     AdvancedRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection", false) {
         onPage(SettingsPage.Protection)
+    }
+
+    AdvancedRow(PgIcons.AdvCore, R.string.settings_adv_core_title, R.string.settings_adv_core_text, "settings.core", true) {
+        onPage(SettingsPage.Core)
+    }
+
+    AdvancedRow(PgIcons.AdvRouting, R.string.settings_adv_routing_title, R.string.settings_adv_routing_text, "settings.routing", true) {
+        onPage(SettingsPage.Routing)
     }
 
     AdvancedRow(PgIcons.AdvProfiles, R.string.settings_adv_profiles_title, R.string.settings_adv_profiles_text, "settings.profiles", true) {
@@ -332,11 +352,4 @@ private fun notifyNote(level: NotificationLevel): Int? = when (level) {
     NotificationLevel.All -> R.string.settings_notifications_all_note
     NotificationLevel.ImportantOnly -> R.string.settings_notifications_important_note
     NotificationLevel.Off -> null
-}
-
-@StringRes
-private fun reconnectLabel(policy: ReconnectPolicy): Int = when (policy) {
-    ReconnectPolicy.Backoff60Seconds -> R.string.core_reconnect_backoff
-    ReconnectPolicy.UpTo5Minutes -> R.string.core_reconnect_5min
-    ReconnectPolicy.Never -> R.string.core_reconnect_never
 }

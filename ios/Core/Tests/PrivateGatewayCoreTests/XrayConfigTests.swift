@@ -219,6 +219,91 @@ final class XrayConfigTests: XCTestCase {
         XCTAssertNil(XrayResponse.version(nil))
     }
 
+    func testLogLevelFollowsTheSettingAndTheConnectionLogStaysOff() throws {
+        for level in CoreLogLevel.allCases {
+            let log = try object(build(server(reality), CoreSettings(logLevel: level))["log"])
+            XCTAssertEqual(log["loglevel"] as? String, level.xray)
+            XCTAssertEqual(log["access"] as? String, "none", "\(level): адреса сайтов в журнал соединений не попадают")
+            XCTAssertEqual(log["dnsLog"] as? Bool, false)
+        }
+    }
+
+    func testSniffingAndMtuOfTheTunnelFollowTheSettings() throws {
+        let inbound = try XCTUnwrap((build(server(reality), CoreSettings(sniffing: false, mtu: 1280))["inbounds"] as? [[String: Any]])?.first)
+        XCTAssertEqual(try object(inbound["sniffing"])["enabled"] as? Bool, false)
+        XCTAssertEqual(try object(inbound["settings"])["mtu"] as? Int, 1280)
+        let on = try XCTUnwrap((build(server(reality), CoreSettings())["inbounds"] as? [[String: Any]])?.first)
+        XCTAssertEqual(try object(on["sniffing"])["enabled"] as? Bool, true)
+        XCTAssertEqual(try object(on["sniffing"])["routeOnly"] as? Bool, true, "имя — только для правил, соединение идет туда, куда просили")
+    }
+
+    func testTlsFragmentDialsTheServerThroughTheFragmentOutbound() throws {
+        let trojan = try server("trojan://pw@198.51.100.7:443?sni=example.org#T")
+        let plain = try build(trojan, CoreSettings())
+        XCTAssertNil(try object(outbound(plain, "proxy")["streamSettings"])["sockopt"])
+        XCTAssertFalse(try XCTUnwrap(plain["outbounds"] as? [[String: Any]]).contains { $0["tag"] as? String == XrayConfig.fragmentTag })
+
+        for link in [reality, "trojan://pw@198.51.100.7:443?sni=example.org#T"] {
+            let config = try build(server(link), CoreSettings(tlsFragment: true))
+            let sockopt = try object(try object(outbound(config, "proxy")["streamSettings"])["sockopt"])
+            XCTAssertEqual(sockopt["dialerProxy"] as? String, XrayConfig.fragmentTag, link)
+            let fragment = try outbound(config, XrayConfig.fragmentTag)
+            XCTAssertEqual(fragment["protocol"] as? String, "freedom")
+            let settings = try object(fragment["settings"])
+            let packets = try object(settings["fragment"])
+            XCTAssertEqual(packets["packets"] as? String, "tlshello")
+            XCTAssertEqual(packets["length"] as? String, "100-200")
+            XCTAssertEqual(packets["interval"] as? String, "10-20")
+            XCTAssertEqual((settings["finalRules"] as? [[String: Any]])?.first?["action"] as? String, "allow", "сервер в частной сети не закрывается")
+            XCTAssertEqual(try XCTUnwrap(config["outbounds"] as? [[String: Any]]).first?["tag"] as? String, "proxy", "по умолчанию — по-прежнему сервер")
+        }
+    }
+
+    func testSiteRulesGoAfterTheLocalNetworkAndIpv6InListOrder() throws {
+        let rules = [
+            SiteRule(pattern: "example.com", action: .direct), SiteRule(pattern: "*.local", action: .direct), SiteRule(pattern: "ads.example.org", action: .block),
+            SiteRule(pattern: "198.51.100.0/24", action: .proxy), SiteRule(pattern: "2001:db8::/32", action: .block), SiteRule(pattern: "203.0.113.5", action: .direct),
+        ]
+        let split = try self.rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .split, rules: rules))))
+        let plain = try self.rules(build(server(reality), CoreSettings()))
+        XCTAssertEqual(try canonical(Array(split.prefix(plain.count))), try canonical(plain), "служебные правила — первыми и те же")
+        let own = Array(split.dropFirst(plain.count))
+        XCTAssertEqual(own.count, rules.count)
+        XCTAssertEqual(own.map { $0["domain"] as? [String] }, [["domain:example.com"], ["domain:local"], ["domain:ads.example.org"], nil, nil, nil])
+        XCTAssertEqual(own.map { $0["ip"] as? [String] }, [nil, nil, nil, ["198.51.100.0/24"], ["2001:db8::/32"], ["203.0.113.5"]])
+        XCTAssertEqual(own.map { $0["outboundTag"] as? String }, ["direct", "direct", "block", "proxy", "block", "direct"])
+        XCTAssertTrue(own.allSatisfy { $0["type"] as? String == "field" && $0["inboundTag"] == nil })
+
+        // «Весь трафик»: «Напрямую» ядро не получает, остальные — в том же порядке.
+        let all = try self.rules(build(server(reality), TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .allTraffic, rules: rules))))
+        XCTAssertEqual(Array(all.dropFirst(plain.count)).map { $0["outboundTag"] as? String }, ["block", "proxy", "block"])
+        XCTAssertFalse(Array(all.dropFirst(plain.count)).contains { $0["outboundTag"] as? String == "direct" })
+    }
+
+    func testGeositeAndBadPatternsNeverReachTheCore() throws {
+        let rules = [
+            SiteRule(pattern: "geosite:category-ads", action: .block), SiteRule(pattern: "not a site", action: .direct),
+            SiteRule(pattern: " Example.ORG ", action: .block),
+        ]
+        let config = try build(server(reality), CoreSettings(siteRules: rules))
+        let service = try self.rules(build(server(reality), CoreSettings())).count
+        let own = Array(try self.rules(config).dropFirst(service))
+        XCTAssertEqual(own.count, 1, "у ядра телефона нет базы geosite: с таким правилом оно бы не запустилось")
+        XCTAssertEqual(own.first?["domain"] as? [String], ["domain:example.org"])
+        let text = try XCTUnwrap(XrayConfig.build(try server(reality), CoreSettings(siteRules: rules), tunFd: 3).json)
+        XCTAssertFalse(text.contains("geosite"))
+    }
+
+    func testSubscriptionInputStaysFirstBeforeTheSiteRules() throws {
+        let proxy = SubscriptionProxy(port: 32123, user: "test-user", password: "test-password")
+        let rules = [SiteRule(pattern: "example.com", action: .direct)]
+        let text = try XCTUnwrap(XrayConfig.build(try server(reality), CoreSettings(siteRules: rules), tunFd: 3, subscriptionProxy: proxy).json)
+        let config = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any])
+        let first = try XCTUnwrap(try self.rules(config).first)
+        XCTAssertEqual(first["inboundTag"] as? [String], [XrayConfig.subscriptionTag])
+        XCTAssertEqual(first["outboundTag"] as? String, XrayConfig.proxyTag, "правило «Напрямую» не отправляет подписку мимо сервера")
+    }
+
     // MARK: Помощники
 
     private func server(_ link: String) throws -> ServerDefinition {

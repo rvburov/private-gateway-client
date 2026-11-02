@@ -44,13 +44,14 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
     public var lanDns: String?
     /// Фрагментация TLS ClientHello: выход к серверу соединяется через выход `XrayConfig.fragmentTag`.
     public var tlsFragment: Bool
-    /// Правила для сайтов («Маршрутизация»): ядро получает `RoutingSettings.activeRules`.
-    public var routing: RoutingSettings
+    /// Правила для сайтов, которые получает ядро, по порядку списка (`RoutingSettings.activeRules`): «Напрямую» — только из
+    /// раздельного режима.
+    public var siteRules: [SiteRule]
 
     public init(
         dns: String = XrayConfig.defaultDns, allowLan: Bool = false, ipv6: Bool = false, mux: Bool = false, fingerprint: String? = nil,
         sniffing: Bool = true, mtu: Int = ConnectionSettings.autoMtu, logLevel: CoreLogLevel = .warning, lanDns: String? = nil, tlsFragment: Bool = false,
-        routing: RoutingSettings = RoutingSettings()
+        siteRules: [SiteRule] = []
     ) {
         self.dns = dns
         self.allowLan = allowLan
@@ -62,7 +63,7 @@ public struct CoreSettings: Equatable, Hashable, Sendable {
         self.logLevel = logLevel
         self.lanDns = lanDns
         self.tlsFragment = tlsFragment
-        self.routing = routing
+        self.siteRules = siteRules
     }
 }
 
@@ -199,10 +200,11 @@ public enum XrayConfig {
             ]))
         }
 
-        // Правила для сайтов («Маршрутизация») — после локальной сети и IPv6, по порядку списка, как у десктопа: «Напрямую» —
-        // только в раздельном режиме (прямой выход ядра — из расширения туннеля, мимо сервера). Адрес и подсеть — условием IP,
-        // имя — доменом с поддоменами. Шаблон, которого ядро телефона не примет (geosite: базы нет), сюда не попадает.
-        for rule in settings.routing.activeRules {
+        // Правила для сайтов («Маршрутизация») — после локальной сети и IPv6, по порядку списка, как у десктопа: «Напрямую»
+        // приходит только из раздельного режима (прямой выход ядра — из расширения туннеля, мимо сервера). Адрес и подсеть —
+        // условием IP, имя — доменом с поддоменами. Шаблон, которого ядро телефона не примет (geosite: базы нет), сюда не
+        // попадает.
+        for rule in settings.siteRules {
             guard let pattern = SitePattern.normalize(rule.pattern) else {
                 continue
             }

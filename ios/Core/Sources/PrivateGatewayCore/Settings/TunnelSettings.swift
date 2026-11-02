@@ -63,7 +63,7 @@ public struct TunnelSettings: Equatable, Hashable, Sendable {
     public func core(_ connection: ConnectionSettings, _ routing: RoutingSettings) -> CoreSettings {
         CoreSettings(
             dns: dnsServer, allowLan: allowLan, ipv6: ipv6, mux: connection.mux, fingerprint: connection.fingerprint.xray, sniffing: connection.sniffing,
-            mtu: connection.tunMtu, logLevel: connection.coreLog, lanDns: lanDns, tlsFragment: connection.tlsFragment, routing: routing
+            mtu: connection.tunMtu, logLevel: connection.coreLog, lanDns: lanDns, tlsFragment: connection.tlsFragment, siteRules: routing.activeRules
         )
     }
 

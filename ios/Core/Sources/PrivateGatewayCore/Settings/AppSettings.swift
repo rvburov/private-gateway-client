@@ -88,13 +88,14 @@ extension AppSettings: Codable {
         case alwaysOn = "always_on"
         case connectOnLaunch = "connect_on_launch"
         case coreLog = "core_log"
-        case mtu = "tun_mtu"
-        case sniffing = "core_sniffing"
-        case fingerprint = "tls_fingerprint"
-        case mux = "core_mux"
-        case tlsFragment = "tls_fragment"
-        case connectTimeout = "connect_timeout"
+        case mtu = "tunnel_mtu"
+        case sniffing = "tunnel_sniffing"
+        case fingerprint = "conn_fingerprint"
+        case mux = "conn_mux"
+        case tlsFragment = "conn_tls_fragment"
+        case connectTimeout = "conn_timeout"
         case routingMode = "routing_mode"
+        /// Правила — текстом JSON `[{"pattern": …, "action": …}]`, как у Android: словарь остается плоским.
         case routingRules = "routing_rules"
     }
 
@@ -113,8 +114,9 @@ extension AppSettings: Codable {
         let timeout: Int? = read(.connectTimeout)
         let mode: String? = read(.routingMode)
         // Правило — объект «шаблон и действие»; неполное, с неизвестным действием или шаблоном, которого ядро телефона не
-        // примет, пропускается, остальные остаются.
-        let records: [[String: String]]? = read(.routingRules)
+        // примет, пропускается, остальные остаются. Текст не JSON или список не из строк — правил нет.
+        let rulesText: String? = read(.routingRules)
+        let records = rulesText.flatMap { try? JSONDecoder().decode([[String: String]].self, from: Data($0.utf8)) }
         let rules = (records ?? []).compactMap { record -> SiteRule? in
             guard let pattern = record["pattern"], let action = record["action"].flatMap(RuleAction.init(rawValue:)) else {
                 return nil
@@ -175,7 +177,8 @@ extension AppSettings: Codable {
         try values.encode(connection.tlsFragment, forKey: .tlsFragment)
         try values.encode(connection.connectTimeout, forKey: .connectTimeout)
         try values.encode(routing.mode.rawValue, forKey: .routingMode)
-        try values.encode(routing.rules.map { ["pattern": $0.pattern, "action": $0.action.rawValue] }, forKey: .routingRules)
+        let records = routing.rules.map { JsonText.Value.object([("pattern", .string($0.pattern)), ("action", .string($0.action.rawValue))]) }
+        try values.encode(JsonText.write(.array(records)), forKey: .routingRules)
     }
 }
 

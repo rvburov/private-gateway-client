@@ -52,6 +52,12 @@ data class RoutingSettings(
     /** Правила, которые получает ядро, по порядку списка: «Напрямую» — только в раздельном режиме. */
     val coreRules: List<SiteRule> get() = rules.filter { split || it.action != RuleAction.Direct }
 
+    /** Идут ли сейчас программы мимо VPN: только в раздельном режиме и только включенные (HasBypassApps десктопа). */
+    val hasBypassApps: Boolean get() = disallowedApps.isNotEmpty()
+
+    /** Идут ли сайты мимо VPN: правила «Напрямую» действуют только в раздельном режиме (HasBypassSites десктопа). */
+    val hasBypassSites: Boolean get() = split && rules.any { it.action == RuleAction.Direct }
+
     /** В режиме «Весь трафик» правила «Напрямую» молчат — об этом подпись над списком. */
     val hasIdleRules: Boolean get() = !split && rules.any { it.action == RuleAction.Direct }
 

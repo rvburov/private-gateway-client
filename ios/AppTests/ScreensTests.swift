@@ -181,19 +181,29 @@ final class ScreensTests: XCTestCase {
     func testSettingsDrawOnEveryPageAndLanguage() throws {
         let about = AboutInfo.of(core: "26.3.27")
         // Все уровни уведомлений и переподключения, блок при обрыве и подключение при запуске в обоих положениях, свой DNS
-        // адресом IP и DoH.
+        // адресом IP и DoH; «Подключение и ядро» по умолчанию, со своим MTU и таймаутом не из меню и со всем включенным;
+        // «Маршрутизация» без правил, раздельный режим с правилами каждого действия и «Весь трафик» с молчащими «Напрямую».
+        let rules = [
+            SiteRule(pattern: "example.com", action: .direct), SiteRule(pattern: "*.local", action: .direct), SiteRule(pattern: "ads.example.org", action: .block),
+            SiteRule(pattern: "example.org", action: .proxy), SiteRule(pattern: "a-very-long-subdomain-name.of-a-very-long-domain-name.example.com", action: .direct),
+        ]
         let variants = [
             AppSettings(),
             AppSettings(
                 tunnel: TunnelSettings(dns: .custom, customDns: "https://192.0.2.53/dns-query", ipv6: true, allowLan: true), killSwitch: false,
-                notifications: .all, reconnect: .upTo5Minutes, alwaysOn: true, connectOnLaunch: true
+                notifications: .all, reconnect: .upTo5Minutes, alwaysOn: true, connectOnLaunch: true,
+                connection: ConnectionSettings(coreLog: .debug, mtu: 1360, sniffing: false, fingerprint: .random, mux: true, tlsFragment: true, connectTimeout: 15),
+                routing: RoutingSettings(mode: .split, rules: rules)
             ),
-            AppSettings(tunnel: TunnelSettings(dns: .custom, customDns: "192.0.2.53"), notifications: .off, reconnect: .never),
+            AppSettings(
+                tunnel: TunnelSettings(dns: .custom, customDns: "192.0.2.53"), notifications: .off, reconnect: .never,
+                connection: ConnectionSettings(mtu: 1420, fingerprint: .chrome, connectTimeout: 30), routing: RoutingSettings(mode: .allTraffic, rules: rules)
+            ),
         ]
         for language in PgTexts.Language.allCases {
             let texts = PgTexts(language)
             for settings in variants {
-                for page in [SettingsPage.main, .protection, .licenses] {
+                for page in [SettingsPage.main, .protection, .core, .routing, .licenses] {
                     let view = SettingsView(texts: texts, settings: settings, about: about, page: .constant(page)) { _ in EmptyView() }
                     XCTAssertEqual(try render(view, height: 1400).size.width, 393, accuracy: 1)
                 }
@@ -207,6 +217,30 @@ final class ScreensTests: XCTestCase {
             for (initial, tried) in [("", false), ("https://192.0.2.53/dns-query", false), ("dns.example.com", true)] {
                 XCTAssertNotNil(try render(CustomDnsSheet(texts: texts, initial: initial, tried: tried, onSave: { _ in }, onClose: {})), initial)
             }
+            // «Подключение и ядро» без версии ядра (до первого подключения) и с открытым листом «Свой MTU»; лист — отдельно:
+            // пустой, с числом и с отказом числу вне 1280–1500.
+            let core = CoreView(
+                texts: texts, connection: ConnectionSettings(mtu: 1360), reconnect: .never, coreVersion: nil, editingMtu: true, onConnection: { _ in },
+                onReconnect: { _ in }, onBack: {}
+            )
+            XCTAssertNotNil(try render(core, height: 1600))
+            for (initial, tried) in [("", false), ("1420", false), ("9000", true)] {
+                XCTAssertNotNil(try render(MtuSheet(texts: texts, initial: initial, tried: tried, onSave: { _ in }, onClose: {})), initial)
+            }
+            // Лист правила: новое в раздельном режиме и в режиме «Весь трафик» (подпись, что «Напрямую» не действует), правка
+            // каждого действия и отказ geosite.
+            for (original, split, tried) in [
+                (nil, true, false), (nil, false, false), (rules[0], false, false), (rules[2], true, false), (rules[3], true, false),
+                (SiteRule(pattern: "geosite:category-ads", action: .block), true, true),
+            ] as [(SiteRule?, Bool, Bool)] {
+                let sheet = SiteRuleSheet(texts: texts, original: original, split: split, tried: tried, onSave: { _ in }, onDelete: { _ in }, onClose: {})
+                XCTAssertNotNil(try render(sheet), original?.pattern ?? "new")
+            }
+            let routing = RoutingView(
+                texts: texts, routing: RoutingSettings(mode: .split, rules: rules), allowLan: true, editing: rules[1], sheetOpen: true, onRouting: { _ in },
+                onLan: {}, onBack: {}
+            )
+            XCTAssertNotNil(try render(routing, height: 1600))
             for component in about.components {
                 XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, open: component.name, onBack: {}), height: 2000), component.name)
             }

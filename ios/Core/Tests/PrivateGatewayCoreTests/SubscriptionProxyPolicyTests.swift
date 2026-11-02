@@ -55,6 +55,22 @@ final class SubscriptionProxyPolicyTests: XCTestCase {
         }
     }
 
+    /// «Напрямую» раздельного режима — прямое исключение, как lanDns: под правило адреса может попасть и DNS WireGuard.
+    func testWireGuardRefusesWithDirectSiteRulesOfTheSplitMode() {
+        let direct = [SiteRule(pattern: "203.0.113.0/24", action: .direct)]
+        XCTAssertFalse(SubscriptionProxy.isAllowed(protocol: .wireGuard, settings: CoreSettings(siteRules: direct)))
+        XCTAssertFalse(SubscriptionProxy.isAllowed(protocol: .wireGuard, settings: TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .split, rules: direct))))
+        XCTAssertTrue(
+            SubscriptionProxy.isAllowed(protocol: .wireGuard, settings: TunnelSettings().core(ConnectionSettings(), RoutingSettings(mode: .allTraffic, rules: direct))),
+            "в режиме «Весь трафик» «Напрямую» не действует"
+        )
+        let other = [SiteRule(pattern: "example.com", action: .block), SiteRule(pattern: "198.51.100.0/24", action: .proxy)]
+        XCTAssertTrue(SubscriptionProxy.isAllowed(protocol: .wireGuard, settings: CoreSettings(siteRules: other)), "блок и «Через VPN» мимо сервера не ведут")
+        for proto in [ProxyProtocol.vless, .vmess, .trojan, .shadowsocks] {
+            XCTAssertTrue(SubscriptionProxy.isAllowed(protocol: proto, settings: CoreSettings(siteRules: direct)), "\(proto): имя уходит серверу")
+        }
+    }
+
     func testProtocolsThatSendTheDestinationNameToTheServerAreNotRestricted() {
         for proto in [ProxyProtocol.vless, .vmess, .trojan, .shadowsocks] {
             for dns in local + ["https://dns.example.com/dns-query"] {

@@ -65,7 +65,7 @@ public struct SubscriptionProxy: Codable, Equatable, Sendable {
     /// Правила «Напрямую» раздельного режима — тоже прямое исключение: под правило адреса может попасть и сам DNS.
     public static func isAllowed(protocol proto: ProxyProtocol, settings: CoreSettings) -> Bool {
         guard proto == .wireGuard else { return true }
-        guard settings.lanDns == nil, !settings.routing.hasBypassSites else { return false }
+        guard settings.lanDns == nil, !settings.siteRules.contains(where: { $0.action == .direct }) else { return false }
         // Без AllowLan прямого исключения нет: запрос в локальную сеть Xray блокирует. Не запрещаем такой путь только
         // из-за имени публичного DoH; это та же политика, что у десктопа и Android.
         guard settings.allowLan else { return true }

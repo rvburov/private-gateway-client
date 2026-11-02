@@ -80,6 +80,10 @@ class RoutingSettingsTest {
         assertEquals(rules, split.coreRules)
         assertFalse(split.hasIdleRules)
         assertFalse(RoutingSettings(rules = rules.drop(1)).hasIdleRules, "без «Напрямую» молчащих правил нет")
+        assertFalse(all.hasBypassApps || all.hasBypassSites, "в режиме «Весь трафик» мимо VPN не идет ничего")
+        assertTrue(split.hasBypassApps && split.hasBypassSites)
+        assertFalse(split.copy(apps = apps.map { it.copy(enabled = false) }).hasBypassApps, "выключенные программы идут через VPN")
+        assertFalse(split.copy(rules = rules.drop(1)).hasBypassSites, "блок и «Через VPN» мимо VPN не ведут")
         assertEquals(RoutingSettings(), RoutingSettings(RoutingMode.AllTraffic, emptyList(), emptyList()), "по умолчанию весь трафик через VPN")
     }
 

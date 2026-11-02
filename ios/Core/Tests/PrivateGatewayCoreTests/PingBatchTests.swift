@@ -48,6 +48,18 @@ final class PingBatchTests: XCTestCase {
         XCTAssertEqual(PingBatch.outbounds(keyless, CoreSettings()).rejection, .missingCredentials)
     }
 
+    /// С фрагментацией TLS выход сервера соединяется через выход фрагментации — он едет в конфиг замера вместе с ним: путь
+    /// проверяется с настройками подключения, как у десктопа.
+    func testPingConfigCarriesTheFragmentOutboundWithTlsFragment() throws {
+        let trojan = try link("trojan/ws")
+        let config = try json(XCTUnwrap(PingBatch.outbounds(trojan, CoreSettings(tlsFragment: true)).json, "отказ"))
+        let outbounds = try XCTUnwrap(config["outbounds"] as? [[String: Any]])
+        XCTAssertEqual(outbounds.map { $0["tag"] as? String }, [XrayConfig.proxyTag, XrayConfig.fragmentTag], "первым — выход сервера")
+        let stream = try XCTUnwrap(outbounds[0]["streamSettings"] as? [String: Any])
+        XCTAssertEqual((stream["sockopt"] as? [String: Any])?["dialerProxy"] as? String, XrayConfig.fragmentTag)
+        XCTAssertEqual(try XCTUnwrap(json(XCTUnwrap(PingBatch.outbounds(trojan, CoreSettings()).json))["outbounds"] as? [Any]).count, 1)
+    }
+
     func testRequestIsApi3PingBatchWithConfigsTimeoutAndUrl() throws {
         XCTAssertEqual(
             PingBatch.request([#"{"outbounds":[]}"#]),

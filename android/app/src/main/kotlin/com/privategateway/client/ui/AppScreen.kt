@@ -324,6 +324,7 @@ fun AppScreen(
                             system,
                             onCheck = { tab = Tab.Check },
                             language = actions.language,
+                            installedApps = { settings.installedApps() },
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
                             SubscriptionsScreen(

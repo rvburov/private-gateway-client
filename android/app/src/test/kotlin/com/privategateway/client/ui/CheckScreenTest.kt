@@ -22,7 +22,12 @@ import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
+import com.privategateway.client.core.settings.BypassApp
 import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.RoutingMode
+import com.privategateway.client.core.settings.RoutingSettings
+import com.privategateway.client.core.settings.RuleAction
+import com.privategateway.client.core.settings.SiteRule
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.Plural
 import com.privategateway.client.core.vpn.TunnelState
@@ -298,6 +303,22 @@ class CheckScreenTest {
         val custom = CheckRows.of(mainUi(connected), null, PhoneHints(), tunnel, running = false).associateBy { it.id }
         assertEquals(R.string.diag_dns_own_dns, custom.getValue("dns").detail.single().id)
         assertEquals(R.string.diag_ipv6_tunnel, custom.getValue("ipv6").detail.single().id)
+
+        // Раздельный режим с программой или сайтом мимо VPN — «Частично», как у десктопа; без исключений — через туннель.
+        val apps = RoutingSettings(RoutingMode.Split, apps = listOf(BypassApp("org.example.game", "Игра")))
+        val sites = RoutingSettings(RoutingMode.Split, rules = listOf(SiteRule("example.com", RuleAction.Direct)))
+        for (routing in listOf(apps, sites)) {
+            val split = CheckRows.of(mainUi(connected), null, PhoneHints(), TunnelSettings(routing = routing), running = false).associateBy { it.id }
+            assertEquals(R.string.diag_all_traffic_split, split.getValue("all_traffic").detail.single().id, "$routing")
+            assertEquals(R.string.diag_all_traffic_warning_chip, split.getValue("all_traffic").chip.id)
+            assertEquals(ChipLook.Warning, split.getValue("all_traffic").look)
+        }
+
+        val idle = RoutingSettings(apps = apps.apps, rules = sites.rules)
+        val whole = CheckRows.of(mainUi(connected), null, PhoneHints(), TunnelSettings(routing = idle), running = false).associateBy { it.id }
+        assertEquals(R.string.diag_all_traffic_ok, whole.getValue("all_traffic").detail.single().id, "в режиме «Весь трафик» исключения молчат")
+        val offSplit = CheckRows.of(mainUi(TunnelStatus()), null, PhoneHints(), TunnelSettings(routing = apps), running = false).associateBy { it.id }
+        assertEquals(R.string.diag_all_traffic_off, offSplit.getValue("all_traffic").detail.single().id, "без защиты — напрямую весь трафик")
 
         // Утечка IP: выход совпал с реальным адресом.
         val leak = mainUi(connected, WebIp(exit = "198.51.100.7", direct = "198.51.100.7", session = 1L))

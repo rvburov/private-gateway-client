@@ -73,9 +73,135 @@ final class SettingsTests: XCTestCase {
     }
 
     func testReconnectMenuIsInTheOrderOfTheConnectionPage() {
-        let options = SettingsLook.reconnectOptions(texts)
+        let options = CoreLook.reconnectOptions(texts)
         XCTAssertEqual(options.map(\.value), [.backoff60Seconds, .upTo5Minutes, .never])
         XCTAssertEqual(options.map(\.title), [texts.coreReconnectBackoff, texts.coreReconnect5min, texts.coreReconnectNever])
+    }
+
+    /// Меню «Подключения и ядра» — по порядку доски 06 и с подписями макета на обоих языках.
+    func testCoreMenusAreInTheOrderOfTheBoard() {
+        for language in PgTexts.Language.allCases {
+            let texts = PgTexts(language)
+            XCTAssertEqual(CoreLook.logOptions(texts).map(\.value), [.warning, .info, .debug])
+            XCTAssertEqual(CoreLook.logOptions(texts).map(\.title), [texts.coreLogWarning, texts.coreLogInfo, texts.coreLogDebug])
+            XCTAssertEqual(CoreLook.mtuOptions(texts).map(\.value), [nil, 1500, 1420, 1280])
+            XCTAssertEqual(CoreLook.mtuOptions(texts).map(\.title), [texts.coreMtuAuto, "1500", "1420", "1280"])
+            XCTAssertEqual(CoreLook.fingerprintOptions(texts).map(\.value), [.profile, .chrome, .firefox, .safari, .random])
+            XCTAssertEqual(CoreLook.fingerprintOptions(texts).map(\.title), [texts.coreFpProfile, "chrome", "firefox", "safari", "random"], "имена — как в ссылках")
+            XCTAssertEqual(CoreLook.timeoutOptions(texts).map(\.value), [10, 5, 20, 30])
+            XCTAssertEqual(CoreLook.timeoutOptions(texts).map(\.title), [10, 5, 20, 30].map { texts.coreTimeoutValue($0) })
+        }
+
+        XCTAssertEqual(CoreLook.timeoutOptions(PgTexts(.russian)).first?.title, "10 с")
+    }
+
+    /// «MTU»: «Свое…» — ссылкой под чертой, открывает лист и само выбранным не становится; свой MTU не из меню — на кнопке
+    /// число, и ни один пункт меню не текущий.
+    @MainActor
+    func testMtuMenuOffersTheChoicesAndOwnOpensTheSheet() {
+        let layers = PgLayers()
+        let anchor = UUID()
+        var selected: [Int?] = []
+        var sheets = 0
+        let open = { (connection: ConnectionSettings) in
+            layers.openMenu(PgSelect<Int?>.menu(
+                anchor: anchor, options: CoreLook.mtuOptions(self.texts), selection: CoreLook.mtuSelection(connection), layers: layers,
+                confirm: { _ in nil }, link: PgMenuLink(title: self.texts.coreMtuCustom) { sheets += 1 }, onSelect: { selected.append($0) }
+            ))
+        }
+
+        open(ConnectionSettings())
+        XCTAssertEqual(layers.menu?.items.map(\.title), [texts.coreMtuAuto, "1500", "1420", "1280", texts.coreMtuCustom])
+        XCTAssertEqual(layers.menu?.items.map(\.current), [true, false, false, false, false], "по умолчанию — «Авто»")
+        XCTAssertEqual(layers.menu?.items.map(\.link), [false, false, false, false, true])
+        layers.pick(4)
+        XCTAssertEqual(sheets, 1, "лист открыт")
+        XCTAssertEqual(selected, [], "выбор — только после «Сохранить» в листе")
+
+        open(ConnectionSettings(mtu: 1360))
+        XCTAssertEqual(layers.menu?.items.map(\.current), [false, false, false, false, false], "свой MTU — ни один пункт не текущий")
+        layers.pick(2)
+        XCTAssertEqual(selected, [1420])
+        open(ConnectionSettings(mtu: 1420))
+        layers.pick(0)
+        XCTAssertEqual(selected, [1420, nil], "«Авто» — nil")
+    }
+
+    func testOwnMtuAndTimeoutShowTheirValueOnTheButton() {
+        XCTAssertEqual(CoreLook.customMtuTitle(ConnectionSettings(mtu: 1360)), "1360")
+        XCTAssertNil(CoreLook.customMtuTitle(ConnectionSettings(mtu: 1420)), "MTU из меню — подпись пункта")
+        XCTAssertNil(CoreLook.customMtuTitle(ConnectionSettings()))
+        XCTAssertNil(CoreLook.customMtuTitle(ConnectionSettings(mtu: 9000)), "негодный MTU — «Авто»")
+        XCTAssertNil(CoreLook.mtuSelection(ConnectionSettings(mtu: 9000)))
+        XCTAssertEqual(CoreLook.mtuSelection(ConnectionSettings(mtu: 1280)), 1280)
+        XCTAssertNil(CoreLook.customTimeoutTitle(ConnectionSettings(), texts))
+        XCTAssertEqual(CoreLook.customTimeoutTitle(ConnectionSettings(connectTimeout: 15), texts), "15 с")
+    }
+
+    func testCoreRowsSayWhatThePhoneHas() {
+        for language in PgTexts.Language.allCases {
+            let texts = PgTexts(language)
+            XCTAssertEqual(CoreLook.version(nil, texts), texts.coreVersionNone, "до первого подключения версии ядра нет")
+            XCTAssertEqual(CoreLook.version("", texts), texts.coreVersionNone)
+            XCTAssertEqual(CoreLook.version("26.3.27", texts), "26.3.27")
+            let note = CoreLook.secondNote(texts)
+            XCTAssertEqual(note.lowercased(), texts.androidCardCoreNone.lowercased())
+            XCTAssertEqual(note.first.map { String($0) }, note.first.map { String($0).uppercased() }, "с заглавной буквы")
+            XCTAssertFalse(note.contains("sing-box"), "sing-box на телефоне нет")
+        }
+
+        XCTAssertTrue(CoreLook.secondNote(PgTexts(.russian)).hasPrefix("Нет"), CoreLook.secondNote(PgTexts(.russian)))
+    }
+
+    /// «Маршрутизация»: сегменты и подпись по режиму с именем iOS, действия по порядку доски, новое правило — «Напрямую» в
+    /// раздельном режиме и «Блокировать» в режиме «Весь трафик», «Напрямую» вне раздельного режима — бледнее.
+    func testRoutingLookFollowsTheBoard() {
+        for language in PgTexts.Language.allCases {
+            let texts = PgTexts(language)
+            XCTAssertEqual(RoutingLook.modeOptions(texts).map(\.value), [.allTraffic, .split])
+            XCTAssertEqual(RoutingLook.modeOptions(texts).map(\.title), [texts.routingModeAll, texts.routingModeSplit])
+            let all = RoutingLook.modeNote(.allTraffic, texts)
+            XCTAssertTrue(all.contains("iOS"), all)
+            XCTAssertFalse(all.contains("{"), all)
+            XCTAssertEqual(RoutingLook.modeNote(.split, texts), texts.routingModeSplitNote)
+            XCTAssertEqual(RoutingLook.actionOptions(texts).map(\.value), [.direct, .proxy, .block])
+            XCTAssertEqual(RoutingLook.actionOptions(texts).map(\.title), [texts.routingActionDirect, texts.routingActionProxy, texts.routingActionBlock])
+            XCTAssertEqual(RoutingLook.lanText(false, texts), texts.routingLanDenied)
+            XCTAssertEqual(RoutingLook.lanText(true, texts), texts.routingLanAllowed)
+        }
+
+        XCTAssertEqual(RoutingLook.newAction(split: true), .direct)
+        XCTAssertEqual(RoutingLook.newAction(split: false), .block, "«Напрямую» в режиме «Весь трафик» не действует")
+        XCTAssertTrue(RoutingLook.isIdle(.direct, split: false))
+        XCTAssertFalse(RoutingLook.isIdle(.direct, split: true))
+        XCTAssertFalse(RoutingLook.isIdle(.block, split: false))
+        XCTAssertFalse(RoutingLook.isIdle(.proxy, split: false))
+        XCTAssertEqual(RoutingLook.pillColors(.direct).tint, PgColor.Status.Warning.tint)
+        XCTAssertEqual(RoutingLook.pillColors(.proxy).tint, PgColor.Status.Success.tint)
+        XCTAssertEqual(RoutingLook.pillColors(.block).tint, PgColor.Status.Danger.tint)
+    }
+
+    /// «Подключение и ядро» и «Маршрутизация» через модель окна — в общую папку, их читает расширение туннеля.
+    @MainActor
+    func testConnectionAndRoutingAreKeptInTheSharedFolder() async throws {
+        let container = SharedContainer(directory: directory, vault: MemoryVault())
+        let model = AppModel(container: container, texts: texts)
+        await model.reload()
+        XCTAssertEqual(model.settings.connection, ConnectionSettings())
+        XCTAssertEqual(model.settings.routing, RoutingSettings())
+
+        let connection = ConnectionSettings(coreLog: .info, mtu: 1360, fingerprint: .chrome, mux: true, tlsFragment: true, connectTimeout: 20)
+        await model.setConnection(connection)
+        XCTAssertEqual(model.settings.connection, connection)
+        let routing = RoutingSettings(mode: .split, rules: [SiteRule(pattern: "example.com", action: .direct)]).saving(SiteRule(pattern: "203.0.113.0/24", action: .block))
+        await model.setRouting(routing)
+        XCTAssertEqual(model.settings.routing, routing)
+
+        let saved = try await container.settings.load()
+        XCTAssertEqual(saved.connection, connection)
+        XCTAssertEqual(saved.routing, routing)
+        XCTAssertEqual(saved.core().mtu, 1360, "MTU — в план туннеля и ядро")
+        XCTAssertTrue(saved.killSwitch, "остальное не тронуто")
     }
 
     func testLanguageRowNamesTheAppLanguage() {
@@ -176,16 +302,25 @@ final class SettingsTests: XCTestCase {
         XCTAssertFalse(model.settings.connectOnLaunch)
     }
 
-    /// Строки «Для опытных» крупные (плитка 36), лист своего DNS и меню у кнопки с адресом — на обоих языках.
+    /// Строки «Для опытных» крупные (плитка 36), лист своего DNS и меню у кнопки с адресом, значение в рамке — на обоих языках.
     @MainActor
     func testBlocksOfTheBoardsDrawInBothLanguages() throws {
         for language in PgTexts.Language.allCases {
             let texts = PgTexts(language)
             let view = VStack(spacing: PgSpace.card) {
                 SettingsGroup(title: texts.settingsSectionAdvanced, inset: PgSpace.xxs) {
+                    PgLinkRow(icon: PgIcons.advCore, title: texts.settingsAdvCoreTitle, caption: texts.settingsAdvCoreText, large: true) {}
+                    PgDivider().padding(.horizontal, PgSpace.card)
+                    PgLinkRow(icon: PgIcons.advRouting, title: texts.settingsAdvRoutingTitle, caption: texts.settingsAdvRoutingText, large: true) {}
+                    PgDivider().padding(.horizontal, PgSpace.card)
                     PgLinkRow(icon: PgIcons.advCheck, title: texts.settingsAdvCheckTitle, caption: texts.settingsAdvCheckText, large: true) {}
                     PgDivider().padding(.horizontal, PgSpace.card)
                     PgLinkRow(icon: PgIcons.file, title: texts.aboutLicenses, caption: texts.aboutLicensesText, large: true) {}
+                }
+                SettingsGroup(title: texts.coreGroupCore) {
+                    PgSettingRow(title: texts.coreXrayTitle, caption: texts.coreXrayText) {
+                        PgValueBox(text: "26.3.27")
+                    }
                 }
                 SettingsGroup(title: texts.protGroupDns) {
                     PgSettingRow(title: texts.protDnsTitle, caption: texts.protDnsText) {
