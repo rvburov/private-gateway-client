@@ -1,7 +1,10 @@
 package com.privategateway.client.notify
 
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -15,5 +18,14 @@ class AppWindow @Inject constructor() {
 
     fun set(visible: Boolean) {
         shown.value = visible
+    }
+
+    private val events = MutableSharedFlow<String>(extraBufferCapacity = 4)
+
+    /** События о защите при открытом окне — «Заголовок · текст» подсказкой сверху на 6 с (доска 19). */
+    val toasts: SharedFlow<String> = events.asSharedFlow()
+
+    fun toast(text: String) {
+        events.tryEmit(text)
     }
 }

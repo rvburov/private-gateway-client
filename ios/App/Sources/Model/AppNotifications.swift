@@ -2,8 +2,9 @@ import Foundation
 import PrivateGatewayCore
 import UserNotifications
 
-/// Уведомления в приложении: окно на экране — не показывать (окно показывает то же само — доска 22); нажатие на уведомление
-/// или его кнопку — модели окна. Нажатие до того, как окно готово (запуск из уведомления), ждет его.
+/// Уведомления в приложении: окно на экране — не в шторку, а подсказкой сверху «Заголовок · текст» на 6 с (доска 19, как окно
+/// десктопа): событие о защите видно и не на главной; нажатие на уведомление или его кнопку — модели окна. Нажатие до того,
+/// как окно готово (запуск из уведомления), ждет его.
 @MainActor
 final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     static let shared = AppNotifications()
@@ -23,7 +24,14 @@ final class AppNotifications: NSObject, UNUserNotificationCenterDelegate {
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async
         -> UNNotificationPresentationOptions
     {
-        []
+        let content = notification.request.content
+        let text = content.body.isEmpty ? content.title : content.title + " · " + content.body
+        await shown(text)
+        return []
+    }
+
+    private func shown(_ text: String) {
+        model?.showEvent(text)
     }
 
     nonisolated func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {

@@ -54,6 +54,8 @@ import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgToast
 import com.privategateway.client.ui.theme.PgToastState
 import com.privategateway.client.ui.theme.PgTone
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.merge
 
 /** Разделы островка-меню: Главная · Серверы · [кнопка-щит] · Проверка · Настройки. */
@@ -78,6 +80,8 @@ class AppActions(
     val language: ((String) -> Unit)? = null,
     /** Пауза для входа в Wi-Fi: туннель опускается на 5 минут (решение 557). */
     val pause: () -> Unit = {},
+    /** События о защите при открытом окне — «Заголовок · текст» (доска 19). */
+    val events: Flow<String> = emptyFlow(),
 )
 
 @Composable
@@ -110,6 +114,9 @@ fun AppScreen(
         merge(viewModel.messages, subscriptions.messages, checks.messages).collect {
             toast.show(context.getString(it.text, *it.args), long = it.long)
         }
+    }
+    LaunchedEffect(actions) {
+        actions.events.collect { toast.show(it, long = true) }
     }
     LaunchedEffect(requested) {
         requested?.let {

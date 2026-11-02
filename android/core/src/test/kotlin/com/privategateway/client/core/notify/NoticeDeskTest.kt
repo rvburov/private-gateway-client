@@ -27,9 +27,12 @@ class NoticeDeskTest {
         notice?.let(::deliver)
     }
 
+    private val inWindow = mutableListOf<NoticeKind>()
+
     private fun deliver(notice: Notice) {
         val delivery = desk.deliver(notice, now, window, level)
         delivery.show?.let { shown += it.kind }
+        delivery.window?.let { inWindow += it.kind }
         if (delivery.withdrawProtection) {
             withdrawn++
         }
@@ -55,6 +58,7 @@ class NoticeDeskTest {
         window = true
         move(TunnelState.Reconnecting)
         assertTrue(shown.isEmpty(), "окно показывает «Переподключение» само")
+        assertEquals(listOf(NoticeKind.ConnectionLost), inWindow, "окно на экране — подсказкой сверху (доска 19)")
 
         window = false
         move(TunnelState.Connected)

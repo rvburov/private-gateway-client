@@ -367,6 +367,11 @@ final class AppModel: ObservableObject {
     }
 
     /// Сообщение окну: итог действия или событие (`event`) — его подсказка держится дольше.
+    /// Событие о защите при открытом окне (уведомление, которое iOS не покажет поверх приложения) — подсказкой сверху на 6 с.
+    func showEvent(_ text: String) {
+        post(text, event: true)
+    }
+
     private func post(_ text: String?, event: Bool = false) {
         messageIsEvent = event
         message = text

@@ -119,6 +119,9 @@ class ProtectionNotifier @Inject constructor(
             }
 
             delivery.show?.let { show(it) }
+            delivery.window?.let { notice ->
+                text(notice)?.let { window.toast(context.getString(NoticeTexts.title(notice.kind)) + " · " + it) }
+            }
         }
     }
 
