@@ -145,7 +145,9 @@ public sealed partial class ReconnectTests
         time.Advance(TimeSpan.FromSeconds(59));
         rig.Service.Gateway.Status.State.ShouldBe(ConnectionState.Reconnecting);
         time.Advance(TimeSpan.FromSeconds(1));
-        await WaitOfflineStateAsync(rig.Service.Gateway, s => s.State == ConnectionState.Error);
+        // Часы идут и дальше: цикл ожидания мог прочитать время до сдвига, а таймер поставить после него —
+        // тогда срок наступает на шаг позже. С настоящими часами разницы нет, а тест без хода часов ждал бы вечно.
+        await WaitOfflineStateAsync(rig.Service.Gateway, s => s.State == ConnectionState.Error, time);
 
         rig.Service.Gateway.Status.ErrorCode.ShouldBe(ErrorCodes.NetworkUnavailable);
         Attempts(rig.Service).ShouldBe(0, "лимит истекает в ожидании сети, не после новой попытки");
@@ -354,6 +356,8 @@ public sealed partial class ReconnectTests
     public async Task Losing_the_network_during_vpn_start_cancels_and_drains_it_before_any_tun_is_created()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        // Запуск удерживает проверка IPv6 сервера; без IPv6 в ядре ОС (контейнер облачной копии) ее нет, держать нечем.
+        Assert.SkipUnless(VpnTunnel.AdapterIpv6(), "нет IPv6 в ядре ОС — проверки IPv6 сервера перед TUN нет");
         var events = new FakeNetwork();
         var network = Wifi;
         var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);

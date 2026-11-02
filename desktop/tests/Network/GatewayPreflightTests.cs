@@ -290,6 +290,8 @@ public sealed class GatewayPreflightTests : IDisposable
     public async Task Failed_forced_binding_uses_only_a_verified_unbound_path_and_preserves_authentication(bool validCredentials)
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        // Запуск удерживает проверка IPv6 сервера; без IPv6 в ядре ОС (контейнер облачной копии) ее нет, держать нечем.
+        Assert.SkipUnless(VpnTunnel.AdapterIpv6(), "нет IPv6 в ядре ОС — проверки IPv6 сервера перед TUN нет");
         var port = XrayKit.FreePort();
         var pair = XrayKit.Pair("vless-ws-tls", port);
         using var server = await XrayKit.Start(pair.Config, port);

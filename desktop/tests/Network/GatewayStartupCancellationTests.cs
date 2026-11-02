@@ -27,6 +27,8 @@ public sealed class GatewayStartupCancellationTests
     public async Task Changing_the_session_waits_for_unpublished_startup_cleanup(string change)
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        // Запуск удерживает проверка IPv6 сервера; без IPv6 в ядре ОС (контейнер облачной копии) ее нет, держать нечем.
+        Assert.SkipUnless(VpnTunnel.AdapterIpv6(), "нет IPv6 в ядре ОС — проверки IPv6 сервера перед TUN нет");
         var gate = new StartupGate();
         var time = TimeProvider.System;
         var firewall = new FakeFirewall();
