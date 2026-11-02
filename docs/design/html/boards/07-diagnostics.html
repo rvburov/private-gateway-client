@@ -1,0 +1,703 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>7 · Проверка и логи — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Шапка «Проверка» стоит, прокручивается только содержимое (Grid RowDefinitions="Auto,*" программы) */
+  .check-header { height: 60px; display: flex; align-items: center; padding: 0 var(--side); }
+  .pg-frame .check-header + .pg-page { top: 60px; }
+  .pg-frame.is-phone .check-header + .pg-page { top: 110px; }
+  .pg-frame[data-device="android"].is-phone .check-header + .pg-page { top: 92px; }
+  .check-body { display: flex; flex-direction: column; gap: 12px; padding: 0 var(--side); }
+
+  /* «Проверить» и «Экспорт отчета» — две равные кнопки высотой 46 */
+  .check-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .check-actions > button { height: 46px; border-radius: var(--pg-radius-button); }
+  .check-actions .btn-primary { box-shadow: var(--pg-shadow-accent); }
+  .check-actions .btn-secondary { font-weight: 500; }
+  /* LineHeight="PgLineHeight.Body" программы — 20,3 при любом размере шрифта (14 × 1,45), а не доля своего кегля */
+  .check-body { --lh-body: calc(var(--pg-type-body-size) * var(--pg-type-body-line-height)); }
+  .check-note { margin: 0 6px; line-height: var(--lh-body); }
+
+  /* Строка проверки: кружок 22 со значком, заголовок и пояснение, чип по состоянию (цвета — как у плиток главной) */
+  .check-card { padding: 4px 16px; display: flex; flex-direction: column; }
+  .check-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--pg-color-line-divider); }
+  .check-row:last-child { border-bottom: 0; }
+  .check-row.top { align-items: flex-start; }
+  .check-row.top .check-dot { margin-top: 1px; }
+  .check-dot { width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; flex: none;
+    background: var(--chip-dot); color: var(--pg-color-surface-solid); }
+  .check-dot .pg-icon { width: 12px; height: 12px; }
+  .check-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .check-text .btn-link { align-self: flex-start; padding-top: 4px; text-align: left; }
+  .check-chip { flex: none; padding: 3px 9px; border-radius: 10px; background: var(--chip-tint); color: var(--chip-text);
+    font-size: var(--pg-type-overline-size); font-weight: 600; white-space: nowrap; }
+
+  /* Рубрика над карточкой: Margin="6,6,6,-4" программы */
+  .sec-head { display: flex; align-items: center; margin: 6px 6px -4px; }
+  .lab-head { margin: 0 6px -4px; }
+  .journal-head { margin: 0 6px -4px; align-items: flex-end; }
+
+  /* Задержка: число — моноширинным, полоса под каждой строкой */
+  .delay-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--pg-color-line-divider); }
+  .delay-value { font-family: var(--font-mono); white-space: nowrap; }
+  .delay-note { display: block; margin: 10px 0 4px; }
+  .delay-note.why { line-height: var(--lh-body); }
+  .delay-updated { display: block; min-height: 15px; margin: 4px 0 10px; }
+
+  /* Строки-ссылки инспектора и лаборатории: плитка 36 со значком 20, стрелка по правому краю, полосы между строками */
+  .links-card { padding: 4px 16px; }
+  .links-card > .link-row { padding: 10px 0; min-height: 0; }
+  .links-card > .link-row .row-icon { width: 36px; height: 36px; }
+  .links-card > .link-row .row-icon .pg-icon { width: 20px; height: 20px; }
+
+  /* Журнал: моноширинный 11, строка не переносится; уровень INF — акцентом, WRN — оранжевым, ERR — красным, DBG — серым */
+  .card.log { padding: 12px 14px; background: var(--pg-color-surface-card); border-radius: var(--pg-radius-card);
+    font-size: var(--pg-type-overline-size); line-height: var(--lh-body); white-space: normal; }
+  .card.log > div { white-space: pre; overflow: hidden; text-overflow: ellipsis; }
+  .log .lv { font-weight: 600; color: var(--pg-color-accent-text); }
+  .log .lv.warn { color: var(--pg-color-status-warning-text); }
+  .log .lv.err { color: var(--pg-color-status-danger-text); }
+  .log .lv.dbg { color: var(--pg-color-text-muted); }
+  /* Тост на телефоне — на те же 56 ниже верха содержимого, что и в окне (под полосой ОС) */
+  .pg-frame.is-phone .toast { top: 106px; }
+  .pg-frame[data-device="android"].is-phone .toast { top: 88px; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Проверка и логи (CheckPage программы). Шапка стоит, содержимое прокручивается под островком. «Проверить» —
+  стрелка крутится, «Экспорт отчета» сохраняет обезличенный отчет. Ниже — «Задержка» (сюда ведет плитка «Пинг» главного экрана),
+  «Что на этом компьютере может мешать» («Исправить» убирает переменную пользователя), сетевой инспектор, «Лаборатория» и журнал
+  службы: новые записи сверху, адреса и секреты — звездочками. Экраны: все пройдено, идет проверка, блокировка, защита выключена
+  и найдено, что мешает.</p>
+
+<div class="pg-screens">
+  <!-- ===================== Защищено ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Защищено: проверки пройдены">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Проверки только читают состояние и ничего не меняют. Отчет обезличен: публичные адреса — метками, без ключей, UUID, ссылок, адресов подписок и сайтов и названия вашей сети.</span>
+
+        <!-- Результаты: кружок и чип по состоянию — те же цвета, что у плиток главного экрана -->
+        <div class="card check-card" aria-label="Результаты проверки">
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Служба</span><span class="t-caption t-wrap">Работает, канал связи с интерфейсом защищен</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Сетевое ядро</span><span class="t-caption t-wrap">Xray-core запущен, конфигурация применена</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Весь трафик</span><span class="t-caption t-wrap">TUN-адаптер активен, маршрут по умолчанию → туннель</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: Windows Filtering Platform</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Запросов к DNS провайдера нет</span></span>
+              <span class="check-chip">Нет утечек</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IPv6</span><span class="t-caption t-wrap">Заблокирован вне туннеля</span></span>
+              <span class="check-chip">Закрыт</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IP для сайтов</span><span class="t-caption t-wrap">203.0.113.24 · Амстердам · дата-центр</span></span>
+              <span class="check-chip">Скрыт</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Не найдены</span></span>
+              <span class="check-chip">Нет</span>
+            </div>
+            <div class="check-row tone-caution">
+              <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Туннель поднят. Путь трафика виртуальных машин и блокировка при обрыве отдельно не проверены. Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span></span>
+              <span class="check-chip">Не проверено</span>
+            </div>
+        </div>
+
+        <!-- Задержка (решение 509): сюда ведет плитка «Пинг» главного экрана -->
+        <div class="sec-head"><span class="t-overline pg-grow">Задержка</span><button class="btn-link" data-toast="Меряем до сервера, через сервер и новое соединение — по три раза…">Обновить</button></div>
+        <div class="card check-card" aria-label="Задержка">
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До сервера</span><span class="t-caption t-wrap">прямое соединение с сервером — один круг по сети</span></span><span class="t-title delay-value">38 мс</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Через сервер</span><span class="t-caption t-wrap">запрос по открытому соединению — это «Пинг» на главной</span></span><span class="t-title delay-value">42 мс</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Новое соединение</span><span class="t-caption t-wrap">так открывается каждый новый сайт</span></span><span class="t-title delay-value">160 мс</span></div>
+            <span class="t-caption t-wrap delay-note why">Откуда 160 мс: на каждое новое соединение уходит примерно 4 круга до сервера (соединение с сервером → рукопожатие REALITY → шифрование до сайта → запрос), а один круг у вас — около 38 мс.</span>
+            <span class="t-caption delay-updated">Обновлено 15:42:12</span>
+        </div>
+
+        <!-- Что на этом компьютере может мешать (решение 508) -->
+        <div class="sec-head"><span class="t-overline">Что на этом компьютере может мешать</span></div>
+        <div class="card check-card" aria-label="Что на этом компьютере может мешать">
+            <div class="check-row tone-success top">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Ничего не найдено</span><span class="t-caption t-wrap">Нет переменных прокси, чужого системного прокси и других программ VPN</span></span>
+              <span class="check-chip">Нет</span>
+            </div>
+        </div>
+
+        <!-- Сетевой инспектор: только чтение -->
+        <div class="card links-card">
+          <button class="link-row" aria-label="Сеть машины">
+            <span class="row-icon"><i data-icon="Net.Ethernet" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сеть машины</span><span class="t-caption pg-ellipsis">Адаптеры, адреса, DHCP и маршруты — только чтение</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Проверка узла">
+            <span class="row-icon"><i data-icon="Pulse" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка узла</span><span class="t-caption pg-ellipsis">Пинг, путь, DNS, TCP и TLS до сайта или адреса</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Соединения и трафик">
+            <span class="row-icon"><i data-icon="Upload" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Соединения и трафик</span><span class="t-caption pg-ellipsis">Скорость адаптеров, программы и их соединения</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="До и после VPN">
+            <span class="row-icon"><i data-icon="Shield" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До и после VPN</span><span class="t-caption pg-ellipsis">Адреса, WebRTC, маршрут и DNS до защиты и сейчас</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Лаборатория: путь трафика по фактам этой машины -->
+        <span class="t-overline lab-head">Лаборатория</span>
+        <div class="card links-card">
+          <button class="link-row" aria-label="Путь до сайта">
+            <span class="row-icon"><i data-icon="Lab.Site" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Путь до сайта</span><span class="t-caption pg-ellipsis">Компьютер → роутер → провайдер → VPN → сайт: что измерено, а что условно</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как устроена сеть">
+            <span class="row-icon"><i data-icon="Lab.Layers" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как устроена сеть</span><span class="t-caption pg-ellipsis">Семь уровней OSI и протоколы — на данных этой машины</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="События сети">
+            <span class="row-icon"><i data-icon="Clock" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">События сети</span><span class="t-caption pg-ellipsis">Что произошло с защитой и сетью — и почему</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Почему сайт не открывается">
+            <span class="row-icon"><i data-icon="Search" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Почему сайт не открывается</span><span class="t-caption pg-ellipsis">По шагам: сеть, защита, DNS, соединение, TLS</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как меняется путь при VPN">
+            <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как меняется путь при VPN</span><span class="t-caption pg-ellipsis">Без защиты и под ней: адрес, DNS, маршрут, что видит провайдер</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Журнал службы: новые записи сверху, секреты и адреса скрыты -->
+        <div class="pg-row journal-head"><span class="t-overline pg-grow">Журнал</span><span class="t-caption">секреты скрыты</span></div>
+        <div class="card log">
+          <div><span class="t-muted">15:42:12</span>  <span class="lv warn">WRN</span>  checks done  ok=8  warning=1</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  tunnel up  server «Нидерланды 01»</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  killswitch on  allow=***.*.***.**</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  route v4/v6 default -&gt; tun</div>
+          <div><span class="t-muted">15:42:09</span>  <span class="lv">INF</span>  connect  server «Нидерланды 01»  mode=vpn</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  net up  wifi «***»  v4+v6</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  service started  ipc=ok</div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <!-- ===================== Проверяем ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Идет проверка">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" aria-label="Проверяем…"><i data-icon="Refresh" data-stroke="2.2" data-size="18" class="spin"></i><span>Проверяем…</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Проверки только читают состояние и ничего не меняют. Отчет обезличен: публичные адреса — метками, без ключей, UUID, ссылок, адресов подписок и сайтов и названия вашей сети.</span>
+
+        <!-- Результаты: кружок и чип по состоянию — те же цвета, что у плиток главного экрана -->
+        <div class="card check-card" aria-label="Результаты проверки">
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Служба</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Сетевое ядро</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Весь трафик</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IPv6</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IP для сайтов</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+            <div class="check-row tone-accent">
+              <span class="check-dot"><i data-icon="Chip.Dots" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Проверяется</span></span>
+              <span class="check-chip">…</span>
+            </div>
+        </div>
+
+        <!-- Задержка (решение 509): сюда ведет плитка «Пинг» главного экрана -->
+        <div class="sec-head"><span class="t-overline pg-grow">Задержка</span><button class="btn-link" data-toast="Меряем до сервера, через сервер и новое соединение — по три раза…">Обновить</button></div>
+        <div class="card check-card" aria-label="Задержка">
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До сервера</span><span class="t-caption t-wrap">прямое соединение с сервером — один круг по сети</span></span><span class="t-title delay-value">—</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Через сервер</span><span class="t-caption t-wrap">запрос по открытому соединению — это «Пинг» на главной</span></span><span class="t-title delay-value">—</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Новое соединение</span><span class="t-caption t-wrap">так открывается каждый новый сайт</span></span><span class="t-title delay-value">—</span></div>
+            <span class="t-caption t-wrap delay-note">Меряем до сервера, через сервер и новое соединение — по три раза…</span>
+            <span class="t-caption delay-updated"></span>
+        </div>
+
+        <!-- Что на этом компьютере может мешать (решение 508) -->
+        <div class="sec-head"><span class="t-overline">Что на этом компьютере может мешать</span></div>
+        <div class="card check-card" aria-label="Что на этом компьютере может мешать">
+            <div class="check-row tone-success top">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Ничего не найдено</span><span class="t-caption t-wrap">Нет переменных прокси, чужого системного прокси и других программ VPN</span></span>
+              <span class="check-chip">Нет</span>
+            </div>
+        </div>
+
+        <!-- Сетевой инспектор: только чтение -->
+        <div class="card links-card">
+          <button class="link-row" aria-label="Сеть машины">
+            <span class="row-icon"><i data-icon="Net.Ethernet" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сеть машины</span><span class="t-caption pg-ellipsis">Адаптеры, адреса, DHCP и маршруты — только чтение</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Проверка узла">
+            <span class="row-icon"><i data-icon="Pulse" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка узла</span><span class="t-caption pg-ellipsis">Пинг, путь, DNS, TCP и TLS до сайта или адреса</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Соединения и трафик">
+            <span class="row-icon"><i data-icon="Upload" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Соединения и трафик</span><span class="t-caption pg-ellipsis">Скорость адаптеров, программы и их соединения</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="До и после VPN">
+            <span class="row-icon"><i data-icon="Shield" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До и после VPN</span><span class="t-caption pg-ellipsis">Адреса, WebRTC, маршрут и DNS до защиты и сейчас</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Лаборатория: путь трафика по фактам этой машины -->
+        <span class="t-overline lab-head">Лаборатория</span>
+        <div class="card links-card">
+          <button class="link-row" aria-label="Путь до сайта">
+            <span class="row-icon"><i data-icon="Lab.Site" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Путь до сайта</span><span class="t-caption pg-ellipsis">Компьютер → роутер → провайдер → VPN → сайт: что измерено, а что условно</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как устроена сеть">
+            <span class="row-icon"><i data-icon="Lab.Layers" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как устроена сеть</span><span class="t-caption pg-ellipsis">Семь уровней OSI и протоколы — на данных этой машины</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="События сети">
+            <span class="row-icon"><i data-icon="Clock" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">События сети</span><span class="t-caption pg-ellipsis">Что произошло с защитой и сетью — и почему</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Почему сайт не открывается">
+            <span class="row-icon"><i data-icon="Search" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Почему сайт не открывается</span><span class="t-caption pg-ellipsis">По шагам: сеть, защита, DNS, соединение, TLS</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как меняется путь при VPN">
+            <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как меняется путь при VPN</span><span class="t-caption pg-ellipsis">Без защиты и под ней: адрес, DNS, маршрут, что видит провайдер</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Журнал службы: новые записи сверху, секреты и адреса скрыты -->
+        <div class="pg-row journal-head"><span class="t-overline pg-grow">Журнал</span><span class="t-caption">секреты скрыты</span></div>
+        <div class="card log">
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  tunnel up  server «Нидерланды 01»</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  killswitch on  allow=***.*.***.**</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  route v4/v6 default -&gt; tun</div>
+          <div><span class="t-muted">15:42:09</span>  <span class="lv">INF</span>  connect  server «Нидерланды 01»  mode=vpn</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  net up  wifi «***»  v4+v6</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  service started  ipc=ok</div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <!-- ===================== Блокировка ===================== -->
+  <section class="pg-screen" data-state="blocked" data-caption="Блокировка: сервер не отвечает">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Проверки только читают состояние и ничего не меняют. Отчет обезличен: публичные адреса — метками, без ключей, UUID, ссылок, адресов подписок и сайтов и названия вашей сети.</span>
+
+        <!-- Результаты: кружок и чип по состоянию — те же цвета, что у плиток главного экрана -->
+        <div class="card check-card" aria-label="Результаты проверки">
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Служба</span><span class="t-caption t-wrap">Работает, канал связи с интерфейсом защищен</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-warning">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Сетевое ядро</span><span class="t-caption t-wrap">Запущено, но сервер не отвечает</span></span>
+              <span class="check-chip">Нет ответа</span>
+            </div>
+            <div class="check-row tone-warning">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Весь трафик</span><span class="t-caption t-wrap">Остановлен блоком при обрыве — утечки нет</span></span>
+              <span class="check-chip">Стоп</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: Windows Filtering Platform</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Запросов к DNS провайдера нет</span></span>
+              <span class="check-chip">Нет утечек</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IPv6</span><span class="t-caption t-wrap">Заблокирован вне туннеля</span></span>
+              <span class="check-chip">Закрыт</span>
+            </div>
+            <div class="check-row tone-warning">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IP для сайтов</span><span class="t-caption t-wrap">Трафик остановлен: сайты не видят ни один ваш IP</span></span>
+              <span class="check-chip">Скрыт</span>
+            </div>
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Не найдены</span></span>
+              <span class="check-chip">Нет</span>
+            </div>
+            <div class="check-row tone-caution">
+              <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Оба правила Hyper-V включены и блокируют входящие и исходящие соединения. Проверка трафика ВМ не выполнена. Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span></span>
+              <span class="check-chip">Не проверено</span>
+            </div>
+        </div>
+
+        <!-- Задержка (решение 509): сюда ведет плитка «Пинг» главного экрана -->
+        <div class="sec-head"><span class="t-overline pg-grow">Задержка</span><button class="btn-link" data-toast="Меряем до сервера, через сервер и новое соединение — по три раза…">Обновить</button></div>
+        <div class="card check-card" aria-label="Задержка">
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До сервера</span><span class="t-caption t-wrap">прямое соединение с сервером — один круг по сети</span></span><span class="t-title delay-value">—</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Через сервер</span><span class="t-caption t-wrap">запрос по открытому соединению — это «Пинг» на главной</span></span><span class="t-title delay-value">—</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Новое соединение</span><span class="t-caption t-wrap">так открывается каждый новый сайт</span></span><span class="t-title delay-value">—</span></div>
+            <span class="t-caption t-wrap delay-note">Подключитесь — задержка меряется через сервер</span>
+            <span class="t-caption delay-updated"></span>
+        </div>
+
+        <!-- Что на этом компьютере может мешать (решение 508) -->
+        <div class="sec-head"><span class="t-overline">Что на этом компьютере может мешать</span></div>
+        <div class="card check-card" aria-label="Что на этом компьютере может мешать">
+            <div class="check-row tone-success top">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Ничего не найдено</span><span class="t-caption t-wrap">Нет переменных прокси, чужого системного прокси и других программ VPN</span></span>
+              <span class="check-chip">Нет</span>
+            </div>
+        </div>
+
+        <!-- Сетевой инспектор: только чтение -->
+        <div class="card links-card">
+          <button class="link-row" aria-label="Сеть машины">
+            <span class="row-icon"><i data-icon="Net.Ethernet" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сеть машины</span><span class="t-caption pg-ellipsis">Адаптеры, адреса, DHCP и маршруты — только чтение</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Проверка узла">
+            <span class="row-icon"><i data-icon="Pulse" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка узла</span><span class="t-caption pg-ellipsis">Пинг, путь, DNS, TCP и TLS до сайта или адреса</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Соединения и трафик">
+            <span class="row-icon"><i data-icon="Upload" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Соединения и трафик</span><span class="t-caption pg-ellipsis">Скорость адаптеров, программы и их соединения</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="До и после VPN">
+            <span class="row-icon"><i data-icon="Shield" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До и после VPN</span><span class="t-caption pg-ellipsis">Адреса, WebRTC, маршрут и DNS до защиты и сейчас</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Лаборатория: путь трафика по фактам этой машины -->
+        <span class="t-overline lab-head">Лаборатория</span>
+        <div class="card links-card">
+          <button class="link-row" aria-label="Путь до сайта">
+            <span class="row-icon"><i data-icon="Lab.Site" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Путь до сайта</span><span class="t-caption pg-ellipsis">Компьютер → роутер → провайдер → VPN → сайт: что измерено, а что условно</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как устроена сеть">
+            <span class="row-icon"><i data-icon="Lab.Layers" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как устроена сеть</span><span class="t-caption pg-ellipsis">Семь уровней OSI и протоколы — на данных этой машины</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="События сети">
+            <span class="row-icon"><i data-icon="Clock" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">События сети</span><span class="t-caption pg-ellipsis">Что произошло с защитой и сетью — и почему</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Почему сайт не открывается">
+            <span class="row-icon"><i data-icon="Search" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Почему сайт не открывается</span><span class="t-caption pg-ellipsis">По шагам: сеть, защита, DNS, соединение, TLS</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как меняется путь при VPN">
+            <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как меняется путь при VPN</span><span class="t-caption pg-ellipsis">Без защиты и под ней: адрес, DNS, маршрут, что видит провайдер</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Журнал службы: новые записи сверху, секреты и адреса скрыты -->
+        <div class="pg-row journal-head"><span class="t-overline pg-grow">Журнал</span><span class="t-caption">секреты скрыты</span></div>
+        <div class="card log">
+          <div><span class="t-muted">15:47:31</span>  <span class="lv warn">WRN</span>  checks done  ok=5  warning=1</div>
+          <div><span class="t-muted">15:47:28</span>  <span class="lv warn">WRN</span>  server «Нидерланды 01» not responding  traffic blocked, waiting for user</div>
+          <div><span class="t-muted">15:47:12</span>  <span class="lv">INF</span>  connect  server «Нидерланды 01»  mode=vpn</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  tunnel up  server «Нидерланды 01»</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  killswitch on  allow=***.*.***.**</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  net up  wifi «***»  v4+v6</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  service started  ipc=ok</div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <!-- ===================== Выключено ===================== -->
+  <section class="pg-screen" data-state="off" data-caption="Защита выключена · ниже найдено, что мешает">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Проверки только читают состояние и ничего не меняют. Отчет обезличен: публичные адреса — метками, без ключей, UUID, ссылок, адресов подписок и сайтов и названия вашей сети.</span>
+
+        <!-- Результаты: кружок и чип по состоянию — те же цвета, что у плиток главного экрана -->
+        <div class="card check-card" aria-label="Результаты проверки">
+            <div class="check-row tone-success">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Служба</span><span class="t-caption t-wrap">Работает, канал связи с интерфейсом защищен</span></span>
+              <span class="check-chip">OK</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Сетевое ядро</span><span class="t-caption t-wrap">Не запущено: защита выключена</span></span>
+              <span class="check-chip">Выкл.</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Весь трафик</span><span class="t-caption t-wrap">Идет напрямую через провайдера</span></span>
+              <span class="check-chip">Напрямую</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Выключен в настройках или защита выключена</span></span>
+              <span class="check-chip">Выкл.</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Запросы идут к DNS провайдера</span></span>
+              <span class="check-chip">Видны</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IPv6</span><span class="t-caption t-wrap">Идет напрямую</span></span>
+              <span class="check-chip">Открыт</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">IP для сайтов</span><span class="t-caption t-wrap">198.51.100.7 — ваш реальный IP</span></span>
+              <span class="check-chip">Виден</span>
+            </div>
+            <div class="check-row tone-caution">
+              <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Другие VPN и прокси</span><span class="t-caption t-wrap">Найден системный прокси другой программы</span></span>
+              <span class="check-chip">Внимание</span>
+            </div>
+            <div class="check-row tone-danger">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">Защита WSL2 и Hyper-V</span><span class="t-caption t-wrap">Блокировка виртуальных машин выключена. Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span></span>
+              <span class="check-chip">Выключено</span>
+            </div>
+        </div>
+
+        <!-- Задержка (решение 509): сюда ведет плитка «Пинг» главного экрана -->
+        <div class="sec-head"><span class="t-overline pg-grow">Задержка</span><button class="btn-link" data-toast="Меряем до сервера, через сервер и новое соединение — по три раза…">Обновить</button></div>
+        <div class="card check-card" aria-label="Задержка">
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До сервера</span><span class="t-caption t-wrap">прямое соединение с сервером — один круг по сети</span></span><span class="t-title delay-value">—</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Через сервер</span><span class="t-caption t-wrap">запрос по открытому соединению — это «Пинг» на главной</span></span><span class="t-title delay-value">—</span></div>
+            <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Новое соединение</span><span class="t-caption t-wrap">так открывается каждый новый сайт</span></span><span class="t-title delay-value">—</span></div>
+            <span class="t-caption t-wrap delay-note">Подключитесь — задержка меряется через сервер</span>
+            <span class="t-caption delay-updated"></span>
+        </div>
+
+        <!-- Что на этом компьютере может мешать (решение 508) -->
+        <div class="sec-head"><span class="t-overline">Что на этом компьютере может мешать</span></div>
+        <div class="card check-card" aria-label="Что на этом компьютере может мешать">
+            <div class="check-row tone-warning top">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Переменная https_proxy (вся машина)</span><span class="t-caption t-wrap">http://***@127.0.0.1:2334 — не отвечает: программы, которые берут эту настройку (curl, git, установщики), не выходят в сеть. Убрать: «Параметры» → «Система» → «О системе» → «Дополнительные параметры системы» → «Переменные среды» (нужны права администратора).</span></span>
+              <span class="check-chip">Не отвечает</span>
+            </div>
+            <div class="check-row tone-warning top">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Переменная https_proxy (пользователь)</span><span class="t-caption t-wrap">http://127.0.0.1:2334 — не отвечает: программы, которые берут эту настройку (curl, git, установщики), не выходят в сеть.</span>
+              <button class="btn-link" data-toast="Исправлено. Прежнее значение — в файле %LOCALAPPDATA%\PrivateGateway\backups\settings-20261101-154210-https_proxy.json. Программы, открытые раньше (терминал), видят старое — откройте их заново.">Исправить</button></span>
+              <span class="check-chip">Не отвечает</span>
+            </div>
+            <div class="check-row tone-caution top">
+              <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Прокси WinHTTP (вся машина)</span><span class="t-caption t-wrap">198.51.100.5:3128 — работает: программы, которые берут эту настройку, идут через него. Закройте программу, которая его держит, — значок в трее → «Выход».</span></span>
+              <span class="check-chip">Работает</span>
+            </div>
+            <div class="check-row tone-caution top">
+              <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Другой VPN или прокси-клиент</span><span class="t-caption t-wrap">Работает ядро прокси, системный прокси 127.0.0.1:10809. Закройте его полностью — значок в трее → «Выход».</span></span>
+              <span class="check-chip">Работает</span>
+            </div>
+            <div class="check-row tone-success top">
+              <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong t-wrap">Автоопределение прокси (WPAD)</span><span class="t-caption t-wrap">Включено. Обычно не мешает; в сети с WPAD трафик может уйти на прокси этой сети.</span></span>
+              <span class="check-chip">Включено</span>
+            </div>
+        </div>
+
+        <!-- Сетевой инспектор: только чтение -->
+        <div class="card links-card">
+          <button class="link-row" aria-label="Сеть машины">
+            <span class="row-icon"><i data-icon="Net.Ethernet" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сеть машины</span><span class="t-caption pg-ellipsis">Адаптеры, адреса, DHCP и маршруты — только чтение</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Проверка узла">
+            <span class="row-icon"><i data-icon="Pulse" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка узла</span><span class="t-caption pg-ellipsis">Пинг, путь, DNS, TCP и TLS до сайта или адреса</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Соединения и трафик">
+            <span class="row-icon"><i data-icon="Upload" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Соединения и трафик</span><span class="t-caption pg-ellipsis">Скорость адаптеров, программы и их соединения</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="До и после VPN">
+            <span class="row-icon"><i data-icon="Shield" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До и после VPN</span><span class="t-caption pg-ellipsis">Адреса, WebRTC, маршрут и DNS до защиты и сейчас</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Лаборатория: путь трафика по фактам этой машины -->
+        <span class="t-overline lab-head">Лаборатория</span>
+        <div class="card links-card">
+          <button class="link-row" aria-label="Путь до сайта">
+            <span class="row-icon"><i data-icon="Lab.Site" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Путь до сайта</span><span class="t-caption pg-ellipsis">Компьютер → роутер → провайдер → VPN → сайт: что измерено, а что условно</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как устроена сеть">
+            <span class="row-icon"><i data-icon="Lab.Layers" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как устроена сеть</span><span class="t-caption pg-ellipsis">Семь уровней OSI и протоколы — на данных этой машины</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="События сети">
+            <span class="row-icon"><i data-icon="Clock" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">События сети</span><span class="t-caption pg-ellipsis">Что произошло с защитой и сетью — и почему</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Почему сайт не открывается">
+            <span class="row-icon"><i data-icon="Search" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Почему сайт не открывается</span><span class="t-caption pg-ellipsis">По шагам: сеть, защита, DNS, соединение, TLS</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+          <button class="link-row" aria-label="Как меняется путь при VPN">
+            <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Как меняется путь при VPN</span><span class="t-caption pg-ellipsis">Без защиты и под ней: адрес, DNS, маршрут, что видит провайдер</span></span>
+            <i data-icon="ChevronRight" data-stroke="2" class="chevron"></i>
+          </button>
+        </div>
+
+        <!-- Журнал службы: новые записи сверху, секреты и адреса скрыты -->
+        <div class="pg-row journal-head"><span class="t-overline pg-grow">Журнал</span><span class="t-caption">секреты скрыты</span></div>
+        <div class="card log">
+          <div><span class="t-muted">15:52:04</span>  <span class="lv warn">WRN</span>  checks done  ok=1  warning=1</div>
+          <div><span class="t-muted">15:51:58</span>  <span class="lv">INF</span>  tunnel down  route restored  killswitch off</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  tunnel up  server «Нидерланды 01»</div>
+          <div><span class="t-muted">15:42:10</span>  <span class="lv">INF</span>  killswitch on  allow=***.*.***.**</div>
+          <div><span class="t-muted">15:42:09</span>  <span class="lv">INF</span>  connect  server «Нидерланды 01»  mode=vpn</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  net up  wifi «***»  v4+v6</div>
+          <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  service started  ipc=ok</div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+</div>
+</body>
+</html>

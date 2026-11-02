@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>8 · Меню в трее + подменю — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Рабочий стол Windows 11: экран без окна программы — рамка без заголовка, шире окна */
+  .pg-frame:has(.desk) { width: 700px; border-radius: 12px; }
+  .pg-frame:has(.desk) .pg-titlebar { display: none; }
+  .desk { position: absolute; inset: 0; overflow: hidden; color: var(--pg-color-text-primary);
+    background: radial-gradient(circle at 16% 24%, var(--pg-color-decor-blob1), transparent 52%),
+      radial-gradient(circle at 92% 66%, var(--pg-color-decor-blob2), transparent 46%),
+      radial-gradient(circle at 48% 108%, var(--pg-color-decor-blob3), transparent 50%), var(--pg-color-bg-window); }
+
+  /* Панель задач: светлая, по центру «Пуск», поиск, проводник и программа, справа область уведомлений и часы */
+  .taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; display: flex; align-items: center; padding: 0 8px;
+    background: var(--pg-color-bg-glass); backdrop-filter: blur(var(--pg-glass-blur)) saturate(var(--pg-glass-saturate));
+    border-top: 1px solid var(--pg-color-line-border); }
+  .taskbar-apps { position: absolute; left: 50%; transform: translateX(-50%); display: flex; gap: 4px; }
+  .task-btn { width: 40px; height: 40px; border-radius: 6px; display: grid; place-items: center; color: var(--pg-color-text-secondary); }
+  .task-btn:hover { background: var(--pg-color-surface-card); }
+  .task-btn.start { color: var(--pg-color-accent-base); }
+  .tray { margin-left: auto; display: flex; align-items: center; gap: 2px; font-size: var(--pg-type-caption-size); }
+  .tray-btn { position: relative; height: 40px; min-width: 32px; padding: 0 6px; border-radius: 6px; display: grid; place-items: center;
+    color: var(--pg-color-text-primary); }
+  .tray-btn:hover { background: var(--pg-color-surface-card); }
+  .clock { display: flex; flex-direction: column; align-items: flex-end; padding: 0 8px; line-height: 1.35; }
+
+  /* Значок программы в трее — щит цвета состояния с белым знаком (TrayIconRenderer); подключение — синий индикатора */
+  .tray-glyph { display: grid; place-items: center; color: var(--state-ring); }
+  .tray-glyph .pg-icon { width: 18px; height: 18px; }
+  .tray-glyph .pg-icon path:first-child { fill: currentColor; stroke-width: 2; }
+  .tray-glyph .pg-icon path + path { stroke: var(--pg-color-surface-solid); stroke-width: 2.6; }
+  [data-state="connecting"] .tray-glyph, [data-state="reconnecting"] .tray-glyph,
+  .tray-glyph[data-state="connecting"], .tray-glyph[data-state="reconnecting"] { color: var(--pg-state-connecting-spinner); }
+  [data-state="connected"] .tray-glyph:not([data-state]), .tray-glyph[data-state="connected"] { color: var(--pg-state-connected-ring); }
+
+  /* Подсказка ОС: белая, рамка, мелкий шрифт */
+  .os-tip { position: absolute; z-index: 85; display: none; padding: 6px 9px; border-radius: 6px; white-space: nowrap;
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-strong); box-shadow: var(--pg-shadow-popup);
+    font-size: var(--pg-type-caption-size); font-weight: 400; color: var(--pg-color-text-primary); text-align: left; pointer-events: none; }
+  .tray-btn > .os-tip { bottom: calc(100% + 12px); right: -40px; }
+  .tray-btn:hover > .os-tip, .os-tip.shown { display: block; }
+  .desk:has(.os-main.is-open) .tray-btn > .os-tip { display: none; }
+
+  /* Меню ОС (NativeMenu программы): белое, скругление 8, строки 32, наведение — заливка Windows, не синий текст окна */
+  .desk .popup.os-menu { padding: 4px; min-width: 0; border-radius: 8px; border-color: var(--pg-color-line-strong);
+    box-shadow: var(--pg-shadow-popup); font-size: var(--pg-type-body-size); }
+  .desk .os-main { width: 352px; top: auto !important; left: auto !important; right: 64px !important; bottom: 56px !important; }
+  .desk .os-sub { width: 250px; top: 316px !important; left: auto !important; right: 412px !important; }
+  .os-item, .desk .os-menu .btn-option { position: relative; display: flex; align-items: center; width: 100%; height: 32px; min-height: 32px;
+    padding: 0 16px 0 12px; border-radius: 4px; color: var(--pg-color-text-primary); font-weight: 400; white-space: nowrap; text-align: left; }
+  .os-item:hover:not(:disabled), .desk .os-menu .btn-option:hover, .os-main:has(+ .os-sub.is-open) .os-item[data-open] { background: var(--pg-color-control-segment-track);
+    color: var(--pg-color-text-primary); }
+  .os-item:disabled { color: var(--pg-color-text-muted); opacity: 1; cursor: default; }
+  .os-item .os-more { margin-left: auto; width: 14px; height: 14px; color: var(--pg-color-text-secondary); }
+  .os-sep { height: 1px; margin: 4px 0; background: var(--pg-color-line-divider); }
+  .desk .os-menu .btn-option { padding-left: 0; }
+  .desk .os-menu .btn-option.current { color: var(--pg-color-text-primary); font-weight: 400; }
+  .os-radio { width: 28px; flex: none; display: grid; place-items: center; }
+  .os-radio::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; visibility: hidden; }
+  .btn-option.current .os-radio::before { visibility: visible; }
+  /* Подсказка пункта (NativeMenuItem.ToolTip) — слева от меню, не закрывая панель задач и значки трея */
+  .os-item[data-tip]:hover::after, .os-item[data-tip].tip-shown::after { content: attr(data-tip); position: absolute; z-index: 85;
+    right: calc(100% + 10px); top: 50%; transform: translateY(-50%); padding: 6px 9px; border-radius: 6px; white-space: nowrap; pointer-events: none;
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-strong); box-shadow: var(--pg-shadow-popup);
+    font-size: var(--pg-type-caption-size); color: var(--pg-color-text-primary); }
+
+  /* Справка «Значок по состоянию»: карточка на рабочем столе */
+  .legend { position: absolute; left: 24px; right: 24px; top: 22px; padding: 14px 16px 10px; }
+  .legend-row { display: grid; grid-template-columns: 30px 30px 1fr; align-items: center; gap: 10px; width: 100%; min-height: 36px;
+    text-align: left; border-radius: 8px; }
+  .legend-row + .legend-row { border-top: 1px solid var(--pg-color-line-divider); }
+  button.legend-row:hover { color: var(--pg-color-accent-base); }
+  .legend .tray-glyph { width: 30px; height: 26px; border-radius: 6px; background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-border); }
+  .legend .tray-glyph.dark { background: var(--pg-color-text-primary); border-color: var(--pg-color-text-primary); }
+</style>
+</head>
+<body>
+
+<p class="pg-board-note">Значок в трее и его меню (TrayViewModel программы) — системное меню ОС, здесь Windows 11. Щелчок по
+  щиту в трее открывает меню: строка состояния (не кнопка), «Включить защиту» / «Выключить защиту», «Сменить сервер» с подменю —
+  выбранный, избранные и недавние, не больше пяти, и «Все серверы…», «Обновить серверы», «Открыть окно», «Проверка», «Закрыть».
+  Значок — щит цвета состояния с белым знаком; при подключении — насыщенный синий индикатора, а не бледное кольцо. Пункт «Закрыть»
+  зависит от службы: установленная работает и без окна — «Закрыть интерфейс» с подсказкой «VPN и блок при обрыве продолжат
+  работать»; служба пользователя уходит вместе с окном — «Закрыть программу» с подсказкой «Прокси остановится вместе с
+  программой»; в демо — «Закрыть программу» без подсказки. Меню рисует ОС: наведение и вид — как у Windows, не как кнопки окна;
+  выбранный пункт закрывает меню, щелчок по щиту в трее открывает его снова. Снять блокировку из трея программа не дает молча:
+  открывает окно с вопросом «Снять защиту?» (доска 18). macOS и Linux — доска 21.</p>
+
+<div class="pg-screens">
+  <!-- ===================== Защита выключена · служба установлена ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="off" data-caption="Защита выключена · служба установлена" style="height: 560px">
+    <div class="desk">
+      <div class="popup os-menu os-main is-open" id="a-menu" role="menu" aria-label="Private Gateway">
+        <button class="os-item" disabled data-show-state="off">IP открыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connecting">Подключение… · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="proxy">Прокси включен · NL · Нидерланды 01 · 42 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
+        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="a-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
+        <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
+        <div class="os-sep"></div>
+        <button class="os-item tip-shown" role="menuitem" data-close data-tip="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
+      </div>
+      <div class="popup os-menu os-sub" id="a-sub" role="menu" aria-label="Сменить сервер">
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
+      </div>
+      <div class="taskbar">
+        <div class="taskbar-apps">
+          <span class="task-btn start" aria-label="Пуск"><i data-icon="Nav.Home" data-stroke="2" data-size="22"></i></span>
+          <span class="task-btn" aria-label="Поиск"><i data-icon="Search" data-stroke="2" data-size="20"></i></span>
+          <span class="task-btn" aria-label="Проводник"><i data-icon="File" data-stroke="1.9" data-size="20"></i></span>
+          <button class="task-btn start" data-nav="01-main.html" aria-label="Private Gateway"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="22"></i></button>
+        </div>
+        <div class="tray">
+          <span class="tray-btn" aria-label="Показать скрытые значки"><i data-icon="ChevronDown" data-stroke="2" data-size="14" style="transform: rotate(180deg)"></i></span>
+          <span class="tray-btn" aria-label="Сеть"><i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i></span>
+          <button class="tray-btn" aria-label="Private Gateway" data-open="a-menu"><span class="tray-glyph" data-state-mark></span><span class="os-tip"><span data-show-state="off">Private Gateway · IP открыт</span><span data-show-state="connecting">Private Gateway · Подключение…</span><span data-show-state="connected">Private Gateway · IP скрыт</span><span data-show-state="proxy">Private Gateway · Прокси включен</span></span></button>
+          <span class="clock"><span>18:55</span><span>01.11.2026</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ===================== Защищено · подменю «Сменить сервер» ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="connected" data-caption="Защищено · подменю «Сменить сервер»" style="height: 560px">
+    <div class="desk">
+      <div class="popup os-menu os-main is-open" id="b-menu" role="menu" aria-label="Private Gateway">
+        <button class="os-item" disabled data-show-state="off">IP открыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connecting">Подключение… · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="proxy">Прокси включен · NL · Нидерланды 01 · 42 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
+        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="b-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
+        <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-close data-tip="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
+      </div>
+      <div class="popup os-menu os-sub is-open" id="b-sub" role="menu" aria-label="Сменить сервер">
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
+      </div>
+      <div class="taskbar">
+        <div class="taskbar-apps">
+          <span class="task-btn start" aria-label="Пуск"><i data-icon="Nav.Home" data-stroke="2" data-size="22"></i></span>
+          <span class="task-btn" aria-label="Поиск"><i data-icon="Search" data-stroke="2" data-size="20"></i></span>
+          <span class="task-btn" aria-label="Проводник"><i data-icon="File" data-stroke="1.9" data-size="20"></i></span>
+          <button class="task-btn start" data-nav="01-main.html" aria-label="Private Gateway"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="22"></i></button>
+        </div>
+        <div class="tray">
+          <span class="tray-btn" aria-label="Показать скрытые значки"><i data-icon="ChevronDown" data-stroke="2" data-size="14" style="transform: rotate(180deg)"></i></span>
+          <span class="tray-btn" aria-label="Сеть"><i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i></span>
+          <button class="tray-btn" aria-label="Private Gateway" data-open="b-menu"><span class="tray-glyph" data-state-mark></span><span class="os-tip"><span data-show-state="off">Private Gateway · IP открыт</span><span data-show-state="connecting">Private Gateway · Подключение…</span><span data-show-state="connected">Private Gateway · IP скрыт</span><span data-show-state="proxy">Private Gateway · Прокси включен</span></span></button>
+          <span class="clock"><span>18:55</span><span>01.11.2026</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ===================== Только прокси · служба пользователя ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="proxy" data-caption="Только прокси · служба пользователя" style="height: 560px">
+    <div class="desk">
+      <div class="popup os-menu os-main is-open" id="c-menu" role="menu" aria-label="Private Gateway">
+        <button class="os-item" disabled data-show-state="off">IP открыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connecting">Подключение… · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="proxy">Прокси включен · NL · Нидерланды 01 · 42 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
+        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="c-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
+        <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
+        <div class="os-sep"></div>
+        <button class="os-item tip-shown" role="menuitem" data-close data-tip="Прокси остановится вместе с программой">Закрыть программу</button>
+      </div>
+      <div class="popup os-menu os-sub" id="c-sub" role="menu" aria-label="Сменить сервер">
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
+      </div>
+      <div class="taskbar">
+        <div class="taskbar-apps">
+          <span class="task-btn start" aria-label="Пуск"><i data-icon="Nav.Home" data-stroke="2" data-size="22"></i></span>
+          <span class="task-btn" aria-label="Поиск"><i data-icon="Search" data-stroke="2" data-size="20"></i></span>
+          <span class="task-btn" aria-label="Проводник"><i data-icon="File" data-stroke="1.9" data-size="20"></i></span>
+          <button class="task-btn start" data-nav="01-main.html" aria-label="Private Gateway"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="22"></i></button>
+        </div>
+        <div class="tray">
+          <span class="tray-btn" aria-label="Показать скрытые значки"><i data-icon="ChevronDown" data-stroke="2" data-size="14" style="transform: rotate(180deg)"></i></span>
+          <span class="tray-btn" aria-label="Сеть"><i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i></span>
+          <button class="tray-btn" aria-label="Private Gateway" data-open="c-menu"><span class="tray-glyph" data-state-mark></span><span class="os-tip"><span data-show-state="off">Private Gateway · IP открыт</span><span data-show-state="connecting">Private Gateway · Подключение…</span><span data-show-state="connected">Private Gateway · IP скрыт</span><span data-show-state="proxy">Private Gateway · Прокси включен</span></span></button>
+          <span class="clock"><span>18:55</span><span>01.11.2026</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ===================== Подключение · значок синий, подсказка ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="connecting" data-caption="Подключение · значок синий, подсказка" style="height: 560px">
+    <div class="desk">
+      <div class="popup os-menu os-main" id="d-menu" role="menu" aria-label="Private Gateway">
+        <button class="os-item" disabled data-show-state="off">IP открыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connecting">Подключение… · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</button>
+        <button class="os-item" disabled data-show-state="proxy">Прокси включен · NL · Нидерланды 01 · 42 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
+        <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
+        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="d-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
+        <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-close data-tip="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
+      </div>
+      <div class="popup os-menu os-sub" id="d-sub" role="menu" aria-label="Сменить сервер">
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <div class="os-sep"></div>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
+      </div>
+      <div class="taskbar">
+        <div class="taskbar-apps">
+          <span class="task-btn start" aria-label="Пуск"><i data-icon="Nav.Home" data-stroke="2" data-size="22"></i></span>
+          <span class="task-btn" aria-label="Поиск"><i data-icon="Search" data-stroke="2" data-size="20"></i></span>
+          <span class="task-btn" aria-label="Проводник"><i data-icon="File" data-stroke="1.9" data-size="20"></i></span>
+          <button class="task-btn start" data-nav="01-main.html" aria-label="Private Gateway"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="22"></i></button>
+        </div>
+        <div class="tray">
+          <span class="tray-btn" aria-label="Показать скрытые значки"><i data-icon="ChevronDown" data-stroke="2" data-size="14" style="transform: rotate(180deg)"></i></span>
+          <span class="tray-btn" aria-label="Сеть"><i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i></span>
+          <button class="tray-btn" aria-label="Private Gateway" data-open="d-menu"><span class="tray-glyph" data-state-mark></span><span class="os-tip shown"><span data-show-state="off">Private Gateway · IP открыт</span><span data-show-state="connecting">Private Gateway · Подключение…</span><span data-show-state="connected">Private Gateway · IP скрыт</span><span data-show-state="proxy">Private Gateway · Прокси включен</span></span></button>
+          <span class="clock"><span>18:55</span><span>01.11.2026</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+  <!-- ===================== Значок в трее по состоянию ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="connected" data-caption="Значок в трее по состоянию" style="height: 600px">
+    <div class="desk">
+      <div class="card legend">
+        <div class="t-overline" style="margin: 0 0 6px">Значок в трее · нажмите строку</div>
+        <button class="legend-row" data-set-state="connected"><span class="tray-glyph" data-state="connected"><i data-icon="Shield" data-detail="Mark.Ok"></i></span><span class="tray-glyph dark" data-state="connected"><i data-icon="Shield" data-detail="Mark.Ok"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Защищено</span><span class="t-caption">Private Gateway · IP скрыт</span></span></button>
+        <button class="legend-row" data-set-state="connecting"><span class="tray-glyph" data-state="connecting"><i data-icon="Shield" data-detail="Mark.Wait"></i></span><span class="tray-glyph dark" data-state="connecting"><i data-icon="Shield" data-detail="Mark.Wait"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Подключение</span><span class="t-caption">Private Gateway · Подключение…</span></span></button>
+        <button class="legend-row" data-set-state="reconnecting"><span class="tray-glyph" data-state="reconnecting"><i data-icon="Shield" data-detail="Mark.Wait"></i></span><span class="tray-glyph dark" data-state="reconnecting"><i data-icon="Shield" data-detail="Mark.Wait"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Подключение</span><span class="t-caption">Private Gateway · Переподключение…</span></span></button>
+        <button class="legend-row" data-set-state="blocked"><span class="tray-glyph" data-state="blocked"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="tray-glyph dark" data-state="blocked"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Блокировка</span><span class="t-caption">Private Gateway · Интернет заблокирован</span></span></button>
+        <button class="legend-row" data-set-state="proxy"><span class="tray-glyph" data-state="proxy"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="tray-glyph dark" data-state="proxy"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Прокси</span><span class="t-caption">Private Gateway · Прокси включен</span></span></button>
+        <button class="legend-row" data-set-state="paused"><span class="tray-glyph" data-state="paused"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="tray-glyph dark" data-state="paused"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Пауза</span><span class="t-caption">Private Gateway · Защита на паузе</span></span></button>
+        <button class="legend-row" data-set-state="error"><span class="tray-glyph" data-state="error"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="tray-glyph dark" data-state="error"><i data-icon="Shield" data-detail="Mark.Alert"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Ошибка</span><span class="t-caption">Private Gateway · Ошибка службы</span></span></button>
+        <button class="legend-row" data-set-state="off"><span class="tray-glyph" data-state="off"><i data-icon="Shield" data-detail="Mark.Off"></i></span><span class="tray-glyph dark" data-state="off"><i data-icon="Shield" data-detail="Mark.Off"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Выключено</span><span class="t-caption">Private Gateway · IP открыт</span></span></button>
+        <div class="t-caption t-wrap" style="margin-top: 8px">Знак внутри — как у щита в окне. Утечка IP — красным, как «Ошибка».</div>
+      </div>
+      <div class="taskbar">
+        <div class="taskbar-apps">
+          <span class="task-btn start" aria-label="Пуск"><i data-icon="Nav.Home" data-stroke="2" data-size="22"></i></span>
+          <span class="task-btn" aria-label="Поиск"><i data-icon="Search" data-stroke="2" data-size="20"></i></span>
+          <span class="task-btn" aria-label="Проводник"><i data-icon="File" data-stroke="1.9" data-size="20"></i></span>
+          <button class="task-btn start" data-nav="01-main.html" aria-label="Private Gateway"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="22"></i></button>
+        </div>
+        <div class="tray">
+          <span class="tray-btn" aria-label="Показать скрытые значки"><i data-icon="ChevronDown" data-stroke="2" data-size="14" style="transform: rotate(180deg)"></i></span>
+          <span class="tray-btn" aria-label="Сеть"><i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i></span>
+          <button class="tray-btn" aria-label="Private Gateway"><span class="tray-glyph" data-state-mark></span><span class="os-tip shown"><span data-show-state="connected">Private Gateway · IP скрыт</span><span data-show-state="connecting">Private Gateway · Подключение…</span><span data-show-state="reconnecting">Private Gateway · Переподключение…</span><span data-show-state="blocked">Private Gateway · Интернет заблокирован</span><span data-show-state="proxy">Private Gateway · Прокси включен</span><span data-show-state="paused">Private Gateway · Защита на паузе</span><span data-show-state="error">Private Gateway · Ошибка службы</span><span data-show-state="off">Private Gateway · IP открыт</span></span></button>
+          <span class="clock"><span>18:55</span><span>01.11.2026</span></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

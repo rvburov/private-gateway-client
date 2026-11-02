@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>22 · Уведомления на Windows, macOS, Linux — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>  /* ---------- Рабочий стол ОС: без рамки окна программы, обои — пятна фона, системная панель, значок и меню ---------- */
+  .os-row { gap: 24px; }
+  .pg-frame:has(.os-desk) { width: 500px; }
+  .pg-frame:has(.os-desk) > .pg-titlebar { display: none; }
+  .os-desk { position: absolute; inset: 0; font-size: var(--pg-type-small-size); }
+
+  /* Значок программы: щит цвета состояния с белым знаком (TrayIconRenderer); подключение — синим индикатора */
+  .os-tray { display: grid; place-items: center; width: 32px; height: 30px; border-radius: 4px; }
+  .os-tray:hover { background: var(--pg-color-line-border); }
+  .os-glyph { display: grid; place-items: center; color: var(--state-ring); }
+  [data-state="connecting"] .os-glyph, [data-state="reconnecting"] .os-glyph { color: var(--pg-state-connecting-spinner); }
+  .os-glyph .pg-icon { width: 18px; height: 18px; }
+  .os-glyph path:first-child { fill: currentColor; stroke-width: 2; }
+  .os-glyph path + path { stroke: var(--pg-color-surface-solid); stroke-width: 2.6; }
+
+  /* Windows: панель задач снизу, закрепленные программы по центру, трей и часы справа */
+  .os-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; display: flex; align-items: center; justify-content: center;
+    background: var(--pg-color-surface-card); border-top: 1px solid var(--pg-color-line-border); }
+  .os-apps { display: flex; gap: 10px; }
+  .os-apps i { display: block; width: 24px; height: 24px; border-radius: 6px; background: var(--pg-color-control-track-off); }
+  .os-apps i.on { background: var(--pg-color-accent-base); }
+  .os-bar-right { position: absolute; right: 10px; top: 0; bottom: 0; display: flex; align-items: center; gap: 6px; }
+  .os-up { transform: rotate(180deg); color: var(--pg-color-text-secondary); }
+  .os-clock { display: flex; flex-direction: column; align-items: flex-end; margin-left: 4px; font-size: var(--pg-type-caption-size); line-height: 1.3; }
+
+  /* macOS: строка меню сверху, значки и часы справа */
+  .os-menubar { position: absolute; left: 0; right: 0; top: 0; height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--pg-color-bg-glass); border-bottom: 1px solid var(--pg-color-line-border); font-weight: 500; }
+  .os-menubar .os-tray { height: 22px; width: 28px; }
+
+  /* Linux (GNOME): темная верхняя панель, рабочие столы слева, часы по центру, значки справа */
+  .os-panel { position: absolute; left: 0; right: 0; top: 0; height: 30px; display: flex; align-items: center; padding: 0 10px;
+    background: var(--pg-color-text-primary); color: var(--pg-color-surface-solid); font-weight: 600; }
+  .os-panel .os-bar-right { right: 8px; gap: 4px; }
+  .os-panel .os-tray:hover { background: var(--pg-color-text-secondary); }
+  .os-panel-clock { position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; }
+  .os-workspaces { display: flex; gap: 5px; align-items: center; }
+  .os-workspaces i { display: block; width: 6px; height: 6px; border-radius: 3px; background: var(--pg-color-text-muted); }
+  .os-workspaces i.on { width: 26px; background: var(--pg-color-surface-solid); }
+
+
+  /* Нажимаемые часы — центр уведомлений ОС */
+  .os-clock, .os-time { font: inherit; color: inherit; }
+  button.os-clock, button.os-time { border-radius: 4px; padding: 2px 4px; }
+  button.os-clock { font-size: var(--pg-type-caption-size); }
+  button.os-clock:hover, button.os-time:hover { background: var(--pg-color-line-border); }
+  button.os-panel-clock { pointer-events: auto; left: 50%; right: auto; transform: translateX(-50%); padding: 2px 10px; border-radius: 10px;
+    font-weight: 600; }
+  button.os-panel-clock:hover { background: var(--pg-color-text-secondary); }
+
+  /* ---------- Уведомление: значок программы, заголовок, текст, до двух кнопок; вид — ОС, цвета — токены ---------- */
+  .nt-icon { display: grid; place-items: center; flex: none; color: var(--pg-state-connected-ring); }
+  .nt-icon path:first-child { fill: currentColor; }
+  .nt-icon path + path { stroke: var(--pg-color-surface-solid); stroke-width: 2.6; }
+  .nt-win, .nt-mac, .nt-gnome, .nt-kde { position: absolute; z-index: 20; background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-border); box-shadow: var(--pg-shadow-popup); font-size: var(--pg-type-small-size); }
+  .nt-head { display: flex; align-items: center; gap: 8px; font-size: var(--pg-type-caption-size); color: var(--pg-color-text-secondary); }
+  .nt-x { width: 24px; height: 24px; border-radius: 4px; display: grid; place-items: center; flex: none; color: var(--pg-color-text-secondary);
+    font-size: var(--pg-type-caption-size); letter-spacing: 1px; }
+  .nt-x:hover { background: var(--pg-color-line-border); }
+  .nt-main { display: flex; flex-direction: column; gap: 8px; min-width: 0; flex: 1; }
+  .nt-body { display: flex; flex-direction: column; gap: 2px; width: 100%; text-align: left; }
+  .nt-title { font-weight: 600; font-size: var(--pg-type-body-size); color: var(--pg-color-text-primary); }
+  .nt-text { color: var(--pg-color-text-secondary); line-height: 1.4; }
+  .nt-actions { display: flex; gap: 8px; }
+  .nt-btn { flex: 1; height: 32px; border-radius: 4px; display: grid; place-items: center; font-size: var(--pg-type-small-size);
+    background: var(--pg-color-surface-inset); border: 1px solid var(--pg-color-line-border); }
+  .nt-btn:hover { background: var(--pg-color-line-border); }
+
+  /* Windows: справа внизу над панелью задач, имя программы и «···», «×» сверху, кнопки снизу */
+  .nt-win { right: 12px; bottom: 60px; width: 364px; padding: 10px 12px 14px 14px; border-radius: 8px; display: flex; flex-direction: column; gap: 10px; }
+
+  /* macOS: баннер справа сверху, значок слева, «×» в углу при наведении, кнопки — в меню «Параметры» */
+  .nt-mac { top: 36px; right: 12px; width: 352px; padding: 12px 14px 12px 12px; border-radius: 16px; display: flex; gap: 10px;
+    background: var(--pg-color-surface-card); }
+  .nt-mac > .nt-x { position: absolute; left: -8px; top: -8px; width: 20px; height: 20px; border-radius: 10px;
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-strong); box-shadow: var(--pg-shadow-card); }
+  .nt-mac .nt-icon { align-self: flex-start; margin-top: 2px; }
+  .nt-time { font-size: var(--pg-type-caption-size); color: var(--pg-color-text-muted); margin-left: 8px; }
+  .nt-options { align-self: flex-end; display: inline-flex; align-items: center; gap: 4px; height: 24px; padding: 0 8px 0 10px; border-radius: 6px;
+    background: var(--pg-color-surface-inset); border: 1px solid var(--pg-color-line-border); font-size: var(--pg-type-caption-size); font-weight: 500; }
+  .nt-options:hover { background: var(--pg-color-line-border); }
+
+  /* GNOME: баннер сверху по центру, кнопки-плашки снизу */
+  .nt-gnome { top: 38px; left: 50%; width: 380px; margin-left: -190px; padding: 10px 12px 14px 14px; border-radius: 16px;
+    display: flex; flex-direction: column; gap: 8px; }
+  .nt-gnome .nt-x { border-radius: 12px; background: var(--pg-color-surface-inset); }
+  .nt-gnome .nt-btn { height: 34px; border-radius: 10px; border: 0; font-weight: 600; }
+
+  /* KDE Plasma: снизу справа, компактнее, текст в две строки */
+  .nt-kde { right: 12px; bottom: 12px; width: 300px; padding: 8px 10px 10px 12px; border-radius: 8px; display: flex; flex-direction: column; gap: 6px; }
+  .nt-kde .nt-btn { height: 28px; }
+  .nt-kde-label { position: absolute; right: 0; top: -26px; }
+  .nt-clamp { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  /* Меню «···» Windows и «Параметры» macOS — системные меню */
+  .nt-menu { min-width: 0; white-space: nowrap; font-size: var(--pg-type-small-size); }
+  .nt-menu .os-item { display: flex; align-items: center; width: 100%; text-align: left; }
+  .nt-menu.windows { padding: 4px; border-radius: 8px; font-size: var(--pg-type-caption-size); }
+  .nt-menu.windows .os-item { height: 32px; padding: 0 12px; border-radius: 4px; }
+  .nt-menu.windows .os-item:hover { background: var(--pg-color-line-border); }
+  .nt-menu.macos { padding: 5px; border-radius: 10px; }
+  .nt-menu.macos .os-item { height: 24px; padding: 0 12px; border-radius: 5px; }
+  .nt-menu.macos .os-item:hover { background: var(--pg-color-accent-base); color: var(--pg-color-surface-solid); }
+
+  /* ---------- Под рамками: таблица событий, настройка и правила ---------- */
+  .nt-info { font-size: var(--pg-type-body-size); display: flex; gap: 24px; align-items: flex-start; flex-wrap: wrap; margin-top: 32px; max-width: 1548px; }
+  .nt-card { padding: 18px 20px 20px; display: flex; flex-direction: column; gap: 12px; }
+  .nt-events { flex: 1 1 760px; }
+  .nt-side { flex: 0 1 400px; }
+  .nt-grid { display: grid; grid-template-columns: minmax(150px, 210px) minmax(240px, 1fr) minmax(150px, 200px) 96px; font-size: var(--pg-type-small-size); }
+  .nt-grid > span { padding: 10px 14px 10px 0; border-top: 1px solid var(--pg-color-line-divider); }
+  .nt-grid > .t-overline { border-top: 0; padding-top: 0; }
+  .nt-cell-text { display: flex; flex-direction: column; gap: 2px; color: var(--pg-color-text-secondary); }
+  .nt-path { align-self: flex-start; text-align: left; margin-top: -6px; }
+  .nt-level { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: var(--pg-radius-input);
+    border: 1px solid var(--pg-color-line-border); }
+  .nt-level.on { border-color: var(--pg-color-accent-line); background: var(--pg-color-accent-tint); }
+  .nt-rules { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: var(--pg-type-small-size);
+    color: var(--pg-color-text-secondary); line-height: 1.45; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Уведомления системные: их рисует ОС, вид у каждой свой. Программа задает заголовок, текст, до двух кнопок и важность
+  (звук), значок — из записи программы в ОС. Пример — одно событие, «Соединение потеряно»; значок в трее в это время синий —
+  переподключение. <b>Windows</b> 10 и 11 — справа внизу, потом в Центре уведомлений; важное со звуком, обычное без. <b>macOS</b> — справа
+  сверху, только у программы из пакета .app, разрешение спрашивается один раз; кнопки — в «Параметры» при наведении; важное — со звуком
+  и баннером, обычное — «пассивное»: без баннера и звука, сразу в Центр уведомлений. <b>Linux</b> — стандарт freedesktop, вид рисует
+  оболочка: GNOME сверху по центру, KDE Plasma снизу справа; кнопки — если оболочка их умеет, нажатие на уведомление открывает окно;
+  важное — обычная срочность и звук, остальное — низкая срочность без звука; «критическая» не ставится, чтобы «Не беспокоить»
+  соблюдался. Нажимается:
+  кнопки ведут на экраны, само уведомление открывает окно, «×» убирает его, часы (центр уведомлений) возвращают, значок в трее
+  открывает окно. В v1.0 на уведомлении Windows был крупный значок — у программы его нет, только значок и имя в шапке.</p>
+
+<div class="pg-screens os-row">
+  <!-- ===================== Windows: всплывающее уведомление справа внизу ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="reconnecting" data-caption="Windows 10 / 11 · справа внизу над часами" style="height: 440px">
+    <div class="os-desk">      <div class="os-taskbar">
+        <span class="os-apps"><i></i><i></i><i class="on"></i><i></i></span>
+        <span class="os-bar-right">
+          <i data-icon="ChevronDown" data-stroke="2" data-size="14" class="os-up"></i>
+          <button class="os-tray" data-nav="01-main.html" title="Private Gateway · Переподключение…" aria-label="Private Gateway · Переподключение…"><span class="os-glyph" data-state-mark></span></button>
+          <i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i>
+          <button class="os-clock" data-goto="lost" title="Центр уведомлений"><span>18:42</span><span>01.11.2026</span></button>
+        </span>
+      </div>
+</div>
+    <div class="nt-win" data-page="lost" role="status" aria-label="Соединение потеряно">
+      <div class="nt-head">
+        <span class="nt-icon"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="16"></i></span><span class="pg-grow">Private Gateway</span>
+        <button class="nt-x" data-open="win-more" aria-label="Параметры уведомления">···</button>
+        <button class="nt-x" data-goto="none" aria-label="Закрыть"><i data-icon="Close" data-stroke="2" data-size="12"></i></button>
+      </div>
+      <div class="nt-main">
+        <button class="nt-body" data-nav="01-main.html" aria-label="Открыть окно">
+          <span class="nt-title">Соединение потеряно</span>
+          <span class="nt-text">Интернет заблокирован, пока VPN не вернется. Переподключаюсь к «Нидерланды 01»…</span>
+        </button>
+      </div>
+      <div class="nt-actions">
+        <button class="nt-btn" data-nav="02-servers.html">Сменить сервер</button>
+        <button class="nt-btn" data-nav="01-main.html">Открыть</button>
+      </div>
+    </div>
+    <div class="popup nt-menu windows" id="win-more" role="menu">
+      <button class="os-item" data-close data-goto="none">Отключить все уведомления для Private Gateway</button>
+      <button class="os-item" data-close>Перейти к параметрам уведомлений</button>
+    </div>
+  </section>
+
+  <!-- ===================== macOS: баннер справа сверху, кнопки — в «Параметры» ===================== -->
+  <section class="pg-screen" data-device="macos" data-state="reconnecting" data-caption="macOS · справа сверху; при наведении — «×» и «Параметры»" style="height: 440px">
+    <div class="os-desk">      <div class="os-menubar">
+        <span class="pg-grow"></span>
+        <button class="os-tray" data-nav="01-main.html" title="Private Gateway · Переподключение…" aria-label="Private Gateway · Переподключение…"><span class="os-glyph" data-state-mark></span></button>
+        <i data-icon="Net.WiFi" data-stroke="2" data-size="15"></i>
+        <button class="os-time" data-goto="lost" title="Центр уведомлений">Вс 1 нояб. 18:42</button>
+      </div>
+</div>
+    <div class="nt-mac" data-page="lost" role="status" aria-label="Соединение потеряно">
+      <button class="nt-x" data-goto="none" aria-label="Закрыть"><i data-icon="Close" data-stroke="2" data-size="12"></i></button>
+      <span class="nt-icon"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="34"></i></span>
+      <div class="nt-main">
+        <button class="nt-body" data-nav="01-main.html" aria-label="Открыть окно">
+          <span class="pg-row"><span class="nt-title pg-grow">Соединение потеряно</span><span class="nt-time">сейчас</span></span>
+          <span class="nt-text">Интернет заблокирован, пока VPN не вернется. Переподключаюсь к «Нидерланды 01»…</span>
+        </button>
+        <button class="nt-options" data-open="mac-actions">Параметры<i data-icon="ChevronDown" data-stroke="2.4" data-size="12"></i></button>
+      </div>
+    </div>
+    <div class="popup nt-menu macos" id="mac-actions" role="menu">
+      <button class="os-item" data-nav="02-servers.html">Сменить сервер</button>
+      <button class="os-item" data-nav="01-main.html">Открыть</button>
+    </div>
+  </section>
+
+  <!-- ===================== Linux: стандарт freedesktop — GNOME сверху по центру, KDE Plasma снизу справа ===================== -->
+  <section class="pg-screen" data-device="linux" data-state="reconnecting" data-caption="Linux · GNOME сверху по центру, KDE Plasma снизу справа" style="height: 440px">
+    <div class="os-desk">      <div class="os-panel">
+        <span class="os-workspaces"><i class="on"></i><i></i><i></i></span>
+        <button class="os-panel-clock" data-goto="lost" title="Центр уведомлений">1 нояб. 18:42</button>
+        <span class="os-bar-right">
+          <button class="os-tray" data-nav="01-main.html" title="Private Gateway · Переподключение…" aria-label="Private Gateway · Переподключение…"><span class="os-glyph" data-state-mark></span></button>
+          <i data-icon="Net.WiFi" data-stroke="2" data-size="15"></i>
+        </span>
+      </div>
+</div>
+    <div class="nt-gnome" data-page="lost" role="status" aria-label="Соединение потеряно">
+      <div class="nt-head">
+        <span class="nt-icon"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="16"></i></span><span>Private Gateway</span><span>·</span><span class="pg-grow">сейчас</span>
+        <button class="nt-x" data-goto="none" aria-label="Закрыть"><i data-icon="Close" data-stroke="2" data-size="12"></i></button>
+      </div>
+      <div class="nt-main">
+        <button class="nt-body" data-nav="01-main.html" aria-label="Открыть окно">
+          <span class="nt-title">Соединение потеряно</span>
+          <span class="nt-text">Интернет заблокирован, пока VPN не вернется. Переподключаюсь к «Нидерланды 01»…</span>
+        </button>
+      </div>
+      <div class="nt-actions">
+        <button class="nt-btn" data-nav="02-servers.html">Сменить сервер</button>
+        <button class="nt-btn" data-nav="01-main.html">Открыть</button>
+      </div>
+    </div>
+    <div class="nt-kde" data-page="lost" role="status" aria-label="Соединение потеряно — KDE Plasma">
+      <span class="badge muted nt-kde-label">То же в KDE Plasma</span>
+      <div class="nt-head">
+        <span class="nt-icon"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="16"></i></span><span class="pg-grow">Private Gateway · сейчас</span>
+        <button class="nt-x" data-goto="none" aria-label="Закрыть"><i data-icon="Close" data-stroke="2" data-size="12"></i></button>
+      </div>
+      <div class="nt-main">
+        <button class="nt-body" data-nav="01-main.html" aria-label="Открыть окно">
+          <span class="nt-title">Соединение потеряно</span>
+          <span class="nt-text nt-clamp">Интернет заблокирован, пока VPN не вернется. Переподключаюсь к «Нидерланды 01»…</span>
+        </button>
+      </div>
+      <div class="nt-actions">
+        <button class="nt-btn" data-nav="02-servers.html">Сменить сервер</button>
+        <button class="nt-btn" data-nav="01-main.html">Открыть</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="nt-info">
+  <section class="card nt-card nt-events">
+    <span class="t-title">Когда приходят уведомления</span>
+    <div class="nt-grid">
+      <span class="t-overline">Событие</span><span class="t-overline">Текст</span><span class="t-overline">Кнопки</span><span class="t-overline">Тип</span>
+      <span class="t-strong">Соединение потеряно</span>
+      <span class="nt-cell-text">Интернет заблокирован, пока VPN не вернется. Переподключаюсь к «Нидерланды 01»…<span class="t-caption">Без блока при обрыве — «Трафик идет напрямую, пока VPN не вернется…»</span></span>
+      <span class="t-accent">Сменить сервер · Открыть</span>
+      <span><span class="pill warning">Важное</span></span>
+      <span class="t-strong">Сервер не отвечает</span>
+      <span class="nt-cell-text">«Нидерланды 01» недоступен. Интернет заблокирован — другой сервер не выбран.<span class="t-caption">Без блока — «…Защиты нет, трафик идет напрямую.», в режиме прокси — «…Прокси остановлен.»</span></span>
+      <span class="t-accent">Повторить · Выбрать сервер</span>
+      <span><span class="pill warning">Важное</span></span>
+      <span class="t-strong">Нужен вход в Wi-Fi</span>
+      <span class="nt-cell-text">Сеть, похоже, просит вход через браузер. «Войти» — пауза защиты на время входа.</span>
+      <span class="t-accent">Войти · Позже</span>
+      <span><span class="pill warning">Важное</span></span>
+      <span class="t-strong">Служба остановлена</span>
+      <span class="nt-cell-text">Защита не работает, нужен перезапуск службы.<span class="t-caption">Если служба не вернулась за 15 с</span></span>
+      <span class="t-accent">Перезапустить</span>
+      <span><span class="pill warning">Важное</span></span>
+      <span class="t-strong">Защита не работает</span>
+      <span class="nt-cell-text">Адрес сервера не найден · PGC-NET-002. Интернет заблокирован.<span class="t-caption">Причина — код ошибки словами</span></span>
+      <span class="t-accent">Открыть</span>
+      <span><span class="pill warning">Важное</span></span>
+      <span class="t-strong">Работает другой VPN или прокси-клиент</span>
+      <span class="nt-cell-text">Запустился другой VPN или прокси-клиент — трафик может пойти мимо туннеля. Закройте его, пока включена защита.</span>
+      <span class="t-accent">Открыть</span>
+      <span><span class="pill warning">Важное</span></span>
+      <span class="t-strong">Подключено</span>
+      <span class="nt-cell-text">Защита включена через «Нидерланды 01».<span class="t-caption">После обрыва — «Соединение с «Нидерланды 01» восстановлено.» Только когда окно спрятано в трей или свернуто</span></span>
+      <span class="t-muted">—</span>
+      <span><span class="pill muted">Обычное</span></span>
+      <span class="t-strong">VPN отключен</span>
+      <span class="nt-cell-text">Защита выключена вручную. Трафик идет напрямую через провайдера.<span class="t-caption">В строгом режиме — «Защита выключена, интернет закрыт строгим режимом.» Только когда окно спрятано в трей или свернуто</span></span>
+      <span class="t-accent">Подключить</span>
+      <span><span class="pill muted">Обычное</span></span>
+      <span class="t-strong">Сервер исчез из подписки</span>
+      <span class="nt-cell-text">«Германия 02» больше нет в «Основная подписка». Подключение работает до отключения.</span>
+      <span class="t-accent">Выбрать другой · Позже</span>
+      <span><span class="pill muted">Обычное</span></span>
+      <span class="t-strong">Сервер изменился</span>
+      <span class="nt-cell-text">У «Германия 02» в «Основная подписка» новый адрес или ключи. Выберите его новую версию в списке серверов.</span>
+      <span class="t-accent">Выбрать сервер · Позже</span>
+      <span><span class="pill muted">Обычное</span></span>
+      <span class="t-strong">Серверы не обновились</span>
+      <span class="nt-cell-text">«Основная подписка»: сервер подписки не ответил за 20 секунд. Оставлен прошлый список.</span>
+      <span class="t-accent">Открыть</span>
+      <span><span class="pill muted">Обычное</span></span>
+      <span class="t-strong">Доступно обновление 0.2.0</span>
+      <span class="nt-cell-text">Загрузится в фоне, VPN продолжает работать; установится при перезапуске клиента.<span class="t-caption">Копия без автообновления — «Эта копия обновляется вручную — новая версия на странице выпуска.»</span></span>
+      <span class="t-accent">Обновить · Позже</span>
+      <span><span class="pill muted">Обычное</span></span>
+    </div>
+  </section>
+
+  <section class="card nt-card nt-side">
+    <span class="t-title">Настройка</span>
+    <button class="btn-link nt-path" data-nav="04-settings.html">Настройки → Основные → Уведомления</button>
+    <div class="nt-level">
+      <span class="t-strong">Все</span>
+      <span class="t-caption">Важные и обычные: подключение, серверы, обновления</span>
+    </div>
+    <div class="nt-level on">
+      <span class="t-strong">Только важные <span class="badge accent">по умолчанию</span></span>
+      <span class="t-caption">Обрыв, блокировка интернета, вход в Wi-Fi, сбой службы</span>
+    </div>
+    <div class="nt-level">
+      <span class="t-strong">Выключены</span>
+      <span class="t-caption">Только значок в трее меняет цвет. Окно и трей покажут все</span>
+    </div>
+    <div class="divider"></div>
+    <span class="t-title">Правила</span>
+    <ul class="nt-rules">
+      <li>Окно открыто и активно — вместо уведомления ОС всплывашка внутри окна (доска 19)</li>
+      <li>Одно уведомление на событие, повтор того же — не чаще раза в 10 минут</li>
+      <li>Уведомление о защите в центре уведомлений одно: новое заменяет прежнее, прошедшая беда убирается</li>
+      <li>При запуске окна о том, что уже было, уведомлений нет</li>
+      <li>В тексте нет IP-адресов и названий сетей Wi-Fi</li>
+      <li>Звук — только у важных; «Не беспокоить» ОС соблюдаем</li>
+    </ul>
+  </section>
+</div>
+</body>
+</html>

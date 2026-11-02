@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>13 · Маршрутизация — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Подстраница настроек: шапка с «Назад» стоит, прокручивается только список (Grid RowDefinitions="Auto,*" программы) */
+  .pg-frame .pg-page-header + .pg-page { top: 60px; }
+  .pg-frame.is-phone .pg-page-header + .pg-page { top: 110px; }
+  .pg-frame[data-device="android"].is-phone .pg-page-header + .pg-page { top: 92px; }
+
+  /* Строки списков разделены линией, у последней ее нет (Border.row программы) */
+  .card > [data-row] { border-radius: 0; }
+  .card > [data-row]:not(:last-child) { border-bottom: 1px solid var(--pg-color-line-divider); }
+  .card > .pg-row[data-row] { padding: 11px 0; }
+  .card > .btn-plain[data-row] { padding: 12px 0; }
+  .card > .btn-plain[data-row]:hover .t-mono { color: var(--pg-color-accent-base); }
+  /* Метка действия правила — Border.action Padding="10,4": строка правила 48, как в программе */
+  .card > .btn-plain[data-row] .pill { padding: 4px 10px; }
+  /* Рамка окна не прокручивается сама (фокус и scrollIntoView прокручивают только список) */
+  .pg-app { overflow: clip; }
+  /* Плитка программы: буква на цветном квадрате, три цвета по кругу */
+  .tile { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; flex: none;
+    background: var(--pg-color-tile-violet); color: var(--pg-color-surface-solid); font-weight: 700; }
+  .tile.teal { background: var(--pg-color-tile-teal); }
+  .tile.amber { background: var(--pg-color-tile-amber); }
+  /* «Добавить …»: пунктирная рамка на синем оттенке */
+  .btn-plain.dashed { height: 46px; justify-content: center; gap: 8px; border-radius: 14px; border: 1.5px dashed var(--pg-color-accent-line);
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); font-weight: 600; }
+  .btn-plain.dashed:hover { color: var(--pg-color-accent-base); }
+  .card > .btn-plain:hover .chevron { color: var(--pg-color-accent-base); }
+
+  /* Раздельный режим или «Весь трафик»: предупреждение, программы, подписи (IsSplit программы) */
+  .pg-app:has([data-route="split"].on) [data-when="all"],
+  .pg-app:not(:has([data-route="split"].on)) [data-when="split"] { display: none; }
+  /* «Напрямую» вне раздельного режима не действует — метка бледнее */
+  .pg-app:not(:has([data-route="split"].on)) .pill[data-direct] { opacity: .55; }
+  /* В листе правила: «Напрямую» в режиме «Весь трафик» — подпись, что правило пока не действует (IsIdle) */
+  [data-when="idle"] { display: none; }
+  .pg-app:not(:has([data-route="split"].on)) .sheet:has([data-action="direct"].on) [data-when="idle"] { display: block; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Маршрутизация (RoutingPage программы) — подстраница настроек: «Назад» ведет в «Настройки». «Весь трафик» и
+  «Раздельный режим» переключают экран: предупреждение и программы мимо VPN есть только в раздельном режиме, в режиме «Весь трафик»
+  правила «Напрямую» бледнее и над списком — подпись, что они не действуют. Правило для сайта открывается листом; «Добавить правило» —
+  тот же лист. «Локальная сеть» ведет в «Защиту и утечки». Справа — тот же экран в режиме «Весь трафик».</p>
+
+<div class="pg-screens">
+  <section class="pg-screen" data-state="connected" data-caption="Раздельный режим">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Маршрутизация</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="pg-stack" style="gap: 14px; margin: 0 var(--side)">
+        <!-- Что идет через VPN -->
+        <div class="card pg-stack pg-gap-10" style="padding: 14px 16px">
+          <span class="t-strong">Что идет через VPN</span>
+          <div class="segments" role="radiogroup" aria-label="Что идет через VPN">
+            <button class="segment" data-route="all" role="radio" aria-checked="false">Весь трафик</button>
+            <button class="segment on" data-route="split" role="radio" aria-checked="true">Раздельный режим</button>
+          </div>
+          <span class="t-caption t-wrap" data-when="all">Весь трафик Windows идет через VPN. Исключение — только локальная сеть, если она разрешена.</span>
+          <span class="t-caption t-wrap" data-when="split">VPN для всего, кроме выбранных программ и сайтов.</span>
+        </div>
+
+        <!-- Раздельный режим: предупреждение и программы мимо VPN -->
+        <div class="banner warning" data-when="split" style="align-items: flex-start; padding: 12px 14px; border-radius: 16px; font-size: var(--pg-type-small-size)">
+          <i data-icon="Warning" data-stroke="2" data-size="18" style="margin-top: 1px"></i>
+          <span class="t-wrap">Программы и сайты из прямых исключений идут через провайдера: они видят ваш реальный IP, и блок при обрыве на них не действует. В режиме «Весь трафик» эти исключения не применяются.</span>
+        </div>
+
+        <div class="pg-stack pg-gap-8" data-when="split">
+          <span class="t-overline" style="margin: 0 6px">Программы мимо VPN</span>
+          <div class="card" style="padding: 2px 16px">
+          <div class="pg-row" data-row>
+            <span class="tile" aria-hidden="true">И</span>
+            <span class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+              <span class="t-strong pg-ellipsis">Игра</span>
+              <span class="pg-ellipsis" style="font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted)">C:\Games\…\game.exe</span>
+            </span>
+            <button class="btn-icon" style="width: 36px; height: 36px; margin-right: 6px; color: var(--pg-color-text-muted)" aria-label="Убрать «Игра» из списка"><i data-icon="Trash" data-stroke="1.9" data-size="17"></i></button>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Игра мимо VPN"></button>
+          </div>
+          <div class="pg-row" data-row>
+            <span class="tile teal" aria-hidden="true">Б</span>
+            <span class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+              <span class="t-strong pg-ellipsis">Банк-клиент</span>
+              <span class="pg-ellipsis" style="font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted)">C:\Program Files\…\bank.exe</span>
+            </span>
+            <button class="btn-icon" style="width: 36px; height: 36px; margin-right: 6px; color: var(--pg-color-text-muted)" aria-label="Убрать «Банк-клиент» из списка"><i data-icon="Trash" data-stroke="1.9" data-size="17"></i></button>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Банк-клиент мимо VPN"></button>
+          </div>
+          <div class="pg-row" data-row>
+            <span class="tile amber" aria-hidden="true">В</span>
+            <span class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+              <span class="t-strong pg-ellipsis">Видеозвонки</span>
+              <span class="pg-ellipsis" style="font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted)">C:\Users\…\meet.exe</span>
+            </span>
+            <button class="btn-icon" style="width: 36px; height: 36px; margin-right: 6px; color: var(--pg-color-text-muted)" aria-label="Убрать «Видеозвонки» из списка"><i data-icon="Trash" data-stroke="1.9" data-size="17"></i></button>
+            <button class="switch" role="switch" aria-checked="false" aria-label="Видеозвонки мимо VPN"></button>
+          </div>
+          </div>
+          <button class="btn-plain dashed" data-toast="«Игра» уже в списке — включена"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить программу</button>
+        </div>
+
+        <!-- Правила для сайтов -->
+        <div class="pg-stack pg-gap-8">
+          <span class="t-overline" style="margin: 0 6px">Правила для сайтов</span>
+          <span class="t-caption t-wrap" data-when="all" style="margin: 0 6px">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          <div class="card" style="padding: 2px 16px">
+          <button class="btn-plain" data-row data-open="sheet-rule-0" aria-label="example.com: Напрямую">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.com</span>
+            <span class="pill warning" data-direct>Напрямую</span>
+          </button>
+          <button class="btn-plain" data-row data-open="sheet-rule-1" aria-label="*.local: Напрямую">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">*.local</span>
+            <span class="pill warning" data-direct>Напрямую</span>
+          </button>
+          <button class="btn-plain" data-row data-open="sheet-rule-2" aria-label="ads.example.org: Блокировать">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">ads.example.org</span>
+            <span class="pill danger">Блокировать</span>
+          </button>
+          <button class="btn-plain" data-row data-open="sheet-rule-3" aria-label="example.org: Через VPN">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.org</span>
+            <span class="pill success">Через VPN</span>
+          </button>
+          </div>
+          <button class="btn-plain dashed" data-open="sheet-rule-new"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить правило</button>
+        </div>
+
+        <!-- Всегда напрямую -->
+        <div class="pg-stack pg-gap-8">
+          <span class="t-overline" style="margin: 0 6px">Всегда напрямую</span>
+          <div class="card" style="padding: 2px 16px">
+            <div class="pg-stack" style="gap: 3px; padding: 12px 0">
+              <span class="t-strong">Адрес выбранного сервера</span>
+              <span class="t-caption t-wrap">Нужен для самого туннеля, изменить нельзя</span>
+            </div>
+            <div class="divider"></div>
+            <button class="btn-plain" style="padding: 12px 0" data-nav="05-protection.html" aria-label="Локальная сеть">
+              <span class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px">
+                <span class="t-strong">Локальная сеть</span>
+                <span class="t-caption t-wrap">Сейчас запрещена · настраивается в «Защите и утечках»</span>
+              </span>
+              <i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <div class="sheet" id="sheet-rule-new" role="dialog" aria-label="Новое правило">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Новое правило</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment on" data-action="direct" role="radio" aria-checked="true">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Добавить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-0" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.com">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment on" data-action="direct" role="radio" aria-checked="true">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-1" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="*.local">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment on" data-action="direct" role="radio" aria-checked="true">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-2" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="ads.example.org">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment" data-action="direct" role="radio" aria-checked="false">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment on" data-action="block" role="radio" aria-checked="true">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-3" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.org">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment" data-action="direct" role="radio" aria-checked="false">Напрямую</button>
+            <button class="segment on" data-action="proxy" role="radio" aria-checked="true">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <section class="pg-screen" data-state="connected" data-caption="Весь трафик">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Маршрутизация</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="pg-stack" style="gap: 14px; margin: 0 var(--side)">
+        <!-- Что идет через VPN -->
+        <div class="card pg-stack pg-gap-10" style="padding: 14px 16px">
+          <span class="t-strong">Что идет через VPN</span>
+          <div class="segments" role="radiogroup" aria-label="Что идет через VPN">
+            <button class="segment on" data-route="all" role="radio" aria-checked="true">Весь трафик</button>
+            <button class="segment" data-route="split" role="radio" aria-checked="false">Раздельный режим</button>
+          </div>
+          <span class="t-caption t-wrap" data-when="all">Весь трафик Windows идет через VPN. Исключение — только локальная сеть, если она разрешена.</span>
+          <span class="t-caption t-wrap" data-when="split">VPN для всего, кроме выбранных программ и сайтов.</span>
+        </div>
+
+        <!-- Раздельный режим: предупреждение и программы мимо VPN -->
+        <div class="banner warning" data-when="split" style="align-items: flex-start; padding: 12px 14px; border-radius: 16px; font-size: var(--pg-type-small-size)">
+          <i data-icon="Warning" data-stroke="2" data-size="18" style="margin-top: 1px"></i>
+          <span class="t-wrap">Программы и сайты из прямых исключений идут через провайдера: они видят ваш реальный IP, и блок при обрыве на них не действует. В режиме «Весь трафик» эти исключения не применяются.</span>
+        </div>
+
+        <div class="pg-stack pg-gap-8" data-when="split">
+          <span class="t-overline" style="margin: 0 6px">Программы мимо VPN</span>
+          <div class="card" style="padding: 2px 16px">
+          <div class="pg-row" data-row>
+            <span class="tile" aria-hidden="true">И</span>
+            <span class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+              <span class="t-strong pg-ellipsis">Игра</span>
+              <span class="pg-ellipsis" style="font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted)">C:\Games\…\game.exe</span>
+            </span>
+            <button class="btn-icon" style="width: 36px; height: 36px; margin-right: 6px; color: var(--pg-color-text-muted)" aria-label="Убрать «Игра» из списка"><i data-icon="Trash" data-stroke="1.9" data-size="17"></i></button>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Игра мимо VPN"></button>
+          </div>
+          <div class="pg-row" data-row>
+            <span class="tile teal" aria-hidden="true">Б</span>
+            <span class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+              <span class="t-strong pg-ellipsis">Банк-клиент</span>
+              <span class="pg-ellipsis" style="font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted)">C:\Program Files\…\bank.exe</span>
+            </span>
+            <button class="btn-icon" style="width: 36px; height: 36px; margin-right: 6px; color: var(--pg-color-text-muted)" aria-label="Убрать «Банк-клиент» из списка"><i data-icon="Trash" data-stroke="1.9" data-size="17"></i></button>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Банк-клиент мимо VPN"></button>
+          </div>
+          <div class="pg-row" data-row>
+            <span class="tile amber" aria-hidden="true">В</span>
+            <span class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+              <span class="t-strong pg-ellipsis">Видеозвонки</span>
+              <span class="pg-ellipsis" style="font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted)">C:\Users\…\meet.exe</span>
+            </span>
+            <button class="btn-icon" style="width: 36px; height: 36px; margin-right: 6px; color: var(--pg-color-text-muted)" aria-label="Убрать «Видеозвонки» из списка"><i data-icon="Trash" data-stroke="1.9" data-size="17"></i></button>
+            <button class="switch" role="switch" aria-checked="false" aria-label="Видеозвонки мимо VPN"></button>
+          </div>
+          </div>
+          <button class="btn-plain dashed" data-toast="«Игра» уже в списке — включена"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить программу</button>
+        </div>
+
+        <!-- Правила для сайтов -->
+        <div class="pg-stack pg-gap-8">
+          <span class="t-overline" style="margin: 0 6px">Правила для сайтов</span>
+          <span class="t-caption t-wrap" data-when="all" style="margin: 0 6px">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          <div class="card" style="padding: 2px 16px">
+          <button class="btn-plain" data-row data-open="sheet-rule-0-all" aria-label="example.com: Напрямую">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.com</span>
+            <span class="pill warning" data-direct>Напрямую</span>
+          </button>
+          <button class="btn-plain" data-row data-open="sheet-rule-1-all" aria-label="*.local: Напрямую">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">*.local</span>
+            <span class="pill warning" data-direct>Напрямую</span>
+          </button>
+          <button class="btn-plain" data-row data-open="sheet-rule-2-all" aria-label="ads.example.org: Блокировать">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">ads.example.org</span>
+            <span class="pill danger">Блокировать</span>
+          </button>
+          <button class="btn-plain" data-row data-open="sheet-rule-3-all" aria-label="example.org: Через VPN">
+            <span class="t-mono pg-grow pg-ellipsis" style="margin-right: 10px">example.org</span>
+            <span class="pill success">Через VPN</span>
+          </button>
+          </div>
+          <button class="btn-plain dashed" data-open="sheet-rule-new-all"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить правило</button>
+        </div>
+
+        <!-- Всегда напрямую -->
+        <div class="pg-stack pg-gap-8">
+          <span class="t-overline" style="margin: 0 6px">Всегда напрямую</span>
+          <div class="card" style="padding: 2px 16px">
+            <div class="pg-stack" style="gap: 3px; padding: 12px 0">
+              <span class="t-strong">Адрес выбранного сервера</span>
+              <span class="t-caption t-wrap">Нужен для самого туннеля, изменить нельзя</span>
+            </div>
+            <div class="divider"></div>
+            <button class="btn-plain" style="padding: 12px 0" data-nav="05-protection.html" aria-label="Локальная сеть">
+              <span class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px">
+                <span class="t-strong">Локальная сеть</span>
+                <span class="t-caption t-wrap">Сейчас запрещена · настраивается в «Защите и утечках»</span>
+              </span>
+              <i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <div class="sheet" id="sheet-rule-new-all" role="dialog" aria-label="Новое правило">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Новое правило</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment" data-action="direct" role="radio" aria-checked="false">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment on" data-action="block" role="radio" aria-checked="true">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Добавить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-0-all" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.com">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment on" data-action="direct" role="radio" aria-checked="true">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-1-all" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="*.local">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment on" data-action="direct" role="radio" aria-checked="true">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-2-all" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="ads.example.org">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment" data-action="direct" role="radio" aria-checked="false">Напрямую</button>
+            <button class="segment" data-action="proxy" role="radio" aria-checked="false">Через VPN</button>
+            <button class="segment on" data-action="block" role="radio" aria-checked="true">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+    <div class="sheet" id="sheet-rule-3-all" role="dialog" aria-label="Правило для сайта">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Правило для сайта</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack" style="gap: 14px; margin: 16px 0">
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Сайт или адрес</span>
+            <input class="input" style="font-family: var(--font-mono)" maxlength="253" placeholder="example.com" aria-label="Сайт или адрес" value="example.org">
+            <span class="t-caption t-wrap">example.com — сайт и его поддомены, *.local — все имена в зоне, geosite:категория — готовый список, 203.0.113.0/24 — адреса подсети.</span>
+          </div>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-small" style="font-weight: 600">Что делать</span>
+            <div class="segments" role="radiogroup" aria-label="Что делать">
+            <button class="segment" data-action="direct" role="radio" aria-checked="false">Напрямую</button>
+            <button class="segment on" data-action="proxy" role="radio" aria-checked="true">Через VPN</button>
+            <button class="segment" data-action="block" role="radio" aria-checked="false">Блокировать</button>
+            </div>
+            <span class="t-caption t-wrap" data-when="idle">Прямые исключения для сайтов и программ действуют только в раздельном режиме.</span>
+          </div>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary danger pg-grow" style="height: 50px" data-close>Удалить</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+</div>
+</body>
+</html>

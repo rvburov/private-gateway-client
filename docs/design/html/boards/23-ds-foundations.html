@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>23 · Дизайн-система: основы — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Доска дизайн-системы — без рамки устройства. Цвета, размеры шрифта, отступы, скругления и тени — только var(--pg-…) */
+  .ds { max-width: 1504px; display: flex; flex-direction: column; gap: 28px; }
+  .ds-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+  .ds-head p { margin: 6px 0 0; max-width: 860px; line-height: var(--pg-type-body-line-height); }
+  .ds-tag { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-caption-size); color: var(--pg-color-text-muted);
+    padding: 6px 10px; border-radius: var(--pg-radius-input); background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-border); white-space: nowrap; }
+  .ds-cols { display: grid; grid-template-columns: 700px minmax(0, 1fr); gap: 40px; align-items: start; }
+  .ds-col { display: flex; flex-direction: column; gap: 32px; min-width: 0; }
+  .ds-section { display: flex; flex-direction: column; gap: 12px; }
+  .ds-section > h2 { margin: 0; }
+  .ds-note { margin: 0; line-height: var(--pg-type-body-line-height); }
+  .ds-panel { background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border); border-radius: var(--pg-radius-card); }
+  .ds-key { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-overline-size); font-weight: 600; color: var(--pg-color-text-primary); }
+  .ds-var { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted); }
+
+  /* Логотип */
+  .ds-logos { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .ds-logo { height: 140px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
+    border-radius: var(--pg-radius-card); background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border);
+    color: var(--pg-color-accent-base); }
+  .ds-logo.inverse { background: var(--pg-color-accent-base); border-color: var(--pg-color-accent-base); color: var(--pg-color-surface-solid); }
+  .ds-logo.inverse .t-caption { color: var(--pg-color-surface-solid); }
+
+  /* Плашки цвета: образец крашен переменной, под ним — ключ токена, переменная CSS и где используется */
+  .ds-swatches { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+  .ds-swatch { border-radius: var(--pg-radius-button); background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border);
+    overflow: hidden; display: flex; flex-direction: column; }
+  .ds-swatch > i { display: block; height: 44px; border-bottom: 1px solid var(--pg-color-line-divider); }
+  .ds-swatch > div { padding: 8px 10px; display: flex; flex-direction: column; gap: 2px; }
+  .ds-swatch .t-caption { color: var(--pg-color-text-secondary); font-size: var(--pg-type-overline-size); }
+  .ds-group-title { margin: 6px 0 -2px; }
+
+  /* Матрица статусов и состояний */
+  .ds-matrix { padding: 6px 14px; }
+  .ds-matrix-row { display: grid; align-items: center; gap: 8px; padding: 8px 0; }
+  .ds-matrix-row + .ds-matrix-row { border-top: 1px solid var(--pg-color-line-divider); }
+  .ds-matrix.status .ds-matrix-row { grid-template-columns: 96px repeat(6, minmax(0, 1fr)); }
+  .ds-matrix.state .ds-matrix-row { grid-template-columns: 30px 150px minmax(0, 1fr) repeat(5, 44px); }
+  .ds-cell { display: flex; flex-direction: column; gap: 3px; align-items: stretch; }
+  .ds-cell > i { display: block; height: 28px; border-radius: var(--pg-radius-chip); border: 1px solid var(--pg-color-line-divider); }
+  .ds-cell > span { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted); text-align: center; }
+  .ds-ring { width: 26px; height: 26px; border-radius: var(--pg-radius-round); border: 3px solid; }
+  .ds-dot { display: block; width: 44px; height: 28px; border-radius: var(--pg-radius-chip); border: 1px solid var(--pg-color-line-divider); }
+  .ds-dot.none { border-style: dashed; }
+  .ds-head-row .ds-cell > span, .ds-head-row span { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-overline-size);
+    color: var(--pg-color-text-muted); text-align: center; }
+
+  /* Шрифты */
+  .ds-type { padding: 4px 16px; }
+  .ds-type-row { display: flex; align-items: baseline; gap: 14px; padding: 9px 0; }
+  .ds-type-row + .ds-type-row { border-top: 1px solid var(--pg-color-line-divider); }
+  .ds-type-row > :first-child { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ds-type-row > .ds-spec { flex: none; width: 250px; text-align: right; display: flex; flex-direction: column; gap: 1px; }
+  .ds-fonts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .ds-font { padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+  .ds-font .ds-font-sample { font-size: var(--pg-type-h1-size); font-weight: 600; }
+  .ds-font .ds-font-mono { font-size: var(--pg-type-mono-size); font-weight: 500; }
+
+  /* Отступы, скругления */
+  .ds-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
+  .ds-space { padding: 12px 14px; display: flex; flex-direction: column; gap: 7px; }
+  .ds-space-row { display: grid; grid-template-columns: 154px 20px minmax(0, 1fr); align-items: center; gap: 10px; }
+  .ds-bar { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ds-bar > i { display: block; height: 10px; border-radius: 3px; background: var(--pg-color-accent-base); opacity: .4; flex: none; }
+  .ds-radii { padding: 14px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px 10px; }
+  .ds-radius { display: flex; flex-direction: column; align-items: center; gap: 4px; text-align: center; }
+  .ds-radius > i { display: block; width: 58px; height: 42px; background: var(--pg-color-accent-tint); border: 1.5px solid var(--pg-color-accent-base); }
+
+  /* Тени и стекло — на фоне окна с пятнами, как в программе */
+  .ds-shadows { position: relative; overflow: hidden; isolation: isolate; padding: 20px; border-radius: var(--pg-radius-card);
+    background: var(--pg-color-bg-window); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+  .ds-shadows::before, .ds-shadows::after { content: ""; position: absolute; z-index: -1; border-radius: 50%; pointer-events: none; }
+  .ds-shadows::before { left: -60px; top: -70px; width: 300px; height: 300px;
+    background: radial-gradient(circle, var(--pg-color-decor-blob1) 35%, transparent 70%); }
+  .ds-shadows::after { right: -40px; bottom: -90px; width: 320px; height: 320px;
+    background: radial-gradient(circle, var(--pg-color-decor-blob2) 35%, transparent 70%); }
+  .ds-shadow { height: 96px; padding: 10px 12px; border-radius: var(--pg-radius-button); background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-border); display: flex; flex-direction: column; gap: 3px; }
+  .ds-shadow.glass { background: var(--pg-glass-fill); backdrop-filter: blur(var(--pg-glass-blur)) saturate(var(--pg-glass-saturate));
+    -webkit-backdrop-filter: blur(var(--pg-glass-blur)) saturate(var(--pg-glass-saturate)); }
+  .ds-shadow.card { background: var(--pg-color-surface-card); }
+
+  /* Размеры раскладки */
+  .ds-layout { padding: 4px 16px; }
+  .ds-layout-row { display: grid; grid-template-columns: 240px 120px minmax(0, 1fr); gap: 12px; align-items: baseline; padding: 8px 0; }
+  .ds-layout-row + .ds-layout-row { border-top: 1px solid var(--pg-color-line-divider); }
+
+  /* Значки: все 58 из Icons.axaml, тем же пером, что в программе */
+  .ds-icons { padding: 8px 14px 14px; display: flex; flex-direction: column; gap: 6px; }
+  .ds-icon-grid { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+  .ds-icon { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px 6px; border-radius: var(--pg-radius-input);
+    color: var(--pg-color-text-primary); text-align: center; min-width: 0; }
+  .ds-icon:hover { color: var(--pg-color-accent-base); }
+  .ds-icon .ds-var { color: var(--pg-color-text-secondary); max-width: 100%; overflow-wrap: normal; line-height: 1.25; letter-spacing: -0.03em; }
+  .ds-icon .t-caption { font-size: var(--pg-type-overline-size); line-height: 1.2; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Основы дизайн-системы — то, из чего собран каждый экран: цвета, шрифты, отступы, скругления, тени, размеры
+  раскладки и все 58 значков. Источник один — <span class="t-mono">shared/specifications/design-tokens.json</span>: из него при сборке
+  получаются тема Avalonia (Tokens.axaml), Compose (Tokens.kt), SwiftUI (Tokens.swift) и <span class="t-mono">assets/tokens.css</span>
+  этого макета. Каждая плашка закрашена самой переменной CSS, под ней — ключ токена и переменная; значения смотрите в tokens.css.
+  Не экран программы, поэтому без рамки устройства.</p>
+
+<div class="ds">
+  <div class="ds-head">
+    <div>
+      <div class="t-overline">Private Gateway · дизайн-система v1.1</div>
+      <h1 class="t-display" style="margin: 6px 0 0">Основы</h1>
+      <p class="t-small">Одни значения для всех версий: C# · Avalonia (Windows, macOS, Linux), Kotlin · Compose (Android), Swift ·
+        SwiftUI (iOS). Значения переносятся в ресурсы один в один: ключ в моноширинном шрифте — имя ресурса
+        (<span class="t-mono">color.accent.base</span> → PgBrush.Accent.Base, PgColor.Accent.Base, <span class="t-mono">--pg-color-accent-base</span>).</p>
+    </div>
+    <span class="ds-tag">design-tokens.json → tokens.css</span>
+  </div>
+
+  <div class="ds-cols">
+    <!-- ===================== Левая колонка ===================== -->
+    <div class="ds-col">
+
+      <section class="ds-section">
+        <h2 class="t-status">1. Логотип</h2>
+        <div class="ds-logos">
+          <div class="ds-logo">
+            <i data-icon="Shield" data-detail="Mark.Ok" data-size="44"></i>
+            <span class="t-caption">основной · на светлом</span>
+          </div>
+          <div class="ds-logo inverse">
+            <i data-icon="Shield" data-detail="Mark.Ok" data-size="44"></i>
+            <span class="t-caption">инверсия · значок программы</span>
+          </div>
+          <div class="ds-logo">
+            <span class="pg-row" style="gap: 10px"><i data-icon="Shield" data-detail="Mark.Ok" data-size="28"></i>
+              <span class="t-brand" style="color: var(--pg-color-text-primary)">Private Gateway</span></span>
+            <span class="t-caption">надпись · type.brand</span>
+          </div>
+        </div>
+        <p class="t-small ds-note">Щит с галочкой (Icon.Shield + Icon.Mark.Ok) на сетке 24 × 24, линия 1,8, скругленные концы. Наименьший
+          размер — 16 px, вокруг знака — свободное поле не меньше ¼ его высоты. Знак всегда синий (accent.base): зеленый, оранжевый,
+          янтарный и красный — только у кнопки-щита и плитки состояния.</p>
+      </section>
+
+      <section class="ds-section">
+        <h2 class="t-status">2. Цвета</h2>
+
+        <span class="t-overline ds-group-title">Фон и поверхности</span>
+        <div class="ds-swatches">
+          <div class="ds-swatch"><i style="background: var(--pg-color-bg-window)"></i><div><span class="ds-key">bg.window</span><span class="ds-var">--pg-color-bg-window</span><span class="t-caption">фон окна под стеклом</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-bg-glass)"></i><div><span class="ds-key">bg.glass</span><span class="ds-var">--pg-color-bg-glass</span><span class="t-caption">слой стекла · 70 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-surface-card)"></i><div><span class="ds-key">surface.card</span><span class="ds-var">--pg-color-surface-card</span><span class="t-caption">карточки · 85 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-surface-solid)"></i><div><span class="ds-key">surface.solid</span><span class="ds-var">--pg-color-surface-solid</span><span class="t-caption">меню, диалоги, островок</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-surface-inset)"></i><div><span class="ds-key">surface.inset</span><span class="ds-var">--pg-color-surface-inset</span><span class="t-caption">подложка в карточке · 3 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-overlay-scrim)"></i><div><span class="ds-key">overlay.scrim</span><span class="ds-var">--pg-color-overlay-scrim</span><span class="t-caption">затемнение под листом · 30 %</span></div></div>
+        </div>
+
+        <span class="t-overline ds-group-title">Текст и линии</span>
+        <div class="ds-swatches">
+          <div class="ds-swatch"><i style="background: var(--pg-color-text-primary)"></i><div><span class="ds-key">text.primary</span><span class="ds-var">--pg-color-text-primary</span><span class="t-caption">основной текст</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-text-secondary)"></i><div><span class="ds-key">text.secondary</span><span class="ds-var">--pg-color-text-secondary</span><span class="t-caption">пояснения (.t-small)</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-text-muted)"></i><div><span class="ds-key">text.muted</span><span class="ds-var">--pg-color-text-muted</span><span class="t-caption">подписи, недоступное</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-line-border)"></i><div><span class="ds-key">line.border</span><span class="ds-var">--pg-color-line-border</span><span class="t-caption">рамки карточек · 8 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-line-divider)"></i><div><span class="ds-key">line.divider</span><span class="ds-var">--pg-color-line-divider</span><span class="t-caption">полосы между строками · 7 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-line-strong)"></i><div><span class="ds-key">line.strong</span><span class="ds-var">--pg-color-line-strong</span><span class="t-caption">рамки полей и кнопок · 14 %</span></div></div>
+        </div>
+
+        <span class="t-overline ds-group-title">Акцент и фокус</span>
+        <div class="ds-swatches">
+          <div class="ds-swatch"><i style="background: var(--pg-color-accent-base)"></i><div><span class="ds-key">accent.base</span><span class="ds-var">--pg-color-accent-base</span><span class="t-caption">кнопки, переключатели, наведение</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-accent-text)"></i><div><span class="ds-key">accent.text</span><span class="ds-var">--pg-color-accent-text</span><span class="t-caption">ссылки, выбранный пункт</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-accent-tint)"></i><div><span class="ds-key">accent.tint</span><span class="ds-var">--pg-color-accent-tint</span><span class="t-caption">фон выбранного · 10 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-accent-nav-active-fill)"></i><div><span class="ds-key">accent.navActiveFill</span><span class="ds-var">--pg-color-accent-nav-active-fill</span><span class="t-caption">значок активного раздела · 16 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-accent-line)"></i><div><span class="ds-key">accent.line</span><span class="ds-var">--pg-color-accent-line</span><span class="t-caption">рамка мягкой кнопки · 16 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-accent-hover)"></i><div><span class="ds-key">accent.hover</span><span class="ds-var">--pg-color-accent-hover</span><span class="t-caption">синяя плитка при наведении · 18 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-focus-ring)"></i><div><span class="ds-key">focus.ring</span><span class="ds-var">--pg-color-focus-ring</span><span class="t-caption">рамка фокуса (Tab)</span></div></div>
+        </div>
+
+        <span class="t-overline ds-group-title">Управление</span>
+        <div class="ds-swatches">
+          <div class="ds-swatch"><i style="background: var(--pg-color-control-track-off)"></i><div><span class="ds-key">control.trackOff</span><span class="ds-var">--pg-color-control-track-off</span><span class="t-caption">переключатель выключен</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-control-segment-track)"></i><div><span class="ds-key">control.segmentTrack</span><span class="ds-var">--pg-color-control-segment-track</span><span class="t-caption">дорожка сегментов · 5 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-control-checkbox-border)"></i><div><span class="ds-key">control.checkboxBorder</span><span class="ds-var">--pg-color-control-checkbox-border</span><span class="t-caption">рамка флажка</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-control-grabber)"></i><div><span class="ds-key">control.grabber</span><span class="ds-var">--pg-color-control-grabber</span><span class="t-caption">ручка нижнего листа</span></div></div>
+        </div>
+
+        <span class="t-overline ds-group-title">Избранное, плитки программ, пятна фона</span>
+        <div class="ds-swatches">
+          <div class="ds-swatch"><i style="background: var(--pg-color-favorite-stroke)"></i><div><span class="ds-key">favorite.stroke</span><span class="ds-var">--pg-color-favorite-stroke</span><span class="t-caption">контур звезды избранного</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-favorite-fill)"></i><div><span class="ds-key">favorite.fill</span><span class="ds-var">--pg-color-favorite-fill</span><span class="t-caption">заливка звезды</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-tile-violet)"></i><div><span class="ds-key">tile.violet</span><span class="ds-var">--pg-color-tile-violet</span><span class="t-caption">плитка программы в «Маршрутизации»</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-tile-teal)"></i><div><span class="ds-key">tile.teal</span><span class="ds-var">--pg-color-tile-teal</span><span class="t-caption">плитка программы · вторая</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-tile-amber)"></i><div><span class="ds-key">tile.amber</span><span class="ds-var">--pg-color-tile-amber</span><span class="t-caption">плитка программы · третья</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-decor-blob1)"></i><div><span class="ds-key">decor.blob1</span><span class="ds-var">--pg-color-decor-blob1</span><span class="t-caption">голубое пятно · 55 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-decor-blob2)"></i><div><span class="ds-key">decor.blob2</span><span class="ds-var">--pg-color-decor-blob2</span><span class="t-caption">зеленое пятно · 45 %</span></div></div>
+          <div class="ds-swatch"><i style="background: var(--pg-color-decor-blob3)"></i><div><span class="ds-key">decor.blob3</span><span class="ds-var">--pg-color-decor-blob3</span><span class="t-caption">сиреневое пятно · 45 %</span></div></div>
+        </div>
+
+        <span class="t-overline ds-group-title">Статусы · color.status.*</span>
+        <div class="ds-panel ds-matrix status">
+          <div class="ds-matrix-row ds-head-row">
+            <span></span><span>base</span><span>text</span><span>tint</span><span>badge</span><span>line</span><span>hover</span>
+          </div>
+          <div class="ds-matrix-row">
+            <div class="pg-stack"><span class="t-strong t-success">Success</span><span class="t-caption">защищено, в порядке</span></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-success-base)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-success-text)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-success-tint)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-success-badge)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-success-line)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-success-hover)"></i></div>
+          </div>
+          <div class="ds-matrix-row">
+            <div class="pg-stack"><span class="t-strong t-warning">Warning</span><span class="t-caption">блокировка, внимание</span></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-warning-base)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-warning-text)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-warning-tint)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-warning-badge)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-warning-line)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-warning-hover)"></i></div>
+          </div>
+          <div class="ds-matrix-row">
+            <div class="pg-stack"><span class="t-strong t-caution">Caution</span><span class="t-caption">прокси, пауза</span></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-caution-base)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-caution-text)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-caution-tint)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-caution-badge)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-caution-line)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-caution-hover)"></i></div>
+          </div>
+          <div class="ds-matrix-row">
+            <div class="pg-stack"><span class="t-strong t-danger">Danger</span><span class="t-caption">выключено, ошибка</span></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-danger-base)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-danger-text)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-danger-tint)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-danger-badge)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-danger-line)"></i></div>
+            <div class="ds-cell"><i style="background: var(--pg-color-status-danger-hover)"></i></div>
+          </div>
+        </div>
+        <p class="t-small ds-note">base — кружок плитки и полоса; text — текст и значок; tint — фон плитки, полосы и бейджа; badge — текст
+          бейджа и полосы; line — рамка полосы; hover — фон плитки при наведении и выборе. Переменная —
+          <span class="t-mono">--pg-color-status-{статус}-{оттенок}</span>.</p>
+      </section>
+
+      <section class="ds-section">
+        <h2 class="t-status">3. Цвет состояния подключения</h2>
+        <div class="ds-panel ds-matrix state">
+          <div class="ds-matrix-row ds-head-row">
+            <span></span><span style="text-align: left">state.*</span><span style="text-align: left">когда</span>
+            <span>ring</span><span>icon</span><span>glow</span><span>fill</span><span>spinner</span>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-connected-ring)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-connected-icon)">Защищено</span><span class="ds-var">state.connected</span></span>
+            <span class="t-small">VPN включен, проверки пройдены</span>
+            <i class="ds-dot" style="background: var(--pg-state-connected-ring)"></i><i class="ds-dot" style="background: var(--pg-state-connected-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-connected-glow)"></i><i class="ds-dot" style="background: var(--pg-state-connected-fill)"></i>
+            <i class="ds-dot none"></i>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-connecting-ring); border-top-color: var(--pg-state-connecting-spinner)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-connecting-icon)">Подключение</span><span class="ds-var">state.connecting</span></span>
+            <span class="t-small">поднимается туннель, интернет на паузе</span>
+            <i class="ds-dot" style="background: var(--pg-state-connecting-ring)"></i><i class="ds-dot" style="background: var(--pg-state-connecting-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-connecting-glow)"></i><i class="ds-dot" style="background: var(--pg-state-connecting-fill)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-connecting-spinner)"></i>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-reconnecting-ring); border-top-color: var(--pg-state-reconnecting-spinner)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-reconnecting-icon)">Подключение</span><span class="ds-var">state.reconnecting</span></span>
+            <span class="t-small">переподключение к тому же серверу</span>
+            <i class="ds-dot" style="background: var(--pg-state-reconnecting-ring)"></i><i class="ds-dot" style="background: var(--pg-state-reconnecting-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-reconnecting-glow)"></i><i class="ds-dot" style="background: var(--pg-state-reconnecting-fill)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-reconnecting-spinner)"></i>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-blocked-ring)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-blocked-icon)">Блокировка</span><span class="ds-var">state.blocked</span></span>
+            <span class="t-small">сервер не отвечает или строгий режим — блок держит трафик</span>
+            <i class="ds-dot" style="background: var(--pg-state-blocked-ring)"></i><i class="ds-dot" style="background: var(--pg-state-blocked-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-blocked-glow)"></i><i class="ds-dot" style="background: var(--pg-state-blocked-fill)"></i>
+            <i class="ds-dot none"></i>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-partial-ring)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-partial-icon)">Прокси · Пауза</span><span class="ds-var">state.partial</span></span>
+            <span class="t-small">защищен не весь трафик или пауза для входа в Wi-Fi</span>
+            <i class="ds-dot" style="background: var(--pg-state-partial-ring)"></i><i class="ds-dot" style="background: var(--pg-state-partial-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-partial-glow)"></i><i class="ds-dot" style="background: var(--pg-state-partial-fill)"></i>
+            <i class="ds-dot none"></i>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-error-ring)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-error-icon)">Ошибка</span><span class="ds-var">state.error</span></span>
+            <span class="t-small">сбой службы или ядра</span>
+            <i class="ds-dot" style="background: var(--pg-state-error-ring)"></i><i class="ds-dot" style="background: var(--pg-state-error-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-error-glow)"></i><i class="ds-dot" style="background: var(--pg-state-error-fill)"></i>
+            <i class="ds-dot none"></i>
+          </div>
+          <div class="ds-matrix-row">
+            <span class="ds-ring" style="border-color: var(--pg-state-off-ring)"></span>
+            <span class="pg-stack"><span class="t-strong" style="color: var(--pg-state-off-icon)">Выключено</span><span class="ds-var">state.off</span></span>
+            <span class="t-small">защита выключена, IP открыт</span>
+            <i class="ds-dot" style="background: var(--pg-state-off-ring)"></i><i class="ds-dot" style="background: var(--pg-state-off-icon)"></i>
+            <i class="ds-dot" style="background: var(--pg-state-off-glow)"></i><i class="ds-dot" style="background: var(--pg-state-off-fill)"></i>
+            <i class="ds-dot none"></i>
+          </div>
+        </div>
+        <p class="t-small ds-note">ring — кольцо кнопки-щита; icon — щит, заголовок состояния и подпись под щитом; glow — свечение щита;
+          fill — фон плитки состояния и щита при наведении; spinner — дуга, которая бежит по кольцу при подключении. Переменная —
+          <span class="t-mono">--pg-state-{состояние}-{часть}</span>. Щит во всех состояниях — на доске 24.</p>
+      </section>
+
+      <section class="ds-section">
+        <h2 class="t-status">4. Размеры раскладки</h2>
+        <div class="ds-panel ds-layout">
+          <div class="ds-layout-row"><span class="ds-key">layout.desktopWindow</span><span class="t-mono">440 × 760</span><span class="t-small">окно десктопа, размер не меняется</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.mobileWidth</span><span class="t-mono">360–440</span><span class="t-small">ширина телефона: карточки тянутся, плитки 2 × 2</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.island.*</span><span class="t-mono">68 · 26</span><span class="t-small">высота и скругление островка; поля 12 (телефон 14), снизу 12</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.island.bump*</span><span class="t-mono">48 · 18</span><span class="t-small">выступ под щит — дуга R 48 и плавные скругления R 18</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.island.navColumns</span><span class="t-mono">… 92 …</span><span class="t-small">четыре раздела и место под щит 92 (телефон 76)</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.powerButton</span><span class="t-mono">80 · 4 · 36</span><span class="t-small">кнопка-щит, кольцо, значок</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.touchTarget</span><span class="t-mono">44</span><span class="t-small">наименьшая зона нажатия</span></div>
+          <div class="ds-layout-row"><span class="ds-key">layout.scrollBottomPadding</span><span class="t-mono">160</span><span class="t-small">запас внизу страницы: содержимое уходит под островок</span></div>
+        </div>
+      </section>
+    </div>
+
+    <!-- ===================== Правая колонка ===================== -->
+    <div class="ds-col">
+
+      <section class="ds-section">
+        <h2 class="t-status">5. Шрифты</h2>
+        <p class="t-small ds-note">Компьютер: Inter — интерфейс, JetBrains Mono — IP, пинг, время, коды. Оба под OFL и встроены в программу
+          (те же файлы — в <span class="t-mono">assets/fonts</span>). Телефоны: системные шрифты — Roboto и Roboto Mono на Android, SF Pro
+          и SF Mono на iOS; размеры и начертания те же.</p>
+        <div class="ds-panel ds-type">
+          <div class="ds-type-row"><span class="t-display">Подключение защищено</span><span class="ds-spec"><span class="ds-key">.t-display · type.display</span><span class="ds-var">28 / 700 · −2 %</span></span></div>
+          <div class="ds-type-row"><span class="t-h1">Настройки</span><span class="ds-spec"><span class="ds-key">.t-h1 · type.h1</span><span class="ds-var">22 / 700 · −1,5 %</span></span></div>
+          <div class="ds-type-row"><span class="t-status t-success">IP скрыт</span><span class="ds-spec"><span class="ds-key">.t-status · type.status</span><span class="ds-var">20 / 700 · −1,5 %</span></span></div>
+          <div class="ds-type-row"><span class="t-brand">Private Gateway</span><span class="ds-spec"><span class="ds-key">.t-brand · type.brand</span><span class="ds-var">19 / 600 · −1,5 %</span></span></div>
+          <div class="ds-type-row"><span class="t-title">NL · Нидерланды 01</span><span class="ds-spec"><span class="ds-key">.t-title · type.title</span><span class="ds-var">15 / 600</span></span></div>
+          <div class="ds-type-row"><span class="t-body">Весь трафик идет через туннель</span><span class="ds-spec"><span class="ds-key">.t-body · type.body</span><span class="ds-var">14 / 400 · строка 1,45</span></span></div>
+          <div class="ds-type-row"><span class="t-strong">Блок при обрыве</span><span class="ds-spec"><span class="ds-key">.t-strong · type.bodyStrong</span><span class="ds-var">14 / 600</span></span></div>
+          <div class="ds-type-row"><span class="t-small">Амстердам · дата-центр · AS64500</span><span class="ds-spec"><span class="ds-key">.t-small · type.small</span><span class="ds-var">13 / 400 · text.secondary</span></span></div>
+          <div class="ds-type-row"><span class="t-caption">Проверено только что</span><span class="ds-spec"><span class="ds-key">.t-caption · type.caption</span><span class="ds-var">12 / 400 · text.muted</span></span></div>
+          <div class="ds-type-row"><span class="t-overline">Сайты видят ваш IP</span><span class="ds-spec"><span class="ds-key">.t-overline · type.overline</span><span class="ds-var">11 / 600 · +6 % · прописные</span></span></div>
+          <div class="ds-type-row"><span style="font-size: var(--pg-type-nav-size); font-weight: var(--pg-type-nav-weight-active); color: var(--pg-color-accent-base)">Главная</span><span class="ds-spec"><span class="ds-key">.btn-nav · type.nav</span><span class="ds-var">11,5 (телефон 10,5) / 500–600</span></span></div>
+          <div class="ds-type-row"><span class="t-mono-large">203.0.113.24</span><span class="ds-spec"><span class="ds-key">.t-mono-large · type.monoLarge</span><span class="ds-var">21 / 600 · −1 %</span></span></div>
+          <div class="ds-type-row"><span class="t-mono">42 мс · 00:42:17</span><span class="ds-spec"><span class="ds-key">.t-mono · type.mono</span><span class="ds-var">13 / 500</span></span></div>
+        </div>
+        <div class="ds-fonts">
+          <div class="ds-panel ds-font">
+            <span class="t-overline">Windows · macOS · Linux</span>
+            <span class="ds-font-sample" style="font-family: var(--pg-font-desktop-ui)">Аа Бб Ии 0123</span>
+            <span class="ds-font-mono" style="font-family: var(--pg-font-desktop-mono)">203.0.113.24 · 42 мс</span>
+            <span class="ds-var">font.desktop · Inter, JetBrains Mono</span>
+          </div>
+          <div class="ds-panel ds-font">
+            <span class="t-overline">Android</span>
+            <span class="ds-font-sample" style="font-family: var(--pg-font-android-ui)">Аа Бб Ии 0123</span>
+            <span class="ds-font-mono" style="font-family: var(--pg-font-android-mono)">203.0.113.24 · 42 мс</span>
+            <span class="ds-var">font.android · Roboto, Roboto Mono</span>
+          </div>
+          <div class="ds-panel ds-font">
+            <span class="t-overline">iOS</span>
+            <span class="ds-font-sample" style="font-family: var(--pg-font-ios-ui)">Аа Бб Ии 0123</span>
+            <span class="ds-font-mono" style="font-family: var(--pg-font-ios-mono)">203.0.113.24 · 42 мс</span>
+            <span class="ds-var">font.ios · SF Pro, SF Mono</span>
+          </div>
+        </div>
+        <p class="t-caption ds-note">Шрифта телефона нет на этом компьютере — браузер подставит Inter: так и в макете на Windows вместо SF Pro
+          виден Inter.</p>
+      </section>
+
+      <div class="ds-pair">
+        <section class="ds-section">
+          <h2 class="t-status">6. Отступы</h2>
+          <div class="ds-panel ds-space">
+            <div class="ds-space-row"><span class="ds-key">space.xxs</span><span class="ds-var">4</span><span class="ds-bar"><i style="width: var(--pg-space-xxs)"></i><span class="t-caption">значок ↔ текст в плашке</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.xs</span><span class="ds-var">6</span><span class="ds-bar"><i style="width: var(--pg-space-xs)"></i><span class="t-caption">между плитками</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.s</span><span class="ds-var">8</span><span class="ds-bar"><i style="width: var(--pg-space-s)"></i><span class="t-caption">внутри строк</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.m</span><span class="ds-var">10</span><span class="ds-bar"><i style="width: var(--pg-space-m)"></i><span class="t-caption">между карточками</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.l</span><span class="ds-var">12</span><span class="ds-bar"><i style="width: var(--pg-space-l)"></i><span class="t-caption">значок ↔ текст в строке</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.card</span><span class="ds-var">16</span><span class="ds-bar"><i style="width: var(--pg-space-card)"></i><span class="t-caption">внутри карточки</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.windowSide</span><span class="ds-var">20</span><span class="ds-bar"><i style="width: var(--pg-space-window-side)"></i><span class="t-caption">поля окна</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.windowSideMobile</span><span class="ds-var">16</span><span class="ds-bar"><i style="width: var(--pg-space-window-side-mobile)"></i><span class="t-caption">поля телефона</span></span></div>
+            <div class="ds-space-row"><span class="ds-key">space.island</span><span class="ds-var">24</span><span class="ds-bar"><i style="width: var(--pg-space-island)"></i><span class="t-caption">поля островка, диалога</span></span></div>
+          </div>
+        </section>
+        <section class="ds-section">
+          <h2 class="t-status">7. Скругления</h2>
+          <div class="ds-panel ds-radii">
+            <div class="ds-radius"><i style="border-radius: var(--pg-radius-chip)"></i><span class="ds-key">radius.chip</span><span class="t-caption">7 · бейдж, код страны</span></div>
+            <div class="ds-radius"><i style="border-radius: var(--pg-radius-input)"></i><span class="ds-key">radius.input</span><span class="t-caption">10 · поля, выбор, пункты</span></div>
+            <div class="ds-radius"><i style="border-radius: var(--pg-radius-button)"></i><span class="ds-key">radius.button</span><span class="t-caption">13 · кнопки, плитки, строки</span></div>
+            <div class="ds-radius"><i style="border-radius: var(--pg-radius-card)"></i><span class="ds-key">radius.card</span><span class="t-caption">19 · карточки, меню</span></div>
+            <div class="ds-radius"><i style="border-radius: var(--pg-radius-panel)"></i><span class="ds-key">radius.panel</span><span class="t-caption">25 · нижний лист</span></div>
+            <div class="ds-radius"><i style="border-radius: var(--pg-radius-round)"></i><span class="ds-key">radius.round</span><span class="t-caption">50 % · кнопка-щит</span></div>
+          </div>
+        </section>
+      </div>
+
+      <section class="ds-section">
+        <h2 class="t-status">8. Тени и стекло</h2>
+        <div class="ds-shadows">
+          <div class="ds-shadow card" style="box-shadow: var(--pg-shadow-card)"><span class="t-strong">Карточка</span><span class="ds-key">shadow.card</span><span class="ds-var">0 1 2 · 4 % + 0 8 24 · 6 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-popup)"><span class="t-strong">Меню</span><span class="ds-key">shadow.popup</span><span class="ds-var">0 16 40 · 20 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-island)"><span class="t-strong">Островок</span><span class="ds-key">shadow.island</span><span class="ds-var">0 6 18 · 14 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-sheet)"><span class="t-strong">Нижний лист</span><span class="ds-key">shadow.sheet</span><span class="ds-var">0 −12 40 · 20 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-dialog)"><span class="t-strong">Диалог</span><span class="ds-key">shadow.dialog</span><span class="ds-var">0 20 50 · 30 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-accent); border-color: var(--pg-color-accent-line)"><span class="t-strong">Акцент</span><span class="ds-key">shadow.accent</span><span class="ds-var">0 6 16 · акцент 26 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-chosen); border: 1.5px solid var(--pg-color-accent-base)"><span class="t-strong">Выбранный сервер</span><span class="ds-key">shadow.chosen</span><span class="ds-var">0 4 14 · акцент 12 %</span></div>
+          <div class="ds-shadow" style="box-shadow: var(--pg-shadow-selected); border: 1.5px solid var(--pg-color-status-success-base)"><span class="t-strong">Выбранное · успех</span><span class="ds-key">shadow.selected</span><span class="ds-var">0 4 14 · успех 12 %</span></div>
+          <div class="ds-shadow glass"><span class="t-strong">Стекло</span><span class="ds-key">glass.*</span><span class="ds-var">fill 70 % · blur 48 · saturate 1,7</span></div>
+        </div>
+        <p class="t-small ds-note">Окно программы рисует свой фон: цвет окна (bg.window) и три пятна (decor.blob1–3) под слоем стекла
+          (glass.fill) — одинаково на Windows, macOS и Linux, без Mica и прозрачности ОС. Если размытие недоступно, вместо стекла —
+          сплошной glass.fallback.</p>
+      </section>
+
+
+      <section class="ds-section">
+        <h2 class="t-status">9. Значки</h2>
+        <div class="ds-panel ds-icons">
+          <span class="t-overline group-label" style="margin-top: 8px">Щит и отметки · кнопка-щит, плитка состояния</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Shield"></i><span class="ds-var">Shield</span><span class="t-caption">щит</span></div>
+            <div class="ds-icon"><i data-icon="Mark.Ok"></i><span class="ds-var">Mark.<wbr>Ok</span><span class="t-caption">защищено</span></div>
+            <div class="ds-icon"><i data-icon="Mark.Wait"></i><span class="ds-var">Mark.<wbr>Wait</span><span class="t-caption">подключение</span></div>
+            <div class="ds-icon"><i data-icon="Mark.Alert"></i><span class="ds-var">Mark.<wbr>Alert</span><span class="t-caption">внимание</span></div>
+            <div class="ds-icon"><i data-icon="Mark.Off"></i><span class="ds-var">Mark.<wbr>Off</span><span class="t-caption">выключено</span></div>
+            <div class="ds-icon"><i data-icon="Shield" data-detail="Mark.Ok"></i><span class="ds-var">Shield + Ok</span><span class="t-caption">знак программы</span></div>
+          </div>
+          <span class="t-overline group-label">Плитки проверок</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Chip.Ok"></i><span class="ds-var">Chip.<wbr>Ok</span><span class="t-caption">в порядке</span></div>
+            <div class="ds-icon"><i data-icon="Chip.Dots"></i><span class="ds-var">Chip.<wbr>Dots</span><span class="t-caption">поднимается</span></div>
+            <div class="ds-icon"><i data-icon="Chip.Dash"></i><span class="ds-var">Chip.<wbr>Dash</span><span class="t-caption">выключено</span></div>
+            <div class="ds-icon"><i data-icon="Chip.Warn"></i><span class="ds-var">Chip.<wbr>Warn</span><span class="t-caption">частично</span></div>
+          </div>
+          <span class="t-overline group-label">Островок</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Nav.Home"></i><span class="ds-var">Nav.<wbr>Home</span><span class="t-caption">главная</span></div>
+            <div class="ds-icon"><i data-icon="Nav.Servers"></i><span class="ds-var">Nav.<wbr>Servers</span><span class="t-caption">серверы</span></div>
+            <div class="ds-icon"><i data-icon="Nav.Servers.Detail"></i><span class="ds-var">Nav.<wbr>Servers.<wbr>Detail</span><span class="t-caption">деталь</span></div>
+            <div class="ds-icon"><i data-icon="Nav.Check"></i><span class="ds-var">Nav.<wbr>Check</span><span class="t-caption">проверка</span></div>
+            <div class="ds-icon"><i data-icon="Nav.Check.Detail"></i><span class="ds-var">Nav.<wbr>Check.<wbr>Detail</span><span class="t-caption">деталь</span></div>
+            <div class="ds-icon"><i data-icon="Nav.Settings"></i><span class="ds-var">Nav.<wbr>Settings</span><span class="t-caption">настройки</span></div>
+            <div class="ds-icon"><i data-icon="Nav.Settings.Detail"></i><span class="ds-var">Nav.<wbr>Settings.<wbr>Detail</span><span class="t-caption">деталь</span></div>
+          </div>
+          <span class="t-overline group-label">Действия</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Plus"></i><span class="ds-var">Plus</span><span class="t-caption">добавить</span></div>
+            <div class="ds-icon"><i data-icon="Refresh"></i><span class="ds-var">Refresh</span><span class="t-caption">обновить</span></div>
+            <div class="ds-icon"><i data-icon="Copy"></i><span class="ds-var">Copy</span><span class="t-caption">копировать</span></div>
+            <div class="ds-icon"><i data-icon="Eye"></i><span class="ds-var">Eye</span><span class="t-caption">показать</span></div>
+            <div class="ds-icon"><i data-icon="EyeOff"></i><span class="ds-var">EyeOff</span><span class="t-caption">скрыть</span></div>
+            <div class="ds-icon"><i data-icon="ChevronDown"></i><span class="ds-var">ChevronDown</span><span class="t-caption">раскрыть</span></div>
+            <div class="ds-icon"><i data-icon="ChevronRight"></i><span class="ds-var">ChevronRight</span><span class="t-caption">перейти</span></div>
+            <div class="ds-icon"><i data-icon="Back"></i><span class="ds-var">Back</span><span class="t-caption">назад</span></div>
+            <div class="ds-icon"><i data-icon="Search"></i><span class="ds-var">Search</span><span class="t-caption">поиск</span></div>
+            <div class="ds-icon"><i data-icon="Filter"></i><span class="ds-var">Filter</span><span class="t-caption">фильтр</span></div>
+            <div class="ds-icon"><i data-icon="More"></i><span class="ds-var">More</span><span class="t-caption">еще</span></div>
+            <div class="ds-icon"><i data-icon="Star"></i><span class="ds-var">Star</span><span class="t-caption">избранное</span></div>
+            <div class="ds-icon"><i data-icon="Close"></i><span class="ds-var">Close</span><span class="t-caption">закрыть</span></div>
+            <div class="ds-icon"><i data-icon="Edit"></i><span class="ds-var">Edit</span><span class="t-caption">изменить</span></div>
+            <div class="ds-icon"><i data-icon="Qr"></i><span class="ds-var">Qr</span><span class="t-caption">QR-код</span></div>
+            <div class="ds-icon"><i data-icon="Clipboard"></i><span class="ds-var">Clipboard</span><span class="t-caption">буфер</span></div>
+            <div class="ds-icon"><i data-icon="Link"></i><span class="ds-var">Link</span><span class="t-caption">ссылка</span></div>
+            <div class="ds-icon"><i data-icon="File"></i><span class="ds-var">File</span><span class="t-caption">файл</span></div>
+            <div class="ds-icon"><i data-icon="Trash"></i><span class="ds-var">Trash</span><span class="t-caption">удалить</span></div>
+            <div class="ds-icon"><i data-icon="Clock"></i><span class="ds-var">Clock</span><span class="t-caption">время, пауза</span></div>
+            <div class="ds-icon"><i data-icon="Pulse"></i><span class="ds-var">Pulse</span><span class="t-caption">замер</span></div>
+            <div class="ds-icon"><i data-icon="ServerAdd"></i><span class="ds-var">ServerAdd</span><span class="t-caption">свой сервер</span></div>
+            <div class="ds-icon"><i data-icon="Upload"></i><span class="ds-var">Upload</span><span class="t-caption">выгрузить</span></div>
+            <div class="ds-icon"><i data-icon="Lock"></i><span class="ds-var">Lock</span><span class="t-caption">замок</span></div>
+            <div class="ds-icon"><i data-icon="Warning"></i><span class="ds-var">Warning</span><span class="t-caption">предупреждение</span></div>
+          </div>
+          <span class="t-overline group-label">Сеть</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Net.WiFi"></i><span class="ds-var">Net.<wbr>WiFi</span><span class="t-caption">Wi-Fi</span></div>
+            <div class="ds-icon"><i data-icon="Net.Ethernet"></i><span class="ds-var">Net.<wbr>Ethernet</span><span class="t-caption">кабель</span></div>
+            <div class="ds-icon"><i data-icon="Net.Usb"></i><span class="ds-var">Net.<wbr>Usb</span><span class="t-caption">USB-модем</span></div>
+            <div class="ds-icon"><i data-icon="Net.Mobile"></i><span class="ds-var">Net.<wbr>Mobile</span><span class="t-caption">мобильная</span></div>
+            <div class="ds-icon"><i data-icon="Net.None"></i><span class="ds-var">Net.<wbr>None</span><span class="t-caption">нет сети</span></div>
+          </div>
+          <span class="t-overline group-label">Разделы «Для опытных»</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Adv.Protection"></i><span class="ds-var">Adv.<wbr>Protection</span><span class="t-caption">защита</span></div>
+            <div class="ds-icon"><i data-icon="Adv.Core"></i><span class="ds-var">Adv.<wbr>Core</span><span class="t-caption">ядро</span></div>
+            <div class="ds-icon"><i data-icon="Adv.Routing"></i><span class="ds-var">Adv.<wbr>Routing</span><span class="t-caption">маршруты</span></div>
+            <div class="ds-icon"><i data-icon="Adv.Profiles"></i><span class="ds-var">Adv.<wbr>Profiles</span><span class="t-caption">подписки</span></div>
+            <div class="ds-icon"><i data-icon="Adv.Check"></i><span class="ds-var">Adv.<wbr>Check</span><span class="t-caption">проверка</span></div>
+            <div class="ds-icon"><i data-icon="Adv.Backup"></i><span class="ds-var">Adv.<wbr>Backup</span><span class="t-caption">копия</span></div>
+            <div class="ds-icon"><i data-icon="Adv.About"></i><span class="ds-var">Adv.<wbr>About</span><span class="t-caption">о программе</span></div>
+          </div>
+          <span class="t-overline group-label">Лаборатория сети</span>
+          <div class="ds-icon-grid">
+            <div class="ds-icon"><i data-icon="Lab.Device"></i><span class="ds-var">Lab.<wbr>Device</span><span class="t-caption">компьютер</span></div>
+            <div class="ds-icon"><i data-icon="Lab.Router"></i><span class="ds-var">Lab.<wbr>Router</span><span class="t-caption">роутер</span></div>
+            <div class="ds-icon"><i data-icon="Lab.Provider"></i><span class="ds-var">Lab.<wbr>Provider</span><span class="t-caption">провайдер</span></div>
+            <div class="ds-icon"><i data-icon="Lab.Layers"></i><span class="ds-var">Lab.<wbr>Layers</span><span class="t-caption">уровни</span></div>
+            <div class="ds-icon"><i data-icon="Lab.Site"></i><span class="ds-var">Lab.<wbr>Site</span><span class="t-caption">сайт</span></div>
+          </div>
+        </div>
+        <p class="t-small ds-note">58 контуров из <span class="t-mono">Themes/Icons.axaml</span> (assets/icons.js собирается из него): сетка 24 × 24,
+          линия 1,7–2, скругленные концы и углы, без заливки. Деталь (*.Detail, Mark.*) рисуется поверх основы. Заливка 16 % акцента —
+          только у значка активного раздела островка.</p>
+      </section>
+    </div>
+  </div>
+</div>
+</body>
+</html>

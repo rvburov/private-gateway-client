@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>2 · Серверы — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Страница как в программе: шапка, поиск и вкладки стоят, прокручивается только список (ServersPage, Grid «Auto,Auto,*») */
+  .sv-page { display: flex; flex-direction: column; overflow: hidden; counter-reset: sv-off; }
+  .sv-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  .sv-scroll::-webkit-scrollbar { display: none; }
+  .sv-scroll > .pg-page-end { height: var(--pg-layout-scroll-bottom-padding); }
+  .sv-top { position: relative; margin: 0 var(--side); display: flex; flex-direction: column; gap: 10px; }
+
+  /* Поиск: 46 в высоту, фон карточки; пока открыт фильтр — рамка акцентом (Border.search.open) */
+  .sv-search { height: 46px; padding: 0 4px 0 14px; background: var(--pg-color-surface-card); gap: 0; }
+  .sv-search input { margin: 0 8px; font-size: var(--pg-type-body-size); }
+  .pg-app:has(.sv-pop.is-open) .sv-search { border-color: var(--pg-color-accent-base); }
+  .sv-filter-wrap { position: relative; flex: none; }
+  .sv-filter { width: 38px; height: 38px; border-radius: var(--pg-radius-input); color: var(--pg-color-text-secondary); }
+  .pg-app:has(.sv-pop.is-open) .sv-filter,
+  .pg-app:has(.sv-pop .check:not(.on), .sv-sort-name.on) .sv-filter { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  /* Число изменений фильтра: скрытые протоколы и порядок не по пингу (FilterCount) — счетчиком CSS */
+  .sv-pop .check:not(.on), .sv-pop .sv-sort-name.on { counter-increment: sv-off; }
+  .sv-count { display: none; position: absolute; top: 3px; right: 3px; min-width: 16px; height: 16px; padding: 0 4px; border-radius: 8px;
+    background: var(--pg-color-accent-base); color: var(--pg-color-surface-solid); font-size: var(--pg-type-overline-size); font-weight: 700;
+    line-height: 16px; text-align: center; pointer-events: none; }
+  .sv-count::after { content: counter(sv-off); }
+  .pg-app:has(.sv-pop .check:not(.on), .sv-sort-name.on) .sv-count { display: block; }
+
+  /* Вкладки «Все · Избранные · Недавние» — сегменты, как RadioButton.segment программы */
+  .sv-tabs { padding: 4px; gap: 0; border-radius: var(--pg-radius-button); background: var(--pg-color-control-segment-track); }
+  .sv-tabs .tab { flex: 1; height: 38px; padding: 0 8px; border-radius: var(--pg-radius-input); text-align: center; }
+  .sv-tabs .tab.on { background: var(--pg-color-surface-solid); box-shadow: var(--pg-shadow-card); color: var(--pg-color-text-primary); }
+
+  /* Панель фильтра: под полем поиска, во всю ширину, поверх вкладок и списка (Margin 20,52,20,0; Padding 14).
+     Закрытая — невидима, но флажки в ней считаются (счетчик выше) */
+  .sv-pop { top: 52px !important; left: 0 !important; right: 0 !important; min-width: 0; padding: 14px; }
+  .sv-pop:not(.is-open) { display: block; visibility: hidden; }
+  .sv-pop:not(.is-open) * { visibility: hidden !important; }
+  .sv-protos { display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; row-gap: 2px; }
+
+  /* Группа и строка сервера (Border.serverRow): выбранная — белая, рамка и тень цвета защиты, метка «активен» */
+  .sv-group-head { display: flex; align-items: flex-end; margin: 0 4px 2px; gap: 8px; }
+  /* Число в заголовке группы — видимые строки (Rows.Count после фильтра): счетчик CSS, поэтому заголовок
+     стоит в разметке после строк, а на экране — над ними (order) */
+  .sv-group { counter-reset: sv-n; }
+  .sv-row { counter-increment: sv-n; }
+  .sv-group > .sv-group-head { order: -1; }
+  .sv-n::after { content: counter(sv-n); }
+
+  /* Подсказка сверху (MainWindow: Margin 20,56): по ширине текста, на телефоне — ниже полосы состояния */
+  .pg-app > .toast { width: max-content; pointer-events: none; }
+  .pg-frame[data-device="ios"] .pg-app > .toast { top: calc(56px + 50px); }
+  .pg-frame[data-device="android"] .pg-app > .toast { top: calc(56px + 32px); }
+  .sv-list.segments { display: flex; flex-direction: column; gap: 6px; padding: 0; background: none; border-radius: 0; }
+  .sv-row { position: relative; }
+  .sv-row > .segment { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: auto; min-height: 58px;
+    padding: 8px 44px 8px 12px; border: 1.5px solid var(--pg-color-line-border); border-radius: var(--pg-radius-button);
+    background: var(--pg-color-surface-card); color: var(--pg-color-text-primary); font-size: var(--pg-type-body-size); font-weight: 400;
+    text-align: left; box-shadow: none; }
+  .sv-row > .segment:hover { color: var(--pg-color-accent-base); }
+  .sv-row > .segment.on { background: var(--pg-color-surface-solid); border-color: var(--pg-color-status-success-base);
+    box-shadow: var(--pg-shadow-selected); font-weight: 400; }
+  .sv-cc { width: 40px; height: 28px; flex: none; display: grid; place-items: center; border-radius: var(--pg-radius-chip);
+    background: var(--pg-color-accent-tint); border: 1px solid var(--pg-color-accent-line); color: var(--pg-color-accent-text);
+    font-size: var(--pg-type-caption-size); font-weight: 700; }
+  .sv-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; margin: 0 8px 0 12px; }
+  .sv-addr { font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted); }
+  .sv-tag { display: none; margin-right: 10px; padding: 3px 7px; border-radius: var(--pg-radius-chip); flex: none;
+    background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-badge);
+    font-size: var(--pg-type-overline-size); font-weight: 700; }
+  .segment.on .sv-tag { display: inline-block; }
+  .sv-ping { min-width: 52px; flex: none; text-align: right; font-family: var(--font-mono); font-size: var(--pg-type-caption-size); font-weight: 600; }
+  .sv-row > .sv-more { position: absolute; right: 6px; top: 50%; margin-top: -17px; width: 34px; height: 34px;
+    border-radius: var(--pg-radius-input); color: var(--pg-color-text-muted); }
+  .sv-row > .sv-more:hover { color: var(--pg-color-accent-base); }
+
+  /* Фильтр протоколов и сортировка без своего скрипта: флажок снят — строки протокола скрыты, «По названию» — порядок по имени */
+  .pg-app:has(.sv-p-vless:not(.on)) .sv-row[data-proto="vless"],
+  .pg-app:has(.sv-p-hy2:not(.on)) .sv-row[data-proto="hy2"],
+  .pg-app:has(.sv-p-tuic:not(.on)) .sv-row[data-proto="tuic"],
+  .pg-app:has(.sv-p-wg:not(.on)) .sv-row[data-proto="wg"],
+  .pg-app:has(.sv-p-trojan:not(.on)) .sv-row[data-proto="trojan"] { display: none; }
+  .pg-app:has(.sv-sort-name.on) .sv-list.sortable > .sv-row { order: var(--by-name); }
+  /* Ничего не осталось — пояснение вместо группы (servers.empty) */
+  .sv-empty { display: none; margin: 20px 4px; text-align: center; color: var(--pg-color-text-muted); }
+  .pg-app:has(.sv-p-vless:not(.on)):has(.sv-p-hy2:not(.on)):has(.sv-p-tuic:not(.on)):has(.sv-p-wg:not(.on)):has(.sv-p-trojan:not(.on))
+    [data-tab-panel="all"] .sv-group { display: none; }
+  .pg-app:has(.sv-p-vless:not(.on)):has(.sv-p-hy2:not(.on)):has(.sv-p-tuic:not(.on)):has(.sv-p-wg:not(.on)):has(.sv-p-trojan:not(.on))
+    [data-tab-panel="all"] .sv-empty { display: block; }
+  .pg-app:has(.sv-p-vless:not(.on)):has(.sv-p-hy2:not(.on)) [data-tab-panel="fav"] .sv-group { display: none; }
+  .pg-app:has(.sv-p-vless:not(.on)):has(.sv-p-hy2:not(.on)) [data-tab-panel="fav"] .sv-empty { display: block; }
+  .pg-app:has(.sv-p-vless:not(.on)):has(.sv-p-wg:not(.on)) [data-tab-panel="recent"] .sv-group { display: none; }
+  .pg-app:has(.sv-p-vless:not(.on)):has(.sv-p-wg:not(.on)) [data-tab-panel="recent"] .sv-empty { display: block; }
+  .sv-note { margin: 12px 4px 0; line-height: var(--pg-type-body-line-height); }
+</style>
+</head>
+<body>
+<p class="pg-board-note">«Серверы» (ServersPage программы). Шапка, поиск и вкладки стоят на месте, прокручивается только список. Нажатие
+  на строку выбирает сервер (рамка цвета защиты и метка «активен», при выключенной защите — «выбран»), «⋯» открывает карточку
+  сервера. Кнопка фильтра в поле поиска открывает протоколы и сортировку: снятый флажок прячет серверы протокола (число в
+  заголовке группы — сколько строк видно), «По названию» меняет порядок, число на кнопке — сколько настроек отличается от обычных. «Обновить серверы» — крутится только стрелка. Звезды
+  избранного в строке нет, как в программе: она в карточке сервера.</p>
+
+<div class="pg-screens">
+  <!-- 1. Список, защита включена -->
+  <section class="pg-screen" data-state="connected" data-caption="Список · вкладка «Все»">
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <div class="sv-top">
+        <!-- Фильтр и сортировка (до поля поиска: число на кнопке считает флажки панели) -->
+        <div class="popup sv-pop" id="sv-filter-1">
+          <div class="pg-stack pg-gap-12">
+            <span class="t-overline">Протоколы</span>
+            <div class="sv-protos">
+              <button class="check on sv-p-vless"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>VLESS</button>
+              <button class="check on sv-p-hy2"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>Hysteria2</button>
+              <button class="check on sv-p-tuic"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>TUIC</button>
+              <button class="check on sv-p-wg"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>WireGuard</button>
+              <button class="check on sv-p-trojan"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>Trojan</button>
+            </div>
+            <span class="t-overline">Сортировка</span>
+            <div class="segments">
+              <button class="segment on">По пингу</button>
+              <button class="segment sv-sort-name">По названию</button>
+            </div>
+            <div class="pg-row">
+              <button class="btn-secondary">Сбросить</button>
+              <span class="pg-grow"></span>
+              <button class="btn-primary" data-close>Готово</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="search sv-search">
+          <i data-icon="Search" data-stroke="2" data-size="17"></i>
+          <input class="pg-grow" type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+          <span class="sv-filter-wrap">
+            <button class="btn-icon sv-filter" data-open="sv-filter-1" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+            <span class="sv-count"></span>
+          </span>
+        </div>
+
+        <div class="tabs sv-tabs" aria-label="Списки серверов">
+          <button class="tab on" data-panel="all">Все · 7</button>
+          <button class="tab" data-panel="fav">Избранные</button>
+          <button class="tab" data-panel="recent">Недавние</button>
+        </div>
+      </div>
+
+      <div class="sv-scroll">
+        <div class="pg-pad" style="padding-top: 12px">
+          <!-- Все: по подпискам, по пингу -->
+          <div data-tab-panel="all">
+            <div class="sv-group pg-stack pg-gap-6">
+              <div class="segments sv-list sortable">
+                <div class="sv-row" data-proto="hy2" style="--by-name: 6">
+                  <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 2">
+                  <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 1">
+                  <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="wg" style="--by-name: 7">
+                  <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="tuic" style="--by-name: 3">
+                  <button class="segment"><span class="sv-cc">PL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Польша 03</span><span class="sv-addr pg-ellipsis">192.0.2.88 · TUIC v5</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">64 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Польша 03"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="trojan" style="--by-name: 4">
+                  <button class="segment"><span class="sv-cc">US</span><span class="sv-text"><span class="t-strong pg-ellipsis">США 01</span><span class="sv-addr pg-ellipsis">198.51.100.201 · Trojan · WS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency none sv-ping">148 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере США 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 5">
+                  <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping" title="Сервер не ответил на проверку">нет</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+              </div>
+              <div class="sv-group-head">
+                <span class="t-overline pg-grow pg-ellipsis">Основная подписка · <span class="sv-n"></span></span>
+                <span class="t-caption">обновлено 15:10</span>
+              </div>
+            </div>
+            <div class="sv-empty">Нет серверов по выбранным фильтрам</div>
+          </div>
+
+          <!-- Избранные: одна группа, по пингу -->
+          <div data-tab-panel="fav" style="display: none">
+            <div class="sv-group pg-stack pg-gap-6">
+              <div class="segments sv-list sortable">
+                <div class="sv-row" data-proto="hy2" style="--by-name: 3">
+                  <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 2">
+                  <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 1">
+                  <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+              </div>
+              <div class="sv-group-head"><span class="t-overline pg-grow">Избранные · <span class="sv-n"></span></span></div>
+            </div>
+            <div class="sv-empty">Нет серверов по выбранным фильтрам</div>
+          </div>
+
+          <!-- Недавние: в порядке выбора, сортировка их не трогает -->
+          <div data-tab-panel="recent" style="display: none">
+            <div class="sv-group pg-stack pg-gap-6">
+              <div class="segments sv-list">
+                <div class="sv-row" data-proto="vless">
+                  <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless">
+                  <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="wg">
+                  <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+              </div>
+              <div class="sv-group-head"><span class="t-overline pg-grow">Недавние · <span class="sv-n"></span></span></div>
+            </div>
+            <div class="sv-empty">Нет серверов по выбранным фильтрам</div>
+          </div>
+
+          <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>
+        </div>
+        <div class="pg-page-end"></div>
+      </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+
+  <!-- 2. Фильтр открыт: VLESS снят, порядок по названию — на кнопке «2» -->
+  <section class="pg-screen" data-state="off" data-caption="Фильтр и сортировка · защита выключена">
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <div class="sv-top">
+        <div class="popup sv-pop is-open" id="sv-filter-2">
+          <div class="pg-stack pg-gap-12">
+            <span class="t-overline">Протоколы</span>
+            <div class="sv-protos">
+              <button class="check sv-p-vless"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>VLESS</button>
+              <button class="check on sv-p-hy2"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>Hysteria2</button>
+              <button class="check on sv-p-tuic"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>TUIC</button>
+              <button class="check on sv-p-wg"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>WireGuard</button>
+              <button class="check on sv-p-trojan"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>Trojan</button>
+            </div>
+            <span class="t-overline">Сортировка</span>
+            <div class="segments">
+              <button class="segment">По пингу</button>
+              <button class="segment on sv-sort-name">По названию</button>
+            </div>
+            <div class="pg-row">
+              <button class="btn-secondary">Сбросить</button>
+              <span class="pg-grow"></span>
+              <button class="btn-primary" data-close>Готово</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="search sv-search">
+          <i data-icon="Search" data-stroke="2" data-size="17"></i>
+          <input class="pg-grow" type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+          <span class="sv-filter-wrap">
+            <button class="btn-icon sv-filter" data-open="sv-filter-2" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+            <span class="sv-count"></span>
+          </span>
+        </div>
+
+        <div class="tabs sv-tabs" aria-label="Списки серверов">
+          <button class="tab on" data-panel="all">Все · 7</button>
+          <button class="tab" data-panel="fav">Избранные</button>
+          <button class="tab" data-panel="recent">Недавние</button>
+        </div>
+      </div>
+
+      <div class="sv-scroll">
+        <div class="pg-pad" style="padding-top: 12px">
+          <div data-tab-panel="all">
+            <div class="sv-group pg-stack pg-gap-6">
+              <div class="segments sv-list sortable">
+                <div class="sv-row" data-proto="hy2" style="--by-name: 6">
+                  <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 2">
+                  <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 1">
+                  <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="wg" style="--by-name: 7">
+                  <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="tuic" style="--by-name: 3">
+                  <button class="segment"><span class="sv-cc">PL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Польша 03</span><span class="sv-addr pg-ellipsis">192.0.2.88 · TUIC v5</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">64 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Польша 03"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="trojan" style="--by-name: 4">
+                  <button class="segment"><span class="sv-cc">US</span><span class="sv-text"><span class="t-strong pg-ellipsis">США 01</span><span class="sv-addr pg-ellipsis">198.51.100.201 · Trojan · WS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency none sv-ping">148 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере США 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 5">
+                  <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping" title="Сервер не ответил на проверку">нет</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+              </div>
+              <div class="sv-group-head">
+                <span class="t-overline pg-grow pg-ellipsis">Основная подписка · <span class="sv-n"></span></span>
+                <span class="t-caption">обновлено 15:10</span>
+              </div>
+            </div>
+            <div class="sv-empty">Нет серверов по выбранным фильтрам</div>
+          </div>
+
+          <div data-tab-panel="fav" style="display: none">
+            <div class="sv-group pg-stack pg-gap-6">
+              <div class="segments sv-list sortable">
+                <div class="sv-row" data-proto="hy2" style="--by-name: 3">
+                  <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 2">
+                  <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless" style="--by-name: 1">
+                  <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+              </div>
+              <div class="sv-group-head"><span class="t-overline pg-grow">Избранные · <span class="sv-n"></span></span></div>
+            </div>
+            <div class="sv-empty">Нет серверов по выбранным фильтрам</div>
+          </div>
+
+          <div data-tab-panel="recent" style="display: none">
+            <div class="sv-group pg-stack pg-gap-6">
+              <div class="segments sv-list">
+                <div class="sv-row" data-proto="vless">
+                  <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="vless">
+                  <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+                <div class="sv-row" data-proto="wg">
+                  <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+                  <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+                </div>
+              </div>
+              <div class="sv-group-head"><span class="t-overline pg-grow">Недавние · <span class="sv-n"></span></span></div>
+            </div>
+            <div class="sv-empty">Нет серверов по выбранным фильтрам</div>
+          </div>
+
+          <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>
+        </div>
+        <div class="pg-page-end"></div>
+      </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+</div>
+</body>
+</html>

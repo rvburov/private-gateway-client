@@ -1,0 +1,504 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>11 · Карточка сервера — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Под листом — «Серверы» (как на доске 2): шапка, поиск и вкладки стоят, список прокручивается */
+  .sv-page { display: flex; flex-direction: column; overflow: hidden; }
+  .sv-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; }
+  .sv-scroll::-webkit-scrollbar { display: none; }
+  .sv-scroll > .pg-page-end { height: var(--pg-layout-scroll-bottom-padding); }
+  .sv-top { margin: 0 var(--side); display: flex; flex-direction: column; gap: 10px; }
+  .sv-search { height: 46px; padding: 0 4px 0 14px; background: var(--pg-color-surface-card); gap: 0; }
+  .sv-search input { margin: 0 8px; font-size: var(--pg-type-body-size); }
+  .sv-filter { width: 38px; height: 38px; border-radius: var(--pg-radius-input); color: var(--pg-color-text-secondary); }
+  .sv-tabs { padding: 4px; gap: 0; border-radius: var(--pg-radius-button); background: var(--pg-color-control-segment-track); }
+  .sv-tabs .tab { flex: 1; height: 38px; padding: 0 8px; border-radius: var(--pg-radius-input); text-align: center; }
+  .sv-tabs .tab.on { background: var(--pg-color-surface-solid); box-shadow: var(--pg-shadow-card); color: var(--pg-color-text-primary); }
+  .sv-group-head { display: flex; align-items: flex-end; margin: 6px 4px 2px; gap: 8px; }
+  .sv-group-head:first-child { margin-top: 0; }
+  .sv-list.segments { display: flex; flex-direction: column; gap: 6px; padding: 0; background: none; border-radius: 0; }
+  .sv-row { position: relative; }
+  .sv-row > .segment { display: flex; align-items: center; justify-content: flex-start; width: 100%; height: auto; min-height: 58px;
+    padding: 8px 44px 8px 12px; border: 1.5px solid var(--pg-color-line-border); border-radius: var(--pg-radius-button);
+    background: var(--pg-color-surface-card); color: var(--pg-color-text-primary); font-size: var(--pg-type-body-size); font-weight: 400;
+    text-align: left; box-shadow: none; }
+  .sv-row > .segment:hover { color: var(--pg-color-accent-base); }
+  .sv-row > .segment.on { background: var(--pg-color-surface-solid); border-color: var(--pg-color-status-success-base);
+    box-shadow: var(--pg-shadow-selected); font-weight: 400; }
+  .sv-cc { width: 40px; height: 28px; flex: none; display: grid; place-items: center; border-radius: var(--pg-radius-chip);
+    background: var(--pg-color-accent-tint); border: 1px solid var(--pg-color-accent-line); color: var(--pg-color-accent-text);
+    font-size: var(--pg-type-caption-size); font-weight: 700; }
+  .sv-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; margin: 0 8px 0 12px; }
+  .sv-addr { font-family: var(--font-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted); }
+  .sv-tag { display: none; margin-right: 10px; padding: 3px 7px; border-radius: var(--pg-radius-chip); flex: none;
+    background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-badge);
+    font-size: var(--pg-type-overline-size); font-weight: 700; }
+  .segment.on .sv-tag { display: inline-block; }
+  .sv-ping { min-width: 52px; flex: none; text-align: right; font-family: var(--font-mono); font-size: var(--pg-type-caption-size); font-weight: 600; }
+  .sv-row > .sv-more { position: absolute; right: 6px; top: 50%; margin-top: -17px; width: 34px; height: 34px;
+    border-radius: var(--pg-radius-input); color: var(--pg-color-text-muted); }
+  .sv-row > .sv-more:hover { color: var(--pg-color-accent-base); }
+  .sv-note { margin: 6px 4px 0; line-height: var(--pg-type-body-line-height); }
+
+  /* Карточка сервера (ServerCardView): лист снизу; заголовок, середина, действия прижаты к низу */
+  .sheet.sc-sheet.is-open { display: flex !important; flex-direction: column; }
+  .sc-sheet .grabber { height: 4px; border-radius: 2px; margin: 0 auto; flex: none; }
+  .sc-head { display: flex; align-items: center; margin-top: 12px; flex: none; }
+  .sc-cc { width: 52px; height: 38px; flex: none; display: grid; place-items: center; border-radius: var(--pg-radius-input);
+    background: var(--pg-color-accent-tint); border: 1px solid var(--pg-color-accent-line); color: var(--pg-color-accent-text);
+    font-size: var(--pg-type-title-size); font-weight: 700; }
+  .sc-title { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; margin: 0 8px 0 12px; }
+  .sc-head .btn-icon { width: 40px; height: 40px; }
+  .sc-close { color: var(--pg-color-text-secondary); }
+  /* Звезда — своего цвета (решение 485): при наведении не синеет */
+  .sc-fav, .sc-fav:hover { color: var(--pg-color-text-muted); }
+  .sc-fav.on, .sc-fav.on:hover { color: var(--pg-color-favorite-stroke); }
+  .sc-mid { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; margin: 12px 0; display: flex; flex-direction: column; gap: 12px; }
+  .sc-chips { display: flex; gap: 8px; }
+  .sc-chip { height: 28px; padding: 0 10px; border-radius: 8px; display: inline-flex; align-items: center; gap: 6px;
+    background: var(--pg-color-control-segment-track); font-size: var(--pg-type-caption-size); font-weight: 600; }
+  .sc-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .sc-chip.active { background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-badge); }
+  .sc-chip.active .sc-dot { background: var(--pg-color-status-success-base); }
+  .sc-chip.selected { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .sc-chip.selected .sc-dot { background: var(--pg-color-accent-base); }
+  .sc-ping { font-family: var(--font-mono); color: var(--pg-color-status-success-text); }
+  .sc-ping.slow { color: var(--pg-color-text-muted); }
+  .sc-ping.down { color: var(--pg-color-status-warning-text); }
+  .sc-inset { background: var(--pg-color-surface-inset); border: 1px solid var(--pg-color-line-divider); border-radius: 16px; }
+  .sc-details { padding: 2px 14px; }
+  .sc-detail { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--pg-color-line-divider); }
+  .sc-detail:last-child { border-bottom: 0; }
+  .sc-detail .t-small { color: var(--pg-color-text-muted); }
+  .sc-val { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    font-family: var(--font-mono); font-size: var(--pg-type-small-size); font-weight: 500; }
+  .sc-qr { align-self: center; padding: 10px; border-radius: 12px; background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-divider); color: var(--pg-color-text-primary); line-height: 0; }
+  .sc-qr svg path { fill: currentColor; }
+  .sc-warn { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--pg-color-status-caution-line);
+    background: var(--pg-color-status-caution-tint); color: var(--pg-color-status-caution-text); font-size: var(--pg-type-small-size); }
+  .sc-bottom { flex: none; display: flex; flex-direction: column; gap: 8px; }
+  .sc-inuse { height: 50px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
+    background: var(--pg-color-status-success-tint); border: 1.5px solid var(--pg-color-status-success-line);
+    color: var(--pg-color-status-success-badge); font-size: var(--pg-type-title-size); font-weight: 600; }
+  .sc-connect { width: 100%; height: 50px; font-size: var(--pg-type-title-size); }
+  .sc-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .sc-tile { height: 58px; min-width: 0; padding: 0 4px; border-radius: 14px; flex-direction: column; gap: 4px;
+    font-size: var(--pg-type-caption-size); font-weight: 400; }
+  .sc-tile > span { max-width: 100%; }
+  .sc-tile.on { border-color: var(--pg-color-accent-base); background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  /* «Поделиться» ↔ «Скрыть QR»: какая кнопка видна — по открытому QR-коду */
+  .sc-share-hide { display: none; }
+  .pg-app:has(.sc-share:not([hidden])) .sc-share-open { display: none; }
+  .pg-app:has(.sc-share:not([hidden])) .sc-share-hide { display: inline-flex; }
+
+  /* Лист и подсказка отсчитываются от верха окна (Margin 0,92 и 20,56): на телефоне — ниже полосы состояния
+     (iOS 50, Android 32), снизу — запас 18 над полоской жестов, как у островка */
+  .pg-frame[data-device="ios"] .sheet { top: calc(92px + 50px); }
+  .pg-frame[data-device="android"] .sheet { top: calc(92px + 32px); }
+  .pg-frame.is-phone .sheet { padding-bottom: calc(20px + 18px); }
+  .pg-app > .toast { width: max-content; pointer-events: none; }
+  .pg-frame[data-device="ios"] .pg-app > .toast { top: calc(56px + 50px); }
+  .pg-frame[data-device="android"] .pg-app > .toast { top: calc(56px + 32px); }
+
+  /* Диалог удаления (DialogView): поля 20/22, скругление 24, значок 48, кнопки во всю ширину */
+  .sc-dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .sc-dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .sc-dialog-text { margin-top: 12px; color: var(--pg-color-text-secondary); line-height: var(--pg-type-body-line-height); }
+  .sc-dialog .dialog-actions { margin-top: 16px; }
+  .sc-dialog-main { height: 48px; font-size: var(--pg-type-title-size); }
+  .sc-dialog-second { height: 46px; font-weight: 600; }
+  .sc-dialog .t-status { margin-top: 0; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Карточка сервера (ServerCardView программы) — нижний лист поверх «Серверов», открывается кнопкой «⋯» в строке.
+  Звезда добавляет в избранное, «Переименовать» открывает поле названия («Отмена» и «Сохранить» возвращают сведения), «Удалить»
+  спрашивает подтверждение. «Поделиться» доступна только у сервера, добавленного ссылкой или подпиской (у демо-серверов ключа нет):
+  QR-код со ссылкой, предупреждение о ключе и «Копировать ссылку»; «Скрыть QR» возвращает сведения. Щелчок мимо листа и крестик
+  закрывают его, «⋯» в списке открывает снова. У выбранного сервера метка и кнопка внизу идут за щитом: защита включена —
+  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления.</p>
+
+<div class="pg-screens">
+  <section class="pg-screen" data-state="connected" data-caption="Карточка · сервер в работе">
+    <!-- Карточка сервера: лист снизу поверх «Серверов» -->
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet sc-sheet is-open" id="sc-card-1" aria-label="Нидерланды 01">
+      <div class="grabber"></div>
+      <div class="sc-head">
+        <span class="sc-cc">NL</span>
+        <div class="sc-title">
+          <span class="t-status pg-ellipsis">Нидерланды 01</span>
+          <span class="t-caption">Амстердам · из подписки «Основная подписка»</span>
+        </div>
+        <button class="btn-icon fav sc-fav on " aria-label="Убрать из избранного"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
+        <button class="btn-icon sc-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sc-mid">
+        <div class="sc-chips">
+          <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked proxy paused"><span class="sc-dot"></span>Активен</span>
+          <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
+          <span class="sc-chip"><span class="sc-ping ">42 мс</span></span>
+        </div>
+          <div class="sc-inset sc-details" data-page="details">
+            <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.24:443</span></div>
+            <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">VLESS</span></div>
+            <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
+            <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">REALITY</span></div>
+            <div class="sc-detail"><span class="t-small">Ядро</span><span class="sc-val">Xray-core</span></div>
+          </div>
+          <div class="sc-inset pg-stack" style="padding: 14px; gap: 10px" data-page="rename" hidden>
+            <span class="t-overline">Название</span>
+            <input class="input" type="text" value="Нидерланды 01" maxlength="64" aria-label="Название">
+            <div class="pg-row">
+              <button class="btn-secondary" data-goto="details">Отмена</button>
+              <span class="pg-grow"></span>
+              <button class="btn-primary" data-goto="details">Сохранить</button>
+            </div>
+          </div>
+      </div>
+      <div class="sc-bottom">
+          <div class="sc-inuse" data-show-state="connected connecting reconnecting blocked proxy paused"><i data-icon="Chip.Ok" data-stroke="2.4" data-size="18"></i>Используется сейчас</div>
+          <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="off error strict">Подключиться</button>
+        <div class="sc-tiles">
+            <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
+            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или подпиской: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
+            <button class="btn-secondary danger sc-tile" data-open="sc-delete-1"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Удалить</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Удаление: диалог поверх листа -->
+    <div class="dialog sc-dialog" id="sc-delete-1">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить сервер «Нидерланды 01»?</div>
+      <div class="t-small t-wrap sc-dialog-text" data-show-state="connected connecting reconnecting blocked proxy paused">Защита сейчас идет через этот сервер: VPN отключится, и другой сервер вы выберете сами.</div>
+      <div class="t-small t-wrap sc-dialog-text" data-show-state="off error strict">Сервер пропадет из списка.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sc-dialog-main" data-close data-toast="Сервер удален">Удалить</button>
+        <button class="btn-secondary sc-dialog-second" data-close data-open="sc-card-1">Отмена</button>
+      </div>
+    </div>
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="sv-top">
+        <div class="search sv-search">
+          <i data-icon="Search" data-stroke="2" data-size="17"></i>
+          <input class="pg-grow" type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+          <button class="btn-icon sv-filter" data-nav="02-servers.html" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+        </div>
+        <div class="tabs sv-tabs" aria-label="Списки серверов">
+          <button class="tab on">Все · 7</button>
+          <button class="tab">Избранные</button>
+          <button class="tab">Недавние</button>
+        </div>
+      </div>
+      <div class="sv-scroll">
+        <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
+        <div class="sv-group-head">
+          <span class="t-overline pg-grow pg-ellipsis">Основная подписка · 7</span>
+          <span class="t-caption">обновлено 15:10</span>
+        </div>
+        <div class="segments sv-list">
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">PL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Польша 03</span><span class="sv-addr pg-ellipsis">192.0.2.88 · TUIC v5</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">64 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Польша 03"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">US</span><span class="sv-text"><span class="t-strong pg-ellipsis">США 01</span><span class="sv-addr pg-ellipsis">198.51.100.201 · Trojan · WS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency none sv-ping">148 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере США 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping">нет</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>
+        </div>
+        <div class="pg-page-end"></div>
+      </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+
+  <section class="pg-screen" data-state="connected" data-caption="Переименование">
+    <!-- Карточка сервера: лист снизу поверх «Серверов» -->
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet sc-sheet is-open" id="sc-card-2" aria-label="Польша 03">
+      <div class="grabber"></div>
+      <div class="sc-head">
+        <span class="sc-cc">PL</span>
+        <div class="sc-title">
+          <span class="t-status pg-ellipsis">Польша 03</span>
+          <span class="t-caption">Варшава · из подписки «Основная подписка»</span>
+        </div>
+        <button class="btn-icon fav sc-fav " aria-label="В избранное"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
+        <button class="btn-icon sc-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sc-mid">
+        <div class="sc-chips">
+          <span class="sc-chip"><span class="sc-ping ">64 мс</span></span>
+        </div>
+          <div class="sc-inset sc-details" data-page="details" hidden>
+            <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">192.0.2.88:443</span></div>
+            <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">TUIC</span></div>
+            <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">QUIC</span></div>
+            <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">TLS</span></div>
+            <div class="sc-detail"><span class="t-small">Ядро</span><span class="sc-val">sing-box</span></div>
+          </div>
+          <div class="sc-inset pg-stack" style="padding: 14px; gap: 10px" data-page="rename">
+            <span class="t-overline">Название</span>
+            <input class="input" type="text" value="Варшава, работа" maxlength="64" aria-label="Название">
+            <div class="pg-row">
+              <button class="btn-secondary" data-goto="details">Отмена</button>
+              <span class="pg-grow"></span>
+              <button class="btn-primary" data-goto="details">Сохранить</button>
+            </div>
+          </div>
+      </div>
+      <div class="sc-bottom">
+          <button class="btn-primary sc-connect" data-close>Подключиться</button>
+        <div class="sc-tiles">
+            <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
+            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или подпиской: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
+            <button class="btn-secondary danger sc-tile" data-open="sc-delete-2"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Удалить</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Удаление: диалог поверх листа -->
+    <div class="dialog sc-dialog" id="sc-delete-2">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить сервер «Польша 03»?</div>
+      <div class="t-small t-wrap sc-dialog-text">Сервер пропадет из списка.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sc-dialog-main" data-close data-toast="Сервер удален">Удалить</button>
+        <button class="btn-secondary sc-dialog-second" data-close data-open="sc-card-2">Отмена</button>
+      </div>
+    </div>
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="sv-top">
+        <div class="search sv-search">
+          <i data-icon="Search" data-stroke="2" data-size="17"></i>
+          <input class="pg-grow" type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+          <button class="btn-icon sv-filter" data-nav="02-servers.html" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+        </div>
+        <div class="tabs sv-tabs" aria-label="Списки серверов">
+          <button class="tab on">Все · 7</button>
+          <button class="tab">Избранные</button>
+          <button class="tab">Недавние</button>
+        </div>
+      </div>
+      <div class="sv-scroll">
+        <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
+        <div class="sv-group-head">
+          <span class="t-overline pg-grow pg-ellipsis">Основная подписка · 7</span>
+          <span class="t-caption">обновлено 15:10</span>
+        </div>
+        <div class="segments sv-list">
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">PL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Польша 03</span><span class="sv-addr pg-ellipsis">192.0.2.88 · TUIC v5</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">64 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере Польша 03"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">US</span><span class="sv-text"><span class="t-strong pg-ellipsis">США 01</span><span class="sv-addr pg-ellipsis">198.51.100.201 · Trojan · WS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency none sv-ping">148 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере США 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping">нет</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-2" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>
+        </div>
+        <div class="pg-page-end"></div>
+      </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+
+  <section class="pg-screen" data-state="off" data-caption="«Поделиться»: QR-код со ссылкой">
+    <!-- Карточка сервера: лист снизу поверх «Серверов» -->
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet sc-sheet is-open" id="sc-card-3" aria-label="Ноутбук &amp; «дом»">
+      <div class="grabber"></div>
+      <div class="sc-head">
+        <span class="sc-cc"></span>
+        <div class="sc-title">
+          <span class="t-status pg-ellipsis">Ноутбук &amp; «дом»</span>
+          <span class="t-caption">добавлен ссылкой</span>
+        </div>
+        <button class="btn-icon fav sc-fav " aria-label="В избранное"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
+        <button class="btn-icon sc-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sc-mid">
+        <div class="sc-chips">
+          <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked proxy paused"><span class="sc-dot"></span>Активен</span>
+          <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
+          <span class="sc-chip"><span class="sc-ping down">нет ответа</span></span>
+        </div>
+          <div class="sc-inset sc-details" data-page="details" hidden>
+            <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.10:443</span></div>
+            <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">VLESS</span></div>
+            <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
+            <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">TLS</span></div>
+            <div class="sc-detail"><span class="t-small">Ядро</span><span class="sc-val">Xray-core</span></div>
+          </div>
+          <div class="sc-inset pg-stack" style="padding: 14px; gap: 10px" data-page="rename" hidden>
+            <span class="t-overline">Название</span>
+            <input class="input" type="text" value="Ноутбук &amp; «дом»" maxlength="64" aria-label="Название">
+            <div class="pg-row">
+              <button class="btn-secondary" data-goto="details">Отмена</button>
+              <span class="pg-grow"></span>
+              <button class="btn-primary" data-goto="details">Сохранить</button>
+            </div>
+          </div>
+          <div class="sc-inset sc-share pg-stack" style="padding: 16px; gap: 12px" data-page="share">
+            <div class="sc-qr"><svg viewBox="-1 -1 43 43" width="168" height="168" role="img" aria-label="QR-код с ссылкой на сервер"><path d="M0 0h7v1h-7zM8 0h1v1h-1zM12 0h1v1h-1zM14 0h2v1h-2zM18 0h4v1h-4zM23 0h1v1h-1zM28 0h2v1h-2zM31 0h2v1h-2zM34 0h7v1h-7zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h2v1h-2zM11 1h3v1h-3zM15 1h4v1h-4zM20 1h1v1h-1zM23 1h1v1h-1zM26 1h1v1h-1zM30 1h1v1h-1zM34 1h1v1h-1zM40 1h1v1h-1zM0 2h1v1h-1zM2 2h3v1h-3zM6 2h1v1h-1zM12 2h1v1h-1zM14 2h1v1h-1zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h2v1h-2zM27 2h2v1h-2zM30 2h1v1h-1zM32 2h1v1h-1zM34 2h1v1h-1zM36 2h3v1h-3zM40 2h1v1h-1zM0 3h1v1h-1zM2 3h3v1h-3zM6 3h1v1h-1zM8 3h1v1h-1zM11 3h4v1h-4zM16 3h2v1h-2zM19 3h1v1h-1zM25 3h5v1h-5zM31 3h2v1h-2zM34 3h1v1h-1zM36 3h3v1h-3zM40 3h1v1h-1zM0 4h1v1h-1zM2 4h3v1h-3zM6 4h1v1h-1zM9 4h3v1h-3zM13 4h5v1h-5zM19 4h2v1h-2zM26 4h2v1h-2zM29 4h1v1h-1zM31 4h2v1h-2zM34 4h1v1h-1zM36 4h3v1h-3zM40 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM10 5h1v1h-1zM14 5h1v1h-1zM17 5h1v1h-1zM19 5h1v1h-1zM21 5h2v1h-2zM25 5h1v1h-1zM31 5h2v1h-2zM34 5h1v1h-1zM40 5h1v1h-1zM0 6h7v1h-7zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM24 6h1v1h-1zM26 6h1v1h-1zM28 6h1v1h-1zM30 6h1v1h-1zM32 6h1v1h-1zM34 6h7v1h-7zM8 7h1v1h-1zM11 7h1v1h-1zM13 7h3v1h-3zM17 7h2v1h-2zM20 7h1v1h-1zM23 7h1v1h-1zM28 7h3v1h-3zM0 8h1v1h-1zM2 8h2v1h-2zM5 8h3v1h-3zM9 8h1v1h-1zM16 8h2v1h-2zM19 8h4v1h-4zM24 8h1v1h-1zM29 8h1v1h-1zM31 8h2v1h-2zM34 8h1v1h-1zM37 8h1v1h-1zM39 8h2v1h-2zM2 9h3v1h-3zM7 9h1v1h-1zM9 9h2v1h-2zM13 9h1v1h-1zM15 9h1v1h-1zM17 9h1v1h-1zM19 9h1v1h-1zM21 9h4v1h-4zM26 9h1v1h-1zM31 9h1v1h-1zM34 9h1v1h-1zM36 9h2v1h-2zM39 9h2v1h-2zM0 10h2v1h-2zM3 10h1v1h-1zM5 10h4v1h-4zM10 10h4v1h-4zM18 10h1v1h-1zM21 10h1v1h-1zM23 10h1v1h-1zM28 10h3v1h-3zM33 10h4v1h-4zM39 10h1v1h-1zM1 11h1v1h-1zM3 11h2v1h-2zM9 11h3v1h-3zM13 11h1v1h-1zM16 11h1v1h-1zM22 11h2v1h-2zM25 11h2v1h-2zM28 11h1v1h-1zM30 11h1v1h-1zM32 11h1v1h-1zM34 11h1v1h-1zM36 11h1v1h-1zM40 11h1v1h-1zM1 12h3v1h-3zM5 12h2v1h-2zM9 12h1v1h-1zM11 12h1v1h-1zM13 12h1v1h-1zM15 12h1v1h-1zM17 12h2v1h-2zM20 12h1v1h-1zM25 12h1v1h-1zM27 12h5v1h-5zM38 12h3v1h-3zM0 13h3v1h-3zM4 13h1v1h-1zM8 13h1v1h-1zM11 13h1v1h-1zM13 13h1v1h-1zM15 13h2v1h-2zM18 13h2v1h-2zM21 13h2v1h-2zM24 13h2v1h-2zM27 13h5v1h-5zM34 13h2v1h-2zM37 13h2v1h-2zM40 13h1v1h-1zM0 14h3v1h-3zM4 14h3v1h-3zM9 14h2v1h-2zM13 14h1v1h-1zM19 14h1v1h-1zM24 14h2v1h-2zM29 14h1v1h-1zM31 14h2v1h-2zM34 14h1v1h-1zM37 14h1v1h-1zM40 14h1v1h-1zM1 15h1v1h-1zM3 15h3v1h-3zM8 15h4v1h-4zM21 15h1v1h-1zM23 15h2v1h-2zM26 15h2v1h-2zM31 15h1v1h-1zM34 15h3v1h-3zM40 15h1v1h-1zM0 16h2v1h-2zM6 16h3v1h-3zM10 16h1v1h-1zM12 16h1v1h-1zM14 16h1v1h-1zM20 16h6v1h-6zM27 16h2v1h-2zM30 16h1v1h-1zM36 16h2v1h-2zM1 17h2v1h-2zM5 17h1v1h-1zM7 17h1v1h-1zM11 17h1v1h-1zM16 17h3v1h-3zM20 17h1v1h-1zM23 17h5v1h-5zM29 17h1v1h-1zM33 17h1v1h-1zM35 17h1v1h-1zM38 17h2v1h-2zM0 18h1v1h-1zM3 18h5v1h-5zM9 18h2v1h-2zM12 18h1v1h-1zM14 18h1v1h-1zM17 18h1v1h-1zM20 18h1v1h-1zM26 18h3v1h-3zM32 18h1v1h-1zM34 18h2v1h-2zM38 18h2v1h-2zM0 19h3v1h-3zM4 19h2v1h-2zM8 19h3v1h-3zM12 19h3v1h-3zM16 19h5v1h-5zM22 19h3v1h-3zM28 19h6v1h-6zM35 19h1v1h-1zM38 19h2v1h-2zM1 20h1v1h-1zM3 20h2v1h-2zM6 20h1v1h-1zM8 20h3v1h-3zM13 20h1v1h-1zM17 20h4v1h-4zM23 20h1v1h-1zM29 20h1v1h-1zM31 20h2v1h-2zM34 20h1v1h-1zM36 20h1v1h-1zM38 20h2v1h-2zM5 21h1v1h-1zM7 21h2v1h-2zM10 21h1v1h-1zM12 21h1v1h-1zM16 21h1v1h-1zM19 21h1v1h-1zM21 21h1v1h-1zM26 21h1v1h-1zM30 21h2v1h-2zM34 21h3v1h-3zM40 21h1v1h-1zM0 22h2v1h-2zM6 22h3v1h-3zM10 22h1v1h-1zM14 22h2v1h-2zM20 22h2v1h-2zM23 22h2v1h-2zM26 22h1v1h-1zM28 22h2v1h-2zM33 22h1v1h-1zM35 22h1v1h-1zM37 22h3v1h-3zM0 23h1v1h-1zM2 23h4v1h-4zM7 23h1v1h-1zM13 23h1v1h-1zM15 23h1v1h-1zM18 23h1v1h-1zM20 23h1v1h-1zM22 23h1v1h-1zM24 23h3v1h-3zM30 23h3v1h-3zM34 23h1v1h-1zM4 24h3v1h-3zM8 24h2v1h-2zM11 24h3v1h-3zM15 24h6v1h-6zM25 24h1v1h-1zM27 24h4v1h-4zM33 24h1v1h-1zM35 24h1v1h-1zM38 24h3v1h-3zM0 25h1v1h-1zM3 25h2v1h-2zM9 25h1v1h-1zM12 25h1v1h-1zM16 25h5v1h-5zM22 25h1v1h-1zM27 25h1v1h-1zM29 25h7v1h-7zM37 25h1v1h-1zM39 25h2v1h-2zM2 26h2v1h-2zM6 26h1v1h-1zM8 26h1v1h-1zM10 26h1v1h-1zM12 26h1v1h-1zM15 26h2v1h-2zM19 26h2v1h-2zM22 26h1v1h-1zM24 26h3v1h-3zM30 26h5v1h-5zM37 26h1v1h-1zM39 26h2v1h-2zM0 27h6v1h-6zM7 27h4v1h-4zM13 27h2v1h-2zM20 27h2v1h-2zM26 27h2v1h-2zM31 27h2v1h-2zM36 27h2v1h-2zM2 28h1v1h-1zM6 28h1v1h-1zM8 28h4v1h-4zM13 28h3v1h-3zM19 28h1v1h-1zM21 28h1v1h-1zM25 28h2v1h-2zM28 28h1v1h-1zM31 28h2v1h-2zM36 28h1v1h-1zM39 28h1v1h-1zM3 29h1v1h-1zM5 29h1v1h-1zM7 29h2v1h-2zM12 29h1v1h-1zM15 29h1v1h-1zM17 29h2v1h-2zM20 29h1v1h-1zM23 29h5v1h-5zM30 29h1v1h-1zM32 29h1v1h-1zM39 29h1v1h-1zM0 30h1v1h-1zM2 30h1v1h-1zM4 30h1v1h-1zM6 30h2v1h-2zM12 30h1v1h-1zM16 30h1v1h-1zM20 30h1v1h-1zM24 30h1v1h-1zM26 30h2v1h-2zM33 30h2v1h-2zM36 30h1v1h-1zM39 30h1v1h-1zM2 31h1v1h-1zM4 31h2v1h-2zM7 31h1v1h-1zM9 31h1v1h-1zM11 31h1v1h-1zM13 31h1v1h-1zM16 31h3v1h-3zM20 31h1v1h-1zM22 31h3v1h-3zM26 31h1v1h-1zM28 31h4v1h-4zM34 31h1v1h-1zM38 31h2v1h-2zM1 32h2v1h-2zM5 32h4v1h-4zM11 32h1v1h-1zM14 32h2v1h-2zM17 32h6v1h-6zM24 32h1v1h-1zM26 32h1v1h-1zM29 32h2v1h-2zM32 32h5v1h-5zM38 32h1v1h-1zM40 32h1v1h-1zM8 33h1v1h-1zM11 33h1v1h-1zM14 33h1v1h-1zM18 33h3v1h-3zM23 33h4v1h-4zM28 33h1v1h-1zM30 33h3v1h-3zM36 33h1v1h-1zM39 33h2v1h-2zM0 34h7v1h-7zM8 34h4v1h-4zM13 34h5v1h-5zM20 34h1v1h-1zM22 34h3v1h-3zM28 34h1v1h-1zM30 34h3v1h-3zM34 34h1v1h-1zM36 34h3v1h-3zM0 35h1v1h-1zM6 35h1v1h-1zM8 35h1v1h-1zM10 35h2v1h-2zM14 35h1v1h-1zM20 35h1v1h-1zM22 35h1v1h-1zM25 35h4v1h-4zM31 35h2v1h-2zM36 35h2v1h-2zM39 35h1v1h-1zM0 36h1v1h-1zM2 36h3v1h-3zM6 36h1v1h-1zM11 36h4v1h-4zM16 36h1v1h-1zM18 36h1v1h-1zM22 36h2v1h-2zM25 36h5v1h-5zM32 36h8v1h-8zM0 37h1v1h-1zM2 37h3v1h-3zM6 37h1v1h-1zM8 37h3v1h-3zM13 37h1v1h-1zM17 37h1v1h-1zM19 37h2v1h-2zM27 37h1v1h-1zM29 37h2v1h-2zM32 37h1v1h-1zM36 37h2v1h-2zM40 37h1v1h-1zM0 38h1v1h-1zM2 38h3v1h-3zM6 38h1v1h-1zM8 38h1v1h-1zM11 38h2v1h-2zM15 38h1v1h-1zM18 38h5v1h-5zM24 38h2v1h-2zM35 38h1v1h-1zM39 38h2v1h-2zM0 39h1v1h-1zM6 39h1v1h-1zM13 39h2v1h-2zM16 39h1v1h-1zM18 39h2v1h-2zM21 39h1v1h-1zM26 39h3v1h-3zM31 39h2v1h-2zM35 39h3v1h-3zM39 39h1v1h-1zM0 40h7v1h-7zM8 40h2v1h-2zM12 40h2v1h-2zM17 40h1v1h-1zM20 40h2v1h-2zM23 40h1v1h-1zM25 40h2v1h-2zM28 40h1v1h-1zM32 40h2v1h-2zM37 40h1v1h-1zM39 40h1v1h-1z"/></svg></div>
+            <div class="sc-warn">В ссылке есть ключ доступа к серверу. Делитесь только с теми, кому доверяете.</div>
+            <button class="btn-secondary btn-wide" style="height: 44px" data-toast="Ссылка скопирована">Копировать ссылку</button>
+          </div>
+      </div>
+      <div class="sc-bottom">
+          <div class="sc-inuse" data-show-state="connected connecting reconnecting blocked proxy paused"><i data-icon="Chip.Ok" data-stroke="2.4" data-size="18"></i>Используется сейчас</div>
+          <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="off error strict">Подключиться</button>
+        <div class="sc-tiles">
+            <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
+            <button class="btn-secondary sc-tile sc-share-open" data-goto="share"><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
+            <button class="btn-secondary sc-tile sc-share-hide on" data-goto="details"><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Скрыть QR</span></button>
+            <button class="btn-secondary danger sc-tile" data-open="sc-delete-3"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Удалить</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Удаление: диалог поверх листа -->
+    <div class="dialog sc-dialog" id="sc-delete-3">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить сервер «Ноутбук &amp; «дом»»?</div>
+      <div class="t-small t-wrap sc-dialog-text" data-show-state="connected connecting reconnecting blocked proxy paused">Защита сейчас идет через этот сервер: VPN отключится, и другой сервер вы выберете сами.</div>
+      <div class="t-small t-wrap sc-dialog-text" data-show-state="off error strict">Сервер пропадет из списка.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sc-dialog-main" data-close data-toast="Сервер удален">Удалить</button>
+        <button class="btn-secondary sc-dialog-second" data-close data-open="sc-card-3">Отмена</button>
+      </div>
+    </div>
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="sv-top">
+        <div class="search sv-search">
+          <i data-icon="Search" data-stroke="2" data-size="17"></i>
+          <input class="pg-grow" type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+          <button class="btn-icon sv-filter" data-nav="02-servers.html" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+        </div>
+        <div class="tabs sv-tabs" aria-label="Списки серверов">
+          <button class="tab on">Все · 8</button>
+          <button class="tab">Избранные</button>
+          <button class="tab">Недавние</button>
+        </div>
+      </div>
+      <div class="sv-scroll">
+        <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
+        <div class="sv-group-head">
+          <span class="t-overline pg-grow pg-ellipsis">Основная подписка · 7</span>
+          <span class="t-caption">обновлено 15:10</span>
+        </div>
+        <div class="segments sv-list">
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">PL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Польша 03</span><span class="sv-addr pg-ellipsis">192.0.2.88 · TUIC v5</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">64 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Польша 03"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">US</span><span class="sv-text"><span class="t-strong pg-ellipsis">США 01</span><span class="sv-addr pg-ellipsis">198.51.100.201 · Trojan · WS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency none sv-ping">148 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере США 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping">нет</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sv-group-head"><span class="t-overline pg-grow">Мои серверы · 1</span></div>
+        <div class="segments sv-list">
+          <div class="sv-row">
+            <button class="segment on"><span class="sv-cc"></span><span class="sv-text"><span class="t-strong pg-ellipsis">Ноутбук &amp; «дом»</span><span class="sv-addr pg-ellipsis">203.0.113.10 · VLESS · TLS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping">нет</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-3" aria-label="Подробнее о сервере Ноутбук &amp; «дом»"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>
+        </div>
+        <div class="pg-page-end"></div>
+      </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+
+</div>
+</body>
+</html>

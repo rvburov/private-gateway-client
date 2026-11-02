@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>6 · Подключение и ядро — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Подстраница настроек: шапка с «Назад» стоит, прокручивается только список (Grid RowDefinitions="Auto,*" программы) */
+  .pg-frame .pg-page-header + .pg-page { top: 60px; }
+  .pg-frame.is-phone .pg-page-header + .pg-page { top: 110px; }
+  .pg-frame[data-device="android"].is-phone .pg-page-header + .pg-page { top: 92px; }
+
+  /* Карточка — Border.card Padding="16,2": строки по 12 сверху и снизу, полосы внутри полей */
+  .card > .setting { padding: 12px 0; gap: 14px; }
+  .card > .setting .setting-text { gap: 3px; }
+  .card > .setting .btn-select { max-width: 180px; }
+  .card > .setting .btn-select [data-select-label] { overflow: hidden; text-overflow: ellipsis; }
+  /* Значение только для чтения (версия ядра, порт) — Border.value программы: моноширинным в рамке */
+  .card > .setting > .t-mono { padding: 4px 8px; border-radius: 8px; background: var(--pg-color-control-segment-track);
+    border: 1px solid var(--pg-color-line-border); font-size: var(--pg-type-caption-size); font-weight: 600; white-space: nowrap; }
+
+  /* Строка состояния системного прокси и подпись о раздельном режиме — по переключателю (SystemProxyStatus, ShowProxySplitNote) */
+  .pg-page:has([data-sysproxy].on) [data-when="sysproxy-off"],
+  .pg-page:not(:has([data-sysproxy].on)) [data-when="sysproxy-on"] { display: none; }
+
+  /* Меню выбора — Popup программы. Окно макета не выпускает меню за рамку, поэтому у нижних строк оно открывается вверх
+     (anchor-positioning; где его нет, меню открывается вниз, как раньше). Пункт — Button.option Padding="14,10". */
+  [data-open="menu-log"] { anchor-name: --menu-log; } #menu-log { position-anchor: --menu-log; }
+  [data-open="menu-stack"] { anchor-name: --menu-stack; } #menu-stack { position-anchor: --menu-stack; }
+  [data-open="menu-mtu"] { anchor-name: --menu-mtu; } #menu-mtu { position-anchor: --menu-mtu; }
+  [data-open="menu-fp"] { anchor-name: --menu-fp; } #menu-fp { position-anchor: --menu-fp; }
+  [data-open="menu-timeout"] { anchor-name: --menu-timeout; } #menu-timeout { position-anchor: --menu-timeout; }
+  [data-open="menu-reconnect"] { anchor-name: --menu-reconnect; } #menu-reconnect { position-anchor: --menu-reconnect; }
+  .popup { position-try-fallbacks: --pg-menu-up; }
+  @position-try --pg-menu-up { top: auto; bottom: anchor(top); margin-bottom: 6px; }
+  .popup .btn-option, .popup .btn-plain { padding: 0 14px; border-radius: var(--pg-radius-input); }
+  /* Рамка окна не прокручивается сама (фокус и scrollIntoView прокручивают только список) */
+  .pg-app { overflow: clip; }
+
+  /* Диалог подтверждения — как DialogView программы (доска 18) */
+  .dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .dialog .dialog-actions { margin-top: 16px; }
+  .dialog .btn-primary { height: 48px; font-size: var(--pg-type-title-size); }
+  .dialog .btn-secondary { height: 46px; font-weight: 600; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Подключение и ядро (CorePage программы) — подстраница настроек: «Назад» ведет в «Настройки». Версии ядер сообщает
+  служба. Выпадающие списки — меню, выбранный пункт синим полужирным, у нижнего края окна меню открывается вверх; «Свое…» у MTU открывает лист. «Системный прокси» в режиме VPN
+  включается отдельно — под ним строка состояния. Открыть прокси для локальной сети — только после диалога.</p>
+
+<div class="pg-screens">
+  <section class="pg-screen" data-state="connected">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Подключение и ядро</span>
+    </div>
+
+    <div class="pg-page">
+      <!-- Сетевое ядро -->
+      <span class="t-overline" style="display: block; margin: 0 calc(var(--side) + 6px) 8px">Сетевое ядро</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Xray-core</span>
+            <span class="setting-caption">VLESS/REALITY/XHTTP, VMess, Trojan, Shadowsocks, WireGuard</span>
+          </div>
+          <span class="t-mono">26.10.21</span>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Hysteria2, TUIC</span>
+            <span class="setting-caption">Их ведет sing-box за Xray: маршруты, DNS и защита — те же</span>
+          </div>
+          <span class="t-mono">sing-box 1.14.3</span>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Журнал ядра</span>
+            <span class="setting-caption">Уровень подробности логов.</span>
+          </div>
+          <button class="btn-select" data-open="menu-log" aria-label="Журнал ядра"><span data-select-label>Предупреждения</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- TUN (режим VPN) -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">TUN (режим VPN)</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Стек TUN</span>
+            <span class="setting-caption">Как обрабатываются пакеты.</span>
+          </div>
+          <button class="btn-select" data-open="menu-stack" aria-label="Стек TUN"><span data-select-label>Системный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">MTU</span>
+            <span class="setting-caption">Уменьшите при обрывах и зависаниях страниц.</span>
+          </div>
+          <button class="btn-select" data-open="menu-mtu" aria-label="MTU"><span data-select-label>Авто</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Строгие маршруты</span>
+            <span class="setting-caption">Запрещает обход туннеля через другие адаптеры.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Строгие маршруты"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Определение домена (sniffing)</span>
+            <span class="setting-caption">Нужно для правил маршрутизации по доменам.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Определение домена (sniffing)"></button>
+        </div>
+      </div>
+
+      <!-- Соединение -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">Соединение</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Отпечаток TLS (uTLS)</span>
+            <span class="setting-caption">Как клиент выглядит для сети.</span>
+          </div>
+          <button class="btn-select" data-open="menu-fp" aria-label="Отпечаток TLS (uTLS)"><span data-select-label>Из профиля</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Мультиплексирование (Mux)</span>
+            <span class="setting-caption">Меньше соединений, но выше задержка при потерях.</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="Мультиплексирование (Mux)"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">TLS-фрагментация</span>
+            <span class="setting-caption">Помогает против некоторых DPI. Может замедлить соединение.</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="TLS-фрагментация"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Таймаут подключения</span>
+            <span class="setting-caption">Сколько ждать ответа сервера.</span>
+          </div>
+          <button class="btn-select" data-open="menu-timeout" aria-label="Таймаут подключения"><span data-select-label>10 с</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Переподключение</span>
+            <span class="setting-caption">Только к выбранному серверу.</span>
+          </div>
+          <button class="btn-select" data-open="menu-reconnect" aria-label="Переподключение"><span data-select-label>Экспоненц. до 60 с</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Локальный прокси -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">Локальный прокси</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Локальный порт</span>
+            <span class="setting-caption">HTTP + SOCKS5 (mixed)</span>
+          </div>
+          <span class="t-mono">10808</span>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Системный прокси</span>
+            <span class="setting-caption">Браузеры и программы, которые берут прокси из настроек ОС, пойдут через него сами. Выключите, чтобы направлять программы вручную.</span>
+            <span class="setting-caption" data-when="sysproxy-off">Системный прокси выключен</span>
+            <span class="setting-caption" data-when="sysproxy-on">Применен: 127.0.0.1:10808</span>
+          </div>
+          <button class="switch" data-sysproxy role="switch" aria-checked="false" aria-label="Системный прокси"></button>
+        </div>
+        <!-- В режиме VPN с программами мимо VPN (доска 13): прокси их не различает -->
+        <div class="t-caption t-wrap" data-when="sysproxy-on" style="padding: 0 0 12px">Программы с прокси не распознаются правилами «Программы мимо VPN». Правила для сайтов действуют.</div>
+        <div class="divider"></div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Разрешить подключения из локальной сети</span>
+            <span class="setting-caption">В режиме «Только прокси» другие устройства смогут использовать этот вход. В режиме VPN вход остается доступным только на этом компьютере.</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="Разрешить подключения из локальной сети" data-confirm-on="dlg-lan"></button>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <!-- Выпадающие списки -->
+    <div class="popup" id="menu-log">
+      <button class="btn-option current" data-value="Предупреждения">Предупреждения</button>
+      <button class="btn-option" data-value="Информация">Информация</button>
+      <button class="btn-option" data-value="Отладка">Отладка</button>
+    </div>
+    <div class="popup" id="menu-stack">
+      <button class="btn-option current" data-value="Системный">Системный</button>
+      <button class="btn-option" data-value="gVisor">gVisor</button>
+      <button class="btn-option" data-value="Смешанный">Смешанный</button>
+    </div>
+    <div class="popup" id="menu-mtu">
+      <button class="btn-option current" data-value="Авто">Авто</button>
+      <button class="btn-option" data-value="1500">1500</button>
+      <button class="btn-option" data-value="1420">1420</button>
+      <button class="btn-option" data-value="1280">1280</button>
+      <!-- «Свое…» открывает лист и сам выбранным не становится, пока число не сохранено -->
+      <button class="btn-plain" data-open="sheet-mtu">Свое…</button>
+    </div>
+    <div class="popup" id="menu-fp">
+      <button class="btn-option current" data-value="Из профиля">Из профиля</button>
+      <button class="btn-option" data-value="chrome">chrome</button>
+      <button class="btn-option" data-value="firefox">firefox</button>
+      <button class="btn-option" data-value="safari">safari</button>
+      <button class="btn-option" data-value="random">random</button>
+    </div>
+    <div class="popup" id="menu-timeout">
+      <button class="btn-option current" data-value="10 с">10 с</button>
+      <button class="btn-option" data-value="5 с">5 с</button>
+      <button class="btn-option" data-value="20 с">20 с</button>
+      <button class="btn-option" data-value="30 с">30 с</button>
+    </div>
+    <div class="popup" id="menu-reconnect">
+      <button class="btn-option current" data-value="Экспоненц. до 60 с">Экспоненц. до 60 с</button>
+      <button class="btn-option" data-value="До 5 минут">До 5 минут</button>
+      <button class="btn-option" data-value="Не повторять">Не повторять</button>
+    </div>
+
+    <!-- Лист «Свой MTU» (MtuView): число от 1280 до 1500 -->
+    <div class="sheet" id="sheet-mtu" role="dialog" aria-label="Свой MTU">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Свой MTU</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack pg-gap-6" style="margin: 16px 0">
+          <span class="t-small" style="font-weight: 600">MTU</span>
+          <input class="input" style="font-family: var(--font-mono)" maxlength="4" inputmode="numeric" placeholder="1420" aria-label="MTU">
+          <span class="t-caption t-wrap">От 1280 до 1500. Меньше — надежнее в плохих сетях, больше — быстрее.</span>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Прокси для локальной сети: чужие устройства пойдут в интернет через сервер пользователя -->
+    <div class="dialog" id="dlg-lan" role="dialog" aria-modal="true" aria-label="Открыть прокси для локальной сети?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Открыть прокси для локальной сети?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Прокси смогут использовать все устройства в этой сети. В сети кафе, отеля или аэропорта так делать опасно: чужие устройства пойдут в интернет через ваш сервер.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Не открывать</button>
+        <button class="btn-secondary danger" data-confirm-yes>Открыть</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+</div>
+</body>
+</html>

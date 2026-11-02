@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>16 · Ошибки — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Экран ошибки: знак 72, крупный заголовок, пояснение, факты, кнопки; прокручивается вместе с шапкой */
+  .pr-body { display: flex; flex-direction: column; gap: 12px; padding: 20px calc(var(--side) + 4px) 0; }
+  .pr-mark { width: 72px; height: 72px; border-radius: 20px; display: grid; place-items: center; align-self: center;
+    background: var(--pg-color-status-danger-tint); color: var(--pg-color-status-danger-text); }
+  .pr-mark.caution { background: var(--pg-color-status-caution-tint); color: var(--pg-color-status-caution-text); }
+  .pr-title { margin-top: 8px; text-align: center; font-size: var(--pg-type-display-size); font-weight: 700; }
+  .pr-text { align-self: center; max-width: 360px; margin: 0; text-align: center; line-height: 22px; color: var(--pg-color-text-secondary); }
+
+  /* Факт: кружок 8 (красный — беда, оранжевый — внимание, серый — нет, но не беда), что проверено, итог моноширинным справа */
+  .pr-facts { margin-top: 8px; padding: 4px 16px; display: flex; flex-direction: column; }
+  .pr-fact { display: flex; align-items: center; margin: 11px 0; }
+  .pr-dot { width: 8px; height: 8px; border-radius: 4px; flex: none; background: var(--pg-color-control-checkbox-border); }
+  .pr-dot.bad { background: var(--pg-color-status-danger-base); }
+  .pr-dot.warning { background: var(--pg-color-status-caution-base); }
+  .pr-label { flex: 1; min-width: 0; margin-left: 12px; }
+  .pr-value { margin-left: 12px; text-align: right; font-family: var(--font-mono); font-size: var(--pg-type-caption-size);
+    color: var(--pg-color-text-secondary); overflow-wrap: anywhere; }
+
+  .pr-actions { display: flex; flex-direction: column; gap: 12px; margin-top: 16px; }
+  .pr-actions .btn-primary, .pr-actions .btn-secondary { width: 100%; height: 50px; }
+  .pr-actions .btn-secondary.cancel { height: 46px; }
+  .pr-body > .btn-link { align-self: center; text-align: center; }
+  /* Тост на телефоне — на те же 56 ниже верха содержимого, что и в окне (под полосой ОС) */
+  .pg-frame.is-phone .toast { top: 106px; }
+  .pg-frame[data-device="android"].is-phone .toast { top: 88px; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Ошибки службы (ProblemPage программы). Окно работает: островок виден, щит — «Ошибка», уйти можно на любой
+  экран. Знак красный, когда беда в службе, оранжевый — когда в правах или другой программе. Главная кнопка — «Установить службу»
+  (где установщик рядом), иначе «Работать в режиме прокси»; у «Нужны права» с установщиком — «Запросить еще раз», без него — режим прокси, и в обоих случаях «Отмена»; у «Работает другой VPN» — только «Я закрыл его — проверить снова»
+  (кнопки «Продолжить» нет, решение 507), программа названа признаками, без названий (решение 525). «Подробнее в журнале» ведет на
+  «Проверку».</p>
+
+<div class="pg-screens">
+  <!-- ===================== Служба не запущена · можно установить ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Служба не запущена: установщик рядом">
+    <div class="pg-page">
+      <!-- Шапка: знак и название, как на главной -->
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+      </div>
+
+      <div class="pr-body">
+        <span class="pr-mark"><i data-icon="Shield" data-detail="Mark.Off" data-stroke="1.9" data-size="34"></i></span>
+        <span class="pr-title t-wrap">Служба не запущена</span>
+        <p class="pr-text">Без службы VPN не может управлять сетью и блоком при обрыве. Окно работает, а подключиться без службы можно только в режиме прокси.</p>
+        <div class="card pr-facts">
+          <div class="pr-fact"><span class="pr-dot bad"></span><span class="pr-label">Служба Private Gateway</span><span class="pr-value">не найдена</span></div>
+          <div class="pr-fact"><span class="pr-dot bad"></span><span class="pr-label">Сетевой адаптер (TUN)</span><span class="pr-value">нет</span></div>
+          <div class="pr-fact"><span class="pr-dot"></span><span class="pr-label">Правила брандмауэра</span><span class="pr-value">нет</span></div>
+        </div>
+        <div class="pr-actions">
+          <button class="btn-primary" data-nav="01-main.html">Установить службу</button>
+          <button class="btn-secondary" data-nav="17-main-variants.html">Работать в режиме прокси</button>
+        </div>
+        <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-SVC-001</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island"></div>
+  </section>
+
+  <!-- ===================== Служба не запущена · установить нельзя ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Служба не запущена: установщика нет">
+    <div class="pg-page">
+      <!-- Шапка: знак и название, как на главной -->
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+      </div>
+
+      <div class="pr-body">
+        <span class="pr-mark"><i data-icon="Shield" data-detail="Mark.Off" data-stroke="1.9" data-size="34"></i></span>
+        <span class="pr-title t-wrap">Служба не запущена</span>
+        <p class="pr-text">Без службы VPN не может управлять сетью и блоком при обрыве. Окно работает, а подключиться без службы можно только в режиме прокси.</p>
+        <div class="card pr-facts">
+          <div class="pr-fact"><span class="pr-dot bad"></span><span class="pr-label">Служба Private Gateway</span><span class="pr-value">не найдена</span></div>
+          <div class="pr-fact"><span class="pr-dot bad"></span><span class="pr-label">Сетевой адаптер (TUN)</span><span class="pr-value">нет</span></div>
+          <div class="pr-fact"><span class="pr-dot"></span><span class="pr-label">Правила брандмауэра</span><span class="pr-value">нет</span></div>
+        </div>
+        <div class="pr-actions">
+          <button class="btn-primary" data-nav="17-main-variants.html">Работать в режиме прокси</button>
+        </div>
+        <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-SVC-001</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island"></div>
+  </section>
+
+  <!-- ===================== Нужны права администратора ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Нужны права администратора: установщик рядом">
+    <div class="pg-page">
+      <!-- Шапка: знак и название, как на главной -->
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+      </div>
+
+      <div class="pr-body">
+        <span class="pr-mark caution"><i data-icon="Lock" data-stroke="1.9" data-size="34"></i></span>
+        <span class="pr-title t-wrap">Нужны права администратора</span>
+        <p class="pr-text">Режиму VPN нужна установленная служба с правами администратора. Сейчас работает служба пользователя — только режим прокси.</p>
+        <div class="card pr-facts">
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Служба Private Gateway</span><span class="pr-value">без прав</span></div>
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Режим VPN</span><span class="pr-value">недоступен</span></div>
+          <div class="pr-fact"><span class="pr-dot"></span><span class="pr-label">Режим прокси</span><span class="pr-value">доступен</span></div>
+        </div>
+        <div class="pr-actions">
+          <button class="btn-primary" data-toast="Установка отменена: права администратора не даны">Запросить еще раз</button>
+          <button class="btn-secondary cancel" data-nav="01-main.html">Отмена</button>
+        </div>
+        <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-SVC-004</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island"></div>
+  </section>
+
+  <!-- ===================== Нужны права администратора · установщика нет ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Нужны права администратора: установщика нет">
+    <div class="pg-page">
+      <!-- Шапка: знак и название, как на главной -->
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+      </div>
+
+      <div class="pr-body">
+        <span class="pr-mark caution"><i data-icon="Lock" data-stroke="1.9" data-size="34"></i></span>
+        <span class="pr-title t-wrap">Нужны права администратора</span>
+        <p class="pr-text">Режиму VPN нужна установленная служба с правами администратора. Сейчас работает служба пользователя — только режим прокси.</p>
+        <div class="card pr-facts">
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Служба Private Gateway</span><span class="pr-value">без прав</span></div>
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Режим VPN</span><span class="pr-value">недоступен</span></div>
+          <div class="pr-fact"><span class="pr-dot"></span><span class="pr-label">Режим прокси</span><span class="pr-value">доступен</span></div>
+        </div>
+        <div class="pr-actions">
+          <button class="btn-primary" data-nav="17-main-variants.html">Работать в режиме прокси</button>
+          <button class="btn-secondary cancel" data-nav="01-main.html">Отмена</button>
+        </div>
+        <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-SVC-004</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island"></div>
+  </section>
+
+  <!-- ===================== Работает другой VPN ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Работает другой VPN или прокси-клиент">
+    <div class="pg-page">
+      <!-- Шапка: знак и название, как на главной -->
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+      </div>
+
+      <div class="pr-body">
+        <span class="pr-mark caution"><i data-icon="Warning" data-stroke="1.9" data-size="34"></i></span>
+        <span class="pr-title t-wrap">Работает другой VPN или прокси-клиент</span>
+        <p class="pr-text">Другой VPN или прокси-клиент уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход» — и проверьте снова: два клиента сразу пускают трафик мимо туннеля, поэтому рядом с другим защита не включается.</p>
+        <div class="card pr-facts">
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Ядро прокси</span><span class="pr-value">работает</span></div>
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Системный прокси</span><span class="pr-value">127.0.0.1:7890</span></div>
+        </div>
+        <div class="pr-actions">
+          <button class="btn-primary" data-toast="Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»">Я закрыл его — проверить снова</button>
+        </div>
+        <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-NET-010</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island"></div>
+  </section>
+
+</div>
+</body>
+</html>

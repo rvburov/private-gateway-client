@@ -1,0 +1,732 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>12 · Профили и подписки — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* «Профили и подписки» (SubscriptionsPage): подстраница настроек — «Назад», заголовок и «+», островок виден */
+  .sb-head { height: 60px; display: flex; align-items: center; gap: 4px; padding: 0 8px; }
+
+  /* Как обновлять: строки 12 сверху и снизу, полосы между ними — внутри полей карточки 16 */
+  .sb-settings { padding: 2px 16px; }
+  .sb-settings .setting { padding: 12px 0; gap: 14px; }
+  .sb-settings .setting-text { gap: 3px; }
+  .sb-block { color: var(--pg-color-status-warning-badge); }
+  .pg-app:has(.sb-vpn:not(.on)) .sb-block { display: none; }
+  .sb-refresh-pop { min-width: 150px; }
+  .sb-refresh-pop .btn-option { padding: 0 12px; }
+
+  /* Группа (Border.subscription): поля 16/14/12/12, скругление 18; метка состояния — круглая */
+  .sb-section { margin: 4px 6px -4px; }
+  .sb-card { padding: 14px 12px 12px 16px; border-radius: 18px; border: 1px solid var(--pg-color-line-border);
+    background: var(--pg-color-surface-card); }
+  .sb-name { font-size: var(--pg-type-title-size); font-weight: 700; }
+  .sb-address { font-family: var(--font-mono); font-size: var(--pg-type-caption-size); color: var(--pg-color-text-muted); }
+  .sb-health { flex: none; padding: 3px 9px; border-radius: 999px; background: var(--pg-color-control-segment-track);
+    color: var(--pg-color-text-secondary); font-size: var(--pg-type-caption-size); font-weight: 600; white-space: nowrap; }
+  .sb-health.ok { background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-badge); }
+  .sb-health.error { background: var(--pg-color-status-warning-tint); color: var(--pg-color-status-warning-badge); }
+  .sb-notice { padding: 8px 10px; border-radius: 10px; border: 1px solid var(--pg-color-status-warning-line);
+    background: var(--pg-color-status-warning-tint); color: var(--pg-color-status-warning-badge); font-size: var(--pg-type-caption-size); }
+  .sb-actions { margin-top: 2px; }
+  .sb-update { margin-right: 6px; }
+  /* Корзина — своего цвета (решение 485): при наведении не синеет */
+  .sb-remove, .sb-remove:hover { width: 36px; height: 36px; color: var(--pg-color-status-danger-text); }
+
+  /* «Добавить подписку»: пунктирная рамка, синий оттенок */
+  .sb-add { height: 46px; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
+    border-radius: 14px; border: 1.5px dashed var(--pg-color-accent-line); background: var(--pg-color-accent-tint);
+    color: var(--pg-color-accent-text); font-weight: 600; }
+  .sb-add:hover { color: var(--pg-color-accent-base); border-color: var(--pg-color-accent-base); }
+  .sb-add:active { transform: scale(.98); }
+
+  /* Лист «Изменить» (SubscriptionEditView): название, новый адрес, внизу «Отмена» и «Сохранить» */
+  .sheet.sb-sheet.is-open { display: flex !important; flex-direction: column; }
+  .sb-sheet .grabber { height: 4px; border-radius: 2px; margin: 0 auto; flex: none; }
+  .sb-close { width: 40px; height: 40px; color: var(--pg-color-text-secondary); }
+  .sb-sheet-mid { flex: 1; min-height: 0; overflow-y: auto; margin: 16px 0; display: flex; flex-direction: column; gap: 14px; }
+  .sb-url { font-family: var(--font-mono); font-size: var(--pg-type-caption-size); }
+  .sb-sheet-bottom { flex: none; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .sb-sheet-bottom > button { height: 50px; }
+
+  /* Диалог удаления (DialogView) */
+  .sb-dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .sb-dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .sb-dialog-text { margin-top: 12px; color: var(--pg-color-text-secondary); line-height: var(--pg-type-body-line-height); }
+  .sb-dialog .dialog-actions { margin-top: 16px; }
+  .sb-dialog-main { height: 48px; font-size: var(--pg-type-title-size); }
+  .sb-dialog-second { height: 46px; font-weight: 600; }
+
+  /* «Обновить» при «Только через VPN» и защите не «Подключено» — не обновляет, а просит включить защиту */
+  .sb-update-blocked { display: none; }
+  .pg-app:not([data-state="connected"]):has(.sb-vpn.on) .sb-update-ok { display: none; }
+  .pg-app:not([data-state="connected"]):has(.sb-vpn.on) .sb-update-blocked { display: inline-flex; }
+
+  /* Подсказка сверху не перехватывает нажатия */
+  .pg-app > .toast { pointer-events: none; width: max-content; }
+
+  /* Лист и подсказка отсчитываются от верха окна (Margin 0,92 и 20,56): на телефоне — ниже полосы состояния
+     (iOS 50, Android 32), снизу — запас 18 над полоской жестов, как у островка */
+  .pg-frame[data-device="ios"] .sheet { top: calc(92px + 50px); }
+  .pg-frame[data-device="android"] .sheet { top: calc(92px + 32px); }
+  .pg-frame.is-phone .sheet { padding-bottom: calc(20px + 18px); }
+  .pg-frame[data-device="ios"] .pg-app > .toast { top: calc(56px + 50px); }
+  .pg-frame[data-device="android"] .pg-app > .toast { top: calc(56px + 32px); }
+</style>
+</head>
+<body>
+<p class="pg-board-note">«Профили и подписки» (SubscriptionsPage программы) — подстраница «Настроек», «Назад» ведет к ним. Сверху —
+  как обновлять: частота (выпадающий список), только через VPN, сообщать об изменении выбранного сервера. Ниже — группы: адрес
+  подписки скрыт звездочками, состояние «Работает», «Ошибка» или «Вручную», число серверов и время. «Обновить» — крутится
+  стрелка и всплывает итог, «Изменить» открывает лист с названием и новым адресом, корзина спрашивает подтверждение. «+» и
+  «Добавить подписку» ведут на «Добавить профиль». Выключите щит — под «Только через VPN» появится, почему подписки не обновляются,
+  а «Обновить» попросит сначала включить защиту.</p>
+
+<div class="pg-screens">
+  <section class="pg-screen" data-state="connected" data-caption="Подписки · защита включена">
+    <div class="sheet sb-sheet" id="sb-edit-1-main" aria-label="Изменить «Основная подписка»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Основная подписка»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Основная подписка" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://example.com/sub/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="sheet sb-sheet" id="sb-edit-1-reserve" aria-label="Изменить «Резервная»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Резервная»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Резервная" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://example.org/clash/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="sheet sb-sheet" id="sb-edit-1-test" aria-label="Изменить «Тестовый стенд»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Тестовый стенд»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Тестовый стенд" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://sub.example.org/test/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-1-main">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Основная подписка»?</div>
+      <div class="t-small t-wrap sb-dialog-text" data-show-state="connected connecting reconnecting blocked strict error proxy paused">Вместе с группой удалятся 7 серверов и их ключи. Защита сейчас идет через один из них: VPN отключится, и другой сервер вы выберете сами.</div>
+      <div class="t-small t-wrap sb-dialog-text" data-show-state="off">Вместе с группой удалятся 7 серверов и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Основная подписка» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-1-reserve">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Резервная»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Резервная» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-1-test">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Тестовый стенд»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Тестовый стенд» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-1-mine">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Мои серверы»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Мои серверы» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="popup sb-refresh-pop" id="sb-refresh-1">
+      <button class="btn-option" data-value="выключено">выключено</button>
+      <button class="btn-option" data-value="каждые 6 ч">каждые 6 ч</button>
+      <button class="btn-option current" data-value="каждые 12 ч">каждые 12 ч</button>
+      <button class="btn-option" data-value="каждые 24 ч">каждые 24 ч</button>
+    </div>
+    <div class="pg-page">
+      <div class="sb-head">
+        <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1 pg-grow pg-ellipsis">Профили и подписки</span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="pg-pad pg-stack" style="gap: 14px">
+        <!-- Как обновлять -->
+        <div class="card sb-settings">
+          <div class="setting">
+            <div class="setting-text"><span class="setting-title">Автообновление</span><span class="setting-caption">Как часто скачивать списки серверов</span></div>
+            <button class="btn-select" data-open="sb-refresh-1" aria-label="Автообновление"><span data-select-label>каждые 12 ч</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-title">Обновлять только через VPN</span>
+              <span class="setting-caption">Провайдер не увидит адреса подписок</span>
+              <span class="setting-caption sb-block" data-show-state="off connecting reconnecting blocked strict error proxy paused">Сейчас защита выключена — подписки не обновляются</span>
+            </div>
+            <button class="switch sb-vpn on" role="switch" aria-checked="true" aria-label="Обновлять только через VPN"></button>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><span class="setting-title">Сообщать об изменении выбранного сервера</span><span class="setting-caption">Если он пропал или изменился после обновления</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать об изменении выбранного сервера"></button>
+          </div>
+        </div>
+
+        <!-- Группы -->
+        <span class="t-overline sb-section">Подписки · 4</span>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Основная подписка</span>
+              <span class="sb-address pg-ellipsis">https://example.com/sub/****</span>
+            </div>
+            <span class="sb-health ok">Работает</span>
+          </div>
+          <span class="t-small">7 серверов · обновлено в 15:10</span>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Основная подписка» обновлена: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-1-main">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-1-main" aria-label="Удалить «Основная подписка»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Резервная</span>
+              <span class="sb-address pg-ellipsis">https://example.org/clash/****</span>
+            </div>
+            <span class="sb-health ok">Работает</span>
+          </div>
+          <span class="t-small">1 сервер · обновлено вчера</span>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Резервная» обновлена: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-1-reserve">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-1-reserve" aria-label="Удалить «Резервная»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Тестовый стенд</span>
+              <span class="sb-address pg-ellipsis">https://sub.example.org/test/****</span>
+            </div>
+            <span class="sb-health error">Ошибка</span>
+          </div>
+          <span class="t-small">1 сервер · последняя попытка 2 ч назад</span>
+          <div class="sb-notice">Сервер ответил 403 — доступ запрещен, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.</div>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Тестовый стенд» не обновилась — прошлый список оставлен"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-1-test">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-1-test" aria-label="Удалить «Тестовый стенд»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Мои серверы</span>
+              <span class="sb-address pg-ellipsis">добавлены вручную по ссылкам</span>
+            </div>
+            <span class="sb-health ">Вручную</span>
+          </div>
+          <span class="t-small">1 сервер</span>
+          <div class="pg-row sb-actions">
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-1-mine" aria-label="Удалить «Мои серверы»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <button class="sb-add" data-nav="03-import.html"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить подписку</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <section class="pg-screen" data-state="off" data-caption="Подписка не обновилась">
+    <div class="sheet sb-sheet" id="sb-edit-2-main" aria-label="Изменить «Основная подписка»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Основная подписка»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Основная подписка" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://example.com/sub/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="sheet sb-sheet" id="sb-edit-2-reserve" aria-label="Изменить «Резервная»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Резервная»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Резервная" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://example.org/clash/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="sheet sb-sheet" id="sb-edit-2-test" aria-label="Изменить «Тестовый стенд»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Тестовый стенд»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Тестовый стенд" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://sub.example.org/test/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-2-main">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Основная подписка»?</div>
+      <div class="t-small t-wrap sb-dialog-text" data-show-state="connected connecting reconnecting blocked strict error proxy paused">Вместе с группой удалятся 7 серверов и их ключи. Защита сейчас идет через один из них: VPN отключится, и другой сервер вы выберете сами.</div>
+      <div class="t-small t-wrap sb-dialog-text" data-show-state="off">Вместе с группой удалятся 7 серверов и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Основная подписка» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-2-reserve">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Резервная»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Резервная» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-2-test">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Тестовый стенд»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Тестовый стенд» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-2-mine">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Мои серверы»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Мои серверы» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="popup sb-refresh-pop" id="sb-refresh-2">
+      <button class="btn-option" data-value="выключено">выключено</button>
+      <button class="btn-option" data-value="каждые 6 ч">каждые 6 ч</button>
+      <button class="btn-option current" data-value="каждые 12 ч">каждые 12 ч</button>
+      <button class="btn-option" data-value="каждые 24 ч">каждые 24 ч</button>
+    </div>
+    <div class="toast is-open">«Основная подписка» не обновилась — прошлый список оставлен</div>
+    <div class="pg-page">
+      <div class="sb-head">
+        <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1 pg-grow pg-ellipsis">Профили и подписки</span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="pg-pad pg-stack" style="gap: 14px">
+        <!-- Как обновлять -->
+        <div class="card sb-settings">
+          <div class="setting">
+            <div class="setting-text"><span class="setting-title">Автообновление</span><span class="setting-caption">Как часто скачивать списки серверов</span></div>
+            <button class="btn-select" data-open="sb-refresh-2" aria-label="Автообновление"><span data-select-label>каждые 12 ч</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-title">Обновлять только через VPN</span>
+              <span class="setting-caption">Провайдер не увидит адреса подписок</span>
+              <span class="setting-caption sb-block" data-show-state="off connecting reconnecting blocked strict error proxy paused">Сейчас защита выключена — подписки не обновляются</span>
+            </div>
+            <button class="switch sb-vpn" role="switch" aria-checked="false" aria-label="Обновлять только через VPN"></button>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><span class="setting-title">Сообщать об изменении выбранного сервера</span><span class="setting-caption">Если он пропал или изменился после обновления</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать об изменении выбранного сервера"></button>
+          </div>
+        </div>
+
+        <!-- Группы -->
+        <span class="t-overline sb-section">Подписки · 4</span>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Основная подписка</span>
+              <span class="sb-address pg-ellipsis">https://example.com/sub/****</span>
+            </div>
+            <span class="sb-health error">Ошибка</span>
+          </div>
+          <span class="t-small">7 серверов · последняя попытка только что</span>
+          <div class="sb-notice">Сервер ответил 404 — такой подписки нет, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.</div>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Основная подписка» не обновилась — прошлый список оставлен"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-2-main">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-2-main" aria-label="Удалить «Основная подписка»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Резервная</span>
+              <span class="sb-address pg-ellipsis">https://example.org/clash/****</span>
+            </div>
+            <span class="sb-health ok">Работает</span>
+          </div>
+          <span class="t-small">1 сервер · обновлено вчера</span>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Резервная» обновлена: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-2-reserve">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-2-reserve" aria-label="Удалить «Резервная»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Тестовый стенд</span>
+              <span class="sb-address pg-ellipsis">https://sub.example.org/test/****</span>
+            </div>
+            <span class="sb-health error">Ошибка</span>
+          </div>
+          <span class="t-small">1 сервер · последняя попытка 2 ч назад</span>
+          <div class="sb-notice">Сервер ответил 403 — доступ запрещен, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.</div>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Тестовый стенд» не обновилась — прошлый список оставлен"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-2-test">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-2-test" aria-label="Удалить «Тестовый стенд»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Мои серверы</span>
+              <span class="sb-address pg-ellipsis">добавлены вручную по ссылкам</span>
+            </div>
+            <span class="sb-health ">Вручную</span>
+          </div>
+          <span class="t-small">1 сервер</span>
+          <div class="pg-row sb-actions">
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-2-mine" aria-label="Удалить «Мои серверы»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <button class="sb-add" data-nav="03-import.html"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить подписку</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <section class="pg-screen" data-state="connected" data-caption="Изменить подписку">
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet sb-sheet is-open" id="sb-edit-3-main" aria-label="Изменить «Основная подписка»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Основная подписка»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Основная подписка" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://example.com/sub/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="sheet sb-sheet" id="sb-edit-3-reserve" aria-label="Изменить «Резервная»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Резервная»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Резервная" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://example.org/clash/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="sheet sb-sheet" id="sb-edit-3-test" aria-label="Изменить «Тестовый стенд»">
+      <div class="grabber"></div>
+      <div class="pg-row" style="margin-top: 12px; flex: none">
+        <span class="t-status pg-grow pg-ellipsis">Изменить «Тестовый стенд»</span>
+        <button class="btn-icon sb-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sb-sheet-mid">
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Название</span>
+          <input class="input" type="text" value="Тестовый стенд" maxlength="64" aria-label="Название">
+        </div>
+        <div class="pg-stack pg-gap-6">
+          <span class="t-small t-strong">Новый адрес подписки</span>
+          <input class="input sb-url" type="text" placeholder="https://sub.example.org/test/****" aria-label="Новый адрес подписки">
+          <span class="t-caption">Оставьте пустым, чтобы не менять. Адрес хранится только в хранилище ОС (Windows DPAPI).</span>
+        </div>
+      </div>
+      <div class="sb-sheet-bottom">
+        <button class="btn-secondary" data-close>Отмена</button>
+        <button class="btn-primary" data-close>Сохранить</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-3-main">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Основная подписка»?</div>
+      <div class="t-small t-wrap sb-dialog-text" data-show-state="connected connecting reconnecting blocked strict error proxy paused">Вместе с группой удалятся 7 серверов и их ключи. Защита сейчас идет через один из них: VPN отключится, и другой сервер вы выберете сами.</div>
+      <div class="t-small t-wrap sb-dialog-text" data-show-state="off">Вместе с группой удалятся 7 серверов и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Основная подписка» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-3-reserve">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Резервная»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Резервная» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-3-test">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Тестовый стенд»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Тестовый стенд» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="dialog sb-dialog" id="sb-remove-3-mine">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить «Мои серверы»?</div>
+      <div class="t-small t-wrap sb-dialog-text">Вместе с группой удалятся 1 сервер и их ключи.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sb-dialog-main" data-close data-toast="«Мои серверы» удалена">Удалить</button>
+        <button class="btn-secondary sb-dialog-second" data-close>Отмена</button>
+      </div>
+    </div>
+    <div class="popup sb-refresh-pop" id="sb-refresh-3">
+      <button class="btn-option" data-value="выключено">выключено</button>
+      <button class="btn-option" data-value="каждые 6 ч">каждые 6 ч</button>
+      <button class="btn-option current" data-value="каждые 12 ч">каждые 12 ч</button>
+      <button class="btn-option" data-value="каждые 24 ч">каждые 24 ч</button>
+    </div>
+    <div class="pg-page">
+      <div class="sb-head">
+        <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1 pg-grow pg-ellipsis">Профили и подписки</span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="pg-pad pg-stack" style="gap: 14px">
+        <!-- Как обновлять -->
+        <div class="card sb-settings">
+          <div class="setting">
+            <div class="setting-text"><span class="setting-title">Автообновление</span><span class="setting-caption">Как часто скачивать списки серверов</span></div>
+            <button class="btn-select" data-open="sb-refresh-3" aria-label="Автообновление"><span data-select-label>каждые 12 ч</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+          </div>
+          <div class="setting">
+            <div class="setting-text">
+              <span class="setting-title">Обновлять только через VPN</span>
+              <span class="setting-caption">Провайдер не увидит адреса подписок</span>
+              <span class="setting-caption sb-block" data-show-state="off connecting reconnecting blocked strict error proxy paused">Сейчас защита выключена — подписки не обновляются</span>
+            </div>
+            <button class="switch sb-vpn on" role="switch" aria-checked="true" aria-label="Обновлять только через VPN"></button>
+          </div>
+          <div class="setting">
+            <div class="setting-text"><span class="setting-title">Сообщать об изменении выбранного сервера</span><span class="setting-caption">Если он пропал или изменился после обновления</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать об изменении выбранного сервера"></button>
+          </div>
+        </div>
+
+        <!-- Группы -->
+        <span class="t-overline sb-section">Подписки · 4</span>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Основная подписка</span>
+              <span class="sb-address pg-ellipsis">https://example.com/sub/****</span>
+            </div>
+            <span class="sb-health ok">Работает</span>
+          </div>
+          <span class="t-small">7 серверов · обновлено в 15:10</span>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Основная подписка» обновлена: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-3-main">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-3-main" aria-label="Удалить «Основная подписка»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Резервная</span>
+              <span class="sb-address pg-ellipsis">https://example.org/clash/****</span>
+            </div>
+            <span class="sb-health ok">Работает</span>
+          </div>
+          <span class="t-small">1 сервер · обновлено вчера</span>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Резервная» обновлена: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-3-reserve">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-3-reserve" aria-label="Удалить «Резервная»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Тестовый стенд</span>
+              <span class="sb-address pg-ellipsis">https://sub.example.org/test/****</span>
+            </div>
+            <span class="sb-health error">Ошибка</span>
+          </div>
+          <span class="t-small">1 сервер · последняя попытка 2 ч назад</span>
+          <div class="sb-notice">Сервер ответил 403 — доступ запрещен, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.</div>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update sb-update-ok" data-spin data-toast="«Тестовый стенд» не обновилась — прошлый список оставлен"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft sb-update sb-update-blocked" data-toast="Обновление только через VPN: сначала включите защиту"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small" data-open="sb-edit-3-test">Изменить</button>
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-3-test" aria-label="Удалить «Тестовый стенд»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="sb-card pg-stack pg-gap-8">
+          <div class="pg-row" style="align-items: flex-start">
+            <div class="pg-stack pg-grow" style="gap: 3px; margin-right: 10px; min-width: 0">
+              <span class="sb-name pg-ellipsis">Мои серверы</span>
+              <span class="sb-address pg-ellipsis">добавлены вручную по ссылкам</span>
+            </div>
+            <span class="sb-health ">Вручную</span>
+          </div>
+          <span class="t-small">1 сервер</span>
+          <div class="pg-row sb-actions">
+            <span class="pg-grow"></span>
+            <button class="btn-icon sb-remove" data-open="sb-remove-3-mine" aria-label="Удалить «Мои серверы»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+          </div>
+        </div>
+        <button class="sb-add" data-nav="03-import.html"><i data-icon="Plus" data-stroke="2.2" data-size="18"></i>Добавить подписку</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+</div>
+</body>
+</html>

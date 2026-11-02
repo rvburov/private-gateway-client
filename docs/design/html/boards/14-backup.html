@@ -1,0 +1,457 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>14 · Резервная копия — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Подстраница настроек: шапка с «Назад» стоит, прокручивается только содержимое (Grid RowDefinitions="Auto,*" программы) */
+  .pg-frame .pg-page-header + .pg-page { top: 60px; }
+  .pg-frame.is-phone .pg-page-header + .pg-page { top: 110px; }
+  .pg-frame[data-device="android"].is-phone .pg-page-header + .pg-page { top: 92px; }
+  .bk-body { display: flex; flex-direction: column; gap: 14px; padding: 0 var(--side); }
+  .bk-card { padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+  .bk-card.restore { gap: 10px; }
+
+  /* Части копии: строка не ниже 46, подпись в две строки — через 12 от квадрата (CheckBox.part программы) */
+  .check.part { min-height: 46px; padding: 6px 0; gap: 12px; text-align: left; }
+  .check.part .t-caption { font-weight: 400; }
+
+  /* Предупреждения — по флажкам: о ключах — когда отмечены ключи, о подписках — когда отмечены серверы */
+  .banner.notice { padding: 10px 12px; }
+  .bk-save:not(:has([data-part="keys"].on)) [data-when="keys"],
+  .bk-save:not(:has([data-part="servers"].on)) [data-when="keys"],
+  .bk-save:not(:has([data-part="servers"].on)) [data-when="servers"] { display: none; }
+  /* Ключи — только вместе с серверами (CanIncludeKeys): без серверов флажок недоступен и снят */
+  .bk-save:not(:has([data-part="servers"].on)) [data-part="keys"] { opacity: .45; pointer-events: none; }
+  .bk-save:not(:has([data-part="servers"].on)) [data-part="keys"] .check-box {
+    background: var(--pg-color-surface-solid); border-color: var(--pg-color-control-checkbox-border); }
+  .bk-save:not(:has([data-part="servers"].on)) [data-part="keys"] .check-box .pg-icon { visibility: hidden; }
+
+  /* Пароль: скрытый — звездочками, глаз справа (TextBox PasswordChar="*" программы) */
+  .bk-label { font-size: var(--pg-type-small-size); font-weight: 600; color: var(--pg-color-text-secondary); }
+  .bk-password { padding: 0 4px 0 12px; gap: 8px; }
+  .bk-password > span { flex: 1; min-width: 0; letter-spacing: .02em; }
+  .bk-password .btn-icon { width: 36px; height: 36px; color: var(--pg-color-text-muted); }
+  .bk-password .btn-icon:hover { color: var(--pg-color-accent-base); }
+  .bk-error { color: var(--pg-color-status-warning-badge); }
+  .bk-save-button { height: 50px; width: 100%; }
+
+  /* Место для файла: пунктирная рамка, синий фон; при наведении (и перетаскивании) рамка ярче */
+  .bk-drop { height: 96px; width: 100%; border-radius: 16px; border: 1.5px dashed var(--pg-color-accent-line);
+    background: var(--pg-color-accent-tint); display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 6px; text-align: center; }
+  .bk-drop:hover { border-color: var(--pg-color-accent-base); }
+  .bk-drop .t-accent { font-weight: 600; }
+
+  /* Лист «Восстановить из копии»: кнопки прижаты к низу (DockPanel программы) */
+  .sheet .bk-sheet { height: 100%; display: flex; flex-direction: column; }
+  /* На телефоне лист начинается на те же 92 ниже верха содержимого, что и в окне (под полосой ОС), и не заходит на полоску жестов */
+  .pg-frame.is-phone .sheet { top: 142px; padding-bottom: 38px; }
+  .pg-frame[data-device="android"].is-phone .sheet { top: 124px; }
+  .sheet .grabber { height: 4px; border-radius: 2px; margin-bottom: 0; }
+  .bk-sheet-head { display: flex; align-items: center; margin-top: 12px; }
+  .bk-sheet-head .btn-icon { width: 40px; height: 40px; color: var(--pg-color-text-secondary); }
+  .bk-sheet-body { flex: 1; display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+  .bk-sheet-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .bk-sheet-actions > button { height: 50px; }
+
+  /* Диалог подтверждения — как DialogView программы (доска 18) */
+  .dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .dialog .dialog-actions { margin-top: 16px; }
+  .dialog .btn-primary { height: 48px; font-size: var(--pg-type-title-size); }
+  .dialog .btn-secondary { height: 46px; font-weight: 600; }
+  /* Текст диалога: LineHeight="PgLineHeight.Body" — 20,3 (14 × 1,45), а не доля мелкого кегля */
+  .dialog .dialog-text { margin: 12px 0 0; line-height: calc(var(--pg-type-body-size) * var(--pg-type-body-line-height)); }
+  /* Тост на телефоне — на те же 56 ниже верха содержимого, что и в окне (под полосой ОС) */
+  .pg-frame.is-phone .toast { top: 106px; }
+  .pg-frame[data-device="android"].is-phone .toast { top: 88px; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Резервная копия (BackupPage программы) — подстраница настроек: «Назад» ведет в «Настройки», островок виден.
+  Флажки выбирают части копии: предупреждение о подписках видно при отмеченных серверах, о ключах — при отмеченных ключах; ключи
+  без серверов недоступны. Пароль скрыт звездочками, глаз показывает его. «Выбрать файл .pgbackup» открывает лист «Восстановить из
+  копии»: пароль → «Открыть» → что в копии → «Восстановить». «Восстановить» у автокопии спрашивает «Вернуть автокопию?».</p>
+
+<div class="pg-screens">
+  <!-- ===================== Сохранить и восстановить ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Серверы и настройки, пароль введен">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Резервная копия</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="bk-body">
+        <!-- Сохранить копию -->
+        <div class="card bk-card bk-save">
+          <span class="t-title">Сохранить копию</span>
+          <div class="pg-stack">
+            <button class="check part on" data-part="servers"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Серверы и подписки</span><span class="t-caption">Список серверов и ссылки на подписки</span></span></button>
+            <button class="check part on" data-part="settings"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Настройки</span><span class="t-caption">Защита, маршрутизация, внешний вид</span></span></button>
+            <button class="check part" data-part="keys"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Ключи доступа</span><span class="t-caption">UUID, пароли и ключи серверов</span></span></button>
+          </div>
+          <div class="banner warning notice" data-when="keys"><span>С ключами файл дает доступ к вашим серверам. Храните его в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="banner warning notice" data-when="servers"><span>Адреса подписок сохраняются и без ключей серверов. Они могут давать доступ к серверам: храните копию в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="pg-stack pg-gap-6">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="***************" data-plain="Pg-backup-2026!">***************</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+            <span class="t-caption t-wrap">Файл .pgbackup шифруется этим паролем. Без него копию не открыть — восстановить пароль нельзя.</span>
+          </div>
+          <button class="btn-primary bk-save-button" data-toast="Копия сохранена">Сохранить файл…</button>
+        </div>
+
+        <!-- Восстановить: файл выбирают или перетаскивают -->
+        <div class="card bk-card restore">
+          <span class="t-title">Восстановить</span>
+          <button class="bk-drop" data-open="sheet-restore" aria-label="Выбрать файл .pgbackup">
+            <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
+            <span class="t-accent">Выбрать файл .pgbackup</span>
+            <span class="t-caption">или перетащите его сюда</span>
+          </button>
+          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <div class="divider"></div>
+          <div class="pg-row" style="margin-top: 2px">
+            <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
+              <span class="t-strong">Последняя автокопия</span>
+              <span class="t-caption t-wrap">сегодня в 09:12 · с ключами</span>
+            </div>
+            <button class="btn-small" data-open="dlg-autocopy">Восстановить</button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <!-- Лист «Восстановить из копии»: сначала пароль, потом что в копии -->
+    <div class="sheet" id="sheet-restore" role="dialog" aria-label="Восстановить из копии">
+      <div class="bk-sheet">
+        <div class="grabber"></div>
+        <div class="bk-sheet-head">
+          <span class="t-status pg-grow">Восстановить из копии</span>
+          <button class="btn-icon" data-close data-goto="locked" aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="bk-sheet-body">
+          <span class="t-caption t-muted pg-ellipsis" style="font-family: var(--font-mono)">private-gateway-2026-10-24.pgbackup</span>
+          <div class="pg-stack pg-gap-6" data-page="locked">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="**********" data-plain="Pg-backup!">**********</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+          </div>
+          <div class="pg-stack pg-gap-6" data-page="opened" hidden>
+            <span class="t-wrap">Копия от 24 октября 2026, 15:42: серверы и подписки (7, с ключами), настройки.</span>
+            <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          </div>
+        </div>
+        <div class="bk-sheet-actions">
+          <button class="btn-secondary" data-close data-goto="locked">Отмена</button>
+          <button class="btn-primary" data-page="locked" data-goto="opened">Открыть</button>
+          <button class="btn-primary" data-page="opened" hidden data-close data-goto="locked" data-toast="Восстановлено: 7 серверов, настройки">Восстановить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Вернуть автокопию: вопрос (синий значок), основная кнопка — безопасная -->
+    <div class="dialog" id="dlg-autocopy" role="dialog" aria-modal="true" aria-label="Вернуть автокопию?">
+      <div class="dialog-icon accent"><i data-icon="Adv.Backup" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Вернуть автокопию?</div>
+      <p class="t-small t-wrap dialog-text">Серверы и настройки вернутся к состоянию в 09:12. Текущие перед этим сами сохранятся в новую автокопию.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Отмена</button>
+        <button class="btn-secondary" data-close data-toast="Восстановлено: 7 серверов, настройки">Вернуть</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <!-- ===================== С ключами, короткий пароль ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="С ключами доступа · пароль короче 8 знаков · автокопии еще нет">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Резервная копия</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="bk-body">
+        <!-- Сохранить копию -->
+        <div class="card bk-card bk-save">
+          <span class="t-title">Сохранить копию</span>
+          <div class="pg-stack">
+            <button class="check part on" data-part="servers"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Серверы и подписки</span><span class="t-caption">Список серверов и ссылки на подписки</span></span></button>
+            <button class="check part on" data-part="settings"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Настройки</span><span class="t-caption">Защита, маршрутизация, внешний вид</span></span></button>
+            <button class="check part on" data-part="keys"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Ключи доступа</span><span class="t-caption">UUID, пароли и ключи серверов</span></span></button>
+          </div>
+          <div class="banner warning notice" data-when="keys"><span>С ключами файл дает доступ к вашим серверам. Храните его в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="banner warning notice" data-when="servers"><span>Адреса подписок сохраняются и без ключей серверов. Они могут давать доступ к серверам: храните копию в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="pg-stack pg-gap-6">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="*****" data-plain="pg-26">*****</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+            <span class="t-caption t-wrap">Файл .pgbackup шифруется этим паролем. Без него копию не открыть — восстановить пароль нельзя.</span>
+            <span class="t-caption t-wrap bk-error">Пароль — не короче 8 знаков</span>
+          </div>
+          <button class="btn-primary bk-save-button">Сохранить файл…</button>
+        </div>
+
+        <!-- Восстановить: файл выбирают или перетаскивают -->
+        <div class="card bk-card restore">
+          <span class="t-title">Восстановить</span>
+          <button class="bk-drop" data-open="sheet-restore-2" aria-label="Выбрать файл .pgbackup">
+            <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
+            <span class="t-accent">Выбрать файл .pgbackup</span>
+            <span class="t-caption">или перетащите его сюда</span>
+          </button>
+          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <div class="divider"></div>
+          <div class="pg-row" style="margin-top: 2px">
+            <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
+              <span class="t-strong">Последняя автокопия</span>
+              <span class="t-caption t-wrap">Появится перед первым восстановлением</span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <div class="sheet" id="sheet-restore-2" role="dialog" aria-label="Восстановить из копии">
+      <div class="bk-sheet">
+        <div class="grabber"></div>
+        <div class="bk-sheet-head">
+          <span class="t-status pg-grow">Восстановить из копии</span>
+          <button class="btn-icon" data-close data-goto="locked" aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="bk-sheet-body">
+          <span class="t-caption t-muted pg-ellipsis" style="font-family: var(--font-mono)">private-gateway-2026-10-24.pgbackup</span>
+          <div class="pg-stack pg-gap-6" data-page="locked">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="**********" data-plain="Pg-backup!">**********</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+          </div>
+          <div class="pg-stack pg-gap-6" data-page="opened" hidden>
+            <span class="t-wrap">Копия от 24 октября 2026, 15:42: серверы и подписки (7, с ключами), настройки.</span>
+            <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          </div>
+        </div>
+        <div class="bk-sheet-actions">
+          <button class="btn-secondary" data-close data-goto="locked">Отмена</button>
+          <button class="btn-primary" data-page="locked" data-goto="opened">Открыть</button>
+          <button class="btn-primary" data-page="opened" hidden data-close data-goto="locked" data-toast="Восстановлено: 7 серверов, настройки">Восстановить</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <!-- ===================== Лист: пароль не подошел ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Лист «Восстановить из копии»: пароль не подошел">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Резервная копия</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="bk-body">
+        <!-- Сохранить копию -->
+        <div class="card bk-card bk-save">
+          <span class="t-title">Сохранить копию</span>
+          <div class="pg-stack">
+            <button class="check part on" data-part="servers"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Серверы и подписки</span><span class="t-caption">Список серверов и ссылки на подписки</span></span></button>
+            <button class="check part on" data-part="settings"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Настройки</span><span class="t-caption">Защита, маршрутизация, внешний вид</span></span></button>
+            <button class="check part" data-part="keys"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Ключи доступа</span><span class="t-caption">UUID, пароли и ключи серверов</span></span></button>
+          </div>
+          <div class="banner warning notice" data-when="keys"><span>С ключами файл дает доступ к вашим серверам. Храните его в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="banner warning notice" data-when="servers"><span>Адреса подписок сохраняются и без ключей серверов. Они могут давать доступ к серверам: храните копию в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="pg-stack pg-gap-6">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="***************" data-plain="Pg-backup-2026!">***************</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+            <span class="t-caption t-wrap">Файл .pgbackup шифруется этим паролем. Без него копию не открыть — восстановить пароль нельзя.</span>
+          </div>
+          <button class="btn-primary bk-save-button" data-toast="Копия сохранена">Сохранить файл…</button>
+        </div>
+
+        <!-- Восстановить: файл выбирают или перетаскивают -->
+        <div class="card bk-card restore">
+          <span class="t-title">Восстановить</span>
+          <button class="bk-drop" data-open="sheet-locked" aria-label="Выбрать файл .pgbackup">
+            <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
+            <span class="t-accent">Выбрать файл .pgbackup</span>
+            <span class="t-caption">или перетащите его сюда</span>
+          </button>
+          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <div class="divider"></div>
+          <div class="pg-row" style="margin-top: 2px">
+            <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
+              <span class="t-strong">Последняя автокопия</span>
+              <span class="t-caption t-wrap">сегодня в 09:12 · с ключами</span>
+            </div>
+            <button class="btn-small" data-open="dlg-autocopy-3">Восстановить</button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet is-open" id="sheet-locked" role="dialog" aria-label="Восстановить из копии">
+      <div class="bk-sheet">
+        <div class="grabber"></div>
+        <div class="bk-sheet-head">
+          <span class="t-status pg-grow">Восстановить из копии</span>
+          <button class="btn-icon" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="bk-sheet-body">
+          <span class="t-caption t-muted pg-ellipsis" style="font-family: var(--font-mono)">private-gateway-2026-10-24.pgbackup</span>
+          <div class="pg-stack pg-gap-6">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="**********" data-plain="Pg-backup!">**********</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+            <span class="t-caption t-wrap bk-error">Пароль не подходит или файл поврежден</span>
+          </div>
+        </div>
+        <div class="bk-sheet-actions">
+          <button class="btn-secondary" data-close>Отмена</button>
+          <button class="btn-primary">Открыть</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Вернуть автокопию: вопрос (синий значок), основная кнопка — безопасная -->
+    <div class="dialog" id="dlg-autocopy-3" role="dialog" aria-modal="true" aria-label="Вернуть автокопию?">
+      <div class="dialog-icon accent"><i data-icon="Adv.Backup" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Вернуть автокопию?</div>
+      <p class="t-small t-wrap dialog-text">Серверы и настройки вернутся к состоянию в 09:12. Текущие перед этим сами сохранятся в новую автокопию.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Отмена</button>
+        <button class="btn-secondary" data-close data-toast="Восстановлено: 7 серверов, настройки">Вернуть</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <!-- ===================== Лист: копия открыта ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Лист «Восстановить из копии»: что в копии">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Резервная копия</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="bk-body">
+        <!-- Сохранить копию -->
+        <div class="card bk-card bk-save">
+          <span class="t-title">Сохранить копию</span>
+          <div class="pg-stack">
+            <button class="check part on" data-part="servers"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Серверы и подписки</span><span class="t-caption">Список серверов и ссылки на подписки</span></span></button>
+            <button class="check part on" data-part="settings"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Настройки</span><span class="t-caption">Защита, маршрутизация, внешний вид</span></span></button>
+            <button class="check part" data-part="keys"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span>
+              <span class="pg-stack pg-gap-2"><span class="t-strong">Ключи доступа</span><span class="t-caption">UUID, пароли и ключи серверов</span></span></button>
+          </div>
+          <div class="banner warning notice" data-when="keys"><span>С ключами файл дает доступ к вашим серверам. Храните его в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="banner warning notice" data-when="servers"><span>Адреса подписок сохраняются и без ключей серверов. Они могут давать доступ к серверам: храните копию в надежном месте и не пересылайте вместе с паролем.</span></div>
+          <div class="pg-stack pg-gap-6">
+            <span class="bk-label">Пароль для файла</span>
+            <div class="input bk-password" data-reveal-scope>
+              <span data-masked="***************" data-plain="Pg-backup-2026!">***************</span>
+              <button class="btn-icon" data-reveal aria-label="Показать пароль"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+            </div>
+            <span class="t-caption t-wrap">Файл .pgbackup шифруется этим паролем. Без него копию не открыть — восстановить пароль нельзя.</span>
+          </div>
+          <button class="btn-primary bk-save-button" data-toast="Копия сохранена">Сохранить файл…</button>
+        </div>
+
+        <!-- Восстановить: файл выбирают или перетаскивают -->
+        <div class="card bk-card restore">
+          <span class="t-title">Восстановить</span>
+          <button class="bk-drop" data-open="sheet-opened" aria-label="Выбрать файл .pgbackup">
+            <i data-icon="Upload" data-stroke="1.9" data-size="22" class="t-accent"></i>
+            <span class="t-accent">Выбрать файл .pgbackup</span>
+            <span class="t-caption">или перетащите его сюда</span>
+          </button>
+          <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          <div class="divider"></div>
+          <div class="pg-row" style="margin-top: 2px">
+            <div class="pg-stack pg-gap-2 pg-grow" style="margin-right: 10px">
+              <span class="t-strong">Последняя автокопия</span>
+              <span class="t-caption t-wrap">сегодня в 09:12 · с ключами</span>
+            </div>
+            <button class="btn-small" data-open="dlg-autocopy-4">Восстановить</button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet is-open" id="sheet-opened" role="dialog" aria-label="Восстановить из копии">
+      <div class="bk-sheet">
+        <div class="grabber"></div>
+        <div class="bk-sheet-head">
+          <span class="t-status pg-grow">Восстановить из копии</span>
+          <button class="btn-icon" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="bk-sheet-body">
+          <span class="t-caption t-muted pg-ellipsis" style="font-family: var(--font-mono)">private-gateway-2026-10-24.pgbackup</span>
+          <div class="pg-stack pg-gap-6">
+            <span class="t-wrap">Копия от 24 октября 2026, 15:42: серверы и подписки (7, с ключами), настройки.</span>
+            <span class="t-caption t-wrap">Текущие настройки будут заменены. Перед этим клиент сам сохранит автокопию.</span>
+          </div>
+        </div>
+        <div class="bk-sheet-actions">
+          <button class="btn-secondary" data-close>Отмена</button>
+          <button class="btn-primary" data-close data-toast="Восстановлено: 7 серверов, настройки">Восстановить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Вернуть автокопию: вопрос (синий значок), основная кнопка — безопасная -->
+    <div class="dialog" id="dlg-autocopy-4" role="dialog" aria-modal="true" aria-label="Вернуть автокопию?">
+      <div class="dialog-icon accent"><i data-icon="Adv.Backup" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Вернуть автокопию?</div>
+      <p class="t-small t-wrap dialog-text">Серверы и настройки вернутся к состоянию в 09:12. Текущие перед этим сами сохранятся в новую автокопию.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Отмена</button>
+        <button class="btn-secondary" data-close data-toast="Восстановлено: 7 серверов, настройки">Вернуть</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+</div>
+</body>
+</html>

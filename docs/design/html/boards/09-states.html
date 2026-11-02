@@ -1,0 +1,1092 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>9 · Состояния главного экрана — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Полоса паузы (PauseBanner): кнопка «Вернуть защиту» / «Закрыть сеть» — белая, 30 высотой, текст полосы */
+  .pause-btn { height: 30px; padding: 0 10px; border-radius: 8px; flex: none; white-space: nowrap;
+    background: var(--pg-color-surface-solid); color: var(--pg-color-status-caution-badge);
+    font-size: var(--pg-type-caption-size); font-weight: 700; }
+  .pause-btn:hover { color: var(--pg-color-status-caution-text); }
+  .pause-btn:active { transform: scale(.98); }
+  .pause-left { font-family: var(--font-mono); font-weight: 700; }
+
+  /* Подсказка сверху окна (Toast в MainWindow): по ширине текста, длинная переносится в полях 20 — не в половине окна */
+  .toast { width: max-content; }
+  /* На телефоне подсказка — под полосой состояния ОС, на том же месте относительно окна программы */
+  .pg-frame[data-device="ios"] .pg-app > .toast { top: calc(56px + 50px); }
+  .pg-frame[data-device="android"] .pg-app > .toast { top: calc(56px + 32px); }
+
+  /* Диалог подтверждения — как DialogView программы: поля 20/22/20/18, скругление 24, значок 48 */
+  .dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .dialog .dialog-actions { margin-top: 16px; }
+  .dialog .btn-primary { height: 48px; font-size: var(--pg-type-title-size); }
+  .dialog .btn-secondary { height: 46px; font-weight: 600; }
+
+  /* «Утечка IP» (ProtectionViewModel.Label): тон и знак — как у «Ошибки», подпись под щитом — своя */
+  .pg-app[data-state="error"]:has([data-leak]) .pg-island-state { font-size: 0; }
+  .pg-app[data-state="error"]:has([data-leak]) .pg-island-state::after { content: "Утечка IP"; font-size: var(--pg-type-caption-size); }
+</style>
+</head>
+<body>
+
+<p class="pg-board-note">Все состояния главного экрана (MainPage программы) рядом: заголовок и подпись — status.*, плитки —
+  цвета проверок (зеленые — в порядке, синие — поднимаются, оранжевые — остановлено, янтарные — частично, красные — открыто),
+  щит и подпись под ним — цвета состояния. Ни одно состояние не выбирает другой сервер. Щит включает и выключает защиту на любом
+  экране; «Повторить» и «Перезапустить службу» подключают снова; «Вход в Wi-Fi» спрашивает и ставит паузу на 5 минут, «Вернуть
+  защиту» и «Закрыть сеть» ее снимают. Полоса раздельного режима ведет в «Маршрутизацию». «Утечка IP» — защита
+  включена, а проверка видит реальный IP: тон «Ошибки», подпись под щитом своя. В программе щит в «Блокировке» сначала
+  спрашивает «Снять защиту?» — этот вопрос на доске 18.</p>
+
+<div class="pg-screens">
+  <!-- ===================== Выключено · IP открыт ===================== -->
+  <section class="pg-screen" data-state="off" data-caption="Выключено · IP открыт">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-row" data-show-state="off connected"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+          <span class="t-small" data-show-state="connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="off-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="off-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Подключение ===================== -->
+  <section class="pg-screen" data-state="connecting" data-caption="Подключение">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small" data-show-state="connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="cng-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connecting off">—</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="cng-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Защищено ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Защищено">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-row" data-show-state="connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small" data-show-state="connected connecting">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="con-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="con-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Переподключение · к тому же серверу ===================== -->
+  <section class="pg-screen" data-state="reconnecting" data-caption="Переподключение · к тому же серверу">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="reconnecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Переподключение…</span><span class="t-small pg-ellipsis">К тому же серверу · попытка 2</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="paused"><div class="banner caution" style="padding: 8px 8px 8px 10px"><i data-icon="Clock" data-stroke="2" data-size="16"></i><span class="pg-grow t-wrap">Интернет без VPN для входа в Wi-Fi · <span class="pause-left">5:00</span></span><button class="pause-btn" data-set-state="connected">Вернуть защиту</button></div><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Защита на паузе</span><span class="t-small pg-ellipsis">Вход в Wi-Fi отеля или кафе</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-caution" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">напрямую</span></span></button><button class="btn-chip tone-caution" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">у провайдера</span></span></button><button class="btn-chip tone-caution" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">открыт</span></span></button><button class="btn-chip tone-caution" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">на паузе</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="reconnecting"><span class="t-caption pg-grow">Трафик на паузе до восстановления</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-open="rec-pause">Вход в Wi-Fi</button></div>
+        <div class="pg-row" data-show-state="paused"><span class="t-caption pg-grow">Проверки возобновятся после паузы</span></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="reconnecting connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="paused off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-row" data-show-state="reconnecting connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="paused off connected"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="reconnecting connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="paused">Пауза для входа в Wi-Fi · ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small" data-show-state="reconnecting connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="paused off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="rec-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="reconnecting off connecting">—</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="paused connected">42</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="reconnecting off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="paused connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="reconnecting off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="paused connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="rec-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="dialog" id="rec-pause" role="dialog" aria-modal="true" aria-label="Открыть интернет без VPN на 5 минут?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Открыть интернет без VPN на 5 минут?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Это нужно, чтобы войти в Wi-Fi отеля или кафе. Пока идет пауза, сайты и сеть видят ваш реальный IP. Через 5 минут защита вернется сама, раньше — кнопкой «Вернуть защиту».</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить защиту</button>
+        <button class="btn-secondary danger" data-close data-set-state="paused" data-toast="Пауза на 5 минут: войдите в сеть на открывшейся странице">Открыть на 5 минут</button>
+      </div>
+    </div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Блокировка · сервер не отвечает ===================== -->
+  <section class="pg-screen" data-state="blocked" data-caption="Блокировка · сервер не отвечает">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="blocked"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Интернет заблокирован</span><span class="t-small pg-ellipsis">Сервер не отвечает</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-warning" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">остановлен</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="blocked"><span class="t-caption pg-grow">Другой сервер сам не выберется</span><button class="btn-link" style="color: var(--pg-state-blocked-icon)" data-power>Повторить</button></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="blocked connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.*.***" data-plain="192.0.2.150">192.0.2.150</span></div>
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-row" data-show-state="blocked connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="blocked">Трафик остановлен — утечки нет</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Стамбул · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small" data-show-state="blocked connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">TR · Турция 01</span>
+            <span class="t-small pg-ellipsis">VLESS · gRPC · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="blk-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="blocked connecting connected off">—</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="blocked connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">0,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="blocked connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">0,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="blk-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="TR · Турция 01"><span class="badge accent country">TR</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Турция 01</span><span class="t-caption" style="font-weight: 400">VLESS · gRPC</span></span><span class="t-mono latency good">—</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Блокировка · строгий режим ===================== -->
+  <section class="pg-screen" data-state="strict" data-caption="Блокировка · строгий режим">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="strict"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Интернет заблокирован</span><span class="t-small pg-ellipsis">Строгий режим: без VPN сеть закрыта</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-warning" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">остановлен</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="paused"><div class="banner caution" style="padding: 8px 8px 8px 10px"><i data-icon="Clock" data-stroke="2" data-size="16"></i><span class="pg-grow t-wrap">Интернет без VPN для входа в Wi-Fi · <span class="pause-left">5:00</span></span><button class="pause-btn" data-set-state="strict">Закрыть сеть</button></div><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Защита на паузе</span><span class="t-small pg-ellipsis">Вход в Wi-Fi отеля или кафе</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-caution" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">напрямую</span></span></button><button class="btn-chip tone-caution" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">у провайдера</span></span></button><button class="btn-chip tone-caution" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">открыт</span></span></button><button class="btn-chip tone-caution" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">на паузе</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="strict"><span class="t-caption pg-grow">Выключается в «Защите и утечках»</span><button class="btn-link" style="color: var(--pg-state-blocked-icon)" data-open="str-pause">Вход в Wi-Fi</button></div>
+        <div class="pg-row" data-show-state="paused"><span class="t-caption pg-grow">После паузы сеть снова закроется</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="strict connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="paused off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-row" data-show-state="strict connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="paused connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="strict">Трафик остановлен — утечки нет</span>
+          <span class="t-small pg-ellipsis" data-show-state="paused">Пауза для входа в Wi-Fi · ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small" data-show-state="strict connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="paused off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="str-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="strict paused connecting off">—</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="strict paused connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="strict paused connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="str-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="dialog" id="str-pause" role="dialog" aria-modal="true" aria-label="Открыть интернет без VPN на 5 минут?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Открыть интернет без VPN на 5 минут?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Это нужно, чтобы войти в Wi-Fi отеля или кафе. Строгий режим держит сеть закрытой без VPN — на время паузы она откроется, и сайты и сеть увидят ваш реальный IP. Через 5 минут сеть закроется сама, раньше — кнопкой «Закрыть сеть».</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить защиту</button>
+        <button class="btn-secondary danger" data-close data-set-state="paused" data-toast="Пауза на 5 минут: войдите в сеть на открывшейся странице">Открыть на 5 минут</button>
+      </div>
+    </div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Ошибка службы ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Ошибка службы">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="error"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Ошибка службы</span><span class="t-small pg-ellipsis">PGC-SVC-002 · трафик заблокирован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-warning" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">остановлен</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="error"><span class="t-caption pg-grow">Подробности — в «Проверке»</span><button class="btn-link" style="color: var(--pg-state-error-icon)" data-power>Перезапустить службу</button></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="error connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-row" data-show-state="error connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="error">Трафик остановлен — утечки нет</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small" data-show-state="error connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="err-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="error connecting off">—</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="error connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="error connecting off">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="err-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Утечка IP · реальный IP открыт ===================== -->
+  <section class="pg-screen" data-state="error" data-caption="Утечка IP · реальный IP открыт">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="error"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Реальный IP открыт</span><span class="t-small pg-ellipsis">Проверка обнаружила трафик мимо туннеля</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><span data-leak hidden></span><div class="chips" style="margin: -3px"><button class="btn-chip tone-caution" data-info="Проверка обнаружила ваш реальный IP вне туннеля. Восстановите защиту и повторите проверку."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">реальный IP открыт</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="error connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="error off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-row" data-show-state="error connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="error">AS64496</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small" data-show-state="error off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+          <span class="t-small" data-show-state="connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="lek-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="error connected">42</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connecting off">—</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="error connected">18,9</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connecting off">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="error connected">4,0</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connecting off">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="lek-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Только прокси ===================== -->
+  <section class="pg-screen" data-state="proxy" data-caption="Только прокси">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="proxy"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Прокси включен</span><span class="t-small pg-ellipsis">Защищен не весь трафик</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-caution" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">только прокси</span></span></button><button class="btn-chip tone-caution" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">частично</span></span></button><button class="btn-chip tone-caution" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-caution" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">недоступен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="proxy"><span class="t-caption pg-grow">Блок при обрыве в режиме прокси недоступен</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="proxy connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-row" data-show-state="proxy off connected"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="proxy">Амстердам · только для программ через прокси</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small" data-show-state="proxy connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="prx-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="proxy connected">42</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="proxy off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="proxy off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="prx-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Пауза для входа в Wi-Fi ===================== -->
+  <section class="pg-screen" data-state="paused" data-caption="Пауза для входа в Wi-Fi">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="paused"><div class="banner caution" style="padding: 8px 8px 8px 10px"><i data-icon="Clock" data-stroke="2" data-size="16"></i><span class="pg-grow t-wrap">Интернет без VPN для входа в Wi-Fi · <span class="pause-left">5:00</span></span><button class="pause-btn" data-set-state="connected">Вернуть защиту</button></div><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Защита на паузе</span><span class="t-small pg-ellipsis">Вход в Wi-Fi отеля или кафе</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-caution" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">напрямую</span></span></button><button class="btn-chip tone-caution" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">у провайдера</span></span></button><button class="btn-chip tone-caution" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">открыт</span></span></button><button class="btn-chip tone-caution" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">на паузе</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="paused"><span class="t-caption pg-grow">Проверки возобновятся после паузы</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="paused off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-row" data-show-state="paused connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="paused">Пауза для входа в Wi-Fi · ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small" data-show-state="paused off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+          <span class="t-small" data-show-state="connected connecting">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="pau-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="paused connected">42</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="paused connected">18,9</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="paused connected">4,0</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="pau-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Строгий режим · сеть открыта на 5 минут ===================== -->
+  <section class="pg-screen" data-state="paused" data-caption="Строгий режим · сеть открыта на 5 минут">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="paused"><div class="banner caution" style="padding: 8px 8px 8px 10px"><i data-icon="Clock" data-stroke="2" data-size="16"></i><span class="pg-grow t-wrap">Интернет без VPN для входа в Wi-Fi · <span class="pause-left">5:00</span></span><button class="pause-btn" data-set-state="strict">Закрыть сеть</button></div><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Защита на паузе</span><span class="t-small pg-ellipsis">Вход в Wi-Fi отеля или кафе</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-caution" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">напрямую</span></span></button><button class="btn-chip tone-caution" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">у провайдера</span></span></button><button class="btn-chip tone-caution" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">открыт</span></span></button><button class="btn-chip tone-caution" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">на паузе</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="strict"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Интернет заблокирован</span><span class="t-small pg-ellipsis">Строгий режим: без VPN сеть закрыта</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-warning" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">остановлен</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="paused"><span class="t-caption pg-grow">После паузы сеть снова закроется</span></div>
+        <div class="pg-row" data-show-state="strict"><span class="t-caption pg-grow">Выключается в «Защите и утечках»</span><button class="btn-link" style="color: var(--pg-state-blocked-icon)" data-open="spa-pause">Вход в Wi-Fi</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="paused off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="strict connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-row" data-show-state="paused off connected"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="strict connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="paused">Пауза для входа в Wi-Fi · ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="strict">Трафик остановлен — утечки нет</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small" data-show-state="paused off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+          <span class="t-small" data-show-state="strict connecting connected">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="spa-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="paused strict off connecting">—</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="paused strict off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="paused strict off connecting">—</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="spa-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="dialog" id="spa-pause" role="dialog" aria-modal="true" aria-label="Открыть интернет без VPN на 5 минут?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Открыть интернет без VPN на 5 минут?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Это нужно, чтобы войти в Wi-Fi отеля или кафе. Строгий режим держит сеть закрытой без VPN — на время паузы она откроется, и сайты и сеть увидят ваш реальный IP. Через 5 минут сеть закроется сама, раньше — кнопкой «Закрыть сеть».</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить защиту</button>
+        <button class="btn-secondary danger" data-close data-set-state="paused" data-toast="Пауза на 5 минут: войдите в сеть на открывшейся странице">Открыть на 5 минут</button>
+      </div>
+    </div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <!-- ===================== Защищено · раздельный режим ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Защищено · раздельный режим">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+        <span class="pg-grow"></span>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+
+      <!-- Состояние защиты -->
+      <div class="card pg-stack pg-gap-12" style="margin: 0 var(--side); padding: 14px 14px 12px 16px">
+        <div class="pg-stack pg-gap-12" data-show-state="connected"><button class="banner warning" data-nav="13-routing.html" aria-label="Внимание · программы и сайты из списков идут мимо VPN"><i data-icon="Warning" data-stroke="2" data-size="16"></i><span class="pg-grow t-wrap">Внимание · программы и сайты из списков идут мимо VPN</span><i data-icon="ChevronRight" data-stroke="2.2" data-size="14"></i></button><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small pg-ellipsis">Трафик зашифрован</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div><div class="pg-stack pg-gap-2" style="align-items: flex-end"><span class="t-caption">в сети</span><span class="t-mono" style="font-weight: 600">00:42:17</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="off"><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">IP открыт</span><span class="t-small pg-ellipsis">Без шифрования</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-danger" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">идет напрямую</span></span></button><button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span></button><button class="btn-chip tone-danger" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span></button><button class="btn-chip tone-danger" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">выключен</span></span></button></div></div>
+        <div class="pg-stack pg-gap-12" data-show-state="connecting"><button class="banner warning" data-nav="13-routing.html" aria-label="Внимание · программы и сайты из списков идут мимо VPN"><i data-icon="Warning" data-stroke="2" data-size="16"></i><span class="pg-grow t-wrap">Внимание · программы и сайты из списков идут мимо VPN</span><i data-icon="ChevronRight" data-stroke="2.2" data-size="14"></i></button><div class="pg-row" style="align-items: flex-start"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-status state-text">Подключение…</span><span class="t-small pg-ellipsis">Интернет на паузе, утечки нет</span><span class="pg-row t-caption" style="gap: 5px; margin-top: 1px"><i data-icon="Net.WiFi" data-stroke="2" data-size="13"></i>Wi-Fi «Home»</span></div></div><div class="chips" style="margin: -3px"><button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую."><span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span></button><button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span></button><button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span></button><button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую."><span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span></button></div></div>
+        <div class="inset accent" data-chip-info style="display: none; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+        <div class="pg-row" data-show-state="connected"><span class="t-caption pg-grow">Проверено только что</span><button class="btn-link" style="color: var(--pg-state-connecting-icon)" data-nav="07-diagnostics.html">Проверить</button></div>
+        <div class="pg-row" data-show-state="off"><span class="t-caption pg-grow">Включите VPN, чтобы проверить защиту</span></div>
+        <div class="pg-row" data-show-state="connecting"><span class="t-caption pg-grow">Проверка начнется после подключения</span></div>
+      </div>
+
+      <!-- Сайты видят ваш IP + выбранный сервер -->
+      <div class="card" style="margin: 10px var(--side) 0" data-reveal-scope>
+        <div class="pg-stack" style="padding: 14px 8px 12px 16px; gap: 3px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <div class="pg-grow pg-row" data-show-state="connected"><span class="t-mono-large" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span></div>
+            <div class="pg-grow pg-row" data-show-state="off"><span class="t-mono-large" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span></div>
+            <div class="pg-grow pg-row" data-show-state="connecting"><span class="t-mono-large">—</span></div>
+            <div class="pg-row" data-show-state="connected off"><button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <div class="pg-row" data-show-state="connecting"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small pg-ellipsis" data-show-state="connected">Амстердам · дата-центр · AS64500</span>
+          <span class="t-small pg-ellipsis" data-show-state="off">Ваш провайдер</span>
+          <span class="t-small pg-ellipsis" data-show-state="connecting">Нет доступа, пока туннель не готов</span>
+          <span class="t-small" data-show-state="connected connecting">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
+          <span class="t-small" data-show-state="off">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · виден сайтам</span>
+        </div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px">
+          <button class="btn-icon steady tinted" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
+          <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
+            <span class="t-title pg-ellipsis">NL · Нидерланды 01</span>
+            <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
+          </div>
+          <button class="btn-select" data-open="byp-switch" aria-label="Сменить"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Скорость: «Пинг» ведет на «Проверку» к блоку «Задержка» -->
+      <div class="card pg-row" style="margin: 10px var(--side) 0; padding: 10px 6px">
+        <button class="btn-plain pg-stack pg-gap-2" style="flex: 1; justify-content: center; align-items: center; min-height: 0" data-nav="07-diagnostics.html" aria-label="Пинг — подробности на «Проверке»">
+          <span class="t-caption">Пинг</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="connected">42</span>
+          <span class="t-title t-success" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">мс</span>
+        </button>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↓ Загрузка</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">18,9</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+        <span style="width: 1px; align-self: stretch; background: var(--pg-color-line-divider)"></span>
+        <div class="pg-stack pg-gap-2" style="flex: 1; align-items: center">
+          <span class="t-caption">↑ Отдача</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="connected">4,0</span>
+          <span class="t-title" style="font-family: var(--font-mono)" data-show-state="off connecting">—</span>
+          <span class="t-caption">Мбит/с</span>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="byp-switch" style="width: 320px"><div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div><button class="btn-option current" data-value="NL · Нидерланды 01"><span class="badge accent country">NL</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Нидерланды 01</span><span class="t-caption" style="font-weight: 400">VLESS · REALITY</span></span><span class="t-mono latency good">42 мс</span></button><button class="btn-option" data-value="FI · Финляндия 01"><span class="badge accent country">FI</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Финляндия 01</span><span class="t-caption" style="font-weight: 400">Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button><button class="btn-option" data-value="DE · Германия 02"><span class="badge accent country">DE</span><span class="pg-stack pg-grow" style="margin: 6px 10px; gap: 1px"><span class="t-strong">Германия 02</span><span class="t-caption" style="font-weight: 400">VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span></button><div class="divider" style="margin: 2px 6px"></div><button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button></div>
+    <div class="pg-island" data-active="home"></div>
+  </section>
+</div>
+</body>
+</html>

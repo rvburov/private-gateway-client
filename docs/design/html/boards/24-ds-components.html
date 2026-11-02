@@ -1,0 +1,761 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>24 · Дизайн-система: компоненты — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Доска дизайн-системы — без рамки устройства. Каждый образец лежит на «сцене» (.pg-app): там работают переключатели,
+     меню, диалоги, листы и подсказки app.js. Цвета, шрифты, скругления и тени — только var(--pg-…) */
+  .ds { max-width: 1504px; display: flex; flex-direction: column; gap: 24px; font-size: var(--pg-type-body-size); }
+  .ds-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; }
+  .ds-head p { margin: 6px 0 0; max-width: 900px; line-height: var(--pg-type-body-line-height); }
+  .ds-tag { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-caption-size); color: var(--pg-color-text-muted);
+    padding: 6px 10px; border-radius: var(--pg-radius-input); background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-border); white-space: nowrap; }
+  .ds-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .ds-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; align-items: start; }
+  .ds-col { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+  .ds-card { padding: 18px; border-radius: var(--pg-radius-card); background: var(--pg-color-surface-solid);
+    border: 1px solid var(--pg-color-line-border); display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+  .ds-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; }
+  .ds-card-head h2 { margin: 0; font-size: var(--pg-type-title-size); font-weight: var(--pg-type-h1-weight); }
+  .ds-key { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-overline-size); color: var(--pg-color-text-muted); text-align: right; }
+  .ds-list { margin: 0; padding-left: 16px; font-size: var(--pg-type-small-size); color: var(--pg-color-text-secondary); line-height: 1.6; }
+  .ds-sub { margin: 4px 0 -2px; }
+
+  /* Сцена: фон окна программы без пятен; слои app.js открываются внутри нее */
+  .pg-app.ds-stage { padding: 14px; border-radius: var(--pg-radius-button); }
+  .pg-app.ds-stage::before, .pg-app.ds-stage::after { display: none; }
+
+  /* Матрица состояний: строка — блок, столбцы — обычное, наведение, нажатие, фокус, выключено */
+  .ds-states { display: grid; grid-template-columns: 132px repeat(5, minmax(0, 1fr)); gap: 10px 8px; align-items: center; }
+  .ds-th { font-size: var(--pg-type-overline-size); font-weight: var(--pg-type-overline-weight); letter-spacing: var(--pg-type-overline-tracking);
+    text-transform: uppercase; color: var(--pg-color-text-muted); text-align: center; }
+  .ds-rowname { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .ds-rowname b { font-family: var(--pg-font-desktop-mono); font-size: var(--pg-type-overline-size); font-weight: 600; overflow-wrap: anywhere; }
+  .ds-rowname .t-caption { font-size: var(--pg-type-overline-size); }
+  .ds-c { display: flex; justify-content: center; align-items: center; min-width: 0; }
+  .ds-c > .btn-primary, .ds-c > .btn-secondary { width: 100%; padding: 0 6px; }
+  .ds-c > .btn-option { padding: 0 8px; }
+  .ds-c > .ds-plain { padding: 0 2px 0 8px; }
+  .ds-c > .ds-nav { height: 58px; width: 100%; }
+  .ds-c > .ds-check { padding: 0 6px; }
+  .ds-c > .ds-input { min-height: 40px; }
+  .ds-same { font-size: var(--pg-type-caption-size); color: var(--pg-color-text-muted); text-align: center; }
+  .ds-span { grid-column: 2 / -1; }
+  .ds-tones { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 6px 22px; padding-top: 10px; border-top: 1px dashed var(--pg-color-line-strong); }
+  .ds-tone { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+
+  /* Принудительные состояния образцов — те же правила, что :hover, :active и :focus-visible в app.css */
+  /* Нажатие красится так же, как наведение (в программе :pressed и :pointerover — одни сеттеры), и сжимается до 0,98 */
+  .ds-stage :is(.is-hover, .is-press):is(.btn-icon, .btn-plain, .btn-option, .btn-select, .btn-small, .btn-link, .btn-secondary,
+    .btn-nav, .btn-tile, .link-row, .server-row, .tab, .check) { color: var(--pg-color-accent-base); }
+  .ds-stage .btn-primary:is(.is-hover, .is-press) { background: var(--pg-color-accent-text); }
+  .ds-stage .btn-primary.danger:is(.is-hover, .is-press) { background: var(--pg-color-status-danger-text); }
+  .ds-stage :is(.btn-secondary, .btn-select):is(.is-hover, .is-press) { border-color: var(--pg-color-accent-base); }
+  .ds-stage .btn-secondary.danger:is(.is-hover, .is-press) { border-color: var(--pg-color-status-danger-base); color: var(--pg-color-status-danger-text); }
+  .ds-stage .btn-small:is(.is-hover, .is-press) { border-color: var(--pg-color-accent-line); }
+  .ds-stage .btn-small.soft:is(.is-hover, .is-press) { color: var(--pg-color-accent-base); }
+  .ds-stage :is(.is-hover, .is-press) .chevron { color: var(--pg-color-accent-base); }
+  .ds-stage .check:is(.is-hover, .is-press) .check-box { border-color: var(--pg-color-accent-base); }
+  .ds-stage .segment.is-hover:not(.on) { color: var(--pg-color-accent-base); }
+  .ds-stage .input.is-hover { border-color: var(--pg-color-control-track-off); }
+  .ds-stage .is-press:not(.check, .btn-select, .btn-small, .btn-tile) { transform: scale(.98); }
+  .ds-stage .btn-icon.steady.is-press { transform: none; }
+  .ds-stage .btn-tile.danger:is(.is-hover, .is-press) { color: var(--pg-color-status-danger-text); }
+  /* Недоступная плитка: в программе это Button.secondary.tile — прозрачность 0,45, как у второстепенной кнопки; в app.css правила нет */
+  .ds-stage .btn-tile:disabled { opacity: .45; }
+  /* Недоступная строка-ссылка: в программе это Button.plain — серый текст и прозрачность 0,6 (решение 530) */
+  .ds-stage .link-row:disabled { color: var(--pg-color-text-muted); opacity: .6; cursor: default; }
+  .ds-stage .is-focus { outline: 2px solid var(--pg-color-focus-ring); outline-offset: 2px; }
+  .ds-stage .input.is-focus { outline: none; border: 1.5px solid var(--pg-color-accent-base); }
+  .ds-stage .power.is-hover::before { opacity: 1; }
+
+  /* Выпадающий список, раскрытый для образца (как Popup программы) */
+  .ds-popup { padding: 6px; border-radius: var(--pg-radius-card); background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border);
+    box-shadow: var(--pg-shadow-popup); min-width: 180px; }
+  .ds-popup .btn-option { min-height: 40px; }
+
+  /* Строки в карточке */
+  .ds-card-sample { padding: 4px 0; }
+  .ds-card-sample > .link-row { min-height: 0; padding: 10px 16px; }
+
+  /* Островок и щит */
+  .ds-island { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 32px; align-items: start; }
+  .ds-island .pg-screens { margin: 0; }
+  .ds-states-row { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 16px 10px; }
+  .ds-state { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+  .ds-power { position: relative; width: var(--pg-layout-power-button-size); height: var(--pg-layout-power-button-size); }
+  .ds-power .power { cursor: default; }
+  .ds-state .t-strong { font-size: var(--pg-type-caption-size); font-weight: 700; color: var(--state-icon); }
+
+  /* Правила для новых блоков — темная карточка */
+  .ds-rules { background: var(--pg-color-text-primary); color: var(--pg-color-surface-solid); border-color: var(--pg-color-text-primary); }
+  .ds-rules ol { margin: 0; padding-left: 20px; font-size: var(--pg-type-small-size); line-height: 1.65; columns: 2; column-gap: 48px; }
+  .ds-rules .ds-card-head h2 { color: var(--pg-color-surface-solid); }
+
+  /* Нижний лист и диалог на сцене слоев */
+  .ds-layers { height: 420px; }
+  .ds-layers .sheet { top: 70px; }
+  .ds-sheet-head { display: flex; align-items: center; gap: 12px; margin: 4px 0 12px; }
+  .ds-sheet-tiles { display: flex; gap: 8px; margin-top: 12px; }
+  .ds-menu-item { padding: 0 10px; border-radius: var(--pg-radius-input); }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Компоненты дизайн-системы — блоки <span class="t-mono">assets/app.css</span>, те же, что стили
+  <span class="t-mono">Themes/Styles.axaml</span> программы. Каждый в состояниях: обычное, наведение, нажатие, фокус (Tab), выключено —
+  наведение и прочие состояния подписаны над столбцами и нарисованы принудительно, а живой образец рядом реагирует на мышь. Все
+  нажимается: переключатели, флажки, сегменты (переход на «Только прокси» — через диалог), выпадающий список, плитки проверок с
+  пояснением, вкладки, лист, диалоги, меню, подсказка, щит островка и выбор состояния. Не экран программы, поэтому без рамки устройства.</p>
+
+<div class="ds">
+  <div class="ds-head">
+    <div>
+      <div class="t-overline">Private Gateway · дизайн-система v1.1</div>
+      <h1 class="t-display" style="margin: 6px 0 0">Компоненты</h1>
+      <p class="t-small">Каждый блок собран только из токенов «Основ» (доска 23) — без цветов и размеров на глаз. Справа над образцом —
+        ключ стиля Avalonia, слева в строке — класс макета. Правила программы после v1.0: наведение — синий текст и значки без серой
+        заливки, выбранный пункт — синим полужирным без заливки, недоступное — серый текст без фона, стрелки строк-ссылок — по
+        правому краю, скрытое — звездочками.</p>
+    </div>
+    <span class="ds-tag">Styles.axaml → app.css</span>
+  </div>
+
+  <!-- ===================== Кнопки и управление ===================== -->
+  <div class="ds-grid2">
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Кнопки</h2><span class="ds-key">Button.*</span></div>
+      <div class="pg-app ds-stage">
+        <div class="ds-states">
+          <span></span><span class="ds-th">обычное</span><span class="ds-th">наведение</span><span class="ds-th">нажатие</span><span class="ds-th">фокус (Tab)</span><span class="ds-th">выключено</span>
+          <span class="ds-rowname"><b>.btn-primary</b><span class="t-caption">Button.primary</span></span>
+          <div class="ds-c"><button class="btn-primary">Готово</button></div>
+          <div class="ds-c"><button class="btn-primary is-hover">Готово</button></div>
+          <div class="ds-c"><button class="btn-primary is-press">Готово</button></div>
+          <div class="ds-c"><button class="btn-primary is-focus">Готово</button></div>
+          <div class="ds-c"><button class="btn-primary" disabled>Готово</button></div>
+          <span class="ds-rowname"><b>.btn-secondary</b><span class="t-caption">Button.secondary</span></span>
+          <div class="ds-c"><button class="btn-secondary">Отмена</button></div>
+          <div class="ds-c"><button class="btn-secondary is-hover">Отмена</button></div>
+          <div class="ds-c"><button class="btn-secondary is-press">Отмена</button></div>
+          <div class="ds-c"><button class="btn-secondary is-focus">Отмена</button></div>
+          <div class="ds-c"><button class="btn-secondary" disabled>Отмена</button></div>
+          <span class="ds-rowname"><b>.btn-primary.danger</b><span class="t-caption">Button.primary.danger</span></span>
+          <div class="ds-c"><button class="btn-primary danger">Удалить</button></div>
+          <div class="ds-c"><button class="btn-primary danger is-hover">Удалить</button></div>
+          <div class="ds-c"><button class="btn-primary danger is-press">Удалить</button></div>
+          <div class="ds-c"><button class="btn-primary danger is-focus">Удалить</button></div>
+          <div class="ds-c"><button class="btn-primary danger" disabled>Удалить</button></div>
+          <span class="ds-rowname"><b>.btn-secondary.danger</b><span class="t-caption">Button.secondary.danger</span></span>
+          <div class="ds-c"><button class="btn-secondary danger">Снять</button></div>
+          <div class="ds-c"><button class="btn-secondary danger is-hover">Снять</button></div>
+          <div class="ds-c"><button class="btn-secondary danger is-press">Снять</button></div>
+          <div class="ds-c"><button class="btn-secondary danger is-focus">Снять</button></div>
+          <div class="ds-c"><button class="btn-secondary danger" disabled>Снять</button></div>
+          <span class="ds-rowname"><b>.btn-icon</b><span class="t-caption">Button.icon</span></span>
+          <div class="ds-c"><button class="btn-icon" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+          <div class="ds-c"><button class="btn-icon is-hover" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+          <div class="ds-c"><button class="btn-icon is-press" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+          <div class="ds-c"><button class="btn-icon is-focus" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+          <div class="ds-c"><button class="btn-icon" disabled aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button></div>
+          <span class="ds-rowname"><b>.btn-icon.tinted.steady</b><span class="t-caption">Button.icon.steady</span></span>
+          <div class="ds-c"><button class="btn-icon steady tinted" data-spin aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button></div>
+          <div class="ds-c"><button class="btn-icon steady tinted is-hover" data-spin aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button></div>
+          <div class="ds-c"><button class="btn-icon steady tinted" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20" class="spin"></i></button></div>
+          <div class="ds-c"><button class="btn-icon steady tinted is-focus" data-spin aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button></div>
+          <div class="ds-c"><button class="btn-icon steady tinted" disabled aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button></div>
+          <span class="ds-rowname"><b>.btn-link</b><span class="t-caption">Button.link</span></span>
+          <div class="ds-c"><button class="btn-link">Проверить</button></div>
+          <div class="ds-c"><button class="btn-link is-hover">Проверить</button></div>
+          <div class="ds-c"><button class="btn-link is-press">Проверить</button></div>
+          <div class="ds-c"><button class="btn-link is-focus">Проверить</button></div>
+          <div class="ds-c"><button class="btn-link" disabled>Проверить</button></div>
+          <span class="ds-rowname"><b>.btn-select</b><span class="t-caption">Button.select</span></span>
+          <div class="ds-c"><button class="btn-select"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button></div>
+          <div class="ds-c"><button class="btn-select is-hover"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button></div>
+          <div class="ds-c"><button class="btn-select is-press"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button></div>
+          <div class="ds-c"><button class="btn-select is-focus"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button></div>
+          <div class="ds-c"><button class="btn-select" disabled><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button></div>
+          <span class="ds-rowname"><b>.btn-small</b><span class="t-caption">Button.small</span></span>
+          <div class="ds-c"><button class="btn-small">Вставить</button></div>
+          <div class="ds-c"><button class="btn-small is-hover">Вставить</button></div>
+          <div class="ds-c"><button class="btn-small is-press">Вставить</button></div>
+          <div class="ds-c"><button class="btn-small is-focus">Вставить</button></div>
+          <div class="ds-c"><button class="btn-small" disabled>Вставить</button></div>
+          <span class="ds-rowname"><b>.btn-small.soft</b><span class="t-caption">Button.small.soft</span></span>
+          <div class="ds-c"><button class="btn-small soft">Обновить</button></div>
+          <div class="ds-c"><button class="btn-small soft is-hover">Обновить</button></div>
+          <div class="ds-c"><button class="btn-small soft is-press">Обновить</button></div>
+          <div class="ds-c"><button class="btn-small soft is-focus">Обновить</button></div>
+          <div class="ds-c"><button class="btn-small soft" disabled>Обновить</button></div>
+          <span class="ds-rowname"><b>.btn-tile</b><span class="t-caption">Button.tile</span></span>
+          <div class="ds-c"><button class="btn-tile"><i data-icon="Qr" data-stroke="1.9"></i>Поделиться</button></div>
+          <div class="ds-c"><button class="btn-tile is-hover"><i data-icon="Qr" data-stroke="1.9"></i>Поделиться</button></div>
+          <div class="ds-c"><button class="btn-tile is-press"><i data-icon="Qr" data-stroke="1.9"></i>Поделиться</button></div>
+          <div class="ds-c"><button class="btn-tile is-focus"><i data-icon="Qr" data-stroke="1.9"></i>Поделиться</button></div>
+          <div class="ds-c"><button class="btn-tile" disabled><i data-icon="Qr" data-stroke="1.9"></i>Поделиться</button></div>
+          <span class="ds-rowname"><b>.btn-tile.danger</b><span class="t-caption">Button.tile.danger</span></span>
+          <div class="ds-c"><button class="btn-tile danger"><i data-icon="Trash" data-stroke="1.9"></i>Удалить</button></div>
+          <div class="ds-c"><button class="btn-tile danger is-hover"><i data-icon="Trash" data-stroke="1.9"></i>Удалить</button></div>
+          <div class="ds-c"><button class="btn-tile danger is-press"><i data-icon="Trash" data-stroke="1.9"></i>Удалить</button></div>
+          <div class="ds-c"><button class="btn-tile danger is-focus"><i data-icon="Trash" data-stroke="1.9"></i>Удалить</button></div>
+          <div class="ds-c"><button class="btn-tile danger" disabled><i data-icon="Trash" data-stroke="1.9"></i>Удалить</button></div>
+          <span class="ds-rowname"><b>.btn-plain</b><span class="t-caption">Button.plain</span></span>
+          <div class="ds-c"><button class="btn-plain ds-plain"><span class="pg-grow t-strong">Серверы</span><i data-icon="ChevronRight" class="chevron"></i></button></div>
+          <div class="ds-c"><button class="btn-plain ds-plain is-hover"><span class="pg-grow t-strong">Серверы</span><i data-icon="ChevronRight" class="chevron"></i></button></div>
+          <div class="ds-c"><button class="btn-plain ds-plain is-press"><span class="pg-grow t-strong">Серверы</span><i data-icon="ChevronRight" class="chevron"></i></button></div>
+          <div class="ds-c"><button class="btn-plain ds-plain is-focus"><span class="pg-grow t-strong">Серверы</span><i data-icon="ChevronRight" class="chevron"></i></button></div>
+          <div class="ds-c"><button class="btn-plain ds-plain" disabled><span class="pg-grow t-strong">Серверы</span><i data-icon="ChevronRight" class="chevron"></i></button></div>
+          <span class="ds-rowname"><b>.btn-option</b><span class="t-caption">Button.option</span></span>
+          <div class="ds-c"><button class="btn-option">gVisor</button></div>
+          <div class="ds-c"><button class="btn-option is-hover">gVisor</button></div>
+          <div class="ds-c"><button class="btn-option is-press">gVisor</button></div>
+          <div class="ds-c"><button class="btn-option is-focus">gVisor</button></div>
+          <div class="ds-c"><button class="btn-option" disabled>gVisor</button></div>
+          <span class="ds-rowname"><b>.btn-option.current</b><span class="t-caption">Button.option.current</span></span>
+          <div class="ds-c"><button class="btn-option current">Системный</button></div>
+          <div class="ds-c"><button class="btn-option current is-hover">Системный</button></div>
+          <div class="ds-c"><button class="btn-option current is-press">Системный</button></div>
+          <div class="ds-c"><button class="btn-option current is-focus">Системный</button></div>
+          <div class="ds-c"><button class="btn-option current" disabled>Системный</button></div>
+          <span class="ds-rowname"><b>.btn-nav</b><span class="t-caption">Button.nav</span></span>
+          <div class="ds-c"><button class="btn-nav ds-nav"><i data-icon="Nav.Servers" data-detail="Nav.Servers.Detail" data-stroke="1.7"></i><span>Серверы</span></button></div>
+          <div class="ds-c"><button class="btn-nav ds-nav is-hover"><i data-icon="Nav.Servers" data-detail="Nav.Servers.Detail" data-stroke="1.7"></i><span>Серверы</span></button></div>
+          <div class="ds-c"><button class="btn-nav ds-nav is-press"><i data-icon="Nav.Servers" data-detail="Nav.Servers.Detail" data-stroke="1.7"></i><span>Серверы</span></button></div>
+          <div class="ds-c"><button class="btn-nav ds-nav is-focus"><i data-icon="Nav.Servers" data-detail="Nav.Servers.Detail" data-stroke="1.7"></i><span>Серверы</span></button></div>
+          <div class="ds-c"><button class="btn-nav ds-nav" disabled><i data-icon="Nav.Servers" data-detail="Nav.Servers.Detail" data-stroke="1.7"></i><span>Серверы</span></button></div>
+          <span class="ds-rowname"><b>.btn-nav.active</b><span class="t-caption">Button.nav.active</span></span>
+          <div class="ds-c"><button class="btn-nav active ds-nav"><i data-icon="Nav.Home" data-stroke="1.7"></i><span>Главная</span></button></div>
+          <div class="ds-c"><button class="btn-nav active ds-nav is-hover"><i data-icon="Nav.Home" data-stroke="1.7"></i><span>Главная</span></button></div>
+          <div class="ds-c"><button class="btn-nav active ds-nav is-press"><i data-icon="Nav.Home" data-stroke="1.7"></i><span>Главная</span></button></div>
+          <div class="ds-c"><button class="btn-nav active ds-nav is-focus"><i data-icon="Nav.Home" data-stroke="1.7"></i><span>Главная</span></button></div>
+          <div class="ds-c"><span class="ds-same">нет в программе</span></div>
+          <span class="ds-rowname"><b>.btn-link.tone-*</b><span class="t-caption">Button.link.tone · обычное</span></span>
+          <div class="ds-span ds-tones">
+            <span class="ds-tone"><button class="btn-link tone-success">Подключить</button><span class="ds-same">.tone-success</span></span>
+            <span class="ds-tone"><button class="btn-link tone-warning">Повторить</button><span class="ds-same">.tone-warning</span></span>
+            <span class="ds-tone"><button class="btn-link tone-caution">Вход в Wi-Fi</button><span class="ds-same">.tone-caution</span></span>
+            <span class="ds-tone"><button class="btn-link tone-danger">Перезапустить службу</button><span class="ds-same">.tone-danger</span></span>
+          </div>
+        </div>
+      </div>
+      <ul class="ds-list">
+        <li>Основная и второстепенная: высота 40 (в диалоге 46–48), скругление radius.input, текст 14/600. Основная — одна на экран</li>
+        <li>Наведение: основная темнеет до accent.text; остальные — синий текст и значки (accent.base), без серой заливки (решение 485)</li>
+        <li>Нажатие — масштаб 0,98; у «Обновить серверы» (.steady) кнопка не сжимается — крутится только стрелка</li>
+        <li>Фокус с клавиатуры — рамка focus.ring 2 px с отступом 2</li>
+        <li>Выключено: кнопки-надписи и строки — серый текст без фона, прозрачность 0,6 (решение 530); основная и второстепенная — 0,45</li>
+        <li>Кнопка-значок 44 × 44 — зона нажатия layout.touchTarget</li>
+      </ul>
+    </section>
+
+    <div class="ds-col">
+      <section class="ds-card">
+        <div class="ds-card-head"><h2>Переключатель, флажок, поле, сегменты</h2><span class="ds-key">ToggleButton.switch · CheckBox.check · TextBox.input</span></div>
+        <div class="pg-app ds-stage">
+          <div class="ds-states">
+          <span></span><span class="ds-th">обычное</span><span class="ds-th">наведение</span><span class="ds-th">нажатие</span><span class="ds-th">фокус (Tab)</span><span class="ds-th">выключено</span>
+          <span class="ds-rowname"><b>.switch</b><span class="t-caption">ToggleButton.switch</span></span>
+          <div class="ds-c"><button class="switch" role="switch" aria-checked="false" aria-label="Переключатель"></button></div>
+          <div class="ds-c"><span class="ds-same">как обычное</span></div>
+          <div class="ds-c"><span class="ds-same">как обычное</span></div>
+          <div class="ds-c"><button class="switch is-focus" role="switch" aria-checked="false" aria-label="Переключатель"></button></div>
+          <div class="ds-c"><button class="switch" role="switch" aria-checked="false" aria-label="Переключатель" disabled></button></div>
+          <span class="ds-rowname"><b>.switch.on</b><span class="t-caption">ToggleButton.switch</span></span>
+          <div class="ds-c"><button class="switch on" role="switch" aria-checked="true" aria-label="Переключатель"></button></div>
+          <div class="ds-c"><span class="ds-same">как обычное</span></div>
+          <div class="ds-c"><span class="ds-same">как обычное</span></div>
+          <div class="ds-c"><button class="switch on is-focus" role="switch" aria-checked="true" aria-label="Переключатель"></button></div>
+          <div class="ds-c"><button class="switch on" role="switch" aria-checked="true" aria-label="Переключатель" disabled></button></div>
+          <span class="ds-rowname"><b>.check</b><span class="t-caption">CheckBox.check</span></span>
+          <div class="ds-c"><button class="check ds-check"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><button class="check ds-check is-hover"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><button class="check ds-check is-press"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><button class="check ds-check is-focus"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><span class="ds-same">нет в программе</span></div>
+          <span class="ds-rowname"><b>.check.on</b><span class="t-caption">CheckBox.check</span></span>
+          <div class="ds-c"><button class="check on ds-check"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><button class="check on ds-check is-hover"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><button class="check on ds-check is-press"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><button class="check on ds-check is-focus"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>DNS</button></div>
+          <div class="ds-c"><span class="ds-same">нет в программе</span></div>
+          <span class="ds-rowname"><b>.input</b><span class="t-caption">TextBox.input</span></span>
+          <div class="ds-c"><input class="input ds-input" type="text" value="1420" aria-label="MTU"></div>
+          <div class="ds-c"><input class="input ds-input is-hover" type="text" value="1420" aria-label="MTU"></div>
+          <div class="ds-c"><input class="input ds-input is-focus" type="text" value="1420" aria-label="MTU"></div>
+          <div class="ds-c"><input class="input ds-input is-focus" type="text" value="1420" aria-label="MTU"></div>
+          <div class="ds-c"><span class="ds-same">нет в программе</span></div>
+          <span class="ds-rowname"><b>.segment</b><span class="t-caption">RadioButton.segment</span></span>
+          <div class="segments ds-span" role="radiogroup" aria-label="Состояния сегмента">
+            <button class="segment on" role="radio" aria-checked="true">Выбран</button>
+            <button class="segment" role="radio" aria-checked="false">Обычный</button>
+            <button class="segment is-hover" role="radio" aria-checked="false">Наведение</button>
+            <button class="segment is-focus" role="radio" aria-checked="false">Фокус</button>
+          </div>
+          </div>
+        </div>
+        <ul class="ds-list">
+          <li>Переключатель 48 × 28, кружок 22: вкл — accent.base, выкл — control.trackOff. Наведение его не меняет</li>
+          <li>Флажок 20, скругление 6, рамка control.checkboxBorder; при наведении и нажатии рамка и подпись синеют. Нажимается вся строка</li>
+          <li>Поле: высота 44, рамка line.strong; наведение — рамка темнее, нажатие ставит фокус — 1,5 px accent.base</li>
+          <li>Сегменты: дорожка control.segmentTrack, отступ 4; выбранный — белый, тень «карточка», полужирный</li>
+        </ul>
+      </section>
+
+      <section class="ds-card">
+        <div class="ds-card-head"><h2>Живые образцы</h2><span class="ds-key">как в «Настройках» и «Серверах»</span></div>
+        <div class="pg-app ds-stage" style="min-height: 430px">
+          <div class="card" style="padding: 4px 0">
+            <div class="setting" style="flex-direction: column; align-items: stretch; gap: 10px">
+              <span class="t-strong">Режим</span>
+              <div class="segments" role="radiogroup" aria-label="Режим">
+                <button class="segment on" role="radio" aria-checked="true">VPN · вся система</button>
+                <button class="segment" data-confirm="ds-dlg-proxy" role="radio" aria-checked="false">Только прокси</button>
+              </div>
+            </div>
+            <div class="setting">
+              <div class="setting-text">
+                <span class="setting-title">Блок при обрыве (Kill Switch)</span>
+                <span class="setting-caption">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span>
+              </div>
+              <button class="switch on" role="switch" aria-checked="true" aria-label="Блок при обрыве (Kill Switch)" data-confirm-off="ds-dlg-ks"></button>
+            </div>
+            <div class="setting">
+              <div class="setting-text">
+                <span class="setting-title">Стек TUN</span>
+                <span class="setting-caption">Как обрабатываются пакеты.</span>
+              </div>
+              <button class="btn-select" data-open="ds-menu-stack" aria-label="Стек TUN"><span data-select-label>Системный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            </div>
+            <div class="setting disabled">
+              <div class="setting-text">
+                <span class="setting-title">Обнаружение устройств (mDNS/SSDP)</span>
+                <span class="setting-caption">Работает только при разрешенной локальной сети.</span>
+              </div>
+              <button class="switch" role="switch" aria-checked="false" aria-label="Обнаружение устройств (mDNS/SSDP)" disabled></button>
+            </div>
+          </div>
+          <div class="pg-stack pg-gap-8" style="margin-top: 12px">
+            <div class="search">
+              <i data-icon="Search" data-stroke="2" data-size="17"></i>
+              <input type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+              <button class="btn-icon" style="width: 36px; height: 36px" data-toast="Фильтр и сортировка — доска 2" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+            </div>
+            <textarea class="input" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку" style="min-height: 64px; font-family: var(--font-mono); font-size: var(--pg-type-caption-size)"></textarea>
+            <div class="pg-row pg-gap-8">
+              <button class="check on" style="width: auto"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>Серверы и подписки</button>
+              <button class="check" style="width: auto"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>Настройки</button>
+            </div>
+          </div>
+
+          <div class="popup" id="ds-menu-stack">
+            <button class="btn-option current" data-value="Системный">Системный</button>
+            <button class="btn-option" data-value="gVisor">gVisor</button>
+            <button class="btn-option" data-value="Смешанный">Смешанный</button>
+          </div>
+          <div class="dialog" id="ds-dlg-proxy" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
+            <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+            <div class="t-status t-wrap">Перейти в режим прокси?</div>
+            <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</p>
+            <div class="dialog-actions stack">
+              <button class="btn-primary" data-close>Оставить VPN</button>
+              <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>
+            </div>
+          </div>
+          <div class="dialog" id="ds-dlg-ks" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
+            <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+            <div class="t-status t-wrap">Выключить блок при обрыве?</div>
+            <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
+            <div class="dialog-actions stack">
+              <button class="btn-primary" data-close>Оставить включенным</button>
+              <button class="btn-secondary danger" data-confirm-yes>Выключить</button>
+            </div>
+          </div>
+        </div>
+        <ul class="ds-list">
+          <li>Опасное включается и выключается только через диалог: «Только прокси», выключение блока при обрыве</li>
+          <li>Недоступная строка (.setting.disabled) — серые заголовок и подпись, переключатель 0,45</li>
+          <li>Поиск: значок, поле без рамки, фильтр справа; ссылки и ключи — моноширинным</li>
+        </ul>
+      </section>
+    </div>
+  </div>
+
+  <!-- ===================== Список, плитки, бейджи ===================== -->
+  <div class="ds-grid3">
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Выпадающий список</h2><span class="ds-key">Button.select · Popup · Button.option</span></div>
+      <div class="pg-app ds-stage" style="min-height: 250px">
+        <div class="pg-row" style="gap: 16px; align-items: flex-start">
+          <div class="pg-stack pg-gap-8">
+            <span class="t-caption">Закрыт · нажмите</span>
+            <button class="btn-select" data-open="ds-menu-log" aria-label="Журнал ядра"><span data-select-label>Предупреждения</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+          </div>
+          <div class="pg-stack pg-gap-8">
+            <span class="t-caption">Открыт · курсор на «gVisor»</span>
+            <button class="btn-select is-hover" tabindex="-1"><span>Системный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="ds-popup">
+              <button class="btn-option current">Системный</button>
+              <button class="btn-option is-hover">gVisor</button>
+              <button class="btn-option">Смешанный</button>
+            </div>
+          </div>
+        </div>
+        <div class="popup" id="ds-menu-log">
+          <button class="btn-option current" data-value="Предупреждения">Предупреждения</button>
+          <button class="btn-option" data-value="Информация">Информация</button>
+          <button class="btn-option" data-value="Отладка">Отладка</button>
+        </div>
+      </div>
+      <ul class="ds-list">
+        <li>Кнопка 36, скругление 10, рамка line.strong, галочка вниз — accent.text; наведение — рамка accent.base</li>
+        <li>Меню: скругление radius.card, тень shadow.popup, ширина по содержимому; закрывается щелчком вне его и Esc</li>
+        <li>Выбранный пункт — синим полужирным (accent.text 600) без заливки; наведение — синий текст</li>
+      </ul>
+    </section>
+
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Плитки проверок</h2><span class="ds-key">Button.chip</span></div>
+      <div class="pg-app ds-stage">
+        <div class="chips">
+          <button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую.">
+            <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span>
+          </button>
+          <button class="btn-chip tone-accent" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую.">
+            <span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">поднимается</span></span>
+          </button>
+          <button class="btn-chip tone-warning" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую.">
+            <span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">остановлен</span></span>
+          </button>
+          <button class="btn-chip tone-caution" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля.">
+            <span class="chip-dot"><i data-icon="Chip.Warn" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">не контролируется</span></span>
+          </button>
+          <button class="btn-chip tone-danger" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.">
+            <span class="chip-dot"><i data-icon="Chip.Dash" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">видит провайдер</span></span>
+          </button>
+          <button class="btn-chip tone-muted" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую.">
+            <span class="chip-dot"><i data-icon="Chip.Dots" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">нет данных</span></span>
+          </button>
+          <button class="btn-chip tone-success selected" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую.">
+            <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">Наведение</span><span class="chip-value">рамка и фон ярче</span></span>
+          </button>
+          <button class="btn-chip tone-success" disabled>
+            <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
+            <span class="pg-stack pg-grow"><span class="chip-title">Выключено</span><span class="chip-value">серый текст</span></span>
+          </button>
+        </div>
+        <div class="inset" data-chip-info style="display: none; margin-top: 10px; padding: 10px 12px; background: var(--pg-color-accent-tint)">
+          <div class="t-strong" style="font-size: var(--pg-type-small-size)" data-chip-title></div>
+          <div class="t-caption t-secondary t-wrap" data-chip-text></div>
+        </div>
+      </div>
+      <ul class="ds-list">
+        <li>Плитка 46, скругление radius.button; фон — tint тона, кружок 22 — base, значение — text тона</li>
+        <li>Тона: success — в порядке, accent — поднимается, warning — остановлено, caution — частично, danger — открыто; muted — запас
+          app.css, в программе плиток этого тона нет</li>
+        <li>Пояснение под плитками — одно на проверку (check.*.text), в любом ее состоянии</li>
+        <li>Наведение и выбор — рамка 1,5 цвета кружка и фон hover; нажатие показывает пояснение под плитками</li>
+        <li>Статус всегда значком и текстом, не только цветом</li>
+      </ul>
+    </section>
+
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Бейджи, метки, полосы</h2><span class="ds-key">Border.badge · pill · banner</span></div>
+      <div class="pg-app ds-stage pg-stack pg-gap-10">
+        <span class="ds-key" style="text-align: left">.badge</span>
+        <div class="pg-row" style="gap: 6px; flex-wrap: wrap">
+          <span class="badge accent">0.1.0</span><span class="badge caution">демо</span><span class="badge success">Нет утечек</span>
+          <span class="badge warning">Стоп</span><span class="badge danger">Напрямую</span><span class="badge muted">Нет ответа</span>
+          <span class="badge accent country">NL</span><span class="badge accent country">FI</span>
+        </div>
+        <span class="ds-key" style="text-align: left">.pill</span>
+        <div class="pg-row" style="gap: 6px; flex-wrap: wrap">
+          <span class="pill success">Активен</span><span class="pill accent">Выбран</span><span class="pill caution">Частично</span>
+          <span class="pill warning">Стоп</span><span class="pill danger">Выкл.</span><span class="pill muted">Нет ответа</span>
+        </div>
+        <span class="ds-key" style="text-align: left">.banner</span>
+        <div class="banner caution"><i data-icon="Clock" data-stroke="2" data-size="16"></i><span class="pg-grow">Интернет без VPN для входа в Wi-Fi · <b class="t-mono">4:59</b></span></div>
+        <button class="banner warning" data-nav="13-routing.html"><i data-icon="Warning" data-stroke="2" data-size="16"></i><span class="pg-grow">Внимание · программы и сайты из списков идут мимо VPN</span><i data-icon="ChevronRight" data-stroke="2.2" data-size="14"></i></button>
+        <div class="banner danger"><i data-icon="Mark.Alert" data-stroke="2.2" data-size="16"></i><span class="pg-grow">«Основная подписка» не обновилась — прошлый список оставлен</span></div>
+        <div class="banner success"><i data-icon="Chip.Ok" data-stroke="2.4" data-size="16"></i><span class="pg-grow">Копия сохранена</span></div>
+        <div class="banner accent"><i data-icon="Lock" data-stroke="2" data-size="16"></i><span class="pg-grow">Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.</span></div>
+      </div>
+      <ul class="ds-list">
+        <li>Бейдж: 11/600, скругление radius.chip — версия, «демо», метки проверок на «Проверке»; код страны — 30 × 22</li>
+        <li>Полоса: фон tint и рамка line статуса, текст — badge; кнопка-полоса при наведении — hover и рамка base</li>
+      </ul>
+    </section>
+  </div>
+
+  <!-- ===================== Строки, карточка, слои ===================== -->
+  <div class="ds-grid3">
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Строки и вкладки</h2><span class="ds-key">setting · link-row · tabs</span></div>
+      <div class="pg-app ds-stage pg-stack pg-gap-10">
+        <span class="ds-key" style="text-align: left">.link-row · строка-ссылка</span>
+        <div class="card ds-card-sample">
+          <button class="link-row" data-nav="05-protection.html">
+            <span class="row-icon"><i data-icon="Adv.Protection" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Защита и утечки</span><span class="t-caption pg-ellipsis">Kill Switch, DNS, IPv6, локальная сеть</span></span>
+            <i data-icon="ChevronRight" class="chevron"></i>
+          </button>
+          <button class="link-row is-hover" data-nav="13-routing.html">
+            <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Наведение</span><span class="t-caption pg-ellipsis">текст, значок и стрелка синеют</span></span>
+            <i data-icon="ChevronRight" class="chevron"></i>
+          </button>
+          <button class="link-row" data-nav="14-backup.html">
+            <span class="row-icon violet"><i data-icon="Adv.Backup" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">.row-icon.violet</span><span class="t-caption pg-ellipsis">также .teal и .amber</span></span>
+            <i data-icon="ChevronRight" class="chevron"></i>
+          </button>
+          <button class="link-row" disabled>
+            <span class="row-icon teal"><i data-icon="Adv.Profiles" data-stroke="1.9"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong t-muted">Выключено</span><span class="t-caption pg-ellipsis">серый текст, без фона</span></span>
+            <i data-icon="ChevronRight" class="chevron"></i>
+          </button>
+        </div>
+        <span class="ds-key" style="text-align: left">.tabs · вкладки (на «Серверах» — сегменты, доска 2)</span>
+        <div class="tabs">
+          <button class="tab on">Все · 7</button>
+          <button class="tab is-hover">Избранные</button>
+          <button class="tab">Недавние</button>
+        </div>
+        <span class="ds-key" style="text-align: left">.btn-plain · строка во всю ширину</span>
+        <div class="card" style="padding: 2px 6px">
+          <button class="btn-plain" data-nav="02-servers.html" style="padding: 0 10px"><span class="pg-grow t-strong">Все серверы</span><i data-icon="ChevronRight" class="chevron"></i></button>
+        </div>
+      </div>
+      <ul class="ds-list">
+        <li>Строки разделены полосами line.divider; стрелка «›» — по правому краю, серая, синеет при наведении</li>
+        <li>Значок строки 34 на подложке accent.tint; цветные — tile.*</li>
+        <li>Вкладка выбрана — accent.tint и полужирный; наведение — синий текст</li>
+      </ul>
+    </section>
+
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Карточка и строка сервера</h2><span class="ds-key">Border.card · server-row</span></div>
+      <div class="pg-app ds-stage pg-stack pg-gap-10" data-reveal-scope>
+        <div class="card" style="padding: 14px 8px 12px 16px">
+          <span class="t-overline">Сайты видят ваш IP</span>
+          <div class="pg-row">
+            <span class="t-mono-large pg-grow" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span>
+            <button class="btn-icon" data-toast="IP скопирован" aria-label="Копировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button>
+            <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
+          </div>
+          <span class="t-small">Амстердам · дата-центр · AS64500</span>
+        </div>
+        <div class="card pg-stack" style="padding: 6px">
+          <button class="server-row current"><span class="badge accent country">NL</span><span class="pg-stack pg-grow"><span class="t-strong">Нидерланды 01</span><span class="t-caption">203.0.113.24 · VLESS · REALITY</span></span><span class="pill success">активен</span><span class="t-mono latency good">42 мс</span></button>
+          <button class="server-row is-hover"><span class="badge accent country">FI</span><span class="pg-stack pg-grow"><span class="t-strong">Финляндия 01</span><span class="t-caption">203.0.113.57 · Hysteria2</span></span><span class="t-mono latency good">38 мс</span></button>
+          <button class="server-row"><span class="badge accent country">US</span><span class="pg-stack pg-grow"><span class="t-strong">США 01</span><span class="t-caption">198.51.100.201 · Trojan · WS</span></span><span class="t-mono latency none">148 мс</span></button>
+          <button class="server-row"><span class="badge accent country">TR</span><span class="pg-stack pg-grow"><span class="t-strong">Турция 01</span><span class="t-caption">192.0.2.150 · VLESS · gRPC</span></span><span class="t-mono latency bad">нет</span></button>
+          <button class="server-row"><span class="badge accent country">PL</span><span class="pg-stack pg-grow"><span class="t-strong">Польша 03</span><span class="t-caption">192.0.2.88 · TUIC v5</span></span><span class="t-mono latency good">64 мс</span></button>
+        </div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-icon fav on" aria-label="Убрать из избранного"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
+          <button class="btn-icon fav" aria-label="В избранное"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
+          <span class="t-caption">.fav — звезда избранного, нажимается</span>
+        </div>
+      </div>
+      <ul class="ds-list">
+        <li>Карточка: surface.card, рамка line.border, скругление radius.card, тень shadow.card; заголовок — overline</li>
+        <li>Выбранный сервер — рамка 1,5 accent.base и тень shadow.chosen; наведение — синий текст</li>
+        <li>Задержка: до 120 мс — зеленым, дольше — серым, нет ответа — «нет» оранжевым</li>
+        <li>Скрытые данные — звездочками: нажмите глаз</li>
+      </ul>
+    </section>
+
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Слои: лист, диалог, меню, подсказка</h2><span class="ds-key">Sheet · DialogView · Popup · Toast</span></div>
+      <div class="pg-app ds-stage ds-layers">
+        <div class="pg-stack pg-gap-8">
+          <button class="btn-secondary" data-open="ds-sheet">Нижний лист · карточка сервера</button>
+          <button class="btn-secondary" data-open="ds-dlg-delete">Диалог · опасное действие</button>
+          <button class="btn-secondary" data-open="ds-dlg-strict">Диалог · подтверждение</button>
+          <div class="pg-row pg-gap-8">
+            <button class="btn-secondary pg-grow" data-toast="Серверы обновлены · пинг проверен">Подсказка сверху</button>
+            <button class="btn-icon" data-open="ds-menu-more" aria-label="Еще"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="pg-row pg-gap-10" style="margin-top: 6px"><span class="spinner"></span><span class="t-caption">.spinner — ожидание</span></div>
+          <div class="log">15:10:02 подключение · NL · Нидерланды 01
+15:10:03 туннель поднят · DNS в туннеле
+15:10:04 внешний IP ***.*.***.** · AS64500</div>
+        </div>
+
+        <div class="sheet" id="ds-sheet" aria-label="Нидерланды 01">
+          <div class="grabber"></div>
+          <div class="ds-sheet-head">
+            <span class="badge accent country">NL</span>
+            <div class="pg-stack pg-grow"><span class="t-title">Нидерланды 01</span><span class="t-caption">Амстердам · из подписки «Основная подписка»</span></div>
+            <button class="btn-icon" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+          </div>
+          <div class="inset" style="padding: 10px 12px">
+            <div class="pg-row"><span class="t-small pg-grow">Адрес</span><span class="t-mono">203.0.113.24:443</span></div>
+            <div class="pg-row" style="margin-top: 6px"><span class="t-small pg-grow">Протокол</span><span class="t-mono">VLESS · REALITY</span></div>
+          </div>
+          <div class="ds-sheet-tiles">
+            <button class="btn-tile" data-nav="11-server-card.html"><i data-icon="Edit" data-stroke="1.9"></i>Переименовать</button>
+            <button class="btn-tile" data-nav="11-server-card.html"><i data-icon="Qr" data-stroke="1.9"></i>Поделиться</button>
+            <button class="btn-tile danger" data-open="ds-dlg-delete"><i data-icon="Trash" data-stroke="1.9"></i>Удалить</button>
+          </div>
+        </div>
+
+        <div class="dialog" id="ds-dlg-delete" role="dialog" aria-modal="true" aria-label="Удалить сервер «Нидерланды 01»?">
+          <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+          <div class="t-status t-wrap">Удалить сервер «Нидерланды 01»?</div>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Защита сейчас идет через этот сервер: VPN отключится, и другой сервер вы выберете сами.</p>
+          <div class="dialog-actions stack">
+            <button class="btn-primary danger" data-close data-toast="Сервер удален">Удалить</button>
+            <button class="btn-secondary" data-close>Отмена</button>
+          </div>
+        </div>
+        <div class="dialog" id="ds-dlg-strict" role="dialog" aria-modal="true" aria-label="Включить строгий режим?">
+          <div class="dialog-icon accent"><i data-icon="Lock" data-stroke="1.9" data-size="26"></i></div>
+          <div class="t-status t-wrap">Включить строгий режим?</div>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Интернет будет работать только через VPN — и после ручного отключения тоже. Чтобы выйти в сеть без VPN, выключите строгий режим.</p>
+          <div class="dialog-actions">
+            <button class="btn-secondary" data-close>Отмена</button>
+            <button class="btn-primary" data-close data-toast="Строгий режим включен">Включить</button>
+          </div>
+        </div>
+        <div class="dialog" id="ds-dlg-sub" role="dialog" aria-modal="true" aria-label="Удалить «Основная подписка»?">
+          <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+          <div class="t-status t-wrap">Удалить «Основная подписка»?</div>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Вместе с группой удалятся 7 серверов и их ключи. Защита сейчас идет через один из них: VPN отключится, и другой сервер вы выберете сами.</p>
+          <div class="dialog-actions stack">
+            <button class="btn-primary danger" data-close data-toast="«Основная подписка» удалена">Удалить</button>
+            <button class="btn-secondary" data-close>Отмена</button>
+          </div>
+        </div>
+        <div class="popup" id="ds-menu-more">
+          <!-- Меню действий: пункты — строки-кнопки (у .popup .btn-option щелчок выбирает пункт и не открывает диалог) -->
+          <button class="btn-plain ds-menu-item" data-close data-toast="«Основная подписка» обновлена: новых 0, удалено 0">Обновить</button>
+          <button class="btn-plain ds-menu-item" data-nav="12-subscriptions.html">Изменить</button>
+          <div class="divider" style="margin: 2px 6px"></div>
+          <button class="btn-plain ds-menu-item t-danger" data-open="ds-dlg-sub">Удалить «Основная подписка»</button>
+        </div>
+      </div>
+      <ul class="ds-list">
+        <li>Затемнение overlay.scrim; лист — скругление radius.panel сверху, тень shadow.sheet, ручка control.grabber</li>
+        <li>Диалог — тень shadow.dialog, значок 46 тоном действия; безопасное действие — основная кнопка, опасное — вторая</li>
+        <li>Подсказка — темная плашка сверху на 1,8 с; щелчок по затемнению и Esc закрывают слой</li>
+      </ul>
+    </section>
+  </div>
+
+  <!-- ===================== Островок и щит ===================== -->
+  <div class="ds-col">
+    <section class="ds-card">
+      <div class="ds-card-head"><h2>Островок и щит</h2><span class="ds-key">IslandNav · Button.power · state.*</span></div>
+      <div class="ds-island">
+        <div class="pg-screens">
+          <section class="pg-screen" data-device="windows" data-state="connected" style="height: 300px" data-caption="Живой островок: выберите состояние или нажмите щит">
+            <div class="pg-stack" style="padding: 14px var(--side) 0; gap: 8px">
+              <span class="t-overline">Состояние экрана</span>
+              <div class="tabs" style="flex-wrap: wrap">
+                <button class="tab on" data-set-state="connected">Защищено</button>
+                <button class="tab" data-set-state="connecting">Подключение</button>
+                <button class="tab" data-set-state="blocked">Блокировка</button>
+                <button class="tab" data-set-state="proxy">Прокси</button>
+                <button class="tab" data-set-state="paused">Пауза</button>
+                <button class="tab" data-set-state="error">Ошибка</button>
+                <button class="tab" data-set-state="off">Выключено</button>
+              </div>
+            </div>
+            <div class="pg-island" data-active="home"></div>
+          </section>
+        </div>
+        <div class="pg-stack pg-gap-16">
+          <span class="t-overline">Щит и плитка состояния — во всех цветах state.*</span>
+          <div class="pg-app ds-stage ds-states-row">
+            <div class="ds-state" data-state="connected">
+              <div class="ds-power"><span class="power"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9"></i></span></div>
+              <span class="t-strong">Защищено</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">connected</span>
+            </div>
+            <div class="ds-state" data-state="connected">
+              <div class="ds-power"><span class="power is-hover"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9"></i></span></div>
+              <span class="t-strong">Наведение</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">заливка fill</span>
+            </div>
+            <div class="ds-state" data-state="connecting">
+              <div class="ds-power"><span class="power"><i data-icon="Shield" data-detail="Mark.Wait" data-stroke="1.9"></i></span>
+                <svg class="power-spin" viewBox="0 0 80 80"><circle cx="40" cy="40" r="38" stroke-dasharray="66 300" transform="rotate(-90 40 40)"/></svg></div>
+              <span class="t-strong">Подключение</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Wait" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">connecting</span>
+            </div>
+            <div class="ds-state" data-state="blocked">
+              <div class="ds-power"><span class="power"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9"></i></span></div>
+              <span class="t-strong">Блокировка</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">blocked</span>
+            </div>
+            <div class="ds-state" data-state="proxy">
+              <div class="ds-power"><span class="power"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9"></i></span></div>
+              <span class="t-strong">Прокси · Пауза</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">partial</span>
+            </div>
+            <div class="ds-state" data-state="error">
+              <div class="ds-power"><span class="power"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9"></i></span></div>
+              <span class="t-strong">Ошибка</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">error</span>
+            </div>
+            <div class="ds-state" data-state="off">
+              <div class="ds-power"><span class="power"><i data-icon="Shield" data-detail="Mark.Off" data-stroke="1.9"></i></span></div>
+              <span class="t-strong">Выключено</span>
+              <div class="state-tile"><i data-icon="Shield" data-detail="Mark.Off" data-stroke="1.9"></i></div>
+              <span class="ds-key" style="text-align: center">off</span>
+            </div>
+          </div>
+          <ul class="ds-list">
+            <li>Островок: поля 12 от краев окна (телефон 14) и 12 снизу, высота 68, скругление 26, тень shadow.island</li>
+            <li>Выступ под щит — дуга R 48 и плавные скругления R 18 (IslandGeometry программы)</li>
+            <li>Щит 80, кольцо 4 цвета state.*.ring, значок 36, свечение glow; при подключении по кольцу бежит дуга spinner</li>
+            <li>Активный раздел — accent.base и заливка значка 16 %; под щитом — состояние словом, не только цветом</li>
+            <li>Содержимое прокручивается под островком: внизу страницы запас 160</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section class="ds-card ds-rules">
+      <div class="ds-card-head"><h2>Правила для новых блоков</h2></div>
+      <ol>
+        <li>Только токены «Основ»: цвет, шрифт, скругление, тень — var(--pg-…) здесь и ресурс темы в программе</li>
+        <li>Зона нажатия — не меньше 44 × 44</li>
+        <li>Контраст текста — не ниже 4,5 : 1</li>
+        <li>Состояния: обычное, наведение, нажатие, фокус (Tab), выключено</li>
+        <li>Наведение — синий текст и значки, без серой заливки</li>
+        <li>Выбранный пункт — синим полужирным, без заливки</li>
+        <li>Недоступное — серый текст, без фона</li>
+        <li>Стрелки строк-ссылок — по правому краю, строки разделены полосами</li>
+        <li>Скрытое — звездочками «*»</li>
+        <li>Статус — значком и текстом, не только цветом</li>
+        <li>Тексты RU и EN — закладывать +30 % длины</li>
+        <li>Экран один на всех устройствах: меняются только рамка ОС, шрифт и поля</li>
+        <li>Новый блок — сначала в app.css и Styles.axaml, потом на экранах</li>
+      </ol>
+    </section>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>3 · Добавить профиль — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Шаг без островка (ImportPage): шапка с «Назад», прокручиваемые источники и предпросмотр, внизу «Добавить N серверов» */
+  .im-page { display: flex; flex-direction: column; overflow: hidden; }
+  .im-head { height: 60px; flex: none; display: flex; align-items: center; padding: 0 var(--side) 0 8px; }
+  .im-head .t-h1 { margin-left: 4px; }
+  .im-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: none; padding: 0 var(--side) 16px; }
+  .im-scroll::-webkit-scrollbar { display: none; }
+
+  /* Карточка источника (Button.source): выбранная — белая, рамка акцентом и синяя тень */
+  .im-sources.segments { display: flex; flex-direction: column; gap: 8px; padding: 0; background: none; border-radius: 0; }
+  .im-sources > .segment { display: flex; align-items: center; justify-content: flex-start; gap: 12px; width: 100%; height: auto;
+    min-height: 66px; padding: 10px 14px; border-radius: 16px; border: 1.5px solid var(--pg-color-line-border);
+    background: var(--pg-color-surface-card); color: var(--pg-color-text-primary); font-size: var(--pg-type-body-size); font-weight: 400;
+    text-align: left; box-shadow: none; }
+  .im-sources > .segment:hover { border-color: var(--pg-color-accent-line); color: var(--pg-color-accent-base); }
+  .im-sources > .segment.on { background: var(--pg-color-surface-solid); border-color: var(--pg-color-accent-base);
+    box-shadow: var(--pg-shadow-chosen); font-weight: 400; }
+  .im-icon { width: 44px; height: 44px; flex: none; border-radius: 12px; display: grid; place-items: center;
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .im-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+  /* «Ввести ссылку»: поле в несколько строк и «Проверить» — только у выбранной карточки */
+  .im-linkbox { display: none; flex-direction: column; gap: 8px; }
+  .pg-app:has(.im-src-link.on) .im-linkbox { display: flex; }
+  textarea.im-link-text { min-height: 88px; font-family: var(--font-mono); font-size: var(--pg-type-caption-size); }
+  .im-linkbox .btn-secondary { align-self: flex-end; }
+
+  /* Предпросмотр: появляется у выбранного источника; у ссылки — после «Проверить» */
+  .im-prev { display: none; margin-top: 8px; padding: 14px 16px; }
+  .im-add { display: none; }
+  .pg-app:has(.im-src-clip.on) .im-prev-clip, .pg-app:has(.im-src-qr.on) .im-prev-qr, .pg-app:has(.im-src-file.on) .im-prev-file,
+  .pg-app:has(.im-src-link.on):has(.im-flag:checked) .im-prev-link { display: block; }
+  .pg-app:has(.im-src-clip.on) .im-add-clip, .pg-app:has(.im-src-qr.on) .im-add-qr, .pg-app:has(.im-src-file.on) .im-add-file,
+  .pg-app:has(.im-src-link.on):has(.im-flag:checked) .im-add-link { display: flex; }
+  /* Заголовок предпросмотра (Grid «*,Auto»): «Предпросмотр» не сжимается, формат справа переносится на узком экране */
+  .im-prev-title { flex: none; }
+  .im-format { flex: 1; min-width: 0; text-align: right; }
+  .im-tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .im-tile { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 4px; border-radius: 12px;
+    background: var(--pg-color-control-segment-track); }
+  .im-num { font-family: var(--font-mono); font-size: var(--pg-type-status-size); font-weight: 600; }
+  .im-tile.good { background: var(--pg-color-status-success-tint); }
+  .im-tile.good .im-num { color: var(--pg-color-status-success-text); }
+  .im-tile.good .t-caption { color: var(--pg-color-status-success-badge); }
+  .im-tile.bad { background: var(--pg-color-status-warning-tint); }
+  .im-tile.bad .im-num { color: var(--pg-color-status-warning-text); }
+  .im-tile.bad .t-caption { color: var(--pg-color-status-warning-badge); }
+  .im-notice { padding: 10px 12px; border-radius: 12px; border: 1px solid var(--pg-color-status-warning-line);
+    background: var(--pg-color-status-warning-tint); color: var(--pg-color-status-warning-badge); font-size: var(--pg-type-small-size); }
+  .im-add { flex: none; margin: 8px var(--side) 20px; height: 54px; border-radius: 16px; font-size: var(--pg-type-title-size); }
+</style>
+</head>
+<body>
+<p class="pg-board-note">«Добавить профиль» (ImportPage программы) — шаг без островка, «Назад» возвращает на главную. Нажатие на
+  источник выбирает его (белая карточка с синей рамкой) и показывает предпросмотр: сколько серверов найдено, новых, дублей и ошибок
+  с номерами строк. «Ввести ссылку» раскрывает поле для ссылок или адреса подписки, предпросмотр — после «Проверить». Подписка,
+  которая уже добавлена, обновится в своей группе — поля названия тогда нет. «Добавить N серверов» сохраняет и ведет на «Серверы».</p>
+
+<div class="pg-screens">
+  <!-- 1. Пусто: источник еще не выбран -->
+  <section class="pg-screen" data-state="connected" data-caption="Источник не выбран">
+    <div class="pg-page im-page">
+      <div class="im-head">
+        <button class="btn-icon" data-nav="01-main.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1">Добавить профиль</span>
+      </div>
+      <div class="im-scroll">
+        <div class="segments im-sources">
+          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и подписки</span></span></button>
+          <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
+          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес подписки https://…</span></span></button>
+          <div class="im-linkbox">
+            <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку"></textarea>
+            <input type="radio" class="im-flag" id="im-check-1" hidden>
+            <label class="btn-secondary" for="im-check-1">Проверить</label>
+          </div>
+          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, base64, sing-box JSON или Clash YAML</span></span></button>
+        </div>
+
+        <!-- Предпросмотр по источнику -->
+        <div class="card im-prev im-prev-clip">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">base64 · VLESS / Hy2 / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">4</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">3</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <div class="im-notice">Строка 4: неверный порт — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="Основная подписка" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-qr">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">ссылки · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">1</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-link">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">base64 · VLESS / Hy2 / TUIC / WG / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">8</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">7</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="im-notice">Эта подписка уже добавлена — «Основная подписка». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.</div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-file">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">Clash · VLESS / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">5</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">2</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">2</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <div class="im-notice">Строка 9: транспорт не поддерживается — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="work-servers" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary im-add im-add-clip" data-nav="02-servers.html">Добавить 3 сервера</button>
+      <button class="btn-primary im-add im-add-qr" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-link" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-file" data-nav="02-servers.html">Добавить 2 сервера</button>
+    </div>
+  </section>
+
+  <!-- 2. Из буфера обмена: предпросмотр с ошибкой строки -->
+  <section class="pg-screen" data-state="connected" data-caption="Из буфера обмена · предпросмотр">
+    <div class="pg-page im-page">
+      <div class="im-head">
+        <button class="btn-icon" data-nav="01-main.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1">Добавить профиль</span>
+      </div>
+      <div class="im-scroll">
+        <div class="segments im-sources">
+          <button class="segment on im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и подписки</span></span></button>
+          <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
+          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес подписки https://…</span></span></button>
+          <div class="im-linkbox">
+            <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку"></textarea>
+            <input type="radio" class="im-flag" id="im-check-2" hidden>
+            <label class="btn-secondary" for="im-check-2">Проверить</label>
+          </div>
+          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, base64, sing-box JSON или Clash YAML</span></span></button>
+        </div>
+
+        <div class="card im-prev im-prev-clip">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">base64 · VLESS / Hy2 / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">4</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">3</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <div class="im-notice">Строка 4: неверный порт — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="Основная подписка" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-qr">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">ссылки · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">1</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-link">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">base64 · VLESS / Hy2 / TUIC / WG / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">8</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">7</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="im-notice">Эта подписка уже добавлена — «Основная подписка». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.</div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-file">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">Clash · VLESS / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">5</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">2</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">2</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <div class="im-notice">Строка 9: транспорт не поддерживается — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="work-servers" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary im-add im-add-clip" data-nav="02-servers.html">Добавить 3 сервера</button>
+      <button class="btn-primary im-add im-add-qr" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-link" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-file" data-nav="02-servers.html">Добавить 2 сервера</button>
+    </div>
+  </section>
+
+  <!-- 3. Адрес подписки после «Проверить»: такая подписка уже есть -->
+  <section class="pg-screen" data-state="connected" data-caption="Адрес подписки · уже добавлена">
+    <div class="pg-page im-page">
+      <div class="im-head">
+        <button class="btn-icon" data-nav="01-main.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1">Добавить профиль</span>
+      </div>
+      <div class="im-scroll">
+        <div class="segments im-sources">
+          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и подписки</span></span></button>
+          <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
+          <button class="segment on im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес подписки https://…</span></span></button>
+          <div class="im-linkbox">
+            <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку">https://example.com/sub/****</textarea>
+            <input type="radio" class="im-flag" id="im-check-3" hidden checked>
+            <label class="btn-secondary" for="im-check-3">Проверить</label>
+          </div>
+          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, base64, sing-box JSON или Clash YAML</span></span></button>
+        </div>
+
+        <div class="card im-prev im-prev-clip">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">base64 · VLESS / Hy2 / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">4</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">3</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <div class="im-notice">Строка 4: неверный порт — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="Основная подписка" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-qr">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">ссылки · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">1</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-link">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">base64 · VLESS / Hy2 / TUIC / WG / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">8</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">7</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="im-notice">Эта подписка уже добавлена — «Основная подписка». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.</div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-file">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">Clash · VLESS / Trojan</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">5</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">2</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">2</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <div class="im-notice">Строка 9: транспорт не поддерживается — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="work-servers" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary im-add im-add-clip" data-nav="02-servers.html">Добавить 3 сервера</button>
+      <button class="btn-primary im-add im-add-qr" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-link" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-file" data-nav="02-servers.html">Добавить 2 сервера</button>
+    </div>
+  </section>
+</div>
+</body>
+</html>

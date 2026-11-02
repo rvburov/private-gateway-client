@@ -1,0 +1,802 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>21 · Трей, строка меню и установка службы по ОС — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>  /* Первый запуск (WelcomePage программы): островка нет, главная кнопка прижата к низу окна, текст прокручивается над ней */
+  .ob-page { display: flex; flex-direction: column; overflow: hidden; }
+  .ob-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .ob-scroll::-webkit-scrollbar { display: none; }
+  .ob-bottom { display: flex; flex-direction: column; gap: 10px; padding: 8px calc(var(--side) + 4px) 24px; }
+  .ob-bottom .btn-primary { width: 100%; height: 54px; }
+  .ob-bottom .btn-primary.ob-wait { opacity: .45; cursor: default; }
+  .ob-bottom .btn-primary.ob-wait:hover { background: var(--pg-color-accent-base); }
+  .ob-bottom .btn-primary.ob-wait:active { transform: none; }
+  .ob-skip { align-self: center; text-align: center; }
+  /* Телефон: кнопка над полоской жестов ОС — как островок (app.css поднимает его на 18) */
+  .pg-frame.is-phone .ob-bottom { padding-bottom: 42px; }
+
+  /* Имя ОС в «Весь трафик … через VPN» и «… один раз попросит права» — программа подставляет свою ОС ({0}) */
+  .ob-os::after { content: "Windows"; }
+  .pg-frame[data-device="macos"] .ob-os::after { content: "macOS"; }
+  .pg-frame[data-device="linux"] .ob-os::after { content: "Linux"; }
+  .pg-frame[data-device="android"] .ob-os::after { content: "Android"; }
+  .pg-frame[data-device="ios"] .ob-os::after { content: "iOS"; }
+
+  /* Приветствие: выбор языка справа сверху, знак 84 в белой плашке, название, слоган, три обещания */
+  .ob-lang { align-self: flex-end; margin: 20px calc(var(--side) + 4px) 0 0; display: grid; grid-template-columns: 1fr 1fr; flex: none; }
+  .ob-lang .segment { min-width: 48px; }
+  .ob-hero { display: flex; flex-direction: column; gap: 12px; padding: 28px calc(var(--side) + 4px) 16px; }
+  .ob-logo { width: 84px; height: 84px; border-radius: 24px; align-self: center; display: grid; place-items: center;
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border); box-shadow: var(--pg-shadow-card);
+    color: var(--pg-color-accent-base); }
+  .ob-title { margin-top: 8px; text-align: center; font-size: var(--pg-type-display-size); font-weight: 700; }
+  .ob-tagline { align-self: center; max-width: 340px; margin: 0; text-align: center; line-height: 22px; color: var(--pg-color-text-secondary); }
+  .ob-features { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+  .ob-feature { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 18px;
+    background: var(--pg-color-surface-card); border: 1px solid var(--pg-color-line-border); }
+  .ob-ficon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none;
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+
+  /* Установка службы: «Шаг 1 из 2», заголовок, пояснение, три строки с кружком (ждет — серый, ставится — синий, готово — зеленый) */
+  .ob-step { font-weight: 600; margin-right: 0; }
+  .ob-body { display: flex; flex-direction: column; gap: 12px; padding: 12px calc(var(--side) + 4px) 16px; }
+  .ob-h { font-size: var(--pg-type-status-size); font-weight: 700; }
+  .ob-text { line-height: 20px; color: var(--pg-color-text-secondary); }
+  .ob-rows { margin-top: 4px; padding: 4px 16px; }
+  /* Margin="0,11" у каждой строки ItemsControl: поля соседних строк в программе не схлопываются — 22 между строками */
+  .ob-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+  .ob-mark { width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center; flex: none;
+    background: var(--pg-color-control-segment-track); color: var(--pg-color-text-muted); }
+  .ob-mark.busy { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .ob-mark.done { background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-text); }
+
+  /* Добавьте первый сервер: карточка со знаком 64, кнопки во всю ширину, подпись под карточкой */
+  .ob-add { display: flex; flex-direction: column; gap: 12px; margin: 8px var(--side) 0; padding: 28px 22px 22px; }
+  .ob-add-icon { width: 64px; height: 64px; border-radius: 20px; align-self: center; display: grid; place-items: center;
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .ob-add-btn { height: 50px; margin-top: 6px; }
+  .ob-demo { height: 46px; }
+  .ob-note { display: block; margin: 14px calc(var(--side) + 8px) 0; text-align: center; }
+
+  /* ---------- Рабочий стол ОС: без рамки окна программы, обои — пятна фона, системная панель, значок и меню ---------- */
+  .os-row { gap: 24px; }
+  .pg-frame:has(.os-desk) { width: 500px; }
+  .pg-frame:has(.os-desk) > .pg-titlebar { display: none; }
+  .os-desk { position: absolute; inset: 0; font-size: var(--pg-type-small-size); }
+
+  /* Значок программы: щит цвета состояния с белым знаком (TrayIconRenderer); подключение — синим индикатора */
+  .os-tray { display: grid; place-items: center; width: 32px; height: 30px; border-radius: 4px; }
+  .os-tray:hover { background: var(--pg-color-line-border); }
+  .os-glyph { display: grid; place-items: center; color: var(--state-ring); }
+  [data-state="connecting"] .os-glyph, [data-state="reconnecting"] .os-glyph { color: var(--pg-state-connecting-spinner); }
+  .os-glyph .pg-icon { width: 18px; height: 18px; }
+  .os-glyph path:first-child { fill: currentColor; stroke-width: 2; }
+  .os-glyph path + path { stroke: var(--pg-color-surface-solid); stroke-width: 2.6; }
+
+  /* Windows: панель задач снизу, закрепленные программы по центру, трей и часы справа */
+  .os-taskbar { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; display: flex; align-items: center; justify-content: center;
+    background: var(--pg-color-surface-card); border-top: 1px solid var(--pg-color-line-border); }
+  .os-apps { display: flex; gap: 10px; }
+  .os-apps i { display: block; width: 24px; height: 24px; border-radius: 6px; background: var(--pg-color-control-track-off); }
+  .os-apps i.on { background: var(--pg-color-accent-base); }
+  .os-bar-right { position: absolute; right: 10px; top: 0; bottom: 0; display: flex; align-items: center; gap: 6px; }
+  .os-up { transform: rotate(180deg); color: var(--pg-color-text-secondary); }
+  .os-clock { display: flex; flex-direction: column; align-items: flex-end; margin-left: 4px; font-size: var(--pg-type-caption-size); line-height: 1.3; }
+
+  /* macOS: строка меню сверху, значки и часы справа */
+  .os-menubar { position: absolute; left: 0; right: 0; top: 0; height: 26px; display: flex; align-items: center; gap: 8px; padding: 0 12px;
+    background: var(--pg-color-bg-glass); border-bottom: 1px solid var(--pg-color-line-border); font-weight: 500; }
+  .os-menubar .os-tray { height: 22px; width: 28px; }
+
+  /* Linux (GNOME): темная верхняя панель, рабочие столы слева, часы по центру, значки справа */
+  .os-panel { position: absolute; left: 0; right: 0; top: 0; height: 30px; display: flex; align-items: center; padding: 0 10px;
+    background: var(--pg-color-text-primary); color: var(--pg-color-surface-solid); font-weight: 600; }
+  .os-panel .os-bar-right { right: 8px; gap: 4px; }
+  .os-panel .os-tray:hover { background: var(--pg-color-text-secondary); }
+  .os-panel-clock { position: absolute; left: 0; right: 0; text-align: center; pointer-events: none; }
+  .os-workspaces { display: flex; gap: 5px; align-items: center; }
+  .os-workspaces i { display: block; width: 6px; height: 6px; border-radius: 3px; background: var(--pg-color-text-muted); }
+  .os-workspaces i.on { width: 26px; background: var(--pg-color-surface-solid); }
+
+  /* Системное меню: строка состояния серым и не нажимается, разделители, подменю «Сменить сервер» со стрелкой */
+  .os-menu { min-width: 0; white-space: nowrap; font-size: var(--pg-type-small-size); }
+  .os-menu .os-item { display: flex; align-items: center; width: 100%; text-align: left; color: var(--pg-color-text-primary); font-weight: 400; }
+  .os-menu .os-item.off { color: var(--pg-color-text-muted); }
+  .os-menu .btn-option { min-height: 0; transform: none; }
+  .os-menu .btn-option.current { color: var(--pg-color-text-primary); font-weight: 400; }
+  .os-arrow { width: 12px; height: 12px; margin-left: auto; }
+  .os-radio { width: 18px; flex: none; display: grid; place-items: center; }
+  .os-menu .current .os-radio::after { content: ""; width: 6px; height: 6px; border-radius: 3px; background: currentColor; }
+  .os-sep { height: 1px; background: var(--pg-color-line-divider); }
+
+  /* Windows 11: светлое меню, скругление 8, строки 32, подсветка серым */
+  .os-menu.windows { padding: 4px; border-radius: 8px; width: 252px; font-size: var(--pg-type-caption-size);
+    top: auto !important; bottom: 54px; right: 12px !important; left: auto !important; }
+  .os-menu.windows .os-item { height: 32px; padding: 0 12px; border-radius: 4px; }
+  .os-menu.windows .os-sep { margin: 4px -4px; }
+  .os-menu.windows .os-item:not(.off):hover { background: var(--pg-color-line-border); color: var(--pg-color-text-primary); }
+  .os-sub.windows { width: 214px; top: 268px !important; bottom: auto; right: 260px !important; }
+
+  /* macOS: строки 22, подсветка цветом выделения ОС, у выбранного — галочка */
+  .os-menu.macos { padding: 5px; border-radius: 10px; width: 276px; background: var(--pg-color-surface-card);
+    border-color: var(--pg-color-line-strong); top: 30px !important; right: 8px !important; left: auto !important; }
+  .os-menu.macos .os-item { height: 22px; padding: 0 10px 0 4px; border-radius: 5px; }
+  .os-menu.macos > .os-item:not(.btn-option) { padding-left: 22px; }
+  .os-menu.macos .os-sep { margin: 5px 10px; }
+  .os-menu.macos .os-item:not(.off):hover { background: var(--pg-color-accent-base); color: var(--pg-color-surface-solid); }
+  .os-menu.macos .current .os-radio::after { width: 4px; height: 8px; border-radius: 0; background: none; margin-top: -2px;
+    border: solid currentColor; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+  .os-sub.macos { width: 216px; top: 85px !important; right: 280px !important; }
+
+  /* GNOME: меню оболочки, скругление 12, строки 32, подсветка серым */
+  .os-menu.linux { padding: 6px; border-radius: 12px; width: 274px; top: 36px !important; right: 8px !important; left: auto !important; }
+  .os-menu.linux .os-item { height: 32px; padding: 0 12px; border-radius: 8px; }
+  .os-menu.linux .os-sep { margin: 6px 12px; }
+  .os-menu.linux .os-item:not(.off):hover { background: var(--pg-color-line-border); color: var(--pg-color-text-primary); }
+  /* Подменю GNOME раскрывается на месте: стрелка вниз, пункты с отступом на более темной подложке */
+  .os-fold > summary { list-style: none; cursor: pointer; }
+  .os-fold > summary::-webkit-details-marker { display: none; }
+  .os-fold:not([open]) > summary .os-arrow { transform: rotate(-90deg); }
+  .os-fold-body { margin: 2px 0; padding: 4px 0; border-radius: 8px; background: var(--pg-color-surface-inset); }
+  .os-menu.linux .os-fold-body .os-item { padding-left: 24px; }
+
+  /* ---------- Запросы прав ОС поверх окна программы: нейтрально, цвета из токенов ---------- */
+  .os-app { width: 36px; height: 36px; border-radius: 9px; display: grid; place-items: center; flex: none;
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .os-app.big { width: 56px; height: 56px; border-radius: 14px; align-self: center; }
+  .os-field { display: flex; align-items: center; height: 30px; padding: 0 10px; border-radius: 6px; font-size: var(--pg-type-small-size);
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-strong); }
+  .os-actions { display: flex; gap: 8px; }
+  .os-btn { flex: 1; height: 32px; border-radius: 6px; display: grid; place-items: center; font-size: var(--pg-type-small-size);
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-strong); }
+  .os-btn:hover { border-color: var(--pg-color-control-checkbox-border); }
+  .os-btn.main { background: var(--pg-color-accent-base); border-color: var(--pg-color-accent-base); color: var(--pg-color-surface-solid); font-weight: 600; }
+  .os-btn.main:hover { background: var(--pg-color-accent-text); }
+
+  /* UAC: заголовок, полоса вопроса (издатель неизвестен — оттенок предупреждения), сведения о файле, «Да» и «Нет» */
+  .dialog.os-uac { padding: 0; border-radius: 8px; overflow: hidden; left: 20px; right: 20px; }
+  /* Файл без подписи: заголовок окна и вопрос — на одной полосе цвета предупреждения */
+  .os-uac-top { padding: 10px 16px 0; font-size: var(--pg-type-caption-size); color: var(--pg-color-text-secondary);
+    background: var(--pg-color-status-caution-tint); }
+  .os-uac-head { padding: 8px 16px 16px; font-size: var(--pg-type-title-size); font-weight: 600; line-height: 1.35;
+    background: var(--pg-color-status-caution-tint); border-bottom: 1px solid var(--pg-color-status-caution-line); }
+  .os-uac-body { display: flex; flex-direction: column; gap: 8px; padding: 16px; }
+  .os-uac .os-actions { padding: 14px 16px; background: var(--pg-color-surface-inset); }
+
+  /* macOS: узкое окно по центру, значок, текст, имя и пароль, «Отменить» и «OK» */
+  .dialog.os-mac { left: 50%; right: auto; width: 270px; margin-left: -135px; padding: 18px 16px 16px; border-radius: 12px;
+    display: none; flex-direction: column; gap: 8px; }
+  .dialog.os-mac.is-open { display: flex !important; }
+  .os-mac .os-actions { margin-top: 6px; }
+
+  /* GNOME: окно агента polkit, кнопки во всю ширину снизу */
+  .dialog.os-polkit { padding: 22px 20px 0; border-radius: 14px; display: none; flex-direction: column; gap: 10px; overflow: hidden; }
+  .dialog.os-polkit.is-open { display: flex !important; }
+  .os-user { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 4px; font-weight: 600; }
+  .os-user .os-app { border-radius: 18px; }
+  .os-polkit .os-actions { margin: 8px -20px 0; gap: 0; border-top: 1px solid var(--pg-color-line-divider); }
+  .os-polkit .os-btn { height: 44px; border: 0; border-radius: 0; background: none; font-weight: 600; }
+  .os-polkit .os-btn + .os-btn { border-left: 1px solid var(--pg-color-line-divider); }
+  .os-polkit .os-btn.main { background: none; color: var(--pg-color-accent-text); }
+  .os-polkit .os-btn:hover { background: var(--pg-color-surface-inset); }
+
+  /* Сводка по ОС под окнами (как таблицы под рамками в v1.0): ширина колонок — ширина окон */
+  .os-facts { display: grid; grid-template-columns: repeat(3, var(--pg-layout-desktop-window-width)); gap: 32px; margin-top: 24px;
+    font-size: var(--pg-type-small-size); }
+  .os-fact { padding: 4px 16px; }
+  .os-fact-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 9px 0; }
+  .os-fact-row + .os-fact-row { border-top: 1px solid var(--pg-color-line-divider); }
+  .os-fact-row > :last-child { text-align: right; font-weight: 600; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Где живет значок программы и как ставится служба на каждой ОС. Меню значка — системное меню ОС (NativeMenu):
+  вид и подсветку рисует ОС, пункты — программы. Вверху строка состояния «IP скрыт · NL · Нидерланды 01 · 42 мс» (не нажимается), дальше
+  «Выключить защиту» (без защиты — «Включить защиту»), «Сменить сервер» — выбранный, избранные и недавние, до пяти, и «Все серверы…»,
+  «Обновить серверы», «Открыть окно», «Проверка» и «Закрыть интерфейс» с подсказкой «VPN и блок при обрыве продолжат работать» (без
+  установленной службы — «Закрыть программу»). Значок — щит цвета состояния с белым знаком; подключение — синим. Сочетаний клавиш у
+  пунктов нет. Выбранный сервер отмечает ОС: на Windows (меню рисует Avalonia) — точкой, на macOS — галочкой, в GNOME — точкой;
+  подменю на Windows и macOS открывается сбоку, в GNOME (расширение AppIndicator) — раскрывается внутри меню. Нажимается: значок
+  открывает и закрывает меню, «Выключить защиту» гасит щит, «Сменить сервер» — подменю, выбор сервера закрывает меню.</p>
+
+<div class="pg-screens os-row">
+  <!-- ===================== Windows: панель задач, значок в трее у часов ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="connected" data-caption="Windows · значок в трее у часов, меню над ним" style="height: 520px">
+    <div class="os-desk">
+      <div class="os-taskbar">
+        <span class="os-apps"><i></i><i></i><i class="on"></i><i></i></span>
+        <span class="os-bar-right">
+          <i data-icon="ChevronDown" data-stroke="2" data-size="14" class="os-up"></i>
+          <button class="os-tray" data-open="tray-windows" title="Private Gateway · IP скрыт" aria-label="Private Gateway · IP скрыт"><span class="os-glyph" data-state-mark></span></button>
+          <i data-icon="Net.WiFi" data-stroke="2" data-size="16"></i>
+          <span class="os-clock"><span>18:42</span><span>01.11.2026</span></span>
+        </span>
+      </div>
+    </div>
+    <!-- Системное меню значка (NativeMenu): вид и подсветку рисует ОС, пункты и тексты — программы -->
+    <div class="popup os-menu windows is-open" id="tray-windows" role="menu">
+      <div class="os-item off" data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</div>
+      <div class="os-item off" data-show-state="off">IP открыт</div>
+      <div class="os-sep"></div>
+      <button class="os-item" data-close data-set-state="off" data-show-state="connected">Выключить защиту</button>
+      <button class="os-item" data-close data-set-state="connected" data-show-state="off">Включить защиту</button>
+      <button class="os-item" data-open="tray-windows-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-arrow"></i></button>
+      <button class="os-item" data-close>Обновить серверы</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-nav="01-main.html">Открыть окно</button>
+      <button class="os-item" data-nav="07-diagnostics.html">Проверка</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-close title="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
+    </div>
+    <div class="popup os-menu os-sub windows is-open" id="tray-windows-sub" role="menu">
+      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-nav="02-servers.html">Все серверы…</button>
+    </div>
+  </section>
+
+  <!-- ===================== macOS: строка меню сверху ===================== -->
+  <section class="pg-screen" data-device="macos" data-state="connected" data-caption="macOS · значок в строке меню, меню под ним" style="height: 520px">
+    <div class="os-desk">
+      <div class="os-menubar">
+        <span class="pg-grow"></span>
+        <button class="os-tray" data-open="tray-macos" title="Private Gateway · IP скрыт" aria-label="Private Gateway · IP скрыт"><span class="os-glyph" data-state-mark></span></button>
+        <i data-icon="Net.WiFi" data-stroke="2" data-size="15"></i>
+        <span class="os-time">Вс 1 нояб. 18:42</span>
+      </div>
+    </div>
+    <!-- Системное меню значка (NativeMenu): вид и подсветку рисует ОС, пункты и тексты — программы -->
+    <div class="popup os-menu macos is-open" id="tray-macos" role="menu">
+      <div class="os-item off" data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</div>
+      <div class="os-item off" data-show-state="off">IP открыт</div>
+      <div class="os-sep"></div>
+      <button class="os-item" data-close data-set-state="off" data-show-state="connected">Выключить защиту</button>
+      <button class="os-item" data-close data-set-state="connected" data-show-state="off">Включить защиту</button>
+      <button class="os-item" data-open="tray-macos-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-arrow"></i></button>
+      <button class="os-item" data-close>Обновить серверы</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-nav="01-main.html">Открыть окно</button>
+      <button class="os-item" data-nav="07-diagnostics.html">Проверка</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-close title="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
+    </div>
+    <div class="popup os-menu os-sub macos is-open" id="tray-macos-sub" role="menu">
+      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-nav="02-servers.html">Все серверы…</button>
+    </div>
+  </section>
+
+  <!-- ===================== Linux: верхняя панель GNOME, значок AppIndicator ===================== -->
+  <section class="pg-screen" data-device="linux" data-state="connected" data-caption="Linux · значок в панели (AppIndicator), меню под ним" style="height: 520px">
+    <div class="os-desk">
+      <div class="os-panel">
+        <span class="os-workspaces"><i class="on"></i><i></i><i></i></span>
+        <span class="os-panel-clock">1 нояб. 18:42</span>
+        <span class="os-bar-right">
+          <button class="os-tray" data-open="tray-linux" title="Private Gateway · IP скрыт" aria-label="Private Gateway · IP скрыт"><span class="os-glyph" data-state-mark></span></button>
+          <i data-icon="Net.WiFi" data-stroke="2" data-size="15"></i>
+        </span>
+      </div>
+    </div>
+    <!-- Системное меню значка (NativeMenu): вид и подсветку рисует ОС, пункты и тексты — программы -->
+    <div class="popup os-menu linux is-open" id="tray-linux" role="menu">
+      <div class="os-item off" data-show-state="connected">IP скрыт · NL · Нидерланды 01 · 42 мс</div>
+      <div class="os-item off" data-show-state="off">IP открыт</div>
+      <div class="os-sep"></div>
+      <button class="os-item" data-close data-set-state="off" data-show-state="connected">Выключить защиту</button>
+      <button class="os-item" data-close data-set-state="connected" data-show-state="off">Включить защиту</button>
+      <details class="os-fold" open>
+        <summary class="os-item">Сменить сервер<i data-icon="ChevronDown" data-stroke="2" class="os-arrow"></i></summary>
+        <div class="os-fold-body">
+          <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+          <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+          <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+          <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+          <button class="os-item" data-close data-nav="02-servers.html">Все серверы…</button>
+        </div>
+      </details>
+      <button class="os-item" data-close>Обновить серверы</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-nav="01-main.html">Открыть окно</button>
+      <button class="os-item" data-nav="07-diagnostics.html">Проверка</button>
+      <div class="os-sep"></div>
+      <button class="os-item" data-close title="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
+    </div>
+  </section>
+</div>
+
+<p class="pg-board-note" style="margin-top: 32px">Установка службы — шаг первого запуска (доска 10): «Установить» запускает файл службы с правами, ОС спрашивает
+  разрешение своим окном. Windows — запрос UAC (подписи кода пока нет, поэтому «Издатель: неизвестно»); macOS — пароль администратора
+  через osascript (текст запроса — системный, программа свой не задает); Linux — pkexec, окно агента polkit оболочки. Служба после
+  установки: Windows — служба Windows, блок при обрыве — WFP, установщик MSI; macOS — LaunchDaemon (launchd), блок — pf, образ .dmg;
+  Linux — служба systemd, блок — nftables, пакеты .deb и .rpm. Пока ОС ждет ответа, окно — в состоянии «идет установка»: кнопка
+  «Устанавливаем…» и «Без службы — только режим прокси» недоступны, у строки службы — «Устанавливается…». «Да / OK / Подтвердить» —
+  служба установлена, «Нет / Отменить / Отмена» и щелчок мимо запроса — красная строка «Установка отменена: права администратора не
+  даны», «Установить» спрашивает снова.</p>
+
+<div class="pg-screens">
+  <!-- ===================== Windows · запрос UAC ===================== -->
+  <section class="pg-screen" data-device="windows" data-caption="Windows · запрос UAC">
+    <!-- Установка службы — шаг 1 из 2: идет установка — ОС ждет ответа на запрос прав (IsInstalling) -->
+    <div class="pg-page ob-page" data-page="windows-busy">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark busy"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Устанавливается…</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <!-- В программе кнопка недоступна, пока ОС ждет ответа; здесь нажатие снова показывает запрос (его закрыли Esc) -->
+        <button class="btn-primary ob-wait" data-open="ask-windows">Устанавливаем…</button>
+        <button class="btn-link ob-skip" disabled>Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: error -->
+    <div class="pg-page ob-page" data-page="windows-err" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Управляет VPN в фоне</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        <span class="t-danger t-wrap">Установка отменена: права администратора не даны</span>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-open="ask-windows" data-goto="windows-busy">Установить</button>
+        <button class="btn-link ob-skip" data-goto="windows-proxy">Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="windows-done" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="windows-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="windows-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+    <!-- Добавьте первый сервер: proxy -->
+    <div class="pg-page" data-page="windows-proxy" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="scrim is-open" data-close data-goto="windows-err"></div>
+    <!-- Контроль учетных записей: файл службы без подписи кода — издатель неизвестен -->
+    <div class="dialog os-uac is-open" id="ask-windows" role="dialog" aria-label="Контроль учетных записей">
+      <div class="os-uac-top">Контроль учетных записей</div>
+      <div class="os-uac-head">Разрешить этому приложению от неизвестного издателя вносить изменения на вашем устройстве?</div>
+      <div class="os-uac-body">
+        <div class="pg-row pg-gap-12"><span class="os-app"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="2" data-size="22"></i></span><span class="t-title">PrivateGateway.Service.exe</span></div>
+        <span class="t-small">Издатель: неизвестно</span>
+        <span class="t-small">Источник файла: Жесткий диск на этом компьютере</span>
+        <span class="t-small t-accent">Показать больше</span>
+      </div>
+      <div class="os-actions">
+        <button class="os-btn main" data-close data-goto="windows-done">Да</button>
+        <button class="os-btn" data-close data-goto="windows-err">Нет</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== macOS · пароль администратора ===================== -->
+  <section class="pg-screen" data-device="macos" data-caption="macOS · пароль администратора">
+    <!-- Установка службы — шаг 1 из 2: идет установка — ОС ждет ответа на запрос прав (IsInstalling) -->
+    <div class="pg-page ob-page" data-page="macos-busy">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark busy"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Устанавливается…</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <!-- В программе кнопка недоступна, пока ОС ждет ответа; здесь нажатие снова показывает запрос (его закрыли Esc) -->
+        <button class="btn-primary ob-wait" data-open="ask-macos">Устанавливаем…</button>
+        <button class="btn-link ob-skip" disabled>Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: error -->
+    <div class="pg-page ob-page" data-page="macos-err" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Управляет VPN в фоне</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        <span class="t-danger t-wrap">Установка отменена: права администратора не даны</span>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-open="ask-macos" data-goto="macos-busy">Установить</button>
+        <button class="btn-link ob-skip" data-goto="macos-proxy">Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="macos-done" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="macos-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="macos-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+    <!-- Добавьте первый сервер: proxy -->
+    <div class="pg-page" data-page="macos-proxy" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="scrim is-open" data-close data-goto="macos-err"></div>
+    <!-- Пароль администратора: запрос osascript «with administrator privileges» -->
+    <div class="dialog os-mac is-open" id="ask-macos" role="dialog" aria-label="Пароль администратора">
+      <span class="os-app big"><i data-icon="Lock" data-stroke="2" data-size="28"></i></span>
+      <span class="t-strong pg-center">«osascript» хочет внести изменения.</span>
+      <span class="t-small pg-center">Введите пароль, чтобы разрешить это.</span>
+      <span class="os-field">user</span>
+      <span class="os-field">********</span>
+      <div class="os-actions">
+        <button class="os-btn" data-close data-goto="macos-err">Отменить</button>
+        <button class="os-btn main" data-close data-goto="macos-done">OK</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================== Linux · pkexec, агент polkit ===================== -->
+  <section class="pg-screen" data-device="linux" data-caption="Linux · pkexec, агент polkit">
+    <!-- Установка службы — шаг 1 из 2: идет установка — ОС ждет ответа на запрос прав (IsInstalling) -->
+    <div class="pg-page ob-page" data-page="linux-busy">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark busy"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Устанавливается…</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <!-- В программе кнопка недоступна, пока ОС ждет ответа; здесь нажатие снова показывает запрос (его закрыли Esc) -->
+        <button class="btn-primary ob-wait" data-open="ask-linux">Устанавливаем…</button>
+        <button class="btn-link ob-skip" disabled>Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: error -->
+    <div class="pg-page ob-page" data-page="linux-err" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Управляет VPN в фоне</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        <span class="t-danger t-wrap">Установка отменена: права администратора не даны</span>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-open="ask-linux" data-goto="linux-busy">Установить</button>
+        <button class="btn-link ob-skip" data-goto="linux-proxy">Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="linux-done" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="linux-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="linux-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+    <!-- Добавьте первый сервер: proxy -->
+    <div class="pg-page" data-page="linux-proxy" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="scrim is-open" data-close data-goto="linux-err"></div>
+    <!-- Агент polkit оболочки по запросу pkexec -->
+    <div class="dialog os-polkit is-open" id="ask-linux" role="dialog" aria-label="Требуется аутентификация">
+      <span class="t-title pg-center">Требуется аутентификация</span>
+      <span class="t-small pg-center t-wrap">Для запуска «/opt/private-gateway/PrivateGateway.Service» от имени суперпользователя требуется аутентификация</span>
+      <span class="os-user"><span class="os-app"><i data-icon="Lock" data-stroke="2" data-size="18"></i></span>user</span>
+      <span class="os-field">********</span>
+      <div class="os-actions">
+        <button class="os-btn" data-close data-goto="linux-err">Отмена</button>
+        <button class="os-btn main" data-close data-goto="linux-done">Подтвердить</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<div class="os-facts">
+  <div class="card os-fact" aria-label="Windows">
+    <div class="os-fact-row"><span class="t-muted">Значок</span><span>в трее у часов</span></div>
+    <div class="os-fact-row"><span class="t-muted">Права на установку</span><span>запрос UAC</span></div>
+    <div class="os-fact-row"><span class="t-muted">Служба</span><span>служба Windows</span></div>
+    <div class="os-fact-row"><span class="t-muted">Блок при обрыве</span><span>фильтры WFP</span></div>
+    <div class="os-fact-row"><span class="t-muted">Установщик</span><span>MSI, подписи кода пока нет</span></div>
+  </div>
+  <div class="card os-fact" aria-label="macOS">
+    <div class="os-fact-row"><span class="t-muted">Значок</span><span>в строке меню сверху</span></div>
+    <div class="os-fact-row"><span class="t-muted">Права на установку</span><span>пароль администратора (osascript)</span></div>
+    <div class="os-fact-row"><span class="t-muted">Служба</span><span>LaunchDaemon (launchd)</span></div>
+    <div class="os-fact-row"><span class="t-muted">Блок при обрыве</span><span>pf</span></div>
+    <div class="os-fact-row"><span class="t-muted">Установщик</span><span>.dmg, подпись ad-hoc</span></div>
+  </div>
+  <div class="card os-fact" aria-label="Linux">
+    <div class="os-fact-row"><span class="t-muted">Значок</span><span>в панели (AppIndicator)</span></div>
+    <div class="os-fact-row"><span class="t-muted">Права на установку</span><span>pkexec, агент polkit</span></div>
+    <div class="os-fact-row"><span class="t-muted">Служба</span><span>systemd</span></div>
+    <div class="os-fact-row"><span class="t-muted">Блок при обрыве</span><span>nftables</span></div>
+    <div class="os-fact-row"><span class="t-muted">Установщик</span><span>.deb · .rpm</span></div>
+  </div>
+</div>
+</body>
+</html>

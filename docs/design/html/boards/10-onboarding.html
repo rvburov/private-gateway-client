@@ -1,0 +1,532 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>10 · Первый запуск — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Первый запуск (WelcomePage программы): островка нет, главная кнопка прижата к низу окна, текст прокручивается над ней */
+  .ob-page { display: flex; flex-direction: column; overflow: hidden; }
+  .ob-scroll { flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; }
+  .ob-scroll::-webkit-scrollbar { display: none; }
+  .ob-bottom { display: flex; flex-direction: column; gap: 10px; padding: 8px calc(var(--side) + 4px) 24px; }
+  .ob-bottom .btn-primary { width: 100%; height: 54px; }
+  .ob-skip { align-self: center; text-align: center; }
+  /* Телефон: кнопка над полоской жестов ОС — как островок (app.css поднимает его на 18) */
+  .pg-frame.is-phone .ob-bottom { padding-bottom: 42px; }
+
+  /* Имя ОС в «Весь трафик … через VPN» и «… один раз попросит права» — программа подставляет свою ОС ({0}) */
+  .ob-os::after { content: "Windows"; }
+  .pg-frame[data-device="macos"] .ob-os::after { content: "macOS"; }
+  .pg-frame[data-device="linux"] .ob-os::after { content: "Linux"; }
+  .pg-frame[data-device="android"] .ob-os::after { content: "Android"; }
+  .pg-frame[data-device="ios"] .ob-os::after { content: "iOS"; }
+
+  /* Приветствие: выбор языка справа сверху, знак 84 в белой плашке, название, слоган, три обещания */
+  .ob-lang { align-self: flex-end; margin: 20px calc(var(--side) + 4px) 0 0; display: grid; grid-template-columns: 1fr 1fr; flex: none; }
+  .ob-lang .segment { min-width: 48px; }
+  .ob-hero { display: flex; flex-direction: column; gap: 12px; padding: 28px calc(var(--side) + 4px) 16px; }
+  .ob-logo { width: 84px; height: 84px; border-radius: 24px; align-self: center; display: grid; place-items: center;
+    background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border); box-shadow: var(--pg-shadow-card);
+    color: var(--pg-color-accent-base); }
+  .ob-title { margin-top: 8px; text-align: center; font-size: var(--pg-type-display-size); font-weight: 700; }
+  .ob-tagline { align-self: center; max-width: 340px; margin: 0; text-align: center; line-height: 22px; color: var(--pg-color-text-secondary); }
+  .ob-features { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+  .ob-feature { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 18px;
+    background: var(--pg-color-surface-card); border: 1px solid var(--pg-color-line-border); }
+  .ob-ficon { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; flex: none;
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+
+  /* Установка службы: «Шаг 1 из 2», заголовок, пояснение, три строки с кружком (ждет — серый, ставится — синий, готово — зеленый) */
+  .ob-step { font-weight: 600; margin-right: 0; }
+  .ob-body { display: flex; flex-direction: column; gap: 12px; padding: 12px calc(var(--side) + 4px) 16px; }
+  .ob-h { font-size: var(--pg-type-status-size); font-weight: 700; }
+  .ob-text { line-height: 20px; color: var(--pg-color-text-secondary); }
+  .ob-rows { margin-top: 4px; padding: 4px 16px; }
+  /* Margin="0,11" у каждой строки ItemsControl: поля соседних строк в программе не схлопываются — 22 между строками */
+  .ob-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+  .ob-mark { width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center; flex: none;
+    background: var(--pg-color-control-segment-track); color: var(--pg-color-text-muted); }
+  .ob-mark.busy { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .ob-mark.done { background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-text); }
+
+  /* Добавьте первый сервер: карточка со знаком 64, кнопки во всю ширину, подпись под карточкой */
+  .ob-add { display: flex; flex-direction: column; gap: 12px; margin: 8px var(--side) 0; padding: 28px 22px 22px; }
+  .ob-add-icon { width: 64px; height: 64px; border-radius: 20px; align-self: center; display: grid; place-items: center;
+    background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
+  .ob-add-btn { height: 50px; margin-top: 6px; }
+  .ob-demo { height: 46px; }
+  .ob-note { display: block; margin: 14px calc(var(--side) + 8px) 0; text-align: center; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Первый запуск (WelcomePage программы), островка нет. Приветствие с выбором языка → «Установка службы, шаг 1 из 2»
+  (если службу можно поставить и ее еще нет) → «Добавьте первый сервер». В первом окне шаги нажимаются: «Начать», «Установить» (ОС
+  спрашивает права — доска 21), «Продолжить», «Без службы — только режим прокси». Пока служба ставится, кнопка — «Устанавливаем…», обе
+  кнопки недоступны; отказ в правах — красная строка под строками. Сетевой адаптер и правила брандмауэра после установки — «Появятся
+  при подключении», а не «Готово». В демо-режиме шаг службы пропускается и есть «Сначала посмотреть на демо-серверах». Имя ОС в текстах
+  программа подставляет свое. В v1.0 на этом шаге был тумблер «Показывать название Wi-Fi» и островок на «Добавьте первый сервер» — в
+  программе их нет.</p>
+
+<div class="pg-screens">
+  <section class="pg-screen" data-caption="1 · Приветствие — «Начать» ведет по шагам">
+    <!-- Приветствие: язык, знак, слоган, три обещания, «Начать» -->
+    <div class="pg-page ob-page" data-page="a-greet">
+      <div class="segments ob-lang" role="radiogroup" aria-label="Язык">
+        <button class="segment on" aria-checked="true">RU</button>
+        <button class="segment" aria-checked="false">EN</button>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-hero">
+          <span class="ob-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="40"></i></span>
+          <span class="ob-title">Private Gateway</span>
+          <p class="ob-tagline">VPN-клиент, в котором сервер выбираете только вы, а при обрыве ничего не утекает.</p>
+          <div class="ob-features">
+            <div class="ob-feature">
+              <span class="ob-ficon"><i data-icon="Pulse" data-stroke="1.9" data-size="20"></i></span>
+              <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Весь трафик <span class="ob-os"></span> через VPN</span><span class="t-caption">Браузеры, терминал, Git, фоновые службы</span></span>
+            </div>
+            <div class="ob-feature">
+              <span class="ob-ficon"><i data-icon="Shield" data-detail="Mark.Wait" data-stroke="1.9" data-size="20"></i></span>
+              <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Блок при обрыве</span><span class="t-caption">Нет туннеля — нет интернета, утечек нет</span></span>
+            </div>
+            <div class="ob-feature">
+              <span class="ob-ficon"><i data-icon="Nav.Servers" data-detail="Nav.Servers.Detail" data-stroke="1.9" data-size="20"></i></span>
+              <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сервер выбираете только вы</span><span class="t-caption">Никакой автоматической подмены</span></span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="a-svc">Начать</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: idle -->
+    <div class="pg-page ob-page" data-page="a-svc" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Управляет VPN в фоне</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="a-done">Установить</button>
+        <button class="btn-link ob-skip" data-goto="a-proxy">Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="a-done" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="a-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="a-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+    <!-- Добавьте первый сервер: proxy -->
+    <div class="pg-page" data-page="a-proxy" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-caption="2 · Установка службы, шаг 1 из 2">
+    <!-- Установка службы — шаг 1 из 2: idle -->
+    <div class="pg-page ob-page" data-page="b-svc">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Управляет VPN в фоне</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="b-done">Установить</button>
+        <button class="btn-link ob-skip" data-goto="b-proxy">Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="b-done" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="b-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="b-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+    <!-- Добавьте первый сервер: proxy -->
+    <div class="pg-page" data-page="b-proxy" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-caption="Установка идет: ОС спрашивает права">
+    <!-- Установка службы — шаг 1 из 2: busy -->
+    <div class="pg-page ob-page" data-page="c-busy">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark busy"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Устанавливается…</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" disabled>Устанавливаем…</button>
+        <button class="btn-link ob-skip" disabled>Без службы — только режим прокси</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-caption="Права не дали: «Установить» еще раз">
+    <!-- Установка службы — шаг 1 из 2: error -->
+    <div class="pg-page ob-page" data-page="d-err">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Управляет VPN в фоне</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+          </div>
+          </div>
+        <span class="t-danger t-wrap">Установка отменена: права администратора не даны</span>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="d-done">Установить</button>
+        <button class="btn-link ob-skip" data-goto="d-proxy">Без службы — только режим прокси</button>
+      </div>
+    </div>
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="d-done" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="d-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="d-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+    <!-- Добавьте первый сервер: proxy -->
+    <div class="pg-page" data-page="d-proxy" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-caption="Служба установлена">
+    <!-- Установка службы — шаг 1 из 2: done -->
+    <div class="pg-page ob-page" data-page="e-done">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+        <span class="t-caption ob-step">Шаг 1 из 2</span>
+      </div>
+      <div class="ob-scroll">
+        <div class="ob-body">
+          <span class="ob-h">Установка службы</span>
+          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <div class="card ob-rows">
+          <div class="ob-row">
+            <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Готово</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          <div class="ob-row">
+            <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
+          </div>
+          </div>
+        </div>
+      </div>
+      <div class="ob-bottom">
+        <button class="btn-primary" data-goto="e-add">Продолжить</button>
+      </div>
+    </div>
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="e-add" hidden>
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-caption="3 · Добавьте первый сервер (после службы)">
+    <!-- Добавьте первый сервер: installed -->
+    <div class="pg-page" data-page="f-add">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+      </div>
+      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <div class="pg-page-end"></div>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-caption="3 · Добавьте первый сервер (демо-режим)">
+    <!-- Добавьте первый сервер: demo -->
+    <div class="pg-page" data-page="g-add">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="pg-grow"></span>
+      </div>
+      <div class="card ob-add">
+        <span class="ob-add-icon"><i data-icon="ServerAdd" data-stroke="1.7" data-size="32"></i></span>
+        <span class="ob-h pg-center">Добавьте первый сервер</span>
+        <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
+        <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+          <button class="btn-secondary ob-demo" data-nav="01-main.html">Сначала посмотреть на демо-серверах</button>
+      </div>
+      <span class="t-caption ob-note">Демо-режим: подключение имитируется, серверы — для примера.</span>
+      <div class="pg-page-end"></div>
+    </div>
+  </section>
+</div>
+</body>
+</html>

@@ -55,7 +55,9 @@
     off: { label: "Выключено", mark: "Mark.Off" },
     proxy: { label: "Прокси", mark: "Mark.Alert" },
     paused: { label: "Пауза", mark: "Mark.Alert" },
+    leak: { label: "Утечка IP", mark: "Mark.Alert" },
   };
+  var CONNECT_MS = 1400;
 
   var params = new URLSearchParams(location.search);
   var device = DEVICES.some(function (d) { return d.id === params.get("device"); }) ? params.get("device") : "windows";
@@ -164,6 +166,18 @@
     });
   }
 
+  // Подключение идет через «Подключение» (кольцо крутится), как в программе
+  function connect(root) {
+    applyState(root, "connecting");
+    clearTimeout(root._connect);
+    root._connect = setTimeout(function () { applyState(root, "connected"); }, CONNECT_MS);
+  }
+
+  function setState(root, state) {
+    clearTimeout(root._connect);
+    if (state === "connected") { connect(root); } else { applyState(root, state); }
+  }
+
   function frameFor(screen) {
     var dev = screen.dataset.device || device;
     var phone = dev === "android" || dev === "ios";
@@ -192,7 +206,8 @@
         logo.setAttribute("class", "pg-icon pg-titlebar-icon");
         bar.appendChild(logo);
         bar.insertAdjacentHTML("beforeend", '<span class="pg-titlebar-text">Private Gateway</span>' +
-          '<span class="pg-win-btn" aria-hidden="true">&#8212;</span><span class="pg-win-btn close" aria-hidden="true"></span>');
+          '<span class="pg-win-btn" aria-hidden="true">&#8212;</span><span class="pg-win-btn off" aria-hidden="true">&#9633;</span>' +
+          '<span class="pg-win-btn close" aria-hidden="true"></span>');
         var x = icon("Close", null, "1.6");
         x.style.width = x.style.height = "14px";
         bar.lastChild.appendChild(x);
@@ -265,11 +280,18 @@
       scrim.style.zIndex = el.classList.contains("dialog") ? "65" : "50";
       scrim.classList.add("is-open");
     } else if (trigger) {
+      // Меню — на 8 под кнопкой, у правого края кнопки; не помещается вниз — над кнопкой
       var a = app.getBoundingClientRect(), t = trigger.getBoundingClientRect();
-      el.style.top = (t.bottom - a.top + 6) + "px";
       el.style.right = Math.max(8, a.right - t.right) + "px";
       el.style.left = "auto";
+      el.style.bottom = "auto";
+      el.style.top = (t.bottom - a.top + 8) + "px";
       el._trigger = trigger;
+      el.classList.add("is-open");
+      if (el.offsetHeight + t.bottom - a.top + 8 > app.clientHeight - 8) {
+        el.style.top = Math.max(8, t.top - a.top - 8 - el.offsetHeight) + "px";
+      }
+      return;
     }
     el.classList.add("is-open");
   }
@@ -293,9 +315,12 @@
   }
 
   function onClick(e) {
-    var el = e.target.closest("button, a, [data-nav], [data-open], [data-close], .check, .segment, .switch, .tab, .fav");
+    var el = e.target.closest("button, a, [data-nav], [data-open], [data-close], [data-goto], [data-set-state], [data-toast], " +
+      "[data-reveal], [data-spin], [data-remove], [data-power], .check, .segment, .switch, .tab, .fav");
     if (!el) { return; }
     var app = el.closest(".pg-app");
+    if (app) { lastApp = app; }
+    if (el.disabled || el.classList.contains("disabled")) { return; }
     if (el.matches("[data-nav]")) {
       e.preventDefault();
       location.href = withDevice(el.dataset.nav);
@@ -304,23 +329,28 @@
     if (!app) { return; }
     if (el.matches("[data-close]")) { closeAll(app); }
     if (el.matches("[data-confirm-yes]")) {
+      // «Да» в диалоге: отложенное действие (тумблер, сегмент, пункт меню) и свои действия кнопки
       var pending = app._pending;
       app._pending = null;
       closeAll(app);
       if (pending) { pending(); }
+      if (el.dataset.setState) { setState(app, el.dataset.setState); }
+      if (el.dataset.remove) { remove(app, el.dataset.remove); }
+      if (el.dataset.toast) { toast(app, el.dataset.toast); }
       return;
     }
+    if (el.matches("[data-close]")) { app._pending = null; }
     if (el.matches("[data-power]")) {
+      // Щит: выключено, ошибка, блокировка, утечка — подключить; пауза — продолжить; иначе выключить
       var root = el.closest("[data-state-root]");
       var s = root.dataset.state;
-      if (s === "off" || s === "error" || s === "blocked" || s === "strict") {
-        applyState(root, "connecting");
-        setTimeout(function () { applyState(root, "connected"); }, 1400);
-      } else { applyState(root, "off"); }
+      if (s === "off" || s === "error" || s === "blocked" || s === "strict" || s === "leak" || s === "paused") {
+        connect(root);
+      } else { setState(root, "off"); }
       return;
     }
     if (el.matches("[data-set-state]")) {
-      applyState(el.closest("[data-state-root]"), el.dataset.setState);
+      setState(el.closest("[data-state-root]"), el.dataset.setState);
     }
     if (el.classList.contains("switch")) {
       var turnOn = !el.classList.contains("on");
@@ -372,19 +402,25 @@
       return;
     }
     if (el.matches(".popup .btn-option")) {
+      // Пункт меню: становится текущим, его текст — в подписи кнопки-владельца (или в [data-select-label] экрана)
       var popup = el.closest(".popup");
-      popup.querySelectorAll(".btn-option").forEach(function (o) { o.classList.toggle("current", o === el); });
-      var trigger = popup._trigger;
-      if (trigger && el.dataset.value) {
-        var label = trigger.querySelector("[data-select-label]");
-        if (label) { label.textContent = el.dataset.value; }
-      }
+      var choose = function () {
+        if (el.dataset.value === undefined) { return; }
+        popup.querySelectorAll(".btn-option").forEach(function (o) { o.classList.toggle("current", o === el); });
+        var owner = popup._trigger || app.querySelector('[data-open="' + popup.id + '"]');
+        var label = (owner && owner.querySelector("[data-select-label]")) ||
+          (owner && owner.closest(".card, .setting, .pg-row") || app).querySelector("[data-select-label]");
+        if (label && el.dataset.value) { label.textContent = el.dataset.value; }
+      };
+      popup.classList.remove("is-open");
       if (el.dataset.confirm) {
-        popup.classList.remove("is-open");
+        app._pending = function () { choose(); if (el.dataset.toast) { toast(app, el.dataset.toast); } };
         open(app, el.dataset.confirm);
         return;
       }
-      popup.classList.remove("is-open");
+      choose();
+      if (el.dataset.open) { open(app, el.dataset.open); }
+      if (el.dataset.setState) { setState(app, el.dataset.setState); }
       if (el.dataset.toast) { toast(app, el.dataset.toast); }
       return;
     }
@@ -406,19 +442,35 @@
       var shown = el.dataset.revealed === "1";
       el.dataset.revealed = shown ? "0" : "1";
       scope.querySelectorAll("[data-masked]").forEach(function (m) { m.textContent = shown ? m.dataset.masked : m.dataset.plain; });
+      // Значок — состояние, как MaskIcon программы: IP скрыт — глаз зачеркнут
       el.innerHTML = "";
-      el.appendChild(icon(shown ? "Eye" : "EyeOff", null, "2"));
+      el.appendChild(icon(shown ? "EyeOff" : "Eye", null, "2"));
       el.firstChild.style.width = el.firstChild.style.height = "18px";
+      el.setAttribute("aria-label", shown ? "Показать IP" : "Скрыть IP");
     }
+    if (el.matches("[data-remove]") && !el.matches("[data-confirm-yes]")) { remove(app, el.dataset.remove); }
     if (el.matches("[data-toast]")) { toast(app, el.dataset.toast); }
     if (el.matches("[data-goto]")) {
       app.querySelectorAll("[data-page]").forEach(function (p) { p.hidden = p.dataset.page !== el.dataset.goto; });
     }
   }
 
+  // Убрать строку («Удалить» подписку, сервер): selector ищется в этом экране
+  function remove(app, selector) {
+    app.querySelectorAll(selector).forEach(function (r) { r.hidden = true; });
+  }
+
+  var lastApp = null;
+
+  // Щелчок мимо меню закрывает его — только в том экране, где щелкнули; кнопка-владелец меню сама его переключает
   function closeOnOutside(e) {
-    document.querySelectorAll(".popup.is-open").forEach(function (p) {
-      if (!p.contains(e.target) && (!p._trigger || !p._trigger.contains(e.target))) { p.classList.remove("is-open"); }
+    var app = e.target.closest && e.target.closest(".pg-app");
+    if (!app) { return; }
+    app.querySelectorAll(".popup.is-open").forEach(function (p) {
+      if (p.contains(e.target)) { return; }
+      var owner = e.target.closest("[data-open]");
+      if (owner && owner.dataset.open === p.id) { return; }
+      p.classList.remove("is-open");
     });
   }
 
@@ -437,7 +489,7 @@
     });
     document.addEventListener("click", function (e) { closeOnOutside(e); onClick(e); });
     document.addEventListener("keydown", function (e) {
-      if (e.key === "Escape") { document.querySelectorAll(".pg-app").forEach(closeAll); }
+      if (e.key === "Escape" && lastApp) { lastApp._pending = null; closeAll(lastApp); }
     });
   }
 
@@ -477,6 +529,6 @@
     });
   }
 
-  window.PG = { boards: BOARDS, icon: icon, applyState: applyState, toast: toast };
+  window.PG = { boards: BOARDS, icon: icon, applyState: applyState, setState: setState, toast: toast };
   if (document.readyState === "loading") { document.addEventListener("DOMContentLoaded", init); } else { init(); }
 })();

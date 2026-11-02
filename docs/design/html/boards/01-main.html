@@ -44,20 +44,20 @@
           </div>
         </div>
 
-        <div class="chips" style="margin: -3px">
-          <button class="btn-chip tone-success" data-info="Весь трафик Windows идет через туннель: браузеры, терминал, Git, фоновые службы.">
+        <div class="chips">
+          <button class="btn-chip tone-success" data-info="Браузеры, терминал, Git и фоновые службы идут через туннель, а не напрямую.">
             <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
             <span class="pg-stack pg-grow"><span class="chip-title">Весь трафик</span><span class="chip-value">через туннель</span></span>
           </button>
-          <button class="btn-chip tone-success" data-info="Запросы DNS идут внутри туннеля: провайдер не видит, какие сайты вы открываете.">
+          <button class="btn-chip tone-success" data-info="Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.">
             <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
             <span class="pg-stack pg-grow"><span class="chip-title">DNS скрыт</span><span class="chip-value">запросы в туннеле</span></span>
           </button>
-          <button class="btn-chip tone-success" data-info="IPv6 вне туннеля закрыт: адрес IPv6 провайдера сайтам не виден.">
+          <button class="btn-chip tone-success" data-info="IPv6 закрыт: сервер без IPv6 или выбрано «Только IPv4» — трафик IPv6 не уйдет мимо туннеля.">
             <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
             <span class="pg-stack pg-grow"><span class="chip-title">IPv6 закрыт</span><span class="chip-value">нет обхода</span></span>
           </button>
-          <button class="btn-chip tone-success" data-info="Если VPN оборвется, интернет закроется до восстановления — реальный IP не утечет.">
+          <button class="btn-chip tone-success" data-info="Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую.">
             <span class="chip-dot"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span>
             <span class="pg-stack pg-grow"><span class="chip-title">Блок при обрыве</span><span class="chip-value">Kill Switch вкл</span></span>
           </button>
@@ -83,7 +83,7 @@
             <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
           </div>
           <span class="t-small pg-ellipsis">Амстердам · дата-центр · AS64500</span>
-          <span class="t-small">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">***.**.***.*</span> · скрыт</span>
+          <span class="t-small">Ваш реальный IP: <span class="t-mono" style="font-weight: 400" data-masked="***.**.***.*" data-plain="198.51.100.7">198.51.100.7</span> · скрыт</span>
         </div>
         <div class="divider" style="margin: 0 16px"></div>
         <div class="pg-row" style="padding: 8px 10px 10px">
@@ -113,31 +113,26 @@
       <div class="pg-page-end"></div>
     </div>
 
-    <!-- Быстрая смена сервера («Сменить») -->
+    <!-- Быстрая смена сервера («Сменить»): сервер в работе и два самых быстрых (MainPageViewModel.QuickServers) -->
     <div class="popup" id="switch-menu" style="width: 340px">
-      <div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена</div>
+      <div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div>
       <button class="btn-option current" data-value="NL · Нидерланды 01" data-toast="Подключение к NL · Нидерланды 01">
         <span class="badge accent country">NL</span>
-        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">NL · Нидерланды 01</span><span class="t-caption">VLESS · REALITY</span></span>
+        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">Нидерланды 01</span><span class="t-caption">VLESS · REALITY</span></span>
         <span class="t-mono latency good">42 мс</span>
       </button>
       <button class="btn-option" data-value="FI · Финляндия 01" data-toast="Подключение к FI · Финляндия 01">
         <span class="badge accent country">FI</span>
-        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">FI · Финляндия 01</span><span class="t-caption">VLESS · XHTTP</span></span>
+        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">Финляндия 01</span><span class="t-caption">Hysteria2</span></span>
         <span class="t-mono latency good">38 мс</span>
       </button>
       <button class="btn-option" data-value="DE · Германия 02" data-toast="Подключение к DE · Германия 02">
         <span class="badge accent country">DE</span>
-        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">DE · Германия 02</span><span class="t-caption">Trojan · TLS</span></span>
+        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">Германия 02</span><span class="t-caption">VLESS · XHTTP</span></span>
         <span class="t-mono latency good">51 мс</span>
       </button>
-      <button class="btn-option" data-value="SE · Швеция 01" data-toast="Подключение к SE · Швеция 01">
-        <span class="badge accent country">SE</span>
-        <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">SE · Швеция 01</span><span class="t-caption">Hysteria2</span></span>
-        <span class="t-mono latency good">57 мс</span>
-      </button>
       <div class="divider" style="margin: 2px 6px"></div>
-      <button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы…</button>
+      <button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button>
     </div>
 
     <div class="pg-island" data-active="home"></div>

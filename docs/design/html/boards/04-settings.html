@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>4 · Настройки — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Карточка настроек — Border.card Padding="16,4" программы: строки по 13 сверху и снизу, полосы между строками внутри полей */
+  .card > .setting { padding: 13px 0; gap: 16px; }
+  .card > .setting .setting-text { gap: 3px; }
+  .card > .setting.stacked { flex-direction: column; align-items: stretch; gap: 10px; padding: 14px 0; }
+  /* «Для опытных»: плитка 36 со значком 20, стрелка по правому краю (решение 486 — строки разделены полосами) */
+  .card > .link-row { padding: 10px 0; min-height: 0; }
+  .card > .link-row .row-icon { width: 36px; height: 36px; }
+  .card > .link-row .row-icon .pg-icon { width: 20px; height: 20px; }
+  .card > .link-row .chevron path { stroke-width: 2; }
+
+  /* Подписи режима и уведомлений — по выбранному сегменту (ModeNote и NotificationsNote программы) */
+  .pg-page:has([data-mode="proxy"].on) [data-when="vpn"],
+  .pg-page:not(:has([data-mode="proxy"].on)) [data-when="proxy"],
+  .pg-page:not(:has([data-notify="all"].on)) [data-when="notify-all"],
+  .pg-page:not(:has([data-notify="important"].on)) [data-when="notify-important"],
+  .pg-page:not(:has([data-notify="off"].on)) [data-when="notify-off"] { display: none; }
+  /* В режиме «Только прокси» блока при обрыве нет — переключатель недоступен (CanKillSwitch) */
+  .pg-page:has([data-mode="proxy"].on) [data-ks] .switch { opacity: .45; pointer-events: none; }
+  /* Сегмент — RadioButton.segment программы: подпись в одну строку и без своих полей (на телефоне «Только важные» не переносится) */
+  .segment { white-space: nowrap; padding: 0 4px; }
+
+  /* Смена режима при включенной защите перезапускает подключение: после «Перейти на прокси» щит островка — «Прокси»
+     (state.partial, знак Mark.Alert), после «VPN · вся система» — снова «Защищено» (Mark.Ok) */
+  .pg-app[data-state="connected"]:has([data-mode="proxy"].on) {
+    --state-ring: var(--pg-state-partial-ring); --state-icon: var(--pg-state-partial-icon);
+    --state-glow: var(--pg-state-partial-glow); --state-fill: var(--pg-state-partial-fill); }
+  .pg-app[data-state="connected"]:has([data-mode="proxy"].on) .power .pg-icon path + path { d: path("M12 8v4.5M12 15.6h.01"); }
+  .pg-app[data-state="connected"]:has([data-mode="proxy"].on) .pg-island-state { font-size: 0; }
+  .pg-app[data-state="connected"]:has([data-mode="proxy"].on) .pg-island-state::after { content: "Прокси"; font-size: var(--pg-type-caption-size); }
+  .pg-app[data-state="proxy"]:has([data-mode="vpn"].on) {
+    --state-ring: var(--pg-state-connected-ring); --state-icon: var(--pg-state-connected-icon);
+    --state-glow: var(--pg-state-connected-glow); --state-fill: var(--pg-state-connected-fill); }
+  .pg-app[data-state="proxy"]:has([data-mode="vpn"].on) .power .pg-icon path + path { d: path("M8.8 12.2l2.2 2.2 4.4-4.6"); }
+  .pg-app[data-state="proxy"]:has([data-mode="vpn"].on) .pg-island-state { font-size: 0; }
+  .pg-app[data-state="proxy"]:has([data-mode="vpn"].on) .pg-island-state::after { content: "Защищено"; font-size: var(--pg-type-caption-size); }
+
+  /* Рамка окна не прокручивается сама (фокус и scrollIntoView прокручивают только список) */
+  .pg-app { overflow: clip; }
+
+  /* Диалог подтверждения — как DialogView программы (доска 18) */
+  .dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .dialog .dialog-actions { margin-top: 16px; }
+  .dialog .btn-primary { height: 48px; font-size: var(--pg-type-title-size); }
+  .dialog .btn-secondary { height: 46px; font-weight: 600; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Настройки (SettingsPage программы). «Основные» сохраняются сразу. «Только прокси» — только после диалога
+  «Перейти в режим прокси?», в режиме прокси блок при обрыве недоступен, а щит островка после подтверждения — «Прокси». Выключить блок при обрыве — тоже через
+  диалог. Подпись под
+  уведомлениями меняется по выбору. Строки «Для опытных» открывают свои экраны: 5, 6, 13, 12, 7, 14, 15. Справа — тот же экран в режиме
+  «Только прокси».</p>
+
+<div class="pg-screens">
+  <!-- ===================== Режим VPN ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Режим «VPN · вся система»">
+    <div class="pg-page">
+      <div class="t-h1" style="margin: 18px var(--side) 12px">Настройки</div>
+
+      <span class="t-overline" style="display: block; margin: 0 calc(var(--side) + 6px) 8px">Основные</span>
+      <div class="card" style="margin: 0 var(--side); padding: 4px 16px">
+        <!-- Режим -->
+        <div class="setting stacked">
+          <span class="t-strong">Режим</span>
+          <div class="segments" role="radiogroup" aria-label="Режим">
+            <button class="segment on" data-mode="vpn" role="radio" aria-checked="true">VPN · вся система</button>
+            <button class="segment" data-mode="proxy" data-confirm="dlg-proxy" role="radio" aria-checked="false">Только прокси</button>
+          </div>
+          <span class="t-caption t-wrap" data-when="vpn">Весь трафик Windows идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
+          <span class="t-caption t-wrap" data-when="proxy">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
+        </div>
+
+        <div class="setting" data-ks>
+          <div class="setting-text">
+            <span class="setting-title">Блок при обрыве (Kill Switch)</span>
+            <span class="setting-caption">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Блок при обрыве (Kill Switch)" data-confirm-off="dlg-ks"></button>
+        </div>
+
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Запуск вместе с Windows</span>
+            <span class="setting-caption">Свернуто в трей</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Запуск вместе с Windows"></button>
+        </div>
+
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Подключаться при запуске</span>
+            <span class="setting-caption">Только к выбранному вами серверу</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="Подключаться при запуске"></button>
+        </div>
+
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Сворачивать в трей</span>
+            <span class="setting-caption">Закрытие окна не отключает VPN</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Сворачивать в трей"></button>
+        </div>
+
+        <!-- Уведомления -->
+        <div class="setting stacked" style="padding: 13px 0">
+          <div class="setting-text">
+            <span class="setting-title">Уведомления</span>
+            <span class="setting-caption t-wrap" data-when="notify-all">Важные и обычные: подключение, серверы, обновления</span>
+            <span class="setting-caption t-wrap" data-when="notify-important">Обрыв, блокировка интернета, вход в Wi-Fi, сбой службы</span>
+            <span class="setting-caption t-wrap" data-when="notify-off">Только значок в трее меняет цвет. Окно и трей покажут все</span>
+          </div>
+          <div class="segments" role="radiogroup" aria-label="Уведомления">
+            <button class="segment" data-notify="all" role="radio" aria-checked="false">Все</button>
+            <button class="segment on" data-notify="important" role="radio" aria-checked="true">Только важные</button>
+            <button class="segment" data-notify="off" role="radio" aria-checked="false">Выключены</button>
+          </div>
+        </div>
+
+        <!-- Язык -->
+        <div class="setting">
+          <span class="setting-title pg-grow">Язык</span>
+          <div class="segments" style="width: 190px" role="radiogroup" aria-label="Язык">
+            <button class="segment on" role="radio" aria-checked="true">Русский</button>
+            <button class="segment" role="radio" aria-checked="false">English</button>
+          </div>
+        </div>
+      </div>
+
+      <span class="t-overline" style="display: block; margin: 18px calc(var(--side) + 6px) 8px">Для опытных</span>
+      <div class="card" style="margin: 0 var(--side); padding: 4px 16px">
+        <button class="link-row" data-nav="05-protection.html">
+          <span class="row-icon"><i data-icon="Adv.Protection" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Защита и утечки</span><span class="t-caption pg-ellipsis">Kill Switch, DNS, IPv6, локальная сеть</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="06-advanced.html">
+          <span class="row-icon"><i data-icon="Adv.Core" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Подключение и ядро</span><span class="t-caption pg-ellipsis">Ядро, TUN, MTU, Mux, фрагментация, uTLS</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="13-routing.html">
+          <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Маршрутизация</span><span class="t-caption pg-ellipsis">Правила, раздельное туннелирование</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="12-subscriptions.html">
+          <span class="row-icon"><i data-icon="Adv.Profiles" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Профили и подписки</span><span class="t-caption pg-ellipsis">Серверы из ссылок и подписок</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="07-diagnostics.html">
+          <span class="row-icon"><i data-icon="Adv.Check" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка и логи</span><span class="t-caption pg-ellipsis">Проверка утечек, журнал, отчет</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="14-backup.html">
+          <span class="row-icon"><i data-icon="Adv.Backup" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Резервная копия</span><span class="t-caption pg-ellipsis">Экспорт и импорт настроек</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="15-about.html">
+          <span class="row-icon"><i data-icon="Adv.About" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">О программе</span><span class="t-caption pg-ellipsis">Версии, обновление, лицензии</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+      </div>
+
+      <div class="t-caption pg-center" style="margin: 14px var(--side) 0">Private Gateway Client 0.1.0 · служба: работает · ядро: Xray-core</div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <!-- «Только прокси» — после подтверждения (решение 529): безопасный вариант — основная кнопка -->
+    <div class="dialog" id="dlg-proxy" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Перейти в режим прокси?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить VPN</button>
+        <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>
+      </div>
+    </div>
+
+    <!-- Выключить блок при обрыве — только после «Выключить» -->
+    <div class="dialog" id="dlg-ks" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Выключить блок при обрыве?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить включенным</button>
+        <button class="btn-secondary danger" data-confirm-yes>Выключить</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <!-- ===================== Режим «Только прокси» ===================== -->
+  <section class="pg-screen" data-state="proxy" data-caption="Режим «Только прокси»: блок при обрыве недоступен">
+    <div class="pg-page">
+      <div class="t-h1" style="margin: 18px var(--side) 12px">Настройки</div>
+
+      <span class="t-overline" style="display: block; margin: 0 calc(var(--side) + 6px) 8px">Основные</span>
+      <div class="card" style="margin: 0 var(--side); padding: 4px 16px">
+        <div class="setting stacked">
+          <span class="t-strong">Режим</span>
+          <div class="segments" role="radiogroup" aria-label="Режим">
+            <button class="segment" data-mode="vpn" role="radio" aria-checked="false">VPN · вся система</button>
+            <button class="segment on" data-mode="proxy" data-confirm="dlg-proxy-2" role="radio" aria-checked="true">Только прокси</button>
+          </div>
+          <span class="t-caption t-wrap" data-when="vpn">Весь трафик Windows идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
+          <span class="t-caption t-wrap" data-when="proxy">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
+        </div>
+
+        <div class="setting" data-ks>
+          <div class="setting-text">
+            <span class="setting-title">Блок при обрыве (Kill Switch)</span>
+            <span class="setting-caption">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Блок при обрыве (Kill Switch)" data-confirm-off="dlg-ks-2"></button>
+        </div>
+
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Запуск вместе с Windows</span>
+            <span class="setting-caption">Свернуто в трей</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Запуск вместе с Windows"></button>
+        </div>
+
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Подключаться при запуске</span>
+            <span class="setting-caption">Только к выбранному вами серверу</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="Подключаться при запуске"></button>
+        </div>
+
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Сворачивать в трей</span>
+            <span class="setting-caption">Закрытие окна не отключает VPN</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Сворачивать в трей"></button>
+        </div>
+
+        <div class="setting stacked" style="padding: 13px 0">
+          <div class="setting-text">
+            <span class="setting-title">Уведомления</span>
+            <span class="setting-caption t-wrap" data-when="notify-all">Важные и обычные: подключение, серверы, обновления</span>
+            <span class="setting-caption t-wrap" data-when="notify-important">Обрыв, блокировка интернета, вход в Wi-Fi, сбой службы</span>
+            <span class="setting-caption t-wrap" data-when="notify-off">Только значок в трее меняет цвет. Окно и трей покажут все</span>
+          </div>
+          <div class="segments" role="radiogroup" aria-label="Уведомления">
+            <button class="segment" data-notify="all" role="radio" aria-checked="false">Все</button>
+            <button class="segment on" data-notify="important" role="radio" aria-checked="true">Только важные</button>
+            <button class="segment" data-notify="off" role="radio" aria-checked="false">Выключены</button>
+          </div>
+        </div>
+
+        <div class="setting">
+          <span class="setting-title pg-grow">Язык</span>
+          <div class="segments" style="width: 190px" role="radiogroup" aria-label="Язык">
+            <button class="segment on" role="radio" aria-checked="true">Русский</button>
+            <button class="segment" role="radio" aria-checked="false">English</button>
+          </div>
+        </div>
+      </div>
+
+      <span class="t-overline" style="display: block; margin: 18px calc(var(--side) + 6px) 8px">Для опытных</span>
+      <div class="card" style="margin: 0 var(--side); padding: 4px 16px">
+        <button class="link-row" data-nav="05-protection.html">
+          <span class="row-icon"><i data-icon="Adv.Protection" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Защита и утечки</span><span class="t-caption pg-ellipsis">Kill Switch, DNS, IPv6, локальная сеть</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="06-advanced.html">
+          <span class="row-icon"><i data-icon="Adv.Core" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Подключение и ядро</span><span class="t-caption pg-ellipsis">Ядро, TUN, MTU, Mux, фрагментация, uTLS</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="13-routing.html">
+          <span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Маршрутизация</span><span class="t-caption pg-ellipsis">Правила, раздельное туннелирование</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="12-subscriptions.html">
+          <span class="row-icon"><i data-icon="Adv.Profiles" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Профили и подписки</span><span class="t-caption pg-ellipsis">Серверы из ссылок и подписок</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="07-diagnostics.html">
+          <span class="row-icon"><i data-icon="Adv.Check" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка и логи</span><span class="t-caption pg-ellipsis">Проверка утечек, журнал, отчет</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="14-backup.html">
+          <span class="row-icon"><i data-icon="Adv.Backup" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Резервная копия</span><span class="t-caption pg-ellipsis">Экспорт и импорт настроек</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+        <button class="link-row" data-nav="15-about.html">
+          <span class="row-icon"><i data-icon="Adv.About" data-stroke="1.9"></i></span>
+          <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">О программе</span><span class="t-caption pg-ellipsis">Версии, обновление, лицензии</span></span>
+          <i data-icon="ChevronRight" class="chevron"></i>
+        </button>
+      </div>
+
+      <div class="t-caption pg-center" style="margin: 14px var(--side) 0">Private Gateway Client 0.1.0 · служба: работает · ядро: Xray-core</div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <div class="dialog" id="dlg-proxy-2" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Перейти в режим прокси?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить VPN</button>
+        <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>
+      </div>
+    </div>
+
+    <div class="dialog" id="dlg-ks-2" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Выключить блок при обрыве?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить включенным</button>
+        <button class="btn-secondary danger" data-confirm-yes>Выключить</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+</div>
+</body>
+</html>

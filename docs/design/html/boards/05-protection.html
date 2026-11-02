@@ -1,0 +1,259 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>5 · Защита и утечки — Private Gateway</title>
+<link rel="stylesheet" href="../assets/tokens.css">
+<link rel="stylesheet" href="../assets/app.css">
+<script src="../assets/icons.js"></script>
+<script src="../assets/app.js" defer></script>
+<style>
+  /* Подстраница настроек: шапка с «Назад» стоит, прокручивается только список (Grid RowDefinitions="Auto,*" программы) */
+  .pg-frame .pg-page-header + .pg-page { top: 60px; }
+  .pg-frame.is-phone .pg-page-header + .pg-page { top: 110px; }
+  .pg-frame[data-device="android"].is-phone .pg-page-header + .pg-page { top: 92px; }
+
+  /* Карточка — Border.card Padding="16,2": строки по 12 сверху и снизу, полосы внутри полей */
+  .card > .setting { padding: 12px 0; gap: 14px; }
+  .card > .setting .setting-text { gap: 3px; }
+  .card > .setting .btn-select { max-width: 180px; }
+  .card > .setting .btn-select [data-select-label] { overflow: hidden; text-overflow: ellipsis; }
+
+  /* Строгий режим — часть блока при обрыве (CanStrictMode); обнаружение устройств — только в разрешенной локальной сети */
+  .pg-page:has([data-ks]:not(.on)) [data-needs-ks] { opacity: .45; pointer-events: none; }
+  .pg-page:has([data-lan]:not(.on)) [data-needs-lan] { opacity: .45; pointer-events: none; }
+
+  /* Меню выбора — Popup программы. Окно макета не выпускает меню за рамку, поэтому у нижних строк оно открывается вверх
+     (anchor-positioning; где его нет, меню открывается вниз, как раньше). Пункт — Button.option Padding="14,10". */
+  [data-open="menu-dns"] { anchor-name: --menu-dns; } #menu-dns { position-anchor: --menu-dns; }
+  [data-open="menu-addr"] { anchor-name: --menu-addr; } #menu-addr { position-anchor: --menu-addr; }
+  .popup { position-try-fallbacks: --pg-menu-up; }
+  @position-try --pg-menu-up { top: auto; bottom: anchor(top); margin-bottom: 6px; }
+  .popup .btn-option, .popup .btn-plain { padding: 0 14px; border-radius: var(--pg-radius-input); }
+  /* Рамка окна не прокручивается сама (фокус и scrollIntoView прокручивают только список) */
+  .pg-app { overflow: clip; }
+
+  /* Диалог подтверждения — как DialogView программы (доска 18) */
+  .dialog { padding: 22px 20px 18px; border-radius: 24px; }
+  .dialog .dialog-icon { width: 48px; height: 48px; border-radius: 16px; }
+  .dialog .dialog-actions { margin-top: 16px; }
+  .dialog .btn-primary { height: 48px; font-size: var(--pg-type-title-size); }
+  .dialog .btn-secondary { height: 46px; font-weight: 600; }
+</style>
+</head>
+<body>
+<p class="pg-board-note">Защита и утечки (ProtectionPage программы) — подстраница настроек: «Назад» ведет в «Настройки», островок виден.
+  Выключить блок при обрыве — через диалог, включить строгий режим — тоже (без блока при обрыве он недоступен). «Открыть» у входа
+  в Wi-Fi спрашивает и ставит паузу на 5 минут. «DNS в туннеле» и «Приоритет адресов» — меню, выбранный пункт синим полужирным, у нижнего края окна меню открывается вверх;
+  «Свой адрес…» открывает лист. Обнаружение устройств доступно только при разрешенной локальной сети.</p>
+
+<div class="pg-screens">
+  <section class="pg-screen" data-state="connected">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Защита и утечки</span>
+    </div>
+
+    <div class="pg-page">
+      <!-- Блок при обрыве -->
+      <span class="t-overline" style="display: block; margin: 0 calc(var(--side) + 6px) 8px">Блок при обрыве</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Kill Switch (fail-closed)</span>
+            <span class="setting-caption">Обрыв, сбой ядра или службы — весь трафик блокируется брандмауэром Windows. Исключение: только адрес выбранного сервера.</span>
+          </div>
+          <button class="switch on" data-ks role="switch" aria-checked="true" aria-label="Kill Switch (fail-closed)" data-confirm-off="dlg-ks"></button>
+        </div>
+        <!-- Защита виртуальных машин (Windows): состояние сообщает служба -->
+        <div class="pg-stack" style="gap: 3px; padding: 0 0 12px">
+          <span class="t-strong">Защита WSL2 и Hyper-V</span>
+          <span class="t-caption t-caution t-wrap">Туннель поднят. Путь трафика виртуальных машин и блокировка при обрыве отдельно не проверены.</span>
+          <span class="t-caption t-wrap">Наличие правил не подтверждает путь трафика всех ВМ. Внешние коммутаторы Hyper-V, Windows Sandbox и контейнеры WinNAT отдельно не проверены.</span>
+        </div>
+        <div class="divider"></div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Защита при загрузке Windows</span>
+            <span class="setting-caption">Блокировка действует до старта службы, без окна утечки.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Защита при загрузке Windows"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Строгий режим</span>
+            <span class="setting-caption">Блокировать сеть и при ручном отключении VPN.</span>
+          </div>
+          <button class="switch" data-needs-ks role="switch" aria-checked="false" aria-label="Строгий режим" data-confirm-on="dlg-strict"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Вход в Wi-Fi отеля или кафе</span>
+            <span class="setting-caption">Временно открыть страницу авторизации сети на 5 минут.</span>
+          </div>
+          <button class="btn-small soft" style="padding: 0 14px" data-open="dlg-pause" aria-label="Вход в Wi-Fi отеля или кафе">Открыть</button>
+        </div>
+      </div>
+
+      <!-- DNS -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">DNS</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">DNS в туннеле</span>
+            <span class="setting-caption">Куда уходят запросы адресов сайтов.</span>
+          </div>
+          <button class="btn-select" data-open="menu-dns" aria-label="DNS в туннеле"><span data-select-label>Из профиля</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Блокировать DNS провайдера</span>
+            <span class="setting-caption">Запросы мимо туннеля отбрасываются, и LLMNR, NetBIOS: устройства сети — по адресу или .local.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Блокировать DNS провайдера"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">FakeDNS</span>
+            <span class="setting-caption">Быстрее, но может ломать некоторые программы.</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="FakeDNS"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Проверять утечки после подключения</span>
+            <span class="setting-caption">Автотест DNS и IP, результат — на главной.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять утечки после подключения"></button>
+        </div>
+      </div>
+
+      <!-- IPv6 -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">IPv6</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Блокировать IPv6 вне туннеля</span>
+            <span class="setting-caption">Если сервер без IPv6, трафик IPv6 блокируется, а не идет напрямую.</span>
+          </div>
+          <button class="switch on" role="switch" aria-checked="true" aria-label="Блокировать IPv6 вне туннеля"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Приоритет адресов</span>
+            <span class="setting-caption">Для сайтов с IPv4 и IPv6.</span>
+          </div>
+          <button class="btn-select" data-open="menu-addr" aria-label="Приоритет адресов"><span data-select-label>Предпочитать IPv4</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+        </div>
+      </div>
+
+      <!-- Локальная сеть -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">Локальная сеть</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Разрешить локальную сеть</span>
+            <span class="setting-caption">Принтеры, NAS, роутер. По умолчанию запрещено.</span>
+          </div>
+          <button class="switch" data-lan role="switch" aria-checked="false" aria-label="Разрешить локальную сеть"></button>
+        </div>
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Обнаружение устройств (mDNS/SSDP)</span>
+            <span class="setting-caption">Работает только при разрешенной локальной сети.</span>
+          </div>
+          <button class="switch" data-needs-lan role="switch" aria-checked="false" aria-label="Обнаружение устройств (mDNS/SSDP)"></button>
+        </div>
+      </div>
+
+      <!-- Другие VPN и прокси-клиенты (решение 507) -->
+      <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">Другие VPN и прокси-клиенты</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title">Разрешить работу рядом с другим VPN или прокси-клиентом</span>
+            <span class="setting-caption">Не рекомендуется: трафик может пойти мимо туннеля. По умолчанию защита не включается, пока работает другой VPN или прокси-клиент.</span>
+          </div>
+          <button class="switch" role="switch" aria-checked="false" aria-label="Разрешить работу рядом с другим VPN или прокси-клиентом"></button>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <!-- Меню «DNS в туннеле» -->
+    <div class="popup" id="menu-dns">
+      <button class="btn-option current" data-value="Из профиля">Из профиля</button>
+      <button class="btn-option" data-value="DoH: Cloudflare">DoH: Cloudflare</button>
+      <button class="btn-option" data-value="DoH: Quad9">DoH: Quad9</button>
+      <!-- «Свой адрес…» открывает лист и сам выбранным не становится: им станет адрес после «Сохранить» -->
+      <button class="btn-plain" data-open="sheet-dns">Свой адрес…</button>
+    </div>
+
+    <!-- Меню «Приоритет адресов» -->
+    <div class="popup" id="menu-addr">
+      <button class="btn-option current" data-value="Предпочитать IPv4">Предпочитать IPv4</button>
+      <button class="btn-option" data-value="Предпочитать IPv6">Предпочитать IPv6</button>
+      <button class="btn-option" data-value="Только IPv4">Только IPv4</button>
+    </div>
+
+    <!-- Лист «Свой адрес DNS» (DnsAddressView): IP или DoH -->
+    <div class="sheet" id="sheet-dns" role="dialog" aria-label="Свой адрес DNS">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Свой адрес DNS</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack pg-gap-6" style="margin: 16px 0">
+          <span class="t-small" style="font-weight: 600">Адрес</span>
+          <input class="input" style="font-family: var(--font-mono); font-size: var(--pg-type-caption-size)" aria-label="Адрес"
+                 placeholder="192.0.2.53 или https://dns.example.com/dns-query">
+          <span class="t-caption t-wrap">IP-адрес или адрес DoH (https://…). Запросы идут через туннель.</span>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Выключить блок при обрыве — только после «Выключить» -->
+    <div class="dialog" id="dlg-ks" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Выключить блок при обрыве?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить включенным</button>
+        <button class="btn-secondary danger" data-confirm-yes>Выключить</button>
+      </div>
+    </div>
+
+    <!-- Строгий режим: без VPN сети не будет совсем — включение с вопросом (синий значок) -->
+    <div class="dialog" id="dlg-strict" role="dialog" aria-modal="true" aria-label="Включить строгий режим?">
+      <div class="dialog-icon accent"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Включить строгий режим?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Интернет будет работать только через VPN — и после ручного отключения тоже. Чтобы выйти в сеть без VPN, выключите строгий режим.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-confirm-yes>Включить</button>
+        <button class="btn-secondary" data-close>Отмена</button>
+      </div>
+    </div>
+
+    <!-- Вход в Wi-Fi: пауза защиты на 5 минут -->
+    <div class="dialog" id="dlg-pause" role="dialog" aria-modal="true" aria-label="Открыть интернет без VPN на 5 минут?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Открыть интернет без VPN на 5 минут?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Это нужно, чтобы войти в Wi-Fi отеля или кафе. Пока идет пауза, сайты и сеть видят ваш реальный IP. Через 5 минут защита вернется сама, раньше — кнопкой «Вернуть защиту».</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close>Оставить защиту</button>
+        <button class="btn-secondary danger" data-close data-set-state="paused" data-toast="Пауза на 5 минут: войдите в сеть на открывшейся странице">Открыть на 5 минут</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+</div>
+</body>
+</html>
