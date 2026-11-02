@@ -11,10 +11,12 @@ enum SettingsPage: Hashable {
     case licenses
 }
 
-/// «Настройки» — как `SettingsScreen` Android: разделы «Защита и утечки» и «Профили и подписки» (`subscriptions` — страница
-/// по нажатию «Назад»), уведомления и переподключение, «О программе» с версиями и лицензиями открытых компонентов, язык — системный или выбранный для
-/// приложения в Настройках iOS. Изменения под защитой применяются сразу — перезапуском ядра или туннеля (`SettingsActions`).
-/// Открытая страница — у окна: «Добавить» поверх и возврат не сбрасывают ее.
+/// «Настройки» (доска 04, SettingsPage десктопа): заголовок, «Основные» одной карточкой — блок при обрыве (выключение — через
+/// вопрос), подключение при запуске, переподключение (до страницы «Подключение и ядро»), уведомления сегментами с подписью по
+/// выбору, язык — системный выбор языка приложения в Настройках iOS; «Для опытных» — строки-ссылки на страницы, которые есть
+/// на телефоне, и вкладку «Проверка»; внизу — версия приложения и ядра. Режима «Только прокси» на телефоне нет (решение 527).
+/// Изменения под защитой применяются сразу — перезапуском ядра или туннеля (`SettingsActions`). Открытая страница — у окна:
+/// «Добавить» поверх и возврат не сбрасывают ее.
 struct SettingsView<Subscriptions: View>: View {
     let texts: PgTexts
     let settings: AppSettings
@@ -23,8 +25,11 @@ struct SettingsView<Subscriptions: View>: View {
     var onTunnel: (TunnelSettings) -> Void = { _ in }
     var onKillSwitch: (Bool) -> Void = { _ in }
     var onAlwaysOn: (Bool) -> Void = { _ in }
+    var onConnectOnLaunch: (Bool) -> Void = { _ in }
     var onNotifications: (NotificationLevel) -> Void = { _ in }
     var onReconnect: (ReconnectPolicy) -> Void = { _ in }
+    /// «Проверка и логи» — вкладка «Проверка» островка.
+    var onCheck: () -> Void = {}
     let subscriptions: (_ onBack: @escaping () -> Void) -> Subscriptions
 
     @Environment(\.openURL) private var openURL
@@ -47,102 +52,220 @@ struct SettingsView<Subscriptions: View>: View {
 
     private var main: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: PgSpace.l) {
-                Text(texts.navSettings).pgText(PgType.h1).foregroundStyle(Color(PgColor.Text.primary)).padding(.top, PgSpace.l)
-                VStack(spacing: 0) {
-                    SectionRow(
-                        icon: PgIcons.advProtection, title: texts.settingsAdvProtectionTitle, text: texts.settingsAdvProtectionText,
-                        identifier: "settings.protection"
-                    ) { page = .protection }
-                    SectionRow(
-                        icon: PgIcons.advProfiles, title: texts.settingsAdvProfilesTitle, text: texts.settingsAdvProfilesText,
-                        identifier: "settings.profiles"
-                    ) { page = .subscriptions }
+            VStack(alignment: .leading, spacing: 0) {
+                Text(texts.navSettings)
+                    .pgText(PgType.h1)
+                    .foregroundStyle(Color(PgColor.Text.primary))
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.top, 18)
+                    .padding(.bottom, PgSpace.l)
+                SettingsGroup(title: texts.settingsSectionBasic, inset: PgSpace.xxs) {
+                    basic
                 }
-                .pgCard()
 
-                VStack(alignment: .leading, spacing: PgSpace.xs) {
-                    Text(texts.settingsNotificationsTitle).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary))
-                    ForEach([(NotificationLevel.all, texts.settingsNotificationsAll), (.importantOnly, texts.settingsNotificationsImportant),
-                             (.off, texts.settingsNotificationsOff)], id: \.0) { item in
-                        PgChoiceRow(title: item.1, selected: settings.notifications == item.0, identifier: "notify.\(item.0.rawValue)") { onNotifications(item.0) }
-                    }
+                SettingsGroup(title: texts.settingsSectionAdvanced, inset: PgSpace.xxs) {
+                    advanced
                 }
-                .pgCard()
+                .padding(.top, 18)
 
-                VStack(alignment: .leading, spacing: PgSpace.xs) {
-                    Text(texts.coreReconnectTitle).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary))
-                    Text(texts.coreReconnectText).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary))
-                    ForEach([(ReconnectPolicy.backoff60Seconds, texts.coreReconnectBackoff), (.upTo5Minutes, texts.coreReconnect5min),
-                             (.never, texts.coreReconnectNever)], id: \.0) { item in
-                        PgChoiceRow(title: item.1, selected: settings.reconnect == item.0, identifier: "reconnect.\(item.0.rawValue)") { onReconnect(item.0) }
-                    }
-                }
-                .pgCard()
-
-                VStack(alignment: .leading, spacing: PgSpace.xs) {
-                    Overline(text: texts.aboutName)
-                    Text(texts.aboutVersion(about.app, about.system, about.arch))
-                        .pgText(PgType.body)
-                        .foregroundStyle(Color(PgColor.Text.primary))
-                        .accessibilityIdentifier("settings.version")
-                    Text(texts.cardCore + ": Xray-core " + (about.core ?? "—"))
-                        .pgText(PgType.small)
-                        .foregroundStyle(Color(PgColor.Text.secondary))
-                        .accessibilityIdentifier("settings.core")
-                    SectionRow(icon: PgIcons.file, title: texts.aboutLicenses, text: texts.aboutLicensesText, identifier: "settings.licenses") {
-                        page = .licenses
-                    }
-                    .padding(.top, PgSpace.s)
-                }
-                .pgCard()
-
-                // Язык приложения iOS выбирает сама (Настройки → Private Gateway → Язык): нажатие открывает эту страницу.
-                Button {
-                    if let url = URL(string: UIApplication.openSettingsURLString) {
-                        openURL(url)
-                    }
-                } label: {
-                    Text(texts.settingsLanguageTitle + ": " + texts.iosSettingsLanguage)
-                        .pgText(PgType.caption)
-                        .foregroundStyle(Color(PgColor.Text.muted))
-                        .multilineTextAlignment(.center)
-                        .frame(maxWidth: .infinity, minHeight: PgLayout.touchTarget)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("settings.language")
+                Text(SettingsLook.footer(about, texts))
+                    .pgText(PgType.caption)
+                    .foregroundStyle(Color(PgColor.Text.muted))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 14)
+                    .accessibilityIdentifier("settings.footer")
             }
             .padding(.horizontal, PgSpace.windowSideMobile)
             .padding(.bottom, PgLayout.scrollBottomPadding)
         }
         .accessibilityIdentifier("settings")
     }
-}
 
-/// Раздел настроек: иконка, название, что внутри и стрелка — как список разделов десктопа (доска 4).
-struct SectionRow: View {
-    let icon: String
-    let title: String
-    let text: String
-    var identifier = ""
-    let action: () -> Void
+    /// «Основные» (доска 04): строки .setting через полосы.
+    @ViewBuilder
+    private var basic: some View {
+        PgToggleRow(
+            title: texts.settingsKsTitle, text: texts.settingsKsText, isOn: settings.killSwitch, padded: true, confirmOff: SettingsDialogs.ksOff(texts),
+            identifier: "settings.killSwitch", onChange: onKillSwitch
+        )
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgToggleRow(
+            title: texts.settingsConnectOnLaunchTitle, text: texts.settingsConnectOnLaunchText, isOn: settings.connectOnLaunch, padded: true,
+            identifier: "settings.connectOnLaunch", onChange: onConnectOnLaunch
+        )
+        PgDivider().padding(.horizontal, PgSpace.card)
+        // Переподключение — строка «Подключения и ядра» (доска 06); пока той страницы на телефоне нет, оно здесь, в том же виде.
+        PgSettingRow(title: texts.coreReconnectTitle, caption: texts.coreReconnectText) {
+            PgSelect(
+                options: SettingsLook.reconnectOptions(texts), selection: settings.reconnect, label: texts.coreReconnectTitle, identifier: "settings.reconnect",
+                onSelect: onReconnect
+            )
+        }
+        PgDivider().padding(.horizontal, PgSpace.card)
+        notifications
+        PgDivider().padding(.horizontal, PgSpace.card)
+        language
+    }
 
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: PgSpace.m) {
-                PgIcon(data: icon, color: Color(PgColor.Accent.base), size: 22)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
-                    Text(text).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
+    /// «Уведомления» (.setting.stacked): заголовок, подпись по выбранному уровню и три сегмента под ними.
+    private var notifications: some View {
+        VStack(alignment: .leading, spacing: PgSpace.m) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text(texts.settingsNotificationsTitle).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
+                if let note = SettingsLook.notificationsNote(settings.notifications, texts) {
+                    Text(note)
+                        .pgText(PgType.caption)
+                        .foregroundStyle(Color(PgColor.Text.muted))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("settings.notifications.note")
                 }
+            }
 
-                Spacer(minLength: 0)
-                PgIcon(data: PgIcons.chevronRight, color: Color(PgColor.Text.muted), size: 20)
+            PgSegments(options: SettingsLook.notificationOptions(texts), selection: settings.notifications, identifier: "notify", onSelect: onNotifications)
+        }
+        .padding(.vertical, 13)
+        .padding(.horizontal, PgSpace.card)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// «Язык»: язык приложения iOS выбирает сама (Настройки → Private Gateway → Язык) — справа текущий, нажатие открывает эту
+    /// страницу Настроек.
+    private var language: some View {
+        Button {
+            if let url = URL(string: UIApplication.openSettingsURLString) {
+                openURL(url)
+            }
+        } label: {
+            PgSettingRow(title: texts.settingsLanguageTitle, caption: SettingsLook.languageNote(texts)) {
+                HStack(spacing: PgSpace.xxs) {
+                    Text(SettingsLook.languageName(texts))
+                        .pgText(PgType.small.with(weight: 500))
+                        .foregroundStyle(Color(PgColor.Text.secondary))
+                        .lineLimit(1)
+                    PgIcon(data: PgIcons.chevronRight, color: Color(PgColor.Text.muted), size: 16)
+                }
             }
             .frame(minHeight: PgLayout.touchTarget)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityIdentifier("settings.language")
+    }
+
+    /// «Для опытных» (доска 04): строки-ссылки с плиткой значка через полосы — только на то, что на телефоне есть. «Подключение
+    /// и ядро», «Маршрутизация», «Резервная копия» и «О программе» появятся вместе со своими страницами; до «О программе» на
+    /// ее месте — «Лицензии открытых компонентов».
+    @ViewBuilder
+    private var advanced: some View {
+        PgLinkRow(
+            icon: PgIcons.advProtection, title: texts.settingsAdvProtectionTitle, caption: texts.settingsAdvProtectionText, large: true,
+            identifier: "settings.protection"
+        ) { page = .protection }
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgLinkRow(
+            icon: PgIcons.advProfiles, title: texts.settingsAdvProfilesTitle, caption: texts.settingsAdvProfilesText, large: true,
+            identifier: "settings.profiles"
+        ) { page = .subscriptions }
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgLinkRow(
+            icon: PgIcons.advCheck, title: texts.settingsAdvCheckTitle, caption: texts.settingsAdvCheckText, large: true, identifier: "settings.check",
+            action: onCheck
+        )
+        PgDivider().padding(.horizontal, PgSpace.card)
+        PgLinkRow(icon: PgIcons.file, title: texts.aboutLicenses, caption: texts.aboutLicensesText, large: true, identifier: "settings.licenses") {
+            page = .licenses
+        }
+    }
+}
+
+/// Группа настроек (доски 04 и 05): подпись .t-overline над карточкой, в карточке — строки через полосы; `inset` — поля карточки
+/// сверху и снизу (4 у «Настроек», 2 у «Защиты и утечек»).
+struct SettingsGroup<Content: View>: View {
+    let title: String
+    var inset: Double = 2
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: PgSpace.s) {
+            Overline(text: title)
+                .padding(.horizontal, PgSpace.xs)
+                .accessibilityAddTraits(.isHeader)
+            VStack(spacing: 0) {
+                content()
+            }
+            .padding(.vertical, inset)
+            .pgCard(padding: 0)
+        }
+    }
+}
+
+/// Правила «Настроек» — как SettingsPageViewModel десктопа.
+enum SettingsLook {
+    /// Уровни уведомлений сегментами по порядку макета.
+    static func notificationOptions(_ texts: PgTexts) -> [PgOption<NotificationLevel>] {
+        [
+            PgOption(value: NotificationLevel.all, title: texts.settingsNotificationsAll),
+            PgOption(value: NotificationLevel.importantOnly, title: texts.settingsNotificationsImportant),
+            PgOption(value: NotificationLevel.off, title: texts.settingsNotificationsOff),
+        ]
+    }
+
+    /// Подпись под «Уведомлениями» по выбранному уровню (NotificationsNote десктопа). У «Выключены» подпись десктопа — про
+    /// значок в трее, а трея у телефона нет: подписи нет, пока у телефона нет своего текста.
+    static func notificationsNote(_ level: NotificationLevel, _ texts: PgTexts) -> String? {
+        switch level {
+        case .all: return texts.settingsNotificationsAllNote
+        case .importantOnly: return texts.settingsNotificationsImportantNote
+        case .off: return nil
+        }
+    }
+
+    /// Переподключение — пункты меню по порядку «Подключения и ядра» (доска 06).
+    static func reconnectOptions(_ texts: PgTexts) -> [PgOption<ReconnectPolicy>] {
+        [
+            PgOption(value: ReconnectPolicy.backoff60Seconds, title: texts.coreReconnectBackoff),
+            PgOption(value: ReconnectPolicy.upTo5Minutes, title: texts.coreReconnect5min), PgOption(value: ReconnectPolicy.never, title: texts.coreReconnectNever),
+        ]
+    }
+
+    /// Язык приложения сейчас — «Русский» или «English», как сегменты макета.
+    static func languageName(_ texts: PgTexts) -> String {
+        texts.language == .russian ? texts.settingsLanguageRu : texts.settingsLanguageEn
+    }
+
+    /// Где меняется язык — с заглавной буквы: «Как в системе — меняется в Настройках iOS: Private Gateway → Язык».
+    static func languageNote(_ texts: PgTexts) -> String {
+        let text = texts.iosSettingsLanguage
+        return text.prefix(1).uppercased() + text.dropFirst()
+    }
+
+    /// Подпись внизу (settings.footer десктопа) без службы — ее у телефона нет: «Private Gateway Client 0.1.0 · Ядро: Xray-core
+    /// 26.3.27»; версию ядра сообщает расширение туннеля после первого подключения.
+    static func footer(_ about: AboutInfo, _ texts: PgTexts) -> String {
+        var text = texts.aboutName
+        if !about.app.isEmpty {
+            text += " " + about.app
+        }
+
+        text += " · " + texts.cardCore + ": Xray-core"
+        if let core = about.core, !core.isEmpty {
+            text += " " + core
+        }
+
+        return text
+    }
+}
+
+/// Вопросы «Настроек» и «Защиты и утечек», как SafetyDialogs десктопа (доска 18).
+enum SettingsDialogs {
+    /// Выключить блок при обрыве: основная кнопка — «Оставить включенным» (тумблер остается), «да» — опасная вторая «Выключить».
+    static func ksOff(_ texts: PgTexts) -> PgDialog {
+        PgDialog(
+            kind: .warning, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogKsOffTitle, text: texts.dialogKsOffText,
+            primary: texts.dialogKsOffKeep, secondary: texts.dialogKsOffDrop, secondaryDanger: true
+        )
     }
 }

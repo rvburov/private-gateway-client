@@ -103,4 +103,15 @@ class SettingsRepositoryTest {
         store.edit { it[stringPreferencesKey("subs_refresh")] = "Every48Hours" }
         assertEquals(RefreshInterval.Every12Hours, settings.subscriptions.first().refresh, "значение из будущей версии — по умолчанию")
     }
+
+    @Test
+    fun `connect on launch is off by default and comes back as saved`() = runBlocking<Unit> {
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
+        assertEquals(false, settings.connectOnLaunch.first(), "как у десктопа: сервер подключает пользователь")
+
+        settings.setConnectOnLaunch(true)
+        assertEquals(true, settings.connectOnLaunch.first())
+        settings.setConnectOnLaunch(false)
+        assertEquals(false, settings.connectOnLaunch.first())
+    }
 }

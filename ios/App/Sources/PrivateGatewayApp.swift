@@ -1,6 +1,7 @@
 import PrivateGatewayCore
 import PrivateGatewayTheme
 import SwiftUI
+import UIKit
 import UserNotifications
 
 /// Приложение iOS (этап 10): окно — главная по доске 25; туннель — расширение PacketTunnel (NEPacketTunnelProvider), им
@@ -81,6 +82,11 @@ struct RootView: View {
             // Сеть телефона — для строки сети главной и «Проверки»; следим, пока окно живо.
             inspector.start()
             await model.start()
+            // «Подключаться при запуске» — когда приложение открыли, а не iOS разбудила его в фоне обновить подписки.
+            if UIApplication.shared.applicationState != .background {
+                await model.connectOnLaunch()
+            }
+
             measureWebIp()
         }
         .onChange(of: model.home.status.state) { state in
@@ -205,8 +211,9 @@ struct RootView: View {
             SettingsView(
                 texts: model.texts, settings: model.settings, about: model.about, page: $settingsPage,
                 onTunnel: { next in Task { await model.setTunnel(next) } }, onKillSwitch: { on in Task { await model.setKillSwitch(on) } },
-                onAlwaysOn: { on in Task { await model.setAlwaysOn(on) } },
-                onNotifications: { level in Task { await model.setNotifications(level) } }, onReconnect: { policy in Task { await model.setReconnect(policy) } }
+                onAlwaysOn: { on in Task { await model.setAlwaysOn(on) } }, onConnectOnLaunch: { on in Task { await model.setConnectOnLaunch(on) } },
+                onNotifications: { level in Task { await model.setNotifications(level) } }, onReconnect: { policy in Task { await model.setReconnect(policy) } },
+                onCheck: { tab = .check }
             ) { onBack in
                 SubscriptionsView(
                     texts: model.texts, settings: model.settings.subscriptions, groups: model.groups, manualCount: model.manualCount,

@@ -27,9 +27,13 @@ class SettingsViewModel @Inject constructor(private val settings: SettingsReposi
     val systemVpn: StateFlow<SystemVpnView> = monitor.status.combine(settings.systemVpn) { status, remembered -> SystemVpnView.of(status, remembered) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, SystemVpnView(SystemVpn(), SystemVpnSource.Unknown))
 
-    /** Уведомления и переподключение; новая политика переподключения действует со следующей неудачи. */
-    val behavior: StateFlow<Behavior> = settings.notifications.combine(settings.reconnect) { notifications, reconnect -> Behavior(notifications, reconnect) }
-        .stateIn(viewModelScope, SharingStarted.Eagerly, Behavior())
+    /**
+     * Уведомления, переподключение и «Подключаться при запуске»; новая политика переподключения действует со следующей
+     * неудачи, подключение при запуске — со следующего открытия окна.
+     */
+    val behavior: StateFlow<Behavior> = combine(settings.notifications, settings.reconnect, settings.connectOnLaunch) { notifications, reconnect, launch ->
+        Behavior(notifications, reconnect, launch)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, Behavior())
 
     private val page = MutableStateFlow<SettingsPage?>(null)
 
@@ -49,6 +53,10 @@ class SettingsViewModel @Inject constructor(private val settings: SettingsReposi
 
             if (next.reconnect != before.reconnect) {
                 settings.setReconnect(next.reconnect)
+            }
+
+            if (next.connectOnLaunch != before.connectOnLaunch) {
+                settings.setConnectOnLaunch(next.connectOnLaunch)
             }
         }
     }

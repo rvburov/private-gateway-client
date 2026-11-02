@@ -9,6 +9,7 @@ import com.privategateway.client.core.inspect.PhoneNetworkKind
 import com.privategateway.client.core.inspect.PublicAddress
 import com.privategateway.client.core.links.ImportBatch
 import com.privategateway.client.core.links.ImportParser
+import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.ServerNames
 import com.privategateway.client.core.servers.SubscriptionRef
@@ -311,6 +312,22 @@ class MainViewModel @Inject constructor(
                 TunnelState.Stopping -> Unit
             }
         }
+    }
+
+    /**
+     * «Подключаться при запуске» (доска 4): пора ли подключить, когда окно открыли заново. Да — настройка включена, защита
+     * выключена и выбран сервер, к которому телефон подключается (Hysteria2 и TUIC ядру телефона не по силам). Сервер
+     * выбирает только пользователь: без выбранного не подключаемся ни к какому. Подключает окно — разрешение на VPN
+     * спрашивает оно.
+     */
+    suspend fun connectOnLaunch(): Boolean {
+        if (!settings.connectOnLaunch.first()) {
+            return false
+        }
+
+        val id = settings.selectedServerId.first() ?: return false
+        val server = servers.servers.first().firstOrNull { it.id == id } ?: return false
+        return monitor.status.value.state == TunnelState.Off && ServerFacts.coreName(server.protocol) != null
     }
 
     /** Записать выбор; тот же сервер — false, ничего не меняется (и «Недавние» тоже). */

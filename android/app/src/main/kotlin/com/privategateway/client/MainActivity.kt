@@ -1,6 +1,7 @@
 package com.privategateway.client
 
 import android.Manifest
+import android.app.LocaleManager
 import android.content.ActivityNotFoundException
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -10,6 +11,7 @@ import android.graphics.Color
 import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
+import android.os.LocaleList
 import android.os.PersistableBundle
 import android.provider.Settings
 import android.widget.Toast
@@ -20,6 +22,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.inspect.InspectorViewModel
 import com.privategateway.client.notify.AppWindow
@@ -34,6 +37,7 @@ import com.privategateway.client.ui.subscriptions.SubscriptionsViewModel
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.GatewayVpnService
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
@@ -75,6 +79,7 @@ class MainActivity : ComponentActivity() {
             clipboard = ::clipboardText,
             copySecret = ::copySecret,
             copy = ::copyText,
+            language = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) ::setLanguage else null,
         )
         setContent {
             PgTheme {
@@ -83,6 +88,14 @@ class MainActivity : ComponentActivity() {
         }
 
         openTab(intent)
+        // «Подключаться при запуске»: только когда окно открыли заново, а не пересоздали после поворота или смены языка.
+        if (savedInstanceState == null) {
+            lifecycleScope.launch {
+                if (viewModel.connectOnLaunch()) {
+                    start()
+                }
+            }
+        }
     }
 
     override fun onStart() {
@@ -142,6 +155,13 @@ class MainActivity : ComponentActivity() {
             GatewayVpnService.connect(this)
         } else {
             vpnPermission.launch(consent)
+        }
+    }
+
+    /** Язык приложения (Android 13+): Android запоминает его сам и пересоздает окно уже на нем. */
+    private fun setLanguage(tag: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            getSystemService(LocaleManager::class.java)?.applicationLocales = LocaleList.forLanguageTags(tag)
         }
     }
 

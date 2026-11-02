@@ -18,8 +18,8 @@ import javax.inject.Singleton
 
 /**
  * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя), настройки туннеля — DNS,
- * IPv6 через сервер, локальная сеть мимо туннеля, — подписок, уведомлений и переподключения. Неизвестное значение (из
- * будущей версии) — значение по умолчанию.
+ * IPv6 через сервер, локальная сеть мимо туннеля, — подписок, уведомлений, переподключения и подключения при запуске.
+ * Неизвестное значение (из будущей версии) — значение по умолчанию.
  */
 @Singleton
 class SettingsRepository @Inject constructor(private val store: DataStore<Preferences>) {
@@ -86,6 +86,16 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         store.edit { it[RECONNECT] = policy.name }
     }
 
+    /**
+     * «Подключаться при запуске» (доска 4): окно открыли заново — подключить к выбранному серверу; по умолчанию выключено.
+     * Имя ключа — для iOS то же: ее настройки — файл JSON с именами ключей DataStore (решение 459).
+     */
+    val connectOnLaunch: Flow<Boolean> = store.data.map { it[CONNECT_ON_LAUNCH] ?: false }
+
+    suspend fun setConnectOnLaunch(on: Boolean) {
+        store.edit { it[CONNECT_ON_LAUNCH] = on }
+    }
+
     /** «Постоянная VPN» и блок без VPN, как их сообщил Android при последнем подключении (решение 445). */
     val systemVpn: Flow<SystemVpn> = store.data.map { SystemVpn(it[SYSTEM_ALWAYS_ON], it[SYSTEM_LOCKDOWN]) }
 
@@ -112,6 +122,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val ALLOW_LAN = booleanPreferencesKey("tunnel_allow_lan")
         val NOTIFY_LEVEL = stringPreferencesKey("notify_level")
         val RECONNECT = stringPreferencesKey("reconnect_policy")
+        val CONNECT_ON_LAUNCH = booleanPreferencesKey("connect_on_launch")
         val SYSTEM_ALWAYS_ON = booleanPreferencesKey("system_always_on")
         val SYSTEM_LOCKDOWN = booleanPreferencesKey("system_lockdown")
     }

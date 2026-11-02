@@ -46,6 +46,8 @@ final class AppModel: ObservableObject {
 
     /// Отказ самого приложения (iOS не дала сохранить профиль VPN): показывается как ошибка, пока туннель не поднимется.
     private var appError: String?
+    /// «Подключаться при запуске» уже решено за этот запуск приложения: окно, открытое заново, не подключает второй раз.
+    private var launchHandled = false
 
     /// Замер задержки серверов через ядро в процессе приложения — только без защиты (решения 430 и 468).
     private lazy var meter = LatencyMeter(
@@ -255,6 +257,26 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// «Подключаться при запуске» (доска 04, ConnectOnLaunch десктопа): приложение открыли — защита включается к выбранному
+    /// серверу, один раз за запуск. Настройка выключена, защита уже идет (по требованию iOS, из «Пункта управления»), сервер
+    /// не выбран или «Блокировка» — ничего.
+    func connectOnLaunch() async {
+        guard !launchHandled else {
+            return
+        }
+
+        launchHandled = true
+        if Self.connectsOnLaunch(settings, home: home, blocked: blocked) {
+            await togglePower()
+        }
+    }
+
+    /// Подключиться ли при запуске: настройка включена, защита выключена (не «Блокировка» — там кнопка снимает защиту) и
+    /// есть выбранный сервер — подключаться есть к чему.
+    nonisolated static func connectsOnLaunch(_ settings: AppSettings, home: HomeState, blocked: Bool) -> Bool {
+        settings.connectOnLaunch && home.off && !blocked && home.power == .toggle
+    }
+
     /// «Повторить» в «Ошибке» и «Блокировке», «Повторить» и «Подключить» в уведомлении: подключиться снова — туннель
     /// поднимается, а оставленный без ядра перезапускает ядро, не опускаясь (`TunnelController.connect`).
     func retry() async {
@@ -303,6 +325,11 @@ final class AppModel: ObservableObject {
     func setAlwaysOn(_ on: Bool) async {
         let state = home.status.state
         await run { try await self.settingsActions.setAlwaysOn(on, state: state) }
+    }
+
+    /// «Подключаться при запуске» — только для окна, расширению туннеля она не нужна.
+    func setConnectOnLaunch(_ on: Bool) async {
+        await run { try await self.container.settings.setConnectOnLaunch(on) }
     }
 
     /// Какие уведомления показывать — расширение читает уровень при каждом событии.

@@ -1,24 +1,17 @@
 package com.privategateway.client.ui.settings
 
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,11 +23,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
@@ -45,16 +38,19 @@ import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.SystemVpnSource
 import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.licenses.OpenComponents
-import com.privategateway.client.ui.theme.Overline
+import com.privategateway.client.ui.Texts
 import com.privategateway.client.ui.theme.PgCard
-import com.privategateway.client.ui.theme.PgChoiceRow
 import com.privategateway.client.ui.theme.PgColor
-import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
-import com.privategateway.client.ui.theme.PgRadius
+import com.privategateway.client.ui.theme.PgLinkRow
+import com.privategateway.client.ui.theme.PgSegments
+import com.privategateway.client.ui.theme.PgSelect
+import com.privategateway.client.ui.theme.PgSetting
+import com.privategateway.client.ui.theme.PgSettingSwitch
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
+import com.privategateway.client.ui.theme.pgTopDivider
 
 /** Страницы «Настроек»: список разделов и вложенные страницы (на телефоне — по одной на экран, доска 25). */
 enum class SettingsPage {
@@ -65,10 +61,11 @@ enum class SettingsPage {
 }
 
 /**
- * «Настройки»: разделы («Защита и утечки», «Профили и подписки»), «Уведомления» и «Переподключение» (как у десктопа:
- * главная страница и «Подключение и ядро»), VPN в настройках Android (Постоянная VPN и блок без VPN включает только
- * пользователь) и «О программе» с лицензиями открытых компонентов. Язык — системный или выбранный для приложения в настройках Android 13+. [requested] —
- * открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
+ * «Настройки» (доска 4): «Основные» одной карточкой и «Для опытных» строками-ссылками, внизу — версии приложения и ядра.
+ * Режима нет — на телефоне только VPN (решение 527); блок при обрыве — системный (Постоянная VPN и блок без VPN включает
+ * только пользователь в настройках Android), поэтому вместо переключателя — что сообщил Android и переход в его настройки.
+ * [onCheck] — «Проверка и логи»: вкладка «Проверка» островка. [language] — выбрать язык приложения (Android 13+); null —
+ * язык как в системе. [requested] — открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
  */
 @Composable
 fun SettingsScreen(
@@ -82,6 +79,8 @@ fun SettingsScreen(
     requested: SettingsPage? = null,
     onRequested: () -> Unit = {},
     system: SystemVpnView = SystemVpnView(SystemVpn(), SystemVpnSource.Unknown),
+    onCheck: () -> Unit = {},
+    language: ((String) -> Unit)? = null,
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -95,7 +94,7 @@ fun SettingsScreen(
     when (page) {
         SettingsPage.Protection -> {
             BackHandler { page = SettingsPage.Main }
-            ProtectionScreen(tunnel, onTunnel) { page = SettingsPage.Main }
+            ProtectionScreen(tunnel, onTunnel, onBack = { page = SettingsPage.Main }, system = system, openVpnSettings = openVpnSettings)
         }
 
         SettingsPage.Subscriptions -> {
@@ -110,30 +109,28 @@ fun SettingsScreen(
             LicensesScreen(components, { OpenComponents.text(assets, it) }) { page = SettingsPage.Main }
         }
 
-        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior) { page = it }
+        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language) { page = it }
     }
 }
 
-/** Строка флага Android: название и «вкл», «выкл» или «неизвестно». */
-@Composable
-private fun SystemFlag(@StringRes title: Int, value: Boolean?, tag: String) {
-    Row(Modifier.fillMaxWidth().padding(vertical = PgSpace.Xs), verticalAlignment = Alignment.CenterVertically) {
-        Text(stringResource(title), style = PgType.Body, modifier = Modifier.weight(1f))
-        Spacer(Modifier.width(PgSpace.S))
-        val (text, color) = when (value) {
-            true -> R.string.android_settings_vpn_on to PgColor.Status.Success.Text
-            false -> R.string.android_settings_vpn_off to PgColor.Text.Secondary
-            null -> R.string.android_settings_vpn_unknown to PgColor.Text.Muted
-        }
-        Text(stringResource(text), color = color, style = PgType.BodyStrong, modifier = Modifier.testTag(tag))
-    }
-}
-
-/** Уведомления и переподключение — то, что на десктопе в главных настройках и в «Подключении и ядре». */
+/**
+ * Поведение приложения из «Основных»: уведомления, «Подключаться при запуске» и переподключение. Переподключение у десктопа —
+ * строка «Подключения и ядра» (доска 6); пока этой страницы у телефона нет, оно здесь.
+ */
 data class Behavior(
     val notifications: NotificationLevel = NotificationLevel.DEFAULT,
     val reconnect: ReconnectPolicy = ReconnectPolicy.Backoff60Seconds,
+    val connectOnLaunch: Boolean = false,
 )
+
+/** Поля карточек «Настроек» (Border.card Padding="16,4"): строки сами без боковых полей, полосы — внутри полей карточки. */
+private val CardPadding = PaddingValues(horizontal = PgSpace.Card, vertical = PgSpace.Xxs)
+
+/** Строка «Основных» (.card > .setting доски 4): 13 сверху и снизу. */
+private val BasicRow = PaddingValues(vertical = 13.dp)
+
+/** Языки приложения — те, тексты которых есть (RU и EN). */
+private val Languages = listOf("ru", "en")
 
 @Composable
 private fun MainSettings(
@@ -143,6 +140,8 @@ private fun MainSettings(
     system: SystemVpnView,
     behavior: Behavior,
     onBehavior: (Behavior) -> Unit,
+    onCheck: () -> Unit,
+    language: ((String) -> Unit)?,
     onPage: (SettingsPage) -> Unit,
 ) {
     LaunchedEffect(Unit) { loadCore() }
@@ -154,120 +153,188 @@ private fun MainSettings(
             .padding(horizontal = PgSpace.WindowSideMobile)
             .padding(bottom = PgLayout.ScrollBottomPadding)
             .testTag("settings"),
-        verticalArrangement = Arrangement.spacedBy(PgSpace.L),
     ) {
-        Text(stringResource(R.string.nav_settings), style = PgType.H1, modifier = Modifier.padding(top = PgSpace.L))
-        PgCard(Modifier.fillMaxWidth()) {
-            SectionRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection") {
-                onPage(SettingsPage.Protection)
-            }
+        Text(stringResource(R.string.nav_settings), Modifier.padding(top = 18.dp, bottom = PgSpace.L), style = PgType.H1)
 
-            SectionRow(PgIcons.AdvProfiles, R.string.settings_adv_profiles_title, R.string.settings_adv_profiles_text, "settings.profiles") {
-                onPage(SettingsPage.Subscriptions)
+        GroupTitle(stringResource(R.string.settings_section_basic), top = 0.dp)
+        PgCard(Modifier.fillMaxWidth(), contentPadding = CardPadding) {
+            Basic(openVpnSettings, system, behavior, onBehavior, language)
+        }
+
+        GroupTitle(stringResource(R.string.settings_section_advanced), top = 18.dp)
+        PgCard(Modifier.fillMaxWidth(), contentPadding = CardPadding) {
+            Advanced(onCheck, onPage)
+        }
+
+        Footer(core)
+    }
+}
+
+/**
+ * «Основные»: блок при обрыве (что сообщил Android и откуда это известно; нажатие — настройки VPN), «Подключаться при
+ * запуске», переподключение, уведомления сегментами с подписью по выбору и язык.
+ */
+@Composable
+private fun Basic(
+    openVpnSettings: () -> Unit,
+    system: SystemVpnView,
+    behavior: Behavior,
+    onBehavior: (Behavior) -> Unit,
+    language: ((String) -> Unit)?,
+) {
+    SystemVpnRow(
+        stringResource(R.string.settings_ks_title),
+        stringResource(R.string.android_settings_vpn_text),
+        system.flags.lockdown,
+        "settings.vpn.lockdown",
+        "settings.ks",
+        openVpnSettings,
+        BasicRow,
+        extra = { SystemVpnSourceText(system.source, "settings.vpn.source") },
+    )
+
+    PgSettingSwitch(
+        stringResource(R.string.settings_connectOnLaunch_title),
+        stringResource(R.string.settings_connectOnLaunch_text),
+        behavior.connectOnLaunch,
+        "settings.connectOnLaunch",
+        { onBehavior(behavior.copy(connectOnLaunch = it)) },
+        divider = true,
+        padding = BasicRow,
+    )
+
+    PgSetting(stringResource(R.string.core_reconnect_title), stringResource(R.string.core_reconnect_text), divider = true, padding = BasicRow) {
+        PgSelect(ReconnectPolicy.entries, behavior.reconnect, { stringResource(reconnectLabel(it)) }, "reconnect", {
+            onBehavior(behavior.copy(reconnect = it))
+        })
+    }
+
+    Notifications(behavior, onBehavior)
+    LanguageRow(language)
+}
+
+/** Уведомления (.setting.stacked): заголовок, подпись выбранного уровня, под ними три сегмента «Все · Только важные · Выключены». */
+@Composable
+private fun Notifications(behavior: Behavior, onBehavior: (Behavior) -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().pgTopDivider(true).padding(BasicRow),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(stringResource(R.string.settings_notifications_title), color = PgColor.Text.Primary, style = PgType.BodyStrong)
+            notifyNote(behavior.notifications)?.let {
+                Text(stringResource(it), Modifier.testTag("notify.note"), color = PgColor.Text.Muted, style = PgType.Caption)
             }
         }
 
-        PgCard(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.settings_notifications_title), style = PgType.Title)
-            Spacer(Modifier.size(PgSpace.S))
-            val levels = listOf(
-                NotificationLevel.All to R.string.settings_notifications_all,
-                NotificationLevel.ImportantOnly to R.string.settings_notifications_important,
-                NotificationLevel.Off to R.string.settings_notifications_off,
+        PgSegments(NotificationLevel.entries, behavior.notifications, { stringResource(notifyLabel(it)) }, "notify", {
+            onBehavior(behavior.copy(notifications = it))
+        })
+    }
+}
+
+/**
+ * Язык (сегменты «Русский · English» шириной 190): выбран тот, на котором приложение сейчас. Выбрать свой язык приложению
+ * Android дает с 13-й версии; раньше — только язык системы: сегменты недоступны, подпись говорит, где он меняется.
+ */
+@Composable
+private fun LanguageRow(language: ((String) -> Unit)?) {
+    val current = Texts.language(LocalConfiguration.current.locales)
+    Column(
+        Modifier.fillMaxWidth().pgTopDivider(true).padding(BasicRow),
+        verticalArrangement = Arrangement.spacedBy(PgSpace.Xs),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(stringResource(R.string.settings_language_title), Modifier.weight(1f), color = PgColor.Text.Primary, style = PgType.BodyStrong)
+            PgSegments(
+                Languages,
+                current,
+                { stringResource(if (it == "ru") R.string.settings_language_ru else R.string.settings_language_en) },
+                "language",
+                { language?.invoke(it) },
+                Modifier.width(190.dp),
+                enabled = language != null,
             )
-            for ((level, label) in levels) {
-                PgChoiceRow(stringResource(label), null, behavior.notifications == level, "notify.${level.name}") {
-                    onBehavior(behavior.copy(notifications = level))
-                }
-            }
         }
 
-        PgCard(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.core_reconnect_title), style = PgType.Title)
-            Spacer(Modifier.size(PgSpace.Xs))
-            Text(stringResource(R.string.core_reconnect_text), color = PgColor.Text.Secondary, style = PgType.Small)
-            Spacer(Modifier.size(PgSpace.S))
-            val policies = listOf(
-                ReconnectPolicy.Backoff60Seconds to R.string.core_reconnect_backoff,
-                ReconnectPolicy.UpTo5Minutes to R.string.core_reconnect_5min,
-                ReconnectPolicy.Never to R.string.core_reconnect_never,
-            )
-            for ((policy, label) in policies) {
-                PgChoiceRow(stringResource(label), null, behavior.reconnect == policy, "reconnect.${policy.name}") {
-                    onBehavior(behavior.copy(reconnect = policy))
-                }
-            }
-        }
-
-        PgCard(Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.android_settings_vpn_title), style = PgType.Title)
-            Spacer(Modifier.size(PgSpace.Xs))
-            Text(stringResource(R.string.android_settings_vpn_text), color = PgColor.Text.Secondary, style = PgType.Small)
-            Spacer(Modifier.size(PgSpace.S))
-            SystemFlag(R.string.android_settings_vpn_alwaysOn, system.flags.alwaysOn, "settings.vpn.alwaysOn")
-            SystemFlag(R.string.android_settings_vpn_lockdown, system.flags.lockdown, "settings.vpn.lockdown")
-            val source = when (system.source) {
-                SystemVpnSource.Now -> R.string.android_settings_vpn_now
-                SystemVpnSource.LastConnection -> R.string.android_settings_vpn_last
-                SystemVpnSource.Unknown -> R.string.android_settings_vpn_never
-            }
-            Text(stringResource(source), color = PgColor.Text.Muted, style = PgType.Caption, modifier = Modifier.testTag("settings.vpn.source"))
-            Spacer(Modifier.size(PgSpace.M))
-            val shape = RoundedCornerShape(PgRadius.Button)
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = PgLayout.TouchTarget)
-                    .clip(shape)
-                    .background(PgColor.Accent.Tint)
-                    .clickable(role = Role.Button, onClick = openVpnSettings)
-                    .testTag("settings.vpn"),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(stringResource(R.string.android_settings_vpn_open), color = PgColor.Accent.Text, style = PgType.BodyStrong)
-            }
-        }
-
-        PgCard(Modifier.fillMaxWidth()) {
-            Overline(stringResource(R.string.about_name))
-            Spacer(Modifier.size(PgSpace.Xs))
-            Text(
-                stringResource(R.string.about_version, BuildConfig.VERSION_NAME, "Android " + Build.VERSION.RELEASE, Build.SUPPORTED_ABIS.firstOrNull() ?: ""),
-                style = PgType.Body,
-            )
-            Text(stringResource(R.string.card_core) + ": Xray-core " + (core ?: "—"), color = PgColor.Text.Secondary, style = PgType.Small)
-            Spacer(Modifier.size(PgSpace.S))
-            SectionRow(PgIcons.File, R.string.about_licenses, R.string.about_licenses_text, "settings.licenses") {
-                onPage(SettingsPage.Licenses)
-            }
-        }
-
-        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(stringResource(R.string.settings_language_title) + ": " + stringResource(R.string.android_settings_language), color = PgColor.Text.Muted, style = PgType.Caption)
+        if (language == null) {
+            Text(stringResource(R.string.android_settings_language), Modifier.testTag("language.system"), color = PgColor.Text.Muted, style = PgType.Caption)
         }
     }
 }
 
-/** Раздел настроек: иконка, название, что внутри и стрелка — как список разделов десктопа (доска 4). */
+/**
+ * «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть. «Подключение и ядро»,
+ * «Маршрутизация» и «Резервная копия» появятся со своими страницами; на месте «О программе», пока ее страницы нет, — лицензии
+ * открытых компонентов: без этой строки их не открыть.
+ */
 @Composable
-private fun SectionRow(icon: String, @StringRes title: Int, @StringRes text: Int, tag: String, onClick: () -> Unit) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = PgLayout.TouchTarget)
-            .clip(RoundedCornerShape(PgRadius.Button))
-            .clickable(role = Role.Button, onClick = onClick)
-            .padding(vertical = PgSpace.Xs)
-            .testTag(tag),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        PgIcon(icon, null, color = PgColor.Accent.Base, size = 22.dp)
-        Spacer(Modifier.width(PgSpace.M))
-        Column(Modifier.weight(1f)) {
-            Text(stringResource(title), style = PgType.BodyStrong)
-            Text(stringResource(text), color = PgColor.Text.Secondary, style = PgType.Caption)
-        }
-
-        PgIcon(PgIcons.ChevronRight, null, color = PgColor.Text.Muted, size = 20.dp)
+private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
+    AdvancedRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection", false) {
+        onPage(SettingsPage.Protection)
     }
+
+    AdvancedRow(PgIcons.AdvProfiles, R.string.settings_adv_profiles_title, R.string.settings_adv_profiles_text, "settings.profiles", true) {
+        onPage(SettingsPage.Subscriptions)
+    }
+
+    AdvancedRow(PgIcons.AdvCheck, R.string.settings_adv_check_title, R.string.settings_adv_check_text, "settings.check", true, onCheck)
+    AdvancedRow(PgIcons.File, R.string.about_licenses, R.string.about_licenses_text, "settings.licenses", true) {
+        onPage(SettingsPage.Licenses)
+    }
+}
+
+/** Строка «Для опытных»: плитка 36 со значком 20, подпись в одну строку, полосы между строками (решение 486). */
+@Composable
+private fun AdvancedRow(icon: String, @StringRes title: Int, @StringRes text: Int, tag: String, divider: Boolean, onClick: () -> Unit) {
+    PgLinkRow(
+        icon,
+        stringResource(title),
+        stringResource(text),
+        tag,
+        onClick,
+        divider = divider,
+        padding = PaddingValues(vertical = 10.dp),
+        tile = 36.dp,
+        iconSize = 20.dp,
+    )
+}
+
+/**
+ * Подпись внизу (settings.footer десктопа без службы — ее у телефона нет): «Private Gateway Client 0.1.0 · ядро: Xray-core
+ * 26.10.21»; версия ядра еще не прочитана — «—».
+ */
+@Composable
+private fun Footer(core: String?) {
+    val locale = LocalConfiguration.current.locales[0]
+    val text = stringResource(R.string.about_name) + " " + BuildConfig.VERSION_NAME + " · " +
+        stringResource(R.string.card_core).lowercase(locale) + ": Xray-core " + (core ?: "—")
+    Text(
+        text,
+        Modifier.fillMaxWidth().padding(top = 14.dp).testTag("settings.footer"),
+        color = PgColor.Text.Muted,
+        style = PgType.Caption,
+        textAlign = TextAlign.Center,
+    )
+}
+
+@StringRes
+private fun notifyLabel(level: NotificationLevel): Int = when (level) {
+    NotificationLevel.All -> R.string.settings_notifications_all
+    NotificationLevel.ImportantOnly -> R.string.settings_notifications_important
+    NotificationLevel.Off -> R.string.settings_notifications_off
+}
+
+/** Подпись уровня уведомлений. У «Выключены» подписи десктопа — про значок в трее; трея у телефона нет, своей подписи пока нет. */
+private fun notifyNote(level: NotificationLevel): Int? = when (level) {
+    NotificationLevel.All -> R.string.settings_notifications_all_note
+    NotificationLevel.ImportantOnly -> R.string.settings_notifications_important_note
+    NotificationLevel.Off -> null
+}
+
+@StringRes
+private fun reconnectLabel(policy: ReconnectPolicy): Int = when (policy) {
+    ReconnectPolicy.Backoff60Seconds -> R.string.core_reconnect_backoff
+    ReconnectPolicy.UpTo5Minutes -> R.string.core_reconnect_5min
+    ReconnectPolicy.Never -> R.string.core_reconnect_never
 }

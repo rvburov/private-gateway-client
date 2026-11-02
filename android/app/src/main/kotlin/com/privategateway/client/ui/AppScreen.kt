@@ -66,6 +66,8 @@ class AppActions(
     val copySecret: (String) -> Unit = {},
     /** Скопировать текст в буфер обычным текстом (IP с главной). */
     val copy: (String) -> Unit = {},
+    /** Язык приложения («ru», «en») — Android 13+; null — только язык системы. */
+    val language: ((String) -> Unit)? = null,
 )
 
 @Composable
@@ -292,6 +294,8 @@ fun AppScreen(
                             page,
                             settings::pageShown,
                             system,
+                            onCheck = { tab = Tab.Check },
+                            language = actions.language,
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
                             SubscriptionsScreen(

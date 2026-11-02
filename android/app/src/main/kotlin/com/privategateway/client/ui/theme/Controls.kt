@@ -460,9 +460,14 @@ enum class PgTileTone(val background: Color, val content: Color) {
     Amber(PgColor.Surface.Inset, PgColor.Tile.Amber),
 }
 
+/** Поля строки-ссылки (.link-row): 16 по бокам — строка сама до краев карточки, 6 сверху и снизу. */
+val PgLinkRowPadding = PaddingValues(horizontal = PgSpace.Card, vertical = PgSpace.Xs)
+
 /**
  * Строка-ссылка в карточке (.link-row): значок 18 в плитке 34, заголовок полужирным, подпись caption в одну строку, серая
  * стрелка «›» по правому краю. При нажатии заголовок и стрелка синеют. [divider] — полоса сверху, всем строкам кроме первой.
+ * В карточке со своими полями — [padding] без боковых: полоса тогда тоже внутри полей. [tile] и [iconSize] — плитка и значок
+ * крупнее («Для опытных» доски 4: плитка 36 со значком 20).
  */
 @Composable
 fun PgLinkRow(
@@ -476,6 +481,9 @@ fun PgLinkRow(
     tone: PgTileTone = PgTileTone.Accent,
     enabled: Boolean = true,
     divider: Boolean = false,
+    padding: PaddingValues = PgLinkRowPadding,
+    tile: Dp = 34.dp,
+    iconSize: Dp = 18.dp,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -487,21 +495,21 @@ fun PgLinkRow(
             .pgTopDivider(divider)
             .heightIn(min = 52.dp)
             .clickable(interactionSource = interaction, indication = null, enabled = enabled, role = Role.Button, onClick = onClick)
-            .padding(horizontal = PgSpace.Card, vertical = PgSpace.Xs)
+            .padding(padding)
             .testTag(tag),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(PgSpace.L),
     ) {
         Box(
             Modifier
-                .size(34.dp)
+                .size(tile)
                 .clip(RoundedCornerShape(PgRadius.Input))
                 .background(tone.background),
             contentAlignment = Alignment.Center,
         ) {
-            PgIcon(icon, null, color = tone.content, size = 18.dp, strokeWidth = 1.9f)
+            PgIcon(icon, null, color = tone.content, size = iconSize, strokeWidth = 1.9f)
             if (detail != null) {
-                PgIcon(detail, null, color = tone.content, size = 18.dp, strokeWidth = 1.9f)
+                PgIcon(detail, null, color = tone.content, size = iconSize, strokeWidth = 1.9f)
             }
         }
 

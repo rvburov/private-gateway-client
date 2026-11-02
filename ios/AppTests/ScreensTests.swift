@@ -180,16 +180,33 @@ final class ScreensTests: XCTestCase {
     @MainActor
     func testSettingsDrawOnEveryPageAndLanguage() throws {
         let about = AboutInfo.of(core: "26.3.27")
+        // Все уровни уведомлений и переподключения, блок при обрыве и подключение при запуске в обоих положениях, свой DNS
+        // адресом IP и DoH.
+        let variants = [
+            AppSettings(),
+            AppSettings(
+                tunnel: TunnelSettings(dns: .custom, customDns: "https://192.0.2.53/dns-query", ipv6: true, allowLan: true), killSwitch: false,
+                notifications: .all, reconnect: .upTo5Minutes, alwaysOn: true, connectOnLaunch: true
+            ),
+            AppSettings(tunnel: TunnelSettings(dns: .custom, customDns: "192.0.2.53"), notifications: .off, reconnect: .never),
+        ]
         for language in PgTexts.Language.allCases {
             let texts = PgTexts(language)
-            for page in [SettingsPage.main, .protection, .licenses] {
-                let view = SettingsView(texts: texts, settings: AppSettings(), about: about, page: .constant(page)) { _ in EmptyView() }
-                XCTAssertEqual(try render(view).size.width, 393, accuracy: 1)
+            for settings in variants {
+                for page in [SettingsPage.main, .protection, .licenses] {
+                    let view = SettingsView(texts: texts, settings: settings, about: about, page: .constant(page)) { _ in EmptyView() }
+                    XCTAssertEqual(try render(view, height: 1400).size.width, 393, accuracy: 1)
+                }
             }
 
             let custom = TunnelSettings(dns: .custom, customDns: "192.0.2.53", ipv6: true, allowLan: true)
             let editing = ProtectionView(texts: texts, tunnel: custom, killSwitch: false, alwaysOn: true, editingDns: true, onTunnel: { _ in }, onKillSwitch: { _ in }, onBack: {})
             XCTAssertNotNil(try render(editing))
+            // Лист «Свой адрес DNS» — системный лист поверх экрана: снимок экрана его не видит, поэтому лист рисуется отдельно —
+            // пустой, с адресом и с отказом неверному адресу.
+            for (initial, tried) in [("", false), ("https://192.0.2.53/dns-query", false), ("dns.example.com", true)] {
+                XCTAssertNotNil(try render(CustomDnsSheet(texts: texts, initial: initial, tried: tried, onSave: { _ in }, onClose: {})), initial)
+            }
             for component in about.components {
                 XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, open: component.name, onBack: {}), height: 2000), component.name)
             }

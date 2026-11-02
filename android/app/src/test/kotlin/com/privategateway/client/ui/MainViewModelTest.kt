@@ -13,6 +13,7 @@ import com.privategateway.client.waitForAsync
 import com.privategateway.client.core.inspect.PhoneNetwork
 import com.privategateway.client.core.inspect.PhoneNetworkKind
 import com.privategateway.client.core.inspect.PublicAddress
+import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
@@ -68,8 +69,10 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -543,6 +546,31 @@ class MainViewModelTest {
         wait { settings.selectedServerId.first { it == second } }
         wait { delay(100) }
         assertEquals(0, control.connects)
+    }
+
+    @Test
+    fun `connect on launch only when it is on, protection is off and the phone connects to the selected server`() {
+        wait { servers.add(Fixtures.servers().distinctBy { Fixtures.identity(it) }) }
+        val list = wait { servers.servers.first { it.isNotEmpty() } }
+        val phone = list.first { ServerFacts.coreName(it.protocol) != null }.id
+        val other = list.first { ServerFacts.coreName(it.protocol) == null }.id
+        wait { settings.select(phone) }
+        assertFalse(wait { model.connectOnLaunch() }, "по умолчанию выключено")
+
+        wait { settings.setConnectOnLaunch(true) }
+        assertTrue(wait { model.connectOnLaunch() })
+
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = phone))
+        assertFalse(wait { model.connectOnLaunch() }, "защита уже включена")
+        monitor.set(TunnelStatus(TunnelState.Error, serverId = phone))
+        assertFalse(wait { model.connectOnLaunch() }, "после ошибки подключает только сам пользователь")
+        monitor.set(TunnelStatus())
+
+        wait { settings.select(other) }
+        assertFalse(wait { model.connectOnLaunch() }, "Hysteria2 и TUIC ядру телефона не по силам")
+        wait { settings.select(null) }
+        assertFalse(wait { model.connectOnLaunch() }, "сервер выбирает только пользователь")
+        assertEquals(0, control.connects, "подключает окно, а не модель")
     }
 
     @Test
