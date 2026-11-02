@@ -23,6 +23,9 @@ enum class BackupError {
 
     /** Пароль не подходит или содержимое изменено: AES-GCM эти случаи не различает. */
     WrongPassword,
+
+    /** Копия десктопа: серверы в ней — описанием десктопа, телефон восстанавливает копии телефона (решение 559). */
+    FromComputer,
 }
 
 class BackupException(val error: BackupError) : Exception(error.name)
