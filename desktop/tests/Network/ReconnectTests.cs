@@ -222,15 +222,23 @@ public sealed partial class ReconnectTests
 
             var hour = new V1.CaptivePauseRequest { Duration = Google.Protobuf.WellKnownTypes.Duration.FromTimeSpan(TimeSpan.FromHours(1)) };
             var reply = await rig.Service.Client.PauseForCaptivePortalAsync(hour, cancellationToken: Ct);
-            var attempts = Attempts(rig.Service);
-            await Task.Delay(TimeSpan.FromSeconds(3), Ct);
             if (!systemProxy)
             {
                 reply.Until.ShouldBeNull("без системного прокси паузе нечего менять — браузер и так идет напрямую");
-                Attempts(rig.Service).ShouldBeGreaterThan(attempts, "попытки идут дальше");
+                var before = await rig.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct);
+                before.State.ShouldBe(V1.ConnectionState.Reconnecting);
+                before.CaptivePauseUntil.ShouldBeNull("команда без системного прокси не ставит подключение на паузу");
+
+                // Ждем реальный прогресс после снимка RPC: скорость очередной попытки зависит от запуска ядра и машины CI.
+                var continued = (await ServiceIpcTests.ReadUntilAsync(watch, s =>
+                    s.State == V1.ConnectionState.Reconnecting && s.ServerId == before.ServerId && Equals(s.Since, before.Since)
+                    && s.Attempt > before.Attempt && s.CaptivePauseUntil is null, rig.Service.Journal))[^1];
+                continued.CaptivePauseUntil.ShouldBeNull("отказ от ненужной паузы сохраняет повторы той же сессии");
                 return;
             }
 
+            var attempts = Attempts(rig.Service);
+            await Task.Delay(TimeSpan.FromSeconds(3), Ct);
             reply.Until.ShouldNotBeNull("в «Переподключении» пауза есть");
             var paused = (await rig.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).ToCore();
             (paused.State, paused.IsPaused, proxy.Port).ShouldBe((ConnectionState.Reconnecting, true, null), "страница входа в сеть — напрямую");
