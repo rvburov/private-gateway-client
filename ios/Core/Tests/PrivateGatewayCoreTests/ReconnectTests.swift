@@ -26,7 +26,7 @@ final class ReconnectTests: XCTestCase {
     func testStartCheckForgivesOneSilentProbeAndFailsAfterTwo() async {
         func run(_ answers: [Bool]) async -> (Bool, Int) {
             var calls = 0
-            let answered = await StartCheck.answers {
+            let answered = await StartCheck.answers(pause: {}) {
                 calls += 1
                 return calls <= answers.count ? answers[calls - 1] : true
             }

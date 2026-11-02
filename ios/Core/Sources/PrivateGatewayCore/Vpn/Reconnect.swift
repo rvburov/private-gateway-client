@@ -282,8 +282,17 @@ public enum CaptivePause {
 public enum StartCheck {
     public static let tries = 2
 
-    public static func answers(tries: Int = StartCheck.tries, probe: () async -> Bool) async -> Bool {
-        for _ in 0..<tries {
+    /// Пауза между пробами: ядро только что поднялось, первая попытка бывает раньше готовности.
+    public static func pause() async {
+        try? await Task.sleep(nanoseconds: 1_000_000_000)
+    }
+
+    public static func answers(tries: Int = StartCheck.tries, pause: () async -> Void = StartCheck.pause, probe: () async -> Bool) async -> Bool {
+        for attempt in 0..<tries {
+            if attempt > 0 {
+                await pause()
+            }
+
             if await probe() {
                 return true
             }

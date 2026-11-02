@@ -252,7 +252,7 @@ class GatewayVpnService : VpnService() {
      */
     private suspend fun verify(): String? {
         val timeout = settings.tunnel.first().connection.probeTimeoutMs.toInt()
-        if (StartCheck.answers { withContext(Dispatchers.IO) { TunnelProbe.answers(timeoutMs = timeout) } }) {
+        if (StartCheck.answers { withContext(Dispatchers.IO) { TunnelProbe.answers(StartCheck.TARGET, timeout) } }) {
             return null
         }
 

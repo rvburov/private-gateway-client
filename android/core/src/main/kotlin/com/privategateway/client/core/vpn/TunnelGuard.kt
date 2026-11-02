@@ -2,6 +2,7 @@ package com.privategateway.client.core.vpn
 
 import com.privategateway.client.core.xray.PingBatch
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.IOException
 import java.net.HttpURLConnection
@@ -117,8 +118,22 @@ class TunnelGuard(
 object StartCheck {
     const val TRIES = 2
 
-    suspend fun answers(tries: Int = TRIES, probe: suspend () -> Boolean): Boolean {
-        repeat(tries) {
+    /** Пауза между пробами: ядро только что поднялось, первая попытка бывает раньше готовности. */
+    const val PAUSE_MS = 1_000L
+
+    /**
+     * Адрес пробы — по IP, без поиска имени: свой DNS пользователя может быть недоступен до входа в туннель или вовсе, а
+     * проверяется путь через сервер, а не DNS. Любой ответ HTTPS (сертификат 1.1.1.1 выписан на сам IP) — сервер
+     * пропускает трафик; HTTP без TLS Android приложению не дает.
+     */
+    const val TARGET = "https://1.1.1.1/"
+
+    suspend fun answers(tries: Int = TRIES, pause: suspend () -> Unit = { delay(PAUSE_MS) }, probe: suspend () -> Boolean): Boolean {
+        repeat(tries) { attempt ->
+            if (attempt > 0) {
+                pause()
+            }
+
             if (probe()) {
                 return true
             }

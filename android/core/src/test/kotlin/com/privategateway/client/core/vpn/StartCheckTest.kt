@@ -12,7 +12,7 @@ class StartCheckTest {
         var calls = 0
         var result = false
         runTest {
-            result = StartCheck.answers {
+            result = StartCheck.answers(pause = {}) {
                 calls++
                 answers.getOrElse(calls - 1) { true }
             }
