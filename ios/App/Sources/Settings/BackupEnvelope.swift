@@ -28,7 +28,7 @@ enum BackupEnvelope {
 
     /// Открыть паролем; долго (PBKDF2) — не в главном потоке.
     static func open(_ text: String, password: String) throws -> Data {
-        try open(text, kdf: passwordKdf) { salt, iterations in derive(password, salt: salt, iterations: iterations) }
+        try open(text, kdf: passwordKdf) { salt, iterations in try derive(password, salt: salt, iterations: iterations) }
     }
 
     static func open(_ text: String, key: Data) throws -> Data {

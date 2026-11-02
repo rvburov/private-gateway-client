@@ -167,9 +167,9 @@ struct BackupView: View {
                         .pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
                 }
                 Spacer(minLength: 0)
-                if lastAuto != nil {
+                if let at = lastAuto {
                     PgActionButton(label: texts.backupAutoRestore, kind: .secondary, identifier: "backup.auto.restore") {
-                        layers?.confirm(BackupLook.autoDialog(texts)) {
+                        layers?.confirm(BackupLook.autoDialog(texts, at)) {
                             Task {
                                 do {
                                     restored = try await model.backupRestoreAuto()
@@ -280,14 +280,14 @@ enum BackupLook {
 
     /// «Восстановлено: 3 сервера, 2 подписки, настройки».
     static func restored(_ done: BackupRestored, _ texts: PgTexts) -> String {
-        let language = texts.language == .russian ? "ru" : "en"
+        let language = texts.language.rawValue
         var parts: [String] = []
         if done.servers > 0 {
-            parts.append(texts.text(key: "backup.count." + TextKeys.form(done.servers, language), [String(done.servers)]) ?? String(done.servers))
+            parts.append(texts.text(key: "backup.count." + Plural.form(done.servers, language), [String(done.servers)]) ?? String(done.servers))
         }
 
         if done.subscriptions > 0 {
-            parts.append(texts.text(key: "backup.subs." + TextKeys.form(done.subscriptions, language), [String(done.subscriptions)]) ?? String(done.subscriptions))
+            parts.append(texts.text(key: "backup.subs." + Plural.form(done.subscriptions, language), [String(done.subscriptions)]) ?? String(done.subscriptions))
         }
 
         if done.settings {
@@ -307,9 +307,9 @@ enum BackupLook {
     }
 
     /// «Вернуть автокопию?»: основная — «Отмена», вторая — «Вернуть».
-    static func autoDialog(_ texts: PgTexts) -> PgDialog {
+    static func autoDialog(_ texts: PgTexts, _ at: Date) -> PgDialog {
         PgDialog(
-            kind: .info, icon: PgIcons.advBackup, title: texts.dialogAutocopyTitle, text: texts.dialogAutocopyText, primary: texts.dialogCancel,
+            kind: .info, icon: PgIcons.advBackup, title: texts.dialogAutocopyTitle, text: texts.dialogAutocopyText(date(at)), primary: texts.dialogCancel,
             secondary: texts.dialogAutocopyRestore
         )
     }
