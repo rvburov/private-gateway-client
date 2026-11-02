@@ -92,8 +92,13 @@ class SettingsScreensTest {
 
         compose.onNodeWithTag("settings.profiles").performScrollTo().performClick()
         compose.onNodeWithTag("subscriptions.page").assertIsDisplayed().performClick()
-        compose.onNodeWithTag("settings.licenses").performScrollTo().performClick()
+        compose.onNodeWithTag("settings.about").performScrollTo().performClick()
+        compose.onNodeWithTag("about").assertIsDisplayed()
+        compose.onNodeWithTag("about.licenses").performScrollTo().performClick()
         compose.onNodeWithTag("licenses").assertIsDisplayed()
+        // Из лицензий «Назад» — в «О программе», оттуда — в «Настройки».
+        compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+        compose.onNodeWithTag("about").assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
 
         // «Подключение и ядро» и «Маршрутизация» — в порядке доски 4, сразу за «Защитой и утечками», и ведут на свои страницы.

@@ -36,6 +36,12 @@ final class AppModel: ObservableObject {
     /// «Блокировка»: расширение сдалось (сервер не отвечает), а туннель оставлен — блок при обрыве держит трафик закрытым.
     /// Состояние туннеля — «Ошибка», но трафик не идет напрямую; щит снимает защиту, «Повторить» — подключает снова.
     @Published private(set) var blocked = false
+    /// Список серверов прочитан: до этого пустой список не значит «серверов нет» (первый запуск, доска 10).
+    @Published private(set) var serversLoaded = false
+    /// Первый запуск пройден (доска 10): появился первый сервер или выбрано «Позже». Только окну — в UserDefaults приложения.
+    @Published private(set) var onboardingDone = UserDefaults.standard.bool(forKey: AppModel.onboardingKey)
+
+    private static let onboardingKey = "onboarding_done"
 
     let texts: PgTexts
     let container: SharedContainer
@@ -91,6 +97,21 @@ final class AppModel: ObservableObject {
 
     /// Нажатие на уведомление или его кнопку: «Сменить сервер», «Выбрать сервер», «Выбрать другой» — «Серверы», «Открыть» у
     /// подписок — «Профили и подписки», «Повторить» и «Подключить» — включить защиту; остальное — просто окно.
+    /// Первый запуск пройден: приветствие больше не показывается.
+    func finishOnboarding() {
+        guard !onboardingDone else {
+            return
+        }
+
+        UserDefaults.standard.set(true, forKey: AppModel.onboardingKey)
+        onboardingDone = true
+    }
+
+    /// Приветствие первого запуска вместо окна: флаг не стоит, список прочитан и пуст.
+    var welcome: Bool {
+        !onboardingDone && serversLoaded && home.servers.isEmpty
+    }
+
     func notificationTapped(_ action: String) {
         switch NoticeAction(rawValue: action) {
         case .changeServer?, .chooseServer?, .chooseOther?:
@@ -124,6 +145,10 @@ final class AppModel: ObservableObject {
             home.subscriptions = refs
             self.groups = groups
             manualCount = manual
+            serversLoaded = true
+            if !servers.isEmpty {
+                finishOnboarding()
+            }
         }
 
         if let loaded = try? await container.settings.load() {

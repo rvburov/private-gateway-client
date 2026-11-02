@@ -132,6 +132,16 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         store.edit { it[CONNECT_ON_LAUNCH] = on }
     }
 
+    /**
+     * Первый запуск (доска 10) пройден: приветствие и «Добавьте первый сервер» больше не показываются. Ставится, когда появился
+     * первый сервер или пользователь выбрал «Позже»; приложение, где серверы уже есть (обновление), приветствие не показывает.
+     */
+    val onboardingDone: Flow<Boolean> = store.data.map { it[ONBOARDING_DONE] ?: false }
+
+    suspend fun setOnboardingDone() {
+        store.edit { it[ONBOARDING_DONE] = true }
+    }
+
     /** «Постоянная VPN» и блок без VPN, как их сообщил Android при последнем подключении (решение 445). */
     val systemVpn: Flow<SystemVpn> = store.data.map { SystemVpn(it[SYSTEM_ALWAYS_ON], it[SYSTEM_LOCKDOWN]) }
 
@@ -172,5 +182,6 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val CONNECT_ON_LAUNCH = booleanPreferencesKey("connect_on_launch")
         val SYSTEM_ALWAYS_ON = booleanPreferencesKey("system_always_on")
         val SYSTEM_LOCKDOWN = booleanPreferencesKey("system_lockdown")
+        val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
     }
 }

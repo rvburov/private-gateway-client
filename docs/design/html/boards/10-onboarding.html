@@ -70,13 +70,14 @@
   кнопки недоступны; отказ в правах — красная строка под строками. Сетевой адаптер и правила брандмауэра после установки — «Появятся
   при подключении», а не «Готово». В демо-режиме шаг службы пропускается и есть «Сначала посмотреть на демо-серверах». Имя ОС в текстах
   программа подставляет свое. В v1.0 на этом шаге был тумблер «Показывать название Wi-Fi» и островок на «Добавьте первый сервер» — в
-  программе их нет.</p>
+  программе их нет. На телефоне (решение 555) шага службы нет: «Начать» ведет сразу к «Добавьте первый сервер», где есть еще «Позже»;
+  выбор языка — только на Android 13+, на iOS язык приложения выбирается в Настройках iOS.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-caption="1 · Приветствие — «Начать» ведет по шагам">
     <!-- Приветствие: язык, знак, слоган, три обещания, «Начать» -->
     <div class="pg-page ob-page" data-page="a-greet">
-      <div class="segments ob-lang" role="radiogroup" aria-label="Язык">
+      <div class="segments ob-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" aria-checked="true">RU</button>
         <button class="segment" aria-checked="false">EN</button>
       </div>
@@ -88,7 +89,7 @@
           <div class="ob-features">
             <div class="ob-feature">
               <span class="ob-ficon"><i data-icon="Pulse" data-stroke="1.9" data-size="20"></i></span>
-              <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Весь трафик <span class="ob-os"></span> через VPN</span><span class="t-caption">Браузеры, терминал, Git, фоновые службы</span></span>
+              <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Весь трафик <span class="ob-os"></span> через VPN</span><span class="t-caption" data-os-word="apps">Браузеры, терминал, Git, фоновые службы</span></span>
             </div>
             <div class="ob-feature">
               <span class="ob-ficon"><i data-icon="Shield" data-detail="Mark.Wait" data-stroke="1.9" data-size="20"></i></span>
@@ -102,7 +103,8 @@
         </div>
       </div>
       <div class="ob-bottom">
-        <button class="btn-primary" data-goto="a-svc">Начать</button>
+        <button class="btn-primary" data-os="desktop" data-goto="a-svc">Начать</button>
+        <button class="btn-primary" data-os="phone" data-goto="a-add">Начать</button>
       </div>
     </div>
     <!-- Установка службы — шаг 1 из 2: idle -->
@@ -182,8 +184,9 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-secondary ob-demo" data-os="phone" data-nav="01-main.html">Позже — сразу на главную</button>
       </div>
-      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
     </div>
     <!-- Добавьте первый сервер: proxy -->
@@ -203,7 +206,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-caption="2 · Установка службы, шаг 1 из 2">
+  <section class="pg-screen" data-os="desktop" data-caption="2 · Установка службы, шаг 1 из 2">
     <!-- Установка службы — шаг 1 из 2: idle -->
     <div class="pg-page ob-page" data-page="b-svc">
       <div class="pg-header">
@@ -282,7 +285,7 @@
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
       </div>
-      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
     </div>
     <!-- Добавьте первый сервер: proxy -->
@@ -302,7 +305,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-caption="Установка идет: ОС спрашивает права">
+  <section class="pg-screen" data-os="desktop" data-caption="Установка идет: ОС спрашивает права">
     <!-- Установка службы — шаг 1 из 2: busy -->
     <div class="pg-page ob-page" data-page="c-busy">
       <div class="pg-header">
@@ -338,7 +341,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-caption="Права не дали: «Установить» еще раз">
+  <section class="pg-screen" data-os="desktop" data-caption="Права не дали: «Установить» еще раз">
     <!-- Установка службы — шаг 1 из 2: error -->
     <div class="pg-page ob-page" data-page="d-err">
       <div class="pg-header">
@@ -418,7 +421,7 @@
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
       </div>
-      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
     </div>
     <!-- Добавьте первый сервер: proxy -->
@@ -438,7 +441,7 @@
     </div>
   </section>
 
-  <section class="pg-screen" data-caption="Служба установлена">
+  <section class="pg-screen" data-os="desktop" data-caption="Служба установлена">
     <!-- Установка службы — шаг 1 из 2: done -->
     <div class="pg-page ob-page" data-page="e-done">
       <div class="pg-header">
@@ -484,7 +487,7 @@
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
       </div>
-      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
     </div>
   </section>
@@ -503,12 +506,12 @@
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или подписку: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
       </div>
-      <span class="t-caption t-success ob-note">Служба установлена · блок при обрыве включится при первом подключении</span>
+      <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
     </div>
   </section>
 
-  <section class="pg-screen" data-caption="3 · Добавьте первый сервер (демо-режим)">
+  <section class="pg-screen" data-os="desktop" data-caption="3 · Добавьте первый сервер (демо-режим)">
     <!-- Добавьте первый сервер: demo -->
     <div class="pg-page" data-page="g-add">
       <div class="pg-header">

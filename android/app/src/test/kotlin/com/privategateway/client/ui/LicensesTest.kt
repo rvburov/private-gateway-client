@@ -74,9 +74,11 @@ class LicensesTest {
     }
 
     @Test
-    fun `settings open the licenses and a component shows its full license`() {
+    fun `about opens the licenses and a component shows its full license`() {
         compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, TunnelSettings(), {}) } }
-        compose.onNodeWithTag("settings.licenses").performScrollTo().performClick()
+        // Лицензии — из «О программе» (доска 15).
+        compose.onNodeWithTag("settings.about").performScrollTo().performClick()
+        compose.onNodeWithTag("about.licenses").performScrollTo().performClick()
         compose.onNodeWithTag("licenses").assertIsDisplayed()
         compose.onNodeWithTag("licenses.Xray-core").performScrollTo().performClick()
         compose.onNodeWithTag("license.label").assertTextEquals("MPL-2.0")
@@ -91,6 +93,8 @@ class LicensesTest {
 
         compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
         compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
-        compose.onNodeWithTag("settings.licenses").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithTag("about.licenses").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
+        compose.onNodeWithTag("settings.about").performScrollTo().assertIsDisplayed()
     }
 }

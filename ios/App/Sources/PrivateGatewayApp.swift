@@ -62,6 +62,8 @@ struct RootView: View {
             PgBackground()
             if adding {
                 ImportView(model: importing, texts: model.texts, onClose: closeImport)
+            } else if model.welcome {
+                WelcomeView(texts: model.texts, onAdd: { adding = true }, onDone: { model.finishOnboarding() })
             } else {
                 page
                 Island(

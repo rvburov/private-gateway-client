@@ -61,12 +61,12 @@
   // Слова ОС, которые программа подставляет сама (AppInfo.OsName, FirewallName, SecretStoreName, «О программе»):
   // <span data-os-word="name">Windows</span> на рамке macOS станет «macOS»
   var OS = {
-    windows: { name: "Windows", firewall: "брандмауэром Windows", engine: "Windows Filtering Platform", store: "Windows DPAPI", build: "Windows 11 · x64" },
-    macos: { name: "macOS", firewall: "брандмауэром macOS (pf)", engine: "pf", store: "Связка ключей macOS", build: "macOS 15 · arm64" },
-    linux: { name: "Linux", firewall: "правилами nftables", engine: "nftables", store: "Secret Service", build: "Linux · x64" },
-    android: { name: "Android", firewall: "системой Android («Блокировать подключения без VPN»)", engine: "«Блокировать подключения без VPN» в настройках Android",
+    windows: { name: "Windows", place: "компьютере", apps: "Браузеры, терминал, Git, фоновые службы", firewall: "брандмауэром Windows", engine: "Windows Filtering Platform", store: "Windows DPAPI", build: "Windows 11 · x64" },
+    macos: { name: "macOS", place: "компьютере", apps: "Браузеры, терминал, Git, фоновые службы", firewall: "брандмауэром macOS (pf)", engine: "pf", store: "Связка ключей macOS", build: "macOS 15 · arm64" },
+    linux: { name: "Linux", place: "компьютере", apps: "Браузеры, терминал, Git, фоновые службы", firewall: "правилами nftables", engine: "nftables", store: "Secret Service", build: "Linux · x64" },
+    android: { name: "Android", place: "устройстве", apps: "Приложения, браузеры и фоновые задачи", firewall: "системой Android («Блокировать подключения без VPN»)", engine: "«Блокировать подключения без VPN» в настройках Android",
       store: "Android Keystore", build: "Android 15 · arm64" },
-    ios: { name: "iOS", firewall: "системой iOS (includeAllNetworks)", engine: "includeAllNetworks", store: "Связка ключей iOS", build: "iOS 18 · arm64" },
+    ios: { name: "iOS", place: "устройстве", apps: "Приложения, браузеры и фоновые задачи", firewall: "системой iOS (includeAllNetworks)", engine: "includeAllNetworks", store: "Связка ключей iOS", build: "iOS 18 · arm64" },
   };
   var OS_GROUPS = { desktop: ["windows", "macos", "linux"], phone: ["android", "ios"] };
 

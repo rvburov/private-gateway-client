@@ -58,6 +58,7 @@ enum class SettingsPage {
     Core,
     Routing,
     Subscriptions,
+    About,
     Licenses,
 }
 
@@ -121,11 +122,17 @@ fun SettingsScreen(
             subscriptions { page = SettingsPage.Main }
         }
 
-        SettingsPage.Licenses -> {
+        SettingsPage.About -> {
             BackHandler { page = SettingsPage.Main }
+            AboutScreen(core, loadCore, onLicenses = { page = SettingsPage.Licenses }, onReport = onCheck) { page = SettingsPage.Main }
+        }
+
+        // Лицензии открываются из «О программе» — туда и «Назад».
+        SettingsPage.Licenses -> {
+            BackHandler { page = SettingsPage.About }
             val assets = LocalContext.current.assets
             val components = remember(assets) { OpenComponents.read(assets) }
-            LicensesScreen(components, { OpenComponents.text(assets, it) }) { page = SettingsPage.Main }
+            LicensesScreen(components, { OpenComponents.text(assets, it) }) { page = SettingsPage.About }
         }
 
         SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language) { page = it }
@@ -277,10 +284,7 @@ private fun LanguageRow(language: ((String) -> Unit)?) {
     }
 }
 
-/**
- * «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть. «Резервная копия» появится со
- * своей страницей; на месте «О программе», пока ее страницы нет, — лицензии открытых компонентов: без этой строки их не открыть.
- */
+/** «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть («Резервная копия» — со своей страницей). */
 @Composable
 private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
     AdvancedRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection", false) {
@@ -300,8 +304,8 @@ private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
     }
 
     AdvancedRow(PgIcons.AdvCheck, R.string.settings_adv_check_title, R.string.settings_adv_check_text, "settings.check", true, onCheck)
-    AdvancedRow(PgIcons.File, R.string.about_licenses, R.string.about_licenses_text, "settings.licenses", true) {
-        onPage(SettingsPage.Licenses)
+    AdvancedRow(PgIcons.AdvAbout, R.string.settings_adv_about_title, R.string.settings_adv_about_text, "settings.about", true) {
+        onPage(SettingsPage.About)
     }
 }
 

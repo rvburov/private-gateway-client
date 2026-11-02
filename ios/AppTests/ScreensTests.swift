@@ -203,11 +203,14 @@ final class ScreensTests: XCTestCase {
         for language in PgTexts.Language.allCases {
             let texts = PgTexts(language)
             for settings in variants {
-                for page in [SettingsPage.main, .protection, .core, .routing, .licenses] {
+                for page in [SettingsPage.main, .protection, .core, .routing, .about, .licenses] {
                     let view = SettingsView(texts: texts, settings: settings, about: about, page: .constant(page)) { _ in EmptyView() }
                     XCTAssertEqual(try render(view, height: 1400).size.width, 393, accuracy: 1)
                 }
             }
+
+            // Первый запуск (доска 10): приветствие на обоих языках.
+            XCTAssertEqual(try render(WelcomeView(texts: texts, onAdd: {}, onDone: {})).size.width, 393, accuracy: 1)
 
             let custom = TunnelSettings(dns: .custom, customDns: "192.0.2.53", ipv6: true, allowLan: true)
             let editing = ProtectionView(texts: texts, tunnel: custom, killSwitch: false, alwaysOn: true, editingDns: true, onTunnel: { _ in }, onKillSwitch: { _ in }, onBack: {})

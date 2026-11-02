@@ -70,6 +70,13 @@ class SettingsViewModel @Inject constructor(
     /** Программы телефона для «Добавить программу» («Маршрутизация»): читаются, когда открыт выбор, — не заранее. */
     suspend fun installedApps(): List<PhoneApp> = phoneApps.launchable()
 
+    /** Первый запуск пройден; null — еще не прочитано из DataStore (приветствие не мелькает у тех, кто его прошел). */
+    val onboardingDone: StateFlow<Boolean?> = settings.onboardingDone.stateIn(viewModelScope, SharingStarted.Eagerly, null)
+
+    fun finishOnboarding() {
+        viewModelScope.launch { settings.setOnboardingDone() }
+    }
+
     fun request(next: SettingsPage) {
         page.value = next
     }

@@ -138,6 +138,16 @@ fun AppScreen(
         viewModel.closeImport()
     }
     val hasCamera = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
+    // Первый запуск (доска 10): до первого сервера или «Позже»; пока флаг не прочитан (null) — не показывать, чтобы
+    // приветствие не мелькало у тех, кто его прошел. Появился сервер — первый запуск пройден.
+    val onboarded by settings.onboardingDone.collectAsStateWithLifecycle()
+    val hasServers = ui.servers.isNotEmpty()
+    LaunchedEffect(onboarded, ui.loaded, hasServers) {
+        if (onboarded == false && ui.loaded && hasServers) {
+            settings.finishOnboarding()
+        }
+    }
+    val welcome = onboarded == false && ui.loaded && !hasServers
 
     CompositionLocalProvider(LocalPgToast provides toast) {
         PgBackground {
@@ -195,6 +205,8 @@ fun AppScreen(
                         ),
                     )
                 }
+            } else if (welcome) {
+                WelcomeScreen(onAdd = { adding = true }, onDone = settings::finishOnboarding, language = actions.language)
             } else {
                 BackHandler(enabled = tab != Tab.Home) {
                     if (tab == Tab.Servers && card != null) {
@@ -364,7 +376,7 @@ fun AppScreen(
             }
 
             // Пока открыта карточка сервера, подсказку показывает ее лист: окно листа закрывает собой это окно.
-            if (adding || tab != Tab.Servers || card == null) {
+            if (adding || welcome || tab != Tab.Servers || card == null) {
                 PgToast(toast, Modifier.align(Alignment.TopCenter))
             }
         }

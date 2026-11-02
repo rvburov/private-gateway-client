@@ -128,7 +128,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card">
+        <div class="card up-card" data-os="desktop">
           <div class="up-state idle" data-page="idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
             <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
@@ -185,14 +185,14 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.1.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -201,7 +201,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -211,6 +211,7 @@
           <button class="link-row" data-open="sheet-licenses-a"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-a"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -271,7 +272,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>
@@ -298,7 +299,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card">
+        <div class="card up-card" data-os="desktop">
           <div class="up-state offer" data-page="offer">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Доступно обновление 0.2.0</span><span class="up-badge">Новое</span></div>
             <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
@@ -350,14 +351,14 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.1.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -366,7 +367,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -376,6 +377,7 @@
           <button class="link-row" data-open="sheet-licenses-b"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-b"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -436,7 +438,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>
@@ -463,7 +465,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card offer">
+        <div class="card up-card offer" data-os="desktop">
           <div class="up-state offer">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Загружаем 0.2.0</span><span class="up-badge">Загрузка</span></div>
             <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
@@ -488,14 +490,14 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.1.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -504,7 +506,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -514,6 +516,7 @@
           <button class="link-row" data-open="sheet-licenses-c"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-c"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -574,7 +577,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>
@@ -601,7 +604,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card">
+        <div class="card up-card" data-os="desktop">
           <div class="up-state ready" data-page="ready">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновление готово</span><span class="up-badge ready">Готово</span></div>
             <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
@@ -633,14 +636,14 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.1.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -649,7 +652,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -659,6 +662,7 @@
           <button class="link-row" data-open="sheet-licenses-d"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-d"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -719,7 +723,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>
@@ -746,7 +750,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card">
+        <div class="card up-card" data-os="desktop">
           <div class="up-state idle" data-page="rb-idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
             <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
@@ -790,14 +794,14 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.2.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.2.0</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.2.0</span></div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -806,7 +810,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -816,6 +820,7 @@
           <button class="link-row" data-open="sheet-licenses-e"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-e"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -876,7 +881,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>
@@ -885,7 +890,7 @@
   </section>
 
   <!-- ===================== Служба старше окна ===================== -->
-  <section class="pg-screen" data-state="connected" data-caption="Служба старше окна: «Обновить службу»">
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Служба старше окна: «Обновить службу»">
     <div class="pg-page-header">
       <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
       <span class="t-h1 pg-ellipsis">О программе</span>
@@ -903,7 +908,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card">
+        <div class="card up-card" data-os="desktop">
           <div class="up-state idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
             <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
@@ -926,18 +931,18 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.1.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value"><span data-page="svc-old">работает · 0.0.9</span><span data-page="svc-ok" hidden>работает · 0.1.0</span></span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value"><span data-page="svc-old">работает · 0.0.9</span><span data-page="svc-ok" hidden>работает · 0.1.0</span></span></div>
           <div class="ab-notice" data-page="svc-old">
             <div class="banner warning"><span>Служба 0.0.9 старше окна 0.1.0: программу обновили, а службу — нет. Обновите службу, чтобы они работали вместе.</span></div>
             <button class="btn-secondary" data-goto="svc-ok">Обновить службу</button>
           </div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -946,7 +951,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -956,6 +961,7 @@
           <button class="link-row" data-open="sheet-licenses-f"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-f"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -1016,7 +1022,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>
@@ -1043,7 +1049,7 @@
         </div>
 
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
-        <div class="card up-card">
+        <div class="card up-card" data-os="desktop">
           <div class="up-state idle">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
             <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
@@ -1066,14 +1072,14 @@
           <span class="t-overline ab-overline">Компоненты</span>
           <div class="card ab-list">
           <div class="ab-comp"><span class="t-strong">Клиент</span><span class="ab-value">0.1.0</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Служба</span><span class="ab-value">работает · 0.1.0</span></div>
           <div class="divider"></div>
           <div class="ab-comp"><span class="t-strong">Xray-core</span><span class="ab-value">26.10.21</span></div>
+          <div class="divider" data-os="desktop"></div>
+          <div class="ab-comp" data-os="desktop"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
           <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">Hysteria2, TUIC</span><span class="ab-value">sing-box 1.14.3</span></div>
-          <div class="divider"></div>
-          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value">sing-box 1.14.3 · Wintun в составе sing-box</span></div>
+          <div class="ab-comp"><span class="t-strong">TUN-драйвер</span><span class="ab-value" data-os="desktop">sing-box 1.14.3 · Wintun в составе sing-box</span><span class="ab-value" data-os="phone">встроен в ОС</span></div>
           </div>
         </div>
 
@@ -1082,7 +1088,7 @@
           <span class="t-overline ab-overline">Приватность</span>
           <div class="card ab-privacy">
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Телеметрия не собирается</span></div>
-            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом компьютере</span></div>
+            <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Логи хранятся только на этом <span data-os-word="place">компьютере</span></span></div>
             <div class="ab-yes-row"><span class="ab-yes"><i data-icon="Chip.Ok" data-stroke="3.4"></i></span><span class="t-wrap">Отчет для поддержки обезличен</span></div>
           </div>
         </div>
@@ -1092,6 +1098,7 @@
           <button class="link-row" data-open="sheet-licenses-g"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-g"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -1153,7 +1160,7 @@
         <div class="ab-sheet-body">
             <p class="ab-sheet-text">Private Gateway Client не собирает телеметрию и не отправляет разработчику сведения о вас и ваших подключениях.</p>
             <p class="ab-sheet-text">Программа обращается только к серверам, которые вы добавили, к адресам ваших подписок (по умолчанию — только через VPN) и при проверке утечек — к службам проверки адреса.</p>
-            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом компьютере, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
+            <p class="ab-sheet-text">Ключи серверов и адреса подписок хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
     </div>

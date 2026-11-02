@@ -78,6 +78,8 @@ data class MainUi(
     val blocked: Boolean = false,
     val ip: WebIp = WebIp(),
     val network: PhoneNetworkKind? = null,
+    /** Список серверов прочитан из базы: до этого пустой список не значит «серверов нет» (первый запуск, доска 10). */
+    val loaded: Boolean = false,
 ) {
     /** Android закрыл интернет без туннеля — «Блокировать подключения без VPN» (решение 445). */
     val closedWithoutTunnel: Boolean get() = SystemVpnView.closedWithoutTunnel(status.state, blocked)
@@ -213,7 +215,7 @@ class MainViewModel @Inject constructor(
         servers.subscriptionRefs,
         combine(meter.measuring, webIp, networks.networks) { measuring, ip, list -> Triple(measuring, ip, HomeNetwork.pick(list)?.kind) },
     ) { (status, blocked), list, selected, groups, (measuring, ip, network) ->
-        MainUi(status, list, selected, groups, measuring, blocked, ip, network)
+        MainUi(status, list, selected, groups, measuring, blocked, ip, network, loaded = true)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, MainUi())
 
     /**

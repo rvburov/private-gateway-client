@@ -228,6 +228,12 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(SettingsLook.languageNote(PgTexts(.english)).hasPrefix("As in the system"), SettingsLook.languageNote(PgTexts(.english)))
     }
 
+    /// «О программе» (доска 15): «Версия 0.1.0 · iOS 18.1 · arm64»; неизвестное — «—», а не пустое место.
+    func testAboutVersionLineNamesAppSystemAndArchitecture() {
+        XCTAssertEqual(AboutLook.version(AboutInfo(app: "0.1.0", system: "iOS 18.1", arch: "arm64"), texts), "Версия 0.1.0 · iOS 18.1 · arm64")
+        XCTAssertEqual(AboutLook.version(AboutInfo(), PgTexts(.english)), "Version — · — · —")
+    }
+
     func testFooterHasTheAppAndCoreVersionsWithoutTheService() {
         XCTAssertEqual(SettingsLook.footer(AboutInfo(app: "0.1.0", core: "26.3.27"), texts), "Private Gateway Client 0.1.0 · Ядро: Xray-core 26.3.27")
         XCTAssertEqual(SettingsLook.footer(AboutInfo(app: "0.1.0"), texts), "Private Gateway Client 0.1.0 · Ядро: Xray-core", "до первого подключения версии ядра нет")

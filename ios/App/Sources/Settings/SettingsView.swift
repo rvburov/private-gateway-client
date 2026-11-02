@@ -10,6 +10,7 @@ enum SettingsPage: Hashable {
     case core
     case routing
     case subscriptions
+    case about
     case licenses
 }
 
@@ -60,8 +61,11 @@ struct SettingsView<Subscriptions: View>: View {
             )
         case .subscriptions:
             subscriptions { page = .main }
+        case .about:
+            AboutView(texts: texts, about: about, onLicenses: { page = .licenses }, onReport: onCheck) { page = .main }
         case .licenses:
-            LicensesView(texts: texts, about: about) { page = .main }
+            // Лицензии открываются из «О программе» — туда и «Назад».
+            LicensesView(texts: texts, about: about) { page = .about }
         case .main:
             main
         }
@@ -165,8 +169,7 @@ struct SettingsView<Subscriptions: View>: View {
     }
 
     /// «Для опытных» (доска 04): строки-ссылки с плиткой значка через полосы по порядку доски — только на то, что на телефоне
-    /// есть. «Резервная копия» и «О программе» появятся вместе со своими страницами; до «О программе» на ее месте —
-    /// «Лицензии открытых компонентов».
+    /// есть («Резервная копия» появится со своей страницей).
     @ViewBuilder
     private var advanced: some View {
         PgLinkRow(
@@ -192,9 +195,9 @@ struct SettingsView<Subscriptions: View>: View {
             action: onCheck
         )
         PgDivider().padding(.horizontal, PgSpace.card)
-        PgLinkRow(icon: PgIcons.file, title: texts.aboutLicenses, caption: texts.aboutLicensesText, large: true, identifier: "settings.licenses") {
-            page = .licenses
-        }
+        PgLinkRow(
+            icon: PgIcons.advAbout, title: texts.settingsAdvAboutTitle, caption: texts.settingsAdvAboutText, large: true, identifier: "settings.about"
+        ) { page = .about }
     }
 }
 
