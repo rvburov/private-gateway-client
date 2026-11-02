@@ -38,9 +38,11 @@ enum PgTone: Equatable {
 /// Строка настройки (.setting): заголовок полужирным (bodyStrong), под ним подпись caption цветом text.muted, справа —
 /// переключатель, выбор или кнопка. Поля 12 × 16 — строка лежит в карточке без своих полей (`pgCard(padding: 0)`), строки
 /// разделяет `PgDivider`; `padded: false` — для строки в карточке со своими полями. Недоступная — серые заголовок и подпись.
+/// `warning` — третья строка подписи цветом status.warning.badge (.sb-block доски 12): почему настройка сейчас не действует.
 struct PgSettingRow<Trailing: View>: View {
     let title: String
     var caption: String?
+    var warning: String?
     var enabled = true
     var padded = true
     @ViewBuilder let trailing: () -> Trailing
@@ -51,6 +53,10 @@ struct PgSettingRow<Trailing: View>: View {
                 Text(title).pgText(PgType.bodyStrong).foregroundStyle(Color(enabled ? PgColor.Text.primary : PgColor.Text.muted))
                 if let caption, !caption.isEmpty {
                     Text(caption).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
+                }
+
+                if let warning, !warning.isEmpty {
+                    Text(warning).pgText(PgType.caption).foregroundStyle(Color(PgColor.Status.Warning.badge))
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

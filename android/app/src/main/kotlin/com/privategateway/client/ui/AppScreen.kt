@@ -27,11 +27,15 @@ import com.privategateway.client.ui.home.HomeActions
 import com.privategateway.client.ui.home.HomeScreen
 import com.privategateway.client.ui.qr.QrCameraScreen
 import com.privategateway.client.ui.servers.CardActions
+import com.privategateway.client.ui.servers.ImportActions
+import com.privategateway.client.ui.servers.ImportFile
 import com.privategateway.client.ui.servers.ImportScreen
 import com.privategateway.client.ui.servers.ServerCardScreen
 import com.privategateway.client.ui.servers.ServersActions
 import com.privategateway.client.ui.servers.ServersScreen
 import com.privategateway.client.ui.servers.ServersViewModel
+import com.privategateway.client.ui.servers.importDone
+import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsScreen
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.subscriptions.SubscriptionsActions
@@ -78,6 +82,8 @@ fun AppScreen(
     val query by servers.query.collectAsStateWithLifecycle()
     var tab by rememberSaveable { mutableStateOf(Tab.Home) }
     var adding by rememberSaveable { mutableStateOf(false) }
+    // «Добавить профиль» открыт из «Профилей и подписок»: «Назад» возвращает на эту страницу, а не на главную «Настроек».
+    var fromSubscriptions by rememberSaveable { mutableStateOf(false) }
     // Сканер QR камерой — поверх «Добавить».
     var scanning by rememberSaveable { mutableStateOf(false) }
     // Открытая карточка сервера (доска 11) — нижний лист поверх списка серверов.
@@ -95,13 +101,31 @@ fun AppScreen(
         requested?.let {
             tab = it
             adding = false
+            fromSubscriptions = false
             card = null
             viewModel.tabShown()
         }
     }
+    // «Назад» — туда, откуда открыли «Добавить профиль»; страница «Профили и подписки» без этого закрылась бы вместе с «Настройками».
     val closeImport: () -> Unit = {
+        if (fromSubscriptions) {
+            settings.request(SettingsPage.Subscriptions)
+        }
+
         adding = false
         scanning = false
+        fromSubscriptions = false
+        viewModel.closeImport()
+    }
+    // Добавлено — итог подсказкой и «Серверы» (доска 3: «Добавить N серверов» ведет к списку), экран добавления сброшен.
+    LaunchedEffect(importing.added) {
+        val done = importDone(importing, Texts.language(context.resources.configuration.locales)) ?: return@LaunchedEffect
+        toast.show(context.getString(done.text, *done.args))
+        adding = false
+        scanning = false
+        fromSubscriptions = false
+        tab = Tab.Servers
+        card = null
         viewModel.closeImport()
     }
     val hasCamera = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
@@ -114,7 +138,11 @@ fun AppScreen(
                 val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { image ->
                     image?.let(viewModel::previewQr)
                 }
-                // Доступ к камере спрашивается по нажатию «Сканировать камерой», а не при запуске; отказ — подсказка в карточке QR.
+                // Системное окно «Открыть»: приложению — только выбранный файл, без разрешения на память.
+                val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { file ->
+                    file?.let(viewModel::previewFile)
+                }
+                // Доступ к камере спрашивается по нажатию «Сканировать камерой», а не при запуске; отказ — подсказка под карточками.
                 val cameraAccess = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
                     if (granted) {
                         scanning = true
@@ -144,16 +172,19 @@ fun AppScreen(
                     }
                     ImportScreen(
                         importing,
-                        actions.clipboard,
-                        viewModel::edit,
-                        viewModel::preview,
-                        viewModel::name,
-                        viewModel::add,
-                        closeImport,
-                        onScan = scan.takeIf { hasCamera },
-                    ) {
-                        picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
-                    }
+                        ImportActions(
+                            source = viewModel::selectSource,
+                            clipboard = { viewModel.fromClipboard(actions.clipboard()) },
+                            text = viewModel::edit,
+                            check = viewModel::preview,
+                            name = viewModel::name,
+                            add = viewModel::add,
+                            close = closeImport,
+                            pickImage = { picker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            pickFile = { files.launch(ImportFile.TYPES) },
+                            scan = scan.takeIf { hasCamera },
+                        ),
+                    )
                 }
             } else {
                 BackHandler(enabled = tab != Tab.Home) {
@@ -265,7 +296,10 @@ fun AppScreen(
                                 ui,
                                 SubscriptionsActions(
                                     settings = subscriptions::setSettings,
-                                    add = { adding = true },
+                                    add = {
+                                        fromSubscriptions = true
+                                        adding = true
+                                    },
                                     update = subscriptions::update,
                                     edit = subscriptions::edit,
                                     remove = subscriptions::remove,

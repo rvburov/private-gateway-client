@@ -1,13 +1,30 @@
 import Foundation
 
-/// Итог добавления: новых и уже бывших в списке.
+/// Итог добавления: новых, уже бывших в списке, у скольких сохраненных обновилась защита (решение 484) и сколько удалено —
+/// если добавленная подписка уже была и обновилась (решение 528).
 public struct AddResult: Equatable, Sendable {
     public let added: Int
     public let duplicates: Int
+    public let renewed: Int
+    public let removed: Int
 
-    public init(added: Int, duplicates: Int) {
+    public init(added: Int, duplicates: Int, renewed: Int = 0, removed: Int = 0) {
         self.added = added
         self.duplicates = duplicates
+        self.renewed = renewed
+        self.removed = removed
+    }
+}
+
+/// Что сделает добавление — до него, для предпросмотра (CountDuplicates и CountRenewals десктопа): сколько разобранных
+/// серверов уже в списке (дубль, в том числе повтор в самом тексте) и у скольких сохраненных обновится защита.
+public struct ImportCount: Equatable, Sendable {
+    public let duplicates: Int
+    public let renewals: Int
+
+    public init(duplicates: Int, renewals: Int) {
+        self.duplicates = duplicates
+        self.renewals = renewals
     }
 }
 
@@ -92,6 +109,18 @@ struct SubscriptionRecord: Codable, Equatable, Sendable {
 struct StoredState: Codable, Equatable, Sendable {
     var servers: [ServerRecord] = []
     var subscriptions: [SubscriptionRecord] = []
+}
+
+/// Сохраненный сервер, открытый из Связки ключей, — для импорта.
+private struct SavedServer: Sendable {
+    let id: String
+    let server: ServerDefinition
+}
+
+/// Сохраненные серверы глазами импорта (`ServerStore.savedServers`): ключи всех и те, что берут защиту из нового импорта.
+private struct SavedServers: Sendable {
+    var keys = Set<String>()
+    var renewable: [String: SavedServer] = [:]
 }
 
 /// Серверы пользователя и их группы — как `ServerRepository` Android: сервер — ссылка в Связке ключей, открыто лежат только
@@ -180,23 +209,8 @@ public actor ServerStore {
         var state = try read()
         let groupName = group?.trimmingCharacters(in: .whitespacesAndNewlines)
         let named = groupName.flatMap { $0.isEmpty ? nil : $0 }
-        // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484). Серверы
-        // подписки с адресом — нет: их защиту ведет обновление подписки, иначе импорт и обновление переписывали бы ее по очереди.
-        let refreshed = Set(state.subscriptions.filter { $0.maskedUrl != nil }.map(\.id))
-        var known = Set<String>()
-        var stored: [String: (id: String, server: ServerDefinition)] = [:]
-        for record in state.servers {
-            guard let server = try open(record) else {
-                continue
-            }
-
-            let key = ServerKeys.key(server)
-            known.insert(key)
-            if stored[key] == nil, record.subscriptionId.map({ !refreshed.contains($0) }) ?? true {
-                stored[key] = (record.id, server)
-            }
-        }
-
+        let saved = try savedServers(state)
+        var known = saved.keys
         var position = state.servers.map(\.position).max() ?? -1
         let now = clock()
         // Та же ссылка подписки или то же название профиля без адреса — в существующую группу, а не во вторую (решение 528).
@@ -218,10 +232,10 @@ public actor ServerStore {
             if !known.insert(key).inserted {
                 duplicates += 1
                 // Название, группа, избранное — прежние; защита (закрепленный сертификат, отпечаток, ALPN) — из новой ссылки.
-                if let saved = stored[key], saved.server.security != server.security, renewed[saved.id] == nil {
-                    var updated = saved.server
+                if let renewable = saved.renewable[key], renewable.server.security != server.security, renewed[renewable.id] == nil {
+                    var updated = renewable.server
                     updated.security = server.security
-                    renewed[saved.id] = updated
+                    renewed[renewable.id] = updated
                 }
 
                 continue
@@ -256,7 +270,29 @@ public actor ServerStore {
 
         state.servers += fresh.map { $0.0 }
         try write(state)
-        return AddResult(added: fresh.count, duplicates: duplicates)
+        return AddResult(added: fresh.count, duplicates: duplicates, renewed: renewed.count)
+    }
+
+    /// Что сделает `add` с этими серверами, ничего не записывая (предпросмотр «Добавить профиль»): сколько из них дубли и у
+    /// скольких сохраненных обновится защита — по тем же правилам, что у `add`.
+    public func countImport(_ servers: [ServerDefinition]) throws -> ImportCount {
+        let saved = try savedServers(read())
+        var known = saved.keys
+        var duplicates = 0
+        var renewed = Set<String>()
+        for server in servers {
+            let key = ServerKeys.key(server)
+            guard !known.insert(key).inserted else {
+                continue
+            }
+
+            duplicates += 1
+            if let renewable = saved.renewable[key], renewable.server.security != server.security {
+                renewed.insert(renewable.id)
+            }
+        }
+
+        return ImportCount(duplicates: duplicates, renewals: renewed.count)
     }
 
     /// Подписка с этим адресом уже добавлена (`SubscriptionAddress.same`) — ее id; нет — nil (решение 528).
@@ -474,6 +510,27 @@ public actor ServerStore {
     }
 
     // MARK: Внутреннее
+
+    /// Сохраненные серверы глазами импорта: ключи всех (дубль — тот же сервер под любым названием) и по ключу — те, что берут
+    /// защиту из нового импорта того же сервера (решение 484). Серверы подписки с адресом — нет: их защиту ведет обновление
+    /// подписки, иначе импорт и обновление переписывали бы ее по очереди.
+    private func savedServers(_ state: StoredState) throws -> SavedServers {
+        let refreshed = Set(state.subscriptions.filter { $0.maskedUrl != nil }.map(\.id))
+        var saved = SavedServers()
+        for record in state.servers {
+            guard let server = try open(record) else {
+                continue
+            }
+
+            let key = ServerKeys.key(server)
+            saved.keys.insert(key)
+            if saved.renewable[key] == nil, record.subscriptionId.map({ !refreshed.contains($0) }) ?? true {
+                saved.renewable[key] = SavedServer(id: record.id, server: server)
+            }
+        }
+
+        return saved
+    }
 
     private func read() throws -> StoredState {
         guard let data = try file.read() else {

@@ -13,9 +13,11 @@ struct SubscriptionsActions {
     var remove: (String?, String, Bool) -> Void = { _, _, _ in }
 }
 
-/// «Профили и подписки» (доска 12 в одну колонку) — как `SubscriptionsScreen` Android: автообновление, «только через VPN»
-/// (защита выключена — подписки не обновляются), сообщения о выбранном сервере; карточки подписок и профилей — состояние,
-/// маска адреса, когда обновлялась, причина неудачи, «Обновить», «Изменить», «Удалить»; «Мои серверы» — последней.
+/// «Профили и подписки» (доска 12, SubscriptionsPage десктопа): шапка с «Назад» и «+» стоит на месте, прокручивается тело —
+/// карточка «Как обновлять» (автообновление выпадающим списком, «только через VPN» с причиной, почему подписки сейчас не
+/// обновляются, сообщения о выбранном сервере), рубрика «Подписки · N», карточки групп — состояние, маска адреса, когда
+/// обновлялась, причина неудачи, «Обновить» (крутится стрелка), «Изменить» (нижний лист), корзина (вопрос), — «Мои серверы»
+/// последней и пунктирная «Добавить подписку».
 struct SubscriptionsView: View {
     let texts: PgTexts
     let settings: SubscriptionSettings
@@ -26,13 +28,10 @@ struct SubscriptionsView: View {
     let actions: SubscriptionsActions
     let onBack: () -> Void
 
+    /// Группа в листе «Изменить» и открыт ли лист: группа остается, пока лист уезжает вниз, — лист не пустеет на ходу.
     @State private var editing: String?
-    /// Удаляемая группа: id подписки или `Self.mine`; `confirming` — открыт вопрос «Удалить?».
-    @State private var removing: String?
-    @State private var confirming = false
-
-    /// «Мои серверы» в `removing` — метка группы без подписки.
-    private static let mine = ""
+    @State private var editOpen: Bool
+    @Environment(\.pgLayers) private var layers
 
     init(
         texts: PgTexts, settings: SubscriptionSettings, groups: [GroupItem], manualCount: Int, updating: Set<String> = [], home: HomeState,
@@ -47,221 +46,213 @@ struct SubscriptionsView: View {
         self.actions = actions
         self.onBack = onBack
         _editing = State(initialValue: editing)
-    }
-
-    /// Группа сервера, через который идет защита: удалять ее — значит отключить VPN. «Мои серверы» — `mine`.
-    private var inUse: String? {
-        home.servers.first { home.active($0.id) }.map { $0.subscriptionId ?? Self.mine }
+        _editOpen = State(initialValue: editing != nil)
     }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: PgSpace.l) {
-                PgPageHeader(title: texts.settingsAdvProfilesTitle, texts: texts, onBack: onBack)
-                settingsCard
-                Overline(text: texts.subsSection(groups.count))
-                PgButton(label: texts.subsAdd, identifier: "subs.add", action: actions.add)
-                if groups.isEmpty && manualCount == 0 {
-                    Text(texts.subsEmpty).pgText(PgType.body).foregroundStyle(Color(PgColor.Text.secondary))
-                }
-
-                ForEach(groups, id: \.id) { group in
-                    if editing == group.id {
-                        EditCard(texts: texts, group: group, onSave: { name, url in await actions.edit(group, name, url) }, onClose: { editing = nil })
-                    } else {
-                        GroupCard(
-                            texts: texts, group: group, busy: updating.contains(group.id), onUpdate: { actions.update(group) }, onEdit: { editing = group.id },
-                            onRemove: { ask(group.id) }
-                        )
+        VStack(spacing: 0) {
+            PgPageHeader(
+                title: texts.settingsAdvProfilesTitle, texts: texts,
+                action: PgHeaderAction(icon: PgIcons.plus, label: texts.subsAdd, identifier: "subs.add.header", action: actions.add), fixed: true,
+                onBack: onBack
+            )
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    settingsCard
+                    Overline(text: texts.subsSection(SubscriptionsLook.cards(groups: groups.count, manualCount: manualCount)))
+                        .padding(.horizontal, PgSpace.xs)
+                        .padding(.top, PgSpace.xxs)
+                        .padding(.bottom, -PgSpace.xxs)
+                    if groups.isEmpty && manualCount == 0 {
+                        Text(texts.subsEmpty)
+                            .pgText(PgType.body)
+                            .foregroundStyle(Color(PgColor.Text.secondary))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, PgSpace.xs)
                     }
-                }
 
-                if manualCount > 0 {
-                    mineCard
+                    ForEach(groups, id: \.id) { group in
+                        // «Обновить» — только у подписки с адресом; профиль из ссылок не обновляется.
+                        let update: (() -> Void)? = group.canUpdate ? { actions.update(group) } : nil
+                        GroupCard(
+                            texts: texts, name: group.name, address: group.maskedUrl ?? texts.subsManualAddress, chip: SubscriptionsLook.chip(group),
+                            meta: SubscriptionsLook.meta(group, now: Date(), texts), failure: SubscriptionsLook.failure(group, texts),
+                            busy: updating.contains(group.id), onUpdate: update, onEdit: { edit(group.id) }, onRemove: { ask(group.id) }
+                        )
+                        .accessibilityIdentifier("group.\(group.id)")
+                    }
+
+                    if manualCount > 0 {
+                        // «Мои серверы»: серверы без группы — добавлены ссылками; не обновляются и не меняются, удалить можно разом.
+                        GroupCard(
+                            texts: texts, name: texts.subsMineName, address: texts.subsMineAddress, chip: .manual,
+                            meta: SubscriptionsLook.servers(manualCount, texts), onRemove: { ask(SubscriptionsLook.mine) }
+                        )
+                        .accessibilityIdentifier("group.mine")
+                    }
+
+                    addButton
                 }
+                .padding(.horizontal, PgSpace.windowSideMobile)
+                .padding(.bottom, PgLayout.scrollBottomPadding)
             }
-            .padding(.horizontal, PgSpace.windowSideMobile)
-            .padding(.bottom, PgLayout.scrollBottomPadding)
         }
-        .alert(removeTitle, isPresented: $confirming) {
-            Button(texts.dialogDeleteServerDelete, role: .destructive) {
-                if let target = removing {
-                    let group = groups.first { $0.id == target }
-                    actions.remove(group?.id, group?.name ?? texts.subsMineName, inUse == target)
-                }
+        .pgSheet(isPresented: $editOpen) {
+            if let group = groups.first(where: { $0.id == editing }) {
+                SubscriptionEditView(texts: texts, group: group, onSave: { name, url in await actions.edit(group, name, url) }, onClose: { editOpen = false })
             }
-            Button(texts.dialogCancel, role: .cancel) {}
-        } message: {
-            Text(removeText)
         }
         .accessibilityIdentifier("subscriptions")
     }
 
+    private func edit(_ id: String) {
+        editing = id
+        editOpen = true
+    }
+
+    /// Корзина: сначала вопрос (доска 12, DialogView десктопа) — «Удалить» красная основная, «Отмена»; удаление — только
+    /// после «Удалить».
     private func ask(_ id: String) {
-        removing = id
-        confirming = true
+        let group = groups.first { $0.id == id }
+        let name = group?.name ?? texts.subsMineName
+        let inUse = SubscriptionsLook.inUse(home) == id
+        let dialog = SubscriptionsLook.removeDialog(name: name, servers: group?.servers ?? manualCount, inUse: inUse, texts)
+        PgLayers.confirming(dialog, in: layers) {
+            actions.remove(group?.id, name, inUse)
+        }
     }
 
-    private var removeTitle: String {
-        let group = groups.first { $0.id == removing }
-        return texts.subsRemoveTitle(group?.name ?? texts.subsMineName)
-    }
-
-    private var removeText: String {
-        let group = groups.first { $0.id == removing }
-        let servers = Self.servers(group?.servers ?? manualCount, texts)
-        return inUse == removing ? texts.subsRemoveTextInUse(servers) : texts.subsRemoveText(servers)
-    }
-
+    /// «Как обновлять» (.sb-settings): три строки настройки через полосы — автообновление выпадающим списком, «только через
+    /// VPN» (защита выключена — третьей строкой, почему подписки не обновляются), сообщения о выбранном сервере.
     private var settingsCard: some View {
-        VStack(alignment: .leading, spacing: PgSpace.xs) {
-            Text(texts.subsRefreshTitle).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
-            Text(texts.subsRefreshText).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
-            ForEach([(RefreshInterval.off, texts.subsRefreshOff), (.every6Hours, texts.subsRefresh6), (.every12Hours, texts.subsRefresh12),
-                     (.every24Hours, texts.subsRefresh24)], id: \.0) { item in
-                PgChoiceRow(title: item.1, selected: settings.refresh == item.0, identifier: "refresh.\(item.0.rawValue)") {
-                    var next = settings
-                    next.refresh = item.0
-                    actions.settings(next)
-                }
+        VStack(spacing: 0) {
+            PgSettingRow(title: texts.subsRefreshTitle, caption: texts.subsRefreshText) {
+                PgSelect(
+                    options: SubscriptionsLook.refreshOptions(texts), selection: settings.refresh, label: texts.subsRefreshTitle, identifier: "subs.refresh",
+                    onSelect: { interval in
+                        var next = settings
+                        next.refresh = interval
+                        actions.settings(next)
+                    }
+                )
             }
 
-            PgToggleRow(title: texts.subsVpnTitle, text: texts.subsVpnText, isOn: settings.onlyViaVpn, identifier: "subs.vpn") { on in
+            PgDivider().padding(.horizontal, PgSpace.card)
+            PgToggleRow(
+                title: texts.subsVpnTitle, text: texts.subsVpnText, warning: SubscriptionsLook.blockNote(settings, state: home.status.state, texts),
+                isOn: settings.onlyViaVpn, padded: true, identifier: "subs.vpn"
+            ) { on in
                 var next = settings
                 next.onlyViaVpn = on
                 actions.settings(next)
             }
-            .padding(.top, PgSpace.s)
-            if settings.onlyViaVpn && home.status.state != .connected {
-                Text(texts.subsVpnBlockedOff)
-                    .pgText(PgType.small)
-                    .foregroundStyle(Color(PgColor.Status.Caution.text))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(PgSpace.s)
-                    .background(RoundedRectangle(cornerRadius: PgRadius.button, style: .continuous).fill(Color(PgColor.Status.Caution.tint)))
-                    .accessibilityIdentifier("subs.vpn.blocked")
-            }
 
-            PgToggleRow(title: texts.subsNotifyTitle, text: texts.subsNotifyText, isOn: settings.notifySelected, identifier: "subs.notify") { on in
+            PgDivider().padding(.horizontal, PgSpace.card)
+            PgToggleRow(title: texts.subsNotifyTitle, text: texts.subsNotifyText, isOn: settings.notifySelected, padded: true, identifier: "subs.notify") { on in
                 var next = settings
                 next.notifySelected = on
                 actions.settings(next)
             }
         }
-        .pgCard()
+        .padding(.vertical, 2)
+        .pgCard(padding: 0)
     }
 
-    /// «Мои серверы»: серверы без группы — добавлены ссылками; не обновляются, удалить можно разом.
-    private var mineCard: some View {
-        VStack(alignment: .leading, spacing: PgSpace.xs) {
-            HStack {
-                Text(texts.subsMineName).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
-                Spacer(minLength: PgSpace.s)
-                StateChip(texts: texts, chip: .manual)
+    /// «Добавить подписку» (.sb-add): пунктирная рамка accent.line на accent.tint, «+» и подпись accent.text полужирным —
+    /// последней, после всех карточек; ведет на «Добавить профиль».
+    private var addButton: some View {
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        return Button(action: actions.add) {
+            HStack(spacing: PgSpace.s) {
+                PgIcon(data: PgIcons.plus, color: Color(PgColor.Accent.text), size: 18, lineWidth: 2.2)
+                Text(texts.subsAdd).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Accent.text)).lineLimit(1)
             }
-
-            Text(texts.subsMineAddress).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary))
-            Text(Self.servers(manualCount, texts)).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
-            PgTextAction(label: texts.subsRemove(texts.subsMineName), color: PgColor.Status.Danger.text, identifier: "subs.remove") {
-                ask(Self.mine)
-            }
+            .frame(maxWidth: .infinity, minHeight: 46)
+            .background(shape.fill(Color(PgColor.Accent.tint)))
+            .overlay(shape.strokeBorder(Color(PgColor.Accent.line), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+            .contentShape(Rectangle())
         }
-        .pgCard()
-        .accessibilityIdentifier("group.mine")
+        .buttonStyle(PgPressStyle())
+        .accessibilityIdentifier("subs.add")
+    }
+}
+
+/// Правила «Профилей и подписок» — как SubscriptionsPageViewModel и SubscriptionCardViewModel десктопа.
+enum SubscriptionsLook {
+    /// «Мои серверы» там, где ждут id группы, — метка группы без подписки.
+    static let mine = ""
+
+    /// Число в рубрике «Подписки · N»: все карточки — группы и «Мои серверы», если в них есть серверы.
+    static func cards(groups: Int, manualCount: Int) -> Int {
+        groups + (manualCount > 0 ? 1 : 0)
+    }
+
+    /// Пункты автообновления по порядку — выключено, 6, 12 и 24 часа.
+    static func refreshOptions(_ texts: PgTexts) -> [PgOption<RefreshInterval>] {
+        [
+            PgOption(value: RefreshInterval.off, title: texts.subsRefreshOff), PgOption(value: RefreshInterval.every6Hours, title: texts.subsRefresh6),
+            PgOption(value: RefreshInterval.every12Hours, title: texts.subsRefresh12), PgOption(value: RefreshInterval.every24Hours, title: texts.subsRefresh24),
+        ]
+    }
+
+    /// Почему подписки сейчас не обновляются: включено «только через VPN», а защита не «Подключено»; иначе — nil.
+    static func blockNote(_ settings: SubscriptionSettings, state: TunnelState, _ texts: PgTexts) -> String? {
+        settings.onlyViaVpn && state != .connected ? texts.subsVpnBlockedOff : nil
+    }
+
+    /// Группа сервера, через который идет или поднимается защита (в любом состоянии, кроме «Выключено», — как у десктопа):
+    /// удалять ее — значит отключить VPN. «Мои серверы» — `mine`; защита выключена — nil.
+    static func inUse(_ home: HomeState) -> String? {
+        guard home.status.state != .off, let server = home.inUse else {
+            return nil
+        }
+
+        return server.subscriptionId ?? mine
+    }
+
+    /// Вопрос перед удалением группы: значок корзины на красном, «Удалить «…»?», сколько серверов уйдет с ключами (и что VPN
+    /// отключится, если защита идет через один из них), «Удалить» — красная основная, «Отмена».
+    static func removeDialog(name: String, servers: Int, inUse: Bool, _ texts: PgTexts) -> PgDialog {
+        let count = Self.servers(servers, texts)
+        return PgDialog(
+            kind: .danger, icon: PgIcons.trash, title: texts.subsRemoveTitle(name), text: inUse ? texts.subsRemoveTextInUse(count) : texts.subsRemoveText(count),
+            primary: texts.dialogDeleteServerDelete, secondary: texts.dialogCancel
+        )
+    }
+
+    /// Состояние группы: без адреса — «Вручную», последняя попытка не удалась — «Ошибка», иначе «Работает».
+    static func chip(_ group: GroupItem) -> GroupChip {
+        !group.canUpdate ? .manual : group.failure != nil ? .error : .ok
+    }
+
+    /// «12 серверов · обновлено в 18:10» или после неудачи «12 серверов · последняя попытка 5 мин назад».
+    static func meta(_ group: GroupItem, now: Date, _ texts: PgTexts) -> String {
+        let servers = Self.servers(group.servers, texts)
+        if group.failure != nil, let attempt = group.lastAttemptAt {
+            return texts.subsMetaAttempt(servers, ago(TimeText.ago(attempt, now: now), texts))
+        }
+
+        if let updated = group.updatedAt {
+            return texts.subsMetaUpdated(servers, day(TimeText.day(updated, now: now, zone: .current), texts))
+        }
+
+        return servers
+    }
+
+    /// Причина последней неудачи и что осталось прошлое: «Сервер ответил 403 — доступ запрещен… Оставлена прошлая версия
+    /// списка — серверы работают.»; удачно — nil.
+    static func failure(_ group: GroupItem, _ texts: PgTexts) -> String? {
+        group.failure.map { texts.subsError(reason(FailureReason.of($0, status: group.status), texts)) }
+    }
+
+    /// Подсказка в поле нового адреса — маска текущего; у профиля без адреса — начало адреса.
+    static func urlPlaceholder(_ group: GroupItem) -> String {
+        group.maskedUrl ?? "https://…"
     }
 
     /// «1 сервер», «3 сервера», «12 серверов».
     static func servers(_ count: Int, _ texts: PgTexts) -> String {
         texts.text(key: "subs.servers." + Plural.form(count, texts.language.rawValue), [String(count)]) ?? String(count)
-    }
-}
-
-/// Состояние группы: «Работает», «Ошибка», «Вручную» — словом и цветом.
-private struct StateChip: View {
-    enum Chip {
-        case ok
-        case error
-        case manual
-    }
-
-    let texts: PgTexts
-    let chip: Chip
-
-    var body: some View {
-        let (text, color, tint): (String, PgRGBA, PgRGBA) = switch chip {
-        case .ok: (texts.subsChipOk, PgColor.Status.Success.text, PgColor.Status.Success.tint)
-        case .error: (texts.subsChipError, PgColor.Status.Danger.text, PgColor.Status.Danger.tint)
-        case .manual: (texts.subsChipManual, PgColor.Text.secondary, PgColor.Control.segmentTrack)
-        }
-        Text(text)
-            .pgText(PgType.caption)
-            .foregroundStyle(Color(color))
-            .padding(.horizontal, PgSpace.s)
-            .padding(.vertical, 2)
-            .background(RoundedRectangle(cornerRadius: PgRadius.chip, style: .continuous).fill(Color(tint)))
-    }
-}
-
-/// Карточка подписки или профиля: название и состояние, адрес (маска), серверы и время, причина неудачи, действия.
-private struct GroupCard: View {
-    let texts: PgTexts
-    let group: GroupItem
-    let busy: Bool
-    let onUpdate: () -> Void
-    let onEdit: () -> Void
-    let onRemove: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: PgSpace.xs) {
-            HStack {
-                Text(group.name).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
-                Spacer(minLength: PgSpace.s)
-                StateChip(texts: texts, chip: !group.canUpdate ? .manual : group.failure != nil ? .error : .ok)
-            }
-
-            Text(group.maskedUrl ?? texts.subsManualAddress)
-                .pgText(group.maskedUrl != nil ? PgType.mono : PgType.small)
-                .foregroundStyle(Color(PgColor.Text.secondary))
-                .lineLimit(1)
-            Text(meta).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted)).accessibilityIdentifier("group.meta")
-            if let failure = group.failure {
-                Text(texts.subsError(Self.reason(FailureReason.of(failure, status: group.status), texts)))
-                    .pgText(PgType.small)
-                    .foregroundStyle(Color(PgColor.Status.Danger.text))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(PgSpace.s)
-                    .background(RoundedRectangle(cornerRadius: PgRadius.button, style: .continuous).fill(Color(PgColor.Status.Danger.tint)))
-                    .padding(.top, PgSpace.s)
-                    .accessibilityIdentifier("group.error")
-            }
-
-            HStack(spacing: PgSpace.m) {
-                if group.canUpdate {
-                    PgTextAction(label: busy ? texts.importDownloading : texts.subsUpdate, enabled: !busy, identifier: "subs.update", action: onUpdate)
-                }
-
-                PgTextAction(label: texts.subsEdit, identifier: "subs.edit", action: onEdit)
-                PgTextAction(label: texts.subsRemove(group.name), color: PgColor.Status.Danger.text, identifier: "subs.remove", action: onRemove)
-                    .lineLimit(1)
-            }
-        }
-        .pgCard()
-        .accessibilityIdentifier("group.\(group.id)")
-    }
-
-    /// «12 серверов · обновлено в 18:10» или после неудачи «12 серверов · последняя попытка 5 мин назад».
-    private var meta: String {
-        let servers = SubscriptionsView.servers(group.servers, texts)
-        let now = Date()
-        if group.failure != nil, let attempt = group.lastAttemptAt {
-            return texts.subsMetaAttempt(servers, Self.ago(TimeText.ago(attempt, now: now), texts))
-        }
-
-        if let updated = group.updatedAt {
-            return texts.subsMetaUpdated(servers, Self.day(TimeText.day(updated, now: now, zone: .current), texts))
-        }
-
-        return servers
     }
 
     static func day(_ day: Day, _ texts: PgTexts) -> String {
@@ -298,8 +289,118 @@ private struct GroupCard: View {
     }
 }
 
-/// «Изменить»: название и новый адрес (пустой — прежний); адрес хранится только в Связке ключей.
-private struct EditCard: View {
+/// Состояние группы: «Работает», «Ошибка», «Вручную».
+enum GroupChip: Equatable {
+    case ok
+    case error
+    case manual
+}
+
+/// Метка состояния (.sb-health): круглая, caption полужирным; «Работает» — success.tint и success.badge, «Ошибка» — тона
+/// warning (последняя попытка не удалась, а прошлый список работает), «Вручную» — серая.
+private struct StateChip: View {
+    let texts: PgTexts
+    let chip: GroupChip
+
+    var body: some View {
+        let (text, color, tint): (String, PgRGBA, PgRGBA) = switch chip {
+        case .ok: (texts.subsChipOk, PgColor.Status.Success.badge, PgColor.Status.Success.tint)
+        case .error: (texts.subsChipError, PgColor.Status.Warning.badge, PgColor.Status.Warning.tint)
+        case .manual: (texts.subsChipManual, PgColor.Text.secondary, PgColor.Control.segmentTrack)
+        }
+        Text(text)
+            .pgText(PgType.caption.with(weight: 600))
+            .foregroundStyle(Color(color))
+            .lineLimit(1)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 3)
+            .background(Capsule().fill(Color(tint)))
+            .fixedSize()
+    }
+}
+
+/// Карточка группы (.sb-card): название (title, 700) и маска адреса моноширинным мелко, справа метка состояния; число
+/// серверов и время; причина неудачи — оранжевая плашка; внизу «Обновить» (мягкая, стрелка крутится, пока идет), «Изменить»
+/// и корзина справа цветом danger.text. У «Моих серверов» — только корзина.
+private struct GroupCard: View {
+    let texts: PgTexts
+    let name: String
+    let address: String
+    let chip: GroupChip
+    let meta: String
+    var failure: String?
+    var busy = false
+    var onUpdate: (() -> Void)?
+    var onEdit: (() -> Void)?
+    let onRemove: () -> Void
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
+        VStack(alignment: .leading, spacing: PgSpace.s) {
+            HStack(alignment: .top, spacing: 0) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(name).pgText(PgType.title.with(weight: 700)).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
+                    Text(address)
+                        .pgText(PgTextStyle(size: PgType.caption.size, weight: PgType.mono.weight, mono: true))
+                        .foregroundStyle(Color(PgColor.Text.muted))
+                        .lineLimit(1)
+                }
+                .padding(.trailing, PgSpace.m)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                StateChip(texts: texts, chip: chip)
+            }
+
+            Text(meta).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary)).accessibilityIdentifier("group.meta")
+            if let failure {
+                Text(failure)
+                    .pgText(PgType.caption)
+                    .foregroundStyle(Color(PgColor.Status.Warning.badge))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, PgSpace.s)
+                    .padding(.horizontal, PgSpace.m)
+                    .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color(PgColor.Status.Warning.tint)))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Color(PgColor.Status.Warning.line), lineWidth: 1))
+                    .accessibilityIdentifier("group.error")
+            }
+
+            HStack(spacing: 0) {
+                if let onUpdate {
+                    PgSmallButton(label: texts.subsUpdate, icon: PgIcons.refresh, soft: true, spinning: busy, identifier: "subs.update", action: onUpdate)
+                        .padding(.trailing, PgSpace.xs)
+                }
+
+                if let onEdit {
+                    PgSmallButton(label: texts.subsEdit, identifier: "subs.edit", action: onEdit)
+                }
+
+                Spacer(minLength: PgSpace.s)
+                Button(action: onRemove) {
+                    PgIcon(data: PgIcons.trash, color: Color(PgColor.Status.Danger.text), size: 18, lineWidth: 1.9)
+                        .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PgPressStyle())
+                .accessibilityLabel(texts.subsRemove(name))
+                .accessibilityIdentifier("subs.remove")
+            }
+            .padding(.top, 2)
+        }
+        .padding(.top, 14)
+        .padding(.trailing, PgSpace.l)
+        .padding(.bottom, PgSpace.l)
+        .padding(.leading, PgSpace.card)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(shape.fill(Color(PgColor.Surface.card)))
+        .overlay(shape.strokeBorder(Color(PgColor.Line.border), lineWidth: 1))
+    }
+}
+
+/// Лист «Изменить» (.sb-sheet, SubscriptionEditView десктопа): заголовок «Изменить «…»» и крестик «Закрыть»; «Название» до
+/// 64 знаков и «Новый адрес подписки» моноширинным с подсказкой-маской текущего (пустой — прежний); адрес хранится только в
+/// Связке ключей; внизу рядом «Отмена» и «Сохранить». Профилю без адреса тоже можно дать адрес — он станет подпиской.
+struct SubscriptionEditView: View {
     let texts: PgTexts
     let group: GroupItem
     let onSave: (String, String) async -> Bool
@@ -309,6 +410,7 @@ private struct EditCard: View {
     // Новый адрес подписки — секрет: в сохраненное состояние окна он не пишется (@State живет только в памяти).
     @State private var url = ""
     @State private var bad = false
+    @State private var saving = false
 
     init(texts: PgTexts, group: GroupItem, onSave: @escaping (String, String) async -> Bool, onClose: @escaping () -> Void) {
         self.texts = texts
@@ -319,33 +421,90 @@ private struct EditCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: PgSpace.s) {
-            Text(texts.subsEditTitle(group.name)).pgText(PgType.title).foregroundStyle(Color(PgColor.Text.primary))
-            Text(texts.subsEditName).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
-            PgField(placeholder: "", text: $name, identifier: "subs.edit.name")
-            // Профилю без адреса тоже можно дать адрес — он станет подпиской.
-            Text(texts.subsEditUrl).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
-            PgField(placeholder: "https://", text: $url, identifier: "subs.edit.url")
-                .keyboardType(.URL)
-                .onChange(of: url) { _ in bad = false }
-            Text(texts.subsEditUrlNote(texts.iosKeychain)).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.muted))
-            if bad {
-                Text(texts.subsEditUrlBad).pgText(PgType.small).foregroundStyle(Color(PgColor.Status.Danger.text)).accessibilityIdentifier("subs.edit.bad")
+        VStack(spacing: 0) {
+            HStack(spacing: PgSpace.s) {
+                Text(texts.subsEditTitle(group.name))
+                    .pgText(PgType.status)
+                    .foregroundStyle(Color(PgColor.Text.primary))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityAddTraits(.isHeader)
+                Button(action: onClose) {
+                    PgIcon(data: PgIcons.close, color: Color(PgColor.Text.secondary), size: 20, lineWidth: 2.2)
+                        .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PgPressStyle())
+                .accessibilityLabel(texts.cardClose)
+                .accessibilityIdentifier("subs.edit.close")
             }
 
-            PgButton(label: texts.subsEditSave, enabled: !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, identifier: "subs.edit.save") {
-                Task {
-                    if await onSave(name, url) {
-                        onClose()
-                    } else {
-                        bad = true
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: PgSpace.xs) {
+                        label(texts.subsEditName)
+                        PgField(placeholder: "", text: $name, identifier: "subs.edit.name")
+                            .accessibilityLabel(texts.subsEditName)
+                    }
+
+                    VStack(alignment: .leading, spacing: PgSpace.xs) {
+                        label(texts.subsEditUrl)
+                        PgField(
+                            placeholder: SubscriptionsLook.urlPlaceholder(group), text: $url,
+                            style: PgTextStyle(size: PgType.caption.size, weight: PgType.mono.weight, mono: true), identifier: "subs.edit.url"
+                        )
+                        .keyboardType(.URL)
+                        .accessibilityLabel(texts.subsEditUrl)
+                        Text(texts.subsEditUrlNote(texts.iosKeychain))
+                            .pgText(PgType.caption)
+                            .foregroundStyle(Color(PgColor.Text.muted))
+                            .fixedSize(horizontal: false, vertical: true)
+                        if bad {
+                            Text(texts.subsEditUrlBad)
+                                .pgText(PgType.caption)
+                                .foregroundStyle(Color(PgColor.Status.Warning.badge))
+                                .accessibilityIdentifier("subs.edit.bad")
+                        }
                     }
                 }
+                .padding(.vertical, PgSpace.card)
             }
-            .padding(.top, PgSpace.s)
-            PgTextAction(label: texts.dialogCancel, identifier: "subs.edit.cancel", action: onClose)
+
+            HStack(spacing: PgSpace.s) {
+                PgActionButton(label: texts.dialogCancel, kind: .secondary, identifier: "subs.edit.cancel", height: 50, action: onClose)
+                PgActionButton(label: texts.subsEditSave, enabled: canSave && !saving, identifier: "subs.edit.save", height: 50) {
+                    save()
+                }
+            }
         }
-        .pgCard()
+        .onChange(of: url) { _ in bad = false }
+        .onChange(of: name) { next in
+            if next.count > ServerNames.maxLength {
+                name = String(next.prefix(ServerNames.maxLength))
+            }
+        }
         .accessibilityIdentifier("subs.editor")
+    }
+
+    private var canSave: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private func label(_ text: String) -> some View {
+        Text(text).pgText(PgType.small.with(weight: PgType.bodyStrong.weight)).foregroundStyle(Color(PgColor.Text.secondary))
+    }
+
+    /// «Сохранить»: новый адрес сразу проверяется загрузкой; не http(s) — подсказка под полем, лист остается.
+    private func save() {
+        saving = true
+        Task {
+            let saved = await onSave(name, url)
+            saving = false
+            if saved {
+                onClose()
+            } else {
+                bad = true
+            }
+        }
     }
 }

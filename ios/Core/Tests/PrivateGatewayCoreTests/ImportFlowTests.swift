@@ -101,4 +101,19 @@ final class ImportFlowTests: XCTestCase {
         XCTAssertEqual(groups.map(\.name), ["Работа"])
         XCTAssertTrue(groups[0].canUpdate, "подписка по адресу обновляется")
     }
+
+    func testTheSameSubscriptionAddedAgainIsUpdatedAndSaysWhatWasRemoved() async throws {
+        let url = try XCTUnwrap(SubscriptionAddress.parse("https://example.com/sub/0123456789abcdef"))
+        let first = ImportParser.parse(try [link("vmess/ws-tls"), link("trojan/ws")].joined(separator: "\n"))
+        try await ImportFlow.add(first, name: "Работа", url: url, servers: servers, settings: settings)
+
+        // В подписке теперь другой набор: vmess остался, trojan пропал, vless пришел (решение 528 — обновить, а не вторая группа).
+        let second = ImportParser.parse(try [link("vmess/ws-tls"), link("vless/reality-vision")].joined(separator: "\n"))
+        let result = try await ImportFlow.add(second, name: "", url: url, servers: servers, settings: settings)
+        XCTAssertEqual(result.added, 1)
+        XCTAssertEqual(result.duplicates, 1)
+        XCTAssertEqual(result.removed, 1, "окно скажет «обновлена: новых 1, удалено 1»")
+        let groups = try await servers.groups()
+        XCTAssertEqual(groups.map(\.servers), [2])
+    }
 }

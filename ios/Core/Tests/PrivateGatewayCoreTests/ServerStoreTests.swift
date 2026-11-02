@@ -142,7 +142,7 @@ final class ServerStoreTests: XCTestCase {
         // Тот же сервер с закрепленным сертификатом — дубль, но защита берется из новой ссылки (решение 484).
         let pinned = try XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90#Pinned").server)
         let again = try await store.add([pinned])
-        XCTAssertEqual(again, AddResult(added: 0, duplicates: 1))
+        XCTAssertEqual(again, AddResult(added: 0, duplicates: 1, renewed: 1))
 
         let loaded = try await store.load(id)
         XCTAssertEqual(loaded?.security.pinnedPeerCertSha256, ["a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"])
@@ -168,12 +168,43 @@ final class ServerStoreTests: XCTestCase {
             XCTUnwrap(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&pcs=\(pin)#B").server),
         ]
         let result = try await store.add(pinned)
-        XCTAssertEqual(result, AddResult(added: 0, duplicates: 2))
+        XCTAssertEqual(result, AddResult(added: 0, duplicates: 2, renewed: 1), "защиту из импорта берет только сервер профиля без адреса")
 
         let loadedA = try await store.load(a)
         let loadedB = try await store.load(b)
         XCTAssertNil(loadedA?.security.pinnedPeerCertSha256)
         XCTAssertEqual(loadedB?.security.pinnedPeerCertSha256, [pin])
+    }
+
+    func testPreviewCountsDuplicatesAndRenewalsLikeTheAddWithoutWriting() async throws {
+        let pin = "a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90"
+        let saved = try XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&allowInsecure=1#A").server)
+        let subscribed = try XCTUnwrap(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&allowInsecure=1#B").server)
+        try await store.add([saved])
+        try await store.add([subscribed], group: "Провайдер", url: url)
+        let before = try state()
+        let keys = vault.all
+
+        // Тот же сервер под другим названием и с закрепленным сертификатом — дубль, у сохраненного обновится защита; сервер
+        // подписки с адресом — дубль без обновления (его ведет подписка); новый, повторенный в тексте, — один новый и дубль.
+        let fresh = try XCTUnwrap(Self.unique.first)
+        let incoming = try [
+            XCTUnwrap(LinkParser.parse("trojan://pw-a@198.51.100.1:443?sni=example.com&pcs=\(pin)#Другое").server),
+            XCTUnwrap(LinkParser.parse("trojan://pw-b@198.51.100.2:443?sni=example.com&pcs=\(pin)#B").server),
+            fresh,
+            renamed(fresh, "Повтор"),
+        ]
+        let count = try await store.countImport(incoming)
+        XCTAssertEqual(count, ImportCount(duplicates: 3, renewals: 1))
+        XCTAssertEqual(try state(), before, "предпросмотр ничего не пишет")
+        XCTAssertEqual(vault.all, keys, "и в Связку ключей тоже")
+
+        let result = try await store.add(incoming)
+        XCTAssertEqual(result.added, incoming.count - count.duplicates, "новых — сколько обещал предпросмотр")
+        XCTAssertEqual(result.duplicates, count.duplicates)
+        XCTAssertEqual(result.renewed, count.renewals)
+        let again = try await store.countImport(incoming)
+        XCTAssertEqual(again, ImportCount(duplicates: incoming.count, renewals: 0), "все уже добавлено, защита уже новая")
     }
 
     func testOwnNameIsShownInTheListWhileTheLinkKeepsItsName() async throws {

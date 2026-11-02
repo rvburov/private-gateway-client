@@ -17,6 +17,8 @@ import com.privategateway.client.inspect.PhoneNetworkSource
 import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.ui.qr.DeviceQrImages
 import com.privategateway.client.ui.qr.QrImages
+import com.privategateway.client.ui.servers.DeviceImportFiles
+import com.privategateway.client.ui.servers.ImportFiles
 import com.privategateway.client.vpn.AppByteCounters
 import com.privategateway.client.vpn.ByteCounters
 import com.privategateway.client.vpn.CoreEngine
@@ -83,6 +85,10 @@ abstract class BindingsModule {
     @Binds
     @Singleton
     abstract fun qrImages(images: DeviceQrImages): QrImages
+
+    @Binds
+    @Singleton
+    abstract fun importFiles(files: DeviceImportFiles): ImportFiles
 
     @Binds
     @Singleton

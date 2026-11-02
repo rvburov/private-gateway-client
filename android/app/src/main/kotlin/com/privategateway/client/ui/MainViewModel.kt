@@ -29,6 +29,9 @@ import com.privategateway.client.subscriptions.SubscriptionNotice
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.ui.qr.QrImages
 import com.privategateway.client.ui.qr.QrRead
+import com.privategateway.client.ui.servers.FileRead
+import com.privategateway.client.ui.servers.ImportFile
+import com.privategateway.client.ui.servers.ImportFiles
 import com.privategateway.client.vpn.ByteCounters
 import com.privategateway.client.vpn.ByteSample
 import com.privategateway.client.vpn.CoreEngine
@@ -134,10 +137,21 @@ enum class PowerAction {
     Choose,
 }
 
+/** Откуда текст для импорта — выбранная карточка «Добавить профиль» (ImportSource десктопа). */
+enum class ImportSource {
+    None,
+    Clipboard,
+    Qr,
+    Link,
+    File,
+}
+
 /**
- * Текст импорта и его разбор; адрес подписки — загруженная подписка ([url], название из Profile-Title, http без
- * шифрования), идет ли загрузка и почему не вышло; название профиля; идет ли добавление и его итог (null — еще не
- * добавляли). Адрес подписки — секрет: живет только здесь, в памяти окна.
+ * Текст поля ссылки и разбор выбранного источника ([source]); до добавления — сколько из серверов уже есть ([duplicates]) и у
+ * скольких сохраненных обновится защита ([renewals], решение 484). Адрес подписки — загруженная подписка ([url], название из
+ * Profile-Title, http без шифрования), идет ли загрузка и почему не вышло; название профиля; идет ли добавление и его итог
+ * (null — еще не добавляли: после — новых, дублей, обновленных и удаленных из подписки). Адрес подписки — секрет: живет только
+ * здесь, в памяти окна.
  */
 data class ImportUi(
     val text: String = "",
@@ -154,7 +168,19 @@ data class ImportUi(
     val name: String = "",
     val qrReading: Boolean = false,
     @param:StringRes val qrProblem: Int? = null,
-)
+    val source: ImportSource = ImportSource.None,
+    val renewals: Int = 0,
+    /** Добавление обновило уже добавленную подписку: сколько серверов, пропавших из нее, удалено. */
+    val removed: Int = 0,
+    /** Что не вышло у источника: в буфере нет текста, файл не прочитан. */
+    val problem: Message? = null,
+) {
+    /** Разобранных серверов — строки без ошибок. */
+    val parsed: Int get() = batch?.let { it.found - it.failed } ?: 0
+
+    /** Новых — разобранные без дублей: столько добавит «Добавить» (NewText десктопа). */
+    val fresh: Int get() = (parsed - duplicates).coerceAtLeast(0)
+}
 
 @HiltViewModel
 class MainViewModel @Inject constructor(
@@ -170,6 +196,7 @@ class MainViewModel @Inject constructor(
     private val web: WebFetch,
     private val networks: PhoneNetworkSource,
     private val counters: ByteCounters,
+    private val files: ImportFiles,
 ) : ViewModel() {
     private val webIp = MutableStateFlow(WebIp())
 
@@ -432,10 +459,11 @@ class MainViewModel @Inject constructor(
     /** Адрес сервера для карточки («адрес:порт»): открывается из запечатанной ссылки только по просьбе карточки. */
     suspend fun address(id: String): String? = servers.address(id)
 
+    /** Текст поля ссылки изменился: прежний разбор и ответ подписки, который еще идет, не нужны. */
     fun edit(text: String) {
         if (text != importState.value.text) {
             ++previews
-            importState.update { ImportUi(text = text, name = it.name) }
+            importState.update { ImportUi(text = text, name = it.name, source = it.source) }
         }
     }
 
@@ -446,25 +474,82 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * Разобрать текст: ссылки, base64, sing-box или Clash — тем же разбором, что у десктопа (shared/testdata). Одна строка
-     * с адресом http(s) — подписка: сначала загрузить, потом разобрать ответ; название профиля — из Profile-Title или сервер
-     * подписки. Ответ на прежнюю проверку, пришедший после новой, отбрасывается.
+     * Выбран источник — карточка «Добавить профиль», как у десктопа: прежний предпросмотр и ответы, которые еще идут, не
+     * нужны; название профиля — заново (у файла — его имя, у подписки — Profile-Title). Текст поля ссылки остается.
      */
-    fun preview(text: String) {
+    fun selectSource(chosen: ImportSource) {
+        ++previews
+        importState.update { ImportUi(text = it.text, source = chosen) }
+    }
+
+    /**
+     * «Из буфера обмена»: текст разбирается как введенный, но в поле ссылки не попадает — в нем мог быть свой текст. Текста
+     * нет — так и сказать.
+     */
+    fun fromClipboard(text: String?) {
+        selectSource(ImportSource.Clipboard)
+        if (text.isNullOrBlank()) {
+            importState.update { it.copy(problem = Message(R.string.import_empty_clipboard)) }
+        } else {
+            analyze(text, suggested = null)
+        }
+    }
+
+    /**
+     * «Открыть файл»: текст файла — тем же разбором, название профиля — имя файла без расширения (как у десктопа). Не
+     * прочитан — «Файл не прочитан: имя». Ответ на прежний файл, пришедший после нового выбора, отбрасывается.
+     */
+    fun previewFile(file: Uri) {
         val attempt = ++previews
-        importState.update { ImportUi(text = it.text, name = it.name) }
+        importState.update { ImportUi(text = it.text, source = ImportSource.File) }
+        viewModelScope.launch {
+            val read = files.read(file)
+            if (attempt != previews) {
+                return@launch
+            }
+
+            when (read) {
+                is FileRead.Found -> analyze(read.text, suggested = read.name?.let { ImportFile.profileName(it) })
+                is FileRead.Failed -> importState.update { it.copy(problem = Message(R.string.import_file_failed, read.name ?: "—")) }
+            }
+        }
+    }
+
+    /** «Проверить» у поля ссылки и код с камеры: текст разбирается, название профиля — прежнее (у подписки — Profile-Title). */
+    fun preview(text: String) = analyze(text, suggested = null)
+
+    /**
+     * Разобрать текст: ссылки, base64, sing-box или Clash — тем же разбором, что у десктопа (shared/testdata); сразу же
+     * сосчитать дубли и у скольких сохраненных обновится защита — до добавления, как ImportPreview десктопа. Одна строка с
+     * адресом http(s) — подписка: сначала загрузить, потом разобрать ответ; название профиля — из Profile-Title или сервер
+     * подписки. [suggested] — название по источнику (имя файла). Ответ на прежнюю проверку, пришедший после новой,
+     * отбрасывается.
+     */
+    private fun analyze(text: String, suggested: String?) {
+        val attempt = ++previews
+        importState.update { ImportUi(it.text, name = it.name, source = it.source) }
         val url = text.trim().takeIf { !it.contains('\n') }?.let { SubscriptionAddress.parse(it) }
         viewModelScope.launch {
             if (url == null) {
                 val batch = withContext(Dispatchers.Default) { ImportParser.parse(text) }
+                val count = servers.count(batch.lines.mapNotNull { it.result.server })
                 if (attempt == previews) {
-                    importState.update { ImportUi(it.text, batch, name = it.name) }
+                    importState.update {
+                        ImportUi(
+                            it.text,
+                            batch,
+                            duplicates = count.duplicates,
+                            renewals = count.renewals,
+                            name = suggested ?: it.name,
+                            source = it.source,
+                        )
+                    }
                 }
 
                 return@launch
             }
 
-            importState.update { ImportUi(it.text, downloading = true, name = it.name) }
+            importState.update { ImportUi(it.text, downloading = true, name = it.name, source = it.source) }
             val downloaded = withContext(Dispatchers.IO) {
                 try {
                     Result.success(source.download(url, onlyViaVpn = false))
@@ -485,13 +570,19 @@ class MainViewModel @Inject constructor(
             if (content == null) {
                 val error = downloaded.exceptionOrNull() as? SubscriptionDownloadException
                 importState.update {
-                    ImportUi(it.text, failure = FailureReason.of(error?.failure ?: DownloadFailure.Network, error?.status), name = it.name)
+                    ImportUi(
+                        it.text,
+                        failure = FailureReason.of(error?.failure ?: DownloadFailure.Network, error?.status),
+                        name = it.name,
+                        source = it.source,
+                    )
                 }
 
                 return@launch
             }
 
             val batch = withContext(Dispatchers.Default) { ImportParser.parse(content.text) }
+            val count = servers.count(batch.lines.mapNotNull { it.result.server })
             val existing = servers.subscriptionFor(url)?.let { id -> servers.groups.first().firstOrNull { it.id == id }?.name }
             if (attempt != previews) {
                 return@launch
@@ -500,10 +591,13 @@ class MainViewModel @Inject constructor(
                 ImportUi(
                     it.text,
                     batch,
+                    duplicates = count.duplicates,
                     url = url,
                     insecure = SubscriptionAddress.insecure(url),
                     existing = existing,
                     name = it.name.ifBlank { SubscriptionFetch.suggestName(content.title, url) },
+                    source = it.source,
+                    renewals = count.renewals,
                 )
             }
         }
@@ -515,7 +609,7 @@ class MainViewModel @Inject constructor(
      */
     fun previewQr(image: Uri) {
         val attempt = ++previews
-        importState.update { ImportUi(it.text, name = it.name, qrReading = true) }
+        importState.update { ImportUi(it.text, name = it.name, qrReading = true, source = ImportSource.Qr) }
         viewModelScope.launch {
             val read = qr.read(image)
             if (attempt != previews) {
@@ -531,17 +625,18 @@ class MainViewModel @Inject constructor(
     }
 
     /**
-     * Камера для QR не открылась или к ней нет доступа: сказать в карточке QR. Текст с камеры разбирает [preview] — как
+     * Камера для QR не открылась или к ней нет доступа: сказать под карточками. Текст с камеры разбирает [preview] — как
      * введенный, а ответ картинки, выбранной раньше, отбрасывается.
      */
     fun cameraProblem(@StringRes text: Int) {
         ++previews
-        importState.update { ImportUi(text = it.text, name = it.name, qrProblem = text) }
+        importState.update { ImportUi(text = it.text, name = it.name, qrProblem = text, source = it.source) }
     }
 
     /**
      * Добавить разобранные серверы; ничего не было выбрано — выбрать первый новый, иначе выбор не меняется. Повторное
-     * нажатие, пока идет добавление, не считается: второе добавление нашло бы одни дубли и затерло итог первого.
+     * нажатие, пока идет добавление, не считается: второе добавление нашло бы одни дубли и затерло итог первого. Итог —
+     * в [ImportUi.added]: окно по нему показывает подсказку и ведет на «Серверы».
      */
     fun add() {
         val current = importState.value
@@ -558,7 +653,14 @@ class MainViewModel @Inject constructor(
             val existing = current.url?.let { servers.subscriptionFor(it) }
             if (existing != null) {
                 val update = servers.applyUpdate(existing, parsed, settings.selectedServerId.first())
-                importState.update { if (it.batch === batch) it.copy(adding = false, added = update.added, duplicates = parsed.size - update.added) else it }
+                val group = servers.groups.first().firstOrNull { it.id == existing }?.name ?: current.existing
+                importState.update {
+                    if (it.batch === batch) {
+                        it.copy(adding = false, added = update.added, duplicates = parsed.size - update.added, removed = update.removed, existing = group)
+                    } else {
+                        it
+                    }
+                }
                 return@launch
             }
 
@@ -568,7 +670,9 @@ class MainViewModel @Inject constructor(
                 servers.servers.first().firstOrNull { it.id !in before }?.let { settings.select(it.id) }
             }
 
-            importState.update { if (it.batch === batch) it.copy(adding = false, added = result.added, duplicates = result.duplicates) else it }
+            importState.update {
+                if (it.batch === batch) it.copy(adding = false, added = result.added, duplicates = result.duplicates, renewals = result.renewed) else it
+            }
         }
     }
 

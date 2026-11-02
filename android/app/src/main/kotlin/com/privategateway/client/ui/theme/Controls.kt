@@ -6,10 +6,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -25,6 +27,7 @@ import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -37,9 +40,12 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -211,7 +217,7 @@ val PgSettingPadding = PaddingValues(horizontal = PgSpace.Card, vertical = PgSpa
 /**
  * Строка настройки (.setting): заголовок полужирным, подпись caption цветом text.muted, справа — [control] (переключатель,
  * кнопка-список). [divider] — полоса line.divider сверху: ее ставят всем строкам карточки, кроме первой. Недоступная
- * строка — серые заголовок и подпись.
+ * строка — серые заголовок и подпись. [extra] — еще строки под подписью (почему настройка сейчас не действует).
  */
 @Composable
 fun PgSetting(
@@ -221,6 +227,7 @@ fun PgSetting(
     enabled: Boolean = true,
     divider: Boolean = false,
     padding: PaddingValues = PgSettingPadding,
+    extra: (@Composable ColumnScope.() -> Unit)? = null,
     control: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
@@ -236,6 +243,8 @@ fun PgSetting(
             if (!caption.isNullOrEmpty()) {
                 Text(caption, color = PgColor.Text.Muted, style = PgType.Caption)
             }
+
+            extra?.invoke(this)
         }
 
         control()
@@ -258,6 +267,7 @@ fun PgSettingSwitch(
     divider: Boolean = false,
     confirm: PgConfirm<Boolean>? = null,
     padding: PaddingValues = PgSettingPadding,
+    extra: (@Composable ColumnScope.() -> Unit)? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     PgSetting(
@@ -276,6 +286,7 @@ fun PgSettingSwitch(
         enabled,
         divider,
         padding,
+        extra,
     ) {
         PgSwitch(checked, enabled = enabled)
     }
@@ -510,9 +521,59 @@ fun PgLinkRow(
     }
 }
 
-/** Заголовок вложенной страницы: «Назад» и название. */
+/**
+ * Поле ввода (.input, TextBox.input): белое, рамка line.strong, в фокусе — 1,5 accent.base; пустое — [placeholder] серым.
+ * Строка ([singleLine]) — по центру высоты 44, в несколько строк — поля 10, как textarea макета; высоту больше задает
+ * [modifier]. [label] — подпись для доступности, тег поля — [tag].
+ */
 @Composable
-fun PgPageHeader(title: String, onBack: () -> Unit) {
+fun PgInput(
+    value: String,
+    onChange: (String) -> Unit,
+    label: String,
+    tag: String,
+    modifier: Modifier = Modifier,
+    placeholder: String? = null,
+    style: TextStyle = PgType.Body,
+    singleLine: Boolean = true,
+) {
+    val shape = RoundedCornerShape(PgRadius.Input)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    BasicTextField(
+        value = value,
+        onValueChange = onChange,
+        singleLine = singleLine,
+        textStyle = style.copy(color = PgColor.Text.Primary),
+        cursorBrush = SolidColor(PgColor.Accent.Base),
+        interactionSource = interaction,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = PgLayout.TouchTarget)
+            .clip(shape)
+            .background(PgColor.Surface.Solid)
+            .border(if (focused) 1.5.dp else 1.dp, if (focused) PgColor.Accent.Base else PgColor.Line.Strong, shape)
+            .padding(horizontal = PgSpace.L, vertical = if (singleLine) PgSpace.L else PgSpace.M)
+            .semantics { contentDescription = label }
+            .testTag(tag),
+        decorationBox = { field ->
+            Box {
+                if (value.isEmpty() && placeholder != null) {
+                    Text(placeholder, color = PgColor.Text.Muted, style = style)
+                }
+
+                field()
+            }
+        },
+    )
+}
+
+/** Кнопка справа в заголовке вложенной страницы: значок и подпись — для доступности («+» — «Добавить подписку»). */
+class PgHeaderAction(val icon: String, val label: String, val tag: String, val onClick: () -> Unit)
+
+/** Заголовок вложенной страницы: «Назад», название и, если есть, кнопка-значок справа ([action], .btn-icon 44). */
+@Composable
+fun PgPageHeader(title: String, onBack: () -> Unit, action: PgHeaderAction? = null) {
     Row(Modifier.fillMaxWidth().padding(top = PgSpace.L), verticalAlignment = Alignment.CenterVertically) {
         val back = stringResource(R.string.common_back)
         Box(
@@ -523,6 +584,28 @@ fun PgPageHeader(title: String, onBack: () -> Unit) {
         }
 
         Spacer(Modifier.width(PgSpace.S))
-        Text(title, style = PgType.H1)
+        Text(title, style = PgType.H1, modifier = Modifier.weight(1f))
+        if (action != null) {
+            HeaderAction(action)
+        }
+    }
+}
+
+/** Кнопка-значок заголовка: при нажатии значок синеет и кнопка сжимается до 0,98, без заливки (решение 485). */
+@Composable
+private fun HeaderAction(action: PgHeaderAction) {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    Box(
+        Modifier
+            .size(PgLayout.TouchTarget)
+            .scale(if (pressed) 0.98f else 1f)
+            .clip(RoundedCornerShape(PgRadius.Button))
+            .clickable(interactionSource = interaction, indication = null, onClickLabel = action.label, role = Role.Button, onClick = action.onClick)
+            .semantics { contentDescription = action.label }
+            .testTag(action.tag),
+        contentAlignment = Alignment.Center,
+    ) {
+        PgIcon(action.icon, null, color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary, size = 22.dp, strokeWidth = 2f)
     }
 }

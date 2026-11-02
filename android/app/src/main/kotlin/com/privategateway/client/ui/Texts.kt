@@ -86,6 +86,22 @@ object Texts {
         else -> R.string.import_added_many
     }
 
+    /** «Обновить защиту 3 серверов» — новых нет, но у сохраненных обновится защита (решение 484). */
+    @StringRes
+    fun importRenew(count: Int, language: String): Int = when (Plural.form(count, language)) {
+        "one" -> R.string.import_renew_one
+        "few" -> R.string.import_renew_few
+        else -> R.string.import_renew_many
+    }
+
+    /** «Защита обновлена у 3 серверов». */
+    @StringRes
+    fun importRenewed(count: Int, language: String): Int = when (Plural.form(count, language)) {
+        "one" -> R.string.import_renewed_one
+        "few" -> R.string.import_renewed_few
+        else -> R.string.import_renewed_many
+    }
+
     /** «2 ошибки». */
     @StringRes
     fun importErrors(count: Int, language: String): Int = when (Plural.form(count, language)) {

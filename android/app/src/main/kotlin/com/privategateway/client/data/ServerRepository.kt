@@ -30,8 +30,14 @@ import java.util.UUID
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/** Итог добавления: новых и уже бывших в списке. */
-data class AddResult(val added: Int, val duplicates: Int)
+/** Итог добавления: новых, уже бывших в списке и сохраненных, которые взяли защиту из новых ссылок (решение 484). */
+data class AddResult(val added: Int, val duplicates: Int, val renewed: Int = 0)
+
+/**
+ * Предпросмотр импорта (CountDuplicates и CountRenewals десктопа): сколько из серверов уже есть и у скольких сохраненных
+ * обновится защита. Ничего не пишется.
+ */
+data class ImportCount(val duplicates: Int, val renewals: Int)
 
 /**
  * Группа серверов для «Профили и подписки» (доска 12): подписка с адресом (открыто — только маска) или профиль без
@@ -87,7 +93,32 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     suspend fun add(servers: List<ServerDefinition>, group: String? = null, url: URI? = null): AddResult =
         withContext(Dispatchers.IO) { writes.withLock { insert(servers, group?.trim()?.takeIf { it.isNotEmpty() }, url) } }
 
-    private suspend fun insert(servers: List<ServerDefinition>, group: String?, url: URI?): AddResult {
+    /**
+     * Сколько из этих серверов уже есть и у скольких сохраненных импорт обновит защиту — для предпросмотра, тем же счетом,
+     * что у [add]: дубли внутри самих серверов тоже дубли.
+     */
+    suspend fun count(servers: List<ServerDefinition>): ImportCount = withContext(Dispatchers.IO) {
+        val snapshot = saved()
+        var duplicates = 0
+        val renewed = HashSet<String>()
+        for (server in servers) {
+            val key = ServerKeys.key(server)
+            if (!snapshot.keys.add(key)) {
+                duplicates++
+                val (entity, stored) = snapshot.renewable[key] ?: continue
+                if (stored.security != server.security) {
+                    renewed.add(entity.id)
+                }
+            }
+        }
+
+        ImportCount(duplicates, renewed.size)
+    }
+
+    /** Сохраненные серверы для импорта: ключи всех и те, чью защиту может взять из новой ссылки импорт. */
+    private class Saved(val keys: HashSet<String>, val renewable: Map<String, Pair<ServerEntity, ServerDefinition>>)
+
+    private suspend fun saved(): Saved {
         // Сохраненные серверы по ключу: тот же сервер, импортированный снова, берет защиту из новой ссылки (решение 484). Серверы
         // подписки с адресом — нет: их защиту ведет обновление подписки, иначе импорт и обновление переписывали бы ее по очереди.
         val refreshed = subscriptions.all().filter { it.sealedUrl != null }.map { it.id }.toSet()
@@ -101,6 +132,13 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
             }
         }
 
+        return Saved(known, stored)
+    }
+
+    private suspend fun insert(servers: List<ServerDefinition>, group: String?, url: URI?): AddResult {
+        val snapshot = saved()
+        val known = snapshot.keys
+        val stored = snapshot.renewable
         var position = dao.lastPosition()
         val now = System.currentTimeMillis()
         val existing = when {
@@ -150,7 +188,7 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
             dao.insertAll(fresh)
         }
 
-        return AddResult(fresh.size, duplicates)
+        return AddResult(fresh.size, duplicates, renewed.size)
     }
 
     /** Сервер целиком — для подключения; нет в списке или не открылся (ключ Keystore утерян) — null. */

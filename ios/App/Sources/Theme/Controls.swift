@@ -48,7 +48,8 @@ struct PgTextAction: View {
 /// Кнопка действия (.btn-primary, .btn-secondary; Button.primary и Button.secondary десктопа): основная — заливка
 /// accent.base и белый полужирный текст, вторая — белая с рамкой line.strong; опасная — красная (status.danger). Во всю
 /// ширину, скругление radius.input, высота не меньше layout.touchTarget; при нажатии — сжатие до 0,98. Крупная кнопка
-/// (.sc-connect карточки сервера) — своя высота `height` и начертание `style`.
+/// (.sc-connect карточки сервера, .im-add «Добавить профиля») — своя высота `height`, начертание `style` и скругление
+/// `radius`.
 struct PgActionButton: View {
     enum Kind {
         case primary
@@ -62,6 +63,7 @@ struct PgActionButton: View {
     var identifier = ""
     var height: Double = PgLayout.touchTarget
     var style: PgTextStyle?
+    var radius: Double = PgRadius.input
     let action: () -> Void
 
     var body: some View {
@@ -72,10 +74,10 @@ struct PgActionButton: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, kind == .primary ? 18 : 14)
                 .frame(maxWidth: .infinity, minHeight: height)
-                .background(RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).fill(Color(paint)))
+                .background(RoundedRectangle(cornerRadius: radius, style: .continuous).fill(Color(paint)))
                 .overlay {
                     if kind == .secondary {
-                        RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous).strokeBorder(Color(border), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(Color(border), lineWidth: 1)
                     }
                 }
                 .contentShape(Rectangle())
@@ -127,6 +129,47 @@ struct PgSpinningIcon: View {
     }
 }
 
+/// Небольшая кнопка в строке (.btn-small, Button.small десктопа): высота 36, поля 12, скругление 10, белая с рамкой
+/// line.strong, текст small; мягкая (`soft`, .btn-small.soft) — подложка accent.tint, рамка accent.line, текст accent.text
+/// полужирным. Значок 15 слева может крутиться (`spinning`, data-spin): пока крутится, кнопка не меняется и нажатия не
+/// принимает — работа уже идет. Недоступная — серым текстом, прозрачность 0,6 (решение 530).
+struct PgSmallButton: View {
+    let label: String
+    var icon: String?
+    var soft = false
+    var spinning = false
+    var enabled = true
+    var identifier = ""
+    let action: () -> Void
+
+    var body: some View {
+        let ink = enabled ? (soft ? PgColor.Accent.text : PgColor.Text.primary) : PgColor.Text.muted
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        Button(action: action) {
+            HStack(spacing: PgSpace.xs) {
+                if let icon {
+                    PgSpinningIcon(data: icon, spinning: spinning, color: Color(ink), size: 15, lineWidth: 2.2)
+                }
+
+                Text(label)
+                    .pgText(soft ? PgType.small.with(weight: PgType.bodyStrong.weight) : PgType.small)
+                    .foregroundStyle(Color(ink))
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, PgSpace.l)
+            .frame(minHeight: 36)
+            .background(shape.fill(Color(soft ? PgColor.Accent.tint : PgColor.Surface.solid)))
+            .overlay(shape.strokeBorder(Color(soft ? PgColor.Accent.line : PgColor.Line.strong), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PgPressStyle())
+        .disabled(!enabled)
+        .allowsHitTesting(!spinning)
+        .opacity(enabled ? 1 : 0.6)
+        .accessibilityIdentifier(identifier)
+    }
+}
+
 /// Нажатие кнопки (app.css :active, :pressed десктопа): сжатие до 0,98, без серой заливки.
 struct PgPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
@@ -160,10 +203,12 @@ struct PgSwitch: View {
 /// Строка с переключателем — строка настройки (.setting: заголовок полужирным, подпись caption цветом text.muted) с
 /// переключателем .switch справа; нажимается вся строка. Опасное включение или выключение — через диалог (data-confirm-on и
 /// data-confirm-off макета, ConfirmSwitch десктопа): строка сама не переключается, положение приходит из `isOn` после «да».
-/// `padded` — поля 12 × 16 для строки в карточке без своих полей (`pgCard(padding: 0)`, строки разделяет `PgDivider`).
+/// `padded` — поля 12 × 16 для строки в карточке без своих полей (`pgCard(padding: 0)`, строки разделяет `PgDivider`);
+/// `warning` — третья строка подписи цветом status.warning.badge: почему настройка сейчас не действует.
 struct PgToggleRow: View {
     let title: String
     var text: String?
+    var warning: String?
     let isOn: Bool
     var enabled = true
     var padded = false
@@ -181,7 +226,7 @@ struct PgToggleRow: View {
                 onChange(next)
             }
         } label: {
-            PgSettingRow(title: title, caption: text, enabled: enabled, padded: padded) {
+            PgSettingRow(title: title, caption: text, warning: warning, enabled: enabled, padded: padded) {
                 PgSwitch(isOn: isOn, enabled: enabled)
             }
             .frame(minHeight: PgLayout.touchTarget)
@@ -275,16 +320,28 @@ struct PgChoiceRow: View {
     }
 }
 
-/// Заголовок вложенной страницы: «Назад» и название.
+/// Кнопка справа в шапке подстраницы: значок, подпись для VoiceOver и действие («+» — «Добавить подписку»).
+struct PgHeaderAction {
+    let icon: String
+    let label: String
+    var identifier = ""
+    let action: () -> Void
+}
+
+/// Заголовок вложенной страницы: «Назад», название и необязательная кнопка справа (`action`). Неподвижная шапка над
+/// прокруткой (`fixed`, .pg-page-header, .im-head и .sb-head доски): высота 60, поля 8 по краям, зазор 4, «Назад» со значком 22
+/// линией 2,2, название h1; иначе — первая строка прокручиваемой колонки, поля дает колонка.
 struct PgPageHeader: View {
     let title: String
     let texts: PgTexts
+    var action: PgHeaderAction?
+    var fixed = false
     let onBack: () -> Void
 
     var body: some View {
-        HStack(spacing: PgSpace.s) {
+        HStack(spacing: fixed ? PgSpace.xxs : PgSpace.s) {
             Button(action: onBack) {
-                PgIcon(data: PgIcons.back, size: 22, lineWidth: 2)
+                PgIcon(data: PgIcons.back, size: 22, lineWidth: fixed ? 2.2 : 2)
                     .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
                     .contentShape(Circle())
             }
@@ -292,10 +349,28 @@ struct PgPageHeader: View {
             .accessibilityLabel(texts.commonBack)
             .accessibilityIdentifier("back")
 
-            Text(title).pgText(PgType.h1).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(2)
+            Text(title)
+                .pgText(PgType.h1)
+                .foregroundStyle(Color(PgColor.Text.primary))
+                .lineLimit(2)
+                .minimumScaleFactor(fixed ? 0.8 : 1)
+                .accessibilityAddTraits(.isHeader)
             Spacer(minLength: 0)
+            if let action {
+                Button(action: action.action) {
+                    PgIcon(data: action.icon, size: 22, lineWidth: 2)
+                        .frame(width: PgLayout.touchTarget, height: PgLayout.touchTarget)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PgPressStyle())
+                .accessibilityLabel(action.label)
+                .accessibilityIdentifier(action.identifier)
+            }
         }
-        .padding(.top, PgSpace.l)
+        .padding(.top, fixed ? 0 : PgSpace.l)
+        .padding(.leading, fixed ? PgSpace.s : 0)
+        .padding(.trailing, fixed ? (action == nil ? PgSpace.windowSideMobile : PgSpace.s) : 0)
+        .frame(minHeight: fixed ? 60 : nil)
     }
 }
 
