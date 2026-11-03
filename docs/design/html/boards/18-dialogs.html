@@ -114,7 +114,7 @@
   .dl-tiles .btn-tile { background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-strong); }
   .dl-tiles .btn-tile.danger { border-color: var(--pg-color-status-danger-line); }
 
-  /* Профили и подписки: группа (Border.subscription) */
+  /* Профили и списки серверов: группа (Border.subscription) */
   .dl-sub { margin: 0 var(--side); padding: 14px 12px 12px 16px; border-radius: 18px; border: 1px solid var(--pg-color-line-border);
     background: var(--pg-color-surface-card); display: flex; flex-direction: column; gap: 6px; }
   .dl-sub-name { font-size: var(--pg-type-title-size); font-weight: 700; }
@@ -136,7 +136,7 @@
   Esc и щелчок мимо; опасный — белая с красной рамкой. У удаления наоборот: основная — красная «Удалить», безопасная — «Отмена». Первый
   экран — живой: тумблеры и «Открыть» задают свои вопросы. Остальные показывают каждый вопрос открытым поверх своей страницы
   (страницы целиком, как на досках 2, 4, 5, 6, 12, 14); после ответа страница видна, и вопрос задается снова тем же нажатием.
-  «Удалить» убирает сервер из списка и группу из подписок, «Снять защиту» выключает защиту.</p>
+  «Удалить» убирает сервер из списка и группу из списков серверов, «Снять защиту» выключает защиту.</p>
 
 <div class="pg-screens">
   <!-- ===================== Защита и утечки · нажмите, чтобы спросить ===================== -->
@@ -309,7 +309,7 @@
       <div class="dl-servers-head"><span class="t-h1 pg-grow">Серверы</span><button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button><button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button></div>
       <div class="search dl-search"><i data-icon="Search" data-stroke="2" data-size="16"></i><input type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера"><button class="btn-icon" style="width: 38px; height: 38px" data-nav="02-servers.html" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="2" data-size="18"></i></button></div>
       <div class="segments dl-tabs" role="tablist"><button class="segment on"><span>Все · <span data-page="has-us">7</span><span data-page="no-us" hidden>6</span></span></button><button class="segment">Избранные</button><button class="segment">Недавние</button></div>
-      <div class="pg-row" style="margin: 14px calc(var(--side) + 4px) 2px"><span class="t-overline pg-grow">Основная подписка · <span data-page="has-us">7</span><span data-page="no-us" hidden>6</span></span><span class="t-caption">обновлено 15:10</span></div>
+      <div class="pg-row" style="margin: 14px calc(var(--side) + 4px) 2px"><span class="t-overline pg-grow">Основной список · <span data-page="has-us">7</span><span data-page="no-us" hidden>6</span></span><span class="t-caption">обновлено 15:10</span></div>
       <div class="dl-row"><span class="dl-cc">FI</span><span class="pg-stack pg-grow" style="gap: 2px; min-width: 0"><span class="t-strong">Финляндия 01</span><span class="dl-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="t-mono latency good">38 мс</span><button class="btn-icon dl-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button></div>
       <div class="dl-row on"><span class="dl-cc">NL</span><span class="pg-stack pg-grow" style="gap: 2px; min-width: 0"><span class="t-strong">Нидерланды 01</span><span class="dl-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="dl-tag">активен</span><span class="t-mono latency good">42 мс</span><button class="btn-icon dl-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button></div>
       <div class="dl-row"><span class="dl-cc">DE</span><span class="pg-stack pg-grow" style="gap: 2px; min-width: 0"><span class="t-strong">Германия 02</span><span class="dl-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="t-mono latency good">51 мс</span><button class="btn-icon dl-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button></div>
@@ -322,7 +322,7 @@
     </div>
     <div class="sheet dl-sheet is-open" id="del-card" role="dialog" aria-label="Сервер США 01">
       <div class="grabber"></div>
-      <div class="dl-sheet-head"><span class="dl-cc">US</span><span class="pg-stack pg-grow" style="margin: 0 8px 0 12px; gap: 2px"><span class="t-status">США 01</span><span class="t-caption t-wrap">Нью-Йорк · из подписки «Основная подписка»</span></span><button class="btn-icon fav" style="width: 40px; height: 40px" aria-label="В избранное"><i data-icon="Star" data-stroke="2" data-size="20"></i></button><button class="btn-icon" style="width: 40px; height: 40px" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="18"></i></button></div>
+      <div class="dl-sheet-head"><span class="dl-cc">US</span><span class="pg-stack pg-grow" style="margin: 0 8px 0 12px; gap: 2px"><span class="t-status">США 01</span><span class="t-caption t-wrap">Нью-Йорк · из списка серверов «Основной список»</span></span><button class="btn-icon fav" style="width: 40px; height: 40px" aria-label="В избранное"><i data-icon="Star" data-stroke="2" data-size="20"></i></button><button class="btn-icon" style="width: 40px; height: 40px" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="18"></i></button></div>
       <span class="dl-chip latency none">148 мс</span>
       <div class="dl-facts"><div class="dl-fact">Адрес<span class="t-mono">198.51.100.201:443</span></div><div class="dl-fact">Протокол<span class="t-mono">Trojan</span></div><div class="dl-fact">Транспорт<span class="t-mono">WS</span></div><div class="dl-fact">Защита<span class="t-mono">TLS</span></div><div class="dl-fact">Ядро<span class="t-mono">Xray-core</span></div></div>
       <div class="dl-actions">
@@ -346,45 +346,45 @@
         </div>
     <div class="pg-island" data-active="servers"></div>
   </section>
-  <!-- ===================== Профили и подписки · защита идет через группу ===================== -->
-  <section class="pg-screen" data-state="connected" data-caption="Профили и подписки · защита идет через группу">
+  <!-- ===================== Профили и списки серверов · защита идет через группу ===================== -->
+  <section class="pg-screen" data-state="connected" data-caption="Профили и списки серверов · защита идет через группу">
     <div class="pg-page-header">
       <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
-      <span class="t-h1 pg-ellipsis">Профили и подписки</span><button class="btn-icon" data-nav="03-import.html" aria-label="Добавить"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Профили и списки серверов</span><button class="btn-icon" data-nav="03-import.html" aria-label="Добавить"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
     </div>
     <div class="pg-page">
       <div class="card dl-card">
         <div class="setting"><div class="setting-text"><span class="setting-title">Автообновление</span><span class="setting-caption">Как часто скачивать списки серверов</span></div><button class="btn-select" data-open="sub-m-refresh" aria-label="Автообновление"><span data-select-label>каждые 12 ч</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button></div>
-        <div class="setting"><div class="setting-text"><span class="setting-title">Обновлять только через VPN</span><span class="setting-caption">Провайдер не увидит адреса подписок</span></div><button class="switch on" role="switch" aria-checked="true" aria-label="Обновлять только через VPN"></button></div>
+        <div class="setting"><div class="setting-text"><span class="setting-title">Обновлять только через VPN</span><span class="setting-caption">Провайдер не увидит адреса списков серверов</span></div><button class="switch on" role="switch" aria-checked="true" aria-label="Обновлять только через VPN"></button></div>
         <div class="setting"><div class="setting-text"><span class="setting-title">Сообщать об изменении выбранного сервера</span><span class="setting-caption">Если он пропал или изменился после обновления</span></div><button class="switch on" role="switch" aria-checked="true" aria-label="Сообщать об изменении выбранного сервера"></button></div>
       </div>
       <div data-page="subs">
-        <span class="t-overline dl-label">Подписки · 1</span>
+        <span class="t-overline dl-label">Списки серверов · 1</span>
         <div class="dl-sub">
-          <div class="pg-row"><span class="dl-sub-name pg-grow">Основная подписка</span><span class="pill success">Работает</span></div>
+          <div class="pg-row"><span class="dl-sub-name pg-grow">Основной список</span><span class="pill success">Работает</span></div>
           <span class="dl-sub-url">https://example.com/sub/****</span>
           <span class="t-small">7 серверов · обновлено в 15:10</span>
           <div class="pg-row" style="gap: 6px; margin-top: 2px">
-            <button class="btn-small soft" data-spin data-toast="«Основная подписка» обновлена: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
+            <button class="btn-small soft" data-spin data-toast="«Основной список» обновлен: новых 0, удалено 0"><i data-icon="Refresh" data-stroke="2.2" data-size="15"></i>Обновить</button>
             <button class="btn-small" data-nav="12-subscriptions.html">Изменить</button>
-            <button class="btn-icon dl-remove" data-open="sub-dlg" aria-label="Удалить «Основная подписка»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
+            <button class="btn-icon dl-remove" data-open="sub-dlg" aria-label="Удалить «Основной список»"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i></button>
           </div>
         </div>
       </div>
       <div data-page="subs-empty" hidden>
-        <span class="t-overline dl-label">Подписки · 0</span>
-        <div class="t-small t-wrap" style="margin: 0 calc(var(--side) + 6px)">Подписок пока нет. Добавьте адрес подписки, файл или ссылки кнопкой «Добавить подписку».</div>
+        <span class="t-overline dl-label">Списки серверов · 0</span>
+        <div class="t-small t-wrap" style="margin: 0 calc(var(--side) + 6px)">Списков серверов пока нет. Добавьте адрес списка, файл или ссылки кнопкой «Добавить список серверов».</div>
       </div>
       <div class="pg-page-end"></div>
     </div>
     <div class="popup" id="sub-m-refresh"><button class="btn-option current" data-value="каждые 12 ч">каждые 12 ч</button><button class="btn-option" data-value="каждые 6 ч">каждые 6 ч</button><button class="btn-option" data-value="каждые 24 ч">каждые 24 ч</button><button class="btn-option" data-value="выключено">выключено</button></div>
     <div class="scrim is-open" data-close style="z-index: 65"></div>
-    <div class="dialog is-open" id="sub-dlg" role="dialog" aria-modal="true" aria-label="Удалить «Основная подписка»?">
+    <div class="dialog is-open" id="sub-dlg" role="dialog" aria-modal="true" aria-label="Удалить «Основной список»?">
           <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
-          <div class="t-status t-wrap">Удалить «Основная подписка»?</div>
+          <div class="t-status t-wrap">Удалить «Основной список»?</div>
           <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Вместе с группой удалятся 7 серверов и их ключи. Защита сейчас идет через один из них: VPN отключится, и другой сервер вы выберете сами.</p>
           <div class="dialog-actions stack">
-            <button class="btn-primary danger" data-close data-set-state="off" data-goto="subs-empty" data-toast="«Основная подписка» удалена">Удалить</button>
+            <button class="btn-primary danger" data-close data-set-state="off" data-goto="subs-empty" data-toast="«Основной список» удален">Удалить</button>
             <button class="btn-secondary" data-close>Отмена</button>
           </div>
         </div>
@@ -417,7 +417,7 @@
         <button class="link-row" data-nav="05-protection.html"><span class="row-icon"><i data-icon="Adv.Protection" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Защита и утечки</span><span class="t-caption pg-ellipsis">Kill Switch, DNS, IPv6, локальная сеть</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
         <button class="link-row" data-nav="06-advanced.html"><span class="row-icon"><i data-icon="Adv.Core" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Подключение и ядро</span><span class="t-caption pg-ellipsis">Ядро, TUN, MTU, Mux, фрагментация, uTLS</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
         <button class="link-row" data-nav="13-routing.html"><span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Маршрутизация</span><span class="t-caption pg-ellipsis">Правила, раздельное туннелирование</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
-        <button class="link-row" data-nav="12-subscriptions.html"><span class="row-icon"><i data-icon="Adv.Profiles" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Профили и подписки</span><span class="t-caption pg-ellipsis">Серверы из ссылок и подписок</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="12-subscriptions.html"><span class="row-icon"><i data-icon="Adv.Profiles" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Профили и списки серверов</span><span class="t-caption pg-ellipsis">Серверы из ссылок и списков серверов</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
         <button class="link-row" data-nav="07-diagnostics.html"><span class="row-icon"><i data-icon="Adv.Check" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка и логи</span><span class="t-caption pg-ellipsis">Проверка утечек, журнал, отчет</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
         <button class="link-row" data-nav="14-backup.html"><span class="row-icon"><i data-icon="Adv.Backup" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Резервная копия</span><span class="t-caption pg-ellipsis">Экспорт и импорт настроек</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
         <button class="link-row" data-nav="15-about.html"><span class="row-icon"><i data-icon="Adv.About" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">О программе</span><span class="t-caption pg-ellipsis">Версии, обновление, лицензии</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
@@ -848,10 +848,10 @@
     <div class="pg-page">
       <div class="card dl-backup">
         <span class="t-title">Сохранить копию</span>
-        <button class="check on" role="checkbox"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Серверы и подписки</span><span class="t-caption">Список серверов и ссылки на подписки</span></span></button>
+        <button class="check on" role="checkbox"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Серверы и списки серверов</span><span class="t-caption">Серверы и адреса списков серверов</span></span></button>
         <button class="check on" role="checkbox"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Настройки</span><span class="t-caption">Защита, маршрутизация, внешний вид</span></span></button>
         <button class="check" role="checkbox"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="2.6"></i></span><span class="pg-stack" style="gap: 1px"><span class="t-strong">Ключи доступа</span><span class="t-caption">UUID, пароли и ключи серверов</span></span></button>
-        <div class="banner warning t-wrap" style="margin-top: 4px">Адреса подписок сохраняются и без ключей серверов. Они могут давать доступ к серверам: храните копию в надежном месте и не пересылайте вместе с паролем.</div>
+        <div class="banner warning t-wrap" style="margin-top: 4px">Адреса списков серверов сохраняются и без ключей серверов. Они могут давать доступ к серверам: храните копию в надежном месте и не пересылайте вместе с паролем.</div>
         <span class="t-strong" style="margin-top: 8px; font-size: var(--pg-type-small-size)">Пароль для файла</span>
         <div class="input"><span class="pg-grow t-mono">***************</span><i data-icon="Eye" data-stroke="2" data-size="18"></i></div>
         <span class="t-caption t-wrap">Файл .pgbackup шифруется этим паролем. Без него копию не открыть — восстановить пароль нельзя.</span>

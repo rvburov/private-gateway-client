@@ -33,7 +33,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
 
         shell.IsIslandVisible.ShouldBeTrue("подстраница настроек — островок на месте");
         shell.IsSettings.ShouldBeTrue();
-        Text(window, "SectionTitle").ShouldBe("ПОДПИСКИ · 4");
+        Text(window, "SectionTitle").ShouldBe("СПИСКИ СЕРВЕРОВ · 4");
         page.Cards.Select(c => (c.Name, c.Address, c.HealthText, c.Meta)).ShouldBe(
         [
             ("Резервная", "https://example.org/clash/****", "Работает", "1 сервер · обновлено вчера"),
@@ -46,7 +46,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
         page.Cards[3].CanEdit.ShouldBeFalse("«Мои серверы» — не группа, переименовать нечего");
         Text(window, "RefreshText").ShouldBe("каждые 12 ч");
         Find<ToggleButton>(window, "ViaVpnToggle").IsChecked.ShouldBe(true);
-        Text(window, "BlockNote").ShouldBe("Службы VPN еще нет — подписки не обновляются");
+        Text(window, "BlockNote").ShouldBe("Службы VPN еще нет — списки серверов не обновляются");
         Snapshot(window, "subscriptions");
     }
 
@@ -88,7 +88,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
 
         var card = page.Cards.Single(c => c.Name == "Основная");
         card.HealthText.ShouldBe("Ошибка");
-        card.Error.ShouldBe("Сервер ответил 404 — такой подписки нет, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.");
+        card.Error.ShouldBe("Сервер ответил 404 — такого списка серверов нет, проверьте ссылку. Оставлена прошлая версия списка — серверы работают.");
         card.Meta.ShouldBe("2 сервера · последняя попытка только что");
         Service<IServerStore>().Servers.Count.ShouldBe(5);
         Snapshot(window, "subscriptions-error");
@@ -226,13 +226,13 @@ public sealed class SubscriptionsPageTests : WindowHarness
         await page.Cards.Single(c => c.Name == "Основная").UpdateCommand.ExecuteAsync(null);
         Dispatcher.UIThread.RunJobs();
 
-        shell.Toast.Text.ShouldBe("Выбранный сервер «A» пропал из подписки «Основная». Он останется, пока вы не выберете другой.");
+        shell.Toast.Text.ShouldBe("Выбранный сервер «A» пропал из списка серверов «Основная». Он останется, пока вы не выберете другой.");
         Find<TextBlock>(window, "ToastText").TextLayout.TextLines.Count.ShouldBeGreaterThan(1, "длинное сообщение переносится, а не уходит за край");
         Snapshot(window, "toast-long");
         store.Selected!.Name.ShouldBe("A");
         var card = new ServerCardViewModel(store.Selected.Id, Service<IServerCatalog>(), Service<IServerStore>(), Clipboard,
             Service<ProtectionViewModel>(), Service<ConnectionController>(), shell.Overlay, shell.Toast);
-        card.Subtitle.ShouldBe("Пропал из подписки — остается, пока выбран");
+        card.Subtitle.ShouldBe("Пропал из списка серверов — остается, пока выбран");
     }
 
     [AvaloniaFact]
@@ -242,7 +242,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
         shell.NavigateCommand.Execute(Pages.Profiles);
         Dispatcher.UIThread.RunJobs();
 
-        Text(window, "SectionTitle").ShouldBe("ПОДПИСКИ · 0");
+        Text(window, "SectionTitle").ShouldBe("СПИСКИ СЕРВЕРОВ · 0");
         Find<TextBlock>(window, "Empty").IsVisible.ShouldBeTrue();
 
         Press(window, "AddButton");

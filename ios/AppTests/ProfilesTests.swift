@@ -230,7 +230,7 @@ final class ProfilesTests: XCTestCase {
         let large = directory.appendingPathComponent("large.txt")
         try Data(repeating: 0x61, count: ImportModel.maxFileBytes + 1).write(to: large)
         XCTAssertEqual(ImportModel.read(large), .failed(.tooLarge))
-        XCTAssertEqual(ImportLook.fileProblem(.tooLarge, texts), "Файл не прочитан: подписка больше 5 МБ")
+        XCTAssertEqual(ImportLook.fileProblem(.tooLarge, texts), "Файл не прочитан: список серверов больше 5 МБ")
 
         guard case .failed(.unreadable) = ImportModel.read(directory.appendingPathComponent("gone.txt")) else {
             return XCTFail("файла нет — причина от iOS")
@@ -281,10 +281,10 @@ final class ProfilesTests: XCTestCase {
 
     @MainActor
     func testSectionCountsEveryCardIncludingMine() {
-        XCTAssertEqual(SubscriptionsLook.cards(groups: 3, manualCount: 1), 4, "как на доске: «Подписки · 4»")
+        XCTAssertEqual(SubscriptionsLook.cards(groups: 3, manualCount: 1), 4, "как на доске: «Списки серверов · 4»")
         XCTAssertEqual(SubscriptionsLook.cards(groups: 3, manualCount: 0), 3)
         XCTAssertEqual(SubscriptionsLook.cards(groups: 0, manualCount: 0), 0)
-        XCTAssertEqual(texts.subsSection(SubscriptionsLook.cards(groups: 3, manualCount: 2)), "Подписки · 4")
+        XCTAssertEqual(texts.subsSection(SubscriptionsLook.cards(groups: 3, manualCount: 2)), "Списки серверов · 4")
     }
 
     @MainActor

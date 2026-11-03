@@ -349,7 +349,7 @@
             </div>
             <textarea class="input" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку" style="min-height: 64px; font-family: var(--font-mono); font-size: var(--pg-type-caption-size)"></textarea>
             <div class="pg-row pg-gap-8">
-              <button class="check on" style="width: auto"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>Серверы и подписки</button>
+              <button class="check on" style="width: auto"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>Серверы и списки серверов</button>
               <button class="check" style="width: auto"><span class="check-box"><i data-icon="Chip.Ok" data-stroke="3"></i></span>Настройки</button>
             </div>
           </div>
@@ -489,7 +489,7 @@
         <span class="ds-key" style="text-align: left">.banner</span>
         <div class="banner caution"><i data-icon="Clock" data-stroke="2" data-size="16"></i><span class="pg-grow">Интернет без VPN для входа в Wi-Fi · <b class="t-mono">4:59</b></span></div>
         <button class="banner warning" data-nav="13-routing.html"><i data-icon="Warning" data-stroke="2" data-size="16"></i><span class="pg-grow">Внимание · программы и сайты из списков идут мимо VPN</span><i data-icon="ChevronRight" data-stroke="2.2" data-size="14"></i></button>
-        <div class="banner danger"><i data-icon="Mark.Alert" data-stroke="2.2" data-size="16"></i><span class="pg-grow">«Основная подписка» не обновилась — прошлый список оставлен</span></div>
+        <div class="banner danger"><i data-icon="Mark.Alert" data-stroke="2.2" data-size="16"></i><span class="pg-grow">«Основной список» не обновился — прошлый список оставлен</span></div>
         <div class="banner success"><i data-icon="Chip.Ok" data-stroke="2.4" data-size="16"></i><span class="pg-grow">Копия сохранена</span></div>
         <div class="banner accent"><i data-icon="Lock" data-stroke="2" data-size="16"></i><span class="pg-grow">Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.</span></div>
       </div>
@@ -600,7 +600,7 @@
           <div class="grabber"></div>
           <div class="ds-sheet-head">
             <span class="badge accent country">NL</span>
-            <div class="pg-stack pg-grow"><span class="t-title">Нидерланды 01</span><span class="t-caption">Амстердам · из подписки «Основная подписка»</span></div>
+            <div class="pg-stack pg-grow"><span class="t-title">Нидерланды 01</span><span class="t-caption">Амстердам · из списка серверов «Основной список»</span></div>
             <button class="btn-icon" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
           </div>
           <div class="inset" style="padding: 10px 12px">
@@ -632,21 +632,21 @@
             <button class="btn-primary" data-close data-toast="Строгий режим включен">Включить</button>
           </div>
         </div>
-        <div class="dialog" id="ds-dlg-sub" role="dialog" aria-modal="true" aria-label="Удалить «Основная подписка»?">
+        <div class="dialog" id="ds-dlg-sub" role="dialog" aria-modal="true" aria-label="Удалить «Основной список»?">
           <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
-          <div class="t-status t-wrap">Удалить «Основная подписка»?</div>
+          <div class="t-status t-wrap">Удалить «Основной список»?</div>
           <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Вместе с группой удалятся 7 серверов и их ключи. Защита сейчас идет через один из них: VPN отключится, и другой сервер вы выберете сами.</p>
           <div class="dialog-actions stack">
-            <button class="btn-primary danger" data-close data-toast="«Основная подписка» удалена">Удалить</button>
+            <button class="btn-primary danger" data-close data-toast="«Основной список» удален">Удалить</button>
             <button class="btn-secondary" data-close>Отмена</button>
           </div>
         </div>
         <div class="popup" id="ds-menu-more">
           <!-- Меню действий: пункты — строки-кнопки (у .popup .btn-option щелчок выбирает пункт и не открывает диалог) -->
-          <button class="btn-plain ds-menu-item" data-close data-toast="«Основная подписка» обновлена: новых 0, удалено 0">Обновить</button>
+          <button class="btn-plain ds-menu-item" data-close data-toast="«Основной список» обновлен: новых 0, удалено 0">Обновить</button>
           <button class="btn-plain ds-menu-item" data-nav="12-subscriptions.html">Изменить</button>
           <div class="divider" style="margin: 2px 6px"></div>
-          <button class="btn-plain ds-menu-item t-danger" data-open="ds-dlg-sub">Удалить «Основная подписка»</button>
+          <button class="btn-plain ds-menu-item t-danger" data-open="ds-dlg-sub">Удалить «Основной список»</button>
         </div>
       </div>
       <ul class="ds-list">

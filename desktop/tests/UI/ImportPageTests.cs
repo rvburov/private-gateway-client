@@ -119,7 +119,7 @@ public sealed class ImportPageTests : WindowHarness
         page.FailedLabel.ShouldBe("ошибка");
         page.ErrorLines.ShouldBe(["Строка 4: неверный порт — пропущено."]);
         Find<Button>(window, "AddButton").Content.ShouldBe("Добавить 3 сервера");
-        page.ProfileName = "Основная подписка";
+        page.ProfileName = "Основной список";
         Snapshot(window, "import");
 
         page.AddCommand.Execute(null);
@@ -129,7 +129,7 @@ public sealed class ImportPageTests : WindowHarness
         shell.CurrentKey.ShouldBe(Pages.Servers);
         var servers = shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>();
         var group = servers.Groups.ShouldHaveSingleItem();
-        group.Title.ShouldBe("Основная подписка · 3");
+        group.Title.ShouldBe("Основной список · 3");
         group.Rows.Select(r => r.Name).ShouldBe(["Нидерланды 01", "Trojan", "Hy2"], ignoreOrder: true);
         shell.Protection.HasServer.ShouldBeTrue("первый добавленный выбран");
         Secrets.Values.Keys.Count(k => k.StartsWith("server:", StringComparison.Ordinal)).ShouldBe(3);
@@ -405,7 +405,7 @@ public sealed class ImportPageTests : WindowHarness
         await page.CheckLinkCommand.ExecuteAsync(null);
         Dispatcher.UIThread.RunJobs();
 
-        page.ExistingSubscriptionText.ShouldBe("Эта подписка уже добавлена — «sub.example.com». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.");
+        page.ExistingSubscriptionText.ShouldBe("Этот список серверов уже добавлен — «sub.example.com». Серверы обновятся в нем: новые добавятся, пропавшие из списка удалятся.");
         Find<TextBlock>(window, "ExistingSubscription").IsEffectivelyVisible.ShouldBeTrue();
         Find<TextBox>(window, "ProfileName").IsEffectivelyVisible.ShouldBeFalse("название уже есть — менять его здесь незачем");
 
@@ -446,7 +446,7 @@ public sealed class ImportPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         page.HasPreview.ShouldBeFalse();
-        Text(window, "Message").ShouldBe("Подписка не загрузилась: сервер ответил 404 — такой подписки нет, проверьте ссылку");
+        Text(window, "Message").ShouldBe("Список серверов не загрузился: сервер ответил 404 — такого списка серверов нет, проверьте ссылку");
         Text(window, "Message")!.ShouldNotContain("secret-path");
     }
 

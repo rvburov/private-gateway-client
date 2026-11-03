@@ -26,7 +26,7 @@ public sealed class DemoServerCatalog : IServerCatalog
         ArgumentNullException.ThrowIfNull(time);
         _time = time;
         var now = time.GetUtcNow();
-        _subscriptions = [new ServerSubscription(SubscriptionId, "Основная подписка", now.AddMinutes(-32))];
+        _subscriptions = [new ServerSubscription(SubscriptionId, "Основной список", now.AddMinutes(-32))];
         _servers =
         [
             Demo("demo-nl-01", "Нидерланды 01", "NL", "Амстердам", ProxyProtocol.Vless, TransportSecurity.Reality, "203.0.113.24", 443, "tcp", 42)

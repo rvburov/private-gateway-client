@@ -122,7 +122,7 @@ public sealed class BackupPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         sheet.IsOpened.ShouldBeTrue();
         sheet.Password.ShouldBeEmpty();
-        sheet.Summary.ShouldBe("Копия от 24 октября 2026, 15:42: серверы и подписки (1, с ключами), настройки.");
+        sheet.Summary.ShouldBe("Копия от 24 октября 2026, 15:42: серверы и списки серверов (1, с ключами), настройки.");
         Snapshot(window, "backup-restore-sheet");
 
         sheet.RestoreCommand.Execute(null);

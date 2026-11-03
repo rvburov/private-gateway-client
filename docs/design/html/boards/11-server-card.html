@@ -121,7 +121,7 @@
 <body>
 <p class="pg-board-note">Карточка сервера (ServerCardView программы) — нижний лист поверх «Серверов», открывается кнопкой «⋯» в строке.
   Звезда добавляет в избранное, «Переименовать» открывает поле названия («Отмена» и «Сохранить» возвращают сведения), «Удалить»
-  спрашивает подтверждение. «Поделиться» доступна только у сервера, добавленного ссылкой или подпиской (у демо-серверов ключа нет):
+  спрашивает подтверждение. «Поделиться» доступна только у сервера, добавленного ссылкой или из списка серверов (у демо-серверов ключа нет):
   QR-код со ссылкой, предупреждение о ключе и «Копировать ссылку»; «Скрыть QR» возвращает сведения. Щелчок мимо листа и крестик
   закрывают его, «⋯» в списке открывает снова. У выбранного сервера метка и кнопка внизу идут за щитом: защита включена —
   «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления.</p>
@@ -136,7 +136,7 @@
         <span class="sc-cc">NL</span>
         <div class="sc-title">
           <span class="t-status pg-ellipsis">Нидерланды 01</span>
-          <span class="t-caption">Амстердам · из подписки «Основная подписка»</span>
+          <span class="t-caption">Амстердам · из списка серверов «Основной список»</span>
         </div>
         <button class="btn-icon fav sc-fav on " aria-label="Убрать из избранного"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
         <button class="btn-icon sc-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
@@ -169,7 +169,7 @@
           <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="off error strict">Подключиться</button>
         <div class="sc-tiles">
             <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
-            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или подпиской: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
+            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или из списка серверов: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
             <button class="btn-secondary danger sc-tile" data-open="sc-delete-1"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Удалить</span></button>
         </div>
       </div>
@@ -190,7 +190,7 @@
       <div class="pg-header">
         <span class="t-h1 pg-grow">Серверы</span>
         <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
-        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или список серверов"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
       </div>
       <div class="sv-top">
         <div class="search sv-search">
@@ -207,7 +207,7 @@
       <div class="sv-scroll">
         <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
         <div class="sv-group-head">
-          <span class="t-overline pg-grow pg-ellipsis">Основная подписка · 7</span>
+          <span class="t-overline pg-grow pg-ellipsis">Основной список · 7</span>
           <span class="t-caption">обновлено 15:10</span>
         </div>
         <div class="segments sv-list">
@@ -257,7 +257,7 @@
         <span class="sc-cc">PL</span>
         <div class="sc-title">
           <span class="t-status pg-ellipsis">Польша 03</span>
-          <span class="t-caption">Варшава · из подписки «Основная подписка»</span>
+          <span class="t-caption">Варшава · из списка серверов «Основной список»</span>
         </div>
         <button class="btn-icon fav sc-fav " aria-label="В избранное"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
         <button class="btn-icon sc-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
@@ -287,7 +287,7 @@
           <button class="btn-primary sc-connect" data-close>Подключиться</button>
         <div class="sc-tiles">
             <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
-            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или подпиской: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
+            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или из списка серверов: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
             <button class="btn-secondary danger sc-tile" data-open="sc-delete-2"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Удалить</span></button>
         </div>
       </div>
@@ -307,7 +307,7 @@
       <div class="pg-header">
         <span class="t-h1 pg-grow">Серверы</span>
         <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
-        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или список серверов"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
       </div>
       <div class="sv-top">
         <div class="search sv-search">
@@ -324,7 +324,7 @@
       <div class="sv-scroll">
         <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
         <div class="sv-group-head">
-          <span class="t-overline pg-grow pg-ellipsis">Основная подписка · 7</span>
+          <span class="t-overline pg-grow pg-ellipsis">Основной список · 7</span>
           <span class="t-caption">обновлено 15:10</span>
         </div>
         <div class="segments sv-list">
@@ -434,7 +434,7 @@
       <div class="pg-header">
         <span class="t-h1 pg-grow">Серверы</span>
         <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
-        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или подписку"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или список серверов"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
       </div>
       <div class="sv-top">
         <div class="search sv-search">
@@ -451,7 +451,7 @@
       <div class="sv-scroll">
         <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
         <div class="sv-group-head">
-          <span class="t-overline pg-grow pg-ellipsis">Основная подписка · 7</span>
+          <span class="t-overline pg-grow pg-ellipsis">Основной список · 7</span>
           <span class="t-caption">обновлено 15:10</span>
         </div>
         <div class="segments sv-list">

@@ -63,7 +63,7 @@
 <body>
 <p class="pg-board-note">«Добавить профиль» (ImportPage программы) — шаг без островка, «Назад» возвращает на главную. Нажатие на
   источник выбирает его (белая карточка с синей рамкой) и показывает предпросмотр: сколько серверов найдено, новых, дублей и ошибок
-  с номерами строк. «Ввести ссылку» раскрывает поле для ссылок или адреса подписки, предпросмотр — после «Проверить». Подписка,
+  с номерами строк. «Ввести ссылку» раскрывает поле для ссылок или адреса списка серверов, предпросмотр — после «Проверить». Список серверов,
   которая уже добавлена, обновится в своей группе — поля названия тогда нет. «Добавить N серверов» сохраняет и ведет на «Серверы».</p>
 
 <div class="pg-screens">
@@ -76,9 +76,9 @@
       </div>
       <div class="im-scroll">
         <div class="segments im-sources">
-          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и подписки</span></span></button>
+          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и списки серверов</span></span></button>
           <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
-          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес подписки https://…</span></span></button>
+          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес списка серверов https://…</span></span></button>
           <div class="im-linkbox">
             <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку"></textarea>
             <input type="radio" class="im-flag" id="im-check-1" hidden>
@@ -100,7 +100,7 @@
             <div class="im-notice">Строка 4: неверный порт — пропущено.</div>
             <div class="pg-stack pg-gap-6">
               <span class="t-small t-strong">Название профиля</span>
-              <input class="input" type="text" value="Основная подписка" placeholder="Мои серверы" aria-label="Название профиля">
+              <input class="input" type="text" value="Основной список" placeholder="Мои серверы" aria-label="Название профиля">
             </div>
           </div>
         </div>
@@ -128,7 +128,7 @@
               <div class="im-tile"><span class="im-num">7</span><span class="t-caption">дубли</span></div>
               <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
             </div>
-            <div class="im-notice">Эта подписка уже добавлена — «Основная подписка». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.</div>
+            <div class="im-notice">Этот список серверов уже добавлен — «Основной список». Серверы обновятся в нем: новые добавятся, пропавшие из списка удалятся.</div>
           </div>
         </div>
         <div class="card im-prev im-prev-file">
@@ -164,9 +164,9 @@
       </div>
       <div class="im-scroll">
         <div class="segments im-sources">
-          <button class="segment on im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и подписки</span></span></button>
+          <button class="segment on im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и списки серверов</span></span></button>
           <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
-          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес подписки https://…</span></span></button>
+          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес списка серверов https://…</span></span></button>
           <div class="im-linkbox">
             <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку"></textarea>
             <input type="radio" class="im-flag" id="im-check-2" hidden>
@@ -187,7 +187,7 @@
             <div class="im-notice">Строка 4: неверный порт — пропущено.</div>
             <div class="pg-stack pg-gap-6">
               <span class="t-small t-strong">Название профиля</span>
-              <input class="input" type="text" value="Основная подписка" placeholder="Мои серверы" aria-label="Название профиля">
+              <input class="input" type="text" value="Основной список" placeholder="Мои серверы" aria-label="Название профиля">
             </div>
           </div>
         </div>
@@ -215,7 +215,7 @@
               <div class="im-tile"><span class="im-num">7</span><span class="t-caption">дубли</span></div>
               <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
             </div>
-            <div class="im-notice">Эта подписка уже добавлена — «Основная подписка». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.</div>
+            <div class="im-notice">Этот список серверов уже добавлен — «Основной список». Серверы обновятся в нем: новые добавятся, пропавшие из списка удалятся.</div>
           </div>
         </div>
         <div class="card im-prev im-prev-file">
@@ -242,8 +242,8 @@
     </div>
   </section>
 
-  <!-- 3. Адрес подписки после «Проверить»: такая подписка уже есть -->
-  <section class="pg-screen" data-state="connected" data-caption="Адрес подписки · уже добавлена">
+  <!-- 3. Адрес списка серверов после «Проверить»: такой список серверов уже есть -->
+  <section class="pg-screen" data-state="connected" data-caption="Адрес списка серверов · уже добавлен">
     <div class="pg-page im-page">
       <div class="im-head">
         <button class="btn-icon" data-nav="01-main.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
@@ -251,9 +251,9 @@
       </div>
       <div class="im-scroll">
         <div class="segments im-sources">
-          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и подписки</span></span></button>
+          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и списки серверов</span></span></button>
           <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
-          <button class="segment on im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес подписки https://…</span></span></button>
+          <button class="segment on im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес списка серверов https://…</span></span></button>
           <div class="im-linkbox">
             <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку">https://example.com/sub/****</textarea>
             <input type="radio" class="im-flag" id="im-check-3" hidden checked>
@@ -274,7 +274,7 @@
             <div class="im-notice">Строка 4: неверный порт — пропущено.</div>
             <div class="pg-stack pg-gap-6">
               <span class="t-small t-strong">Название профиля</span>
-              <input class="input" type="text" value="Основная подписка" placeholder="Мои серверы" aria-label="Название профиля">
+              <input class="input" type="text" value="Основной список" placeholder="Мои серверы" aria-label="Название профиля">
             </div>
           </div>
         </div>
@@ -302,7 +302,7 @@
               <div class="im-tile"><span class="im-num">7</span><span class="t-caption">дубли</span></div>
               <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
             </div>
-            <div class="im-notice">Эта подписка уже добавлена — «Основная подписка». Серверы обновятся в ней: новые добавятся, пропавшие из подписки удалятся.</div>
+            <div class="im-notice">Этот список серверов уже добавлен — «Основной список». Серверы обновятся в нем: новые добавятся, пропавшие из списка удалятся.</div>
           </div>
         </div>
         <div class="card im-prev im-prev-file">

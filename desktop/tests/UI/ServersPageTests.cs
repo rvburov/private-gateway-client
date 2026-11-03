@@ -30,7 +30,7 @@ public sealed class ServersPageTests : WindowHarness
         await Connect(shell);
 
         var group = page.Groups.ShouldHaveSingleItem();
-        group.Title.ShouldBe("Основная подписка · 7");
+        group.Title.ShouldBe("Основной список · 7");
         group.UpdatedText.ShouldBe("обновлено " + LocalTime(Time.GetUtcNow().AddMinutes(-32)));
         group.Rows.Select(r => r.Name).ShouldBe(
             ["Финляндия 01", "Нидерланды 01", "Германия 02", "Швеция 01", "Польша 03", "США 01", "Турция 01"]);
@@ -272,7 +272,7 @@ public sealed class ServersPageTests : WindowHarness
         page.Groups[0].Rows[1].Tag.ShouldBe("selected");
         var texts = window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ToArray();
         texts.ShouldContain("Servers");
-        texts.ShouldContain("ОСНОВНАЯ ПОДПИСКА · 7", "название подписки дал пользователь — не переводится");
+        texts.ShouldContain("ОСНОВНОЙ СПИСОК · 7", "название подписки дал пользователь — не переводится");
         Snapshot(window, "servers-en");
     }
 

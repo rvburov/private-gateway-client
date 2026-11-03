@@ -30,7 +30,7 @@ public sealed class ServerCardTests : WindowHarness
 
         Find<Border>(window, "Sheet").IsVisible.ShouldBeTrue();
         Text(window, "CardName").ShouldBe("Нидерланды 01");
-        card.Subtitle.ShouldBe("Амстердам · из подписки «Основная подписка»");
+        card.Subtitle.ShouldBe("Амстердам · из списка серверов «Основной список»");
         card.IsFavorite.ShouldBeTrue();
         Text(window, "CardStatus").ShouldBe("Активен");
         card.LatencyText.ShouldBe("42 мс");
@@ -45,7 +45,7 @@ public sealed class ServerCardTests : WindowHarness
         Find<Border>(window, "InUse").IsVisible.ShouldBeTrue();
         Find<Button>(window, "ConnectButton").IsVisible.ShouldBeFalse();
         card.CanShare.ShouldBeFalse("у демо-сервера ключа нет — делиться нечем");
-        card.ShareHint.ShouldBe("Поделиться можно сервером, добавленным ссылкой или подпиской: в ссылке есть ключ доступа.");
+        card.ShareHint.ShouldBe("Поделиться можно сервером, добавленным ссылкой или из списка серверов: в ссылке есть ключ доступа.");
         Snapshot(window, "server-card");
     }
 

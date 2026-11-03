@@ -12,7 +12,7 @@ public class ServerListTests
     private static readonly CultureInfo Ru = CultureInfo.GetCultureInfo("ru-RU");
     private static readonly DateTimeOffset Now = new(2026, 10, 24, 15, 42, 0, TimeSpan.Zero);
 
-    private static readonly ServerSubscription Main = new("main", "Основная подписка", Now);
+    private static readonly ServerSubscription Main = new("main", "Основной список", Now);
     private static readonly ServerSubscription Spare = new("spare", "Резервная", null);
 
     private static readonly ServerProfile Nl = new("nl", "Нидерланды 01", "NL", ProxyProtocol.Vless,
