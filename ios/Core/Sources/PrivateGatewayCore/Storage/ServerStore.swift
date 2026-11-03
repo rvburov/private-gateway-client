@@ -491,6 +491,38 @@ public actor ServerStore {
         try changeServer(id) { $0.customName = trimmed.flatMap { $0.isEmpty ? nil : $0 } }
     }
 
+    /// Свое название и избранное серверов из резервной копии (DECISIONS.md, п. 2) — и только что добавленным, и тем, что уже
+    /// были: тот же сервер находится по ключу `ServerKeys`. Нет своего названия в копии — снова название из ссылки. Серверы,
+    /// которых в списке нет, пропускаются. Одна запись на все.
+    public func restoreMarks(_ saved: [BackupServer]) throws {
+        guard !saved.isEmpty else {
+            return
+        }
+
+        var state = try read()
+        var index: [String: Int] = [:]
+        for position in state.servers.indices {
+            if let server = try open(state.servers[position]) {
+                let key = ServerKeys.key(server)
+                if index[key] == nil {
+                    index[key] = position
+                }
+            }
+        }
+
+        for item in saved {
+            guard let server = LinkParser.parse(item.link).server, let position = index[ServerKeys.key(server)] else {
+                continue
+            }
+
+            let trimmed = item.name?.trimmingCharacters(in: .whitespacesAndNewlines)
+            state.servers[position].customName = trimmed.flatMap { $0.isEmpty ? nil : $0 }
+            state.servers[position].favorite = item.favorite
+        }
+
+        try write(state)
+    }
+
     /// Сервер выбран пользователем — для «Недавних».
     public func markUsed(_ id: String, at: Date? = nil) throws {
         let when = at ?? clock()

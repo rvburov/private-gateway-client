@@ -1,6 +1,7 @@
 package com.privategateway.client.data
 
 import androidx.room.withTransaction
+import com.privategateway.client.core.backup.BackupServer
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.links.LinkWriter
 import com.privategateway.client.core.servers.Latency
@@ -189,6 +190,27 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
         }
 
         return AddResult(fresh.size, duplicates, renewed.size)
+    }
+
+    /**
+     * Свое название и избранное серверов из резервной копии (DECISIONS.md, п. 2) — и только что добавленным, и тем, что уже
+     * были: тот же сервер находится по ключу ServerKeys. Восстановление возвращает состояние копии: нет своего названия в
+     * копии — у сервера снова название из ссылки. Серверы, которых в списке нет, пропускаются.
+     */
+    suspend fun restoreMarks(saved: List<BackupServer>) = withContext(Dispatchers.IO) {
+        if (saved.isEmpty()) {
+            return@withContext
+        }
+
+        val ids = buildMap { dao.all().forEach { entity -> open(entity)?.let { putIfAbsent(ServerKeys.key(it), entity.id) } } }
+        writes.withLock {
+            for (item in saved) {
+                val server = LinkParser.parse(item.link).server ?: continue
+                val id = ids[ServerKeys.key(server)] ?: continue
+                dao.rename(id, item.name?.trim()?.takeIf { it.isNotEmpty() })
+                dao.setFavorite(id, item.favorite)
+            }
+        }
     }
 
     /** Сервер целиком — для подключения; нет в списке или не открылся (ключ Keystore утерян) — null. */

@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.Fixtures
+import com.privategateway.client.core.backup.BackupServer
 import com.privategateway.client.core.links.LinkParser
 import com.privategateway.client.core.servers.Latency
 import com.privategateway.client.core.servers.LatencyFailure
@@ -298,5 +299,32 @@ class ServerRepositoryTest {
         val id = repository.servers.first().single().id
         assertEquals("[${ipv6.host}]:${ipv6.port}", repository.address(id))
         assertNull(repository.address("gone"))
+    }
+
+    @Test
+    fun `backup restores own names and favorites of new and existing servers`() = runBlocking<Unit> {
+        // Решение пользователя 2026-11-03 (DECISIONS.md, п. 2): имя и избранное — из копии, и тем серверам, что уже есть.
+        val (first, second) = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(2)
+        repository.add(listOf(first, second))
+        val items = repository.servers.first()
+        val firstId = items.single { Fixtures.identity(assertNotNull(repository.load(it.id))) == Fixtures.identity(first) }.id
+        val secondId = items.single { it.id != firstId }.id
+        repository.rename(secondId, "Старое имя")
+        repository.setFavorite(secondId, true)
+
+        repository.restoreMarks(
+            listOf(
+                BackupServer(assertNotNull(repository.shareLink(firstId)), "Работа", favorite = true),
+                BackupServer(assertNotNull(repository.shareLink(secondId)), null, favorite = false),
+                BackupServer("vless://не-ссылка", "Чужой", favorite = true),
+            ),
+        )
+
+        val after = repository.servers.first().associateBy { it.id }
+        assertEquals("Работа", after.getValue(firstId).customName)
+        assertTrue(after.getValue(firstId).favorite)
+        assertNull(after.getValue(secondId).customName, "в копии своего имени нет — снова имя из ссылки")
+        assertFalse(after.getValue(secondId).favorite)
+        assertEquals(2, after.size, "сервера, которого нет в списке, копия не добавляет")
     }
 }

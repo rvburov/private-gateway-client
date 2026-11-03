@@ -44,7 +44,7 @@ final class BackupTests: XCTestCase {
     func testBackupTextsOnTheScreen() {
         let texts = PgTexts(.russian)
         XCTAssertEqual(BackupLook.fileName(Date(timeIntervalSince1970: 1_793_634_120)), "private-gateway-2026-11-02.pgbackup")
-        XCTAssertEqual(BackupLook.restored(BackupRestored(servers: 3, subscriptions: 1, settings: true), texts), "Восстановлено: 3 сервера, 1 подписка, настройки")
+        XCTAssertEqual(BackupLook.restored(BackupRestored(servers: 3, subscriptions: 1, settings: true), texts), "Восстановлено: 3 сервера, 1 список серверов, настройки")
         XCTAssertEqual(BackupLook.error(.fromComputer, texts), texts.backupErrorFromComputer)
         let summary = BackupLook.summary(MobileBackup(createdAt: Date(), servers: [BackupServer(link: "vless://example")], settings: [:]), texts)
         XCTAssertTrue(summary.contains(texts.backupPartServersKeys(1)), summary)

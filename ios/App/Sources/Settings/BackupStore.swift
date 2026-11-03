@@ -100,6 +100,11 @@ extension AppModel {
             added += try await container.servers.add(definitions, group: group).added
         }
 
+        // Свое название и избранное — из копии, и новым серверам, и тем, что уже были (DECISIONS.md, п. 2).
+        if let saved = copy.servers {
+            try await container.servers.restoreMarks(saved)
+        }
+
         var restored = 0
         for subscription in copy.subscriptions ?? [] {
             guard let url = URLComponents(string: subscription.url) else {

@@ -109,6 +109,10 @@ class BackupRepository @Inject constructor(
             added += servers.add(definitions, group).added
         }
 
+        // Свое название и избранное — из копии, и новым серверам, и тем, что уже были (DECISIONS.md, п. 2): восстановление
+        // возвращает состояние копии, а текущее перед этим уже лежит в автокопии.
+        copy.servers?.let { servers.restoreMarks(it) }
+
         var restored = 0
         copy.subscriptions?.forEach { subscription ->
             val url = runCatching { URI(subscription.url) }.getOrNull() ?: return@forEach

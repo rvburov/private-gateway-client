@@ -231,6 +231,29 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertEqual(names, Self.unique.prefix(4).map(\.name))
     }
 
+    /// Решение пользователя 2026-11-03 (DECISIONS.md, п. 2): имя и избранное из копии — и тем серверам, что уже есть.
+    func testBackupRestoresOwnNamesAndFavoritesOfNewAndExistingServers() async throws {
+        try await store.add(Array(Self.unique.prefix(2)))
+        let ids = try await store.servers().map(\.id)
+        try await store.rename(ids[1], "Старое имя")
+        try await store.setFavorite(ids[1], true)
+        let first = try XCTUnwrap(try await store.shareLink(ids[0]))
+        let second = try XCTUnwrap(try await store.shareLink(ids[1]))
+
+        try await store.restoreMarks([
+            BackupServer(link: first, name: "Работа", favorite: true),
+            BackupServer(link: second, name: nil, favorite: false),
+            BackupServer(link: "vless://не-ссылка", name: "Чужой", favorite: true),
+        ])
+
+        let items = Dictionary(uniqueKeysWithValues: try await store.servers().map { ($0.id, $0) })
+        XCTAssertEqual(items[ids[0]]?.customName, "Работа")
+        XCTAssertEqual(items[ids[0]]?.favorite, true)
+        XCTAssertNil(items[ids[1]]?.customName, "в копии своего имени нет — снова имя из ссылки")
+        XCTAssertEqual(items[ids[1]]?.favorite, false)
+        XCTAssertEqual(items.count, 2, "сервера, которого нет в списке, копия не добавляет")
+    }
+
     func testLatencyFavoriteAndChoiceAreStoredPerServer() async throws {
         try await store.add(Array(Self.unique.prefix(3)))
         let ids = try await store.servers().map(\.id)
