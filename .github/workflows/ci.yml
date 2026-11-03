@@ -344,6 +344,18 @@ jobs:
         id: app
         run: android/gradlew -p android --continue :app:assembleDebug :app:assembleDebugAndroidTest :app:testDebugUnitTest :app:lintDebug
 
+      # Путь подписи выпуска (scripts/android-release-apk.sh) — на временном ключе этой проверки: сборка release, versionCode
+      # из версии и проверка подписи apksigner. Ключ пользователя в CI не нужен; он есть только у release.yml.
+      - name: APK выпуска на временном ключе
+        if: steps.app.outcome == 'success'
+        run: |
+          key="$RUNNER_TEMP/ci-release.p12"
+          keytool -genkeypair -keystore "$key" -storetype PKCS12 -alias ci -keyalg RSA -keysize 2048 -validity 1 \
+            -storepass ci-password -dname "CN=Private Gateway CI" -noprompt
+          ANDROID_KEYSTORE_BASE64=$(base64 -w0 "$key") ANDROID_KEYSTORE_PASSWORD=ci-password ANDROID_KEY_ALIAS=ci \
+            ANDROID_KEY_PASSWORD=ci-password scripts/android-release-apk.sh 0.1.0-beta.1 "$RUNNER_TEMP/apk"
+          rm -f "$key"
+
       - if: steps.robolectric.outputs.cache-hit != 'true' && steps.app.outcome == 'success'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:

@@ -22,6 +22,19 @@ class CoroutineAgentArguments(@get:Classpath val agent: FileCollection) : Comman
     override fun asArguments(): Iterable<String> = listOf("-javaagent:${agent.singleFile.absolutePath}")
 }
 
+// Версия выпуска — из тега (`-PpgVersion=0.1.0-beta.1`, scripts/android-release-apk.sh); без нее — версия разработки.
+// versionCode растет с версией, а бета ниже своего выпуска: Android ставит обновление только с большим кодом.
+val releaseVersion: String? = providers.gradleProperty("pgVersion").orNull
+
+fun versionCodeOf(version: String): Int {
+    val match = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z]+\.(\d+))?$""").matchEntire(version)
+        ?: error("Версия выпуска не по SemVer (1.2.3 или 1.2.3-beta.4): $version")
+    val (major, minor, patch, pre) = match.destructured
+    require(minor.toInt() < 100 && patch.toInt() < 100) { "Минорная и патч-версия — до 99: $version" }
+    val stage = if (pre.isEmpty()) 99 else pre.toInt().also { require(it in 1..98) { "Номер беты — от 1 до 98: $version" } }
+    return major.toInt() * 1_000_000 + minor.toInt() * 10_000 + patch.toInt() * 100 + stage
+}
+
 val coroutinesAgent = configurations.create("coroutinesAgent") {
     isCanBeConsumed = false
     isTransitive = false
@@ -35,15 +48,28 @@ android {
         applicationId = "com.privategateway.client"
         minSdk = 28
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = releaseVersion?.let(::versionCodeOf) ?: 1
+        versionName = releaseVersion ?: "0.1.0"
         // Проверки на эмуляторе и устройстве (androidTest): настоящий туннель — пункт 9.4.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Ключ выпуска пользователя (DECISIONS.md, п. 11; docs/operations/android-signing.md): файл и пароли — только из
+    // окружения сборки выпуска, в репозитории их нет. Без ключа APK выпуска не подписан, и скрипт выпуска его не выложит.
+    signingConfigs {
+        create("release") {
+            System.getenv("PG_KEYSTORE_FILE")?.let { path ->
+                storeFile = file(path)
+                storePassword = System.getenv("PG_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("PG_KEY_ALIAS")
+                keyPassword = System.getenv("PG_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // Подпись выпуска — ключом пользователя, когда будет выпуск (README, этап 11); сжатие — вместе с ней.
+            signingConfig = signingConfigs.getByName("release").takeIf { it.storeFile != null }
             isMinifyEnabled = false
         }
     }

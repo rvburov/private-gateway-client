@@ -4,8 +4,8 @@ name: Выпуск на GitHub
 # (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
 # секрет UPDATE_SIGNING_KEY) и заметки из коммитов с прошлого тега. Версия с «-» — бета: выпуск помечен prerelease,
 # канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
-# К выпуску прикладывается приложение Android (APK с отладочной подписью — ставится вручную, «из неизвестных
-# источников»; подпись выпуска — когда будет ключ). Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
+# К выпуску прикладывается приложение Android (APK, подписанный ключом выпуска из секретов; ставится вручную, «из
+# неизвестных источников»). Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
 on:
   push:
     tags: ['v*']
@@ -71,14 +71,15 @@ jobs:
         if: steps.libxray.outputs.cache-hit != 'true'
         run: scripts/get-libxray.sh
 
+      # APK подписан ключом выпуска пользователя из секретов (docs/operations/android-signing.md): нет ключа — выпуск
+      # останавливается, отладочный APK не выкладывается.
       - name: APK
-        run: |
-          version=${GITHUB_REF_NAME#v}
-          android/gradlew -p android :app:assembleDebug
-          mkdir -p artifacts/android
-          apk=$(ls android/app/build/outputs/apk/debug/*.apk | head -1)
-          cp "$apk" "artifacts/android/PrivateGateway-$version-android.apk"
-          (cd artifacts/android && sha256sum "PrivateGateway-$version-android.apk" > "PrivateGateway-$version-android.apk.sha256")
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: scripts/android-release-apk.sh "${GITHUB_REF_NAME#v}" artifacts/android
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
@@ -147,8 +148,8 @@ jobs:
 
           - **Windows** — установщик `.msi` (мастер установки) или архив `.zip`.
           - **Linux** — пакеты `.deb` и `.rpm` или архив `.tar.gz`.
-          - **Android** — `PrivateGateway-{version}-android.apk`: предварительная сборка с отладочной подписью. Скачайте на
-            телефон, откройте и разрешите установку из этого источника. Проверка — `.apk.sha256`.
+          - **Android** — `PrivateGateway-{version}-android.apk`, подписан ключом выпуска. Скачайте на телефон, откройте и
+            разрешите установку из этого источника; следующие версии ставятся поверх. Проверка — `.apk.sha256`.
           - **Apple (macOS, iPhone, iPad)** — в разработке. Сборка macOS в списке файлов — для проверки, без подписи Apple;
             приложение для iPhone и iPad появится после подписи Apple (TestFlight, App Store).
           NOTES
