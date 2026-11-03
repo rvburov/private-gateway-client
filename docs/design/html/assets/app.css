@@ -272,7 +272,8 @@ button.banner.caution:hover { background: var(--pg-color-status-caution-hover); 
 /* Пункт выпадающего списка: выбранный — синим полужирным, без заливки */
 .btn-option { display: flex; align-items: center; width: 100%; min-height: var(--pg-layout-touch-target); padding: 0 10px;
   border-radius: var(--pg-radius-input); }
-.btn-option.current { color: var(--pg-color-accent-text); font-weight: 600; }
+/* Выбранный пункт — заливкой (DECISIONS.md, п. 13): оттенок акцента, текст акцентом, полужирный */
+.btn-option.current { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); font-weight: 600; }
 
 /* Действие: основная — акцент, второстепенная — белая с рамкой; danger — красная */
 .btn-primary, .btn-secondary { min-height: 40px; padding: 0 18px; border-radius: var(--pg-radius-input);

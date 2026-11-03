@@ -196,8 +196,9 @@
     <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
     <Setter Property="MinHeight" Value="{StaticResource PgLayout.TouchTarget}" />
   </Style>
-  <!-- Выбранный пункт выпадающего списка — синим полужирным, без заливки -->
+  <!-- Выбранный пункт выпадающего списка — заливкой оттенком акцента, текст акцентом и полужирный (DECISIONS.md, п. 13) -->
   <Style Selector="Button.option.current">
+    <Setter Property="Background" Value="{StaticResource PgBrush.Accent.Tint}" />
     <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
     <Setter Property="FontWeight" Value="SemiBold" />
   </Style>

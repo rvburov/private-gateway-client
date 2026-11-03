@@ -158,7 +158,7 @@ fun PgMenu(expanded: Boolean, onDismiss: () -> Unit, tag: String, content: @Comp
     }
 }
 
-/** Пункт выбора в меню (.btn-option): текущий ([current]) — синим полужирным без заливки; при нажатии — синий текст. */
+/** Пункт выбора в меню (.btn-option): текущий ([current]) — заливкой оттенком акцента, синим полужирным (DECISIONS.md, п. 13); при нажатии — синий текст. */
 @Composable
 fun PgMenuOption(text: String, current: Boolean, tag: String, onClick: () -> Unit, enabled: Boolean = true) {
     val interaction = remember { MutableInteractionSource() }
@@ -211,6 +211,7 @@ private fun MenuRow(text: String, color: Color, strong: Boolean, pressed: Boolea
             .alpha(if (enabled) 1f else 0.6f)
             .heightIn(min = PgLayout.TouchTarget)
             .clip(RoundedCornerShape(PgRadius.Input))
+            .then(if (strong) Modifier.background(PgColor.Accent.Tint) else Modifier)
             .then(action)
             .padding(horizontal = PgSpace.M)
             .testTag(tag),

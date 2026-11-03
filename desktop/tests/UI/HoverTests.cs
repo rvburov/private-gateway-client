@@ -275,7 +275,7 @@ public sealed class HoverTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public void Chosen_item_of_a_drop_down_is_blue_and_bold_without_a_fill()
+    public void Chosen_item_of_a_drop_down_is_filled_blue_and_bold()
     {
         var (window, shell) = Open();
         shell.NavigateCommand.Execute(Pages.Core);
@@ -291,7 +291,10 @@ public sealed class HoverTests : WindowHarness
         var chosen = list.Child!.GetVisualDescendants().OfType<Button>().Single(b => b.Classes.Contains("current"));
         ColorOf(chosen.Foreground).ShouldBe(ColorOf(Resource("PgBrush.Accent.Text")));
         chosen.FontWeight.ShouldBe(FontWeight.SemiBold);
-        ColorOf(Presenter(chosen).Background).A.ShouldBe((byte)0, "выбранный пункт без заливки");
+        // Решение пользователя 2026-11-03 (DECISIONS.md, п. 13): выбранный пункт — заливкой оттенком акцента.
+        ColorOf(Presenter(chosen).Background).ShouldBe(ColorOf(Resource("PgBrush.Accent.Tint")), "выбранный пункт — заливкой");
+        var other = list.Child!.GetVisualDescendants().OfType<Button>().First(b => b.Classes.Contains("option") && !b.Classes.Contains("current"));
+        ColorOf(Presenter(other).Background).A.ShouldBe((byte)0, "остальные пункты — без заливки");
     }
 
     [AvaloniaTheory]

@@ -187,6 +187,11 @@ struct PgMenuView: View {
         }
         .padding(.horizontal, PgSpace.m)
         .frame(maxWidth: .infinity, minHeight: PgLayout.touchTarget, alignment: .leading)
+        // Выбранный пункт — заливкой оттенком акцента (DECISIONS.md, п. 13).
+        .background(
+            RoundedRectangle(cornerRadius: PgRadius.input, style: .continuous)
+                .fill(item.current ? Color(PgColor.Accent.tint) : Color.clear)
+        )
         .contentShape(Rectangle())
     }
 
