@@ -47,7 +47,8 @@ final class TunnelController: TunnelControl {
     /// Поднять туннель или поднять его заново с выбранным сервером и настройками. Туннель уже идет и профиль тот же — расширению
     /// сообщение «перечитать» (туннель не опускается, трафик ждет в нем, решение 410); профиль другой (блок при обрыве, локальная
     /// сеть) — туннель опускается, профиль сохраняется, туннель поднимается. iOS не дала сохранить профиль или поднять туннель
-    /// (разрешение не дано или отозвано, VPN занят) — PGC-NET-010; расширение не перезапустило ядро — его код.
+    /// (VPN занят, профиль отклонен) — PGC-NET-010, «Запретить» в запросе — `VpnPermissionDenied`; расширение не перезапустило
+    /// ядро — его код.
     func connect() async throws {
         let profile = try await VpnProfile.of(settings.load())
         if let manager, Self.running(manager), let saved = Self.profile(of: manager), saved.sameTunnel(profile) {
@@ -77,6 +78,11 @@ final class TunnelController: TunnelControl {
                 }
             }
         } catch {
+            // «Запретить» в системном запросе — «Выключено» с подсказкой, а не «Работает другой VPN» (DECISIONS.md, п. 5).
+            if VpnRefusal.permissionDenied(error) {
+                throw VpnPermissionDenied()
+            }
+
             throw TunnelFailure(TunnelErrors.otherVpn, detail: "\(error)")
         }
     }

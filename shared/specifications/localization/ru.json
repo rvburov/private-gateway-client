@@ -1524,6 +1524,7 @@
   "android.notify.events.text": "Подключение, отключение, изменения в списках серверов",
   "android.notify.disconnect": "Отключить",
   "android.permission.denied": "Android не дал разрешения на VPN — защита не включилась",
+  "ios.permission.denied": "iOS не дала разрешения на VPN — защита не включилась",
   "android.check.ks.system": "в настройках Android",
   "android.check.ks.text": "Блок при обрыве на Android — системный: «Постоянная VPN» и «Блокировать подключения без VPN» в настройках VPN телефона. Включить их может только пользователь.",
   "android.status.off.closed": "Интернет закрыт Android: без VPN подключения блокируются",

@@ -511,6 +511,9 @@ final class AppModel: ObservableObject {
             done = true
         } catch let failure as TunnelFailure {
             appError = failure.code
+        } catch is VpnPermissionDenied {
+            // Защита остается «Выключено»; следующее нажатие щита спросит снова (DECISIONS.md, п. 5).
+            post(texts.iosPermissionDenied, event: true)
         } catch {}
 
         await reload()
