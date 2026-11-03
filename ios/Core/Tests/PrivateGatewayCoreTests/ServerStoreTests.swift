@@ -237,8 +237,10 @@ final class ServerStoreTests: XCTestCase {
         let ids = try await store.servers().map(\.id)
         try await store.rename(ids[1], "Старое имя")
         try await store.setFavorite(ids[1], true)
-        let first = try XCTUnwrap(try await store.shareLink(ids[0]))
-        let second = try XCTUnwrap(try await store.shareLink(ids[1]))
+        let firstLink = try await store.shareLink(ids[0])
+        let secondLink = try await store.shareLink(ids[1])
+        let first = try XCTUnwrap(firstLink)
+        let second = try XCTUnwrap(secondLink)
 
         try await store.restoreMarks([
             BackupServer(link: first, name: "Работа", favorite: true),
