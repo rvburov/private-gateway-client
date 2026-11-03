@@ -1525,6 +1525,7 @@
   "android.notify.disconnect": "Disconnect",
   "android.permission.denied": "Android did not grant the VPN permission — protection is off",
   "ios.permission.denied": "iOS did not grant the VPN permission — protection is off",
+  "android.updates.unsigned": "The app will check for updates starting with the first signed release. Until then, install new versions by hand from the releases page.",
   "android.check.ks.system": "in Android settings",
   "android.check.ks.text": "On Android the kill switch belongs to the system: “Always-on VPN” and “Block connections without VPN” in the phone's VPN settings. Only you can turn them on.",
   "android.status.off.closed": "Android blocks the internet: connections without VPN are blocked",

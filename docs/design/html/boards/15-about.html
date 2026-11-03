@@ -127,6 +127,26 @@
           </div>
         </div>
 
+        <!-- Android (DECISIONS.md, п. 8): только кнопка «Проверить» по подписанному update.json выпуска — фоновой проверки и
+             уведомления нет; есть новее — «Открыть выпуск», APK ставят со страницы выпуска. iPhone обновляет App Store — карточки нет. -->
+        <div class="card up-card" data-os="android">
+          <div class="up-state idle" data-page="a-idle">
+            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+            <span class="t-caption t-wrap">Сама программа обновления не проверяет — только кнопкой «Проверить».</span>
+            <button class="btn-secondary up-left" data-goto="a-offer">Проверить</button>
+          </div>
+          <div class="up-state idle" data-page="a-offer" hidden>
+            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+            <span class="t-caption t-wrap">Доступна версия 0.2.0</span>
+            <div class="up-actions"><button class="btn-primary">Открыть выпуск</button><button class="btn-secondary" data-goto="a-latest">Проверить</button></div>
+          </div>
+          <div class="up-state idle" data-page="a-latest" hidden>
+            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+            <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
+            <button class="btn-secondary up-left" data-goto="a-idle">Проверить</button>
+          </div>
+        </div>
+
         <!-- Обновления: ищет и ставит служба; есть новее — карточка с главным из заметок и кнопками -->
         <div class="card up-card" data-os="desktop">
           <div class="up-state idle" data-page="idle">

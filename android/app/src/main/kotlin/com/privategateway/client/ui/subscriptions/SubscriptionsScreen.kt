@@ -625,8 +625,9 @@ private fun meta(group: GroupItem, language: String): String {
     }
 }
 
+/** «в 18:10», «вчера», «22 окт.» — как `TimeText.Day` десктопа; им пользуются и «Обновления» в «О программе». */
 @Composable
-private fun day(day: Day): String = when (day) {
+internal fun day(day: Day): String = when (day) {
     is Day.Today -> stringResource(R.string.when_at, day.time.format(DateTimeFormatter.ofPattern("HH:mm")))
     Day.Yesterday -> stringResource(R.string.when_yesterday)
     is Day.Date -> day.date.format(DateTimeFormatter.ofPattern("d MMM", LocalConfiguration.current.locales[0]))

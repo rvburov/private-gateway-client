@@ -1,4 +1,5 @@
 import com.privategateway.build.GeneratePgLicenses
+import com.privategateway.build.GeneratePgUpdateKeys
 import com.privategateway.build.GeneratePgResources
 import com.privategateway.build.MavenModules
 import com.privategateway.build.GeneratePgTheme
@@ -128,6 +129,7 @@ kotlin {
 // сверкой с runtime-зависимостями выпуска: модуль без строки в android.json не дает собрать приложение (решение 449).
 val pgTheme = tasks.named<GeneratePgTheme>("generatePgTheme")
 val pgResources = tasks.named<GeneratePgResources>("generatePgResources")
+val pgUpdateKeys = tasks.named<GeneratePgUpdateKeys>("generatePgUpdateKeys")
 val pgLicenses = tasks.named<GeneratePgLicenses>("generatePgLicenses") {
     appVersion.set(android.defaultConfig.versionName.orEmpty())
 }
@@ -145,6 +147,7 @@ androidComponents {
         variant.sources.kotlin?.addGeneratedSourceDirectory(pgTheme, GeneratePgTheme::outputDir)
         variant.sources.res?.addGeneratedSourceDirectory(pgResources, GeneratePgResources::outputDir)
         variant.sources.assets?.addGeneratedSourceDirectory(pgLicenses, GeneratePgLicenses::outputDir)
+        variant.sources.assets?.addGeneratedSourceDirectory(pgUpdateKeys, GeneratePgUpdateKeys::outputDir)
     }
 }
 

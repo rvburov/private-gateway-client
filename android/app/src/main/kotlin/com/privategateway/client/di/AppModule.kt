@@ -35,6 +35,8 @@ import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelDelay
 import com.privategateway.client.subscriptions.DeviceSubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionTransport
+import com.privategateway.client.updates.AppUpdates
+import com.privategateway.client.updates.UpdateSource
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -108,6 +110,9 @@ abstract class BindingsModule {
 
     @Binds
     abstract fun phoneHints(hints: DevicePhoneHints): PhoneHintSource
+
+    @Binds
+    abstract fun updates(updates: AppUpdates): UpdateSource
 
     @Binds
     abstract fun tunnelDelay(delay: DeviceTunnelDelay): TunnelDelay

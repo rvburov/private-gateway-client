@@ -374,6 +374,7 @@ fun AppScreen(
                         val behavior by settings.behavior.collectAsStateWithLifecycle()
                         val page by settings.requestedPage.collectAsStateWithLifecycle()
                         val system by settings.systemVpn.collectAsStateWithLifecycle()
+                        val updates by settings.updates.collectAsStateWithLifecycle()
                         SettingsScreen(
                             core,
                             viewModel::loadCoreVersion,
@@ -389,6 +390,8 @@ fun AppScreen(
                             language = actions.language,
                             onCaptive = captive,
                             installedApps = { settings.installedApps() },
+                            updates = updates,
+                            onCheckUpdates = settings::checkUpdates,
                             backup = { back ->
                                 if (backups != null) {
                                     BackupPage(backups, back)

@@ -86,6 +86,8 @@ fun SettingsScreen(
     language: ((String) -> Unit)? = null,
     installedApps: suspend () -> List<PhoneApp> = { emptyList() },
     onCaptive: () -> Unit = {},
+    updates: UpdatesView = UpdatesView(),
+    onCheckUpdates: () -> Unit = {},
     backup: @Composable (onBack: () -> Unit) -> Unit = {},
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
@@ -140,7 +142,9 @@ fun SettingsScreen(
         SettingsPage.About -> {
             BackHandler { page = SettingsPage.Main }
             var licenses by rememberSaveable { mutableStateOf(false) }
-            AboutScreen(core, loadCore, onLicenses = { licenses = true }, onReport = onCheck) { page = SettingsPage.Main }
+            AboutScreen(core, loadCore, onLicenses = { licenses = true }, onReport = onCheck, updates = updates, onCheckUpdates = onCheckUpdates) {
+                page = SettingsPage.Main
+            }
             if (licenses) {
                 val assets = LocalContext.current.assets
                 val components = remember(assets) { OpenComponents.read(assets) }

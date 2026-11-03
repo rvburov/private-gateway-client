@@ -27,6 +27,8 @@ import java.io.File
  * значок уведомления, список языков). Источники — те же, что у десктопа: shared/specifications/design-tokens.json,
  * shared/specifications/localization (ru.json, en.json) и контуры иконок макета из desktop/src/Client.UI/Themes/Icons.axaml.
  * generatePgLicenses — лицензии открытых компонентов в assets (shared/licenses/android.json и тексты).
+ * generatePgUpdateKeys — открытые ключи подписи обновлений (shared/update/keys/*.pem) в assets/update-keys: ими кнопка
+ * «Проверить» в «О программе» сверяет update.json выпуска, как служба десктопа (DECISIONS.md, п. 8).
  * Папки результата подключает к вариантам сборки приложение (android/app/build.gradle.kts).
  */
 class SharedResourcesPlugin : Plugin<Project> {
@@ -54,6 +56,29 @@ class SharedResourcesPlugin : Plugin<Project> {
             appVersion.convention("")
             outputDir.set(project.layout.buildDirectory.dir("generated/pg/assets"))
         }
+
+        project.tasks.register("generatePgUpdateKeys", GeneratePgUpdateKeys::class.java) {
+            keys.from(repo.dir("shared/update/keys").asFileTree.matching { include("*.pem") })
+            outputDir.set(project.layout.buildDirectory.dir("generated/pg/update-assets"))
+        }
+    }
+}
+
+/** Открытые ключи подписи обновлений — в assets/update-keys как есть; ключей нет — папка пустая. */
+abstract class GeneratePgUpdateKeys : DefaultTask() {
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.NAME_ONLY)
+    abstract val keys: ConfigurableFileCollection
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun generate() {
+        val folder = outputDir.get().asFile.resolve("update-keys")
+        outputDir.get().asFile.deleteRecursively()
+        folder.mkdirs()
+        keys.files.sortedBy { it.name }.forEach { it.copyTo(folder.resolve(it.name), overwrite = true) }
     }
 }
 

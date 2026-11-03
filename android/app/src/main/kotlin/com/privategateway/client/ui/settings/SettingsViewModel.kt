@@ -9,6 +9,7 @@ import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.data.PhoneApp
 import com.privategateway.client.data.PhoneApps
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.updates.UpdateSource
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -26,7 +27,26 @@ class SettingsViewModel @Inject constructor(
     private val settings: SettingsRepository,
     monitor: TunnelMonitor,
     private val phoneApps: PhoneApps,
+    private val updateSource: UpdateSource,
 ) : ViewModel() {
+    private val updateState = MutableStateFlow(UpdatesView())
+
+    /** «Обновления» в «О программе» (DECISIONS.md, п. 8): идет ли проверка, ее итог и когда он получен. */
+    val updates: StateFlow<UpdatesView> = updateState.asStateFlow()
+
+    /** «Проверить»: одна проверка за раз; итог остается до следующей. */
+    fun checkUpdates() {
+        if (updateState.value.checking) {
+            return
+        }
+
+        updateState.value = updateState.value.copy(checking = true)
+        viewModelScope.launch {
+            val result = updateSource.check()
+            updateState.value = UpdatesView(checking = false, result = result, checkedAt = System.currentTimeMillis())
+        }
+    }
+
     val tunnel: StateFlow<TunnelSettings> = settings.tunnel.stateIn(viewModelScope, SharingStarted.Eagerly, TunnelSettings())
 
     /** «Постоянная VPN» и блок без VPN: под защитой — что сообщил Android, без нее — запомненное (решение 445). */

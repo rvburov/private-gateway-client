@@ -59,9 +59,10 @@ private val RowsPadding = PaddingValues(horizontal = PgSpace.Card, vertical = Pg
 /**
  * «О программе» (доска 15, решение 555): карточка программы (знак, название, версия · Android · архитектура), «Компоненты»
  * (клиент, Xray-core, TUN-драйвер Android), «Приватность» тремя строками, ссылки — лицензии, политика конфиденциальности
- * листом, «Сообщить о проблеме» (вкладка «Проверка» с отчетом) и «Новые версии» (страница выпусков GitHub). Карточки
- * «Обновления» нет: APK не обновляет себя сам, а встроенной установки обновлений у телефона нет (решение 555); строки «Служба»
- * и «Hysteria2, TUIC» — только у десктопа (службы и второго ядра на телефоне нет).
+ * листом, «Сообщить о проблеме» (вкладка «Проверка» с отчетом) и «Новые версии» (страница выпусков GitHub). Карточка
+ * «Обновления» — только кнопка «Проверить» по подписанному update.json выпуска (DECISIONS.md, п. 8): APK не обновляет себя
+ * сам, ставит его пользователь со страницы выпуска; строки «Служба» и «Hysteria2, TUIC» — только у десктопа (службы и второго
+ * ядра на телефоне нет).
  */
 @Composable
 fun AboutScreen(
@@ -69,6 +70,8 @@ fun AboutScreen(
     loadCore: () -> Unit,
     onLicenses: () -> Unit,
     onReport: () -> Unit,
+    updates: UpdatesView = UpdatesView(),
+    onCheckUpdates: () -> Unit = {},
     onBack: () -> Unit,
 ) {
     LaunchedEffect(Unit) { loadCore() }
@@ -86,6 +89,8 @@ fun AboutScreen(
         PgPageHeader(stringResource(R.string.settings_adv_about_title), onBack)
         Spacer(Modifier.size(PgSpace.L))
         AppCard()
+        Spacer(Modifier.size(PgSpace.M))
+        UpdatesCard(updates, onCheckUpdates)
 
         GroupTitle(stringResource(R.string.about_components), top = 18.dp)
         PgCard(Modifier.fillMaxWidth(), contentPadding = RowsPadding) {
