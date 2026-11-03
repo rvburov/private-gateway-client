@@ -7,6 +7,8 @@ public enum NoticeKind: String, CaseIterable, Sendable {
     case serverDown
     /// Защита не включилась или остановилась по другой причине — текст по коду ошибки.
     case protectionFailed
+    /// VPN телефона занят другим приложением (PGC-NET-010): не дал подключиться или вытеснил наш (DECISIONS.md, п. 4).
+    case otherVpn
     /// Защита включилась или вернулась.
     case connected
     /// Защиту выключили.
@@ -19,7 +21,7 @@ public enum NoticeKind: String, CaseIterable, Sendable {
     case serversNotUpdated
 
     public var important: Bool {
-        self == .connectionLost || self == .serverDown || self == .protectionFailed
+        self == .connectionLost || self == .serverDown || self == .protectionFailed || self == .otherVpn
     }
 
     public var titleKey: String {
@@ -27,6 +29,7 @@ public enum NoticeKind: String, CaseIterable, Sendable {
         case .connectionLost: return "notify.lost.title"
         case .serverDown: return "notify.down.title"
         case .protectionFailed: return "notify.failed.title"
+        case .otherVpn: return "notify.other.title.mobile"
         case .connected: return "notify.on.title"
         case .disconnected: return "notify.off.title"
         case .serverGone: return "notify.gone.title"
@@ -131,6 +134,9 @@ public enum NotificationPolicy {
             notice = Notice(.connectionLost, "notify.lost.blocked", [.changeServer, .open])
         case .error where changed && after.error == TunnelErrors.serverNotResponding:
             notice = Notice(.serverDown, "notify.down.\(traffic)", [.retry, .chooseServer])
+        case .error where changed && after.error == TunnelErrors.otherVpn:
+            // VPN занят другим приложением: не «выключено вручную» и не общий сбой — страница проблемы в приложении (п. 4).
+            notice = Notice(.otherVpn, "notify.other.text.mobile", [.open])
         case .error where changed:
             notice = Notice(.protectionFailed, "notify.failed.\(traffic)", [.open], code: after.error ?? Notice.unknownCode)
         case .connected where moved:

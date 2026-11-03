@@ -147,9 +147,19 @@ class ProtectionNotifierTest {
     }
 
     @Test
+    fun `another vpn is an important notice of its own`() {
+        monitor.set(TunnelStatus(TunnelState.Error, serverId = "nl", error = TunnelErrors.OTHER_VPN))
+        waitFor { shown().isNotEmpty() }
+        val notification = shadowOf(manager).allNotifications.single()
+        assertEquals(context.getString(R.string.notify_other_title_mobile), shadowOf(notification).contentTitle.toString())
+        assertEquals(context.getString(R.string.notify_other_text_mobile), shadowOf(notification).contentText.toString())
+        assertEquals(PrivateGatewayApp.CHANNEL_ALERTS, notification.channelId, "важное — каналом сбоев")
+    }
+
+    @Test
     fun `every text the policy gives has a resource and the arguments`() {
         val statuses = TunnelState.entries.flatMap { state ->
-            listOf(null, TunnelErrors.SERVER_NOT_RESPONDING, TunnelErrors.CORE_FAILED).map { TunnelStatus(state, error = it) }
+            listOf(null, TunnelErrors.SERVER_NOT_RESPONDING, TunnelErrors.CORE_FAILED, TunnelErrors.OTHER_VPN).map { TunnelStatus(state, error = it) }
         }
         val notices = mutableListOf<Notice>()
         for (before in statuses) {

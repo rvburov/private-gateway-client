@@ -14,12 +14,14 @@ import com.privategateway.client.core.inspect.PhoneNetwork
 import com.privategateway.client.core.inspect.PhoneNetworkKind
 import com.privategateway.client.core.inspect.PublicAddress
 import com.privategateway.client.core.servers.ServerFacts
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.R
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.inspect.PhoneHints
 import com.privategateway.client.inspect.PhoneNetworkSource
 import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.subscriptions.SubscriptionTransport
@@ -106,6 +108,10 @@ class MainViewModelTest {
     }
 
     private val files = FakeFiles()
+
+    /** Есть ли на телефоне VPN другого приложения (подсказки Android). */
+    @Volatile
+    private var otherVpn = false
 
     /** Ответы «сети» на запрос внешнего IP (Cloudflare trace): что вернуть, задает тест; ответ может ждать. */
     @Volatile private var answer: suspend () -> String? = { null }
@@ -198,6 +204,7 @@ class MainViewModelTest {
             networks,
             counters,
             files,
+            { PhoneHints(otherVpn = otherVpn) },
         )
     }
 
@@ -774,5 +781,18 @@ class MainViewModelTest {
         val link = assertNotNull(wait { model.shareLink(id) })
         assertEquals(server.name, assertNotNull(com.privategateway.client.core.links.LinkParser.parse(link).server).name, "своего названия в ссылке нет")
         assertNull(wait { model.shareLink("gone") })
+    }
+
+    @Test
+    fun `refused vpn consent while another app holds the vpn is the other vpn problem`() {
+        assertFalse(model.consentRefused(), "другого VPN нет — просто отказ, подсказка")
+        assertEquals(TunnelState.Off, monitor.status.value.state)
+
+        otherVpn = true
+        assertTrue(model.otherVpnRunning())
+        assertTrue(model.consentRefused())
+        assertEquals(TunnelStatus(state = TunnelState.Error, error = TunnelErrors.OTHER_VPN), monitor.status.value)
+        otherVpn = false
+        assertFalse(model.otherVpnRunning(), "«Я закрыл его — проверить снова» видит, что VPN свободен")
     }
 }

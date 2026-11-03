@@ -61,11 +61,13 @@ class NotificationPolicyTest {
         assertEquals(NoticeKind.ServerDown, forChange(connected, gone)?.kind, "«Не повторять» сдается сразу")
         assertNull(forChange(gone, gone.copy(since = 42, lockdown = true)), "то же состояние — свежие цифры")
 
+        // VPN занят другим приложением — свое важное уведомление, а не общий сбой и не «выключено вручную» (DECISIONS.md, п. 4).
         val other = assertNotNull(forChange(status(TunnelState.Connecting), status(TunnelState.Error, TunnelErrors.OTHER_VPN), lockdown = true))
-        assertEquals(NoticeKind.ProtectionFailed, other.kind)
-        assertEquals("notify.failed.blocked", other.textKey)
-        assertEquals(TunnelErrors.OTHER_VPN, other.code)
+        assertEquals(NoticeKind.OtherVpn, other.kind)
+        assertEquals("notify.other.text.mobile", other.textKey)
         assertEquals(listOf(NoticeAction.Open), other.actions)
+        assertTrue(other.important)
+        assertEquals(NoticeKind.OtherVpn, forChange(status(TunnelState.Connected), status(TunnelState.Error, TunnelErrors.OTHER_VPN))?.kind, "вытеснил наш")
 
         val core = status(TunnelState.Error, TunnelErrors.CORE_FAILED)
         val failed = assertNotNull(forChange(status(TunnelState.Connecting), core))
@@ -74,7 +76,7 @@ class NotificationPolicyTest {
         assertEquals(TunnelErrors.CORE_FAILED, failed.code)
         assertTrue(failed.important)
 
-        assertEquals(TunnelErrors.OTHER_VPN, forChange(core, core.copy(error = TunnelErrors.OTHER_VPN))?.code, "другая ошибка — новое уведомление")
+        assertEquals(NoticeKind.OtherVpn, forChange(core, core.copy(error = TunnelErrors.OTHER_VPN))?.kind, "другая ошибка — новое уведомление")
         assertEquals(NoticeKind.ServerDown, forChange(core, gone)?.kind)
         assertEquals(Notice.UNKNOWN_CODE, forChange(status(TunnelState.Connecting), status(TunnelState.Error))?.code, "сбой без кода — общий код")
     }
@@ -130,9 +132,9 @@ class NotificationPolicyTest {
         assertEquals("servers-Основная", Notice(NoticeKind.ServersNotUpdated, "k", emptyList(), subscription = "Основная").tag)
         assertFalse(Notice(NoticeKind.ServersNotUpdated, "k", emptyList(), subscription = "Основная").important)
         assertEquals(
-            setOf(NoticeKind.ConnectionLost, NoticeKind.ServerDown, NoticeKind.ProtectionFailed),
+            setOf(NoticeKind.ConnectionLost, NoticeKind.ServerDown, NoticeKind.ProtectionFailed, NoticeKind.OtherVpn),
             NoticeKind.entries.filter { it.important }.toSet(),
-            "важные — обрыв, сервер не отвечает, защита не включилась",
+            "важные — обрыв, сервер не отвечает, защита не включилась, VPN занят другим",
         )
     }
 

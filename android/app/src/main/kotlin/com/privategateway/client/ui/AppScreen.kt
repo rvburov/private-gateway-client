@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.R
 import com.privategateway.client.inspect.CheckViewModel
@@ -31,6 +32,8 @@ import com.privategateway.client.ui.check.CheckScreen
 import com.privategateway.client.ui.check.InspectorActions
 import com.privategateway.client.ui.home.HomeActions
 import com.privategateway.client.ui.home.HomeScreen
+import com.privategateway.client.ui.home.OtherVpnActions
+import com.privategateway.client.ui.home.OtherVpnScreen
 import com.privategateway.client.ui.qr.QrCameraScreen
 import com.privategateway.client.ui.servers.CardActions
 import com.privategateway.client.ui.servers.ImportActions
@@ -255,7 +258,22 @@ fun AppScreen(
                 }
                 val open = card
                 when (tab) {
-                    Tab.Home -> {
+                    Tab.Home -> if (ui.status.state == TunnelState.Error && ui.status.error == TunnelErrors.OTHER_VPN) {
+                        // VPN телефона занят другим приложением (PGC-NET-010) — страница проблемы вместо главной (DECISIONS.md, п. 4).
+                        OtherVpnScreen(
+                            OtherVpnActions(
+                                retry = {
+                                    if (viewModel.otherVpnRunning()) {
+                                        toast.show(context.getString(R.string.problem_conflict_still_mobile), long = true)
+                                    } else {
+                                        power()
+                                    }
+                                },
+                                vpnSettings = actions.openVpnSettings,
+                                details = { tab = Tab.Check },
+                            ),
+                        )
+                    } else {
                         // Скорость туннеля читается, только пока главная на экране.
                         val speed by viewModel.speed.collectAsStateWithLifecycle()
                         HomeScreen(

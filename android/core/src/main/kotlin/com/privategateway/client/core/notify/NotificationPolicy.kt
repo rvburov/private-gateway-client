@@ -52,6 +52,9 @@ object NotificationPolicy {
                 Notice(NoticeKind.ConnectionLost, "notify.lost.blocked", listOf(NoticeAction.ChangeServer, NoticeAction.Open))
             after.state == TunnelState.Error && changed && code == TunnelErrors.SERVER_NOT_RESPONDING ->
                 Notice(NoticeKind.ServerDown, "notify.down.$traffic", listOf(NoticeAction.Retry, NoticeAction.ChooseServer))
+            // VPN занят другим приложением: не «выключено вручную» и не общий сбой — страница проблемы в окне (п. 4).
+            after.state == TunnelState.Error && changed && code == TunnelErrors.OTHER_VPN ->
+                Notice(NoticeKind.OtherVpn, "notify.other.text.mobile", listOf(NoticeAction.Open))
             after.state == TunnelState.Error && changed ->
                 Notice(NoticeKind.ProtectionFailed, "notify.failed.$traffic", listOf(NoticeAction.Open))
             after.state == TunnelState.Connected && moved ->

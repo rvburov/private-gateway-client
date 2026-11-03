@@ -160,6 +160,9 @@
   </section>
 
   <!-- ===================== Работает другой VPN ===================== -->
+  <!-- Телефон (DECISIONS.md, п. 4): VPN телефона занят другим приложением — не дал подключиться или вытеснил наш во время
+       работы. Та же страница вместо главной, тексты — для Android и iOS; «Открыть настройки VPN» — только Android: iOS не дает
+       приложению открыть настройки VPN. -->
   <section class="pg-screen" data-state="error" data-caption="Работает другой VPN или прокси-клиент">
     <div class="pg-page">
       <!-- Шапка: знак и название, как на главной -->
@@ -170,14 +173,23 @@
 
       <div class="pr-body">
         <span class="pr-mark caution"><i data-icon="Warning" data-stroke="1.9" data-size="34"></i></span>
-        <span class="pr-title t-wrap">Работает другой VPN или прокси-клиент</span>
-        <p class="pr-text">Другой VPN или прокси-клиент уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход» — и проверьте снова: два клиента сразу пускают трафик мимо туннеля, поэтому рядом с другим защита не включается.</p>
-        <div class="card pr-facts">
+        <span class="pr-title t-wrap" data-os="desktop">Работает другой VPN или прокси-клиент</span>
+        <span class="pr-title t-wrap" data-os="phone">Работает другой VPN</span>
+        <p class="pr-text" data-os="desktop">Другой VPN или прокси-клиент уже ведет трафик этого компьютера. Закройте его полностью — значок в трее → «Выход» — и проверьте снова: два клиента сразу пускают трафик мимо туннеля, поэтому рядом с другим защита не включается.</p>
+        <p class="pr-text" data-os="android">Android держит только один VPN, и сейчас его занимает другое приложение. Выключите VPN в том приложении или в «Настройки → Сеть и интернет → VPN» и проверьте снова.</p>
+        <p class="pr-text" data-os="ios">iOS держит только один VPN, и сейчас его занимает другое приложение. Выключите VPN в том приложении или в «Настройки → VPN» и проверьте снова.</p>
+        <div class="card pr-facts" data-os="desktop">
           <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Ядро прокси</span><span class="pr-value">работает</span></div>
           <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Системный прокси</span><span class="pr-value">127.0.0.1:7890</span></div>
         </div>
+        <div class="card pr-facts" data-os="phone">
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">VPN телефона</span><span class="pr-value">занят другим приложением</span></div>
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label">Защита Private Gateway</span><span class="pr-value">выключена</span></div>
+        </div>
         <div class="pr-actions">
-          <button class="btn-primary" data-toast="Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»">Я закрыл его — проверить снова</button>
+          <button class="btn-primary" data-os="desktop" data-toast="Другой VPN или прокси-клиент все еще работает — закройте его: значок в трее → «Выход»">Я закрыл его — проверить снова</button>
+          <button class="btn-primary" data-os="phone" data-toast="Другой VPN все еще работает — выключите его в том приложении или в настройках VPN">Я закрыл его — проверить снова</button>
+          <button class="btn-secondary cancel" data-os="android">Открыть настройки VPN</button>
         </div>
         <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-NET-010</button>
       </div>

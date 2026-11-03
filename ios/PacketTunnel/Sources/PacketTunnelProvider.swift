@@ -103,7 +103,9 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
         await work.run {
             self.stopWatching()
             self.stopCore()
-            self.report(TunnelStatus())
+            // Другое приложение заняло VPN телефона (DECISIONS.md, п. 4): «Ошибка» PGC-NET-010 с уведомлением и страницей
+            // «Работает другой VPN» в приложении, а не «Защита выключена вручную».
+            self.report(reason == .superceded ? TunnelStatus(state: .error, error: TunnelErrors.otherVpn) : TunnelStatus())
         }
     }
 

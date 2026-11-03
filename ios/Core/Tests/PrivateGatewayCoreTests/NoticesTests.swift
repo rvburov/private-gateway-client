@@ -48,11 +48,13 @@ final class NoticesTests: XCTestCase {
         later.since = Date(timeIntervalSince1970: 42)
         XCTAssertNil(change(gone, later), "то же состояние — свежие цифры")
 
+        // VPN занят другим приложением — свое важное уведомление, а не общий сбой и не «выключено вручную» (DECISIONS.md, п. 4).
         let other = try XCTUnwrap(change(status(.connecting), status(.error, TunnelErrors.otherVpn), killSwitch: true))
-        XCTAssertEqual(other.kind, .protectionFailed)
-        XCTAssertEqual(other.textKey, "notify.failed.blocked")
-        XCTAssertEqual(other.code, TunnelErrors.otherVpn)
+        XCTAssertEqual(other.kind, .otherVpn)
+        XCTAssertEqual(other.textKey, "notify.other.text.mobile")
         XCTAssertEqual(other.actions, [.open])
+        XCTAssertTrue(other.important)
+        XCTAssertEqual(change(connected, status(.error, TunnelErrors.otherVpn))?.kind, .otherVpn, "вытеснил наш")
 
         let core = status(.error, TunnelErrors.coreFailed)
         let failed = try XCTUnwrap(change(status(.connecting), core))
@@ -61,7 +63,7 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(failed.code, TunnelErrors.coreFailed)
         XCTAssertTrue(failed.important)
 
-        XCTAssertEqual(change(core, status(.error, TunnelErrors.otherVpn))?.code, TunnelErrors.otherVpn, "другая ошибка — новое уведомление")
+        XCTAssertEqual(change(core, status(.error, TunnelErrors.otherVpn))?.kind, .otherVpn, "другая ошибка — новое уведомление")
         XCTAssertEqual(change(core, gone)?.kind, .serverDown)
         XCTAssertEqual(change(status(.connecting), status(.error))?.code, Notice.unknownCode, "сбой без кода — общий код")
     }
@@ -103,7 +105,7 @@ final class NoticesTests: XCTestCase {
         XCTAssertEqual(Notice(.serverChanged, "k", [], subscription: "Основная").tag, "servers-Основная")
         XCTAssertEqual(Notice(.serversNotUpdated, "k", [], subscription: "Основная").tag, "servers-Основная")
         XCTAssertFalse(Notice(.serversNotUpdated, "k", [], subscription: "Основная").important)
-        XCTAssertEqual(Set(NoticeKind.allCases.filter(\.important)), [.connectionLost, .serverDown, .protectionFailed])
+        XCTAssertEqual(Set(NoticeKind.allCases.filter(\.important)), [.connectionLost, .serverDown, .protectionFailed, .otherVpn])
     }
 
     func testSubscriptionChangesOfTheSelectedServer() throws {
@@ -160,7 +162,7 @@ final class NoticesTests: XCTestCase {
 
     func testEveryKeyHasATextInBothLanguages() throws {
         var keys = Set(NoticeKind.allCases.map(\.titleKey) + NoticeAction.allCases.map(\.textKey))
-        let states = TunnelState.allCases.flatMap { state in [nil, TunnelErrors.coreFailed, TunnelErrors.serverNotResponding].map { status(state, $0) } }
+        let states = TunnelState.allCases.flatMap { state in [nil, TunnelErrors.coreFailed, TunnelErrors.serverNotResponding, TunnelErrors.otherVpn].map { status(state, $0) } }
         for before in states {
             for after in states {
                 for killSwitch in [false, true] {

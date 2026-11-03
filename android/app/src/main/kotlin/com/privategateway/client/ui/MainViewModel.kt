@@ -20,10 +20,12 @@ import com.privategateway.client.core.subscriptions.SubscriptionDownloadExceptio
 import com.privategateway.client.core.subscriptions.SubscriptionFetch
 import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.core.vpn.SystemVpnView
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.inspect.PhoneHintSource
 import com.privategateway.client.inspect.PhoneNetworkSource
 import com.privategateway.client.inspect.WebFetch
 import com.privategateway.client.subscriptions.SubscriptionNotice
@@ -200,6 +202,7 @@ class MainViewModel @Inject constructor(
     private val networks: PhoneNetworkSource,
     private val counters: ByteCounters,
     private val files: ImportFiles,
+    private val hints: PhoneHintSource,
 ) : ViewModel() {
     private val webIp = MutableStateFlow(WebIp())
 
@@ -426,6 +429,22 @@ class MainViewModel @Inject constructor(
      * «Проверить» на главной: внешний IP снова — под защитой это проверка выхода (совпал с реальным — утечка), время
      * проверки — в «Проверено …». Замер уже идет — нажатие не считается.
      */
+    /** VPN телефона сейчас занят другим приложением — «Я закрыл его — проверить снова» (DECISIONS.md, п. 4). */
+    fun otherVpnRunning(): Boolean = hints.read(tunnelUp = false).otherVpn
+
+    /**
+     * Android не дал разрешения на VPN. VPN телефона занят другим приложением (его «Постоянная VPN» не пускает наш, или
+     * пользователь не стал его вытеснять) — «Работает другой VPN» вместо подсказки: true. Другого VPN нет — false.
+     */
+    fun consentRefused(): Boolean {
+        if (!otherVpnRunning()) {
+            return false
+        }
+
+        monitor.set(TunnelStatus(state = TunnelState.Error, error = TunnelErrors.OTHER_VPN))
+        return true
+    }
+
     fun verify() {
         val path = currentPath() ?: return
         if (!webIp.value.measuring) {

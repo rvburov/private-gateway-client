@@ -61,7 +61,8 @@ class MainActivity : ComponentActivity() {
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
             GatewayVpnService.connect(this)
-        } else {
+        } else if (!viewModel.consentRefused()) {
+            // VPN занят другим приложением — страница «Работает другой VPN» (DECISIONS.md, п. 4); иначе — просто отказ.
             Toast.makeText(this, R.string.android_permission_denied, Toast.LENGTH_LONG).show()
         }
     }

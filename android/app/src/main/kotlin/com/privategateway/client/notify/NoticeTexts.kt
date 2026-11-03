@@ -15,6 +15,7 @@ object NoticeTexts {
         NoticeKind.ConnectionLost -> R.string.notify_lost_title
         NoticeKind.ServerDown -> R.string.notify_down_title
         NoticeKind.ProtectionFailed -> R.string.notify_failed_title
+        NoticeKind.OtherVpn -> R.string.notify_other_title_mobile
         NoticeKind.Connected -> R.string.notify_on_title
         NoticeKind.Disconnected -> R.string.notify_off_title
         NoticeKind.ServerGone -> R.string.notify_gone_title
@@ -31,6 +32,7 @@ object NoticeTexts {
         "notify.down.direct" -> R.string.notify_down_direct
         "notify.failed.blocked" -> R.string.notify_failed_blocked
         "notify.failed.direct" -> R.string.notify_failed_direct
+        "notify.other.text.mobile" -> R.string.notify_other_text_mobile
         "notify.on.text" -> R.string.notify_on_text
         "notify.on.back" -> R.string.notify_on_back
         "notify.off.text" -> R.string.notify_off_text

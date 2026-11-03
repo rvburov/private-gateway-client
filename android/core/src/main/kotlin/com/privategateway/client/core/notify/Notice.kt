@@ -17,6 +17,9 @@ enum class NoticeKind(val important: Boolean, val titleKey: String) {
     /** Защита не включилась или остановилась по другой причине — текст по коду ошибки. */
     ProtectionFailed(true, "notify.failed.title"),
 
+    /** VPN телефона занят другим приложением (PGC-NET-010): не дал подключиться или вытеснил наш (DECISIONS.md, п. 4). */
+    OtherVpn(true, "notify.other.title.mobile"),
+
     /** Защита включилась или вернулась. */
     Connected(false, "notify.on.title"),
 

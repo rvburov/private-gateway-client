@@ -33,6 +33,7 @@ import com.privategateway.client.core.text.SecretMasker
 import com.privategateway.client.core.vpn.CaptivePause
 import com.privategateway.client.core.vpn.CoreDnsFollower
 import com.privategateway.client.core.vpn.GuardEvents
+import com.privategateway.client.core.vpn.OtherVpn
 import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.TunPlan
 import com.privategateway.client.core.vpn.TunnelErrors
@@ -48,6 +49,7 @@ import java.net.InetAddress
 import java.util.UUID
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.inspect.PhoneHintSource
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -87,6 +89,8 @@ class GatewayVpnService : VpnService() {
     @Inject lateinit var subscriptionNetwork: OwnVpnNetwork
 
     @Inject lateinit var journal: TunnelJournal
+
+    @Inject lateinit var hints: PhoneHintSource
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
@@ -178,7 +182,7 @@ class GatewayVpnService : VpnService() {
         // Разрешение отозвано: VPN другой программы занял место или пользователь отключил нас в настройках Android.
         journal.warning("vpn revoked by Android")
         subscriptionNetwork.clear()
-        disconnect(lastStart)
+        revoked(lastStart)
     }
 
     override fun onDestroy() {
@@ -441,6 +445,38 @@ class GatewayVpnService : VpnService() {
                 monitor.set(TunnelStatus())
                 ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
                 stopSelfResult(startId)
+            }
+        }
+    }
+
+    /**
+     * Android отозвал VPN: туннель и ядро снимаются сразу, потом [OtherVpn] ждет VPN другого приложения. Он поднялся —
+     * «Ошибка» PGC-NET-010: свое важное уведомление и страница «Работает другой VPN» в окне (DECISIONS.md, п. 4); нет —
+     * пользователь выключил наш в настройках Android, это «Выключено».
+     */
+    private fun revoked(startId: Int) {
+        resume?.cancel()
+        resume = null
+        work?.cancel()
+        stopGuard()
+        work = scope.launch {
+            lock.withLock {
+                monitor.update { it.copy(state = TunnelState.Stopping) }
+                stopCore()
+                up = null
+            }
+
+            val other = OtherVpn.tookOver { hints.read(tunnelUp = false).otherVpn }
+            lock.withLock {
+                if (other) {
+                    journal.warning("another vpn took over")
+                    fail(TunnelErrors.OTHER_VPN, startId)
+                } else {
+                    journal.info("tunnel down")
+                    monitor.set(TunnelStatus())
+                    ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    stopSelfResult(startId)
+                }
             }
         }
     }

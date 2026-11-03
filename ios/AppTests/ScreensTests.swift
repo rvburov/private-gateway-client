@@ -244,6 +244,8 @@ final class ScreensTests: XCTestCase {
                 onLan: {}, onBack: {}
             )
             XCTAssertNotNil(try render(routing, height: 1600))
+            // «Работает другой VPN» (DECISIONS.md, п. 4) — страница вместо главной на обоих языках.
+            XCTAssertEqual(try render(OtherVpnView(texts: texts, onRetry: {}, onDetails: {})).size.width, 393, accuracy: 1)
             // «Лицензии» — лист поверх «О программе»: страница с открытым листом, список и каждый компонент.
             XCTAssertNotNil(try render(AboutView(texts: texts, about: about, licenses: true, onReport: {}, onBack: {}), height: 1400))
             XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, onClose: {}), height: 1400))

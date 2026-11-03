@@ -196,6 +196,23 @@ struct RootView: View {
     @ViewBuilder
     private var page: some View {
         switch tab {
+        case .home where model.home.status.state == .error && model.home.status.error == TunnelErrors.otherVpn:
+            // VPN телефона занят другим приложением (PGC-NET-010) — страница проблемы вместо главной (DECISIONS.md, п. 4).
+            OtherVpnView(
+                texts: model.texts,
+                onRetry: {
+                    // Свой туннель опущен: интерфейс VPN в настройках сетей системы — чужой.
+                    if SystemProxy.read().vpn.isEmpty {
+                        Task { await model.retry() }
+                    } else {
+                        layers.show(model.texts.problemConflictStillMobile, for: PgToastDuration.event)
+                    }
+                },
+                onDetails: {
+                    checkPage = .main
+                    tab = .check
+                }
+            )
         case .home:
             HomeView(
                 texts: model.texts, home: model.home, killSwitch: model.settings.killSwitch, facts: homeFacts, onAdd: { adding = true },
