@@ -4,6 +4,9 @@ import android.content.Context
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -87,12 +90,14 @@ class LicensesTest {
         compose.onNodeWithTag("license.url").assertTextEquals("https://github.com/XTLS/Xray-core")
         compose.onNodeWithTag("license.text.MPL-2.0").performScrollTo().assertTextContains("Mozilla Public License", substring = true)
 
-        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
+        // «Назад» компонента — внутри листа; под листом свой «Назад» у страницы «О программе».
+        val detailBack = hasContentDescription(context.getString(R.string.common_back)) and hasAnyAncestor(hasTestTag("license"))
+        compose.onNode(detailBack).performScrollTo().performClick()
         compose.onNodeWithTag("licenses.ZXing").performScrollTo().performClick()
         compose.onNodeWithTag("license.modules").performScrollTo().assertTextContains("com.google.zxing:core", substring = true)
         compose.onNodeWithTag("license.text.Apache-2.0").performScrollTo().assertTextContains("Apache License", substring = true)
 
-        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
+        compose.onNode(detailBack).performScrollTo().performClick()
         // Лист закрывается крестиком — под ним снова «О программе» (DECISIONS.md, п. 1: лицензии — лист, а не страница).
         compose.onNodeWithTag("licenses.close").performClick()
         compose.onNodeWithTag("licenses").assertDoesNotExist()
