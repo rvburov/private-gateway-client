@@ -13,23 +13,28 @@
 
 ## 1. Создать ключ (один раз)
 
-Нужна программа `keytool` из JDK. Если стоит Android Studio — она уже есть внутри. Откройте Git Bash и выполните:
+Нужна программа `keytool` из JDK. Если стоит Android Studio — она уже есть внутри. Все команды — в Git Bash.
 
-Сначала найдите `keytool` (в Android Studio он лежит в папке `jbr`, путь зависит от версии и места установки):
+Сначала найдите `keytool` (в Android Studio он лежит в папке `jbr`, в JDK — в `bin`; путь зависит от версии и места
+установки):
 
 ```bash
-find "/c/Program Files" "/c/Program Files (x86)" ~/AppData/Local -iname keytool.exe 2>/dev/null
+find "/c/Program Files" "/c/Program Files (x86)" ~/AppData/Local ~/scoop -iname keytool.exe 2>/dev/null
 ```
 
-Ничего не нашлось — `keytool` нет: поставьте JDK. В Windows откройте **PowerShell** и выполните
-`winget install --id EclipseAdoptium.Temurin.21.JDK -e`, затем закройте и снова откройте Git Bash и повторите поиск, добавив
-папку JDK: `find "/c/Program Files/Eclipse Adoptium" -iname keytool.exe`.
-
-На macOS — `find /Applications ~/Library -name keytool 2>/dev/null`, на Linux — `which keytool`. Возьмите путь из ответа
-(например, `/c/Program Files/Android/Android Studio1/jbr/bin/keytool.exe`) и выполните — каждую команду одной строкой:
+Ничего не нашлось — `keytool` нет: поставьте JDK. В Git Bash через Scoop:
 
 ```bash
-KEYTOOL="/c/Program Files/Android/Android Studio1/jbr/bin/keytool.exe"
+scoop bucket add java
+scoop install java/temurin21-jdk
+find ~/scoop/apps/temurin21-jdk -iname keytool.exe
+```
+
+На macOS — `find /Applications ~/Library -name keytool 2>/dev/null`, на Linux — `which keytool`. Возьмите путь из ответа
+(например, `/c/Users/<вы>/scoop/apps/temurin21-jdk/current/bin/keytool.exe`) и выполните — каждую команду одной строкой:
+
+```bash
+KEYTOOL="$HOME/scoop/apps/temurin21-jdk/current/bin/keytool.exe"
 mkdir -p ~/private-gateway-keys
 "$KEYTOOL" -genkeypair -v -keystore ~/private-gateway-keys/release.p12 -storetype PKCS12 -alias private-gateway -keyalg RSA -keysize 4096 -validity 10000
 ```
