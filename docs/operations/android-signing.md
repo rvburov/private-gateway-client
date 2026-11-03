@@ -21,6 +21,10 @@
 find "/c/Program Files" "/c/Program Files (x86)" ~/AppData/Local -iname keytool.exe 2>/dev/null
 ```
 
+Ничего не нашлось — `keytool` нет: поставьте JDK. В Windows откройте **PowerShell** и выполните
+`winget install --id EclipseAdoptium.Temurin.21.JDK -e`, затем закройте и снова откройте Git Bash и повторите поиск, добавив
+папку JDK: `find "/c/Program Files/Eclipse Adoptium" -iname keytool.exe`.
+
 На macOS — `find /Applications ~/Library -name keytool 2>/dev/null`, на Linux — `which keytool`. Возьмите путь из ответа
 (например, `/c/Program Files/Android/Android Studio1/jbr/bin/keytool.exe`) и выполните — каждую команду одной строкой:
 
