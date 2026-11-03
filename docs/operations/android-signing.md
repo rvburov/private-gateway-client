@@ -1,80 +1,121 @@
 # Ключ подписи Android (APK выпуска)
 
 Решение пользователя 2026-11-03 (DECISIONS.md, п. 11): APK выпуска подписывается своим ключом, а не отладочным. Ключ создает
-пользователь на своем компьютере и кладет в секреты GitHub; сборка выпуска (`release.yml`) берет его оттуда.
+пользователь на своем компьютере один раз и кладет в секреты GitHub; сборка выпуска (`release.yml`) берет его оттуда.
 
-Почему это важно:
+Зачем это:
 
-- Android ставит обновление только поверх приложения с тем же ключом. Сменить ключ потом нельзя без удаления приложения
-  (вместе с серверами и настройками на телефоне).
-- Потерянный ключ — конец обновлений: новую версию придется ставить начисто. Храните файл ключа и пароль в двух местах
-  вне репозитория (например, менеджер паролей и флешка).
-- Ключ и пароли — секреты: не класть в репозиторий, не присылать в чат.
+- Android ставит обновление только поверх приложения с тем же ключом: с постоянным ключом новая версия встает поверх старой,
+  серверы и настройки на телефоне остаются.
+- Подделку видно: чужой APK под видом Private Gateway Android не поставит поверх вашего — без ключа так не подписать.
+- Сменить ключ потом нельзя без удаления приложения у всех. Потерянный ключ — конец обновлений.
 
-## 1. Создать ключ (один раз)
+Правила: файл ключа `release.p12` и его пароль храните в двух местах вне репозитория (менеджер паролей и флешка); ключ,
+пароль и текст `.base64` не класть в репозиторий и не присылать в чат.
 
-Нужна программа `keytool` из JDK. Если стоит Android Studio — она уже есть внутри. Все команды — в Git Bash.
+Все команды ниже — в терминале: на Windows — **Git Bash**, на macOS — **Терминал**, на Linux — свой терминал. Каждую
+команду вводите **одной строкой**, как она написана.
 
-Сначала найдите `keytool` (в Android Studio он лежит в папке `jbr`, в JDK — в `bin`; путь зависит от версии и места
-установки):
+## 1. Поставить `keytool` (один раз)
+
+`keytool` — программа из Java (JDK). Сначала проверьте, нет ли ее уже:
+
+| ОС | Команда проверки |
+| --- | --- |
+| Windows | `find "/c/Program Files" ~/AppData/Local ~/scoop -iname keytool.exe 2>/dev/null` |
+| macOS | `/usr/libexec/java_home -V 2>&1; which keytool` |
+| Linux | `which keytool` |
+
+Показался путь к `keytool` — переходите к шагу 2 с этим путем. Ничего — поставьте JDK 21:
+
+| ОС | Установка | Путь к `keytool` после установки |
+| --- | --- | --- |
+| Windows (Scoop) | `scoop bucket add java`, затем `scoop install java/temurin21-jdk` | `$HOME/scoop/apps/temurin21-jdk/current/bin/keytool.exe` |
+| macOS (Homebrew) | `brew install --cask temurin@21` | `/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin/keytool` |
+| Linux (Ubuntu, Debian) | `sudo apt install openjdk-21-jdk-headless` | `keytool` |
+| Linux (Fedora) | `sudo dnf install java-21-openjdk-devel` | `keytool` |
+
+Предупреждения Scoop про `aria2` и «прежнюю неудачную установку» не мешают: важна последняя строка «was installed
+successfully».
+
+## 2. Создать ключ
+
+Запомните путь к `keytool` (подставьте свой из шага 1):
+
+| ОС | Команда |
+| --- | --- |
+| Windows | `KEYTOOL="$HOME/scoop/apps/temurin21-jdk/current/bin/keytool.exe"` |
+| macOS | `KEYTOOL="/Library/Java/JavaVirtualMachines/temurin-21.jdk/Contents/Home/bin/keytool"` |
+| Linux | `KEYTOOL=keytool` |
+
+Дальше одинаково на всех ОС:
 
 ```bash
-find "/c/Program Files" "/c/Program Files (x86)" ~/AppData/Local ~/scoop -iname keytool.exe 2>/dev/null
-```
-
-Ничего не нашлось — `keytool` нет: поставьте JDK. В Git Bash через Scoop:
-
-```bash
-scoop bucket add java
-scoop install java/temurin21-jdk
-find ~/scoop/apps/temurin21-jdk -iname keytool.exe
-```
-
-На macOS — `find /Applications ~/Library -name keytool 2>/dev/null`, на Linux — `which keytool`. Возьмите путь из ответа
-(например, `/c/Users/<вы>/scoop/apps/temurin21-jdk/current/bin/keytool.exe`) и выполните — каждую команду одной строкой:
-
-```bash
-KEYTOOL="$HOME/scoop/apps/temurin21-jdk/current/bin/keytool.exe"
 mkdir -p ~/private-gateway-keys
+```
+
+```bash
 "$KEYTOOL" -genkeypair -v -keystore ~/private-gateway-keys/release.p12 -storetype PKCS12 -alias private-gateway -keyalg RSA -keysize 4096 -validity 10000
 ```
 
 `keytool` спросит:
 
-1. **Пароль хранилища** — дважды. Придумайте длинный и запишите в менеджер паролей.
-2. **Имя, организация, город, страна** — можно ваше имя и код страны, остальное пропустить (Enter).
-3. **Подтверждение** — `yes` (или `да`).
+1. **Пароль хранилища** (`Enter keystore password`) — дважды. Придумайте длинный и сразу сохраните в менеджер паролей.
+2. **Имя и фамилию** (`What is your first and last name?`) — ваше имя латиницей, например `Roman Burov`.
+3. **Подразделение, организацию, город, область** — нажмите Enter на каждом: их никто не проверяет и не видит.
+4. **Код страны** (`two-letter country code`) — `RU` или Enter.
+5. **Подтверждение** (`Is CN=… correct?`) — `yes` и Enter.
 
-Пароль ключа у формата PKCS12 тот же, что пароль хранилища.
-
-## 2. Превратить ключ в текст для GitHub
+Отдельного пароля ключа у формата PKCS12 нет: он тот же, что пароль хранилища. Проверка, что ключ создан:
 
 ```bash
-base64 -w0 ~/private-gateway-keys/release.p12 > ~/private-gateway-keys/release.p12.base64
+ls -l ~/private-gateway-keys/release.p12
 ```
 
-На macOS вместо `-w0` — `base64 -i ~/private-gateway-keys/release.p12 -o ~/private-gateway-keys/release.p12.base64`.
+Файл есть, размер около 4–5 КБ — готово.
 
-## 3. Положить в секреты GitHub
+## 3. Превратить ключ в текст и скопировать
 
-На github.com откройте репозиторий → **Settings** → **Secrets and variables** → **Actions** → **New repository secret** и
-создайте четыре секрета:
+| ОС | Перевести в текст | Скопировать текст в буфер |
+| --- | --- | --- |
+| Windows | `base64 -w0 ~/private-gateway-keys/release.p12 > ~/private-gateway-keys/release.p12.base64` | `clip < ~/private-gateway-keys/release.p12.base64` |
+| macOS | `base64 -i ~/private-gateway-keys/release.p12 -o ~/private-gateway-keys/release.p12.base64` | `pbcopy < ~/private-gateway-keys/release.p12.base64` |
+| Linux | `base64 -w0 ~/private-gateway-keys/release.p12 > ~/private-gateway-keys/release.p12.base64` | `xclip -selection clipboard < ~/private-gateway-keys/release.p12.base64` |
+
+Текст — одна длинная строка без переносов, так и должно быть.
+
+## 4. Положить в секреты GitHub
+
+Откройте <https://github.com/rvburov/private-gateway-client/settings/secrets/actions> (репозиторий → **Settings** →
+**Secrets and variables** → **Actions**). Для каждой строки таблицы: **New repository secret** → **Name** и **Secret** →
+**Add secret**.
 
 | Name | Secret |
 | --- | --- |
-| `ANDROID_KEYSTORE_BASE64` | все содержимое файла `release.p12.base64` (откройте его в Блокноте, скопируйте целиком) |
-| `ANDROID_KEYSTORE_PASSWORD` | пароль хранилища из шага 1 |
+| `ANDROID_KEYSTORE_BASE64` | текст из буфера после шага 3 (Ctrl+V, на macOS — Cmd+V) |
+| `ANDROID_KEYSTORE_PASSWORD` | пароль хранилища из шага 2 |
 | `ANDROID_KEY_ALIAS` | `private-gateway` |
 | `ANDROID_KEY_PASSWORD` | тот же пароль хранилища |
 
-После этого файл `release.p12.base64` можно удалить — сам `release.p12` оставьте в надежном месте.
+В списке **Repository secrets** должны быть все четыре имени (значения GitHub не показывает — так и задумано).
 
-## 4. Что дальше
+## 5. Убрать лишнее и сохранить ключ
+
+Текстовая копия ключа больше не нужна — удалите ее (на всех ОС):
+
+```bash
+rm ~/private-gateway-keys/release.p12.base64
+```
+
+Сам `release.p12` скопируйте в два места вне репозитория (менеджер паролей и флешка) вместе с паролем.
+
+## 6. Что дальше
 
 Подпись подключена (`android/app/build.gradle.kts`, `scripts/android-release-apk.sh`, `release.yml`): есть секреты — APK
 выпуска подписан этим ключом и проверен `apksigner`; нет — выпуск останавливается с объяснением, отладочный APK не
 выкладывается. CI на каждой проверке собирает APK выпуска на временном ключе, чтобы этот путь не сломался незаметно.
-Проверка на телефоне: новая версия ставится поверх прежней без удаления.
+Неверный пароль в секрете выпуск тоже остановит — с ошибкой `apksigner` или Gradle в журнале задания «Android (APK)».
 
-Если раньше на телефоне стоял APK с отладочной подписью (бета до ключа выпуска), его один раз нужно удалить перед установкой
-подписанного: Android не ставит приложение поверх версии с другим ключом.
+Проверка на телефоне: новая версия ставится поверх прежней без удаления. Если раньше на телефоне стоял APK с отладочной
+подписью (бета до ключа выпуска), его один раз нужно удалить перед установкой подписанного: Android не ставит приложение
+поверх версии с другим ключом.

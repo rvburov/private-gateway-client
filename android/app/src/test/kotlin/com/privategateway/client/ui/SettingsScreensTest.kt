@@ -100,9 +100,9 @@ class SettingsScreensTest {
         compose.onNodeWithTag("licenses.close").performClick()
         // Лист уходит не сразу: «Назад» — когда его уже нет, иначе нажатие ловит уходящий слой.
         compose.onNodeWithTag("licenses").assertDoesNotExist()
-        compose.onNodeWithTag("about").assertIsDisplayed()
-        compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
-        compose.onNodeWithTag("settings").assertIsDisplayed()
+        compose.onNodeWithTag("about.licenses").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithContentDescription(text(R.string.common_back)).performScrollTo().performClick()
+        compose.onNodeWithTag("settings.about").performScrollTo().assertIsDisplayed()
 
         // «Подключение и ядро» и «Маршрутизация» — в порядке доски 4, сразу за «Защитой и утечками», и ведут на свои страницы.
         compose.onNodeWithText(text(R.string.settings_adv_core_text)).performScrollTo().assertIsDisplayed()
