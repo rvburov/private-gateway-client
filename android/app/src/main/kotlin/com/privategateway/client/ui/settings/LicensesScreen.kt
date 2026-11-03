@@ -6,17 +6,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,75 +38,61 @@ import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgLayout
 import com.privategateway.client.ui.theme.PgPageHeader
 import com.privategateway.client.ui.theme.PgRadius
+import com.privategateway.client.ui.theme.PgSheet
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 
 /**
- * «Лицензии открытых компонентов» (решение 449): компоненты приложения из assets (сборка сверяет их с зависимостями
- * выпуска) — имя и лицензия, по нажатию — авторство, ссылки, версия, модули и полный текст лицензии. [text] — текст
- * лицензии по SPDX.
+ * «Лицензии открытых компонентов» (решение 449) — лист снизу поверх «О программе», как в макете (доска 15; DECISIONS.md, п. 1):
+ * компоненты приложения из assets (сборка сверяет их с зависимостями выпуска) — имя и лицензия; по нажатию в том же листе —
+ * авторство, ссылки, версия, модули и полный текст лицензии, «Назад» — снова список. [text] — текст лицензии по SPDX.
  */
 @Composable
-fun LicensesScreen(components: List<OpenComponent>, text: (String) -> String, onBack: () -> Unit) {
+fun LicensesSheet(components: List<OpenComponent>, text: (String) -> String, onClose: () -> Unit) {
     var open by rememberSaveable { mutableStateOf<String?>(null) }
     val shown = components.firstOrNull { it.name == open }
-    if (shown != null) {
-        BackHandler { open = null }
-        LicenseDetail(shown, text) { open = null }
-        return
-    }
-
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .statusBarsPadding()
-            .padding(horizontal = PgSpace.WindowSideMobile)
-            .padding(bottom = PgLayout.ScrollBottomPadding)
-            .testTag("licenses"),
-        verticalArrangement = Arrangement.spacedBy(PgSpace.L),
-    ) {
-        PgPageHeader(stringResource(R.string.about_licenses), onBack)
-        Text(stringResource(R.string.about_licenses_text), color = PgColor.Text.Secondary, style = PgType.Small)
-        PgCard(Modifier.fillMaxWidth()) {
-            for (component in components) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = PgLayout.TouchTarget)
-                        .clip(RoundedCornerShape(PgRadius.Button))
-                        .clickable(role = Role.Button) { open = component.name }
-                        .padding(vertical = PgSpace.Xs)
-                        .testTag("licenses.${component.name}"),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(component.name, style = PgType.BodyStrong, modifier = Modifier.weight(1f))
-                    Spacer(Modifier.width(PgSpace.M))
-                    Text(component.label, color = PgColor.Text.Secondary, style = PgType.Caption)
-                    Spacer(Modifier.width(PgSpace.S))
-                    PgIcon(PgIcons.ChevronRight, null, color = PgColor.Text.Muted, size = 20.dp)
-                }
-            }
+    PgSheet(onClose, "licenses") {
+        if (shown != null) {
+            BackHandler { open = null }
+            LicenseDetail(shown, text) { open = null }
+            return@PgSheet
         }
 
-        Text(stringResource(R.string.android_licenses_notices), color = PgColor.Text.Muted, style = PgType.Caption)
+        SheetHeader(stringResource(R.string.about_licenses), onClose, "licenses.close")
+        Spacer(Modifier.size(PgSpace.M))
+        Column(verticalArrangement = Arrangement.spacedBy(PgSpace.L)) {
+            Text(stringResource(R.string.about_licenses_text), color = PgColor.Text.Secondary, style = PgType.Small)
+            PgCard(Modifier.fillMaxWidth()) {
+                for (component in components) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = PgLayout.TouchTarget)
+                            .clip(RoundedCornerShape(PgRadius.Button))
+                            .clickable(role = Role.Button) { open = component.name }
+                            .padding(vertical = PgSpace.Xs)
+                            .testTag("licenses.${component.name}"),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(component.name, style = PgType.BodyStrong, modifier = Modifier.weight(1f))
+                        Spacer(Modifier.width(PgSpace.M))
+                        Text(component.label, color = PgColor.Text.Secondary, style = PgType.Caption)
+                        Spacer(Modifier.width(PgSpace.S))
+                        PgIcon(PgIcons.ChevronRight, null, color = PgColor.Text.Muted, size = 20.dp)
+                    }
+                }
+            }
+
+            Text(stringResource(R.string.android_licenses_notices), color = PgColor.Text.Muted, style = PgType.Caption)
+        }
     }
 }
 
-/** Один компонент: подпись лицензии, версия, авторство, ссылки (открываются в браузере), модули и текст лицензии. */
+/** Один компонент в листе: подпись лицензии, версия, авторство, ссылки (открываются в браузере), модули и текст лицензии. */
 @Composable
 private fun LicenseDetail(component: OpenComponent, text: (String) -> String, onBack: () -> Unit) {
     val links = LocalUriHandler.current
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .statusBarsPadding()
-            .padding(horizontal = PgSpace.WindowSideMobile)
-            .padding(bottom = PgLayout.ScrollBottomPadding)
-            .testTag("license"),
-        verticalArrangement = Arrangement.spacedBy(PgSpace.L),
-    ) {
+    Column(Modifier.fillMaxWidth().testTag("license"), verticalArrangement = Arrangement.spacedBy(PgSpace.L)) {
         PgPageHeader(component.name, onBack)
         PgCard(Modifier.fillMaxWidth()) {
             Text(component.label, style = PgType.Title, modifier = Modifier.testTag("license.label"))

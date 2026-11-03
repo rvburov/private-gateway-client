@@ -203,7 +203,7 @@ final class ScreensTests: XCTestCase {
         for language in PgTexts.Language.allCases {
             let texts = PgTexts(language)
             for settings in variants {
-                for page in [SettingsPage.main, .protection, .core, .routing, .about, .licenses] {
+                for page in [SettingsPage.main, .protection, .core, .routing, .about] {
                     let view = SettingsView(texts: texts, settings: settings, about: about, page: .constant(page)) { _ in EmptyView() }
                     XCTAssertEqual(try render(view, height: 1400).size.width, 393, accuracy: 1)
                 }
@@ -244,8 +244,11 @@ final class ScreensTests: XCTestCase {
                 onLan: {}, onBack: {}
             )
             XCTAssertNotNil(try render(routing, height: 1600))
+            // «Лицензии» — лист поверх «О программе»: страница с открытым листом, список и каждый компонент.
+            XCTAssertNotNil(try render(AboutView(texts: texts, about: about, licenses: true, onReport: {}, onBack: {}), height: 1400))
+            XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, onClose: {}), height: 1400))
             for component in about.components {
-                XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, open: component.name, onBack: {}), height: 2000), component.name)
+                XCTAssertNotNil(try render(LicensesView(texts: texts, about: about, open: component.name, onClose: {}), height: 2000), component.name)
             }
         }
     }

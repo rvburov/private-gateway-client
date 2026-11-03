@@ -60,7 +60,6 @@ enum class SettingsPage {
     Subscriptions,
     Backup,
     About,
-    Licenses,
 }
 
 /**
@@ -137,17 +136,16 @@ fun SettingsScreen(
             backup { page = SettingsPage.Main }
         }
 
+        // Лицензии — лист поверх «О программе» (DECISIONS.md, п. 1): «Назад» и затемнение закрывают лист, а не страницу.
         SettingsPage.About -> {
             BackHandler { page = SettingsPage.Main }
-            AboutScreen(core, loadCore, onLicenses = { page = SettingsPage.Licenses }, onReport = onCheck) { page = SettingsPage.Main }
-        }
-
-        // Лицензии открываются из «О программе» — туда и «Назад».
-        SettingsPage.Licenses -> {
-            BackHandler { page = SettingsPage.About }
-            val assets = LocalContext.current.assets
-            val components = remember(assets) { OpenComponents.read(assets) }
-            LicensesScreen(components, { OpenComponents.text(assets, it) }) { page = SettingsPage.About }
+            var licenses by rememberSaveable { mutableStateOf(false) }
+            AboutScreen(core, loadCore, onLicenses = { licenses = true }, onReport = onCheck) { page = SettingsPage.Main }
+            if (licenses) {
+                val assets = LocalContext.current.assets
+                val components = remember(assets) { OpenComponents.read(assets) }
+                LicensesSheet(components, { OpenComponents.text(assets, it) }) { licenses = false }
+            }
         }
 
         SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language) { page = it }

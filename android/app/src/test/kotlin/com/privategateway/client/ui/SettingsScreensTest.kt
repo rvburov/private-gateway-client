@@ -96,8 +96,8 @@ class SettingsScreensTest {
         compose.onNodeWithTag("about").assertIsDisplayed()
         compose.onNodeWithTag("about.licenses").performScrollTo().performClick()
         compose.onNodeWithTag("licenses").assertIsDisplayed()
-        // Из лицензий «Назад» — в «О программе», оттуда — в «Настройки».
-        compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+        // Лицензии — лист поверх «О программе»: крестик закрывает лист, «Назад» со страницы — в «Настройки».
+        compose.onNodeWithTag("licenses.close").performClick()
         compose.onNodeWithTag("about").assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
 

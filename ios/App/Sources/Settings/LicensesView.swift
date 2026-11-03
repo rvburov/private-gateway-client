@@ -3,18 +3,20 @@ import PrivateGatewayTheme
 import SwiftUI
 
 /// «Лицензии открытых компонентов» — как `LicensesScreen` Android (решение 449): компоненты приложения из shared/licenses/ios.json
-/// (тест сверяет список со сборкой) — имя и лицензия, по нажатию — авторство, ссылки, версия и полный текст лицензии.
+/// (тест сверяет список со сборкой) — имя и лицензия, по нажатию — авторство, ссылки, версия и полный текст лицензии. Это
+/// содержимое нижнего листа поверх «О программе» (решение пользователя 2026-11-03, п. 1): крестик закрывает лист, «Назад» в
+/// компоненте возвращает к списку.
 struct LicensesView: View {
     let texts: PgTexts
     let about: AboutInfo
-    let onBack: () -> Void
+    let onClose: () -> Void
 
     @State private var open: String?
 
-    init(texts: PgTexts, about: AboutInfo, open: String? = nil, onBack: @escaping () -> Void) {
+    init(texts: PgTexts, about: AboutInfo, open: String? = nil, onClose: @escaping () -> Void) {
         self.texts = texts
         self.about = about
-        self.onBack = onBack
+        self.onClose = onClose
         _open = State(initialValue: open)
     }
 
@@ -27,32 +29,33 @@ struct LicensesView: View {
     }
 
     private var list: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: PgSpace.l) {
-                PgPageHeader(title: texts.aboutLicenses, texts: texts, onBack: onBack)
-                Text(texts.aboutLicensesText).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary))
-                VStack(spacing: 0) {
-                    ForEach(about.components, id: \.name) { component in
-                        Button {
-                            open = component.name
-                        } label: {
-                            HStack(spacing: PgSpace.m) {
-                                Text(component.name).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
-                                Spacer(minLength: PgSpace.s)
-                                Text(component.label).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
-                                PgIcon(data: PgIcons.chevronRight, color: Color(PgColor.Text.muted), size: 20)
+        VStack(spacing: 0) {
+            PgSheetHeader(title: texts.aboutLicenses, closeLabel: texts.cardClose, identifier: "licenses.close", onClose: onClose)
+            ScrollView {
+                VStack(alignment: .leading, spacing: PgSpace.l) {
+                    Text(texts.aboutLicensesText).pgText(PgType.small).foregroundStyle(Color(PgColor.Text.secondary))
+                    VStack(spacing: 0) {
+                        ForEach(about.components, id: \.name) { component in
+                            Button {
+                                open = component.name
+                            } label: {
+                                HStack(spacing: PgSpace.m) {
+                                    Text(component.name).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
+                                    Spacer(minLength: PgSpace.s)
+                                    Text(component.label).pgText(PgType.caption).foregroundStyle(Color(PgColor.Text.secondary))
+                                    PgIcon(data: PgIcons.chevronRight, color: Color(PgColor.Text.muted), size: 20)
+                                }
+                                .frame(minHeight: PgLayout.touchTarget)
+                                .contentShape(Rectangle())
                             }
-                            .frame(minHeight: PgLayout.touchTarget)
-                            .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .accessibilityIdentifier("licenses.\(component.name)")
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityIdentifier("licenses.\(component.name)")
                     }
+                    .pgCard()
                 }
-                .pgCard()
+                .padding(.top, PgSpace.m)
             }
-            .padding(.horizontal, PgSpace.windowSideMobile)
-            .padding(.bottom, PgLayout.scrollBottomPadding)
         }
         .accessibilityIdentifier("licenses")
     }
@@ -109,8 +112,6 @@ struct LicenseDetail: View {
                     .pgCard()
                 }
             }
-            .padding(.horizontal, PgSpace.windowSideMobile)
-            .padding(.bottom, PgLayout.scrollBottomPadding)
         }
         .accessibilityIdentifier("license")
     }

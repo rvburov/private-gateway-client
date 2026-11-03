@@ -4,16 +4,24 @@ import SwiftUI
 
 /// «О программе» (доска 15, решение 555) — как `AboutScreen` Android: карточка программы (знак, название, «Версия 0.1.0 · iOS 18 ·
 /// arm64»), «Компоненты» (клиент, Xray-core, TUN-драйвер iOS), «Приватность» тремя строками и ссылки — лицензии, политика
-/// конфиденциальности листом, «Сообщить о проблеме» (вкладка «Проверка» с отчетом). Карточки «Обновления» нет: приложение iOS
+/// конфиденциальности и лицензии листами поверх страницы (решение пользователя 2026-11-03, п. 1), «Сообщить о проблеме» (вкладка «Проверка» с отчетом). Карточки «Обновления» нет: приложение iOS
 /// обновляет App Store (решение 555); строк «Служба» и «Hysteria2, TUIC» нет — службы и второго ядра на телефоне нет.
 struct AboutView: View {
     let texts: PgTexts
     let about: AboutInfo
-    let onLicenses: () -> Void
     let onReport: () -> Void
     let onBack: () -> Void
 
     @State private var privacy = false
+    @State private var licenses: Bool
+
+    init(texts: PgTexts, about: AboutInfo, licenses: Bool = false, onReport: @escaping () -> Void, onBack: @escaping () -> Void) {
+        self.texts = texts
+        self.about = about
+        self.onReport = onReport
+        self.onBack = onBack
+        _licenses = State(initialValue: licenses)
+    }
 
     var body: some View {
         ScrollView {
@@ -40,7 +48,7 @@ struct AboutView: View {
                 .padding(.top, 18)
 
                 VStack(spacing: 0) {
-                    link(texts.aboutLicenses, "about.licenses", action: onLicenses)
+                    link(texts.aboutLicenses, "about.licenses") { licenses = true }
                     PgDivider().padding(.horizontal, PgSpace.card)
                     link(texts.aboutPrivacy, "about.privacy") { privacy = true }
                     PgDivider().padding(.horizontal, PgSpace.card)
@@ -52,6 +60,10 @@ struct AboutView: View {
             }
             .padding(.horizontal, PgSpace.windowSideMobile)
             .padding(.bottom, PgLayout.scrollBottomPadding)
+            // Второй лист — на внутреннем виде: два .sheet на одном виде SwiftUI показывает ненадежно.
+            .pgSheet(isPresented: $licenses) {
+                LicensesView(texts: texts, about: about) { licenses = false }
+            }
         }
         .accessibilityIdentifier("about")
         .pgSheet(isPresented: $privacy) {

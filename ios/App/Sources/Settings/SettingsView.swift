@@ -12,7 +12,6 @@ enum SettingsPage: Hashable {
     case subscriptions
     case backup
     case about
-    case licenses
 }
 
 /// «Настройки» (доска 04, SettingsPage десктопа): заголовок, «Основные» одной карточкой — блок при обрыве (выключение — через
@@ -71,10 +70,7 @@ struct SettingsView<Subscriptions: View>: View {
                 backup { page = .main }
             }
         case .about:
-            AboutView(texts: texts, about: about, onLicenses: { page = .licenses }, onReport: onCheck) { page = .main }
-        case .licenses:
-            // Лицензии открываются из «О программе» — туда и «Назад».
-            LicensesView(texts: texts, about: about) { page = .about }
+            AboutView(texts: texts, about: about, onReport: onCheck) { page = .main }
         case .main:
             main
         }

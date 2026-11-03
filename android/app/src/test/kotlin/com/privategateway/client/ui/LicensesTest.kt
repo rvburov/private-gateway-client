@@ -80,6 +80,7 @@ class LicensesTest {
         compose.onNodeWithTag("settings.about").performScrollTo().performClick()
         compose.onNodeWithTag("about.licenses").performScrollTo().performClick()
         compose.onNodeWithTag("licenses").assertIsDisplayed()
+        compose.onNodeWithTag("about.licenses").assertExists("лист открыт поверх «О программе»")
         compose.onNodeWithTag("licenses.Xray-core").performScrollTo().performClick()
         compose.onNodeWithTag("license.label").assertTextEquals("MPL-2.0")
         compose.onNodeWithTag("license.copyright").assertTextEquals("Project X (XTLS) contributors")
@@ -92,7 +93,9 @@ class LicensesTest {
         compose.onNodeWithTag("license.text.Apache-2.0").performScrollTo().assertTextContains("Apache License", substring = true)
 
         compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
-        compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
+        // Лист закрывается крестиком — под ним снова «О программе» (DECISIONS.md, п. 1: лицензии — лист, а не страница).
+        compose.onNodeWithTag("licenses.close").performClick()
+        compose.onNodeWithTag("licenses").assertDoesNotExist()
         compose.onNodeWithTag("about.licenses").performScrollTo().assertIsDisplayed()
         compose.onNodeWithContentDescription(context.getString(R.string.common_back)).performScrollTo().performClick()
         compose.onNodeWithTag("settings.about").performScrollTo().assertIsDisplayed()
