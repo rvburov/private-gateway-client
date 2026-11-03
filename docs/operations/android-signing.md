@@ -15,16 +15,19 @@
 
 Нужна программа `keytool` из JDK. Если стоит Android Studio — она уже есть внутри. Откройте Git Bash и выполните:
 
-```bash
-# Путь к keytool: Windows с Android Studio
-KEYTOOL="/c/Program Files/Android/Android Studio/jbr/bin/keytool"
-# macOS с Android Studio:  KEYTOOL="/Applications/Android Studio.app/Contents/jbr/Contents/Home/bin/keytool"
-# Linux или отдельный JDK: KEYTOOL=keytool
+Сначала найдите `keytool` (в Android Studio он лежит в папке `jbr`, путь зависит от версии и места установки):
 
+```bash
+find "/c/Program Files" "/c/Program Files (x86)" ~/AppData/Local -iname keytool.exe 2>/dev/null
+```
+
+На macOS — `find /Applications ~/Library -name keytool 2>/dev/null`, на Linux — `which keytool`. Возьмите путь из ответа
+(например, `/c/Program Files/Android/Android Studio1/jbr/bin/keytool.exe`) и выполните — каждую команду одной строкой:
+
+```bash
+KEYTOOL="/c/Program Files/Android/Android Studio1/jbr/bin/keytool.exe"
 mkdir -p ~/private-gateway-keys
-"$KEYTOOL" -genkeypair -v \
-  -keystore ~/private-gateway-keys/release.p12 -storetype PKCS12 \
-  -alias private-gateway -keyalg RSA -keysize 4096 -validity 10000
+"$KEYTOOL" -genkeypair -v -keystore ~/private-gateway-keys/release.p12 -storetype PKCS12 -alias private-gateway -keyalg RSA -keysize 4096 -validity 10000
 ```
 
 `keytool` спросит:
