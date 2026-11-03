@@ -98,8 +98,11 @@ class SettingsScreensTest {
         compose.onNodeWithTag("licenses").assertIsDisplayed()
         // Лицензии — лист поверх «О программе»: крестик закрывает лист, «Назад» со страницы — в «Настройки».
         compose.onNodeWithTag("licenses.close").performClick()
+        // Лист уходит не сразу: «Назад» — когда его уже нет, иначе нажатие ловит уходящий слой.
+        compose.onNodeWithTag("licenses").assertDoesNotExist()
         compose.onNodeWithTag("about").assertIsDisplayed()
         compose.onNodeWithContentDescription(text(R.string.common_back)).performClick()
+        compose.onNodeWithTag("settings").assertIsDisplayed()
 
         // «Подключение и ядро» и «Маршрутизация» — в порядке доски 4, сразу за «Защитой и утечками», и ведут на свои страницы.
         compose.onNodeWithText(text(R.string.settings_adv_core_text)).performScrollTo().assertIsDisplayed()
