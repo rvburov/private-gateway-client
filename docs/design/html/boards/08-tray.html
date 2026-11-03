@@ -85,8 +85,8 @@
 <body>
 
 <p class="pg-board-note">Значок в трее и его меню (TrayViewModel программы) — системное меню ОС, здесь Windows 11. Щелчок по
-  щиту в трее открывает меню: строка состояния (не кнопка), «Включить защиту» / «Выключить защиту», «Сменить сервер» с подменю —
-  выбранный, избранные и недавние, не больше пяти, и «Все серверы…», «Обновить серверы», «Открыть окно», «Проверка», «Закрыть».
+  щиту в трее открывает меню: строка состояния (не кнопка), «Включить защиту» / «Выключить защиту», «Сменить сервер» — списком прямо
+  в меню, без подменю вбок (DECISIONS.md, п. 14): выбранный, избранные и недавние, не больше пяти, и «Все серверы…», «Обновить серверы», «Открыть окно», «Проверка», «Закрыть».
   Значок — щит цвета состояния с белым знаком; при подключении — насыщенный синий индикатора, а не бледное кольцо. Пункт «Закрыть»
   зависит от службы: установленная работает и без окна — «Закрыть интерфейс» с подсказкой «VPN и блок при обрыве продолжат
   работать»; служба пользователя уходит вместе с окном — «Закрыть программу» с подсказкой «Прокси остановится вместе с
@@ -106,21 +106,19 @@
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
-        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="a-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <div class="os-sep"></div>
+        <button class="os-item" disabled>Сменить сервер</button>
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
         <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
         <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
         <div class="os-sep"></div>
         <button class="os-item tip-shown" role="menuitem" data-close data-tip="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
-      </div>
-      <div class="popup os-menu os-sub" id="a-sub" role="menu" aria-label="Сменить сервер">
-        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-        <div class="os-sep"></div>
-        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
       </div>
       <div class="taskbar">
         <div class="taskbar-apps">
@@ -138,8 +136,8 @@
       </div>
     </div>
   </section>
-  <!-- ===================== Защищено · подменю «Сменить сервер» ===================== -->
-  <section class="pg-screen" data-device="windows" data-state="connected" data-caption="Защищено · подменю «Сменить сервер»" style="height: 560px">
+  <!-- ===================== Защищено · смена сервера в меню ===================== -->
+  <section class="pg-screen" data-device="windows" data-state="connected" data-caption="Защищено · смена сервера в меню" style="height: 560px">
     <div class="desk">
       <div class="popup os-menu os-main is-open" id="b-menu" role="menu" aria-label="Private Gateway">
         <button class="os-item" disabled data-show-state="off">IP открыт · NL · Нидерланды 01 · 42 мс</button>
@@ -149,21 +147,19 @@
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
-        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="b-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <div class="os-sep"></div>
+        <button class="os-item" disabled>Сменить сервер</button>
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
         <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
         <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-close data-tip="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
-      </div>
-      <div class="popup os-menu os-sub is-open" id="b-sub" role="menu" aria-label="Сменить сервер">
-        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-        <div class="os-sep"></div>
-        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
       </div>
       <div class="taskbar">
         <div class="taskbar-apps">
@@ -192,21 +188,19 @@
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
-        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="c-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <div class="os-sep"></div>
+        <button class="os-item" disabled>Сменить сервер</button>
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
         <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
         <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
         <div class="os-sep"></div>
         <button class="os-item tip-shown" role="menuitem" data-close data-tip="Прокси остановится вместе с программой">Закрыть программу</button>
-      </div>
-      <div class="popup os-menu os-sub" id="c-sub" role="menu" aria-label="Сменить сервер">
-        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-        <div class="os-sep"></div>
-        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
       </div>
       <div class="taskbar">
         <div class="taskbar-apps">
@@ -235,21 +229,19 @@
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="off">Включить защиту</button>
         <button class="os-item" role="menuitem" data-power data-close data-show-state="connecting connected proxy">Выключить защиту</button>
-        <button class="os-item" role="menuitem" aria-haspopup="menu" data-open="d-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-more"></i></button>
+        <div class="os-sep"></div>
+        <button class="os-item" disabled>Сменить сервер</button>
+        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
         <button class="os-item" role="menuitem" data-close>Обновить серверы</button>
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-nav="01-main.html">Открыть окно</button>
         <button class="os-item" role="menuitem" data-nav="07-diagnostics.html">Проверка</button>
         <div class="os-sep"></div>
         <button class="os-item" role="menuitem" data-close data-tip="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
-      </div>
-      <div class="popup os-menu os-sub" id="d-sub" role="menu" aria-label="Сменить сервер">
-        <button class="btn-option current" role="menuitemradio" data-close data-value="NL · Нидерланды 01"><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="FI · Финляндия 01"><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="DE · Германия 02"><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-        <button class="btn-option" role="menuitemradio" data-close data-value="SE · Швеция 01"><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-        <div class="os-sep"></div>
-        <button class="os-item" role="menuitem" data-nav="02-servers.html">Все серверы…</button>
       </div>
       <div class="taskbar">
         <div class="taskbar-apps">

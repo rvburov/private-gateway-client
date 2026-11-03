@@ -202,8 +202,8 @@
   «Обновить серверы», «Открыть окно», «Проверка» и «Закрыть интерфейс» с подсказкой «VPN и блок при обрыве продолжат работать» (без
   установленной службы — «Закрыть программу»). Значок — щит цвета состояния с белым знаком; подключение — синим. Сочетаний клавиш у
   пунктов нет. Выбранный сервер отмечает ОС: на Windows (меню рисует Avalonia) — точкой, на macOS — галочкой, в GNOME — точкой;
-  подменю на Windows и macOS открывается сбоку, в GNOME (расширение AppIndicator) — раскрывается внутри меню. Нажимается: значок
-  открывает и закрывает меню, «Выключить защиту» гасит щит, «Сменить сервер» — подменю, выбор сервера закрывает меню.</p>
+  серверы на всех ОС — списком внутри меню под подписью «Сменить сервер», без подменю вбок. Нажимается: значок
+  открывает и закрывает меню, «Выключить защиту» гасит щит, «Сменить сервер» — списком прямо в меню (DECISIONS.md, п. 14), выбор сервера закрывает меню.</p>
 
 <div class="pg-screens os-row">
   <!-- ===================== Windows: панель задач, значок в трее у часов ===================== -->
@@ -226,21 +226,19 @@
       <div class="os-sep"></div>
       <button class="os-item" data-close data-set-state="off" data-show-state="connected">Выключить защиту</button>
       <button class="os-item" data-close data-set-state="connected" data-show-state="off">Включить защиту</button>
-      <button class="os-item" data-open="tray-windows-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-arrow"></i></button>
+      <div class="os-sep"></div>
+      <div class="os-item off">Сменить сервер</div>
+      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+      <button class="os-item" data-nav="02-servers.html">Все серверы…</button>
       <button class="os-item" data-close>Обновить серверы</button>
       <div class="os-sep"></div>
       <button class="os-item" data-nav="01-main.html">Открыть окно</button>
       <button class="os-item" data-nav="07-diagnostics.html">Проверка</button>
       <div class="os-sep"></div>
       <button class="os-item" data-close title="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
-    </div>
-    <div class="popup os-menu os-sub windows is-open" id="tray-windows-sub" role="menu">
-      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-      <div class="os-sep"></div>
-      <button class="os-item" data-nav="02-servers.html">Все серверы…</button>
     </div>
   </section>
 
@@ -261,21 +259,19 @@
       <div class="os-sep"></div>
       <button class="os-item" data-close data-set-state="off" data-show-state="connected">Выключить защиту</button>
       <button class="os-item" data-close data-set-state="connected" data-show-state="off">Включить защиту</button>
-      <button class="os-item" data-open="tray-macos-sub">Сменить сервер<i data-icon="ChevronRight" data-stroke="2" class="os-arrow"></i></button>
+      <div class="os-sep"></div>
+      <div class="os-item off">Сменить сервер</div>
+      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+      <button class="os-item" data-nav="02-servers.html">Все серверы…</button>
       <button class="os-item" data-close>Обновить серверы</button>
       <div class="os-sep"></div>
       <button class="os-item" data-nav="01-main.html">Открыть окно</button>
       <button class="os-item" data-nav="07-diagnostics.html">Проверка</button>
       <div class="os-sep"></div>
       <button class="os-item" data-close title="VPN и блок при обрыве продолжат работать">Закрыть интерфейс</button>
-    </div>
-    <div class="popup os-menu os-sub macos is-open" id="tray-macos-sub" role="menu">
-      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-      <div class="os-sep"></div>
-      <button class="os-item" data-nav="02-servers.html">Все серверы…</button>
     </div>
   </section>
 
@@ -298,16 +294,13 @@
       <div class="os-sep"></div>
       <button class="os-item" data-close data-set-state="off" data-show-state="connected">Выключить защиту</button>
       <button class="os-item" data-close data-set-state="connected" data-show-state="off">Включить защиту</button>
-      <details class="os-fold" open>
-        <summary class="os-item">Сменить сервер<i data-icon="ChevronDown" data-stroke="2" class="os-arrow"></i></summary>
-        <div class="os-fold-body">
-          <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
-          <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
-          <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
-          <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
-          <button class="os-item" data-close data-nav="02-servers.html">Все серверы…</button>
-        </div>
-      </details>
+      <div class="os-sep"></div>
+      <div class="os-item off">Сменить сервер</div>
+      <button class="btn-option os-item current" data-close><span class="os-radio"></span>NL · Нидерланды 01 · 42 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>FI · Финляндия 01 · 38 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>DE · Германия 02 · 51 мс</button>
+      <button class="btn-option os-item" data-close><span class="os-radio"></span>SE · Швеция 01 · 57 мс</button>
+      <button class="os-item" data-close data-nav="02-servers.html">Все серверы…</button>
       <button class="os-item" data-close>Обновить серверы</button>
       <div class="os-sep"></div>
       <button class="os-item" data-nav="01-main.html">Открыть окно</button>

@@ -124,11 +124,14 @@ public sealed partial class TrayViewModel : ObservableObject
         Menu.Items.Add(new NativeMenuItemSeparator());
         Menu.Items.Add(new NativeMenuItem(_protection.ActionText) { Command = ToggleCommand });
 
-        var servers = new NativeMenu();
+        // «Сменить сервер» — списком внутри меню, без подменю вбок (решение пользователя 2026-11-03, DECISIONS.md, п. 14):
+        // подпись группы, быстрые серверы с отметкой выбранного и «Все серверы…».
+        Menu.Items.Add(new NativeMenuItemSeparator());
+        Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.switch"]) { IsEnabled = false });
         var selected = _catalog.Selected?.Id;
         foreach (var server in Quick())
         {
-            servers.Items.Add(new NativeMenuItem(ServerLine(server, null))
+            Menu.Items.Add(new NativeMenuItem(ServerLine(server, null))
             {
                 ToggleType = MenuItemToggleType.Radio,
                 IsChecked = server.Id == selected,
@@ -137,13 +140,7 @@ public sealed partial class TrayViewModel : ObservableObject
             });
         }
 
-        if (servers.Items.Count > 0)
-        {
-            servers.Items.Add(new NativeMenuItemSeparator());
-        }
-
-        servers.Items.Add(new NativeMenuItem(Loc.Instance["tray.allServers"]) { Command = OpenCommand, CommandParameter = Pages.Servers });
-        Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.switch"]) { Menu = servers });
+        Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.allServers"]) { Command = OpenCommand, CommandParameter = Pages.Servers });
         Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.refresh"]) { Command = RefreshServersCommand });
         Menu.Items.Add(new NativeMenuItemSeparator());
         Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.open"]) { Command = ShowWindowCommand });

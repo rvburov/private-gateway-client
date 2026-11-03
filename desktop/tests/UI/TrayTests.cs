@@ -27,9 +27,12 @@ public sealed class TrayTests : WindowHarness
 
         Headers(tray.Menu).ShouldBe(
         [
-            "IP открыт · NL · Нидерланды 01 · 42 мс", "—", "Включить защиту", "Сменить сервер", "Обновить серверы", "—",
-            "Открыть окно", "Проверка", "—", "Закрыть программу",
+            "IP открыт · NL · Нидерланды 01 · 42 мс", "—", "Включить защиту", "—", "Сменить сервер",
+            "NL · Нидерланды 01 · 42 мс", "FI · Финляндия 01 · 38 мс", "DE · Германия 02 · 51 мс", "SE · Швеция 01 · 57 мс",
+            "Все серверы…", "Обновить серверы", "—", "Открыть окно", "Проверка", "—", "Закрыть программу",
         ]);
+        Item(tray.Menu, "Сменить сервер").IsEnabled.ShouldBeFalse("подпись группы серверов — не кнопка");
+        tray.Menu.Items.OfType<NativeMenuItem>().ShouldAllBe(i => i.Menu == null, "серверы — внутри меню, без подменю");
         ((NativeMenuItem)tray.Menu.Items[0]).IsEnabled.ShouldBeFalse("строка состояния — не кнопка");
         tray.ToolTip.ShouldBe("Private Gateway · IP открыт");
 
@@ -50,12 +53,7 @@ public sealed class TrayTests : WindowHarness
     {
         var (_, _) = Open();
         var tray = Service<TrayViewModel>();
-        var servers = Item(tray.Menu, "Сменить сервер").Menu!;
-
-        Headers(servers).ShouldBe(
-        [
-            "NL · Нидерланды 01 · 42 мс", "FI · Финляндия 01 · 38 мс", "DE · Германия 02 · 51 мс", "SE · Швеция 01 · 57 мс", "—", "Все серверы…",
-        ]);
+        var servers = tray.Menu;
         servers.Items.OfType<NativeMenuItem>().Where(i => i.IsChecked).Select(i => i.Header).ShouldBe(["NL · Нидерланды 01 · 42 мс"]);
 
         Item(servers, "FI · Финляндия 01 · 38 мс").Command!.Execute("demo-fi-01");
@@ -87,7 +85,7 @@ public sealed class TrayTests : WindowHarness
 
         Execute(Item(tray.Menu, "Проверка"));
         shell.CurrentKey.ShouldBe(Pages.Check);
-        Execute(Item(Item(tray.Menu, "Сменить сервер").Menu!, "Все серверы…"));
+        Execute(Item(tray.Menu, "Все серверы…"));
         shell.CurrentKey.ShouldBe(Pages.Servers);
         Execute(Item(tray.Menu, "Открыть окно"));
         Execute(Item(tray.Menu, "Закрыть программу"));
