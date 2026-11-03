@@ -321,6 +321,17 @@ extension AppSettings {
     /// Ключи, которых может не быть в файле (значение «нет»), но которые в копии — числа.
     private static let numbers: Set<String> = ["tunnel_mtu", "conn_timeout"]
 
+    /// Значения настроек-списков по ключу: копия с другой платформы сравнивается с ними без учета регистра.
+    private static let choices: [String: [String]] = [
+        "tunnel_dns": DnsChoice.allCases.map(\.rawValue),
+        "subs_refresh": RefreshInterval.allCases.map(\.rawValue),
+        "core_log": CoreLogLevel.allCases.map(\.rawValue),
+        "conn_fingerprint": TlsFingerprint.allCases.map(\.rawValue),
+        "routing_mode": RoutingMode.allCases.map(\.rawValue),
+        "notify_level": NotificationLevel.allCases.map(\.rawValue),
+        "reconnect_policy": ReconnectPolicy.allCases.map(\.rawValue),
+    ]
+
     /// Настройки для копии: значения ключей файла (те же имена, что у DataStore Android) строками.
     public func backupValues() -> [String: String] {
         guard let data = try? JSONEncoder().encode(self), let values = try? JSONDecoder().decode([String: SettingScalar].self, from: data) else {
@@ -337,7 +348,10 @@ extension AppSettings {
             return self
         }
 
-        for (key, text) in values where !Self.notBackedUp.contains(key) {
+        for (key, value) in values where !Self.notBackedUp.contains(key) {
+            // Копия Android пишет значения списков с заглавной (`Custom`, `Every6Hours`) — к значениям iOS без учета
+            // регистра (DECISIONS.md, п. 3); неизвестное останется и при чтении станет значением по умолчанию.
+            let text = Self.choices[key]?.first { $0.caseInsensitiveCompare(value) == .orderedSame } ?? value
             switch current[key] {
             case .bool?: current[key] = Bool(text).map(SettingScalar.bool) ?? current[key]
             case .int?: current[key] = Int(text).map(SettingScalar.int) ?? current[key]

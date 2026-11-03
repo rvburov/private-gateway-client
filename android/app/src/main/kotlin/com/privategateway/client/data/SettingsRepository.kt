@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import com.privategateway.client.core.backup.BackupSettings
 import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.ConnectionSettings
 import com.privategateway.client.core.settings.DnsChoice
@@ -169,9 +170,11 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
 
     /** Вернуть настройки из копии: известные ключи с верным типом; чужие и испорченные значения пропускаются. */
     suspend fun import(values: Map<String, String>) {
+        // Копия iPhone пишет значения списков со строчной буквы — привести к именам Android (DECISIONS.md, п. 3).
+        val known = BackupSettings.normalize(values)
         store.edit { preferences ->
             for (key in BACKED_UP) {
-                val text = values[key.name] ?: continue
+                val text = known[key.name] ?: continue
                 @Suppress("UNCHECKED_CAST")
                 when {
                     key in BOOLEANS -> text.toBooleanStrictOrNull()?.let { preferences[key as Preferences.Key<Boolean>] = it }

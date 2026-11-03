@@ -6,3 +6,10 @@
 
 Открывают его все три платформы: десктоп (`desktop/tests/Unit/BackupTests.cs`), Android (`android/core`,
 `BackupEnvelopeTest`) и iOS (`ios/Core`, когда там появится копия). Другим паролем файл не открывается.
+
+## Копия телефона между Android и iPhone
+
+`mobile-android.plain.json` и `mobile-ios.plain.json` — содержимое копии телефона (внутри обертки) с одними настройками: так их
+пишут Android (значения списков с заглавной: `Custom`, `Every6Hours`) и iPhone (`custom`, `every6Hours`). Тесты `android/core`
+(`BackupSettingsTest`) и `ios/Core` (`MobileBackupTests`) читают копию другой платформы и проверяют, что все значения
+вернулись (DECISIONS.md, п. 3). Адреса — из диапазонов документации.

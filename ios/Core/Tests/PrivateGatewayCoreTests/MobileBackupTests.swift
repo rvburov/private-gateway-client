@@ -41,4 +41,19 @@ final class MobileBackupTests: XCTestCase {
         let newer = String(decoding: MobileBackup(createdAt: created).write(), as: UTF8.self).replacingOccurrences(of: "\"version\":1", with: "\"version\":2")
         XCTAssertThrowsError(try MobileBackup.read(Data(newer.utf8))) { XCTAssertEqual($0 as? BackupError, .newerVersion) }
     }
+
+    /// Копия Android на iPhone (DECISIONS.md, п. 3): общий эталон, значения списков — без учета регистра.
+    func testAndroidCopyRestoresEveryChoiceOnTheIphone() throws {
+        let android = try MobileBackup.read(Data(contentsOf: Self.fixtures.appendingPathComponent("mobile-android.plain.json")))
+        let restored = AppSettings().restoring(try XCTUnwrap(android.settings))
+        XCTAssertEqual(restored.tunnel.dns, .custom)
+        XCTAssertEqual(restored.subscriptions.refresh, .every6Hours)
+        XCTAssertEqual(restored.notifications, .all)
+        XCTAssertEqual(restored.reconnect, .upTo5Minutes)
+        XCTAssertEqual(restored.routing.mode, .split)
+
+        let iphone = try MobileBackup.read(Data(contentsOf: Self.fixtures.appendingPathComponent("mobile-ios.plain.json")))
+        XCTAssertEqual(AppSettings().restoring(try XCTUnwrap(iphone.settings)).tunnel.dns, .custom, "своя копия — как раньше")
+        XCTAssertEqual(AppSettings().restoring(["tunnel_dns": "Другой"]).tunnel.dns, AppSettings().tunnel.dns, "неизвестное — значение по умолчанию")
+    }
 }

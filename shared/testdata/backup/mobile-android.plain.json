@@ -1,0 +1,1 @@
+{"format":"private-gateway-mobile","version":1,"createdAt":"2026-11-03T10:00:00Z","settings":{"conn_fingerprint":"Chrome","core_log":"Info","notify_level":"All","reconnect_policy":"UpTo5Minutes","routing_mode":"Split","subs_refresh":"Every6Hours","tunnel_dns":"Custom","tunnel_custom_dns":"192.0.2.53","tunnel_ipv6":"true","tunnel_mtu":"1360"}}
