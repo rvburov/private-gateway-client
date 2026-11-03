@@ -463,8 +463,12 @@ public sealed class ServiceGatewayClientTests
             using var host = new GatewayHost(locator, a => Client(a.Endpoint, definition, settings), () => settings, TimeProvider.System);
 
             await host.ConnectAsync(Profile(definition), Ct);
-            // Служба и ядро поднялись, локальный сервер отклонил пробу — штатное переподключение.
-            await WaitFor(() => host.Status.State == ConnectionState.Reconnecting);
+            // Служба и ядро поднялись, локальный сервер отклонил пробу — штатное переподключение. Срок шире общего: здесь
+            // холодный запуск отдельного процесса службы, а за ним — Xray; на занятой машине Windows CI (проверка файлов
+            // антивирусом, параллельные тесты служб) 20 с один раз не хватило.
+            await WaitFor(() => host.Status.State == ConnectionState.Reconnecting,
+                () => $"состояние {host.Status.State}; журнал: " + string.Join(" | ", host.Journal.TakeLast(12).Select(e => $"{e.Source}: {e.Message}")),
+                TimeSpan.FromSeconds(60));
 
             host.Status.Mode.ShouldBe(ConnectionMode.Proxy);
             host.Journal.ShouldContain(e => e.Source == "app" && e.Message.StartsWith("Запущена служба пользователя", StringComparison.Ordinal));
@@ -523,14 +527,22 @@ public sealed class ServiceGatewayClientTests
         }
     }
 
-    /// <summary>Ждать условия до 20 с: состояние приходит из потока службы.</summary>
-    private static async Task WaitFor(Func<bool> condition)
+    /// <summary>
+    /// Ждать условия до 20 с (<paramref name="limit"/> — свой срок): состояние приходит из потока службы. Не дождались —
+    /// ошибка с тем, что видно сейчас (<paramref name="seen"/>), а не голая отмена задачи.
+    /// </summary>
+    private static async Task WaitFor(Func<bool> condition, Func<string>? seen = null, TimeSpan? limit = null)
     {
-        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(Ct);
-        timeout.CancelAfter(TimeSpan.FromSeconds(20));
+        var deadline = Stopwatch.StartNew();
+        var wait = limit ?? TimeSpan.FromSeconds(20);
         while (!condition())
         {
-            await Task.Delay(50, timeout.Token);
+            if (deadline.Elapsed > wait)
+            {
+                throw new TimeoutException($"Условие не выполнилось за {wait.TotalSeconds:0} с" + (seen is null ? "" : ": " + seen()));
+            }
+
+            await Task.Delay(50, Ct);
         }
     }
 }
