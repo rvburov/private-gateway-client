@@ -42,7 +42,7 @@ public sealed class CheckPageTests : WindowHarness
         Row(page, DiagnosticCheck.Core).ShouldBe(("Сетевое ядро", "Xray-core запущен, конфигурация применена", "OK"));
         Row(page, DiagnosticCheck.AllTraffic).ShouldBe(("Весь трафик", "TUN-адаптер активен, маршрут по умолчанию → туннель", "OK"));
         Row(page, DiagnosticCheck.KillSwitch).Detail.ShouldStartWith("Правила брандмауэра активны: ");
-        Row(page, DiagnosticCheck.Dns).ShouldBe(("DNS", "Запросов к DNS провайдера нет", "Нет утечек"));
+        Row(page, DiagnosticCheck.Dns).ShouldBe(("DNS", "Служба передала состояние DNS-политики без уточнения сетевой пробы. Это не подтверждение проверки всех DNS-путей браузера.", "Снимок службы"));
         Row(page, DiagnosticCheck.Ipv6).ShouldBe(("IPv6", "Заблокирован вне туннеля", "Закрыт"));
         Row(page, DiagnosticCheck.ExitIp).ShouldBe(("IP для сайтов", "203.0.113.24 · Амстердам · дата-центр", "Скрыт"));
         Row(page, DiagnosticCheck.OtherVpn).ShouldBe(("Другие VPN и прокси", "Не найдены", "Нет"));

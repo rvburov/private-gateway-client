@@ -74,20 +74,21 @@
         <TextBlock Classes="overline" Text="{l:L prot.group.dns, Upper=True}" Margin="6,16,6,8" />
         <Border Classes="card" Padding="16,2">
           <StackPanel>
-            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
-              <StackPanel Spacing="3" Margin="0,0,14,0" VerticalAlignment="Center">
-                <TextBlock Classes="strong" Text="{l:L prot.dns.title}" />
-                <TextBlock Classes="caption" Text="{l:L prot.dns.text}" TextWrapping="Wrap" />
+            <Grid RowDefinitions="Auto,Auto" Margin="0,12">
+              <StackPanel Spacing="3">
+                <TextBlock x:Name="DnsTitle" Classes="strong" Text="{Binding DnsTitle}" TextWrapping="Wrap" />
+                <TextBlock x:Name="DnsModeText" Classes="caption" Text="{Binding DnsModeText}" TextWrapping="Wrap" />
               </StackPanel>
-              <Button x:Name="DnsChoice" Grid.Column="1" Classes="select" MaxWidth="180" Command="{Binding ToggleDnsCommand}"
-                      AutomationProperties.Name="{l:L prot.dns.title}">
+              <Button x:Name="DnsChoice" Grid.Row="1" Classes="select" Margin="0,8,0,0" HorizontalAlignment="Stretch"
+                      HorizontalContentAlignment="Stretch" Command="{Binding ToggleDnsCommand}"
+                      AutomationProperties.Name="{Binding DnsTitle}" ToolTip.Tip="{Binding DnsText}">
                 <Grid ColumnDefinitions="*,Auto">
                   <TextBlock x:Name="DnsChoiceText" Text="{Binding DnsText}" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
                   <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14" StrokeThickness="2.6"
                           Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" VerticalAlignment="Center" />
                 </Grid>
               </Button>
-              <Popup Grid.Column="1" PlacementTarget="{Binding #DnsChoice}" Placement="BottomEdgeAlignedRight"
+              <Popup Grid.Row="1" PlacementTarget="{Binding #DnsChoice}" Placement="BottomEdgeAlignedRight"
                      IsOpen="{Binding IsDnsOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
                 <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
                         BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
@@ -103,11 +104,15 @@
                 </Border>
               </Popup>
             </Grid>
+            <StackPanel Spacing="5" Margin="0,0,0,12">
+              <TextBlock x:Name="DnsPolicyText" Classes="caption" Text="{Binding DnsPolicyText}" TextWrapping="Wrap" />
+              <TextBlock x:Name="DnsPathsText" Classes="caption" Text="{l:L prot.dns.paths}" TextWrapping="Wrap" />
+            </StackPanel>
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">
                 <TextBlock Classes="strong" Text="{l:L prot.dnsBlock.title}" TextWrapping="Wrap" />
-                <TextBlock Classes="caption" Text="{l:L prot.dnsBlock.text}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.dnsBlock.scope}" TextWrapping="Wrap" />
               </StackPanel>
               <ToggleButton x:Name="DnsBlockToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
                             IsChecked="{Binding BlockOutsideDns}" AutomationProperties.Name="{l:L prot.dnsBlock.title}" />
@@ -116,7 +121,7 @@
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">
                 <TextBlock Classes="strong" Text="{l:L prot.fakeDns.title}" TextWrapping="Wrap" />
-                <TextBlock Classes="caption" Text="{l:L prot.fakeDns.text}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.fakeDns.scope}" TextWrapping="Wrap" />
               </StackPanel>
               <ToggleButton x:Name="FakeDnsToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
                             IsChecked="{Binding FakeDns}" AutomationProperties.Name="{l:L prot.fakeDns.title}" />

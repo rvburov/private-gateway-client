@@ -231,33 +231,70 @@ public sealed partial class Gateway
     }
 
     /// <summary>
-    /// DNS мимо туннеля сейчас. В «Защищено» режима VPN — замер: запрос DNS через сетевую карту мимо маршрутов TUN, как его шлет
-    /// DNS ОС по каждой карте (<see cref="DnsProbe"/>). Ответ пришел — путь мимо туннеля открыт, хотя правила его закрывают
-    /// (к резолверу в интернете не открывает ни одна настройка): «Внимание» (<c>dns_open</c>), DNS «частично» в состоянии, ошибка в
-    /// журнале. Закрыто или мерить нечем — по состоянию (<see cref="DnsReason"/>); следующий замер без ответа возвращает строку и
-    /// чип к состоянию.
+    /// Прямой IPv4 UDP/53 через внешнюю карту. Ответ на свой запрос подтверждает обход (<c>dns_open</c>).
+    /// Нет ответа или нельзя измерить — неизвестный результат отдельной пробы, а не отмена действующей политики DNS
+    /// и не опровержение прежнего измеренного обхода. Браузерный DoH, DoT и другие DNS-пути эта проба не проверяет.
     /// </summary>
     public async Task<(CheckState State, string? Reason)> CheckDnsAsync(CancellationToken cancellationToken = default)
     {
-        var status = Status;
-        if (status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } && _options.OutsideDns is { } resolver)
+        cancellationToken.ThrowIfCancellationRequested();
+        ConnectionStatus status;
+        int session;
+        CoreRequest? request;
+        lock (_gate)
         {
-            var session = Volatile.Read(ref _session);
-            if (await (_options.DnsPastTunnel ?? DnsThroughCardAsync)(resolver, cancellationToken).ConfigureAwait(false) is { } open)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                Update(s => session != _session || s.State != ConnectionState.Connected ? s
-                    : open ? s with { Protection = s.Protection with { Dns = CheckState.Warning } }
-                    : Honest(s with { Protection = s.Protection with { Dns = ProtectionChecks.For(s.State, s.Mode).Dns } }));
-                if (open)
-                {
-                    _journal.Add(JournalLevel.Error, "service", "Проверка утечек: запрос DNS через сетевую карту прошел мимо туннеля — DNS мимо туннеля открыт");
-                    return (CheckState.Warning, "dns_open");
-                }
-            }
+            status = Honest(_status);
+            session = _session;
+            request = _request;
         }
 
-        return (Status.Protection.Dns, DnsReason);
+        if (status is not { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, NetworkUnavailable: false }
+            || _options.OutsideDns is not { } resolver)
+        {
+            return DnsWithoutProbe();
+        }
+
+        // Настоящая проба завершает свой socket/finally до возврата; тестовая подмена может не заметить токен.
+        var open = _options.DnsPastTunnel is { } measure
+            ? await measure(resolver, cancellationToken).WaitAsync(cancellationToken).ConfigureAwait(false)
+            : await DnsThroughCardAsync(resolver, cancellationToken).ConfigureAwait(false);
+        lock (_gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var current = Honest(_status);
+            if (session != _session || current.Since != status.Since || current.ServerId != status.ServerId
+                || current.NetworkChangedAt != status.NetworkChangedAt || current.Network != status.Network || !ReferenceEquals(request, _request)
+                || current is not { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, NetworkUnavailable: false })
+            {
+                // Поздний ответ прежнего подключения не меняет новую сессию и не создает ложную запись об обходе.
+                return DnsWithoutProbe();
+            }
+
+            if (open == true)
+            {
+                Update(s => s with { Protection = s.Protection with { Dns = CheckState.Warning } });
+                _journal.Add(JournalLevel.Error, "service", "Проверка утечек: запрос DNS через сетевую карту прошел мимо туннеля — DNS мимо туннеля открыт");
+                return (CheckState.Warning, "dns_open");
+            }
+
+            return (CheckState.Warning, open == false ? "dns_no_answer" : "dns_unavailable");
+        }
+    }
+
+    /// <summary>Без замера сохраняются конкретные исключения политики; неизвестная проба не называется успешной.</summary>
+    private (CheckState State, string? Reason) DnsWithoutProbe()
+    {
+        lock (_gate)
+        {
+            var status = Honest(_status);
+            if (status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false })
+            {
+                var reason = DnsOutside(_request?.Protection, Ipv6Open);
+                return reason is null ? (CheckState.Warning, "dns_unavailable") : (status.Protection.Dns, reason);
+            }
+
+            return (status.Protection.Dns, null);
+        }
     }
 
     /// <summary>
@@ -271,7 +308,7 @@ public sealed partial class Gateway
         {
             adapter = _options.Routes?.DefaultRoutes().FirstOrDefault(r => !r.IsTunnel)?.Adapter;
         }
-        catch (IOException)
+        catch (Exception e) when (e is IOException or System.Net.NetworkInformation.NetworkInformationException or PlatformNotSupportedException or InvalidOperationException)
         {
             adapter = null;
         }

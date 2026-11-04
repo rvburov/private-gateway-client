@@ -9,9 +9,9 @@ namespace PrivateGateway.Client.Service.Cores;
 /// <summary>
 /// Запрос DNS мимо туннеля — так, как его шлет DNS ОС по каждой карте: Windows рассылает запросы имен во все адаптеры,
 /// systemd-resolved спрашивает DNS карты через саму карту. Сокет UDP с привязкой к карте идет мимо маршрутов TUN, и остановить
-/// его может только блок при обрыве или правила «только туннель». Запрос — корень «.» NS: резолвер не узнает ни одного имени.
-/// Ответ пришел — DNS мимо туннеля открыт; отказ ОС (правило блока) или тишина — закрыт. Ложной тревоги нет: ответ приходит,
-/// только если запрос действительно вышел мимо туннеля.
+/// его могут блок при обрыве или правила «только туннель». Запрос — корень «.» NS: резолвер не узнает ни одного имени.
+/// Ответ своего резолвера пришел — DNS мимо туннеля открыт. Отказ ОС, отсутствие карты и тишина не объясняют причину:
+/// это отсутствие подтвержденного ответа, а не доказательство блокировки или проверка всех DNS-путей браузера.
 /// </summary>
 public static class DnsProbe
 {
@@ -26,11 +26,13 @@ public static class DnsProbe
 
     /// <summary>
     /// Запрос к <paramref name="resolver"/> (IPv4) через карту <paramref name="adapter"/>, не дольше <paramref name="timeout"/>:
-    /// ответ на свой запрос — true; отказ ОС, нет карты или тишина — false.
+    /// ответ своего резолвера на свой запрос — true; отказ ОС, нет карты или тишина — false (неизвестный результат).
+    /// Отмена вызывающего остается отменой и не превращается в подтверждение защиты.
     /// </summary>
     public static async Task<bool> PastTunnelAsync(IPEndPoint resolver, string adapter, TimeSpan timeout, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(resolver);
+        cancellationToken.ThrowIfCancellationRequested();
         var query = Query();
         var reply = new byte[512];
         using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
@@ -44,15 +46,18 @@ public static class DnsProbe
             {
                 var received = await socket.ReceiveFromAsync(reply, new IPEndPoint(IPAddress.Any, 0), wait.Token).ConfigureAwait(false);
 
-                // Ответ на свой запрос: тот же номер, флаг ответа.
-                if (received.ReceivedBytes >= 12 && reply[0] == query[0] && reply[1] == query[1] && (reply[2] & 0x80) != 0)
+                // Ответ своего резолвера на свой запрос: тот же адрес/порт, номер и флаг ответа.
+                if (received.RemoteEndPoint.Equals(resolver) && received.ReceivedBytes >= 12
+                    && reply[0] == query[0] && reply[1] == query[1] && (reply[2] & 0x80) != 0)
                 {
+                    cancellationToken.ThrowIfCancellationRequested();
                     return true;
                 }
             }
         }
-        catch (SocketException)
+        catch (Exception e) when (e is SocketException or NetworkInformationException or PlatformNotSupportedException)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             return false;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)

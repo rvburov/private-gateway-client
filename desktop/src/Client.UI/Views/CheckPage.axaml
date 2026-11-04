@@ -63,7 +63,7 @@
                         Padding="0,11">
                   <Grid ColumnDefinitions="Auto,*,Auto">
                     <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Center"
-                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
+                            Background="{Binding DisplayState, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
                       <c:Icon Data="{Binding Icon, Converter={StaticResource IconKey}}" Width="12" Height="12"
                               StrokeThickness="3.2" Foreground="{StaticResource PgBrush.Surface.Solid}" />
                     </Border>
@@ -72,9 +72,9 @@
                       <TextBlock Classes="caption" Text="{Binding Detail}" TextWrapping="Wrap" />
                     </StackPanel>
                     <Border Grid.Column="2" Padding="9,3" CornerRadius="10" VerticalAlignment="Center"
-                            Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}">
+                            Background="{Binding DisplayState, Converter={StaticResource CheckBrush}, ConverterParameter=Tint}">
                       <TextBlock Text="{Binding ChipText}" FontSize="{StaticResource PgFontSize.Overline}" FontWeight="SemiBold"
-                                 Foreground="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
+                                 Foreground="{Binding DisplayState, Converter={StaticResource CheckBrush}, ConverterParameter=Text}" />
                     </Border>
                   </Grid>
                 </Border>

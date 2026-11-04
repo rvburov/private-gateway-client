@@ -42,7 +42,7 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         _navigator = navigator;
         _launcher = launcher;
         DnsOptions = [.. Enum.GetValues<DnsChoice>().Select(v =>
-            new ChoiceOptionViewModel(() => DnsLabel(v), () => P.Dns == v, () => ChooseDns(v)))];
+            new ChoiceOptionViewModel(() => DnsTexts.Choice(v), () => P.Dns == v, () => ChooseDns(v)))];
         AddressOptions = [.. Enum.GetValues<AddressPreference>().Select(v =>
             new ChoiceOptionViewModel(() => AddressLabel(v), () => P.Addresses == v, () => ChooseAddresses(v)))];
         settings.Changed += (_, _) => Refresh();
@@ -134,7 +134,51 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
     public partial bool IsDnsOpen { get; set; }
 
     /// <summary>На кнопке — выбранный вариант, у своего адреса — сам адрес.</summary>
-    public string DnsText => P is { Dns: DnsChoice.Custom, CustomDns: { } custom } ? custom : DnsLabel(P.Dns);
+    public string DnsText => P is { Dns: DnsChoice.Custom, CustomDns: { } custom } ? custom : DnsTexts.Choice(P.Dns);
+
+    public string DnsTitle => Loc.Instance[_settings.Current.Mode == ConnectionMode.Vpn ? "prot.dns.title" : "prot.dns.proxy.title"];
+
+    public string DnsModeText => Loc.Instance[_settings.Current.Mode == ConnectionMode.Vpn ? "prot.dns.mode.vpn" : "prot.dns.mode.proxy"];
+
+    public string DnsCustomNote => Loc.Instance[_settings.Current.Mode == ConnectionMode.Vpn
+        ? "desktop.prot.dnsCustom.note.vpn" : "desktop.prot.dnsCustom.note.proxy"];
+
+    /// <summary>Состояние сообщает служба; выбранный флажок не подтверждает применение к текущему подключению.</summary>
+    public string DnsPolicyText
+    {
+        get
+        {
+            var status = _gateway.Status;
+            if (_gateway.Service == ServiceKind.None || status.ErrorCode == ErrorCodes.ServiceNotRunning)
+            {
+                return Loc.Instance["prot.dns.policy.noService"];
+            }
+
+            if (_gateway.Service == ServiceKind.Simulated)
+            {
+                return Loc.Instance["prot.dns.policy.simulated"];
+            }
+
+            if (status.IsPaused)
+            {
+                return Loc.Instance["prot.dns.policy.paused"];
+            }
+
+            if (status.State == ConnectionState.Error)
+            {
+                return Loc.Instance["prot.dns.policy.error"];
+            }
+
+            if (status.State == ConnectionState.Off)
+            {
+                return Loc.Instance["prot.dns.policy.off"];
+            }
+
+            return Loc.Instance.Format("prot.dns.policy.status",
+                Loc.Instance[status.Mode == ConnectionMode.Vpn ? "settings.mode.vpn" : "settings.mode.proxy"],
+                status.IsProxy ? Loc.Instance["diag.report.dns.policy.proxy"] : DnsTexts.Policy(status.Protection.Dns));
+        }
+    }
 
     public bool BlockOutsideDns
     {
@@ -256,14 +300,6 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
     }
 
-    private static string DnsLabel(DnsChoice value) => Loc.Instance[value switch
-    {
-        DnsChoice.CloudflareDoh => "prot.dns.cloudflare",
-        DnsChoice.Quad9Doh => "prot.dns.quad9",
-        DnsChoice.Custom => "prot.dns.custom",
-        _ => "prot.dns.profile",
-    }];
-
     private static string AddressLabel(AddressPreference value) => Loc.Instance[value switch
     {
         AddressPreference.PreferIpv6 => "prot.addr.ipv6",
@@ -283,7 +319,10 @@ public sealed partial class DnsAddressViewModel : ObservableObject
         _page = page;
         _overlay = overlay;
         Address = current ?? string.Empty;
+        Note = page.DnsCustomNote;
     }
+
+    public string Note { get; }
 
     [ObservableProperty]
     public partial string Address { get; set; }

@@ -19,6 +19,9 @@
   .card > .setting .setting-text { gap: 3px; }
   .card > .setting .btn-select { max-width: 180px; }
   .card > .setting .btn-select [data-select-label] { overflow: hidden; text-overflow: ellipsis; }
+  /* DNS десктопа: выбранное значение занимает отдельную строку целиком, как Button.select программы. */
+  .card > .setting .setting-text.pg-gap-8 { gap: var(--pg-space-s); }
+  .card > .setting .setting-text > .btn-select { max-width: none; }
 
   /* Строгий режим — часть блока при обрыве (CanStrictMode); обнаружение устройств — только в разрешенной локальной сети */
   .pg-page:has([data-ks]:not(.on)) [data-needs-ks] { opacity: .45; pointer-events: none; }
@@ -99,7 +102,15 @@
       <!-- DNS -->
       <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">DNS</span>
       <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
-        <div class="setting">
+        <div class="setting" data-os="desktop">
+          <div class="setting-text pg-gap-8">
+            <span class="setting-title">DNS в туннеле</span>
+            <span class="setting-caption" data-os-word="dnsMode">Выбранный DNS использует ядро VPN. Обычные запросы DNS системы перехватываются туннелем с учетом прямых исключений.</span>
+            <button class="btn-select" style="align-self: stretch; justify-content: space-between" data-open="menu-dns" aria-label="DNS в туннеле"><span data-select-label data-os-word="dnsDefault">По умолчанию: Cloudflare</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <span class="t-caption t-wrap">Снимок службы: VPN · вся система. DNS-защита: действует по данным службы.</span>
+          </div>
+        </div>
+        <div class="setting" data-os="phone">
           <div class="setting-text">
             <span class="setting-title">DNS в туннеле</span>
             <span class="setting-caption">Куда уходят запросы адресов сайтов.</span>
@@ -109,25 +120,27 @@
         <div class="setting">
           <div class="setting-text">
             <span class="setting-title">Блокировать DNS провайдера</span>
-            <span class="setting-caption">Запросы мимо туннеля отбрасываются, и LLMNR, NetBIOS: устройства сети — по адресу или .local.</span>
+            <span class="setting-caption" data-os-word="dnsBlock">Запрет обычного DNS вне туннеля с учетом разрешенных исключений. Применение защиты сообщает служба; это не проверка всех DoH/DoT-запросов браузера.</span>
           </div>
           <button class="switch on" role="switch" aria-checked="true" aria-label="Блокировать DNS провайдера"></button>
         </div>
         <div class="setting">
           <div class="setting-text">
             <span class="setting-title">FakeDNS</span>
-            <span class="setting-caption">Быстрее, но может ломать некоторые программы.</span>
+            <span class="setting-caption" data-os-word="dnsFake">Подставные адреса помогают ядру восстановить имя сайта. Реальное разрешение имен остается: FakeDNS не делает DNS невидимым внешнему тесту и может влиять на совместимость программ.</span>
           </div>
           <button class="switch" role="switch" aria-checked="false" aria-label="FakeDNS"></button>
         </div>
         <div class="setting">
           <div class="setting-text">
             <span class="setting-title">Проверять утечки после подключения</span>
-            <span class="setting-caption">Автотест DNS и IP, результат — на главной.</span>
+            <span class="setting-caption" data-os-word="dnsAuto">Автотест DNS и IP, результат — на главной.</span>
           </div>
           <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять утечки после подключения"></button>
         </div>
       </div>
+
+      <p class="t-caption t-wrap pg-pad" data-os="desktop">Собственный DoH браузера может выбрать другой DNS-сервис; при VPN это само по себе не означает обход туннеля. Внешний тест может показать несколько узлов одного сервиса: их число не устанавливает маршрут запросов.</p>
 
       <!-- IPv6 -->
       <span class="t-overline" style="display: block; margin: 16px calc(var(--side) + 6px) 8px">IPv6</span>
@@ -183,7 +196,7 @@
 
     <!-- Меню «DNS в туннеле» -->
     <div class="popup" id="menu-dns">
-      <button class="btn-option current" data-value="Из профиля">Из профиля</button>
+      <button class="btn-option current" data-value="По умолчанию: Cloudflare" data-os-value="dnsDefault" data-os-word="dnsDefault">По умолчанию: Cloudflare</button>
       <button class="btn-option" data-value="DoH: Cloudflare">DoH: Cloudflare</button>
       <button class="btn-option" data-value="DoH: Quad9">DoH: Quad9</button>
       <!-- «Свой адрес…» открывает лист и сам выбранным не становится: им станет адрес после «Сохранить» -->
@@ -209,7 +222,7 @@
           <span class="t-small" style="font-weight: 600">Адрес</span>
           <input class="input" style="font-family: var(--font-mono); font-size: var(--pg-type-caption-size)" aria-label="Адрес"
                  placeholder="192.0.2.53 или https://dns.example.com/dns-query">
-          <span class="t-caption t-wrap">IP-адрес или адрес DoH (https://…). Запросы идут через туннель.</span>
+          <span class="t-caption t-wrap" data-os-word="dnsCustomNote">IP-адрес или адрес DoH (https://…). Публичный DNS в режиме VPN используется через туннель; частный DNS может использовать разрешенный прямой путь в локальную сеть.</span>
         </div>
         <div class="pg-grow"></div>
         <div class="pg-row pg-gap-8">
@@ -249,6 +262,55 @@
       <div class="dialog-actions stack">
         <button class="btn-primary" data-close>Оставить защиту</button>
         <button class="btn-secondary danger" data-close data-set-state="paused" data-toast="Пауза на 5 минут: войдите в сеть на открывшейся странице">Открыть на 5 минут</button>
+      </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="proxy" data-caption="DNS в режиме «Только прокси»">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">Защита и утечки</span>
+    </div>
+    <div class="pg-page">
+      <span class="t-overline group-label pg-pad">DNS</span>
+      <div class="card" style="margin: 0 var(--side); padding: 2px 16px">
+        <div class="setting">
+          <div class="setting-text pg-gap-8">
+            <span class="setting-title">DNS ядра прокси</span>
+            <span class="setting-caption">Этот DNS использует ядро прокси. Настройка не перехватывает DNS всей системы: браузер и другие программы могут разрешать имена отдельно.</span>
+            <button class="btn-select" style="align-self: stretch; justify-content: space-between" data-open="menu-dns-proxy" aria-label="DNS ядра прокси"><span data-select-label>По умолчанию: Cloudflare</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <span class="t-caption t-wrap">Снимок службы: Только прокси. DNS-защита: не подтверждена или требует внимания.</span>
+          </div>
+        </div>
+      </div>
+      <p class="t-caption t-wrap pg-pad">Собственный DoH браузера может выбрать другой DNS-сервис; при VPN это само по себе не означает обход туннеля. Внешний тест может показать несколько узлов одного сервиса: их число не устанавливает маршрут запросов.</p>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="popup" id="menu-dns-proxy">
+      <button class="btn-option current" data-value="По умолчанию: Cloudflare">По умолчанию: Cloudflare</button>
+      <button class="btn-option" data-value="DoH: Cloudflare">DoH: Cloudflare</button>
+      <button class="btn-option" data-value="DoH: Quad9">DoH: Quad9</button>
+      <button class="btn-plain" data-open="sheet-dns-proxy">Свой адрес…</button>
+    </div>
+    <div class="sheet" id="sheet-dns-proxy" role="dialog" aria-label="Свой адрес DNS">
+      <div class="pg-stack" style="height: 100%">
+        <div class="grabber" style="height: 4px; margin-bottom: 0"></div>
+        <div class="pg-row" style="margin-top: 12px">
+          <span class="t-status pg-grow">Свой адрес DNS</span>
+          <button class="btn-icon" style="width: 40px; height: 40px; color: var(--pg-color-text-secondary)" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+        </div>
+        <div class="pg-stack pg-gap-6" style="margin: 16px 0">
+          <span class="t-small" style="font-weight: 600">Адрес</span>
+          <input class="input" style="font-family: var(--font-mono); font-size: var(--pg-type-caption-size)" aria-label="Адрес"
+                 placeholder="192.0.2.53 или https://dns.example.com/dns-query">
+          <span class="t-caption t-wrap">IP-адрес или адрес DoH (https://…). Этот адрес использует ядро прокси; DNS всей системы не перехватывается.</span>
+        </div>
+        <div class="pg-grow"></div>
+        <div class="pg-row pg-gap-8">
+          <button class="btn-secondary pg-grow" style="height: 50px" data-close>Отмена</button>
+          <button class="btn-primary pg-grow" style="height: 50px" data-close>Сохранить</button>
+        </div>
       </div>
     </div>
 

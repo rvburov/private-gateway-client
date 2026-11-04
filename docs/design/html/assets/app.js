@@ -70,6 +70,48 @@
   };
   var OS_GROUPS = { desktop: ["windows", "macos", "linux"], phone: ["android", "ios"] };
 
+  // DNS десктопа разделяет выбранную настройку, состояние правил и ограниченный сетевой замер.
+  // Мобильные экраны пока сохраняют прежние подписи (docs/design/mobile-parity.md).
+  var DNS_DESKTOP = {
+    dnsTitle: "Правила DNS",
+    dnsProxyTitle: "DNS прокси",
+    dnsOk: "применены",
+    dnsOff: "не применены",
+    dnsPaused: "на паузе",
+    dnsPartial: "только прокси",
+    dnsDefault: "По умолчанию: Cloudflare",
+    dnsCustomNote: "IP-адрес или адрес DoH (https://…). Публичный DNS в режиме VPN используется через туннель; частный DNS может использовать разрешенный прямой путь в локальную сеть.",
+    dnsAuto: "Автотест DNS и IP, результат — на главной.",
+    dnsInfoOk: "Служба сообщает о примененных правилах DNS. Это состояние правил, а не проверка всех DNS-запросов браузера. Результат отдельной сетевой пробы — на «Проверке».",
+    dnsInfoOff: "DNS-защита по этому снимку не применена. Каким DNS фактически пользуется браузер, это состояние не определяет.",
+    dnsInfoPaused: "Защита на паузе: обычный DNS может идти вне VPN. Это состояние не подтверждает защиту запросов браузера.",
+    dnsInfoProxy: "DNS выбран для ядра прокси. Этот режим не перехватывает DNS всей системы; браузер и другие приложения могут использовать отдельное разрешение имен.",
+    dnsMode: "Выбранный DNS использует ядро VPN. Обычные запросы DNS системы перехватываются туннелем с учетом прямых исключений.",
+    dnsBlock: "Запрет обычного DNS вне туннеля с учетом разрешенных исключений. Применение защиты сообщает служба; это не проверка всех DoH/DoT-запросов браузера.",
+    dnsFake: "Подставные адреса помогают ядру восстановить имя сайта. Реальное разрешение имен остается: FakeDNS не делает DNS невидимым внешнему тесту и может влиять на совместимость программ.",
+  };
+  var DNS_PHONE = {
+    dnsTitle: "DNS скрыт",
+    dnsProxyTitle: "DNS скрыт",
+    dnsOk: "запросы в туннеле",
+    dnsOff: "видит провайдер",
+    dnsPaused: "у провайдера",
+    dnsPartial: "частично",
+    dnsDefault: "Из профиля",
+    dnsCustomNote: "IP-адрес или адрес DoH (https://…). Запросы идут через туннель.",
+    dnsAuto: "Автотест DNS и IP, результат — на главной.",
+    dnsInfoOk: "Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.",
+    dnsInfoOff: "Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.",
+    dnsInfoPaused: "Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.",
+    dnsInfoProxy: "Провайдер не видит, какие сайты вы открываете: запросы имен идут через туннель.",
+    dnsMode: "Куда уходят запросы адресов сайтов.",
+    dnsBlock: "Запросы мимо туннеля отбрасываются, и LLMNR, NetBIOS: устройства сети — по адресу или .local.",
+    dnsFake: "Быстрее, но может ломать некоторые программы.",
+  };
+  Object.keys(OS).forEach(function (id) {
+    Object.assign(OS[id], OS_GROUPS.desktop.indexOf(id) >= 0 ? DNS_DESKTOP : DNS_PHONE);
+  });
+
   var params = new URLSearchParams(location.search);
   var device = DEVICES.some(function (d) { return d.id === params.get("device"); }) ? params.get("device") : "windows";
   var thumb = params.get("thumb") === "1";
@@ -194,6 +236,12 @@
     var words = OS[dev] || OS.windows;
     root.querySelectorAll("[data-os-word]").forEach(function (el) {
       if (words[el.dataset.osWord]) { el.textContent = words[el.dataset.osWord]; }
+    });
+    root.querySelectorAll("[data-os-info]").forEach(function (el) {
+      if (words[el.dataset.osInfo]) { el.dataset.info = words[el.dataset.osInfo]; }
+    });
+    root.querySelectorAll("[data-os-value]").forEach(function (el) {
+      if (words[el.dataset.osValue]) { el.dataset.value = words[el.dataset.osValue]; }
     });
     root.querySelectorAll("[data-os]").forEach(function (el) {
       var list = [];
@@ -509,6 +557,11 @@
     document.querySelectorAll(".pg-screens").forEach(function (holder) {
       holder.classList.add("pg-frames");
       Array.prototype.slice.call(holder.querySelectorAll(":scope > .pg-screen")).forEach(function (screen) {
+        if (screen.dataset.os) {
+          var allowed = [];
+          screen.dataset.os.split(/\s+/).forEach(function (id) { allowed = allowed.concat(OS_GROUPS[id] || [id]); });
+          if (allowed.indexOf(screen.dataset.device || device) < 0) { screen.remove(); return; }
+        }
         holder.replaceChild(frameFor(screen), screen);
       });
     });

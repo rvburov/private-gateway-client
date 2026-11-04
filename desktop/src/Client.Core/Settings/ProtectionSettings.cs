@@ -6,7 +6,7 @@ namespace PrivateGateway.Client.Core.Settings;
 /// <summary>Куда уходят DNS-запросы в туннеле (доска 5).</summary>
 public enum DnsChoice
 {
-    /// <summary>DNS из профиля сервера или подписки; нет в профиле — выбор службы.</summary>
+    /// <summary>Совместимое сохраненное имя выбора DNS по умолчанию; настольный Xray использует Cloudflare DoH.</summary>
     Profile,
     CloudflareDoh,
     Quad9Doh,
@@ -63,7 +63,7 @@ public sealed record ProtectionSettings(
         ? address
         : null;
 
-    /// <summary>Адреса DNS для службы: пусто — из профиля сервера.</summary>
+    /// <summary>Адреса DNS для службы: пусто — DNS по умолчанию ядра, а не параметры списка серверов.</summary>
     public IReadOnlyList<string> DnsServers => Dns switch
     {
         // DoH по IP-адресу: имя самого DNS-сервера не нужно разрешать мимо туннеля.

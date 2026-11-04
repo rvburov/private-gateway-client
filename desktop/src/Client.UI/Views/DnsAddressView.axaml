@@ -36,7 +36,7 @@
           <KeyBinding Gesture="Enter" Command="{Binding SaveCommand}" />
         </TextBox.KeyBindings>
       </TextBox>
-      <TextBlock Classes="caption" Text="{l:L prot.dnsCustom.note}" TextWrapping="Wrap" />
+      <TextBlock x:Name="DnsNote" Classes="caption" Text="{Binding Note}" TextWrapping="Wrap" />
       <TextBlock x:Name="DnsError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
                  TextWrapping="Wrap" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
     </StackPanel>

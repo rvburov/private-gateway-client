@@ -575,17 +575,9 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             : Status.ErrorCode == ErrorCodes.KillSwitchFailed ? "firewall"
             : _settings.Current.Routing is { } routing && (routing.HasBypassApps || routing.HasBypassSites) ? "split"
             : "unverified");
-        // DNS в режиме VPN «частично» — свой DNS в частной сети, DNS разрешенной локальной сети или DNS провайдера по открытому
-        // IPv6 мимо туннеля, а не прокси; ни одна настройка его не открывает — значит, его нашел замер службы (правила сняты).
-        Chips[1].Update(protection.Dns, paused,
-            Status.Mode != ConnectionMode.Vpn || Status.State != ConnectionState.Connected || protection.Dns != CheckState.Warning ? null
-            : _settings.Current.Protection switch
-            {
-                { LanDns: not null } => "own_dns",
-                { AllowLan: true, BlockOutsideDns: false } => "lan_dns",
-                { BlockOutsideDns: false, BlockIpv6: false } => "ipv6_dns",
-                _ => "dns_open",
-            });
+        // Снимок службы не содержит примененных DNS-параметров. Свежий выбор в настройках не объясняет причину Warning:
+        // конкретную причину и сетевую пробу показывает «Проверка», а здесь — только состояние политики.
+        Chips[1].Update(protection.Dns, paused, Status.IsProxy && !paused ? "proxy" : null);
         // IPv6 в режиме VPN: через туннель (сервер его открывает) или мимо него — свои заголовок, подпись и пояснение.
         Chips[2].Update(protection.Ipv6, paused,
             protection.Ipv6Tunnel ? "tunnel"
@@ -638,7 +630,8 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     [ObservableProperty]
     public partial bool IsSelected { get; set; }
 
-    public string Title => Loc.Instance[Variant is { } variant && !IsPaused && Loc.Instance.Has($"check.{Id}.{variant}.title")
+    public string Title => Id == "dns" ? Loc.Instance[Variant == "proxy" && !IsPaused ? "desktop.check.dns.proxy.title" : "desktop.check.dns.title"]
+        : Loc.Instance[Variant is { } variant && !IsPaused && Loc.Instance.Has($"check.{Id}.{variant}.title")
         ? $"check.{Id}.{variant}.title"
         : $"check.{Id}.title"];
 
@@ -651,9 +644,10 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     /// </summary>
     public string? Variant { get; private set; }
 
-    public string Value => Loc.Instance[$"check.{Id}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];
+    public string Value => Loc.Instance[$"{(Id == "dns" ? "desktop.check.dns" : "check." + Id)}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];
 
-    public string Text => Loc.Instance[Variant is { } variant && !IsPaused ? $"check.{Id}.{variant}.text" : $"check.{Id}.text"];
+    public string Text => Id == "dns" ? Loc.Instance[$"desktop.check.dns.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}.text"]
+        : Loc.Instance[Variant is { } variant && !IsPaused ? $"check.{Id}.{variant}.text" : $"check.{Id}.text"];
 
     /// <summary>Ключ иконки в кружке: Icon.Chip.*.</summary>
     public string Icon => CheckIcon.For(State);

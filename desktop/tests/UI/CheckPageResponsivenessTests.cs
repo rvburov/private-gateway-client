@@ -1,9 +1,12 @@
 using System.Collections.Specialized;
+using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 
@@ -86,7 +89,7 @@ public sealed class CheckPageResponsivenessTests : WindowHarness
     {
         var pending = new TaskCompletionSource<DiagnosticReport>(TaskCreationOptions.RunContinuationsAsynchronously);
         var gateway = new ChecksGateway(Time) { Check = _ => pending.Task };
-        var (_, shell) = Open(gateway: _ => gateway);
+        var (window, shell) = Open(gateway: _ => gateway);
         var page = OpenCheck(shell);
         page.IsRunning.ShouldBeTrue();
 
@@ -94,11 +97,26 @@ public sealed class CheckPageResponsivenessTests : WindowHarness
         WaitFor(() => !page.IsRunning);
 
         gateway.CheckTokens[0].IsCancellationRequested.ShouldBeTrue();
-        page.Rows.ShouldAllBe(r => r.State == CheckState.Warning && r.ChipText == "Нет ответа"
+        page.Rows.Count.ShouldBe(Enum.GetValues<DiagnosticCheck>().Length);
+        page.Rows.ShouldAllBe(r => r.State == CheckState.Warning && r.Reason == "timeout");
+        page.Rows.Where(r => r.Check != DiagnosticCheck.Dns).ShouldAllBe(r => r.ChipText == "Нет ответа"
             && r.Detail == "Проверка не завершилась вовремя — повторите ее");
+        var dns = page.Rows.Single(r => r.Check == DiagnosticCheck.Dns);
+        dns.ChipText.ShouldBe("Нет результата");
+        dns.Detail.ShouldBe("Проверка DNS не завершилась вовремя. Это неизвестный результат, а не подтверждение отсутствия обхода. DoH/DoT браузера этой пробой не измеряются.");
+        dns.IsInconclusive.ShouldBeTrue();
+        dns.DisplayState.ShouldBe(CheckState.Waiting);
+        dns.Icon.ShouldBe("Icon.Chip.Dash");
+        window.UpdateLayout();
+        Dispatcher.UIThread.RunJobs();
+        var rendered = window.GetVisualDescendants().OfType<Border>()
+            .Single(border => border.Classes.Contains("checkRow") && ReferenceEquals(border.DataContext, dns));
+        rendered.GetVisualDescendants().OfType<Icon>().Single().Classes.ShouldNotContain("spin");
         pending.SetResult(Report(CheckState.Ok));
         Dispatcher.UIThread.RunJobs();
         page.Rows.Single(r => r.Check == DiagnosticCheck.Core).ChipText.ShouldBe("Нет ответа");
+        page.Rows.Single(r => r.Check == DiagnosticCheck.Dns).State.ShouldBe(CheckState.Warning);
+        page.Rows.Single(r => r.Check == DiagnosticCheck.Dns).Reason.ShouldBe("timeout");
         page.Dispose();
     }
 

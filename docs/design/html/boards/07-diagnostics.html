@@ -74,12 +74,12 @@
 <p class="pg-board-note">Проверка и логи (CheckPage программы). Шапка стоит, содержимое прокручивается под островком. «Проверить» —
   стрелка крутится, «Экспорт отчета» сохраняет обезличенный отчет. Ниже — «Задержка» (сюда ведет плитка «Пинг» главного экрана),
   «Что на этом компьютере может мешать» («Исправить» убирает переменную пользователя), сетевой инспектор, «Лаборатория» и журнал
-  службы: новые записи сверху, адреса и секреты — звездочками. Экраны: все пройдено, идет проверка, блокировка, защита выключена
-  и найдено, что мешает.</p>
+  службы: новые записи сверху, адреса и секреты — звездочками. Экраны: результаты проверок, идет проверка, блокировка, защита выключена
+  и найдено, что мешает. На десктопе строка DNS отдельно показывает прямой ответ, отсутствие ответа, недоступную пробу и тайм-аут.</p>
 
 <div class="pg-screens">
   <!-- ===================== Защищено ===================== -->
-  <section class="pg-screen" data-state="connected" data-caption="Защищено: проверки пройдены">
+  <section class="pg-screen" data-state="connected" data-caption="Защищено: результаты проверок">
     <div class="check-header"><span class="t-h1">Проверка</span></div>
     <div class="pg-page">
       <div class="check-body">
@@ -111,7 +111,12 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: <span data-os-word="engine">Windows Filtering Platform</span></span></span>
               <span class="check-chip">OK</span>
             </div>
-            <div class="check-row tone-success">
+            <div class="check-row tone-accent top" data-os="desktop">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Прямой ответ DNS по IPv4 UDP/53 не получен. Это не доказывает отсутствие обхода: DoH/DoT браузера и список внешних DNS-узлов не проверялись.</span></span>
+              <span class="check-chip">Не подтверждено</span>
+            </div>
+            <div data-os="phone" class="check-row tone-success">
               <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Запросов к DNS провайдера нет</span></span>
               <span class="check-chip">Нет утечек</span>
@@ -410,7 +415,12 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: <span data-os-word="engine">Windows Filtering Platform</span></span></span>
               <span class="check-chip">OK</span>
             </div>
-            <div class="check-row tone-success">
+            <div class="check-row tone-accent top" data-os="desktop">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Служба передала состояние DNS-политики без уточнения сетевой пробы. Это не подтверждение проверки всех DNS-путей браузера.</span></span>
+              <span class="check-chip">Снимок службы</span>
+            </div>
+            <div data-os="phone" class="check-row tone-success">
               <span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Запросов к DNS провайдера нет</span></span>
               <span class="check-chip">Нет утечек</span>
@@ -560,7 +570,12 @@
               <span class="check-text"><span class="t-strong pg-ellipsis">Блок при обрыве</span><span class="t-caption t-wrap">Выключен в настройках или защита выключена</span></span>
               <span class="check-chip">Выкл.</span>
             </div>
-            <div class="check-row tone-danger">
+            <div class="check-row tone-danger top" data-os="desktop">
+              <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+              <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">DNS-защита не применена. Какой резолвер использует браузер, эта проверка не определяет.</span></span>
+              <span class="check-chip">Не применена</span>
+            </div>
+            <div data-os="phone" class="check-row tone-danger">
               <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
               <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Запросы идут к DNS провайдера</span></span>
               <span class="check-chip">Видны</span>
@@ -692,6 +707,69 @@
           <div><span class="t-muted">15:42:09</span>  <span class="lv">INF</span>  connect  server «Нидерланды 01»  mode=vpn</div>
           <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  net up  wifi «***»  v4+v6</div>
           <div><span class="t-muted">15:41:50</span>  <span class="lv">INF</span>  service started  ipc=ok</div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="DNS: получен прямой ответ">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Отдельные результаты строки DNS. Данные других проверок здесь не показаны. Результат пробы не подменяет выбранную настройку и снимок действующей DNS-защиты.</span>
+        <div class="card check-card" aria-label="Результат проверки DNS">
+          <div class="check-row tone-warning top">
+            <span class="check-dot"><i data-icon="Chip.Warn" data-stroke="3.2"></i></span>
+            <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Получен прямой ответ DNS через внешний интерфейс в обход туннеля: IPv4 UDP/53. Проверка выявила открытый контрольный путь; DoH/DoT браузера и список внешних DNS-узлов не проверялись.</span></span>
+            <span class="check-chip">Прямой ответ</span>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="DNS: проба не выполнялась">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Отдельные результаты строки DNS. Данные других проверок здесь не показаны. Результат пробы не подменяет выбранную настройку и снимок действующей DNS-защиты.</span>
+        <div class="card check-card" aria-label="Результат проверки DNS">
+          <div class="check-row tone-accent top">
+            <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+            <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Прямая проба DNS по IPv4 UDP/53 недоступна или не выполнялась. Вывод об отсутствии обхода не сделан; DoH/DoT браузера не проверялись.</span></span>
+            <span class="check-chip">Не измерено</span>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="DNS: время проверки истекло">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page">
+      <div class="check-body">
+        <div class="check-actions">
+          <button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button>
+          <button class="btn-secondary" data-toast="Отчет сохранен">Экспорт отчета</button>
+        </div>
+        <span class="t-caption t-wrap check-note">Отдельные результаты строки DNS. Данные других проверок здесь не показаны. Результат пробы не подменяет выбранную настройку и снимок действующей DNS-защиты.</span>
+        <div class="card check-card" aria-label="Результат проверки DNS">
+          <div class="check-row tone-accent top">
+            <span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span>
+            <span class="check-text"><span class="t-strong pg-ellipsis">DNS</span><span class="t-caption t-wrap">Проверка DNS не завершилась вовремя. Это неизвестный результат, а не подтверждение отсутствия обхода. DoH/DoT браузера этой пробой не измеряются.</span></span>
+            <span class="check-chip">Нет результата</span>
+          </div>
         </div>
       </div>
       <div class="pg-page-end"></div>

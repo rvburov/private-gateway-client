@@ -64,6 +64,26 @@ public sealed class SettingsStorageTests : IDisposable
         Store().Load().ShouldBe(changed);
     }
 
+    [Theory]
+    [InlineData(DnsChoice.Profile)]
+    [InlineData(DnsChoice.CloudflareDoh)]
+    [InlineData(DnsChoice.Quad9Doh)]
+    [InlineData(DnsChoice.Custom)]
+    public void Dns_choice_and_retained_custom_address_survive_reopening_settings(DnsChoice choice)
+    {
+        const string custom = "https://dns.example.com/dns-query";
+        var configured = AppSettings.Default with
+        {
+            Protection = ProtectionSettings.Default with { Dns = choice, CustomDns = custom },
+        };
+        Store().Save(configured);
+
+        var loaded = Store().Load();
+
+        loaded.Protection.Dns.ShouldBe(choice, "новая подпись не меняет сохраненный выбор DNS");
+        loaded.Protection.CustomDns.ShouldBe(custom, "последний пользовательский адрес сохраняется и при другом активном выборе");
+    }
+
     [Fact]
     public void Migrations_run_once_and_set_version()
     {

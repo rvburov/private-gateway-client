@@ -514,8 +514,11 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
                 .ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)),
             loc.Format("diag.report.state", Protection.Label),
             string.Empty,
-            loc["diag.report.checks"],
         };
+        lines.AddRange(DnsReport.Lines(_settings.Current, Protection.Status, _gateway.Service,
+            _report?[DiagnosticCheck.Dns], Rows.FirstOrDefault(row => row.Check == DiagnosticCheck.Dns)));
+        lines.Add(string.Empty);
+        lines.Add(loc["diag.report.checks"]);
         lines.AddRange(Rows.Select(r => $"  [{r.ChipText}] {r.Title} — {WithoutRealIp(r)}"));
         lines.Add(string.Empty);
         lines.Add(loc["diag.report.delay"]);
@@ -608,8 +611,9 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
                 check,
                 Loc.Instance[$"diag.{Id(check)}.title"],
                 result is null ? Loc.Instance["diag.checking"] : Detail(check, result.State, ViaProxy(check, result.State) ? "proxy" : result.Reason),
-                Chip(check, state, reason),
-                state);
+                result is null ? Loc.Instance["diag.state.waiting.chip"] : Chip(check, state, reason),
+                state,
+                reason);
         }).ToList();
 
         Rows.Clear();
@@ -681,6 +685,11 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     /// <summary>Пояснение: по коду уточнения, иначе по состоянию проверки, иначе общее.</summary>
     private string Detail(DiagnosticCheck check, CheckState state, string? reason)
     {
+        if (check == DiagnosticCheck.Dns)
+        {
+            return First($"desktop.diag.dns.{reason}", $"diag.dns.{reason}", $"desktop.diag.dns.{state.ToString().ToLowerInvariant()}");
+        }
+
         if (reason == "timeout")
         {
             return Loc.Instance["diag.timeout"];
@@ -713,6 +722,11 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 
     private static string Chip(DiagnosticCheck check, CheckState state, string? reason)
     {
+        if (check == DiagnosticCheck.Dns)
+        {
+            return First($"desktop.diag.dns.{reason}.chip", $"diag.dns.{reason}.chip", $"desktop.diag.dns.{state.ToString().ToLowerInvariant()}.chip");
+        }
+
         if (reason == "timeout")
         {
             return Loc.Instance["diag.timeout.chip"];
@@ -743,9 +757,15 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 }
 
 /// <summary>Строка проверки: кружок и чип по состоянию, заголовок, пояснение.</summary>
-public sealed record CheckRowViewModel(DiagnosticCheck Check, string Title, string Detail, string ChipText, CheckState State)
+public sealed record CheckRowViewModel(DiagnosticCheck Check, string Title, string Detail, string ChipText, CheckState State, string? Reason = null)
 {
-    public string Icon => CheckIcon.For(State);
+    /// <summary>Неизвестный замер не является ни успешным доказательством, ни подтвержденной утечкой.</summary>
+    public bool IsInconclusive => Check == DiagnosticCheck.Dns &&
+        (Reason is "dns_no_answer" or "dns_unavailable" or "timeout" || State == CheckState.Ok);
+
+    public CheckState DisplayState => IsInconclusive ? CheckState.Waiting : State;
+
+    public string Icon => IsInconclusive ? "Icon.Chip.Dash" : CheckIcon.For(State);
 }
 
 /// <summary>Строка журнала: время, уровень (INF, WRN…), источник и текст без секретов.</summary>

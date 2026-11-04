@@ -83,7 +83,8 @@ docs/design/html/
 | `data-goto="step2"` + `[data-page="step2"]` | шаги внутри экрана (страницы `.pg-page` с `data-page`, лишние — `hidden`) |
 | `.fav` | звезда избранного |
 | `data-os-word="name"` (`firewall`, `engine`, `store`, `build`) | слово ОС по рамке, как подставляет программа: «Windows» → «macOS», «брандмауэром Windows» → «правилами nftables», «Windows DPAPI» → «Связка ключей iOS» |
-| `data-os="windows"`, `data-os="desktop"`, `data-os="phone"` | строка есть только на этих ОС, как в программе: Hyper-V — только Windows, трей и «Запуск вместе с …» — только десктоп |
+| `data-os-info="dnsInfoOk"`, `data-os-value="dnsDefault"` | пояснение плитки и значение пункта меню по выбранной ОС; DNS десктопа обновлен отдельно от мобильных подписей, значение выбранного пункта совпадает с его видимым текстом |
+| `data-os="windows"`, `data-os="desktop"`, `data-os="phone"` | строка или отдельный `.pg-screen` есть только на этих ОС, как в программе: Hyper-V — только Windows, трей и «Запуск вместе с …» — только десктоп |
 
 ## Блоки (`app.css`) — те же, что в программе
 

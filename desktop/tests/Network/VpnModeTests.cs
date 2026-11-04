@@ -434,7 +434,7 @@ public sealed partial class VpnModeTests
     [InlineData(true, false, true)]
     [InlineData(true, true, false)]
     [InlineData(false, false, false)]
-    public async Task Dns_row_is_partial_only_when_dns_of_the_allowed_local_network_goes_around_the_tunnel(bool allowLan, bool blockOutsideDns, bool partial)
+    public async Task Dns_policy_exceptions_are_distinct_from_an_unavailable_probe(bool allowLan, bool blockOutsideDns, bool partial)
     {
         await using var rig = await Rig.CreateAsync();
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with { Trace = Rig.Trace, ExitIp = rig.ExitIpAsync });
@@ -447,7 +447,8 @@ public sealed partial class VpnModeTests
             "DNS роутера мимо туннеля правила пропускают только в разрешенную локальную сеть без «Блокировать DNS провайдера»");
         var row = (await service.Client.RunChecksAsync(new V1.RunChecksRequest(), cancellationToken: Ct)).Results
             .Single(r => r.Id == DiagnosticCheck.Dns.ToContractId());
-        (row.State, row.Reason).ShouldBe(partial ? (V1.CheckState.Warning, "lan_dns") : (V1.CheckState.Ok, string.Empty));
+        (row.State, row.Reason).ShouldBe((V1.CheckState.Warning, partial ? "lan_dns" : "dns_unavailable"),
+            "конкретное исключение политики сохраняется; отсутствие настроенной пробы не становится доказательством отсутствия обхода");
     }
 
     [Fact]
@@ -457,18 +458,19 @@ public sealed partial class VpnModeTests
         await using var rig = await Rig.CreateAsync();
         // DNS в интернете — на адресе машины: из пространства до него только через карту, мимо туннеля.
         using var outside = new TestDns(IPAddress.Parse("192.0.2.53"), new IPEndPoint(rig.Public, 53));
-        var rulesBack = false;
+        var resolverSilent = false;
         await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
         {
             OutsideDns = new IPEndPoint(rig.Public, 53),
-            DnsPastTunnel = (resolver, _) => Volatile.Read(ref rulesBack) ? Task.FromResult<bool?>(false) : rig.DnsPastTunnelAsync(resolver),
+            DnsPastTunnel = (resolver, _) => Volatile.Read(ref resolverSilent) ? Task.FromResult<bool?>(false) : rig.DnsPastTunnelAsync(resolver),
         });
         using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected, service.Journal);
 
-        // Блок стоит: запрос через карту не прошел — строка по состоянию.
-        (await DnsRowAsync()).ShouldBe((V1.CheckState.Ok, string.Empty));
+        // Блок стоит: отдельная проба не получила ответа, а состояние политики остается подтвержденным отдельно.
+        (await DnsRowAsync()).ShouldBe((V1.CheckState.Warning, "dns_no_answer"));
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Protection.Dns.ShouldBe(V1.CheckState.Ok);
         outside.Queries.ShouldBeEmpty("запрос через карту закрыт блоком");
 
         // Правила сняла другая программа: запрос через карту проходит — замер это видит.
@@ -480,10 +482,10 @@ public sealed partial class VpnModeTests
         service.Journal.Tail(ServiceJournal.Capacity)
             .ShouldContain(e => e.Message == "Проверка утечек: запрос DNS через сетевую карту прошел мимо туннеля — DNS мимо туннеля открыт");
 
-        // Правила вернулись (замер снова не проходит) — строка и чип снова по состоянию.
-        Volatile.Write(ref rulesBack, true);
-        (await DnsRowAsync()).ShouldBe((V1.CheckState.Ok, string.Empty));
-        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Protection.Dns.ShouldBe(V1.CheckState.Ok);
+        // Теперь подмена замера молчит. Правила все еще сняты: молчание само по себе не опровергает найденный обход.
+        Volatile.Write(ref resolverSilent, true);
+        (await DnsRowAsync()).ShouldBe((V1.CheckState.Warning, "dns_no_answer"));
+        (await service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).Protection.Dns.ShouldBe(V1.CheckState.Warning);
 
         async Task<(V1.CheckState, string)> DnsRowAsync()
         {

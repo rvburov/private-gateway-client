@@ -79,7 +79,7 @@ public sealed class MainWindowTests : WindowHarness
         main.WebIp.ShouldBe("203.0.113.24");
         main.WebIpMeta.ShouldBe("Амстердам · дата-центр · AS64500");
         main.RealIpState.ShouldBe("скрыт");
-        main.Chips.Select(c => c.Value).ShouldBe(["через туннель", "запросы в туннеле", "нет обхода", "Kill Switch вкл"]);
+        main.Chips.Select(c => c.Value).ShouldBe(["через туннель", "применены", "нет обхода", "Kill Switch вкл"]);
         main.PingText.ShouldBe("42");
 
         Time.Advance(new TimeSpan(2, 14, 9));
@@ -301,7 +301,7 @@ public sealed class MainWindowTests : WindowHarness
         main.HasTimer.ShouldBeFalse();
         main.CheckedText.ShouldBe("Проверки возобновятся после паузы");
         main.HasCheckAction.ShouldBeFalse();
-        main.Chips.Select(c => c.Value).ShouldBe(["напрямую", "у провайдера", "открыт", "на паузе"]);
+        main.Chips.Select(c => c.Value).ShouldBe(["напрямую", "на паузе", "открыт", "на паузе"]);
         main.WebIp.ShouldBe("198.51.100.7", "в паузе сайты видят реальный IP");
         main.WebIpMeta.ShouldBe("Пауза для входа в Wi-Fi · ваш провайдер");
         main.RealIpState.ShouldBe("виден сайтам");
@@ -318,7 +318,7 @@ public sealed class MainWindowTests : WindowHarness
 
         Find<Border>(window, "PauseBanner").IsVisible.ShouldBeFalse();
         shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
-        main.Chips.Select(c => c.Value).ShouldBe(["через туннель", "запросы в туннеле", "нет обхода", "Kill Switch вкл"]);
+        main.Chips.Select(c => c.Value).ShouldBe(["через туннель", "применены", "нет обхода", "Kill Switch вкл"]);
     }
 
     [AvaloniaFact]
@@ -561,16 +561,16 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaTheory]
-    [InlineData(false, "lan_dns", "DNS виден сети", "роутер видит", "Локальная сеть разрешена, а «Блокировать DNS провайдера» выключено",
+    [InlineData(false, "lan_dns",
         "Запросы к DNS роутера могут идти мимо туннеля: локальная сеть разрешена", "Видны роутеру")]
-    [InlineData(true, "own_dns", "DNS в своей сети", "свой DNS", "DNS — свой адрес в локальной сети",
+    [InlineData(true, "own_dns",
         "Запросы идут к своему DNS в локальной сети, мимо туннеля", "Свой DNS")]
-    [InlineData(null, "ipv6_dns", "DNS по IPv6 открыт", "мимо туннеля", "IPv6 мимо туннеля открыт, а «Блокировать DNS провайдера» выключено",
+    [InlineData(null, "ipv6_dns",
         "Запросы по IPv6 могут идти к DNS провайдера мимо туннеля", "Видны провайдеру")]
-    [InlineData(false, "dns_open", "DNS мимо туннеля открыт", "замер: открыт", "Замер: запрос DNS через сетевую карту прошел мимо туннеля",
-        "Запрос DNS через сетевую карту прошел мимо туннеля: правила защиты его не остановили", "Открыт", true)]
-    public async Task Dns_chip_tells_who_sees_the_lookups_outside_the_tunnel(
-        bool? ownDns, string reason, string title, string value, string text, string detail, string chipText, bool closedBySettings = false)
+    [InlineData(false, "dns_open",
+        "Получен прямой ответ DNS через внешний интерфейс в обход туннеля: IPv4 UDP/53. Проверка выявила открытый контрольный путь; DoH/DoT браузера и список внешних DNS-узлов не проверялись.", "Прямой ответ", true)]
+    public async Task Dns_policy_does_not_infer_a_service_reason_from_fresh_settings(
+        bool? ownDns, string reason, string detail, string chipText, bool closedBySettings = false)
     {
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
         {
@@ -598,8 +598,14 @@ public sealed class MainWindowTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         var chip = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>().Chips[1];
-        (chip.Title, chip.Value).ShouldBe((title, value));
-        chip.Text.ShouldStartWith(text);
+        (chip.Title, chip.Value).ShouldBe(("Правила DNS", "есть замечания"));
+        chip.Text.ShouldStartWith("В защите DNS есть ограничения или замечания.");
+
+        // Выбрали другую настройку: это не объясняет старый Warning и не меняет причину уже полученного снимка.
+        Service<SettingsService>().Update(s => s with { Protection = ProtectionSettings.Default with { Dns = DnsChoice.Quad9Doh } });
+        Dispatcher.UIThread.RunJobs();
+        (chip.Title, chip.Value).ShouldBe(("Правила DNS", "есть замечания"));
+        chip.Text.ShouldContain("свежий выбор в настройках не подтверждает применение");
 
         shell.NavigateCommand.Execute(Pages.Check);
         var check = shell.CurrentPage.ShouldBeOfType<CheckPageViewModel>();
@@ -698,7 +704,7 @@ public sealed class MainWindowTests : WindowHarness
 
         Text(window, "StatusTitle").ShouldBe("Прокси включен");
         main.StatusSubtitle.ShouldBe("Защищен не весь трафик");
-        main.Chips.Select(c => c.Value).ShouldBe(["только прокси", "частично", "не контролируется", "недоступен"]);
+        main.Chips.Select(c => c.Value).ShouldBe(["только прокси", "только прокси", "не контролируется", "недоступен"]);
         main.CheckedText.ShouldBe("Блок при обрыве в режиме прокси недоступен");
         main.HasCheckAction.ShouldBeTrue();
         main.WebIpMeta.ShouldEndWith("только для программ через прокси");

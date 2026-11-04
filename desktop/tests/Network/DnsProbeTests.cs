@@ -1,12 +1,13 @@
 using System.Net;
 using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using PrivateGateway.Client.Service.Cores;
 
 namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
 /// Запрос DNS через карту мимо туннеля (<see cref="DnsProbe"/>) — на петле машины, на каждой ОС: привязка сокета к карте этой ОС
-/// работает, ответ на свой запрос узнается, резолвер не узнает ни одного имени; карты нет или тишина — «закрыто».
+/// работает, ответ на свой запрос узнается, резолвер не узнает ни одного имени. Нет карты или ответа — результат неизвестен.
 /// </summary>
 public sealed class DnsProbeTests
 {
@@ -26,7 +27,7 @@ public sealed class DnsProbeTests
     }
 
     [Fact]
-    public async Task Card_that_is_not_there_and_silence_mean_closed()
+    public async Task Card_that_is_not_there_and_silence_do_not_confirm_an_answer()
     {
         using var dns = new TestDns(IPAddress.Parse("192.0.2.53"));
 
@@ -34,7 +35,7 @@ public sealed class DnsProbeTests
             .ShouldBeFalse("к карте, которой нет, сокет не привязать — запрос не уходит");
         dns.Queries.ShouldBeEmpty();
         (await DnsProbe.PastTunnelAsync(new IPEndPoint(IPAddress.Loopback, LocalPort.FreeForTcpAndUdp()), Loopback, TimeSpan.FromSeconds(1), Ct))
-            .ShouldBeFalse("резолвер не ответил — пути нет");
+            .ShouldBeFalse("отсутствие ответа не объясняет, заблокирован ли путь или недоступен резолвер");
     }
 
     [Theory]
@@ -54,5 +55,54 @@ public sealed class DnsProbeTests
         }, Ct);
 
         (await DnsProbe.PastTunnelAsync((IPEndPoint)other.Client.LocalEndPoint!, Loopback, TimeSpan.FromSeconds(1), Ct)).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Silence_on_an_open_port_does_not_confirm_blocking()
+    {
+        using var silent = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var pending = DnsProbe.PastTunnelAsync((IPEndPoint)silent.Client.LocalEndPoint!, Loopback, TimeSpan.FromSeconds(1), Ct);
+
+        var received = await silent.ReceiveAsync(Ct);
+
+        received.Buffer.Length.ShouldBe(17, "запрос действительно вышел, хотя ответа не будет");
+        (await pending).ShouldBeFalse("без ответа неизвестно, почему резолвер промолчал; открытый путь этим не опровергнут");
+    }
+
+    [Fact]
+    public async Task Cancellation_of_a_pending_query_remains_cancellation()
+    {
+        using var silent = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(Ct);
+        var pending = DnsProbe.PastTunnelAsync((IPEndPoint)silent.Client.LocalEndPoint!, Loopback, TimeSpan.FromSeconds(30), stop.Token);
+        await silent.ReceiveAsync(Ct);
+
+        stop.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => pending);
+    }
+
+    [Fact]
+    public async Task An_already_cancelled_query_does_not_even_bind_an_unavailable_card()
+    {
+        using var stop = new CancellationTokenSource();
+        stop.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => DnsProbe.PastTunnelAsync(
+            new IPEndPoint(IPAddress.Loopback, 53), "pg-no-such0", TimeSpan.FromSeconds(1), stop.Token));
+    }
+
+    [Fact]
+    public async Task A_matching_packet_from_a_different_endpoint_is_not_the_resolvers_answer()
+    {
+        using var resolver = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        using var stranger = new UdpClient(new IPEndPoint(IPAddress.Loopback, 0));
+        var pending = DnsProbe.PastTunnelAsync((IPEndPoint)resolver.Client.LocalEndPoint!, Loopback, TimeSpan.FromSeconds(2), Ct);
+        var received = await resolver.ReceiveAsync(Ct);
+        received.Buffer[2] |= 0x80;
+
+        await stranger.SendAsync(received.Buffer, received.RemoteEndPoint, Ct);
+
+        (await pending).ShouldBeFalse("правильный номер запроса не делает посторонний адрес/порт проверенным резолвером");
     }
 }

@@ -15,6 +15,7 @@ public static class InspectorReport
     {
         var loc = Loc.Instance;
         yield return loc["diag.report.network"];
+        yield return "  " + loc["diag.report.dns.adapterScope"];
         if (snapshot is null)
         {
             yield return "  " + loc["diag.report.none"];

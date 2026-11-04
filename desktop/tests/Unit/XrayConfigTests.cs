@@ -219,6 +219,22 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Legacy_profile_dns_still_matches_the_desktop_default_label()
+    {
+        // Старое сохраненное значение не меняется из-за нового имени пункта: оно по-прежнему выбирает Cloudflare.
+        var legacy = System.Text.Json.JsonSerializer.Deserialize<ProtectionSettings>("{\"Dns\":0}").ShouldNotBeNull();
+        legacy.Dns.ShouldBe(DnsChoice.Profile);
+        Servers(Build(Link("vless/reality-vision"), protection: legacy)).ShouldBe(["https://1.1.1.1/dns-query"]);
+
+        foreach (var language in new[] { "ru", "en" })
+        {
+            var texts = JsonNode.Parse(File.ReadAllText(Path.Combine(FindRoot(), "shared", "specifications", "localization", language + ".json")))!;
+            texts["prot.dns.default"]!.GetValue<string>().Contains("Cloudflare", StringComparison.Ordinal).ShouldBeTrue(
+                "подпись DNS по умолчанию должна соответствовать настоящему конфигу, а не только имени Profile");
+        }
+    }
+
+    [Fact]
     public void Dns_follows_protection_settings()
     {
         Servers(Build(Link("vless/reality-vision"))).ShouldBe([XrayConfigBuilder.DefaultDns]);

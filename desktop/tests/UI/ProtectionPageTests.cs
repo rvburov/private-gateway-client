@@ -30,7 +30,7 @@ public sealed class ProtectionPageTests : WindowHarness
         (page.KillSwitch, page.BootProtection, page.StrictMode).ShouldBe((true, true, false));
         (page.BlockOutsideDns, page.FakeDns, page.CheckLeaksAfterConnect).ShouldBe((true, false, true));
         (page.BlockIpv6, page.AllowLan, page.LanDiscovery).ShouldBe((true, false, false));
-        Text(window, "DnsChoiceText").ShouldBe("Из профиля");
+        Text(window, "DnsChoiceText").ShouldBe("По умолчанию: Cloudflare");
         Text(window, "AddressChoiceText").ShouldBe("Предпочитать IPv4");
         page.KillSwitchText.ShouldStartWith("Обрыв, сбой ядра или службы — весь трафик блокируется ");
         page.KillSwitchText.ShouldEndWith("Исключение: только адрес выбранного сервера.");
@@ -65,7 +65,7 @@ public sealed class ProtectionPageTests : WindowHarness
 
         Press(window, "DnsChoice");
         page.IsDnsOpen.ShouldBeTrue();
-        page.DnsOptions.Select(o => o.Label).ShouldBe(["Из профиля", "DoH: Cloudflare", "DoH: Quad9", "Свой адрес…"]);
+        page.DnsOptions.Select(o => o.Label).ShouldBe(["По умолчанию: Cloudflare", "DoH: Cloudflare", "DoH: Quad9", "Свой адрес…"]);
         page.DnsOptions[1].ChooseCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         page.IsDnsOpen.ShouldBeFalse();

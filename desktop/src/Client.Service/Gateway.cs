@@ -37,7 +37,8 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="LookupPastBlock"/> — поиск DoH самой службы под блоком без туннеля (тесты); null —
 /// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
 /// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
-/// пришел — true, закрыто — false, мерить нечем — null; null — через карту маршрута по умолчанию (<see cref="DnsProbe"/>);
+/// пришел — true, подтвержденного ответа нет — false, мерить нечем — null; null — через карту маршрута по умолчанию
+/// (<see cref="DnsProbe"/>). false/null не доказывают отсутствие всех DNS-утечек;
 /// <paramref name="BlockWatch"/> — как часто сторож блока проверяет, что правила целы; null — <see cref="Gateway.BlockWatchEvery"/>;
 /// <paramref name="TunDevice"/> — устройство TUN, без которого sing-box туннель не поднимет (Linux — /dev/net/tun); null — не проверять;
 /// <paramref name="SystemDns"/> — DNS ОС на время туннеля там, где sing-box его не прописывает (macOS); null — прописывает sing-box;
@@ -313,8 +314,9 @@ public sealed partial class Gateway : IAsyncDisposable
     }
 
     /// <summary>
-    /// Почему DNS идет мимо туннеля (причина строки DNS «Проверки»): <c>own_dns</c> — свой DNS в частной сети, <c>lan_dns</c> — DNS
-    /// роутера в разрешенной локальной сети без «Блокировать DNS провайдера»; не идет — null.
+    /// Разрешенные политикой исключения DNS: <c>own_dns</c> — свой DNS в частной сети, <c>lan_dns</c> — DNS роутера
+    /// в разрешенной LAN без «Блокировать DNS провайдера». null означает отсутствие известного исключения,
+    /// а не успешную сетевую проверку всех путей DNS.
     /// </summary>
     public string? DnsReason => Status is { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, Protection.Dns: CheckState.Warning }
         ? DnsOutside(_request?.Protection, Ipv6Open)
