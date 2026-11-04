@@ -38,19 +38,21 @@ dir="$tmp/$name"
 
 exe=
 case "$name" in *-win-*) exe=.exe ;; esac
-for file in "PrivateGateway$exe" "PrivateGateway.Service$exe" "cores/xray/xray$exe" cores/xray/geosite.dat \
+service_file="PrivateGateway.Service$exe"
+case "$name" in *-osx-*) service_file=PrivateGatewayService ;; esac
+for file in "PrivateGateway$exe" "$service_file" "cores/xray/xray$exe" cores/xray/geosite.dat \
   "cores/sing-box/sing-box$exe" cores/sing-box/LICENSE sbom.cdx.json THIRD-PARTY-NOTICES.txt; do
   [ -f "$dir/$file" ] || fail "в архиве нет $file"
 done
 [ ! -e "$dir/cores/xray/geoip.dat" ] || fail "в архиве geoip.dat: локальные сети — списком в конфиге, геобаза IP не нужна"
 if [ -z "$exe" ]; then
-  for file in PrivateGateway PrivateGateway.Service cores/xray/xray cores/sing-box/sing-box; do
+  for file in PrivateGateway "$service_file" cores/xray/xray cores/sing-box/sing-box; do
     [ -x "$dir/$file" ] || fail "$file в архиве без права на запуск"
   done
 fi
 
 # Служба — самодостаточная: без DOTNET_ROOT и dotnet в PATH она все равно запускается.
-service=$(env -u DOTNET_ROOT PATH=/usr/bin:/bin "$dir/PrivateGateway.Service$exe" --version) || fail "служба из архива не запускается"
+service=$(env -u DOTNET_ROOT -u DOTNET_ROOT_ARM64 -u DOTNET_ROOT_X64 PATH=/usr/bin:/bin "$dir/$service_file" --version) || fail "служба из архива не запускается"
 [ "$service" = "Private Gateway Service $version (IPC v1)" ] || fail "служба называет себя «$service», ждали версию $version"
 echo "ок: $service"
 "$dir/cores/xray/xray$exe" version | head -1

@@ -220,6 +220,7 @@
                 <Border x:Name="ServiceNotice" Classes="notice">
                   <TextBlock Text="{Binding ServiceNotice}" TextWrapping="Wrap" />
                 </Border>
+                <TextBlock Classes="caption" Text="{Binding InstallProgressText}" IsVisible="{Binding IsUpdatingService}" TextWrapping="Wrap" />
                 <Button x:Name="UpdateService" Classes="secondary" Height="40" HorizontalAlignment="Stretch" IsVisible="{Binding CanUpdateService}"
                         Command="{Binding UpdateServiceCommand}" Content="{Binding UpdateServiceText}" />
               </StackPanel>

@@ -37,4 +37,31 @@
     <EmbeddedResource Include="../../../shared/licenses/components.json" LogicalName="open-components.json" />
   </ItemGroup>
 
+  <!-- Служба разработки несет свою .NET: root не зависит от окружения терминала.
+       Отдельный вывод не пересекается со сборкой решения. Выпуск готовит publish.sh. -->
+  <Target Name="PrepareDevelopmentService" AfterTargets="Build"
+          Condition="'$(DesignTimeBuild)' != 'true' and '$(RuntimeIdentifier)' == '' and '$(PgPrepareDevelopmentService)' != 'false'">
+    <PropertyGroup>
+      <PgDevelopmentDotNet>$(DOTNET_HOST_PATH)</PgDevelopmentDotNet>
+      <PgDevelopmentDotNet Condition="'$(PgDevelopmentDotNet)' == ''">$(NetCoreRoot)dotnet</PgDevelopmentDotNet>
+      <PgDevelopmentDotNet Condition="'$(DOTNET_HOST_PATH)' == '' and '$(OS)' == 'Windows_NT'">$(NetCoreRoot)dotnet.exe</PgDevelopmentDotNet>
+      <PgDevelopmentCores>$(MSBuildProjectDirectory)/../../../artifacts/cores</PgDevelopmentCores>
+      <PgDevelopmentCoreSuffix Condition="'$(OS)' == 'Windows_NT'">.exe</PgDevelopmentCoreSuffix>
+      <PgSharedDevelopmentCores Condition="'$(PgWorktreeGitDir)' != ''">$([System.IO.Path]::GetFullPath('$(PgWorktreeGitDir)/../../../artifacts/cores'))</PgSharedDevelopmentCores>
+      <PgDevelopmentCores Condition="'$(PgSharedDevelopmentCores)' != '' and Exists('$(PgSharedDevelopmentCores)/xray/xray$(PgDevelopmentCoreSuffix)') and Exists('$(PgSharedDevelopmentCores)/sing-box/sing-box$(PgDevelopmentCoreSuffix)')">$(PgSharedDevelopmentCores)</PgDevelopmentCores>
+      <PgDevelopmentService>$(MSBuildProjectDirectory)/../../../artifacts/dev-service/$([System.String]::Copy('$(Configuration)').ToLowerInvariant())</PgDevelopmentService>
+    </PropertyGroup>
+    <Exec Command="bash &quot;$(MSBuildProjectDirectory)/../../../scripts/get-xray.sh&quot;"
+          Condition="!Exists('$(PgDevelopmentCores)/xray/xray$(PgDevelopmentCoreSuffix)')" />
+    <Exec Command="bash &quot;$(MSBuildProjectDirectory)/../../../scripts/get-singbox.sh&quot;"
+          Condition="!Exists('$(PgDevelopmentCores)/sing-box/sing-box$(PgDevelopmentCoreSuffix)')" />
+    <Exec Command="&quot;$(PgDevelopmentDotNet)&quot; publish &quot;$(MSBuildProjectDirectory)/../Client.Service/Client.Service.csproj&quot; -c $(Configuration) -r $(NETCoreSdkRuntimeIdentifier) --self-contained -p:ArtifactsPath=&quot;$(MSBuildProjectDirectory)/../../../artifacts/dev-service-build&quot; -o &quot;$(PgDevelopmentService)&quot;" />
+    <ItemGroup>
+      <PgDevelopmentCoreFiles Include="$(PgDevelopmentCores)/**/*" />
+    </ItemGroup>
+    <Copy SourceFiles="@(PgDevelopmentCoreFiles)"
+          DestinationFiles="@(PgDevelopmentCoreFiles->'$(PgDevelopmentService)/cores/%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

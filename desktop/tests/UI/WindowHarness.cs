@@ -386,9 +386,24 @@ public abstract class WindowHarness : IDisposable
 
         public int Installs { get; private set; }
 
+        public TaskCompletionSource<ServiceInstallResult>? Pending { get; set; }
+
+        public IProgress<int>? Progress { get; private set; }
+
+        public Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default)
+        {
+            Progress = progress;
+            return InstallAsync(cancellationToken);
+        }
+
         public Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default)
         {
             Installs++;
+            if (Pending is not null)
+            {
+                return Pending.Task;
+            }
+
             if (Result == ServiceInstallResult.Installed)
             {
                 OnInstalled?.Invoke();

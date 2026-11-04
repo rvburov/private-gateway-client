@@ -4,7 +4,7 @@ namespace PrivateGateway.Client.Service;
 
 /// <summary>
 /// Служба готова: IPC слушает. Файл <c>ready</c> в папке состояния — «версия номер-процесса»; его пишет служба после
-/// запуска IPC и убирает при остановке, а установка (<see cref="ServiceSetup.Install(SetupOptions, string, string?, string?, IOsService, TimeSpan?)"/>)
+/// запуска IPC и убирает при остановке, а установка (<see cref="ServiceSetup.Install(SetupOptions, string, string?, string?, IOsService, TimeSpan?, Action{int}?)"/>)
 /// ждет его от новой копии — так она узнает, что новая служба не просто запущена, а работает.
 /// </summary>
 public static class ServiceReady

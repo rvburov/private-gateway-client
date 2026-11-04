@@ -23,7 +23,8 @@ public interface IUserServiceLauncher
 public sealed class UserServiceLauncher(string? executable, int parentId, string? endpoint = null, string? state = null) : IUserServiceLauncher
 {
     /// <summary>Имя исполняемого файла службы на этой ОС.</summary>
-    public static string FileName => OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe" : "PrivateGateway.Service";
+    public static string FileName => OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe"
+        : OperatingSystem.IsMacOS() ? "PrivateGatewayService" : "PrivateGateway.Service";
 
     /// <summary>Служба этого окна: файл рядом с программой, процесс окна, адрес по умолчанию.</summary>
     public static UserServiceLauncher ForThisWindow() => new(Find(AppContext.BaseDirectory), Environment.ProcessId);
@@ -43,10 +44,16 @@ public sealed class UserServiceLauncher(string? executable, int parentId, string
 
         // Только точное расположение папки сборки, без поиска вверх: чужой файл выше по дереву службой не станет.
         var build = new DirectoryInfo(windowFolder);
-        return build.Parent is { Name: "Client.UI" } project && project.Parent is { Name: "bin" } bin && bin.Parent is { Name: "artifacts" }
-            && Path.Combine(bin.FullName, "Client.Service", build.Name, FileName) is var built && File.Exists(built)
-            ? built
-            : null;
+        if (build.Parent is not { Name: "Client.UI" } project || project.Parent is not { Name: "bin" } bin
+            || bin.Parent is not { Name: "artifacts" } artifacts)
+        {
+            return null;
+        }
+
+        var configuration = build.Name;
+        var prepared = Path.Combine(artifacts.FullName, "dev-service", configuration, FileName);
+        var built = Path.Combine(bin.FullName, "Client.Service", build.Name, FileName);
+        return File.Exists(prepared) ? prepared : File.Exists(built) ? built : null;
     }
 
     public bool Start()

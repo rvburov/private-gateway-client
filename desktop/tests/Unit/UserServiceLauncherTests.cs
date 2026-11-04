@@ -35,6 +35,15 @@ public sealed class UserServiceLauncherTests : IDisposable
         UserServiceLauncher.Find(window + Path.DirectorySeparatorChar).ShouldBe(service);
     }
 
+    [Fact]
+    public void Development_prefers_the_prepared_self_contained_service_over_a_framework_dependent_build()
+    {
+        var window = Folder("artifacts", "bin", "Client.UI", "release");
+        Touch(Path.Combine(_root, "artifacts", "bin", "Client.Service", "release", UserServiceLauncher.FileName));
+        var prepared = Touch(Path.Combine(_root, "artifacts", "dev-service", "release", UserServiceLauncher.FileName));
+        UserServiceLauncher.Find(window).ShouldBe(prepared);
+    }
+
     [Theory]
     [InlineData("other", "bin", "Client.UI", "debug")]
     [InlineData("artifacts", "out", "Client.UI", "debug")]

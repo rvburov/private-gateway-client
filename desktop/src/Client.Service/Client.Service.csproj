@@ -30,4 +30,15 @@
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
   </ItemGroup>
 
+  <!-- macOS трактует окончание .Service особо: для native apphost нужно имя без этого суффикса.
+       Имя управляемой сборки и контрактов не меняется. -->
+  <Target Name="CopyMacServiceHostForBuild" AfterTargets="Build"
+          Condition="('$(RuntimeIdentifier)' == '' and $([MSBuild]::IsOSPlatform('OSX'))) or $([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
+    <Copy SourceFiles="$(TargetDir)PrivateGateway.Service" DestinationFiles="$(TargetDir)PrivateGatewayService" SkipUnchangedFiles="true" />
+  </Target>
+  <Target Name="CopyMacServiceHostForPublish" AfterTargets="Publish"
+          Condition="$([System.String]::Copy('$(RuntimeIdentifier)').StartsWith('osx-'))">
+    <Copy SourceFiles="$(PublishDir)PrivateGateway.Service" DestinationFiles="$(PublishDir)PrivateGatewayService" SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

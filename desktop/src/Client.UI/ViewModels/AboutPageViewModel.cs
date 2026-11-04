@@ -381,6 +381,12 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
     // ── Команды ──────────────────────────────────────────────────────────────
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InstallProgressText))]
+    public partial int InstallPercent { get; private set; }
+
+    public string InstallProgressText => ServiceSetupProgress.Text(InstallPercent);
+
     [RelayCommand]
     private void Back() => _navigator.Navigate(Pages.Settings);
 
@@ -443,12 +449,13 @@ public sealed partial class AboutPageViewModel : ObservableObject
     [RelayCommand]
     private async Task UpdateServiceAsync()
     {
+        InstallPercent = 0;
         IsUpdatingService = true;
         UpdateFailed = false;
         try
         {
-            var result = await _installer.InstallAsync().ConfigureAwait(true);
-            _updateError = _installer.LastError;
+            var result = await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
+            _updateError = _installer.ErrorKey is { } key ? Loc.Instance[key] : _installer.LastError;
             UpdateFailed = result == ServiceInstallResult.Failed;
             await LoadDetailsAsync().ConfigureAwait(true);
         }

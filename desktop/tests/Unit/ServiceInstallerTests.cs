@@ -25,7 +25,9 @@ public sealed class ServiceInstallerTests : IDisposable
 
         (await Run(installer.InstallAsync(Ct))).ShouldBe(ServiceInstallResult.Installed);
 
-        _calls.ShouldBe([$"{_executable} --install --owner {ServiceInstaller.Owner()}"], "владельца передает окно: права может дать другой администратор");
+        _calls.Count.ShouldBe(1);
+        _calls[0].ShouldStartWith($"{_executable} --install --owner {ServiceInstaller.Owner()} --setup-attempt ");
+        Guid.TryParseExact(_calls[0].Split(' ')[^1], "N", out _).ShouldBeTrue();
         answers.ShouldBe(3, "окно ждет, пока установленная служба ответит");
     }
 
@@ -90,6 +92,90 @@ public sealed class ServiceInstallerTests : IDisposable
         {
             File.Delete(result);
         }
+    }
+
+    [Fact]
+    public async Task A_new_window_does_not_start_elevation_while_another_installer_holds_the_disk_lock()
+    {
+        var result = _executable + "-result";
+        var calls = 0;
+        var installer = new ServiceInstaller(_executable, (_, _) => { calls++; return Task.FromResult<int?>(0); }, () => true, _time, result);
+        try
+        {
+            using (var held = new FileStream(result + ".lock", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            {
+                (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
+                installer.ErrorKey.ShouldBe("problem.install.stillRunning");
+                calls.ShouldBe(0, "права повторно не запрашиваются");
+            }
+
+            (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Installed, "оставшийся файл без замка не мешает следующей установке");
+            calls.ShouldBe(1);
+        }
+        finally
+        {
+            File.Delete(result + ".lock");
+        }
+    }
+
+    [Fact]
+    public async Task Hung_installer_times_out_without_starting_a_second_privileged_process()
+    {
+        var pending = new TaskCompletionSource<int?>();
+        var calls = 0;
+        var installer = new ServiceInstaller(_executable, (_, _) => { calls++; return pending.Task; }, () => true, _time);
+        var installation = installer.InstallAsync(Ct);
+        _time.Advance(ServiceInstaller.InstallTimeout);
+        (await installation.WaitAsync(TimeSpan.FromSeconds(5), Ct)).ShouldBe(ServiceInstallResult.Failed);
+        installer.ErrorKey.ShouldBe("problem.install.timeout");
+        (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
+        installer.ErrorKey.ShouldBe("problem.install.stillRunning");
+        calls.ShouldBe(1);
+        pending.SetResult(0);
+        (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Installed);
+        calls.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Progress_is_read_only_for_the_current_attempt_and_success_requires_a_service_answer()
+    {
+        var result = _executable + "-progress-result";
+        var pending = new TaskCompletionSource<int?>();
+        var values = new List<int>();
+        string? attempt = null;
+        var installer = new ServiceInstaller(_executable, (_, args) => { attempt = args[^1]; return pending.Task; }, () => true, _time, result);
+        var copied = new TaskCompletionSource();
+        var progress = new InlineProgress(value =>
+        {
+            values.Add(value);
+            if (value == 60)
+            {
+                copied.TrySetResult();
+            }
+        });
+        try
+        {
+            File.WriteAllText(result + ".progress", Guid.NewGuid().ToString("N") + ":80");
+            var installation = installer.InstallAsync(progress, Ct);
+            values.ShouldBe([0], "прогресс другой попытки не относится к этой");
+            File.WriteAllText(result + ".progress", attempt + ":60");
+            _time.Advance(TimeSpan.FromSeconds(1));
+            await copied.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+            values.ShouldContain(60);
+            values.ShouldNotContain(100);
+            pending.SetResult(0);
+            (await Run(installation)).ShouldBe(ServiceInstallResult.Installed);
+            values.TakeLast(2).ShouldBe([90, 100]);
+        }
+        finally
+        {
+            File.Delete(result + ".progress");
+        }
+    }
+
+    private sealed class InlineProgress(Action<int> report) : IProgress<int>
+    {
+        public void Report(int value) => report(value);
     }
 
     [Fact]

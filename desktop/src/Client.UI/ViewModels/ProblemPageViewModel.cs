@@ -165,11 +165,13 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanWork))]
     private async Task InstallAsync()
     {
+        IsInstallingService = true;
+        InstallPercent = 0;
         IsWorking = true;
         ServiceInstallResult result;
         try
         {
-            result = await _installer.InstallAsync().ConfigureAwait(true);
+            result = await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
             if (result == ServiceInstallResult.Installed && _catalog.Selected is { } server)
             {
                 await _gateway.ConnectAsync(server).ConfigureAwait(true);
@@ -178,6 +180,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         finally
         {
             IsWorking = false;
+            IsInstallingService = false;
         }
 
         _toast.Show(result switch
@@ -267,6 +270,16 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// VPN» бывает только в режиме VPN, а там системный прокси служба не ставит — он всегда чужой.
     /// </summary>
     private async Task ReadProxyAsync() => ForeignProxy = await Task.Run(_userProxy.Read).ConfigureAwait(true);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(InstallProgressText))]
+    public partial int InstallPercent { get; private set; }
+
+    public string InstallProgressText => ServiceSetupProgress.Text(InstallPercent);
+
+    [ObservableProperty]
+    public partial bool IsInstallingService { get; private set; }
+
 
     [RelayCommand]
     private void Cancel() => _navigator.Navigate(Pages.Home);

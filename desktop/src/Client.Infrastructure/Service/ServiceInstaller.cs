@@ -30,6 +30,13 @@ public sealed class ServiceInstaller(
     /// <summary>Сколько ждать ответа службы после установки.</summary>
     public static readonly TimeSpan StartTimeout = TimeSpan.FromSeconds(20);
 
+    public static readonly TimeSpan InstallTimeout = TimeSpan.FromMinutes(2);
+
+    private Task<int?>? _pending;
+    private int _active;
+
+    public string? ErrorKey { get; private set; }
+
     private const int Cancelled = 1223;
     private const string Osascript = "/usr/bin/osascript";
     private static readonly string[] PkexecPrograms = ["/usr/bin/pkexec", "/bin/pkexec"];
@@ -80,9 +87,41 @@ public sealed class ServiceInstaller(
         ? WindowsIdentity.GetCurrent().User!.Value
         : PeerCredentials.CurrentUid().ToString(CultureInfo.InvariantCulture);
 
-    public async Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default)
+    public Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default) => InstallAsync(new Progress<int>(), cancellationToken);
+
+    public async Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default)
+    {
+        if (Interlocked.CompareExchange(ref _active, 1, 0) != 0)
+        {
+            return ServiceInstallResult.Failed;
+        }
+
+        try
+        {
+            return await InstallCoreAsync(progress, cancellationToken).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is Win32Exception or IOException)
+        {
+            ErrorKey = "problem.install.failed";
+            return ServiceInstallResult.Failed;
+        }
+        finally
+        {
+            Volatile.Write(ref _active, 0);
+        }
+    }
+
+    private async Task<ServiceInstallResult> InstallCoreAsync(IProgress<int> progress, CancellationToken cancellationToken)
     {
         LastError = null;
+        ErrorKey = null;
+        if (_pending is { IsCompleted: false } || InstallationIsLocked())
+        {
+            ErrorKey = "problem.install.stillRunning";
+            return ServiceInstallResult.Failed;
+        }
+
+        progress.Report(0);
         if (!IsAvailable)
         {
             return ServiceInstallResult.Failed;
@@ -90,7 +129,25 @@ public sealed class ServiceInstaller(
 
         // Время файла — настоящее, файловой системы: прежний итог (старше этой попытки) — не про нее.
         var attempt = DateTime.UtcNow.AddSeconds(-2);
-        switch (await elevate(executable!, ["--install", "--owner", Owner()]).ConfigureAwait(false))
+        var attemptId = Guid.NewGuid().ToString("N");
+        _pending = elevate(executable!, ["--install", "--owner", Owner(), "--setup-attempt", attemptId]);
+        var startedInstall = time.GetTimestamp();
+        while (!_pending.IsCompleted)
+        {
+            ReportProgress(progress, attemptId);
+            if (time.GetElapsedTime(startedInstall) >= InstallTimeout)
+            {
+                // Привилегированный процесс может менять файлы: не обрывать его посередине и не запускать второй.
+                ErrorKey = "problem.install.timeout";
+                _ = _pending.ContinueWith(task => _ = task.Exception, CancellationToken.None,
+                    TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return ServiceInstallResult.Failed;
+            }
+
+            await Task.Delay(TimeSpan.FromMilliseconds(300), time, cancellationToken).ConfigureAwait(false);
+        }
+
+        switch (await _pending.ConfigureAwait(false))
         {
             case null:
                 return ServiceInstallResult.Cancelled;
@@ -99,18 +156,59 @@ public sealed class ServiceInstaller(
                 return ServiceInstallResult.Failed;
         }
 
+        progress.Report(90);
         var started = time.GetTimestamp();
         while (!await Task.Run(installedAnswers, cancellationToken).ConfigureAwait(false))
         {
             if (time.GetElapsedTime(started) >= StartTimeout)
             {
+                ErrorKey = "problem.install.noAnswer";
                 return ServiceInstallResult.Failed;
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(300), time, cancellationToken).ConfigureAwait(false);
         }
 
+        progress.Report(100);
         return ServiceInstallResult.Installed;
+    }
+
+    private bool InstallationIsLocked()
+    {
+        try
+        {
+            if (resultFile is null || !File.Exists(resultFile + ".lock"))
+            {
+                return false;
+            }
+
+            using var stream = new FileStream(resultFile + ".lock", FileMode.Open, FileAccess.Read, FileShare.None);
+            return false;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            return true;
+        }
+    }
+
+    private void ReportProgress(IProgress<int> progress, string attemptId)
+    {
+        try
+        {
+            if (resultFile is not null && File.Exists(resultFile + ".progress"))
+            {
+                var value = File.ReadAllText(resultFile + ".progress").Split(':');
+                if (value.Length == 2 && value[0] == attemptId && int.TryParse(value[1], CultureInfo.InvariantCulture, out var percent)
+                    && percent is 10 or 30 or 60 or 80)
+                {
+                    progress.Report(percent);
+                }
+            }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            // Короткое обновление файла не должно мешать установке.
+        }
     }
 
     // Причина отказа из файла итога этой попытки; файла нет или он прежний — null.

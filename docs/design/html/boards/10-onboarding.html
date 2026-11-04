@@ -51,6 +51,7 @@
   .ob-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
   .ob-mark { width: 28px; height: 28px; border-radius: 14px; display: grid; place-items: center; flex: none;
     background: var(--pg-color-control-segment-track); color: var(--pg-color-text-muted); }
+  .ob-progress { width: 100%; height: var(--pg-space-xxs); accent-color: var(--pg-color-accent-base); }
   .ob-mark.busy { background: var(--pg-color-accent-tint); color: var(--pg-color-accent-text); }
   .ob-mark.done { background: var(--pg-color-status-success-tint); color: var(--pg-color-status-success-text); }
 
@@ -126,11 +127,11 @@
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           </div>
         </div>
@@ -226,11 +227,11 @@
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           </div>
         </div>
@@ -321,15 +322,15 @@
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark busy"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">Устанавливается…</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Служба Private Gateway</span><span class="t-caption">60% · Файлы скопированы · подготавливаем регистрацию</span><progress class="ob-progress" max="100" value="60" aria-label="Установка службы: 60 процентов"></progress></span>
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           </div>
         </div>
@@ -361,11 +362,11 @@
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Виртуальная сеть для всей системы</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Сетевой адаптер (TUN)</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
-            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Для блока при обрыве</span></span>
+            <span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Правила брандмауэра</span><span class="t-caption">Появятся при подключении</span></span>
           </div>
           </div>
         <span class="t-danger t-wrap">Установка отменена: права администратора не даны</span>

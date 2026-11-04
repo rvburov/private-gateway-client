@@ -19,7 +19,8 @@ namespace PrivateGateway.Client.Tests.Network;
 [Collection(FirewallSerial.Name)]
 public sealed class ServiceSetupTests : IDisposable
 {
-    private static readonly string Exe = OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe" : "PrivateGateway.Service";
+    private static readonly string Exe = OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe"
+        : OperatingSystem.IsMacOS() ? "PrivateGatewayService" : "PrivateGateway.Service";
     private readonly string _root = Path.Combine(Path.GetTempPath(), "pg-setup-" + Guid.NewGuid().ToString("N")[..8]);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
@@ -114,7 +115,9 @@ public sealed class ServiceSetupTests : IDisposable
         var options = Options();
         var os = new FakeOs(options.StateFolder, works: _ => true);
 
-        ServiceSetup.Install(options, Touch("build", Exe), null, null, os, TimeSpan.FromSeconds(5));
+        var progress = new List<int>();
+        ServiceSetup.Install(options, Touch("build", Exe), null, null, os, TimeSpan.FromSeconds(5), progress.Add);
+        progress.ShouldBe([30, 60, 80]);
 
         os.Calls.ShouldBe(["stop", "register", "start"]);
         os.Command!.TakeLast(2).ShouldBe(["--state", options.StateFolder]);
@@ -363,6 +366,19 @@ public sealed class ServiceSetupTests : IDisposable
     }
 
     /// <summary>Итог установки — рядом с папкой службы: причина отказа для окна; удалась — файла нет.</summary>
+    [Fact]
+    public void Installation_lock_is_exclusive_and_is_released_when_the_installer_exits()
+    {
+        var folder = Path.Combine(_root, "service");
+        using (var held = ServiceSetup.LockInstallation(folder))
+        {
+            Should.Throw<IOException>(() => ServiceSetup.LockInstallation(folder).Dispose());
+        }
+
+        using var next = ServiceSetup.LockInstallation(folder);
+        next.CanWrite.ShouldBeTrue();
+    }
+
     [Fact]
     public void Result_of_the_install_is_written_next_to_the_service_folder()
     {

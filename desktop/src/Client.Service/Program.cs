@@ -21,6 +21,7 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
     var stateDir = Option("--state-dir") ?? ServiceSetup.DefaultStateFolder;
     try
     {
+        using var installationLock = ServiceSetup.LockInstallation(folder);
         if (args.Contains("--uninstall"))
         {
             // DNS ОС, направленный на туннель, и системный прокси машины (macOS), оставленные упавшей службой, — вернуть до
@@ -44,6 +45,31 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
             return 0;
         }
 
+        var attemptId = Option("--setup-attempt");
+        void ReportProgress(int percent)
+        {
+            if (!Guid.TryParseExact(attemptId, "N", out _))
+            {
+                return;
+            }
+
+            try
+            {
+                var file = SetupResult.For(folder) + ".progress";
+                Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+                File.WriteAllText(file, attemptId + ":" + percent.ToString(System.Globalization.CultureInfo.InvariantCulture));
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Прогресс для окна не меняет результат установки.
+            }
+        }
+
+        ReportProgress(10);
         // Сначала — запустится ли она от имени системы: иначе ОС после регистрации скажет лишь «не ответила вовремя».
         if (ServiceSetup.RunsAsSystem(AppContext.BaseDirectory) is { } reason)
         {
@@ -52,7 +78,7 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
 
         ServiceSetup.Install(new SetupOptions(name, folder, Option("--owner") ?? string.Empty, Option("--ipc"), stateDir), AppContext.BaseDirectory,
             Option("--xray") ?? ServiceHost.DefaultXray(), Option("--sing-box") ?? ServiceHost.DefaultSingBox(AppContext.BaseDirectory),
-            ServiceSetup.ForThisMachine());
+            ServiceSetup.ForThisMachine(), progress: ReportProgress);
         ServiceSetup.WriteResult(folder, null);
         Console.WriteLine($"Служба {name} установлена в {folder} и запущена");
         return 0;

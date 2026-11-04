@@ -34,5 +34,11 @@ public interface IServiceInstaller
     /// </summary>
     string? LastError => null;
 
+    /// <summary>Ключ локализованной ошибки ожидания; null — причина в LastError.</summary>
+    string? ErrorKey => null;
+
+    /// <summary>Прогресс по завершенным этапам: 0 — запрос прав, 100 — служба отвечает.</summary>
+    Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default) => InstallAsync(cancellationToken);
+
     Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default);
 }

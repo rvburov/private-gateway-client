@@ -86,7 +86,7 @@ public sealed class WelcomePageTests : WindowHarness
         Find<Grid>(window, "ServiceStep").IsVisible.ShouldBeTrue("службы нет, а поставить ее можно — шаг 1 из 2");
         Text(window, "ServiceTitle").ShouldBe("Установка службы");
         page.Rows.Select(r => $"{r.Title}: {r.Detail}").ShouldBe(
-            ["Служба Private Gateway: Управляет VPN в фоне", "Сетевой адаптер (TUN): Виртуальная сеть для всей системы", "Правила брандмауэра: Для блока при обрыве"]);
+            ["Служба Private Gateway: Управляет VPN в фоне", "Сетевой адаптер (TUN): Появятся при подключении", "Правила брандмауэра: Появятся при подключении"]);
         Find<Button>(window, "InstallService").Content.ShouldBe("Установить");
         Snapshot(window, "welcome-service");
 
@@ -136,6 +136,26 @@ public sealed class WelcomePageTests : WindowHarness
         Find<Grid>(window, "AddServerStep").IsVisible.ShouldBeTrue();
         Find<TextBlock>(window, "ServiceReady").IsVisible.ShouldBeFalse();
         Service<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Proxy, "без службы — только режим прокси");
+    }
+
+    [AvaloniaFact]
+    public void Installation_shows_reported_progress_without_claiming_the_tunnel_is_installed()
+    {
+        Installer.IsAvailable = true;
+        Installer.Pending = new TaskCompletionSource<ServiceInstallResult>();
+        var (window, _, page) = OpenWelcome(ServiceKind.None);
+        Press(window, "StartButton");
+        Press(window, "InstallService");
+        Installer.Progress.ShouldNotBeNull().Report(60);
+        Dispatcher.UIThread.RunJobs();
+        page.Rows[0].Percent.ShouldBe(60);
+        page.Rows[0].Detail.ShouldContain("60%");
+        page.Rows[0].ShowProgress.ShouldBeTrue();
+        page.Rows.Skip(1).ShouldAllBe(row => !row.ShowProgress && row.State == SetupRowState.Pending);
+        Find<Button>(window, "InstallService").IsEffectivelyEnabled.ShouldBeFalse();
+        Snapshot(window, "welcome-service-progress");
+        Installer.Pending.SetResult(ServiceInstallResult.Failed);
+        Dispatcher.UIThread.RunJobs();
     }
 
     [AvaloniaTheory]

@@ -91,7 +91,8 @@ public static class ServiceSetup
         : OperatingSystem.IsMacOS() ? "/Library/Application Support/Private Gateway/ServiceState"
         : "/var/lib/private-gateway";
 
-    private static string Executable => OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe" : "PrivateGateway.Service";
+    private static string Executable => OperatingSystem.IsWindows() ? "PrivateGateway.Service.exe"
+        : OperatingSystem.IsMacOS() ? "PrivateGatewayService" : "PrivateGateway.Service";
 
     private static StringComparison PathComparison => OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal;
 
@@ -251,9 +252,8 @@ public static class ServiceSetup
                 var errors = process.StandardError.ReadToEndAsync();
                 if (!process.WaitForExit(TimeSpan.FromSeconds(60)))
                 {
-                    // Медленная машина: не отказывать в установке из-за долгого запуска — ОС подождет сама.
-                    process.Kill();
-                    return (0, string.Empty);
+                    process.Kill(entireProcessTree: true);
+                    return (-1, "проверка запуска .NET не завершилась за 60 секунд");
                 }
 
                 _ = output.Result;
@@ -290,9 +290,38 @@ public static class ServiceSetup
         }
     }
 
+    /// <summary>Одна установка на папку службы, включая время до копирования. ОС отпускает замок после выхода процесса.</summary>
+    public static FileStream LockInstallation(string folder)
+    {
+        var file = SetupResult.For(folder) + ".lock";
+        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
+        try
+        {
+            var stream = new FileStream(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+            try
+            {
+                if (!OperatingSystem.IsWindows())
+                {
+                    File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
+                }
+
+                return stream;
+            }
+            catch
+            {
+                stream.Dispose();
+                throw;
+            }
+        }
+        catch (IOException e)
+        {
+            throw new IOException("установка уже выполняется или файл блокировки недоступен", e);
+        }
+    }
+
     /// <summary>Поставить службу или заменить работающую атомарно (см. описание класса).</summary>
     /// <exception cref="IOException">Новая служба не запустилась; прежняя, если была, возвращена и работает.</exception>
-    public static void Install(SetupOptions options, string serviceFolder, string? xray, string? singBox, IOsService os, TimeSpan? readyTimeout = null)
+    public static void Install(SetupOptions options, string serviceFolder, string? xray, string? singBox, IOsService os, TimeSpan? readyTimeout = null, Action<int>? progress = null)
     {
         Validate(options);
         ArgumentNullException.ThrowIfNull(os);
@@ -308,7 +337,9 @@ public static class ServiceSetup
         }
 
         // Новая копия — рядом, пока прежняя служба работает.
+        progress?.Invoke(30);
         Copy(serviceFolder, xray, singBox, staged);
+        progress?.Invoke(60);
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(Path.Combine(staged, Executable),
@@ -317,7 +348,7 @@ public static class ServiceSetup
         }
 
         PrepareState(options.StateFolder, folder);
-        var hadService = os.IsInstalled(options.Name) && File.Exists(Path.Combine(folder, Executable));
+        var hadService = os.IsInstalled(options.Name) && HasServiceExecutable(folder);
         os.StopAndWait(options.Name);
         if (Directory.Exists(folder))
         {
@@ -325,6 +356,7 @@ public static class ServiceSetup
         }
 
         Move(staged, folder);
+        progress?.Invoke(80);
         if (Started(options, os, readyTimeout ?? ReadyTimeout, out var failure))
         {
             DeleteServiceFolder(previous);
@@ -346,6 +378,11 @@ public static class ServiceSetup
         if (hadService && Directory.Exists(previous))
         {
             Move(previous, folder);
+            if (OperatingSystem.IsMacOS() && !File.Exists(Path.Combine(folder, Executable)))
+            {
+                File.Copy(Path.Combine(folder, "PrivateGateway.Service"), Path.Combine(folder, Executable));
+            }
+
             if (Started(options, os, readyTimeout ?? ReadyTimeout, out _))
             {
                 throw new IOException("новая служба не запустилась — работает прежняя" + failure);
@@ -479,10 +516,13 @@ public static class ServiceSetup
         }
     }
 
+    private static bool HasServiceExecutable(string folder) => File.Exists(Path.Combine(folder, Executable))
+        || (OperatingSystem.IsMacOS() && File.Exists(Path.Combine(folder, "PrivateGateway.Service")));
+
     /// <summary>Удалить папку, только если это папка службы (в ней ее исполняемый файл) — чужое не трогается.</summary>
     private static void DeleteServiceFolder(string folder)
     {
-        if (File.Exists(Path.Combine(folder, Executable)))
+        if (HasServiceExecutable(folder))
         {
             Retry(() => Directory.Delete(folder, recursive: true));
         }

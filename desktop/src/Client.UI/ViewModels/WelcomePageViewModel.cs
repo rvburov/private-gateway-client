@@ -18,7 +18,7 @@ public enum SetupRowState
 }
 
 /// <summary>Строка шага «Установка службы»: что ставится и что с ним.</summary>
-public sealed record SetupRow(string Title, string Detail, SetupRowState State)
+public sealed record SetupRow(string Title, string Detail, SetupRowState State, int Percent = 0, bool ShowProgress = false)
 {
     public bool IsBusy => State == SetupRowState.Busy;
 
@@ -76,6 +76,11 @@ public sealed partial class WelcomePageViewModel : ObservableObject
 
     public bool HasInstallError => InstallError is not null;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Rows), nameof(InstallText))]
+    public partial int InstallPercent { get; private set; }
+
+
     public bool IsRussian
     {
         get => _settings.Current.Language == "ru";
@@ -101,11 +106,11 @@ public sealed partial class WelcomePageViewModel : ObservableObject
     public IReadOnlyList<SetupRow> Rows =>
     [
         new(Loc.Instance["welcome.service.row.service"], IsInstalled ? Loc.Instance["welcome.service.done"]
-                : IsInstalling ? Loc.Instance["welcome.service.installing"] : Loc.Instance["welcome.service.row.service.text"],
-            IsInstalled ? SetupRowState.Done : IsInstalling ? SetupRowState.Busy : SetupRowState.Pending),
-        new(Loc.Instance["welcome.service.row.tun"], IsInstalled ? Loc.Instance["welcome.service.onConnect"] : Loc.Instance["welcome.service.row.tun.text"],
+                : IsInstalling ? ServiceSetupProgress.Text(InstallPercent) : Loc.Instance["welcome.service.row.service.text"],
+            IsInstalled ? SetupRowState.Done : IsInstalling ? SetupRowState.Busy : SetupRowState.Pending, IsInstalled ? 100 : InstallPercent, IsInstalled || IsInstalling),
+        new(Loc.Instance["welcome.service.row.tun"], Loc.Instance["welcome.service.onConnect"],
             SetupRowState.Pending),
-        new(Loc.Instance["welcome.service.row.firewall"], IsInstalled ? Loc.Instance["welcome.service.onConnect"] : Loc.Instance["welcome.service.row.firewall.text"],
+        new(Loc.Instance["welcome.service.row.firewall"], Loc.Instance["welcome.service.onConnect"],
             SetupRowState.Pending),
     ];
 
@@ -147,10 +152,11 @@ public sealed partial class WelcomePageViewModel : ObservableObject
         }
 
         InstallError = null;
+        InstallPercent = 0;
         IsInstalling = true;
         try
         {
-            switch (await _installer.InstallAsync().ConfigureAwait(true))
+            switch (await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true))
             {
                 case ServiceInstallResult.Installed:
                     IsInstalled = true;
@@ -173,7 +179,7 @@ public sealed partial class WelcomePageViewModel : ObservableObject
     /// Почему не вышла установка: словами самой установки (окно ОС с правами свой вывод не показывает — она пишет причину
     /// в файл итога), не назвала — общая строка.
     /// </summary>
-    public static string InstallFailure(IServiceInstaller installer) => installer.LastError is { } reason
+    public static string InstallFailure(IServiceInstaller installer) => installer.ErrorKey is { } key ? Loc.Instance[key] : installer.LastError is { } reason
         ? Loc.Instance.Format("problem.install.reason", reason)
         : Loc.Instance["problem.install.failed"];
 
