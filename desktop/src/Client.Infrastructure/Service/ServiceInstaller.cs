@@ -177,12 +177,20 @@ public sealed class ServiceInstaller(
     {
         try
         {
-            if (resultFile is null || !File.Exists(resultFile + ".lock"))
+            if (resultFile is null)
             {
                 return false;
             }
 
-            using var stream = new FileStream(resultFile + ".lock", FileMode.Open, FileAccess.Read, FileShare.None);
+            // Старые установки держали файл в папке программы: их тоже нельзя запускать параллельно.
+            foreach (var file in new[] { SetupResult.LockForResult(resultFile), resultFile + ".lock" })
+            {
+                if (File.Exists(file))
+                {
+                    using var stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.None);
+                }
+            }
+
             return false;
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)

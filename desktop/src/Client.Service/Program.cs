@@ -41,6 +41,7 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
                 keychain.Forget();
             }
 
+            ServiceSetup.ClearSetupMetadata(folder);
             Console.WriteLine($"Служба {name} удалена");
             return 0;
         }

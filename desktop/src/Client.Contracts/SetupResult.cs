@@ -1,3 +1,6 @@
+using System.Security.Cryptography;
+using System.Text;
+
 namespace PrivateGateway.Client.Contracts;
 
 /// <summary>
@@ -17,6 +20,18 @@ public static class SetupResult
 
     /// <summary>Файл итога для службы в папке по умолчанию.</summary>
     public static string DefaultFile => Path.Combine(Root, FileName);
+
+    /// <summary>
+    /// Стабильный замок в защищенном родительском каталоге: удаление пакета не убирает inode, на котором уже ждут процессы.
+    /// Имя зависит от полной папки установки; сам файл не содержит данных пользователя.
+    /// </summary>
+    public static string LockForResult(string resultFile)
+    {
+        var root = Path.GetDirectoryName(Path.GetFullPath(resultFile))!;
+        var identity = OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() ? root.ToUpperInvariant() : root;
+        var key = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)))[..32];
+        return Path.Combine(Path.GetDirectoryName(root) ?? root, ".private-gateway-setup-" + key + ".lock");
+    }
 
     /// <summary>Файл итога для службы в папке <paramref name="serviceFolder"/>: рядом с ней.</summary>
     public static string For(string serviceFolder) =>

@@ -293,13 +293,19 @@ public static class ServiceSetup
     /// <summary>Одна установка на папку службы, включая время до копирования. ОС отпускает замок после выхода процесса.</summary>
     public static FileStream LockInstallation(string folder)
     {
-        var file = SetupResult.For(folder) + ".lock";
+        var file = SetupResult.LockForResult(SetupResult.For(folder));
         Directory.CreateDirectory(Path.GetDirectoryName(file)!);
         try
         {
             var stream = new FileStream(file, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
             try
             {
+                var legacy = SetupResult.For(folder) + ".lock";
+                if (File.Exists(legacy))
+                {
+                    using var previous = new FileStream(legacy, FileMode.Open, FileAccess.Read, FileShare.None);
+                }
+
                 if (!OperatingSystem.IsWindows())
                 {
                     File.SetUnixFileMode(file, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);
@@ -317,6 +323,15 @@ public static class ServiceSetup
         {
             throw new IOException("установка уже выполняется или файл блокировки недоступен", e);
         }
+    }
+
+    /// <summary>Служебные результаты удаленной установки; чужие файлы и стабильный замок не трогаются.</summary>
+    public static void ClearSetupMetadata(string folder)
+    {
+        var result = SetupResult.For(folder);
+        File.Delete(result);
+        File.Delete(result + ".progress");
+        File.Delete(result + ".lock");
     }
 
     /// <summary>Поставить службу или заменить работающую атомарно (см. описание класса).</summary>

@@ -182,7 +182,8 @@ public sealed partial class ReconnectTests
         await time.Polls.Reader.ReadAsync(Ct).AsTask().WaitAsync(TimeSpan.FromSeconds(10), Ct);
         network = Wifi;
         time.Clock.Advance(TimeSpan.FromMinutes(5));
-        await WaitOfflineStateAsync(rig.Service.Gateway, s => s.State == ConnectionState.Error);
+        // Таймер может зарегистрироваться после сдвига: поддельные часы идут до завершения ожидания.
+        await WaitOfflineStateAsync(rig.Service.Gateway, s => s.State == ConnectionState.Error, time.Clock);
 
         rig.Service.Gateway.Status.NetworkUnavailable.ShouldBeFalse("последний локальный замер уже увидел сеть");
         rig.Service.Gateway.Status.ErrorCode.ShouldBe(ErrorCodes.NetworkUnavailable,

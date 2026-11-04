@@ -365,14 +365,24 @@ public sealed class ServiceSetupTests : IDisposable
         Directory.Exists(folder).ShouldBeFalse("отказ — до копирования");
     }
 
-    /// <summary>Итог установки — рядом с папкой службы: причина отказа для окна; удалась — файла нет.</summary>
+    /// <summary>Стабильный замок сохраняет исключительность после удаления каталога пакета и освобождается при выходе.</summary>
     [Fact]
     public void Installation_lock_is_exclusive_and_is_released_when_the_installer_exits()
     {
-        var folder = Path.Combine(_root, "service");
+        var program = Path.Combine(_root, "program");
+        var folder = Path.Combine(program, "service");
+        Directory.CreateDirectory(program);
+        var result = PrivateGateway.Client.Contracts.SetupResult.For(folder);
+        File.WriteAllText(result, "предыдущая ошибка");
+        File.WriteAllText(result + ".progress", "предыдущий прогресс");
+        File.WriteAllText(result + ".lock", string.Empty);
         using (var held = ServiceSetup.LockInstallation(folder))
         {
             Should.Throw<IOException>(() => ServiceSetup.LockInstallation(folder).Dispose());
+            ServiceSetup.ClearSetupMetadata(folder);
+            Directory.Delete(program);
+            Directory.Exists(program).ShouldBeFalse("служебный замок не мешает удалению каталога пакета");
+            Should.Throw<IOException>(() => ServiceSetup.LockInstallation(folder).Dispose(), "удаление пакета не должно ослабить замок");
         }
 
         using var next = ServiceSetup.LockInstallation(folder);

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Infrastructure.Service;
 
 namespace PrivateGateway.Client.Tests.Unit;
@@ -94,15 +95,20 @@ public sealed class ServiceInstallerTests : IDisposable
         }
     }
 
-    [Fact]
-    public async Task A_new_window_does_not_start_elevation_while_another_installer_holds_the_disk_lock()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_new_window_does_not_start_elevation_while_another_installer_holds_the_disk_lock(bool legacy)
     {
-        var result = _executable + "-result";
+        var folder = _executable + "-setup";
+        var result = Path.Combine(folder, "Program", SetupResult.FileName);
+        Directory.CreateDirectory(Path.GetDirectoryName(result)!);
+        var file = legacy ? result + ".lock" : SetupResult.LockForResult(result);
         var calls = 0;
         var installer = new ServiceInstaller(_executable, (_, _) => { calls++; return Task.FromResult<int?>(0); }, () => true, _time, result);
         try
         {
-            using (var held = new FileStream(result + ".lock", FileMode.Create, FileAccess.ReadWrite, FileShare.None))
+            using (var held = new FileStream(file, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
             {
                 (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
                 installer.ErrorKey.ShouldBe("problem.install.stillRunning");
@@ -114,7 +120,7 @@ public sealed class ServiceInstallerTests : IDisposable
         }
         finally
         {
-            File.Delete(result + ".lock");
+            Directory.Delete(folder, recursive: true);
         }
     }
 
