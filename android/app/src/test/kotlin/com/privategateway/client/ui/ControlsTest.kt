@@ -170,6 +170,30 @@ class ControlsTest {
     }
 
     @Test
+    fun `notifications are asked with a reason and either answer closes the question`() {
+        // DECISIONS.md, п. 7: вопрос — после первого подключения, с пояснением; «Разрешить» ведет к системному запросу.
+        var asking by mutableStateOf(true)
+        var allowed = 0
+        compose.setContent {
+            PgTheme {
+                if (asking) {
+                    NotificationsAsk(onAllow = { allowed++; asking = false }, onLater = { asking = false })
+                }
+            }
+        }
+
+        compose.onNodeWithTag("dialog.notifications").assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.dialog_notifications_text)).assertIsDisplayed()
+        compose.onNodeWithTag("dialog.notifications.secondary").assertTextEquals(text(R.string.dialog_notifications_later)).performClick()
+        compose.onNodeWithTag("dialog.notifications").assertDoesNotExist()
+        assertEquals(0, allowed, "«Не сейчас» — без системного запроса")
+
+        asking = true
+        compose.onNodeWithTag("dialog.notifications.primary").assertTextEquals(text(R.string.dialog_notifications_allow)).performClick()
+        assertEquals(1, allowed)
+    }
+
+    @Test
     fun `menu option is chosen and the menu closes`() {
         var dns by mutableStateOf(Dns.Profile)
         compose.setContent { PgTheme { PgSelect(Dns.entries, dns, { stringResource(it.label) }, "dns", { dns = it }) } }

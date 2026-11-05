@@ -99,7 +99,12 @@ enum Notifications {
         center.removeDeliveredNotifications(withIdentifiers: [Notice.protectionTag])
     }
 
-    /// Разрешение на уведомления — спрашивается при первом включении защиты, если уведомления не выключены в настройках.
+    /// iOS еще не спрашивала разрешение на уведомления.
+    static func permissionUndecided() async -> Bool {
+        await center.notificationSettings().authorizationStatus == .notDetermined
+    }
+
+    /// Разрешение на уведомления — спрашивается после первого удачного подключения, после нашего вопроса с пояснением.
     static func requestPermission() async {
         _ = try? await center.requestAuthorization(options: [.alert, .sound])
     }

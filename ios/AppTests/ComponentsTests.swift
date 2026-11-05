@@ -106,6 +106,16 @@ final class ComponentsTests: XCTestCase {
         XCTAssertEqual(runs, 1, "спросить негде — опасный переход не делается")
     }
 
+    func testNotificationsQuestionExplainsWhyAndAllowIsTheMainButton() {
+        // DECISIONS.md, п. 7: вопрос — после первого подключения, с пояснением; «Разрешить» — основная, «Не сейчас» — вторая.
+        let dialog = NotificationsLook.dialog(texts)
+        XCTAssertEqual(dialog.title, texts.dialogNotificationsTitle)
+        XCTAssertEqual(dialog.text, texts.dialogNotificationsText)
+        XCTAssertEqual(dialog.primary, texts.dialogNotificationsAllow)
+        XCTAssertEqual(dialog.secondary, texts.dialogNotificationsLater)
+        XCTAssertEqual(dialog.yes, .primary)
+    }
+
     @MainActor
     func testSegmentAsksBeforeTheRiskyChoice() {
         let layers = PgLayers()

@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var onboardingDone = UserDefaults.standard.bool(forKey: AppModel.onboardingKey)
 
     private static let onboardingKey = "onboarding_done"
+    /// Дан ли ответ на наш вопрос об уведомлениях (DECISIONS.md, п. 7): больше не спрашивать.
+    private static let notificationsAskedKey = "notifications_asked"
 
     /// Пауза для входа в Wi-Fi (решение 557): до какого времени туннель опущен; nil — паузы нет. Хранится в UserDefaults
     /// приложения: открыли приложение после конца паузы — защита возвращается сама.
@@ -377,15 +379,25 @@ final class AppModel: ObservableObject {
         message = text
     }
 
+    /// Спросить ли об уведомлениях сейчас — после удачного подключения (DECISIONS.md, п. 7): уведомления не выключены в
+    /// настройках, iOS еще не спрашивала, и на наш вопрос ответа не было.
+    func notificationsUnasked() async -> Bool {
+        guard settings.notifications != .off, !UserDefaults.standard.bool(forKey: AppModel.notificationsAskedKey) else { return false }
+        return await Notifications.permissionUndecided()
+    }
+
+    /// Ответ на вопрос об уведомлениях: больше не спрашивать; «Разрешить» — системный запрос iOS.
+    func answerNotifications(allow: Bool) async {
+        UserDefaults.standard.set(true, forKey: AppModel.notificationsAskedKey)
+        if allow {
+            await Notifications.requestPermission()
+        }
+    }
+
     /// Кнопка включения: включить или выключить защиту; в «Блокировке» — снять ее (окно сначала спрашивает). Подключаться не
     /// к чему — `home.power` скажет окну, куда вести.
     func togglePower() async {
         if home.off, !blocked {
-            // Разрешение на уведомления — при первом включении защиты: тогда понятно, о чем они.
-            if settings.notifications != .off {
-                await Notifications.requestPermission()
-            }
-
             await run { try await self.tunnel.connect() }
         } else {
             await tunnel.disconnect()

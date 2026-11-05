@@ -52,6 +52,16 @@ struct RootView: View {
     @State private var focusDelay = false
     @Environment(\.scenePhase) private var phase
 
+    /// Первое «Защищено» — вопрос об уведомлениях с пояснением (DECISIONS.md, п. 7), а не системный запрос до VPN.
+    private func askNotifications() {
+        Task {
+            guard await model.notificationsUnasked() else { return }
+            layers.ask(NotificationsLook.dialog(model.texts)) { choice in
+                Task { await model.answerNotifications(allow: choice == .primary) }
+            }
+        }
+    }
+
     init(model: AppModel) {
         self.model = model
         _importing = StateObject(wrappedValue: ImportModel(container: model.container))
@@ -100,6 +110,8 @@ struct RootView: View {
             // Внешний IP главной: подключились — адрес выхода, выключились — реальный; прежний адрес выхода больше не тот.
             if state != .connected {
                 inspector.forgetExit()
+            } else {
+                askNotifications()
             }
 
             // «Проверка» на экране — проверить заново: на экране не остается устаревший «OK» (внешний IP меряет она же).
@@ -430,4 +442,14 @@ extension PgTexts {
     /// Тексты на языке приложения: системный выбор языка для приложения (Настройки → Private Gateway → Язык) или первый из
     /// предпочитаемых языков iPhone; русский или английский, иначе английский — как values и values-ru у Android.
     static let current = PgTexts(PgTexts.language(for: Bundle.main.preferredLocalizations + Locale.preferredLanguages))
+}
+
+/// Вопрос «Разрешить уведомления?» (доска 26): основная — «Разрешить», вторая — «Не сейчас».
+enum NotificationsLook {
+    static func dialog(_ texts: PgTexts) -> PgDialog {
+        PgDialog(
+            kind: .info, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogNotificationsTitle,
+            text: texts.dialogNotificationsText, primary: texts.dialogNotificationsAllow, secondary: texts.dialogNotificationsLater
+        )
+    }
 }

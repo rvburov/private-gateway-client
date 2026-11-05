@@ -21,8 +21,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.inspect.CheckViewModel
 import com.privategateway.client.inspect.InspectorViewModel
@@ -30,15 +35,18 @@ import com.privategateway.client.notify.AppWindow
 import com.privategateway.client.ui.AppActions
 import com.privategateway.client.ui.AppScreen
 import com.privategateway.client.ui.MainViewModel
+import com.privategateway.client.ui.NotificationsAsk
 import com.privategateway.client.ui.Tab
 import com.privategateway.client.ui.servers.ServersViewModel
-import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.BackupViewModel
+import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.subscriptions.SubscriptionsViewModel
 import com.privategateway.client.ui.theme.PgTheme
 import com.privategateway.client.vpn.GatewayVpnService
 import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -67,8 +75,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // Уведомление туннеля без разрешения не видно, но туннель работает и без него: ответ не мешает подключению.
-    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { askVpn() }
+    // Разрешение на уведомления — после первого удачного подключения, с пояснением (DECISIONS.md, п. 7): ответ ничего не
+    // меняет в туннеле, он работает и без уведомлений.
+    private val notificationPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    /** Открыт вопрос «Разрешить уведомления?» поверх окна. */
+    private var askingNotifications by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // Только светлая тема (макет): значки строки состояния и навигации — темные при любой теме телефона.
@@ -91,6 +103,26 @@ class MainActivity : ComponentActivity() {
         setContent {
             PgTheme {
                 AppScreen(viewModel, settings, servers, subscriptions, actions, inspector, checks, backups)
+                if (askingNotifications) {
+                    NotificationsAsk(
+                        onAllow = {
+                            answerNotifications()
+                            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        },
+                        onLater = ::answerNotifications,
+                    )
+                }
+            }
+        }
+
+        // Первое «Защищено» — тогда и вопрос об уведомлениях: понятно, что они сообщат об обрыве.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.ui.map { it.status.state }.distinctUntilChanged().collect { state ->
+                    if (state == TunnelState.Connected && notificationsUnasked()) {
+                        askingNotifications = true
+                    }
+                }
             }
         }
 
@@ -145,14 +177,18 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun start() {
-        val ask = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        if (ask) {
-            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            askVpn()
-        }
+    private fun start() = askVpn()
+
+    /** Спросить об уведомлениях: Android 13+, разрешения нет, и пользователь еще не отвечал на наш вопрос. */
+    private fun notificationsUnasked(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED &&
+            !getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE).getBoolean(NOTIFICATIONS_ASKED, false)
+
+    /** Ответ на вопрос дан — больше не спрашивать; системный запрос Android и сам больше двух раз не покажется. */
+    private fun answerNotifications() {
+        askingNotifications = false
+        getSharedPreferences(WINDOW_PREFS, MODE_PRIVATE).edit().putBoolean(NOTIFICATIONS_ASKED, true).apply()
     }
 
     /** Разрешение на VPN спрашивается один раз; потом prepare возвращает null — подключаемся сразу. */
@@ -181,6 +217,10 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
+        /** Настройки окна (не защиты): здесь — дан ли ответ на вопрос об уведомлениях. */
+        private const val WINDOW_PREFS = "window"
+        private const val NOTIFICATIONS_ASKED = "notifications.asked"
+
         /** Раздел, который открыть сразу (из уведомления). */
         const val EXTRA_TAB = "com.privategateway.client.TAB"
         const val TAB_SERVERS = "servers"

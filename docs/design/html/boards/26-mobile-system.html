@@ -354,6 +354,31 @@
       </div>
     </div>
   </section>
+  <section class="pg-screen" data-device="android" data-state="connected" data-caption="Уведомления — после первого подключения">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+      </div>
+      <div class="card pg-stack pg-gap-6" style="margin: 0 var(--side); padding: 14px 16px">
+        <span class="t-status state-text">IP скрыт</span>
+        <span class="t-small">Трафик зашифрован</span>
+      </div>
+    </div>
+    <div class="pg-island" data-active="home"></div>
+    <!-- Первое «Защищено» — наш вопрос с пояснением (DECISIONS.md, п. 7); «Разрешить» — затем системный запрос Android -->
+    <div class="scrim is-open" data-close></div>
+    <div class="dialog is-open" id="notify-ask-android" role="dialog" aria-modal="true" aria-label="Разрешить уведомления?">
+      <div class="dialog-icon accent"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.notifications.title">Разрешить уведомления?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.notifications.text">Чтобы сообщить, если связь с сервером оборвется или интернет заблокируется. Защита работает и без них, но об обрыве вы узнаете, только открыв приложение.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.notifications.allow">Разрешить</button>
+        <button class="btn-secondary" data-close data-ui-text="dialog.notifications.later">Не сейчас</button>
+      </div>
+    </div>
+  </section>
 
   <section class="pg-screen" data-device="android" data-state="connected" data-caption="Шторка: плитка и уведомление VPN">
     <div class="sys-screen sys-shade">
@@ -630,6 +655,31 @@
       <div class="sys-ios-actions">
         <button class="sys-ios-btn" data-close data-power>Разрешить</button>
         <button class="sys-ios-btn" data-close data-toast="iOS не дала разрешения на VPN — защита не включилась">Запретить</button>
+      </div>
+    </div>
+  </section>
+  <section class="pg-screen" data-device="ios" data-state="connected" data-caption="Уведомления — после первого подключения">
+    <div class="pg-page">
+      <div class="pg-header">
+        <i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i>
+        <span class="t-brand">Private Gateway</span>
+        <span class="badge accent">0.1.0</span>
+      </div>
+      <div class="card pg-stack pg-gap-6" style="margin: 0 var(--side); padding: 14px 16px">
+        <span class="t-status state-text">IP скрыт</span>
+        <span class="t-small">Трафик зашифрован</span>
+      </div>
+    </div>
+    <div class="pg-island" data-active="home"></div>
+    <!-- Первое «Защищено» — наш вопрос с пояснением (DECISIONS.md, п. 7); «Разрешить» — затем системный запрос iOS -->
+    <div class="scrim is-open" data-close></div>
+    <div class="dialog is-open" id="notify-ask-ios" role="dialog" aria-modal="true" aria-label="Разрешить уведомления?">
+      <div class="dialog-icon accent"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.notifications.title">Разрешить уведомления?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.notifications.text">Чтобы сообщить, если связь с сервером оборвется или интернет заблокируется. Защита работает и без них, но об обрыве вы узнаете, только открыв приложение.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.notifications.allow">Разрешить</button>
+        <button class="btn-secondary" data-close data-ui-text="dialog.notifications.later">Не сейчас</button>
       </div>
     </div>
   </section>
