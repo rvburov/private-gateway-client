@@ -17,7 +17,7 @@ public class ModuleBoundariesTests
         ["Client.Contracts"] = ["Client.Core"],
         ["Client.Network"] = ["Client.Core"],
         ["Client.Application"] = ["Client.Core", "Client.Contracts", "Client.Network"],
-        ["Client.Infrastructure"] = ["Client.Core", "Client.Contracts", "Client.Application"],
+        ["Client.Infrastructure"] = ["Client.Core", "Client.Contracts", "Client.Application", "Client.Platform.Linux"],
         ["Client.Platform.Windows"] = ["Client.Core"],
         ["Client.Platform.Linux"] = ["Client.Core"],
         ["Client.Platform.MacOS"] = ["Client.Core"],

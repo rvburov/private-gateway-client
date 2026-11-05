@@ -30,7 +30,7 @@ SYSTEM не является этим пользователем. Предста
 | `Client.Contracts` | контракт IPC (код из `.proto`) и перевод перечислений ядра в контракт | Core | — |
 | `Client.Network` | сборка конфигов ядер, правила «зашифрован ли трафик» — чистые функции | Core | нет |
 | `Client.Application` | разбор ссылок и подписок (`Import`); сценарии подключения, смены сервера, обновления серверов, проверки, правила уведомлений | Core, Contracts, Network | нет |
-| `Client.Infrastructure` | SQLite, секреты в хранилище ОС, Serilog, клиент службы по IPC, загрузка списков серверов, уведомления ОС (D-Bus, WinRT) | Core, Contracts, Application | только загрузка списков |
+| `Client.Infrastructure` | SQLite, секреты в хранилище ОС, Serilog, клиент службы по IPC, загрузка списков серверов, уведомления ОС (D-Bus, WinRT), системный прокси вошедшего пользователя (Windows, Linux) | Core, Contracts, Application, Platform.Linux (только прокси пользователя GNOME и KDE, решение 574) | только загрузка списков |
 | `Client.UI` | Avalonia: окна, модели представлений, тема из токенов | Core, Contracts, Application, Infrastructure | нет |
 | `Client.Service` | служба: сервер IPC, запуск ядер, состояние защиты, пинг, проверки | Core, Contracts, Network, Platform.* | да |
 | `Client.Platform.Windows` | Wintun, WFP, служба Windows, определение сети (WLAN API, NLM) | Core | да |

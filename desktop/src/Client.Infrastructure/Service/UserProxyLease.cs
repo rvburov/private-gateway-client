@@ -96,8 +96,8 @@ public sealed class UserProxyLease(ISystemProxy proxy, IUserProxyBackupStore sto
         }
 
         var original = Backup?.Original ?? proxy.Read();
-        // Ожидаемый снимок нужен до Enable: окно может аварийно завершиться сразу после записи в HKCU.
-        var expected = CurrentUserWindowsProxy.ForPort(port);
+        // Ожидаемый снимок нужен до Enable: окно может аварийно завершиться сразу после записи в HKCU или gsettings.
+        var expected = proxy.Expected(port) ?? throw new InvalidOperationException($"Прокси «{proxy.Name}» не сообщает, что запишет");
         var next = new UserProxyBackup(original, expected, port, BeforeApply: current, OwnerService: ownerService);
         store.Write(next);
         _backup = next;

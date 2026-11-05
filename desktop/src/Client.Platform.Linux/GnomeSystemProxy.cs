@@ -46,6 +46,15 @@ public sealed class GnomeSystemProxy(Func<IReadOnlyList<string>, string?> gsetti
         Set(Proxy, "mode", "'manual'");
     }
 
+    /// <summary>Те же значения, что пишет <see cref="Enable"/>, — как их печатает gsettings get.</summary>
+    public SystemProxySnapshot? Expected(int port) => new(Keys.ToDictionary(k => k.Schema + " " + k.Key, k => (string?)(k.Key switch
+    {
+        "host" => "'127.0.0.1'",
+        "port" => port.ToString(CultureInfo.InvariantCulture),
+        "ignore-hosts" => Bypass,
+        _ => "'manual'",
+    })));
+
     public void Restore(SystemProxySnapshot previous)
     {
         ArgumentNullException.ThrowIfNull(previous);

@@ -354,6 +354,7 @@ public sealed class UserProxyControllerTests
         public bool FailAfterChange { get; set; }
         public bool FailRestoreAfterChange { get; set; }
         public SystemProxySnapshot Read() => Current;
+        public SystemProxySnapshot? Expected(int port) => CurrentUserWindowsProxy.ForPort(port);
         public void Enable(int port)
         {
             if (DenyEnable)

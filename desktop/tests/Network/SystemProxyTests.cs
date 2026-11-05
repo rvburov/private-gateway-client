@@ -2,6 +2,7 @@ using Microsoft.Win32;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Platform.Linux;
 using PrivateGateway.Client.Platform.Windows;
 using PrivateGateway.Client.Service;
@@ -136,6 +137,56 @@ public sealed class SystemProxyTests : IDisposable
 
         File.ReadAllText(file).ShouldStartWith("[UserAgent]\nDefaultUserAgent=Mozilla/5.0\n\n[Proxy Settings]\nhttpProxy=", Case.Sensitive,
             "раздела не было — он дописан после чужих, через пустую строку");
+    }
+
+    [Fact]
+    public void Linux_proxies_tell_the_window_beforehand_what_switching_on_writes()
+    {
+        // Окно сохраняет ожидаемый снимок до записи (UserProxyLease): после аварии посреди включения узнает свои настройки.
+        var gsettings = new FakeGsettings(new()
+        {
+            ["org.gnome.system.proxy mode"] = "'none'",
+            ["org.gnome.system.proxy ignore-hosts"] = "['localhost']",
+            ["org.gnome.system.proxy.http host"] = "''",
+            ["org.gnome.system.proxy.http port"] = "0",
+            ["org.gnome.system.proxy.https host"] = "''",
+            ["org.gnome.system.proxy.https port"] = "0",
+            ["org.gnome.system.proxy.socks host"] = "''",
+            ["org.gnome.system.proxy.socks port"] = "0",
+        });
+        var gnome = new GnomeSystemProxy(gsettings.Run);
+        gnome.Enable(10808);
+        UserProxyLease.Same(gnome.Read(), gnome.Expected(10808)!).ShouldBeTrue("GNOME: ожидаемое равно записанному");
+
+        Directory.CreateDirectory(_root);
+        var file = Path.Combine(_root, "kioslaverc");
+        File.WriteAllText(file, "[Proxy Settings]\nhttpProxy[$e]=http://proxy.example.com 8080\nProxyType=2\n");
+        var kde = new KdeSystemProxy(file, null);
+        kde.Enable(10808);
+        UserProxyLease.Same(kde.Read(), kde.Expected(10808)!).ShouldBeTrue("KDE: прежний ключ с пометкой KDE убран, остальное как ожидалось");
+    }
+
+    [Fact]
+    public void Window_on_linux_switches_the_kde_proxy_of_the_user_on_and_back_after_a_restart()
+    {
+        // Установленная служба (root) настроек пользователя не видит — прокси ставит окно (решение 574), как на Windows.
+        Directory.CreateDirectory(_root);
+        var file = Path.Combine(_root, "kioslaverc");
+        const string Before = "[Proxy Settings]\nNoProxyFor=localhost\nProxyType=0\n";
+        File.WriteAllText(file, Before);
+        var backup = Path.Combine(_root, "user-proxy.json");
+        var lease = new UserProxyLease(new KdeSystemProxy(file, null), new FileUserProxyBackupStore(backup));
+
+        lease.Apply(10808).ShouldBeTrue();
+
+        lease.IsOwned.ShouldBeTrue();
+        new KdeSystemProxy(file, null).Read().Values["httpProxy"].ShouldBe("http://127.0.0.1 10808");
+
+        // Окно перезапустилось: снимок — с диска, прежние настройки возвращаются как были.
+        var again = new UserProxyLease(new KdeSystemProxy(file, null), new FileUserProxyBackupStore(backup));
+        again.Release().ShouldBeTrue();
+        File.ReadAllText(file).ShouldBe(Before);
+        File.Exists(backup).ShouldBeFalse();
     }
 
     [Fact]

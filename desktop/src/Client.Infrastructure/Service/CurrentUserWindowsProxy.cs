@@ -83,6 +83,8 @@ public sealed class CurrentUserWindowsProxy : ISystemProxy
     [SupportedOSPlatform("windows")]
     public void Enable(int port) => Restore(ForPort(port));
 
+    public SystemProxySnapshot? Expected(int port) => ForPort(port);
+
     [SupportedOSPlatform("windows")]
     public void Restore(SystemProxySnapshot previous)
     {

@@ -233,7 +233,7 @@ scripts/ios-test.sh                                    # приложение iO
   | `Client.Contracts` | Core |
   | `Client.Network` | Core |
   | `Client.Application` | Core, Contracts, Network |
-  | `Client.Infrastructure` | Core, Contracts, Application |
+  | `Client.Infrastructure` | Core, Contracts, Application, Platform.Linux |
   | `Client.Platform.*` | Core |
   | `Client.Service` | Core, Contracts, Network, Platform.* |
   | `Client.UI` | Core, Contracts, Application, Infrastructure |
@@ -243,8 +243,8 @@ scripts/ios-test.sh                                    # приложение iO
   пинг и запуск программ (`desktop/BannedSymbols.NoNetwork.txt`, анализатор RS0030). Новых
   `#pragma warning disable RS0030` не добавлять. Сеть процесса интерфейса — только загрузка
   списков серверов в Infrastructure; все остальное — служба. Единственная настройка ОС, которую меняет окно, — системный
-  прокси вошедшего пользователя Windows (WinINet, `UserProxyController` в Infrastructure, решение 516): служба от SYSTEM
-  его не видит.
+  прокси вошедшего пользователя Windows и Linux (WinINet; KDE и GNOME из `Client.Platform.Linux`; `UserProxyController`
+  в Infrastructure, решения 516 и 574): установленная служба от SYSTEM или root его не видит.
 - **Служба не принимает готовый конфиг ядра, пути и команды** — только описание сервера и
   настройки по контракту IPC. Конфиг Xray/sing-box служба собирает и проверяет сама.
 - **Контракт IPC** — `shared/specifications/ipc/*.proto`. Несовместимое изменение — новая версия

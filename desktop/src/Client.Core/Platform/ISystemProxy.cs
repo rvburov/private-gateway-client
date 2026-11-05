@@ -23,4 +23,11 @@ public interface ISystemProxy
 
     /// <summary>Вернуть настройки из снимка.</summary>
     void Restore(SystemProxySnapshot previous);
+
+    /// <summary>
+    /// Снимок, который даст <see cref="Enable"/> с этим портом. Окно сохраняет его до записи: если оно аварийно завершится
+    /// посреди включения, при следующем запуске оно узнает свои настройки и вернет прежние. null — заранее не предсказать
+    /// (такой прокси окну не подходит).
+    /// </summary>
+    SystemProxySnapshot? Expected(int port) => null;
 }

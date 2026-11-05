@@ -220,5 +220,6 @@ public sealed class ServiceGatewayClientSyncTests
         public SystemProxySnapshot Read() => _current;
         public void Enable(int port) => _current = CurrentUserWindowsProxy.ForPort(port);
         public void Restore(SystemProxySnapshot previous) => _current = previous;
+        public SystemProxySnapshot? Expected(int port) => CurrentUserWindowsProxy.ForPort(port);
     }
 }

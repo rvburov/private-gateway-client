@@ -8,6 +8,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Contracts;
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
@@ -17,6 +18,7 @@ using PrivateGateway.Client.Infrastructure.Secrets;
 using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Infrastructure.Startup;
 using PrivateGateway.Client.Infrastructure.Storage;
+using PrivateGateway.Client.Platform.Linux;
 
 namespace PrivateGateway.Client.Infrastructure;
 
@@ -46,6 +48,11 @@ public static class InfrastructureModule
         services.AddSingleton<IUserProxySettings>(_ => UserProxySettings.ForCurrentUser());
         services.AddSingleton<IMachineSettings>(sp =>
             MachineSettings.ForCurrentUser(sp.GetRequiredService<IUserProxySettings>(), paths.DataDirectory, sp.GetRequiredService<TimeProvider>()));
+        // Прокси вошедшего пользователя ставит окно: установленная служба (SYSTEM, root) его настроек не видит (решения 516, 574).
+        var userProxy = new Lazy<ISystemProxy?>(() => demo ? null
+            : OperatingSystem.IsWindows() ? new CurrentUserWindowsProxy()
+            : OperatingSystem.IsLinux() ? (ISystemProxy?)KdeSystemProxy.ForThisSession() ?? GnomeSystemProxy.ForThisSession()
+            : null);
         services.AddSingleton<IGatewayClient>(sp => demo
             ? ActivatorUtilities.CreateInstance<SimulatedGatewayClient>(sp)
             : new GatewayHost(ServiceLocator.ForThisWindow(sp.GetRequiredService<TimeProvider>()),
@@ -53,14 +60,14 @@ public static class InfrastructureModule
                     address.System ? ServiceKind.Installed : ServiceKind.User,
                     id => Definition(sp, id),
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
-                    sp.GetRequiredService<IUserProxySettings>().Read, manageUserProxy: OperatingSystem.IsWindows(),
+                    sp.GetRequiredService<IUserProxySettings>().Read, manageUserProxy: userProxy.Value is not null,
                     selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))
                     || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>(),
                 selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected));
         services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
-            sp.GetRequiredService<IGatewayClient>(), !demo && OperatingSystem.IsWindows() ? new CurrentUserWindowsProxy() : null,
+            sp.GetRequiredService<IGatewayClient>(), userProxy.Value,
             new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
         services.AddSingleton<IServiceInstaller>(sp => demo
             ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())

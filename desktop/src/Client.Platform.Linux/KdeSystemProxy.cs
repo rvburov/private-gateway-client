@@ -58,10 +58,13 @@ public sealed class KdeSystemProxy(string path, Action? notify) : ISystemProxy
         return new SystemProxySnapshot(values);
     }
 
-    public void Enable(int port)
+    public void Enable(int port) => Write(new Dictionary<string, string?>(Expected(port)!.Values, StringComparer.Ordinal));
+
+    /// <summary>Ключи раздела после <see cref="Enable"/>: прежние варианты ключей (с пометками KDE) убраны.</summary>
+    public SystemProxySnapshot? Expected(int port)
     {
         var address = "127.0.0.1 " + port.ToString(CultureInfo.InvariantCulture);
-        Write(new Dictionary<string, string?>
+        return new SystemProxySnapshot(new Dictionary<string, string?>(StringComparer.Ordinal)
         {
             ["httpProxy"] = "http://" + address,
             ["httpsProxy"] = "http://" + address,

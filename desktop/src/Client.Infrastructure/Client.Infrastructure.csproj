@@ -9,6 +9,8 @@
     <ProjectReference Include="../Client.Core/Client.Core.csproj" />
     <ProjectReference Include="../Client.Contracts/Client.Contracts.csproj" />
     <ProjectReference Include="../Client.Application/Client.Application.csproj" />
+    <!-- Прокси пользователя Linux (GNOME, KDE): его ставит окно, если служба установлена от root (решение 574). -->
+    <ProjectReference Include="../Client.Platform.Linux/Client.Platform.Linux.csproj" />
   </ItemGroup>
 
   <ItemGroup>

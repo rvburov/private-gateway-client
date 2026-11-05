@@ -27,6 +27,7 @@
 | Пользовательское управление и статусы прокси | [IUserProxyController.cs](../../desktop/src/Client.Application/Connection/IUserProxyController.cs), [UserProxyController.cs](../../desktop/src/Client.Infrastructure/Service/UserProxyController.cs) |
 | Владение снимком и возврат после сбоя | [UserProxyLease.cs](../../desktop/src/Client.Infrastructure/Service/UserProxyLease.cs) |
 | WinINet/HKCU и флаги PAC/WPAD | [CurrentUserWindowsProxy.cs](../../desktop/src/Client.Infrastructure/Service/CurrentUserWindowsProxy.cs) |
+| Прокси пользователя Linux из окна (решение 574) | [KdeSystemProxy.cs](../../desktop/src/Client.Platform.Linux/KdeSystemProxy.cs), [GnomeSystemProxy.cs](../../desktop/src/Client.Platform.Linux/GnomeSystemProxy.cs) |
 
 Правила программ по `process_path` применяются TUN-слоем. Прокси-программа отдает ядру соединение через HTTP/SOCKS5;
 ее исходный путь не становится условием `process_path` автоматически. При совместной работе входов нельзя молча
