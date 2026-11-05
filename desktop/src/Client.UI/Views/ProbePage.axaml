@@ -8,10 +8,6 @@
   <!-- Проверка узла — замеры инспектора (этап 7, экрана в макете нет — по дизайн-системе, как «Сеть машины»). Подстраница
        «Проверки»: островок виден, «назад» — к проверке. -->
   <UserControl.Styles>
-    <!-- Строки разделены линией, у последней ее нет -->
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.probeRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <Style Selector=":is(TextBlock).value">
       <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
       <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
@@ -117,7 +113,7 @@
             <ItemsControl x:Name="StepList" ItemsSource="{Binding Rows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:ProbeRowViewModel">
-                  <Border Classes="probeRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,8">
+                  <Border Classes="probeRow dividedRow" Padding="0,8">
                     <Grid ColumnDefinitions="64,*,Auto">
                       <TextBlock Classes="caption" Text="{Binding Label}" VerticalAlignment="Center" />
                       <SelectableTextBlock Grid.Column="1" Classes="value" Text="{Binding Address}" VerticalAlignment="Center" />

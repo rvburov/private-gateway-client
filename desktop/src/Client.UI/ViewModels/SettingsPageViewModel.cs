@@ -120,6 +120,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 
     public string AutostartTitle => Loc.Instance.Format("settings.autostart.title", OsName);
 
+    public string AutostartNote => Loc.Instance.Format("settings.autostart.text", OsName);
+
     public bool StartWithSystem
     {
         get => S.StartWithSystem;

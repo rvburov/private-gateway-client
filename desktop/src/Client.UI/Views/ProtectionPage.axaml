@@ -61,12 +61,12 @@
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">
-                <TextBlock Classes="strong" Text="{l:L prot.captive.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="strong" Text="{l:L desktop.prot.captive.title}" TextWrapping="Wrap" />
                 <TextBlock Classes="caption" Text="{l:L prot.captive.text}" TextWrapping="Wrap" />
               </StackPanel>
               <Button x:Name="CaptiveButton" Grid.Column="1" Classes="small soft" Padding="14,0" VerticalAlignment="Center"
                       Command="{Binding OpenCaptivePortalCommand}" Content="{l:L prot.captive.open}"
-                      AutomationProperties.Name="{l:L prot.captive.title}" />
+                      AutomationProperties.Name="{l:L desktop.prot.captive.title}" />
             </Grid>
           </StackPanel>
         </Border>

@@ -9,9 +9,6 @@
   <!-- Как меняется путь при VPN — сценарий лаборатории (этап 8, экрана в макете нет — по дизайн-системе): две карты пути одна
        под другой (узкое окно) и строки «было → стало» с меткой «измерено» или «условно». Подстраница «Проверки». -->
   <UserControl.Styles>
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.changeRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <Style Selector=":is(TextBlock).value">
       <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
       <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
@@ -53,7 +50,7 @@
           <ItemsControl x:Name="ChangeList" ItemsSource="{Binding Changes}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:VpnChangeViewModel">
-                <Border Classes="changeRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Border Classes="changeRow dividedRow" Padding="0,10">
                   <StackPanel Spacing="4">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Classes="strong" Text="{Binding Label}" VerticalAlignment="Center" />

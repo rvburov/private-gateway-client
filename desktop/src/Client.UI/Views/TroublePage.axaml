@@ -7,11 +7,6 @@
              x:DataType="vm:TroublePageViewModel">
   <!-- Почему сайт не открывается — сценарий лаборатории (этап 8, экрана в макете нет — по дизайн-системе, как «Проверка»):
        сайт и «Разобраться», вывод с «что делать», ниже шаги строками «Проверки». Подстраница «Проверки». -->
-  <UserControl.Styles>
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.stepRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
-  </UserControl.Styles>
 
   <Grid RowDefinitions="Auto,*">
     <Grid Height="60" Margin="8,0,8,0" ColumnDefinitions="Auto,*">
@@ -86,7 +81,7 @@
           <ItemsControl x:Name="StepList" ItemsSource="{Binding Steps}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:TroubleStepViewModel">
-                <Border Classes="stepRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,11"
+                <Border Classes="stepRow dividedRow" Padding="0,11"
                         AutomationProperties.Name="{Binding Title}">
                   <Grid ColumnDefinitions="Auto,*,Auto">
                     <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Top"

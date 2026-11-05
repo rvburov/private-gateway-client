@@ -27,8 +27,8 @@
 
   /* Строка проверки: кружок 22 со значком, заголовок и пояснение, чип по состоянию (цвета — как у плиток главной) */
   .check-card { padding: 4px 16px; display: flex; flex-direction: column; }
-  .check-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--pg-color-line-divider); }
-  .check-row:last-child { border-bottom: 0; }
+  .check-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+  .check-row:not([hidden]) ~ .check-row:not([hidden]) { border-top: 1px solid var(--pg-color-line-divider); }
   .check-row.top { align-items: flex-start; }
   .check-row.top .check-dot { margin-top: 1px; }
   .check-dot { width: 22px; height: 22px; border-radius: 11px; display: grid; place-items: center; flex: none;
@@ -44,11 +44,11 @@
   .lab-head { margin: 0 6px -4px; }
   .journal-head { margin: 0 6px -4px; align-items: flex-end; }
 
-  /* Задержка: число — моноширинным, полоса под каждой строкой */
-  .delay-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; border-bottom: 1px solid var(--pg-color-line-divider); }
+  /* Задержка: число — моноширинным, полосы только между строками */
+  .delay-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+  .delay-row + .delay-row { border-top: 1px solid var(--pg-color-line-divider); }
   .delay-value { font-family: var(--font-mono); white-space: nowrap; }
   .delay-note { display: block; margin: 10px 0 4px; }
-  .delay-note.why { line-height: var(--lh-body); }
   .delay-updated { display: block; min-height: 15px; margin: 4px 0 10px; }
 
   /* Строки-ссылки инспектора и лаборатории: плитка 36 со значком 20, стрелка по правому краю, полосы между строками */
@@ -149,7 +149,6 @@
             <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">До сервера</span><span class="t-caption t-wrap">прямое соединение с сервером — один круг по сети</span></span><span class="t-title delay-value">38 мс</span></div>
             <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Через сервер</span><span class="t-caption t-wrap">запрос по открытому соединению — это «Пинг» на главной</span></span><span class="t-title delay-value">42 мс</span></div>
             <div class="delay-row"><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Новое соединение</span><span class="t-caption t-wrap">так открывается каждый новый сайт</span></span><span class="t-title delay-value">160 мс</span></div>
-            <span class="t-caption t-wrap delay-note why">Откуда 160 мс: на каждое новое соединение уходит примерно 4 круга до сервера (соединение с сервером → рукопожатие REALITY → шифрование до сайта → запрос), а один круг у вас — около 38 мс.</span>
             <span class="t-caption delay-updated">Обновлено 15:42:12</span>
         </div>
 

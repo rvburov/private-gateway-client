@@ -8,10 +8,6 @@
   <!-- Соединения и трафик — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе, как «Сеть машины»).
        Подстраница «Проверки»: островок виден, «назад» — к проверке. -->
   <UserControl.Styles>
-    <!-- Строки разделены линией, у последней ее нет -->
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.connRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <Style Selector=":is(TextBlock).value">
       <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
       <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
@@ -44,7 +40,7 @@
             <ItemsControl x:Name="TrafficList" ItemsSource="{Binding Traffic}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:TrafficRowViewModel">
-                  <Border Classes="connRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,9">
+                  <Border Classes="connRow dividedRow" Padding="0,9">
                     <StackPanel Spacing="2">
                       <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
@@ -85,7 +81,7 @@
             <ItemsControl x:Name="ConnectionList" ItemsSource="{Binding Connections}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:ConnectionRowViewModel">
-                  <Border Classes="connRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,8">
+                  <Border Classes="connRow dividedRow" Padding="0,8">
                     <StackPanel Spacing="2">
                       <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Classes="strong" Text="{Binding Process}" TextTrimming="CharacterEllipsis" />

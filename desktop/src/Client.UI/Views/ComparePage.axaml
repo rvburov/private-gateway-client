@@ -8,9 +8,6 @@
   <!-- До и после VPN — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе, как «Сеть машины»). Подстраница
        «Проверки»: островок виден, «назад» — к проверке. -->
   <UserControl.Styles>
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.compareRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <Style Selector=":is(TextBlock).value">
       <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
       <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
@@ -73,7 +70,7 @@
           <ItemsControl x:Name="CompareList" ItemsSource="{Binding Rows}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:CompareRowViewModel">
-                <Border Classes="compareRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,10">
+                <Border Classes="compareRow dividedRow" Padding="0,10">
                   <StackPanel Spacing="4">
                     <Grid ColumnDefinitions="*,Auto">
                       <TextBlock Classes="strong" Text="{Binding Label}" VerticalAlignment="Center" />

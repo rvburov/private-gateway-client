@@ -321,10 +321,10 @@
             </div>
             <div class="setting">
               <div class="setting-text">
-                <span class="setting-title">Блок при обрыве (Kill Switch)</span>
-                <span class="setting-caption">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span>
+                <span class="setting-title" id="ds-ks-title"><span data-os="desktop" data-ui-text="desktop.settings.ks.title">Блокировать интернет при обрыве VPN</span><span data-os="phone">Блок при обрыве (Kill Switch)</span></span>
+                <span class="setting-caption"><span data-os="desktop" data-ui-text="desktop.settings.ks.text">Если связь с VPN пропадет, интернет остановится до восстановления защиты.</span><span data-os="phone">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span></span>
               </div>
-              <button class="switch on" role="switch" aria-checked="true" aria-label="Блок при обрыве (Kill Switch)" data-confirm-off="ds-dlg-ks"></button>
+              <button class="switch on" role="switch" aria-checked="true" aria-labelledby="ds-ks-title" data-confirm-off="ds-dlg-ks"></button>
             </div>
             <div class="setting">
               <div class="setting-text">

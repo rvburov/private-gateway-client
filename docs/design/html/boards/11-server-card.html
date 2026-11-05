@@ -74,8 +74,8 @@
   .sc-ping.down { color: var(--pg-color-status-warning-text); }
   .sc-inset { background: var(--pg-color-surface-inset); border: 1px solid var(--pg-color-line-divider); border-radius: 16px; }
   .sc-details { padding: 2px 14px; }
-  .sc-detail { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--pg-color-line-divider); }
-  .sc-detail:last-child { border-bottom: 0; }
+  .sc-detail { display: flex; align-items: center; gap: 12px; padding: 8px 0; }
+  .sc-detail:not([hidden]) ~ .sc-detail:not([hidden]) { border-top: 1px solid var(--pg-color-line-divider); }
   .sc-detail .t-small { color: var(--pg-color-text-muted); }
   .sc-val { flex: 1; min-width: 0; text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
     font-family: var(--font-mono); font-size: var(--pg-type-small-size); font-weight: 500; }

@@ -8,10 +8,6 @@
   <!-- Сеть машины — сетевой инспектор (этап 7, экрана в макете нет — по дизайн-системе, как «Проверка»). Подстраница
        «Проверки»: островок виден, «назад» — к проверке. -->
   <UserControl.Styles>
-    <!-- Строки разделены линией, у последней ее нет -->
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.routeRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <Style Selector=":is(TextBlock).value">
       <Setter Property="FontFamily" Value="{StaticResource PgFont.Mono}" />
       <Setter Property="FontSize" Value="{StaticResource PgFontSize.Overline}" />
@@ -180,7 +176,7 @@
             <ItemsControl x:Name="RouteList" ItemsSource="{Binding Routes}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:RouteRowViewModel">
-                  <Border Classes="routeRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,9">
+                  <Border Classes="routeRow dividedRow" Padding="0,9">
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="2">
                         <SelectableTextBlock Classes="value" FontWeight="SemiBold" Text="{Binding Destination}" />

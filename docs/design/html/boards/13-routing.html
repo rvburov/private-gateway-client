@@ -16,7 +16,7 @@
 
   /* Строки списков разделены линией, у последней ее нет (Border.row программы) */
   .card > [data-row] { border-radius: 0; }
-  .card > [data-row]:not(:last-child) { border-bottom: 1px solid var(--pg-color-line-divider); }
+  .card > [data-row]:not([hidden]):has(~ [data-row]:not([hidden])) { border-bottom: 1px solid var(--pg-color-line-divider); }
   .card > .pg-row[data-row] { padding: 11px 0; }
   .card > .btn-plain[data-row] { padding: 12px 0; }
   .card > .btn-plain[data-row]:hover .t-mono { color: var(--pg-color-accent-base); }

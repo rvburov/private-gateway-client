@@ -7,10 +7,6 @@
              x:DataType="vm:CheckPageViewModel">
   <!-- Проверка и журнал — docs/design, доска 7. -->
   <UserControl.Styles>
-    <!-- Строки проверок разделены линией, у последней ее нет -->
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.checkRow">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <!-- Уровень записи журнала: INF — акцентом, WRN — оранжевым, ERR — красным, DBG — серым -->
     <Style Selector="Run.level">
       <Setter Property="Foreground" Value="{StaticResource PgBrush.Accent.Text}" />
@@ -59,8 +55,7 @@
           <ItemsControl ItemsSource="{Binding Rows}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:CheckRowViewModel">
-                <Border Classes="checkRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1"
-                        Padding="0,11">
+                <Border Classes="checkRow dividedRow" Padding="0,11">
                   <Grid ColumnDefinitions="Auto,*,Auto">
                     <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Center"
                             Background="{Binding DisplayState, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
@@ -94,7 +89,7 @@
             <ItemsControl x:Name="DelayRows" ItemsSource="{Binding DelayRows}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:DelayRowViewModel">
-                  <Border Classes="checkRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1" Padding="0,11">
+                  <Border Classes="checkRow dividedRow" Padding="0,11">
                     <Grid ColumnDefinitions="*,Auto">
                       <StackPanel Spacing="2" Margin="0,0,12,0" VerticalAlignment="Center">
                         <TextBlock Classes="strong" Text="{Binding Title}" />
@@ -107,8 +102,6 @@
                 </DataTemplate>
               </ItemsControl.ItemTemplate>
             </ItemsControl>
-            <TextBlock x:Name="DelayWhy" Classes="caption" Text="{Binding DelayWhy}" TextWrapping="Wrap" IsVisible="{Binding HasDelayWhy}"
-                       Margin="0,10,0,4" LineHeight="{StaticResource PgLineHeight.Body}" />
             <TextBlock x:Name="DelayHint" Classes="caption" Text="{Binding DelayHint}" TextWrapping="Wrap" IsVisible="{Binding HasDelayHint}"
                        Margin="0,10,0,4" />
             <TextBlock Classes="caption" Text="{Binding DelayUpdated}" Margin="0,4,0,10" Foreground="{StaticResource PgBrush.Text.Muted}" />
@@ -121,8 +114,7 @@
           <ItemsControl x:Name="Hindrances" ItemsSource="{Binding Hindrances}">
             <ItemsControl.ItemTemplate>
               <DataTemplate x:DataType="vm:HindranceRowViewModel">
-                <Border Classes="checkRow" BorderBrush="{StaticResource PgBrush.Line.Divider}" BorderThickness="0,0,0,1"
-                        Padding="0,11">
+                <Border Classes="checkRow dividedRow" Padding="0,11">
                   <Grid ColumnDefinitions="Auto,*,Auto">
                     <Border Width="22" Height="22" CornerRadius="11" VerticalAlignment="Top" Margin="0,1,0,0"
                             Background="{Binding State, Converter={StaticResource CheckBrush}, ConverterParameter=Dot}">
@@ -166,7 +158,7 @@
                         StrokeThickness="2" />
               </Grid>
             </Button>
-            <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+            <Border Classes="divider" Margin="8,0" />
             <Button x:Name="ProbeButton" Classes="plain" Padding="8,10" Command="{Binding OpenProbeCommand}"
                     AutomationProperties.Name="{l:L diag.probe.title}">
               <Grid ColumnDefinitions="Auto,*,Auto">
@@ -183,7 +175,7 @@
                         StrokeThickness="2" />
               </Grid>
             </Button>
-            <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+            <Border Classes="divider" Margin="8,0" />
             <Button x:Name="ConnectionsButton" Classes="plain" Padding="8,10" Command="{Binding OpenConnectionsCommand}"
                     AutomationProperties.Name="{l:L diag.connections.title}">
               <Grid ColumnDefinitions="Auto,*,Auto">
@@ -200,7 +192,7 @@
                         StrokeThickness="2" />
               </Grid>
             </Button>
-            <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+            <Border Classes="divider" Margin="8,0" />
             <Button x:Name="CompareButton" Classes="plain" Padding="8,10" Command="{Binding OpenCompareCommand}"
                     AutomationProperties.Name="{l:L diag.compare.title}">
               <Grid ColumnDefinitions="Auto,*,Auto">
@@ -241,7 +233,7 @@
                           StrokeThickness="2" />
                 </Grid>
               </Button>
-              <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+              <Border Classes="divider" Margin="8,0" />
               <Button x:Name="LayersButton" Classes="plain" Padding="8,10" Command="{Binding OpenLayersCommand}"
                       AutomationProperties.Name="{l:L diag.layers.title}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
@@ -258,7 +250,7 @@
                           StrokeThickness="2" />
                 </Grid>
               </Button>
-              <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+              <Border Classes="divider" Margin="8,0" />
               <Button x:Name="EventsButton" Classes="plain" Padding="8,10" Command="{Binding OpenEventsCommand}"
                       AutomationProperties.Name="{l:L diag.events.title}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
@@ -275,7 +267,7 @@
                           StrokeThickness="2" />
                 </Grid>
               </Button>
-              <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+              <Border Classes="divider" Margin="8,0" />
               <Button x:Name="TroubleButton" Classes="plain" Padding="8,10" Command="{Binding OpenTroubleCommand}"
                       AutomationProperties.Name="{l:L diag.trouble.title}">
                 <Grid ColumnDefinitions="Auto,*,Auto">
@@ -292,7 +284,7 @@
                           StrokeThickness="2" />
                 </Grid>
               </Button>
-              <Border Height="1" Background="{StaticResource PgBrush.Line.Divider}" Margin="8,0" />
+              <Border Classes="divider" Margin="8,0" />
               <Button x:Name="VpnPathButton" Classes="plain" Padding="8,10" Command="{Binding OpenVpnPathCommand}"
                       AutomationProperties.Name="{l:L diag.vpnpath.title}">
                 <Grid ColumnDefinitions="Auto,*,Auto">

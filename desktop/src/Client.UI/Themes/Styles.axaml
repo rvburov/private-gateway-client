@@ -74,6 +74,14 @@
     <Setter Property="Height" Value="1" />
     <Setter Property="Background" Value="{StaticResource PgBrush.Line.Divider}" />
   </Style>
+  <!-- Одна тонкая линия между строками списка; под последней, в том числе единственной, линии нет. -->
+  <Style Selector="Border.dividedRow">
+    <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Divider}" />
+    <Setter Property="BorderThickness" Value="0,0,0,1" />
+  </Style>
+  <Style Selector="ContentPresenter:nth-last-child(1) > Border.dividedRow">
+    <Setter Property="BorderThickness" Value="0" />
+  </Style>
 
   <!-- Наведение и нажатие (решение 485): кнопка не заливается серым темы Fluent — фон, рамка и цвет остаются ее
        собственными. Синими становятся текст и значки кнопок без своего цвета (классы ниже); у кнопок со своим цветом —

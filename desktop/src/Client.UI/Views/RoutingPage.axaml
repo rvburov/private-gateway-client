@@ -15,14 +15,6 @@
       <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
       <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
     </Style>
-    <!-- Строки списков разделены линией, у последней ее нет -->
-    <Style Selector="Border.row">
-      <Setter Property="BorderThickness" Value="0,0,0,1" />
-      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Line.Divider}" />
-    </Style>
-    <Style Selector="ContentPresenter:nth-last-child(1) Border.row">
-      <Setter Property="BorderThickness" Value="0" />
-    </Style>
     <!-- Плитка программы: буква на цветном квадрате, три цвета по кругу -->
     <Style Selector="Border.tile">
       <Setter Property="Width" Value="36" />
@@ -120,7 +112,7 @@
             <ItemsControl x:Name="AppList" ItemsSource="{Binding Apps}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:BypassAppViewModel">
-                  <Border Classes="row" Padding="0,11">
+                  <Border Classes="row dividedRow" Padding="0,11">
                     <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                       <Border Classes="tile" Classes.teal="{Binding IsTeal}" Classes.amber="{Binding IsAmber}">
                         <TextBlock Text="{Binding Letter}" />
@@ -169,7 +161,7 @@
             <ItemsControl x:Name="RuleList" ItemsSource="{Binding Rules}">
               <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:SiteRuleViewModel">
-                  <Border Classes="row">
+                  <Border Classes="row dividedRow">
                     <Button Classes="plain" Padding="0,12" HorizontalAlignment="Stretch" Command="{Binding EditCommand}"
                             AutomationProperties.Name="{Binding EditLabel}">
                       <Grid ColumnDefinitions="*,Auto">
