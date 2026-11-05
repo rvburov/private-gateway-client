@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
              xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:v="using:PrivateGateway.Client.UI.Views"
              xmlns:l="using:PrivateGateway.Client.UI.Localization"
              x:Class="PrivateGateway.Client.UI.Views.SettingsPage"
              x:DataType="vm:SettingsPageViewModel">
@@ -24,6 +25,9 @@
               </UniformGrid>
             </Border>
             <TextBlock Classes="caption" Text="{Binding ModeNote}" TextWrapping="Wrap" />
+            <StackPanel x:Name="ExternalProxyForm" IsVisible="{Binding IsProxyMode}">
+              <v:ExternalProxyEditorView x:Name="ExternalProxyEditor" DataContext="{Binding ExternalProxy}" />
+            </StackPanel>
           </StackPanel>
           <Border Classes="divider" />
 

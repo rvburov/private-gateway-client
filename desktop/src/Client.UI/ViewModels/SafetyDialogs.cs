@@ -29,7 +29,7 @@ internal static class SafetyDialogs
             "Icon.Shield",
             "Icon.Mark.Alert",
             Loc.Instance["dialog.proxyMode.title"],
-            Loc.Instance["dialog.proxyMode.text"],
+            Loc.Instance["externalProxy.dialog.text"],
             Loc.Instance["dialog.proxyMode.keep"],
             Loc.Instance["dialog.proxyMode.switch"])
         { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;

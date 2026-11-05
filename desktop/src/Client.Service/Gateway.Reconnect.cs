@@ -28,6 +28,10 @@ public sealed partial class Gateway
 
     private ReconnectTiming Timing => _options.Reconnect ?? ReconnectTiming.Default with { Every = null };
 
+    /// <summary>Открытый локальный порт не подтверждает авторизацию внешнего HTTP/SOCKS5-прокси.</summary>
+    private bool RequiresExternalProxyProbe => _request is
+    { Mode: ConnectionMode.Proxy, Server.Protocol: ProxyProtocol.Http or ProxyProtocol.Socks5 };
+
     /// <summary>«Защищено» — проверять связь с сервером, пока подключение то же.</summary>
     private void StartWatch(int session)
     {
@@ -548,7 +552,7 @@ public sealed partial class Gateway
 
             var networkLoss = Volatile.Read(ref _networkLoss);
             var (up, failure) = await RestartAsync(session, attempt).ConfigureAwait(false);
-            if (up && !Status.NetworkUnavailable && (timing.Every is null || await ProbeAsync().ConfigureAwait(false))
+            if (up && !Status.NetworkUnavailable && ((!RequiresExternalProxyProbe && timing.Every is null) || await ProbeAsync().ConfigureAwait(false))
                 && await RestoredAsync(session, attempt, networkLoss).ConfigureAwait(false))
             {
                 return;

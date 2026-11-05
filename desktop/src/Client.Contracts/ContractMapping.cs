@@ -183,6 +183,8 @@ public static partial class ContractMapping
         CoreProtocol.Hysteria2 => V1.Protocol.Hysteria2,
         CoreProtocol.Tuic => V1.Protocol.Tuic,
         CoreProtocol.WireGuard => V1.Protocol.Wireguard,
+        CoreProtocol.Http => V1.Protocol.Http,
+        CoreProtocol.Socks5 => V1.Protocol.Socks5,
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -195,6 +197,8 @@ public static partial class ContractMapping
         V1.Protocol.Hysteria2 => CoreProtocol.Hysteria2,
         V1.Protocol.Tuic => CoreProtocol.Tuic,
         V1.Protocol.Wireguard => CoreProtocol.WireGuard,
+        V1.Protocol.Http => CoreProtocol.Http,
+        V1.Protocol.Socks5 => CoreProtocol.Socks5,
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, "Протокол не задан"),
     };
 

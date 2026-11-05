@@ -302,8 +302,20 @@
     }
     wrap.appendChild(frame);
     applyOs(app, dev);
+    app.querySelectorAll("[data-external-proxy]").forEach(function (form) { updateExternalProxy(form, false); });
     app.querySelectorAll(".pg-island").forEach(function (island) { buildIsland(island, dev); });
     applyState(app, screen.dataset.state || "connected");
+    updateExternalProxyPower(app);
+    if (screen.dataset.powerTarget) {
+      app.querySelectorAll("[data-power]").forEach(function (power) {
+        power.dataset.nav = screen.dataset.powerTarget;
+        power.setAttribute("aria-label", screen.dataset.powerLabel);
+      });
+      app.querySelectorAll('[data-role="state-label"]').forEach(function (label) {
+        label.textContent = screen.dataset.powerLabel;
+        if (screen.dataset.powerLabelKey) { label.dataset.uiText = screen.dataset.powerLabelKey; }
+      });
+    }
     return wrap;
   }
 
@@ -387,6 +399,78 @@
     sw.setAttribute("aria-checked", on ? "true" : "false");
   }
 
+  // Форма внешнего прокси — только демонстрация состояний. Данные остаются в полях страницы;
+  // макет не соединяется с прокси и не сохраняет учетные данные в localStorage или журнал.
+  function updateExternalProxy(form, edited) {
+    form.querySelectorAll("[data-proxy-auth-fields]").forEach(function (fields) {
+      fields.hidden = form.dataset.auth !== "password";
+    });
+    form.querySelectorAll("[data-proxy-transport]").forEach(function (note) {
+      note.hidden = (form.dataset.protocol === "socks5" ? "socks5" : "http") !== note.dataset.proxyTransport;
+    });
+    form.querySelectorAll("[data-proxy-encryption]").forEach(function (note) {
+      note.hidden = (form.dataset.protocol === "https" ? "tls" : "plain") !== note.dataset.proxyEncryption;
+    });
+    var error = form.querySelector("[data-proxy-error]");
+    if (error) { error.hidden = true; error.textContent = ""; }
+    var state = form.querySelector("[data-proxy-state]");
+    if (state) { state.textContent = edited ? form.dataset.stateDraft : form.dataset.configured === "1" ? form.dataset.stateSaved : form.dataset.stateEmpty; }
+    var app = form.closest(".pg-app");
+    if (app) { updateExternalProxyPower(app); }
+  }
+
+  function updateExternalProxyPower(app) {
+    var form = app.querySelector("[data-external-proxy]");
+    if (!form || form.hidden) { return; }
+    var missing = app.querySelector('[data-mode="proxy"].on') && form.dataset.configured !== "1";
+    app.querySelectorAll("[data-power]").forEach(function (power) {
+      if (missing) { power.dataset.nav = "04-settings.html"; power.setAttribute("aria-label", form.dataset.powerConfigure); }
+      else {
+        delete power.dataset.nav;
+        power.setAttribute("aria-label", app.dataset.state === "off" ? "Включить защиту" : "Выключить защиту");
+      }
+    });
+    app.querySelectorAll('[data-role="state-label"]').forEach(function (label) {
+      label.textContent = missing ? form.dataset.powerLabel : (STATE[app.dataset.state] || STATE.off).label;
+      if (missing) { label.dataset.uiText = "externalProxy.power.label"; } else { delete label.dataset.uiText; }
+    });
+  }
+
+  function saveExternalProxy(form) {
+    if (form.dataset.saving === "1") { return; }
+    var host = form.querySelector('[data-proxy-input="host"]').value.trim();
+    var port = form.querySelector('[data-proxy-input="port"]').value;
+    var hostValid = host.length > 0 && !/[\\/?#@\s]/.test(host);
+    try {
+      var address = host.indexOf(":") >= 0 && host[0] !== "[" ? "[" + host + "]" : host;
+      if (hostValid) { new URL("https://" + address + ":1/"); }
+    } catch (_) { hostValid = false; }
+    var failure = !hostValid ? form.dataset.errorHost
+      : !/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535 ? form.dataset.errorPort
+      : form.dataset.auth === "password" && (!form.querySelector('[data-proxy-input="username"]').value || !form.querySelector('[data-proxy-input="password"]').value)
+        ? form.dataset.errorCredentials : null;
+    if (failure) {
+      var error = form.querySelector("[data-proxy-error]");
+      error.textContent = failure;
+      error.hidden = false;
+      error.scrollIntoView({ block: "nearest" });
+      return;
+    }
+    form.dataset.saving = "1";
+    form.querySelectorAll("input, button").forEach(function (control) { control.disabled = true; });
+    var save = form.querySelector("[data-proxy-save]");
+    save.textContent = form.dataset.busy;
+    form.querySelector("[data-proxy-state]").textContent = form.dataset.stateBusy;
+    // Короткая имитация ожидания показывает IsBusy редактора; настоящего обращения к хранилищу здесь нет.
+    setTimeout(function () {
+      form.dataset.configured = "1";
+      delete form.dataset.saving;
+      form.querySelectorAll("input, button").forEach(function (control) { control.disabled = false; });
+      save.textContent = form.dataset.save;
+      updateExternalProxy(form, false);
+    }, 350);
+  }
+
   function onClick(e) {
     var el = e.target.closest("button, a, [data-nav], [data-open], [data-close], [data-goto], [data-set-state], [data-toast], " +
       "[data-reveal], [data-spin], [data-remove], [data-power], .check, .segment, .switch, .tab, .fav");
@@ -400,6 +484,7 @@
       return;
     }
     if (!app) { return; }
+    if (el.matches("[data-proxy-save]")) { saveExternalProxy(el.closest("[data-external-proxy]")); return; }
     if (el.matches("[data-close]")) { closeAll(app); }
     if (el.matches("[data-confirm-yes]")) {
       // «Да» в диалоге: отложенное действие (тумблер, сегмент, пункт меню) и свои действия кнопки
@@ -441,6 +526,12 @@
           s.classList.toggle("on", s === el);
           s.setAttribute("aria-checked", s === el ? "true" : "false");
         });
+        var form = app.querySelector("[data-external-proxy]");
+        if (el.dataset.mode === "proxy" && form && !form.hidden && form.dataset.configured !== "1"
+            && ["connected", "proxy", "connecting", "reconnecting"].indexOf(app.dataset.state) >= 0) {
+          setState(app, "off");
+        }
+        updateExternalProxyPower(app);
       };
       if (el.dataset.confirm && !el.classList.contains("on")) {
         app._pending = apply;
@@ -484,6 +575,10 @@
         var label = (owner && owner.querySelector("[data-select-label]")) ||
           (owner && owner.closest(".card, .setting, .pg-row") || app).querySelector("[data-select-label]");
         if (label && el.dataset.value) { label.textContent = el.dataset.value; }
+        if (popup.dataset.proxyForm) {
+          var form = app.querySelector('[data-external-proxy="' + popup.dataset.proxyForm + '"]');
+          if (form) { form.dataset[popup.dataset.proxyField] = el.dataset.proxyChoice; updateExternalProxy(form, true); }
+        }
       };
       popup.classList.remove("is-open");
       if (el.dataset.confirm) {
@@ -566,6 +661,10 @@
       });
     });
     document.addEventListener("click", function (e) { closeOnOutside(e); onClick(e); });
+    document.addEventListener("input", function (e) {
+      var form = e.target.closest && e.target.closest("[data-external-proxy]");
+      if (form) { updateExternalProxy(form, true); }
+    });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && lastApp) { lastApp._pending = null; closeAll(lastApp); }
     });

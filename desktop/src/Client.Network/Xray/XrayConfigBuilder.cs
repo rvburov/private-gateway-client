@@ -32,6 +32,15 @@ public enum CoreRejection
     /// серверу открытым. Xray-core с 26.x такой выход не строит («vless without TLS … is prohibited»), и у телефонов его нет.
     /// </summary>
     Unencrypted,
+
+    /// <summary>Адрес или порт внешнего HTTP/SOCKS5-прокси не является допустимым узлом назначения.</summary>
+    InvalidEndpoint,
+
+    /// <summary>Неполная или недопустимая пара учетных данных внешнего прокси.</summary>
+    InvalidCredentials,
+
+    /// <summary>HTTP CONNECT не переносит обычный DNS по UDP к публичному числовому адресу.</summary>
+    UnsupportedDns,
 }
 
 /// <summary>Конфиг Xray или причина отказа.</summary>
@@ -182,6 +191,20 @@ public static class XrayConfigBuilder
         if (outbound is null)
         {
             return new XrayConfigResult(null, rejection);
+        }
+
+        if (tun is null && request.Mode == ConnectionMode.Proxy && ForwardProxyRules.IsForwardProxy(request.Server.Protocol)
+            && ForwardProxyRules.IsLocalLoop(request.Server.Host, request.Server.Port, request.Connection.ProxyPort))
+        {
+            return new XrayConfigResult(null, CoreRejection.InvalidEndpoint);
+        }
+
+        // Обычный DNS к публичному IP — UDP/53. HTTP CONNECT переносит только TCP: не подменяем выбор пользователя
+        // скрытым прямым запросом. Частный DNS — уже выбранное явное исключение (LanDns), маршрут которого сохранен.
+        if (request.Server.Protocol == ProxyProtocol.Http && request.Protection.LanDns is null
+            && request.Protection.DnsServers.Any(server => IPAddress.TryParse(server, out _)))
+        {
+            return new XrayConfigResult(null, CoreRejection.UnsupportedDns);
         }
 
         // Адрес сервера ретранслятор получает сам: у выхода Xray к нему — 127.0.0.1.
@@ -729,6 +752,11 @@ public static class XrayConfigBuilder
     {
         rejection = null;
         var credentials = server.Credentials;
+        if (ForwardProxyRules.IsForwardProxy(server.Protocol))
+        {
+            return ForwardOutbound(server, connection, out rejection);
+        }
+
         if (NeedsRelay(server))
         {
             rejection = relay is null ? CoreRejection.UnsupportedProtocol
@@ -802,6 +830,35 @@ public static class XrayConfigBuilder
         }
 
         return outbound;
+    }
+
+    private static JsonObject? ForwardOutbound(ServerDefinition server, ConnectionSettings connection, out CoreRejection? rejection)
+    {
+        rejection = !ForwardProxyRules.IsValidEndpoint(server.Host, server.Port) ? CoreRejection.InvalidEndpoint
+            : !ForwardProxyRules.AcceptsCredentials(server.Protocol, server.Credentials) ? CoreRejection.InvalidCredentials
+            : !ForwardProxyRules.AcceptsTransport(server.Protocol, server.Transport.Kind, server.Security.Kind) ? CoreRejection.UnsupportedTransport
+            : null;
+        if (rejection is not null)
+        {
+            return null;
+        }
+
+        var endpoint = new JsonObject { ["address"] = server.Host, ["port"] = server.Port };
+        if (server.Credentials.Username is { Length: > 0 } user && server.Credentials.Password is { Length: > 0 } password)
+        {
+            endpoint["users"] = new JsonArray(new JsonObject { ["user"] = user, ["pass"] = password });
+        }
+
+        // Обычные прокси не понимают Xray Mux. Фрагментация ClientHello применима только к HTTPS; сохраненная настройка
+        // остается прежней и продолжает действовать для выбранного VPN-профиля.
+        var stream = Stream(server, server.Security.Kind == TransportSecurity.Tls ? connection : connection with { TlsFragment = false });
+        return new JsonObject
+        {
+            ["tag"] = ProxyTag,
+            ["protocol"] = server.Protocol == ProxyProtocol.Socks5 ? "socks" : "http",
+            ["settings"] = Servers(endpoint),
+            ["streamSettings"] = stream,
+        };
     }
 
     // Выход к ретранслятору: SOCKS5 с паролем, UDP тоже — через UDP ASSOCIATE.

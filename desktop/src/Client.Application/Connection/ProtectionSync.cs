@@ -17,7 +17,8 @@ namespace PrivateGateway.Client.Application.Connection;
 /// служба ее прислала. Строгую «Блокировку», которую это окно не выключало (другой пользователь машины, сброшенные
 /// настройки), окно само не открывает.
 /// </summary>
-public sealed class ProtectionSync(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time)
+public sealed class ProtectionSync(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time,
+    ConnectionTarget? target = null)
 {
     /// <summary>Сколько ждать тишины после изменения, прежде чем переподключаться.</summary>
     public static readonly TimeSpan Quiet = TimeSpan.FromMilliseconds(700);
@@ -25,6 +26,7 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
     private readonly Lock _gate = new();
     private AppSettings? _last;
     private ITimer? _timer;
+    private bool _modeOnly;
 
     // 1 — строгий режим выключили в этом окне, а «Блокировку» строгого режима еще не открыли: служба была недоступна
     // или прислала ее позже. Открывается один раз.
@@ -51,11 +53,17 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
         ArgumentNullException.ThrowIfNull(previous);
         ArgumentNullException.ThrowIfNull(next);
         return previous.Mode != next.Mode || previous.KillSwitch != next.KillSwitch || previous.Protection != next.Protection
-            || previous.Connection != next.Connection || previous.Routing != next.Routing;
+            || previous.Connection != next.Connection || previous.Routing != next.Routing
+            || (next.Mode == ConnectionMode.Proxy && previous.ExternalProxy != next.ExternalProxy);
     }
 
     private void OnChanged(AppSettings next)
     {
+        if (!ReferenceEquals(next, settings.Current))
+        {
+            return;
+        }
+
         var previous = _last ?? next;
         _last = next;
         Interlocked.Exchange(ref _openStrict, ConnectionController.KeepsBlock(next) ? 0
@@ -67,6 +75,7 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
 
         lock (_gate)
         {
+            _modeOnly = previous.Mode != next.Mode && !Affects(previous with { Mode = next.Mode }, next);
             _timer?.Dispose();
             _timer = time.CreateTimer(_ => _ = ApplyAsync(), null, Quiet, Timeout.InfiniteTimeSpan);
         }
@@ -86,9 +95,31 @@ public sealed class ProtectionSync(SettingsService settings, IGatewayClient gate
         }
 
         if (status.IsPaused || status.State is not (ConnectionState.Connecting or ConnectionState.Connected
-                or ConnectionState.Reconnecting or ConnectionState.Blocked) || catalog.Selected is not { } server)
+                or ConnectionState.Reconnecting or ConnectionState.Blocked))
         {
             return;
+        }
+
+        var server = target is null ? catalog.Selected : target.Selected;
+        if (server is null)
+        {
+            if (target is not null && (target.IsExternalProxy || status.Mode != settings.Current.Mode))
+            {
+                // Режим сменили явно; не оставлять прежний путь активным под названием нового режима.
+                await gateway.DisconnectAsync().ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        lock (_gate)
+        {
+            if (_modeOnly && status.Mode == settings.Current.Mode && status.ServerId == server.Id
+                && status.State is ConnectionState.Connected or ConnectionState.Connecting)
+            {
+                // Карточка сервера уже отправила явное подключение после выбора VPN.
+                return;
+            }
         }
 
         await gateway.ConnectAsync(server).ConfigureAwait(false);

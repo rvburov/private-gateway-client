@@ -121,7 +121,7 @@
       </Border>
       <Button x:Name="ConnectButton" Classes="primary" IsVisible="{Binding !IsInUse}" Height="50"
               HorizontalAlignment="Stretch" FontSize="{StaticResource PgFontSize.Title}"
-              Command="{Binding ConnectCommand}" Content="{l:L card.connect}" />
+              Command="{Binding ConnectCommand}" Content="{Binding ConnectText}" />
       <UniformGrid Columns="3" ColumnSpacing="8">
         <Button x:Name="RenameButton" Classes="secondary tile" Command="{Binding StartRenameCommand}"
                 AutomationProperties.Name="{l:L card.rename}">

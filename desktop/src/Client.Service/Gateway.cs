@@ -487,12 +487,16 @@ public sealed partial class Gateway : IAsyncDisposable
         var byName = vpn && !IPAddress.TryParse(core.Server.Host, out _);
         if (built.Config is null && !(built.Rejection == CoreRejection.Unencrypted && byName))
         {
-            return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, built.Rejection switch
-            {
-                CoreRejection.UnsupportedProtocol => "Нет сборки sing-box — Hysteria2 и TUIC идут только через нее",
-                CoreRejection.Unencrypted => UnencryptedServer,
-                _ => "Ядро Xray не возьмется за сервер: " + built.Rejection,
-            },
+            return await RejectAsync(request, core.Mode,
+                built.Rejection == CoreRejection.UnsupportedDns ? ErrorCodes.ProxyDnsUnsupported : ErrorCodes.UnsupportedServer, built.Rejection switch
+                {
+                    CoreRejection.UnsupportedProtocol => "Нет сборки sing-box — Hysteria2 и TUIC идут только через нее",
+                    CoreRejection.Unencrypted => UnencryptedServer,
+                    CoreRejection.InvalidEndpoint => "Некорректный адрес или транспорт внешнего прокси",
+                    CoreRejection.InvalidCredentials => "Некорректные данные авторизации внешнего прокси",
+                    CoreRejection.UnsupportedDns => "DNS по UDP недоступен через HTTP-прокси: выберите DoH в настройках DNS",
+                    _ => "Ядро Xray не возьмется за сервер: " + built.Rejection,
+                },
                 generation, cancellationToken).ConfigureAwait(false);
         }
 
@@ -621,7 +625,11 @@ public sealed partial class Gateway : IAsyncDisposable
             _allowOtherVpn = request.AllowOtherVpn;
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
-            _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey]);
+            var forwardProxy = core.Server.Protocol is ProxyProtocol.Http or ProxyProtocol.Socks5;
+            var basic = forwardProxy && credentials.Username is { Length: > 0 } login && credentials.Password is { Length: > 0 } password
+                ? Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(login + ":" + password)) : null;
+            _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey, credentials.Username, basic],
+                includeShort: forwardProxy);
             if (vpn)
             {
                 (_addresses, _killSwitchOn) = (addresses, killSwitchOn);
@@ -1279,7 +1287,9 @@ public sealed partial class Gateway : IAsyncDisposable
     /// таймаута подключения (одна неудача бывает и у живого сервера — вторая сразу). Ответил — системный прокси (режим прокси) и
     /// «Защищено»; нет — как обрыв: «Переподключение» к тому же серверу (первая попытка ставит блок без туннеля), а с «Не
     /// повторять» — «Ошибка».
-    /// Пробы выключены (<see cref="ReconnectTiming.Every"/> не задан) — «Защищено» сразу. Подключение сменилось — ничего.
+    /// Пробы выключены (<see cref="ReconnectTiming.Every"/> не задан) — «Защищено» сразу для прежних VPN-протоколов.
+    /// Внешний HTTP/SOCKS-прокси всегда подтверждает путь: локальный вход не доказывает внешнюю авторизацию.
+    /// Подключение сменилось — ничего.
     /// Системный прокси и «Защищено» — под тем же замком, что смена подключения: отключение посреди этого не оставит системный
     /// прокси включенным.
     /// </summary>
@@ -1288,7 +1298,7 @@ public sealed partial class Gateway : IAsyncDisposable
         var networkLoss = Volatile.Read(ref _networkLoss);
         var timeout = TimeSpan.FromSeconds(_request?.Connection.ConnectTimeoutSeconds ?? 10);
         var answered = !Status.NetworkUnavailable &&
-            (Timing.Every is null || await ProbeAsync(timeout, quiet: true).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false));
+            ((!RequiresExternalProxyProbe && Timing.Every is null) || await ProbeAsync(timeout, quiet: true).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false));
         var failureCode = ErrorCodes.ServerNotResponding;
         await _switch.WaitAsync().ConfigureAwait(false);
         try

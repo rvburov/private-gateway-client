@@ -27,11 +27,13 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
     public event EventHandler<JournalEntry>? Added;
 
     /// <summary>Ключи подключения, которые нельзя показывать ни в каком виде.</summary>
-    public void Hide(IEnumerable<string?> secrets)
+    public void Hide(IEnumerable<string?> secrets, bool includeShort = false)
     {
         lock (_gate)
         {
-            _secrets = [.. secrets.OfType<string>().Where(s => s.Length >= 4).Distinct(StringComparer.Ordinal)];
+            // Сначала длинная форма (например, Basic), затем ее короткие составляющие: иначе останется часть токена.
+            _secrets = [.. secrets.OfType<string>().Where(s => s.Length >= (includeShort ? 1 : 4))
+                .Distinct(StringComparer.Ordinal).OrderByDescending(s => s.Length)];
         }
     }
 

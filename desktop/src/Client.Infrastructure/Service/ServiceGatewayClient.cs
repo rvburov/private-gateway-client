@@ -30,12 +30,17 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// </summary>
     public static readonly TimeSpan ProxyWatch = TimeSpan.FromSeconds(5);
 
+    /// <summary>Проверка возможностей службы не удерживает подключение к внешнему прокси бесконечно.</summary>
+    public static readonly TimeSpan ExternalProxyHandshakeTimeout = TimeSpan.FromSeconds(5);
+
     private static readonly TimeSpan Retry = TimeSpan.FromSeconds(2);
 
     private readonly GrpcChannel _channel;
     private readonly V1.GatewayService.GatewayServiceClient _client;
     private readonly Func<string, ServerDefinition?> _definitions;
     private readonly Func<AppSettings> _settings;
+    private readonly Func<ServerProfile?>? _selectedTarget;
+    private long _connectIntent;
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
 
@@ -71,8 +76,10 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// </param>
     /// <param name="manageUserProxy">Окно Windows умеет управлять HKCU; служба должна подтвердить эту возможность.</param>
     /// <param name="calls">Вызовы IPC; null — настоящий канал. Подмена нужна детерминированным тестам без сокетов.</param>
+    /// <param name="selectedTarget">Актуальная цель режима; старое подключение после ожидания IPC не отправляется.</param>
     public ServiceGatewayClient(GrpcChannel channel, ServiceKind service, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings,
-        TimeProvider time, Func<UserProxy?>? userProxy = null, TimeSpan? proxyWatch = null, bool manageUserProxy = false, CallInvoker? calls = null)
+        TimeProvider time, Func<UserProxy?>? userProxy = null, TimeSpan? proxyWatch = null, bool manageUserProxy = false, CallInvoker? calls = null,
+        Func<ServerProfile?>? selectedTarget = null)
     {
         _userProxy = userProxy;
         _manageUserProxy = manageUserProxy;
@@ -82,6 +89,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         _client = new V1.GatewayService.GatewayServiceClient(calls ?? channel.CreateCallInvoker());
         _definitions = definitions;
         _settings = settings;
+        _selectedTarget = selectedTarget;
         _time = time;
         _stopping = _stop.Token;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
@@ -125,18 +133,52 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     {
         ArgumentNullException.ThrowIfNull(server);
         var settings = _settings();
-        var windowProxy = _manageUserProxy && (await GetDetailsAsync(cancellationToken).ConfigureAwait(false))?.Capabilities
+        var intent = Interlocked.Increment(ref _connectIntent);
+        var forward = ForwardProxyRules.IsForwardProxy(server.Protocol);
+        if (!IsCurrentIntent(server, settings, intent))
+        {
+            return;
+        }
+
+        var details = _manageUserProxy || forward ? await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false) : null;
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsCurrentIntent(server, settings, intent))
+        {
+            return;
+        }
+
+        if (forward && details is null)
+        {
+            Unreachable(server.Id, settings.Mode);
+            return;
+        }
+
+        if (forward && details?.SupportsExternalProxy != true)
+        {
+            await RejectUnsupportedAsync(server, settings, intent, cancellationToken).ConfigureAwait(false);
+            return;
+        }
+
+        var definition = _definitions(server.Id);
+        var foreignProxy = await ForeignProxyAsync(settings).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (!IsCurrentIntent(server, settings, intent))
+        {
+            return;
+        }
+
+        var windowProxy = _manageUserProxy && details?.Capabilities
             ?.Contains("user-proxy-window-v1", StringComparer.Ordinal) == true;
         var request = new V1.ConnectRequest
         {
             // Описания нет (сервер удален) — запрос без сервера: служба откажет и остановит прежнее подключение.
-            Server = _definitions(server.Id)?.ToContract(server.Id),
+            Server = definition?.ToContract(server.Id),
             Mode = settings.Mode.ToContract(),
             Protection = settings.ToContract(),
             Connection = settings.ToConnection(),
             Routing = settings.ToRouting(),
             AllowOtherVpn = _allowOtherVpn || settings.Protection.AllowOtherVpn,
-            ForeignProxy = await ForeignProxyAsync(settings).ConfigureAwait(false),
+            ForeignProxy = foreignProxy,
             UserProxyManagedByWindow = windowProxy,
         };
         try
@@ -144,11 +186,85 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             // Ответ Connect не содержит снимка. После принятой попытки WatchStatus тоже может еще хранить прежнюю
             // ошибку: окно принимает решение сразу после await, поэтому актуальный статус читается при любом ответе.
             await _client.ConnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
-            Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
+            var current = await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (IsCurrentIntent(server, settings, intent))
+            {
+                Apply(current.ToCore());
+            }
         }
         catch (RpcException)
         {
-            Unreachable(server.Id, settings.Mode);
+            if (IsCurrentIntent(server, settings, intent))
+            {
+                Unreachable(server.Id, settings.Mode);
+            }
+        }
+    }
+
+    private bool IsCurrentIntent(ServerProfile server, AppSettings settings, long intent) =>
+        !_stopping.IsCancellationRequested && intent == Volatile.Read(ref _connectIntent) && !ProtectionSync.Affects(settings, _settings())
+        && (_selectedTarget is null || _selectedTarget()?.Id == server.Id);
+
+    private async Task<ServiceDetails?> ConnectDetailsAsync(CancellationToken cancellationToken)
+    {
+        using var deadline = new CancellationTokenSource(ExternalProxyHandshakeTimeout, _time);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopping, deadline.Token);
+        try
+        {
+            using var call = _client.GetServiceInfoAsync(new V1.GetServiceInfoRequest(), cancellationToken: stop.Token);
+            return (await call.ResponseAsync.WaitAsync(stop.Token).ConfigureAwait(false)).ToCore();
+        }
+        catch (RpcException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return null;
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+        finally
+        {
+            await stop.CancelAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async Task RejectUnsupportedAsync(ServerProfile server, AppSettings settings, long intent, CancellationToken cancellationToken)
+    {
+        using var deadline = new CancellationTokenSource(ExternalProxyHandshakeTimeout, _time);
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _stopping, deadline.Token);
+        try
+        {
+            // Старую сессию нужно действительно остановить; оба RPC разделяют один предел ожидания.
+            using var disconnect = _client.DisconnectAsync(Disconnect(settings), cancellationToken: stop.Token);
+            await disconnect.ResponseAsync.WaitAsync(stop.Token).ConfigureAwait(false);
+            using var snapshot = _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: stop.Token);
+            var stopped = await snapshot.ResponseAsync.WaitAsync(stop.Token).ConfigureAwait(false);
+            if (IsCurrentIntent(server, settings, intent))
+            {
+                Apply(stopped.ToCore());
+                LocalFailure(server.Id, settings.Mode, ErrorCodes.ExternalProxyUnsupported);
+            }
+        }
+        catch (RpcException)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (IsCurrentIntent(server, settings, intent))
+            {
+                Unreachable(server.Id, settings.Mode);
+            }
+        }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            if (IsCurrentIntent(server, settings, intent))
+            {
+                // Остановку не подтвердили: нельзя обещать отсутствие прежнего подключения.
+                Unreachable(server.Id, settings.Mode);
+            }
+        }
+        finally
+        {
+            await stop.CancelAsync().ConfigureAwait(false);
         }
     }
 
@@ -440,6 +556,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
+        Interlocked.Increment(ref _connectIntent);
         _allowOtherVpn = false;
         try
         {
@@ -536,6 +653,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
     public void Dispose()
     {
+        Interlocked.Increment(ref _connectIntent);
         _stop.Cancel();
         _channel.Dispose();
         _stop.Dispose();
@@ -558,6 +676,25 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             }
 
             status = _status = NoService((current with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, now));
+        }
+
+        StatusChanged?.Invoke(this, status);
+    }
+
+    /// <summary>Локальный отказ после подтвержденного отключения старой службы, без выдуманной сетевой пробы.</summary>
+    private void LocalFailure(string serverId, ConnectionMode mode, string code)
+    {
+        ConnectionStatus status;
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var current = _status with { Mode = mode, ServerId = serverId };
+            if (!ConnectionStateMachine.CanMove(current.State, ConnectionState.Error))
+            {
+                current = current.MoveTo(ConnectionState.Connecting, now);
+            }
+
+            status = _status = (current with { ErrorCode = code }).MoveTo(ConnectionState.Error, now);
         }
 
         StatusChanged?.Invoke(this, status);

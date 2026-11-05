@@ -192,8 +192,9 @@ public sealed class ServiceGatewayClientTests
         entry.Start();
         var address = $"127.0.0.1:{((IPEndPoint)entry.LocalEndpoint).Port}";
         UserProxy? foreign = null;
+        var settings = Settings(XrayKit.FreePort());
         using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User,
-            id => id == "srv-1" ? definition : null, () => Settings(XrayKit.FreePort()), TimeProvider.System, () => foreign, TimeSpan.FromMilliseconds(200));
+            id => id == "srv-1" ? definition : null, () => settings, TimeProvider.System, () => foreign, TimeSpan.FromMilliseconds(200));
         await client.ConnectAsync(Profile(definition), Ct);
         await WaitFor(() => client.Status.State == ConnectionState.Connected);
 

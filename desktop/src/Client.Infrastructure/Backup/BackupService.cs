@@ -38,7 +38,8 @@ internal sealed record BackupPayload(
     DateTimeOffset CreatedAt,
     Dictionary<string, string>? Settings,
     List<SavedGroup>? Groups,
-    bool Keys);
+    bool Keys,
+    ServerCredentials? ExternalProxyCredentials = null);
 
 /// <summary>
 /// Резервная копия (доска 14): файл .pgbackup под паролем и автокопия перед каждым восстановлением.
@@ -105,7 +106,7 @@ public sealed class BackupService(SettingsService settings, IServerStore servers
         if (payload.Settings is { } values)
         {
             var next = SqliteSettingsStore.Parse(values, _ => { });
-            settings.Update(_ => next);
+            new ExternalProxyStore(settings, secrets).Restore(next, payload.Keys ? payload.ExternalProxyCredentials : null);
         }
 
         return new RestoreSummary(restored, payload.Settings is not null);
@@ -151,7 +152,11 @@ public sealed class BackupService(SettingsService settings, IServerStore servers
             })];
         }
 
-        return new BackupPayload(now, parts.Settings ? SqliteSettingsStore.Values(settings.Current) : null, groups, parts.Servers && parts.Keys);
+        var includeKeys = parts.Servers && parts.Keys;
+        // Ссылка относится к этой машине. Переносим только метаданные; при наличии ключей восстановление создаст новую запись ОС.
+        var captured = new ExternalProxyStore(settings, secrets).Capture(parts.Settings && includeKeys);
+        var metadata = captured.Settings with { ExternalProxy = captured.Settings.ExternalProxy with { CredentialsKey = null } };
+        return new BackupPayload(now, parts.Settings ? SqliteSettingsStore.Values(metadata) : null, groups, includeKeys, captured.Credentials);
     }
 
     private static byte[] Serialize(BackupPayload payload) => JsonSerializer.SerializeToUtf8Bytes(payload, Json);

@@ -1,4 +1,5 @@
 using PrivateGateway.Client.Application.Notifications;
+using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.UI.Localization;
 
@@ -15,10 +16,15 @@ public sealed class NoticeTexts : INoticeTexts
         var reason = notice.Code is { } code ? ErrorText(code)
             : notice.Failure is { } failure ? FailureText.Of(failure, notice.StatusCode)
             : string.Empty;
+        var external = ExternalProxySettings.IsExternalId(notice.ServerId);
+        var proxyFailure = external && notice.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown;
         return new NoticeText(
             Loc.Instance.Format(TitleKey(notice.Kind), notice.Version ?? string.Empty),
-            Loc.Instance.Format(notice.TextKey, notice.Server ?? Loc.Instance["notify.server.none"], notice.Subscription ?? string.Empty, reason),
-            [.. notice.Actions.Select(a => new NoticeButton(a, Loc.Instance["notify.action." + char.ToLowerInvariant(a.ToString()[0]) + a.ToString()[1..]]))]);
+            proxyFailure ? Loc.Instance["externalProxy.failure"]
+                : Loc.Instance.Format(notice.TextKey, external ? Loc.Instance["externalProxy.title"] : notice.Server ?? Loc.Instance["notify.server.none"],
+                    notice.Subscription ?? string.Empty, reason),
+            [.. notice.Actions.Select(a => new NoticeButton(a, Loc.Instance[external && a is NoticeAction.ChangeServer or NoticeAction.ChooseServer or NoticeAction.ChooseOther
+                ? "externalProxy.configure" : "notify.action." + char.ToLowerInvariant(a.ToString()[0]) + a.ToString()[1..]]))]);
     }
 
     /// <summary>Код ошибки словами и сам код: «Адрес сервера не найден · PGC-NET-002».</summary>

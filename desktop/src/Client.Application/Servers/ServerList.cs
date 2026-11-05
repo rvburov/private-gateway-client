@@ -54,6 +54,8 @@ public static class ServerList
         ProxyProtocol.WireGuard,
         ProxyProtocol.Trojan,
         ProxyProtocol.Shadowsocks,
+        ProxyProtocol.Http,
+        ProxyProtocol.Socks5,
     ];
 
     /// <summary>Протоколы, которые есть среди серверов, — только они попадают в фильтр.</summary>

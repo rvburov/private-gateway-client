@@ -10,6 +10,7 @@ using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
@@ -38,6 +39,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     private readonly IUrlLauncher _launcher;
     private readonly CheckFocus _checkFocus;
     private readonly DispatcherTimer _clock;
+    private readonly ConnectionTarget _target;
 
     public MainPageViewModel(
         ProtectionViewModel protection,
@@ -51,10 +53,12 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         SettingsService settings,
         OverlayViewModel overlay,
         IUrlLauncher launcher,
-        CheckFocus checkFocus)
+        CheckFocus checkFocus,
+        ConnectionTarget target)
     {
         ArgumentNullException.ThrowIfNull(protection);
         _checkFocus = checkFocus;
+        _target = target;
         Protection = protection;
         _gateway = gateway;
         _catalog = catalog;
@@ -95,7 +99,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             }
         };
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
-        settings.Changed += (_, _) => Refresh();
+        target.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
+        settings.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
         _clock = new DispatcherTimer(TimeSpan.FromSeconds(1), DispatcherPriority.Background,
             (_, _) =>
@@ -136,7 +141,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             ConnectionState.Blocked or ConnectionState.Error => "status.offline.stopped",
             _ => "status.offline.active",
         }]
-        : Status.IsProxy ? Loc.Instance["status.proxy.sub"]
+        : Status.IsProxy ? Loc.Instance["externalProxy.active.scope"]
         : Status.State switch
         {
             ConnectionState.Connecting when IsPreflight => Loc.Instance["status.preflight.sub"],
@@ -173,6 +178,20 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         get
         {
             var notice = ConnectionProblem;
+            if (Status.ErrorCode == ErrorCodes.ExternalProxyUnsupported)
+            {
+                return Loc.Instance["externalProxy.update"];
+            }
+
+            if (Status.ErrorCode == ErrorCodes.ProxyDnsUnsupported)
+            {
+                return Loc.Instance["externalProxy.configureDns"];
+            }
+
+            if (IsExternalProxy && notice?.Actions.Contains(NoticeAction.CheckNetwork) != true)
+            {
+                return Loc.Instance["externalProxy.problem.action"];
+            }
             return Loc.Instance[notice?.Actions.Contains(NoticeAction.CheckNetwork) == true ? "notify.action.checkNetwork" : notice?.Kind switch
             {
                 NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked => "notify.action.changeServer",
@@ -181,8 +200,10 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    public string ConnectionProblemPage => ConnectionProblem?.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked
-        ? Pages.Servers : Pages.Check;
+    public string ConnectionProblemPage => Status.ErrorCode == ErrorCodes.ExternalProxyUnsupported ? Pages.About
+        : Status.ErrorCode == ErrorCodes.ProxyDnsUnsupported ? Pages.Protection
+        : IsExternalProxy && ConnectionProblem?.Actions.Contains(NoticeAction.CheckNetwork) != true ? Pages.Settings
+        : ConnectionProblem?.Kind is NoticeKind.ConnectionFailed or NoticeKind.ServerDown or NoticeKind.NetworkBlocked ? Pages.Servers : Pages.Check;
 
     private Notice? ConnectionProblem => NotificationPolicy.Current(Status, Server?.Name, _time.GetUtcNow());
 
@@ -398,6 +419,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused || Status.HasExitIpLeak
         ? Loc.Instance["ip.real.visible"]
+        : Status.Mode == ConnectionMode.Proxy ? Loc.Instance["externalProxy.ip.real"]
         : Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning
             ? Loc.Instance["ip.real.unverified"]
             : Loc.Instance["ip.real.hidden"];
@@ -407,15 +429,28 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     public string MaskHint => IsIpMasked ? Loc.Instance["ip.show"] : Loc.Instance["ip.hide"];
 
     /// <summary>Сервер карточки — тот, через который идет защита, а не только выбранный (<see cref="ServerFacts.InUse"/>).</summary>
-    private ServerProfile? Server => ServerFacts.InUse(_catalog, Status);
+    private ServerProfile? Server => _target.InUse(Status);
+
+    public bool IsExternalProxy => _target.IsExternalProxy;
+
+    public bool IsVpnTarget => !IsExternalProxy;
+
+    public string ServerActionText => Loc.Instance[IsExternalProxy ? "externalProxy.configure" : "server.switch"];
 
     public bool HasServer => Server is not null;
 
-    public string ServerTitle => Server is { } s
+    public string ServerTitle => Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
+        ? Loc.Instance["externalProxy.title"] : Server is { } s
         ? (string.IsNullOrEmpty(s.CountryCode) ? s.Name : s.CountryCode + " · " + s.Name)
-        : Loc.Instance["server.none"];
+        : Status is { Mode: ConnectionMode.Proxy, State: not ConnectionState.Off } ? Loc.Instance["externalProxy.title"]
+        : Loc.Instance[IsExternalProxy ? "externalProxy.unconfigured" : "server.none"];
 
-    public string ServerMeta => Server is { } s ? Describe(s, withPort: true) : Loc.Instance["server.addFirst"];
+    public string ServerMeta => Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
+        ? Loc.Instance.Format("externalProxy.meta", ExternalProtocol(external),
+            external.Host.Contains(':', StringComparison.Ordinal) ? "[" + external.Host + "]" : external.Host, external.Port)
+        : Server is { } s ? Describe(s, withPort: true)
+        : Status is { Mode: ConnectionMode.Proxy, State: not ConnectionState.Off } ? Loc.Instance["externalProxy.active.unknown"]
+        : Loc.Instance[IsExternalProxy ? "externalProxy.route" : "server.addFirst"];
 
     [ObservableProperty]
     public partial bool IsSwitchOpen { get; set; }
@@ -425,6 +460,11 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     {
         get
         {
+            if (IsExternalProxy)
+            {
+                return [];
+            }
+
             var current = Server;
             var others = _catalog.Servers
                 .Where(s => s.Id != current?.Id && s.LatencyMs is not null)
@@ -488,7 +528,17 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     }
 
     [RelayCommand]
-    private void ToggleSwitch() => IsSwitchOpen = !IsSwitchOpen;
+    private void ToggleSwitch()
+    {
+        if (IsExternalProxy)
+        {
+            IsSwitchOpen = false;
+            _navigator.Navigate(Pages.Settings);
+            return;
+        }
+
+        IsSwitchOpen = !IsSwitchOpen;
+    }
 
     [RelayCommand]
     private async Task ChooseServerAsync(string serverId)
@@ -501,7 +551,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     private void AllServers()
     {
         IsSwitchOpen = false;
-        _navigator.Navigate(Pages.Servers);
+        _navigator.Navigate(IsExternalProxy ? Pages.Settings : Pages.Servers);
     }
 
     /// <summary>Идет обновление серверов — крутится стрелка «Обновить серверы».</summary>
@@ -515,7 +565,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     [RelayCommand(AllowConcurrentExecutions = true)]
     private async Task RefreshServersAsync()
     {
-        if (IsRefreshing)
+        if (IsExternalProxy || IsRefreshing)
         {
             return;
         }
@@ -554,7 +604,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             case ConnectionState.Reconnecting:
                 await CaptivePortalFlow.RunAsync(_gateway, _controller, _overlay, _launcher, _navigator, _toast).ConfigureAwait(true);
                 break;
-            case ConnectionState.Blocked or ConnectionState.Error when _catalog.Selected is { } server:
+            case ConnectionState.Blocked or ConnectionState.Error when _target.Selected is { } server:
                 await _gateway.ConnectAsync(server).ConfigureAwait(true);
                 break;
         }
@@ -562,10 +612,18 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public void Dispose() => _clock.Stop();
 
+    private static string ExternalProtocol(ServerProfile server) => server.Protocol == ProxyProtocol.Socks5 ? "SOCKS5"
+        : server.Security == TransportSecurity.Tls ? "HTTPS" : "HTTP";
+
     private string StateKey => Protection.StateKey;
 
     private void Refresh()
     {
+        if (IsExternalProxy)
+        {
+            IsSwitchOpen = false;
+        }
+
         var protection = Status.Protection;
         var paused = Status.IsPaused;
         // Одинаковое Warning бывает у раздельного режима, измеренного открытого IP и потери firewall.

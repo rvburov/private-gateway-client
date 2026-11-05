@@ -311,15 +311,17 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
             }
 
             var now = time.GetUtcNow();
-            blocked = server.LatencyMs is null;
-            if (server.LatencyMs is { } latency)
+            var forward = mode == ConnectionMode.Proxy && ForwardProxyRules.IsForwardProxy(server.Protocol);
+            var latency = forward ? 42 : server.LatencyMs;
+            blocked = latency is null;
+            if (latency is { } measured)
             {
                 _status = _status.MoveTo(ConnectionState.Connected, now) with
                 {
                     Protection = ProtectionChecks.For(ConnectionState.Connected, mode) with { CheckedAt = now },
-                    Traffic = new TrafficStats(latency, 18.9, 4.0),
+                    Traffic = new TrafficStats(measured, 18.9, 4.0),
                     // Выход — сам сервер: в демо-данных адреса серверов — IP из диапазонов документации.
-                    Exit = new ExitInfo(server.Host, server.City, "дата-центр", "AS64500", _status.Exit.DirectIp),
+                    Exit = new ExitInfo(forward ? "203.0.113.9" : server.Host, server.City, "дата-центр", "AS64500", _status.Exit.DirectIp),
                 };
             }
             else if (mode == ConnectionMode.Proxy)

@@ -14,22 +14,24 @@ namespace PrivateGateway.Client.UI.ViewModels;
 /// «Настройки» по макету (доска 4): раздел «Основные» сохраняется сразу при каждом изменении,
 /// «Для опытных» — ссылки на подробные экраны.
 /// </summary>
-public sealed partial class SettingsPageViewModel : ObservableObject
+public sealed partial class SettingsPageViewModel : ObservableObject, IDisposable
 {
     private readonly SettingsService _settings;
     private readonly INavigator _navigator;
     private readonly IGatewayClient _gateway;
     private readonly OverlayViewModel _overlay;
 
-    public SettingsPageViewModel(SettingsService settings, INavigator navigator, IGatewayClient gateway, OverlayViewModel overlay)
+    public SettingsPageViewModel(SettingsService settings, INavigator navigator, IGatewayClient gateway, OverlayViewModel overlay,
+        IExternalProxyStore externalProxy)
     {
         ArgumentNullException.ThrowIfNull(settings);
         _settings = settings;
         _navigator = navigator;
         _gateway = gateway;
         _overlay = overlay;
-        settings.Changed += (_, _) => OnPropertyChanged(string.Empty);
-        Loc.Instance.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
+        ExternalProxy = new ExternalProxyEditorViewModel(settings, externalProxy, navigator);
+        settings.Changed += OnSettingsChanged;
+        Loc.Instance.LanguageChanged += OnLanguageChanged;
         Advanced =
         [
             new("protection", "Icon.Adv.Protection", this),
@@ -67,6 +69,9 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     /// </summary>
     public bool IsProxyMode => S.Mode == ConnectionMode.Proxy;
 
+    /// <summary>Отдельная конфигурация внешнего прокси: не меняет выбранный VPN-сервер и локальный порт ядра.</summary>
+    public ExternalProxyEditorViewModel ExternalProxy { get; }
+
     [RelayCommand]
     private async Task ChooseProxyAsync()
     {
@@ -77,8 +82,8 @@ public sealed partial class SettingsPageViewModel : ObservableObject
     }
 
     public string ModeNote => IsProxyMode
-        ? Loc.Instance["settings.mode.proxy.note"]
-        : Loc.Instance.Format("settings.mode.vpn.note", OsName);
+        ? Loc.Instance["externalProxy.mode.note"]
+        : Loc.Instance.Format("externalProxy.vpn.note", OsName);
 
     // ── Переключатели ────────────────────────────────────────────────────────
 
@@ -209,6 +214,18 @@ public sealed partial class SettingsPageViewModel : ObservableObject
 
         Set(s => s with { Language = language });
         Loc.Instance.SetLanguage(language);
+    }
+
+    private void OnSettingsChanged(object? sender, AppSettings settings) => Dispatcher.UIThread.Post(() => OnPropertyChanged(string.Empty));
+
+    private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(string.Empty);
+
+    public void Dispose()
+    {
+        _settings.Changed -= OnSettingsChanged;
+        Loc.Instance.LanguageChanged -= OnLanguageChanged;
+        ExternalProxy.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

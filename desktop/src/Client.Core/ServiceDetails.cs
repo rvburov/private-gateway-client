@@ -11,6 +11,9 @@ public sealed record ServiceDetails(string Version, string ApiVersion, IReadOnly
     /// <summary>Служба предоставляет отдельный HTTP/SOCKS-вход вместе с TUN.</summary>
     public bool SupportsVpnProxy => Capabilities?.Contains("vpn-local-proxy-v1", StringComparer.Ordinal) == true;
 
+    /// <summary>Служба принимает внешние HTTP/HTTPS/SOCKS5-прокси с отдельными учетными данными.</summary>
+    public bool SupportsExternalProxy => Capabilities?.Contains("external-proxy-v1", StringComparer.Ordinal) == true;
+
     /// <summary>Ядро по имени (xray, sing-box), если оно есть и запускается.</summary>
     public CoreDetails? Core(string name) => Cores.FirstOrDefault(c => c.Name == name && c.Available);
 }

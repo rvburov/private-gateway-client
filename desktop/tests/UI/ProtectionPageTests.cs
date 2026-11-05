@@ -188,6 +188,7 @@ public sealed class ProtectionPageTests : WindowHarness
         var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User));
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
         var page = Navigate(shell);
@@ -253,12 +254,15 @@ public sealed class ProtectionPageTests : WindowHarness
     public async Task Wifi_sign_in_after_a_proxy_error_pauses_the_dead_system_proxy()
     {
         // Режим прокси, сервер не ответил: «Ошибка», а системный прокси ведет на остановленное ядро — сеть для браузера закрыта.
-        var (_, shell) = Open();
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time,
+            () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Simulated)
+        {
+            GrantsPause = true,
+            Outcome = c => (c with { ErrorCode = ErrorCodes.ServerNotResponding }).MoveTo(ConnectionState.Error, Time.GetUtcNow()),
+        });
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
-        var dead = Service<IServerCatalog>().Servers.Single(s => s.Name == "Турция 01");
-        var connect = Service<ConnectionController>().ConnectToAsync(dead.Id);
-        Time.Advance(SimulatedGatewayClient.ConnectDelay);
-        await connect;
+        Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
         var page = Navigate(shell);
 

@@ -10,6 +10,12 @@ public enum ProxyProtocol
     Hysteria2,
     Tuic,
     WireGuard,
+
+    /// <summary>Обычный HTTP CONNECT; HTTPS — тот же протокол с TLS до прокси.</summary>
+    Http,
+
+    /// <summary>Внешний SOCKS5-прокси.</summary>
+    Socks5,
 }
 
 /// <summary>Защита транспорта поверх протокола.</summary>

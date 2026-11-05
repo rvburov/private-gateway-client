@@ -63,6 +63,30 @@ public sealed class WelcomePageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Fresh_installed_service_without_vpn_servers_can_open_the_existing_mode_settings()
+    {
+        var (window, shell, page) = OpenWelcome(ServiceKind.Installed);
+        Press(window, "StartButton");
+        page.IsAddServer.ShouldBeTrue();
+        Service<IServerStore>().Servers.ShouldBeEmpty();
+
+        Press(window, "OpenConnectionSettings");
+        shell.CurrentKey.ShouldBe(Pages.Settings);
+        var settings = shell.CurrentPage.ShouldBeOfType<SettingsPageViewModel>();
+        settings.IsVpnMode.ShouldBeTrue("открытие настроек само не меняет режим подключения");
+        settings.ChooseProxyCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Vpn);
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        settings.IsProxyMode.ShouldBeTrue();
+        Find<Control>(window, "ExternalProxyForm").IsVisible.ShouldBeTrue();
+        Service<IServerStore>().Servers.ShouldBeEmpty("для ввода внешнего прокси VPS не нужен");
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Off);
+    }
+
+    [AvaloniaFact]
     public void Start_with_own_servers_goes_straight_home()
     {
         var (window, shell, _) = OpenWelcome();
@@ -133,8 +157,8 @@ public sealed class WelcomePageTests : WindowHarness
         Press(window, "WithoutService");
         Dispatcher.UIThread.RunJobs();
 
-        Find<Grid>(window, "AddServerStep").IsVisible.ShouldBeTrue();
-        Find<TextBlock>(window, "ServiceReady").IsVisible.ShouldBeFalse();
+        Service<ShellViewModel>().CurrentKey.ShouldBe(Pages.Settings, "внешнему прокси не нужен первый VPN-сервер");
+        Service<ShellViewModel>().CurrentPage.ShouldBeOfType<SettingsPageViewModel>().IsProxyMode.ShouldBeTrue();
         Service<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Proxy, "без службы — только режим прокси");
     }
 

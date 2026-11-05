@@ -1,7 +1,9 @@
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
@@ -64,6 +66,7 @@ public sealed class VpnPathPageTests : WindowHarness
     public async Task Proxy_mode_keeps_the_route_and_dns()
     {
         var (_, shell) = Open();
+        Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         await Connect(shell);
         shell.NavigateCommand.Execute(Pages.VpnPath);

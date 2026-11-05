@@ -29,20 +29,20 @@ public sealed partial class ProblemPageViewModel : ObservableObject
 {
     private readonly IGatewayClient _gateway;
     private readonly SettingsService _settings;
-    private readonly IServerCatalog _catalog;
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
     private readonly IServiceInstaller _installer;
     private readonly IUserProxySettings _userProxy;
+    private readonly ConnectionTarget _target;
 
-    public ProblemPageViewModel(IGatewayClient gateway, SettingsService settings, IServerCatalog catalog, INavigator navigator, ToastViewModel toast,
-        IServiceInstaller installer, IUserProxySettings userProxy)
+    public ProblemPageViewModel(IGatewayClient gateway, SettingsService settings, INavigator navigator, ToastViewModel toast,
+        IServiceInstaller installer, IUserProxySettings userProxy, ConnectionTarget target)
     {
         _userProxy = userProxy;
+        _target = target;
         _gateway = gateway;
         _installer = installer;
         _settings = settings;
-        _catalog = catalog;
         _navigator = navigator;
         _toast = toast;
         Code = gateway.Status.ErrorCode is ErrorCodes.AdminRequired or ErrorCodes.OtherVpn ? gateway.Status.ErrorCode : ErrorCodes.ServiceNotRunning;
@@ -172,7 +172,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         try
         {
             result = await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
-            if (result == ServiceInstallResult.Installed && _catalog.Selected is { } server)
+            if (result == ServiceInstallResult.Installed && _target.Selected is { } server)
             {
                 await _gateway.ConnectAsync(server).ConfigureAwait(true);
             }
@@ -191,7 +191,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         }, ToastViewModel.LongDuration);
         if (result == ServiceInstallResult.Installed)
         {
-            _navigator.Navigate(_catalog.Selected is null ? Pages.Add : Pages.Home);
+            _navigator.Navigate(_target.Selected is null ? _target.IsExternalProxy ? Pages.Settings : Pages.Add : Pages.Home);
         }
     }
 
@@ -203,9 +203,9 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     private async Task UseProxyAsync()
     {
         _settings.Update(s => s with { Mode = ConnectionMode.Proxy });
-        if (_catalog.Selected is not { } server)
+        if (_target.Selected is not { } server)
         {
-            _navigator.Navigate(Pages.Add);
+            _navigator.Navigate(Pages.Settings);
             return;
         }
 
@@ -236,9 +236,9 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanWork))]
     private async Task RetryAsync()
     {
-        if (_catalog.Selected is not { } server)
+        if (_target.Selected is not { } server)
         {
-            _navigator.Navigate(Pages.Add);
+            _navigator.Navigate(_target.IsExternalProxy ? Pages.Settings : Pages.Add);
             return;
         }
 

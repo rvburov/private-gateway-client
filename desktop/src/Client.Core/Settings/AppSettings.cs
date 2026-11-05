@@ -65,6 +65,9 @@ public sealed record AppSettings(
     /// <summary>«Подключение и ядро» (доска 6).</summary>
     public ConnectionSettings Connection { get; init; } = ConnectionSettings.Default;
 
+    /// <summary>Внешний прокси режима «Только прокси»: отдельный выход, не локальный порт и не выбор VPN-сервера.</summary>
+    public ExternalProxySettings ExternalProxy { get; init; } = ExternalProxySettings.Default;
+
     /// <summary>«Маршрутизация» (доска 13).</summary>
     public RoutingSettings Routing { get; init; } = RoutingSettings.Default;
 

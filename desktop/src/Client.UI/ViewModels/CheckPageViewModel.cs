@@ -10,6 +10,7 @@ using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Logging;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
@@ -34,7 +35,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     private const string Hidden = "***";
 
     private readonly IGatewayClient _gateway;
-    private readonly IServerCatalog _catalog;
+    private readonly ConnectionTarget _target;
     private readonly IFileSaveService _files;
     private readonly ToastViewModel _toast;
     private readonly TimeProvider _time;
@@ -55,17 +56,18 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     public CheckPageViewModel(
         ProtectionViewModel protection,
         IGatewayClient gateway,
-        IServerCatalog catalog,
         IFileSaveService files,
         ToastViewModel toast,
         TimeProvider time,
         INavigator navigator,
         IMachineSettings machine,
         SettingsService settings,
-        CheckFocus focus)
+        CheckFocus focus,
+        ConnectionTarget target)
     {
         ArgumentNullException.ThrowIfNull(focus);
         _focus = focus;
+        _target = target;
         focus.DelayRequested += OnDelayRequested;
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(gateway);
@@ -74,7 +76,6 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         _settings = settings;
         Protection = protection;
         _gateway = gateway;
-        _catalog = catalog;
         _files = files;
         _toast = toast;
         _time = time;
@@ -296,7 +297,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     private bool CanMeasureDelay() => !IsMeasuringDelay;
 
     /// <summary>Рукопожатие сервера в объяснении: REALITY, TLS или протокола.</summary>
-    private string Handshake => _catalog.Servers.FirstOrDefault(s => s.Id == Protection.Status.ServerId)?.Security switch
+    private string Handshake => _target.InUse(Protection.Status)?.Security switch
     {
         TransportSecurity.Reality => "REALITY",
         TransportSecurity.Tls => "TLS",
@@ -518,6 +519,20 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         lines.AddRange(DnsReport.Lines(_settings.Current, Protection.Status, _gateway.Service,
             _report?[DiagnosticCheck.Dns], Rows.FirstOrDefault(row => row.Check == DiagnosticCheck.Dns)));
         lines.Add(string.Empty);
+        if (_settings.Current.Mode == ConnectionMode.Proxy || ExternalProxySettings.IsExternalId(Protection.Status.ServerId))
+        {
+            var external = _settings.Current.ExternalProxy;
+            lines.Add(loc["externalProxy.report.title"]);
+            lines.Add("  " + loc.Format("externalProxy.report.protocol", external.Protocol.ToString().ToUpperInvariant()));
+            lines.Add("  " + loc.Format("externalProxy.report.auth", loc[external.Authentication == ProxyAuthentication.UserPassword
+                ? "externalProxy.auth.password" : "externalProxy.auth.none"]));
+            // Ни учетных данных, ни сырого адреса: даже ошибочно восстановленная строка может содержать секрет.
+            lines.Add("  " + loc.Format("externalProxy.report.endpoint", loc["diag.report.addressLabel"], external.Port));
+            lines.Add("  " + loc.Format("externalProxy.report.local", _settings.Current.Connection.ProxyPort));
+            lines.Add("  " + loc["externalProxy.scope"]);
+            lines.Add(string.Empty);
+        }
+
         lines.Add(loc["diag.report.checks"]);
         lines.AddRange(Rows.Select(r => $"  [{r.ChipText}] {r.Title} — {WithoutRealIp(r)}"));
         lines.Add(string.Empty);
@@ -708,7 +723,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
             case DiagnosticCheck.ExitIp when state == CheckState.Off:
                 return Loc.Instance.Format("diag.exit_ip.off", status.Exit.DirectIp ?? Hidden);
             case DiagnosticCheck.Core when state == CheckState.Ok:
-                var server = _catalog.Servers.FirstOrDefault(s => s.Id == status.ServerId);
+                var server = _target.InUse(status);
                 return Loc.Instance.Format("diag.core.ok", ServerFacts.CoreName(server?.Protocol ?? ProxyProtocol.Vless));
             case DiagnosticCheck.KillSwitch when state == CheckState.Ok:
                 return Loc.Instance.Format("diag.kill_switch.ok", FirewallName);

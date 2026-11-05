@@ -7,6 +7,7 @@ using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
 
@@ -27,15 +28,18 @@ public sealed partial class TrayViewModel : ObservableObject
     private readonly ConnectionController _controller;
     private readonly IGatewayClient _gateway;
     private readonly ShellViewModel _navigator;
+    private readonly ConnectionTarget _target;
 
     public TrayViewModel(
-        ProtectionViewModel protection, IServerCatalog catalog, ConnectionController controller, IGatewayClient gateway, ShellViewModel shell)
+        ProtectionViewModel protection, IServerCatalog catalog, ConnectionController controller, IGatewayClient gateway, ShellViewModel shell,
+        ConnectionTarget target)
     {
         _protection = protection;
         _catalog = catalog;
         _controller = controller;
         _gateway = gateway;
         _navigator = shell;
+        _target = target;
         protection.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName is nameof(ProtectionViewModel.Status) or "")
@@ -45,6 +49,7 @@ public sealed partial class TrayViewModel : ObservableObject
         };
         // Смену языка щит передает тем же PropertyChanged("") — отдельная подписка не нужна.
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
+        target.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
         Rebuild();
     }
 
@@ -65,7 +70,7 @@ public sealed partial class TrayViewModel : ObservableObject
     public string ToolTip => Loc.Instance["app.title"] + " · " + _protection.Title;
 
     /// <summary>Строка состояния вверху меню: «IP скрыт · NL · Нидерланды 01 · 42 мс» — сервер, через который идет защита.</summary>
-    public string Header => ServerFacts.InUse(_catalog, _protection.Status) is { } server
+    public string Header => _target.InUse(_protection.Status) is { } server
         ? string.Join(" · ", _protection.Title, ServerLine(server, _protection.Status))
         : _protection.Title;
 
@@ -106,6 +111,11 @@ public sealed partial class TrayViewModel : ObservableObject
     /// <summary>Быстрая смена: выбранный, потом избранные, потом недавние — не больше <see cref="QuickServers"/>.</summary>
     public IReadOnlyList<ServerProfile> Quick()
     {
+        if (_target.IsExternalProxy)
+        {
+            return [];
+        }
+
         var servers = _catalog.Servers;
         return
         [
@@ -127,21 +137,29 @@ public sealed partial class TrayViewModel : ObservableObject
         // «Сменить сервер» — списком внутри меню, без подменю вбок (решение пользователя 2026-11-03, DECISIONS.md, п. 14):
         // подпись группы, быстрые серверы с отметкой выбранного и «Все серверы…».
         Menu.Items.Add(new NativeMenuItemSeparator());
-        Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.switch"]) { IsEnabled = false });
-        var selected = _catalog.Selected?.Id;
-        foreach (var server in Quick())
+        if (_target.IsExternalProxy)
         {
-            Menu.Items.Add(new NativeMenuItem(ServerLine(server, null))
-            {
-                ToggleType = MenuItemToggleType.Radio,
-                IsChecked = server.Id == selected,
-                Command = SwitchServerCommand,
-                CommandParameter = server.Id,
-            });
+            Menu.Items.Add(new NativeMenuItem(Loc.Instance["externalProxy.power.configure"])
+            { Command = OpenCommand, CommandParameter = Pages.Settings });
         }
+        else
+        {
+            Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.switch"]) { IsEnabled = false });
+            var selected = _catalog.Selected?.Id;
+            foreach (var server in Quick())
+            {
+                Menu.Items.Add(new NativeMenuItem(ServerLine(server, null))
+                {
+                    ToggleType = MenuItemToggleType.Radio,
+                    IsChecked = server.Id == selected,
+                    Command = SwitchServerCommand,
+                    CommandParameter = server.Id,
+                });
+            }
 
-        Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.allServers"]) { Command = OpenCommand, CommandParameter = Pages.Servers });
-        Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.refresh"]) { Command = RefreshServersCommand });
+            Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.allServers"]) { Command = OpenCommand, CommandParameter = Pages.Servers });
+            Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.refresh"]) { Command = RefreshServersCommand });
+        }
         Menu.Items.Add(new NativeMenuItemSeparator());
         Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.open"]) { Command = ShowWindowCommand });
         Menu.Items.Add(new NativeMenuItem(Loc.Instance["tray.check"]) { Command = OpenCommand, CommandParameter = Pages.Check });
@@ -167,7 +185,7 @@ public sealed partial class TrayViewModel : ObservableObject
         return string.Join(" · ", new[]
         {
             server.CountryCode,
-            server.Name,
+            ExternalProxySettings.IsExternalId(server.Id) ? Loc.Instance["externalProxy.title"] : server.Name,
             latency is { } ms ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"] : null,
         }.Where(s => !string.IsNullOrEmpty(s)));
     }

@@ -74,7 +74,8 @@ public sealed record ServerCredentials(
     string? Password = null,
     string? ObfsPassword = null,
     string? PrivateKey = null,
-    string? PresharedKey = null)
+    string? PresharedKey = null,
+    string? Username = null)
 {
     public override string ToString() => "ServerCredentials { *** }";
 }

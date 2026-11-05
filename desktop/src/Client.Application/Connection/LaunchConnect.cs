@@ -12,14 +12,16 @@ namespace PrivateGateway.Client.Application.Connection;
 /// подключение возвращает защиту с теми же настройками. До конца первого запуска — ничего; на паузе для входа в
 /// Wi-Fi — тоже: пользователь входит в сеть, и перезапуск окна паузу не обрывает.
 /// </summary>
-public sealed class LaunchConnect(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time)
+public sealed class LaunchConnect(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time,
+    ConnectionTarget? target = null)
 {
     /// <summary>Сколько ждать первого состояния от службы.</summary>
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(3);
 
     public async Task RunAsync(CancellationToken cancellationToken = default)
     {
-        if (settings.Current is not { ConnectOnLaunch: true, OnboardingDone: true } || catalog.Selected is not { } server)
+        if (settings.Current is not { ConnectOnLaunch: true, OnboardingDone: true }
+            || (target is null ? catalog.Selected : target.Selected) is null)
         {
             return;
         }
@@ -29,7 +31,10 @@ public sealed class LaunchConnect(SettingsService settings, IGatewayClient gatew
             await FirstStatusAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        if (gateway.Status is { IsPaused: false, State: ConnectionState.Off or ConnectionState.Blocked or ConnectionState.Error })
+        // Пока ждали службу, режим или редакция прокси могли измениться: брать цель только теперь.
+        var server = target is null ? catalog.Selected : target.Selected;
+        if (settings.Current is { ConnectOnLaunch: true, OnboardingDone: true } && server is not null
+            && gateway.Status is { IsPaused: false, State: ConnectionState.Off or ConnectionState.Blocked or ConnectionState.Error })
         {
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }

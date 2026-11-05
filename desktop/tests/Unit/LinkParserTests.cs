@@ -86,7 +86,9 @@ public class LinkParserTests
             .ToList();
 
         var protocols = expected.Select(e => (string?)e["protocol"]).Where(p => p is not null).ToHashSet();
-        protocols.ShouldBe(Enum.GetValues<ProxyProtocol>().Select(Name), ignoreOrder: true);
+        LinkParser.SupportedProtocols.ShouldBe(Enum.GetValues<ProxyProtocol>().Where(p => !ForwardProxyRules.IsForwardProxy(p)), ignoreOrder: true,
+            "новый VPN-протокол обязан получить разбор и общий эталон; только ручные внешние прокси исключены из ссылок");
+        protocols.ShouldBe(LinkParser.SupportedProtocols.Select(Name), ignoreOrder: true);
         var errors = expected.Select(e => (string?)e["error"]).Where(e => e is not null).ToHashSet();
         errors.ShouldBe(
             typeof(ImportErrors).GetFields().Select(f => (string)f.GetValue(null)!),

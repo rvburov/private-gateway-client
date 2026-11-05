@@ -1,5 +1,6 @@
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.Application.Connection;
@@ -8,8 +9,10 @@ namespace PrivateGateway.Client.Application.Connection;
 /// Кнопка-щит и смена сервера. Решает, что значит нажатие в текущем состоянии, и не дает
 /// подключиться без выбранного сервера.
 /// </summary>
-public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog catalog)
+public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog catalog, ConnectionTarget? target = null)
 {
+    private ServerProfile? Selected => target is null ? catalog.Selected : target.Selected;
+
     /// <summary>Сколько длится пауза для входа в Wi-Fi (доска 5: «на 5 минут»).</summary>
     public static readonly TimeSpan CaptivePause = TimeSpan.FromMinutes(5);
 
@@ -28,7 +31,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
 
         if (WantsConnect(gateway.Status))
         {
-            var server = catalog.Selected;
+            var server = Selected;
             if (server is null)
             {
                 return false;
@@ -54,7 +57,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
         }
 
         catalog.Choose(serverId);
-        if (!WantsConnect(gateway.Status) && catalog.Selected is { } server)
+        if (target?.IsExternalProxy != true && !WantsConnect(gateway.Status) && catalog.Selected is { } server)
         {
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }
@@ -66,6 +69,12 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     /// </summary>
     public async Task ConnectToAsync(string serverId, CancellationToken cancellationToken = default)
     {
+        if (catalog.Servers.All(server => server.Id != serverId))
+        {
+            return;
+        }
+
+        target?.UseVpnMode();
         var status = gateway.Status;
         if (status.ServerId == serverId && !WantsConnect(status))
         {

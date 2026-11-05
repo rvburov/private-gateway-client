@@ -20,6 +20,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     private readonly Dictionary<string, Func<object>> _pages;
     private readonly Dictionary<string, object> _created = [];
     private readonly IGatewayClient _gateway;
+    private readonly SettingsService _settings;
     private bool _disposed;
 
     public ShellViewModel(
@@ -57,6 +58,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
         ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
         _gateway = gateway;
+        _settings = settings;
         Protection = protection;
         Toast = toast;
         Overlay = overlay;
@@ -90,6 +92,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
         Navigate(settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome);
 
         gateway.StatusChanged += OnStatusChanged;
+        protection.ConfigureTargetRequested += OnConfigureTarget;
     }
 
     public void Dispose()
@@ -101,6 +104,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
 
         _disposed = true;
         _gateway.StatusChanged -= OnStatusChanged;
+        Protection.ConfigureTargetRequested -= OnConfigureTarget;
         // Страницы созданы фабриками ActivatorUtilities, поэтому контейнер ими не владеет: завершает их окно.
         foreach (var page in _created.Values.OfType<IDisposable>().Distinct())
         {
@@ -118,6 +122,9 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
             ShowProblem(status);
         }
     });
+
+    private void OnConfigureTarget(object? sender, EventArgs e) => Navigate(
+        _settings.Current.Mode == ConnectionMode.Proxy ? Pages.Settings : Pages.Add);
 
     public ProtectionViewModel Protection { get; }
 

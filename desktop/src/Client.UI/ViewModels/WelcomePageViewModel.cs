@@ -194,6 +194,10 @@ public sealed partial class WelcomePageViewModel : ObservableObject
     [RelayCommand]
     private void AddServer() => _navigator.Navigate(Pages.Add);
 
+    /// <summary>Внешний прокси настраивается существующим выбором режима; первый VPN-сервер для этого не нужен.</summary>
+    [RelayCommand]
+    private void OpenSettings() => _navigator.Navigate(Pages.Settings);
+
     [RelayCommand]
     private void TryDemo() => _navigator.Navigate(Pages.Home);
 
@@ -202,6 +206,12 @@ public sealed partial class WelcomePageViewModel : ObservableObject
     private void Next()
     {
         IsService = false;
+        if (_settings.Current.Mode == ConnectionMode.Proxy)
+        {
+            _navigator.Navigate(Pages.Settings);
+            return;
+        }
+
         if (_servers.Servers.Count > 0)
         {
             _navigator.Navigate(Pages.Home);

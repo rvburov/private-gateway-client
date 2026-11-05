@@ -429,7 +429,7 @@
     <div class="dialog is-open" id="prx-dlg" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
           <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
           <div class="t-status t-wrap">Перейти в режим прокси?</div>
-          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</p>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)"><span data-os="phone">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</span><span data-os="desktop" data-ui-text="externalProxy.dialog.text">После перехода блок при обрыве работать не будет. Прокси охватывает только использующие его приложения. Текущее подключение сменится на внешний прокси; если он еще не настроен, подключение завершится. VPN-сервер и его настройки сохранятся.</span></p>
           <div class="dialog-actions stack">
             <button class="btn-primary" data-close>Оставить VPN</button>
             <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>

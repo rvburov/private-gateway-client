@@ -124,7 +124,7 @@
   спрашивает подтверждение. «Поделиться» доступна только у сервера, добавленного ссылкой или из списка серверов (у демо-серверов ключа нет):
   QR-код со ссылкой, предупреждение о ключе и «Копировать ссылку»; «Скрыть QR» возвращает сведения. Щелчок мимо листа и крестик
   закрывают его, «⋯» в списке открывает снова. У выбранного сервера метка и кнопка внизу идут за щитом: защита включена —
-  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления.</p>
+  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления. Отдельный пример десктопа в режиме внешнего прокси показывает «Выбран для VPN» и «Подключить VPN»: выбор сохранен, но этот VPN-сервер сейчас не используется.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Карточка · сервер в работе">
@@ -238,6 +238,130 @@
           <div class="sv-row">
             <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping">нет</span></button>
             <button class="btn-icon sv-more" data-open="sc-card-1" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+        </div>
+        <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>
+        </div>
+        <div class="pg-page-end"></div>
+      </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+
+  <!-- Внешний прокси не делает выбранный VPN-сервер активным. Подключение карточки явно возвращает режим VPN. -->
+  <section class="pg-screen" data-state="proxy" data-os="desktop" data-caption="Режим прокси · выбранный VPN-сервер">
+    <!-- Карточка сервера: лист снизу поверх «Серверов» -->
+    <div class="scrim is-open" data-close></div>
+    <div class="sheet sc-sheet is-open" id="sc-card-1-proxy" aria-label="Нидерланды 01">
+      <div class="grabber"></div>
+      <div class="sc-head">
+        <span class="sc-cc">NL</span>
+        <div class="sc-title">
+          <span class="t-status pg-ellipsis">Нидерланды 01</span>
+          <span class="t-caption">Амстердам · из списка серверов «Основной список»</span>
+        </div>
+        <button class="btn-icon fav sc-fav on " aria-label="Убрать из избранного"><i data-icon="Star" data-stroke="1.8" data-size="22"></i></button>
+        <button class="btn-icon sc-close" data-close aria-label="Закрыть"><i data-icon="Close" data-stroke="2.2" data-size="20"></i></button>
+      </div>
+      <div class="sc-mid">
+        <div class="sc-chips">
+          <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked paused"><span class="sc-dot"></span>Активен</span>
+          <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
+          <span class="sc-chip selected" data-show-state="proxy"><span class="sc-dot"></span><span data-ui-text="externalProxy.vpn.selected">Выбран для VPN</span></span>
+          <span class="sc-chip"><span class="sc-ping ">42 мс</span></span>
+        </div>
+          <div class="sc-inset sc-details" data-page="details">
+            <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.24:443</span></div>
+            <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">VLESS</span></div>
+            <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
+            <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">REALITY</span></div>
+            <div class="sc-detail"><span class="t-small">Ядро</span><span class="sc-val">Xray-core</span></div>
+          </div>
+          <div class="sc-inset pg-stack" style="padding: 14px; gap: 10px" data-page="rename" hidden>
+            <span class="t-overline">Название</span>
+            <input class="input" type="text" value="Нидерланды 01" maxlength="64" aria-label="Название">
+            <div class="pg-row">
+              <button class="btn-secondary" data-goto="details">Отмена</button>
+              <span class="pg-grow"></span>
+              <button class="btn-primary" data-goto="details">Сохранить</button>
+            </div>
+          </div>
+      </div>
+      <div class="sc-bottom">
+          <div class="sc-inuse" data-show-state="connected connecting reconnecting blocked paused"><i data-icon="Chip.Ok" data-stroke="2.4" data-size="18"></i>Используется сейчас</div>
+          <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="off error strict">Подключиться</button>
+          <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="proxy" data-ui-text="externalProxy.vpn.connect">Подключить VPN</button>
+        <div class="sc-tiles">
+            <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
+            <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или из списка серверов: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
+            <button class="btn-secondary danger sc-tile" data-open="sc-delete-1-proxy"><i data-icon="Trash" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Удалить</span></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Удаление: диалог поверх листа -->
+    <div class="dialog sc-dialog" id="sc-delete-1-proxy">
+      <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap">Удалить сервер «Нидерланды 01»?</div>
+      <div class="t-small t-wrap sc-dialog-text" data-show-state="connected connecting reconnecting blocked paused">Защита сейчас идет через этот сервер: VPN отключится, и другой сервер вы выберете сами.</div>
+      <div class="t-small t-wrap sc-dialog-text" data-show-state="off error strict proxy">Сервер пропадет из списка.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary danger sc-dialog-main" data-close data-toast="Сервер удален">Удалить</button>
+        <button class="btn-secondary sc-dialog-second" data-close data-open="sc-card-1-proxy">Отмена</button>
+      </div>
+    </div>
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Серверы обновлены · пинг проверен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="1.9" data-size="20"></i></button>
+        <button class="btn-icon" style="margin-left: 2px" data-nav="03-import.html" aria-label="Добавить ссылку или список серверов"><i data-icon="Plus" data-stroke="2" data-size="22"></i></button>
+      </div>
+      <div class="sv-top">
+        <div class="search sv-search">
+          <i data-icon="Search" data-stroke="2" data-size="17"></i>
+          <input class="pg-grow" type="text" placeholder="Страна, город, IP" aria-label="Поиск сервера">
+          <button class="btn-icon sv-filter" data-nav="02-servers.html" aria-label="Фильтр и сортировка"><i data-icon="Filter" data-stroke="1.9" data-size="19"></i></button>
+        </div>
+        <div class="tabs sv-tabs" aria-label="Списки серверов">
+          <button class="tab on">Все · 7</button>
+          <button class="tab">Избранные</button>
+          <button class="tab">Недавние</button>
+        </div>
+      </div>
+      <div class="sv-scroll">
+        <div class="pg-pad pg-stack pg-gap-6" style="padding-top: 12px">
+        <div class="sv-group-head">
+          <span class="t-overline pg-grow pg-ellipsis">Основной список · 7</span>
+          <span class="t-caption">обновлено 15:10</span>
+        </div>
+        <div class="segments sv-list">
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">FI</span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">203.0.113.57 · Hysteria2</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">38 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере Финляндия 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment on"><span class="sv-cc">NL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">42 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере Нидерланды 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">DE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 02</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · XHTTP</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">51 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере Германия 02"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">SE</span><span class="sv-text"><span class="t-strong pg-ellipsis">Швеция 01</span><span class="sv-addr pg-ellipsis">192.0.2.33 · WireGuard</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">57 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере Швеция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">PL</span><span class="sv-text"><span class="t-strong pg-ellipsis">Польша 03</span><span class="sv-addr pg-ellipsis">192.0.2.88 · TUIC v5</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency good sv-ping">64 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере Польша 03"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">US</span><span class="sv-text"><span class="t-strong pg-ellipsis">США 01</span><span class="sv-addr pg-ellipsis">198.51.100.201 · Trojan · WS</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency none sv-ping">148 мс</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере США 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
+          </div>
+          <div class="sv-row">
+            <button class="segment"><span class="sv-cc">TR</span><span class="sv-text"><span class="t-strong pg-ellipsis">Турция 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · gRPC</span></span><span class="sv-tag" data-show-state="connected proxy">активен</span><span class="sv-tag" data-show-state="off connecting reconnecting blocked strict error paused">выбран</span><span class="latency bad sv-ping">нет</span></button>
+            <button class="btn-icon sv-more" data-open="sc-card-1-proxy" aria-label="Подробнее о сервере Турция 01"><i data-icon="More" data-stroke="3" data-size="18"></i></button>
           </div>
         </div>
         <div class="t-caption sv-note">Сервер меняется только вашим нажатием. Если он недоступен, интернет блокируется и клиент ждет вашего решения.</div>

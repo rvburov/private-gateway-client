@@ -28,6 +28,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
     private readonly OverlayViewModel _overlay;
+    private readonly ConnectionTarget _target;
     private readonly HashSet<ProxyProtocol> _hidden = [];
 
     public ServersPageViewModel(
@@ -38,7 +39,8 @@ public sealed partial class ServersPageViewModel : ObservableObject
         ConnectionController controller,
         INavigator navigator,
         ToastViewModel toast,
-        OverlayViewModel overlay)
+        OverlayViewModel overlay,
+        ConnectionTarget target)
     {
         ArgumentNullException.ThrowIfNull(protection);
         ArgumentNullException.ThrowIfNull(catalog);
@@ -50,6 +52,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
         _navigator = navigator;
         _toast = toast;
         _overlay = overlay;
+        _target = target;
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Rebuild);
         Loc.Instance.LanguageChanged += (_, _) => Rebuild();
         Protection.PropertyChanged += (_, e) =>
@@ -222,7 +225,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
     private void OpenCard(string serverId)
     {
         IsFilterOpen = false;
-        _overlay.ShowSheet(new ServerCardViewModel(serverId, _catalog, _store, _clipboard, Protection, _controller, _overlay, _toast));
+        _overlay.ShowSheet(new ServerCardViewModel(serverId, _catalog, _store, _clipboard, Protection, _controller, _overlay, _toast, _target));
     }
 
     private void PickTab(bool picked, ServerListTab tab)
@@ -253,7 +256,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
         SyncProtocols(servers);
         var query = new ServerListQuery(SearchText, Tab, _hidden, Sort);
         var selectedId = _catalog.Selected?.Id;
-        var connected = Protection.Status.State == ConnectionState.Connected;
+        var connected = Protection.Status.State == ConnectionState.Connected && Protection.Status.ServerId == selectedId;
         Groups = ServerList.Build(servers, _catalog.Subscriptions, query, Loc.Instance.Culture)
             .Select(g => new ServerGroupViewModel(
                 GroupTitle(g),
@@ -300,7 +303,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
         server.CountryCode,
         server.Name,
         server.Host + " · " + ServerFacts.Summary(server),
-        isSelected ? Loc.Instance[connected ? "servers.tag.active" : "servers.tag.selected"] : null,
+        isSelected ? Loc.Instance[connected ? "servers.tag.active" : _target.IsExternalProxy ? "externalProxy.vpn.selected" : "servers.tag.selected"] : null,
         server.LatencyMs is { } ms
             ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"]
             : Loc.Instance["servers.latency.none"],

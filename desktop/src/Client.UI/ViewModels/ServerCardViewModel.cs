@@ -29,6 +29,7 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     private readonly ConnectionController _controller;
     private readonly OverlayViewModel _overlay;
     private readonly ToastViewModel _toast;
+    private readonly ConnectionTarget? _target;
     private ServerProfile _server;
 
     // Ссылка с ключом — только пока открыт QR-код.
@@ -42,7 +43,8 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
         ProtectionViewModel protection,
         ConnectionController controller,
         OverlayViewModel overlay,
-        ToastViewModel toast)
+        ToastViewModel toast,
+        ConnectionTarget? target = null)
     {
         ArgumentNullException.ThrowIfNull(catalog);
         ArgumentNullException.ThrowIfNull(protection);
@@ -54,10 +56,15 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
         _controller = controller;
         _overlay = overlay;
         _toast = toast;
+        _target = target;
         _server = catalog.Servers.First(s => s.Id == serverId);
         catalog.Changed += OnCatalogChanged;
         protection.PropertyChanged += OnProtectionChanged;
         Loc.Instance.LanguageChanged += OnLanguageChanged;
+        if (target is not null)
+        {
+            target.Changed += OnLanguageChanged;
+        }
     }
 
     public string Id => _server.Id;
@@ -93,12 +100,14 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     private bool IsSelected => _catalog.Selected?.Id == Id;
 
     /// <summary>Защита идет через этот сервер или подключается к нему.</summary>
-    public bool IsInUse => IsSelected && !ConnectionController.WantsConnect(_protection.Status);
+    public bool IsInUse => _protection.Status.ServerId == Id && !ConnectionController.WantsConnect(_protection.Status);
+
+    public string ConnectText => Loc.Instance[_target?.IsExternalProxy == true ? "externalProxy.vpn.connect" : "card.connect"];
 
     /// <summary>«Активен» — защита через него; «Выбран» — к нему подключит кнопка-щит.</summary>
     public string? StatusText => IsInUse
         ? Loc.Instance["card.status.active"]
-        : IsSelected ? Loc.Instance["card.status.selected"] : null;
+        : IsSelected ? Loc.Instance[_target?.IsExternalProxy == true ? "externalProxy.vpn.selected" : "card.status.selected"] : null;
 
     public bool HasStatus => StatusText is not null;
 
@@ -252,6 +261,10 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
 
     public void Dispose()
     {
+        if (_target is not null)
+        {
+            _target.Changed -= OnLanguageChanged;
+        }
         HideShare();
         _catalog.Changed -= OnCatalogChanged;
         _protection.PropertyChanged -= OnProtectionChanged;

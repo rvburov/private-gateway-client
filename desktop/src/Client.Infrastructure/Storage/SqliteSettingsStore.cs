@@ -91,6 +91,22 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             Json<BypassApp>("routing.apps").Where(a => !string.IsNullOrWhiteSpace(a.Path)).ToList(),
             [.. Json<DomainRule>("routing.rules").Select(r => SitePattern.Normalize(r.Pattern) is { } pattern ? r with { Pattern = pattern } : null)
                 .OfType<DomainRule>()]);
+        var proxyDefaults = d.ExternalProxy;
+        var externalProxy = new ExternalProxySettings(
+            Enum("external_proxy.protocol", proxyDefaults.Protocol),
+            values.GetValueOrDefault("external_proxy.host", proxyDefaults.Host),
+            Int("external_proxy.port", 1, 65535) ?? (values.ContainsKey("external_proxy.port") ? 0 : proxyDefaults.Port),
+            Enum("external_proxy.authentication", values.ContainsKey("external_proxy.authentication") ? ProxyAuthentication.UserPassword : proxyDefaults.Authentication),
+            values.GetValueOrDefault("external_proxy.credentials_key"),
+            values.TryGetValue("external_proxy.revision", out var revisionText)
+                && long.TryParse(revisionText, NumberStyles.None, CultureInfo.InvariantCulture, out var revision) ? revision : 0);
+        // Поврежденный протокол/способ авторизации не становится другим действующим выходом по умолчанию.
+        var invalidProxyChoice = values.TryGetValue("external_proxy.protocol", out var proxyProtocol)
+            && (!System.Enum.TryParse<ExternalProxyProtocol>(proxyProtocol, out var parsedProtocol) || !System.Enum.IsDefined(parsedProtocol))
+            || values.TryGetValue("external_proxy.authentication", out var proxyAuthentication)
+            && (!System.Enum.TryParse<ProxyAuthentication>(proxyAuthentication, out var parsedAuthentication) || !System.Enum.IsDefined(parsedAuthentication));
+        externalProxy = !invalidProxyChoice && externalProxy.Normalize() is { } normalizedProxy ? normalizedProxy
+            : externalProxy with { Host = string.Empty, CredentialsKey = ExternalProxySettings.IsCredentialsKey(externalProxy.CredentialsKey) ? externalProxy.CredentialsKey : null };
         return new AppSettings(
             Enum("mode", d.Mode),
             Bool("kill_switch", d.KillSwitch),
@@ -105,6 +121,7 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
         {
             Protection = protection,
             Connection = core,
+            ExternalProxy = externalProxy,
             Routing = routing,
             UpdateChannel = Enum("update_channel", d.UpdateChannel),
             CheckUpdates = Bool("check_updates", d.CheckUpdates),
@@ -196,6 +213,12 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             ["connection.proxy_allow_lan"] = Text(settings.Connection.ProxyAllowLan),
             ["connection.system_proxy"] = Text(settings.Connection.SystemProxy),
             ["connection.vpn_system_proxy"] = Text(settings.Connection.VpnSystemProxy),
+            ["external_proxy.protocol"] = settings.ExternalProxy.Protocol.ToString(),
+            ["external_proxy.host"] = settings.ExternalProxy.Host,
+            ["external_proxy.port"] = settings.ExternalProxy.Port.ToString(CultureInfo.InvariantCulture),
+            ["external_proxy.authentication"] = settings.ExternalProxy.Authentication.ToString(),
+            ["external_proxy.credentials_key"] = settings.ExternalProxy.CredentialsKey ?? string.Empty,
+            ["external_proxy.revision"] = settings.ExternalProxy.Revision.ToString(CultureInfo.InvariantCulture),
             ["routing.mode"] = settings.Routing.Mode.ToString(),
             ["routing.apps"] = JsonSerializer.Serialize(settings.Routing.Apps, JsonOptions),
             ["routing.rules"] = JsonSerializer.Serialize(settings.Routing.Rules, JsonOptions),

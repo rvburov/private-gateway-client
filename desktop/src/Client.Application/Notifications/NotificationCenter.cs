@@ -30,6 +30,7 @@ public sealed class NotificationCenter : IDisposable
     private readonly INoticeWindow _window;
     private readonly INoticeTexts _texts;
     private readonly TimeProvider _time;
+    private readonly ConnectionTarget? _target;
     private readonly Dictionary<(NoticeKind Kind, string Subject), DateTimeOffset> _shown = [];
     private SynchronizationContext? _context;
     private ConnectionStatus? _last;
@@ -46,7 +47,8 @@ public sealed class NotificationCenter : IDisposable
         ISystemNotifier notifier,
         INoticeWindow window,
         INoticeTexts texts,
-        TimeProvider time)
+        TimeProvider time,
+        ConnectionTarget? target = null)
     {
         _gateway = gateway;
         _catalog = catalog;
@@ -56,6 +58,7 @@ public sealed class NotificationCenter : IDisposable
         _window = window;
         _texts = texts;
         _time = time;
+        _target = target;
     }
 
     /// <summary>Нажали уведомление ОС или его кнопку — приходит в контексте окна.</summary>
@@ -162,8 +165,8 @@ public sealed class NotificationCenter : IDisposable
         Deliver(notice);
     }
 
-    private string? ServerName(ConnectionStatus status) =>
-        _catalog.Servers.FirstOrDefault(s => s.Id == status.ServerId)?.Name ?? _catalog.Selected?.Name;
+    private string? ServerName(ConnectionStatus status) => _target is not null ? _target.InUse(status)?.Name
+        : _catalog.Servers.FirstOrDefault(s => s.Id == status.ServerId)?.Name ?? _catalog.Selected?.Name;
 
     private void ServiceStillGone(Notice notice)
     {

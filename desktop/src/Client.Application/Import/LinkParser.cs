@@ -50,6 +50,13 @@ public sealed record LinkResult(ServerDefinition? Server, string? Error)
 /// </summary>
 public static class LinkParser
 {
+    /// <summary>Протоколы ссылок и общих эталонов; внешний HTTP/SOCKS5 задается отдельной ручной формой.</summary>
+    public static IReadOnlySet<ProxyProtocol> SupportedProtocols { get; } = new HashSet<ProxyProtocol>
+    {
+        ProxyProtocol.Vless, ProxyProtocol.Vmess, ProxyProtocol.Trojan, ProxyProtocol.Shadowsocks,
+        ProxyProtocol.Hysteria2, ProxyProtocol.Tuic, ProxyProtocol.WireGuard,
+    };
+
     internal static readonly HashSet<string> ShadowsocksMethods = new(StringComparer.Ordinal)
     {
         "aes-128-gcm", "aes-256-gcm", "chacha20-ietf-poly1305", "xchacha20-ietf-poly1305",

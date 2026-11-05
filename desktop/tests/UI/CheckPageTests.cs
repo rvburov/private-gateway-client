@@ -10,6 +10,7 @@ using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Platform;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Localization;
@@ -228,6 +229,7 @@ public sealed class CheckPageTests : WindowHarness
         });
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.Protection.Status is { State: ConnectionState.Connected, Mode: ConnectionMode.Proxy });
         service!.Push(s => s with { Exit = ExitInfo.Unknown with { Ip = "203.0.113.24" } });

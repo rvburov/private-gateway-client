@@ -292,6 +292,7 @@
               <StackPanel Spacing="3" Margin="0,0,14,0">
                 <TextBlock Classes="strong" Text="{l:L core.port.title}" />
                 <TextBlock Classes="caption" Text="{l:L core.port.text}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L externalProxy.local.endpointNote}" TextWrapping="Wrap" />
               </StackPanel>
               <Border Grid.Column="1" Classes="value" VerticalAlignment="Center">
                 <TextBlock x:Name="ProxyPort" Text="{Binding ProxyPort}" />

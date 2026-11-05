@@ -17,6 +17,7 @@ public static class ApplicationModule
     public static IServiceCollection AddClientApplication(this IServiceCollection services)
     {
         ArgumentNullException.ThrowIfNull(services);
+        services.AddSingleton<ConnectionTarget>();
         services.AddSingleton<ConnectionController>();
         services.AddSingleton<SettingsService>();
         services.AddSingleton<SubscriptionUpdater>();

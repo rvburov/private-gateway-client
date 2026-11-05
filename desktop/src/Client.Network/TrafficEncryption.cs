@@ -16,6 +16,9 @@ public static class TrafficEncryption
         ProxyProtocol.Trojan or ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic => true,
         // VLESS собственного шифрования не имеет.
         ProxyProtocol.Vless => security != TransportSecurity.None,
+        // HTTP CONNECT шифрует путь до прокси только при HTTPS; SOCKS5 собственного шифрования не имеет.
+        ProxyProtocol.Http => security == TransportSecurity.Tls,
+        ProxyProtocol.Socks5 => false,
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, "Неизвестный протокол"),
     };
 }

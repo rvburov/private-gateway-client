@@ -394,6 +394,8 @@ enum Protocol {
   PROTOCOL_HYSTERIA2 = 5;
   PROTOCOL_TUIC = 6;
   PROTOCOL_WIREGUARD = 7;
+  PROTOCOL_HTTP = 8;
+  PROTOCOL_SOCKS5 = 9;
 }
 
 message ServerEndpoint {
@@ -413,7 +415,16 @@ message ServerEndpoint {
     Hysteria2Settings hysteria2 = 14;
     TuicSettings tuic = 15;
     WireGuardSettings wireguard = 16;
+    ForwardProxySettings http = 17;
+    ForwardProxySettings socks5 = 18;
   }
+}
+
+// Учетные данные внешнего прокси; оба поля пусты — авторизация не требуется.
+// Хранятся только в защищенном хранилище ОС и передаются ядру через защищенный IPC.
+message ForwardProxySettings {
+  string username = 1;
+  string password = 2;
 }
 
 enum TransportType {

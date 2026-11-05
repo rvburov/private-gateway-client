@@ -41,6 +41,7 @@ public static class InfrastructureModule
         services.AddSingleton(typeof(ILogger<>), typeof(Logger<>));
         services.AddSingleton<SqliteDatabase>();
         services.AddSingleton<ISettingsStore, SqliteSettingsStore>();
+        services.AddSingleton<IExternalProxyStore, ExternalProxyStore>();
         services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IUserProxySettings>(_ => UserProxySettings.ForCurrentUser());
         services.AddSingleton<IMachineSettings>(sp =>
@@ -50,12 +51,14 @@ public static class InfrastructureModule
             : new GatewayHost(ServiceLocator.ForThisWindow(sp.GetRequiredService<TimeProvider>()),
                 address => new ServiceGatewayClient(IpcChannel.Create(address.Endpoint, address.System),
                     address.System ? ServiceKind.Installed : ServiceKind.User,
-                    id => sp.GetRequiredService<SqliteServerCatalog>().Definition(id),
+                    id => Definition(sp, id),
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
-                    sp.GetRequiredService<IUserProxySettings>().Read, manageUserProxy: OperatingSystem.IsWindows()),
+                    sp.GetRequiredService<IUserProxySettings>().Read, manageUserProxy: OperatingSystem.IsWindows(),
+                    selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))
-                    || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>()));
+                    || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>(),
+                selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected));
         services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
             sp.GetRequiredService<IGatewayClient>(), !demo && OperatingSystem.IsWindows() ? new CurrentUserWindowsProxy() : null,
             new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
@@ -77,5 +80,23 @@ public static class InfrastructureModule
                 url => HttpSubscriptionDownloader.IsForeignProxy(HttpClient.DefaultProxy, url,
                     sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)));
         return services;
+    }
+
+    private static Core.Servers.ServerDefinition? Definition(IServiceProvider services, string id)
+    {
+        if (!Core.Settings.ExternalProxySettings.IsExternalId(id))
+        {
+            return services.GetRequiredService<SqliteServerCatalog>().Definition(id);
+        }
+
+        var settings = services.GetRequiredService<SettingsService>();
+        var before = settings.Current.ExternalProxy;
+        if (before.ToProfile()?.Id != id)
+        {
+            return null;
+        }
+
+        var definition = services.GetRequiredService<IExternalProxyStore>().Definition();
+        return settings.Current.ExternalProxy == before ? definition : null;
     }
 }

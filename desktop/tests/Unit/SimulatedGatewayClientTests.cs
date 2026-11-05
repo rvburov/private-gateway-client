@@ -14,6 +14,34 @@ public class SimulatedGatewayClientTests
     private static readonly ServerProfile Server =
         new("nl", "Нидерланды 01", "NL", ProxyProtocol.Vless, TransportSecurity.Reality, "203.0.113.24", 443, "tcp", 42);
 
+    [Theory]
+    [InlineData(ProxyProtocol.Http)]
+    [InlineData(ProxyProtocol.Socks5)]
+    public async Task A_new_external_profile_can_be_previewed_without_claiming_its_real_exit_or_latency(ProxyProtocol protocol)
+    {
+        var time = new FakeTimeProvider();
+        var settings = new SettingsService(new DemoSettings());
+        settings.Update(s => s with { Mode = ConnectionMode.Proxy });
+        using var gateway = new SimulatedGatewayClient(time, settings);
+        var profile = Server with { Id = "external-proxy:1", Protocol = protocol, Security = TransportSecurity.None, LatencyMs = null };
+
+        var pending = gateway.ConnectAsync(profile, TestContext.Current.CancellationToken);
+        time.Advance(SimulatedGatewayClient.ConnectDelay);
+        await pending;
+
+        gateway.Service.ShouldBe(ServiceKind.Simulated);
+        gateway.Status.State.ShouldBe(ConnectionState.Connected);
+        gateway.Status.Exit.Ip.ShouldBe("203.0.113.9", "демо не выдает введенный адрес прокси за измеренный выход");
+        gateway.Status.Traffic.LatencyMs.ShouldBe(42);
+    }
+
+    private sealed class DemoSettings : ISettingsStore
+    {
+        private AppSettings _current = AppSettings.Default;
+        public AppSettings Load() => _current;
+        public void Save(AppSettings settings) => _current = settings;
+    }
+
     /// <summary>Демо-служба — из той же сборки, что окно: «О программе» в демо-режиме не зовет ее обновлять.</summary>
     [Fact]
     public async Task Demo_service_is_the_same_build_as_the_window()

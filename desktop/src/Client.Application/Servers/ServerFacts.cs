@@ -38,6 +38,8 @@ public static class ServerFacts
         ProxyProtocol.Hysteria2 => "Hysteria2",
         ProxyProtocol.Tuic => "TUIC",
         ProxyProtocol.WireGuard => "WireGuard",
+        ProxyProtocol.Http => "HTTP",
+        ProxyProtocol.Socks5 => "SOCKS5",
         _ => throw new ArgumentOutOfRangeException(nameof(protocol), protocol, null),
     };
 
@@ -81,7 +83,8 @@ public static class ServerFacts
     {
         ArgumentNullException.ThrowIfNull(server);
         // TUIC поддерживается только пятой версии (ядро sing-box) — версию пишем, как в макете.
-        var name = server.Protocol == ProxyProtocol.Tuic ? "TUIC v5" : ProtocolName(server.Protocol);
+        var name = server.Protocol == ProxyProtocol.Http && server.Security == TransportSecurity.Tls ? "HTTPS"
+            : server.Protocol == ProxyProtocol.Tuic ? "TUIC v5" : ProtocolName(server.Protocol);
         var detail = server.Security == TransportSecurity.Reality
             ? SecurityName(server.Security)
             : TransportName(server.Transport)

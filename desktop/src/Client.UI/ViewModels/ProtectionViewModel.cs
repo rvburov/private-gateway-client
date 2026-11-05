@@ -17,26 +17,28 @@ namespace PrivateGateway.Client.UI.ViewModels;
 public sealed partial class ProtectionViewModel : ObservableObject
 {
     private readonly IGatewayClient _gateway;
-    private readonly IServerCatalog _catalog;
     private readonly ConnectionController _controller;
     private readonly OverlayViewModel _overlay;
     private readonly SettingsService _settings;
+    private readonly ConnectionTarget _target;
 
     public ProtectionViewModel(
         IGatewayClient gateway,
         IServerCatalog catalog,
         ConnectionController controller,
         OverlayViewModel overlay,
-        SettingsService settings)
+        SettingsService settings,
+        ConnectionTarget target)
     {
         _gateway = gateway;
-        _catalog = catalog;
         _controller = controller;
         _overlay = overlay;
         _settings = settings;
+        _target = target;
         Status = gateway.Status;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => Status = status);
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
+        target.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
     }
 
@@ -57,14 +59,17 @@ public sealed partial class ProtectionViewModel : ObservableObject
     /// <summary>Заголовок состояния: «IP скрыт», «Прокси включен», «Защита на паузе».</summary>
     public string Title => HasNetworkProblem ? Loc.Instance["status.offline.title"] : Loc.Instance[$"status.{StateKey}.title"];
 
-    public bool HasServer => _catalog.Selected is not null;
+    public bool HasServer => _target.Selected is not null;
+
+    /// <summary>Неготовая цель подключения открывает ее настройки, а не подставляет сервер другого режима.</summary>
+    public event EventHandler? ConfigureTargetRequested;
 
     /// <summary>Подпись под кнопкой.</summary>
     public string Label => HasNetworkProblem ? Loc.Instance["power.label.offline"]
         : Status.HasExitIpLeak ? Loc.Instance["power.label.leak"]
         : Status.IsPaused ? Loc.Instance["power.label.paused"]
         : Status.IsProxy ? Loc.Instance["power.label.proxy"]
-        : !HasServer && Status.State == ConnectionState.Off ? Loc.Instance["power.label.noServer"]
+        : !HasServer && Status.State == ConnectionState.Off ? Loc.Instance[_target.IsExternalProxy ? "externalProxy.power.label" : "power.label.noServer"]
         : Loc.Instance["power.label." + Status.State.ToString().ToLowerInvariant()];
 
     /// <summary>Знак внутри щита: ключ иконки Icon.Mark.*.</summary>
@@ -80,7 +85,8 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public bool IsBusy => !HasNetworkProblem && Status.State is ConnectionState.Connecting or ConnectionState.Reconnecting;
 
     /// <summary>Что сделает нажатие — подсказка и имя для чтения с экрана. На паузе строгой «Блокировки» — подключить.</summary>
-    public string ActionText => Status is { IsPaused: true, StrictBlock: false } ? Loc.Instance["power.action.resume"]
+    public string ActionText => !HasServer && _target.IsExternalProxy && ConnectionController.WantsConnect(Status) ? Loc.Instance["externalProxy.power.configure"]
+        : Status is { IsPaused: true, StrictBlock: false } ? Loc.Instance["power.action.resume"]
         : ConnectionController.WantsConnect(Status) ? Loc.Instance["power.action.connect"]
         : Loc.Instance["power.action.disconnect"];
 
@@ -108,7 +114,13 @@ public sealed partial class ProtectionViewModel : ObservableObject
             }
         }
 
-        return await _controller.ToggleAsync().ConfigureAwait(true);
+        var connected = await _controller.ToggleAsync().ConfigureAwait(true);
+        if (!connected)
+        {
+            ConfigureTargetRequested?.Invoke(this, EventArgs.Empty);
+        }
+
+        return connected;
     }
 
     private void Refresh() => OnPropertyChanged(string.Empty);

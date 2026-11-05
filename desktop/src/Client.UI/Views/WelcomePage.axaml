@@ -181,6 +181,8 @@
                      Foreground="{StaticResource PgBrush.Text.Secondary}" />
           <Button x:Name="AddFirstServer" Classes="primary" Height="50" HorizontalAlignment="Stretch" Margin="0,6,0,0"
                   Command="{Binding AddServerCommand}" Content="{l:L welcome.add.button}" />
+          <Button x:Name="OpenConnectionSettings" Classes="link" HorizontalAlignment="Center"
+                  Command="{Binding OpenSettingsCommand}" Content="{l:L externalProxy.onboarding.settings}" />
           <Button x:Name="TryDemo" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding CanTryDemo}"
                   Command="{Binding TryDemoCommand}" Content="{l:L welcome.demo}" />
         </StackPanel>

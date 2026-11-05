@@ -26,6 +26,8 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     private readonly List<JournalEntry> _journal = [];
     private readonly SemaphoreSlim _finding = new(1, 1);
     private readonly IUserProxySettings? _userProxy;
+    private readonly Func<ServerProfile?>? _selectedTarget;
+    private long _connectIntent;
     private IGatewayClient? _service;
     private ConnectionStatus _status;
 
@@ -35,14 +37,16 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// <param name="time">Часы программы.</param>
     /// <param name="staleProxy">Остался ли снимок системного прокси после сбоя службы пользователя.</param>
     /// <param name="userProxy">Системный прокси пользователя — для проверки «Другие VPN и прокси»; null — не смотреть.</param>
+    /// <param name="selectedTarget">Текущая цель режима: не подключать старую цель после ожидания запуска службы.</param>
     public GatewayHost(ServiceLocator locator, Func<ServiceAddress, IGatewayClient> attach, Func<AppSettings> settings, TimeProvider time,
-        Func<bool>? staleProxy = null, IUserProxySettings? userProxy = null)
+        Func<bool>? staleProxy = null, IUserProxySettings? userProxy = null, Func<ServerProfile?>? selectedTarget = null)
     {
         _locator = locator;
         _attach = attach;
         _settings = settings;
         _time = time;
         _userProxy = userProxy;
+        _selectedTarget = selectedTarget;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
         if (locator.Find() is { } address)
         {
@@ -98,32 +102,45 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         }
     }
 
-    public async Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default)
+    public Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default) =>
+        ConnectCurrentAsync(server, false, cancellationToken);
+
+    public Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default) =>
+        ConnectCurrentAsync(server, true, cancellationToken);
+
+    private async Task ConnectCurrentAsync(ServerProfile server, bool despiteOtherVpn, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(server);
-        if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)
+        var settings = _settings();
+        var intent = Interlocked.Increment(ref _connectIntent);
+        var service = await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false);
+        cancellationToken.ThrowIfCancellationRequested();
+        if (intent != Volatile.Read(ref _connectIntent) || ProtectionSync.Affects(settings, _settings())
+            || (_selectedTarget is not null && _selectedTarget()?.Id != server.Id))
         {
-            await service.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
             return;
         }
 
-        Missing(server.Id, _settings().Mode);
-    }
-
-    public async Task ConnectDespiteOtherVpnAsync(ServerProfile server, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(server);
-        if (await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false) is { } service)
+        if (service is not null)
         {
-            await service.ConnectDespiteOtherVpnAsync(server, cancellationToken).ConfigureAwait(false);
+            if (despiteOtherVpn)
+            {
+                await service.ConnectDespiteOtherVpnAsync(server, cancellationToken).ConfigureAwait(false);
+            }
+            else
+            {
+                await service.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
+            }
+
             return;
         }
 
-        Missing(server.Id, _settings().Mode);
+        Missing(server.Id, settings.Mode);
     }
 
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
+        Interlocked.Increment(ref _connectIntent);
         if (Current is { } service)
         {
             await service.DisconnectAsync(cancellationToken).ConfigureAwait(false);

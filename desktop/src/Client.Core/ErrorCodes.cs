@@ -33,6 +33,12 @@ public static class ErrorCodes
     /// <summary>Служба уже работает с этой папкой состояния — вторая копия не запускается.</summary>
     public const string ServiceRunning = "PGC-SVC-009";
 
+    /// <summary>Найденная служба старее поддержки прямого внешнего прокси.</summary>
+    public const string ExternalProxyUnsupported = "PGC-SVC-010";
+
+    /// <summary>Выбранный UDP DNS недоступен через HTTP/HTTPS-прокси; нужен DNS по HTTPS.</summary>
+    public const string ProxyDnsUnsupported = "PGC-SVC-011";
+
     /// <summary>Сервер не отвечает.</summary>
     public const string ServerNotResponding = "PGC-NET-001";
 

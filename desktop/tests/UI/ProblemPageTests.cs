@@ -292,7 +292,7 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public void Proxy_without_servers_goes_to_adding_one()
+    public void Proxy_without_a_configured_endpoint_goes_to_settings()
     {
         var (window, shell) = Open(gateway: sp => new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, Time),
             _ => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.User),
@@ -303,7 +303,7 @@ public sealed class ProblemPageTests : WindowHarness
         Press(window, "UseProxy");
         Dispatcher.UIThread.RunJobs();
 
-        shell.CurrentKey.ShouldBe(Pages.Add, "подключаться не к чему — сначала добавить сервер");
+        shell.CurrentKey.ShouldBe(Pages.Settings, "внешний прокси настраивается отдельно от VPN-каталога");
         _launcher.Started.ShouldBe(0);
     }
 
@@ -336,6 +336,8 @@ public sealed class ProblemPageTests : WindowHarness
                 Settings, Time);
         });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        // Обе независимые цели стенда готовы: переключение режима не подставляет VPN-сервер в прокси.
+        Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
         Dispatcher.UIThread.RunJobs();
         return (window, shell);
     }

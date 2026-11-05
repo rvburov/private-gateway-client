@@ -16,12 +16,12 @@ public sealed class NoticeActions(
     NoticeWindow window,
     ShellViewModel shell,
     IGatewayClient gateway,
-    IServerCatalog catalog,
     ConnectionController controller,
     OverlayViewModel overlay,
     IUrlLauncher launcher,
     ToastViewModel toast,
-    UpdateWatcher updates)
+    UpdateWatcher updates,
+    ConnectionTarget target)
 {
     /// <summary>Слушать нажатия и включить уведомления.</summary>
     public void Start()
@@ -41,10 +41,10 @@ public sealed class NoticeActions(
                 return;
             case NoticeAction.Later:
                 return;
-            case NoticeAction.Retry when catalog.Selected is { } server:
+            case NoticeAction.Retry when target.Selected is { } server:
                 await gateway.ConnectAsync(server).ConfigureAwait(true);
                 return;
-            case NoticeAction.Connect when catalog.Selected is not null:
+            case NoticeAction.Connect when target.Selected is not null:
                 if (ConnectionController.WantsConnect(gateway.Status))
                 {
                     await controller.ToggleAsync().ConfigureAwait(true);
@@ -58,7 +58,7 @@ public sealed class NoticeActions(
         {
             // Без выбранного сервера «Повторить» и «Подключить» — выбрать его.
             case NoticeAction.ChangeServer or NoticeAction.ChooseServer or NoticeAction.ChooseOther or NoticeAction.Retry or NoticeAction.Connect:
-                shell.Navigate(Pages.Servers);
+                shell.Navigate(target.IsExternalProxy ? Pages.Settings : Pages.Servers);
                 break;
             case NoticeAction.OpenSubscriptions:
                 shell.Navigate(Pages.Profiles);
@@ -78,8 +78,11 @@ public sealed class NoticeActions(
                 break;
 
             // Служба пропала: окно ищет ее заново (службу пользователя запускает само), не нашло — экран «Служба не запущена».
-            case NoticeAction.Restart when catalog.Selected is { } server:
+            case NoticeAction.Restart when target.Selected is { } server:
                 await gateway.ConnectAsync(server).ConfigureAwait(true);
+                break;
+            case NoticeAction.Restart when target.IsExternalProxy:
+                shell.Navigate(Pages.Settings);
                 break;
         }
     }

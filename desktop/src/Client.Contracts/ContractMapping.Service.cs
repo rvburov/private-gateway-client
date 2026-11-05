@@ -164,6 +164,12 @@ public static partial class ContractMapping
                 wireguard.Addresses.AddRange(o.Addresses ?? []);
                 endpoint.Wireguard = wireguard;
                 break;
+            case ProxyProtocol.Http:
+                endpoint.Http = new V1.ForwardProxySettings { Username = c.Username ?? string.Empty, Password = c.Password ?? string.Empty };
+                break;
+            case ProxyProtocol.Socks5:
+                endpoint.Socks5 = new V1.ForwardProxySettings { Username = c.Username ?? string.Empty, Password = c.Password ?? string.Empty };
+                break;
         }
 
         return endpoint;
@@ -183,6 +189,8 @@ public static partial class ContractMapping
             ProxyProtocol.Shadowsocks => V1.ServerEndpoint.SettingsOneofCase.Shadowsocks,
             ProxyProtocol.Hysteria2 => V1.ServerEndpoint.SettingsOneofCase.Hysteria2,
             ProxyProtocol.Tuic => V1.ServerEndpoint.SettingsOneofCase.Tuic,
+            ProxyProtocol.Http => V1.ServerEndpoint.SettingsOneofCase.Http,
+            ProxyProtocol.Socks5 => V1.ServerEndpoint.SettingsOneofCase.Socks5,
             _ => V1.ServerEndpoint.SettingsOneofCase.Wireguard,
         };
         if (endpoint.SettingsCase != expected)
@@ -231,9 +239,26 @@ public static partial class ContractMapping
                 };
                 credentials = new ServerCredentials(PrivateKey: Empty(w.PrivateKey), PresharedKey: Empty(w.PresharedKey));
                 break;
+            case V1.ServerEndpoint.SettingsOneofCase.Http:
+                credentials = new ServerCredentials(Username: Empty(endpoint.Http.Username), Password: Empty(endpoint.Http.Password));
+                break;
+            case V1.ServerEndpoint.SettingsOneofCase.Socks5:
+                credentials = new ServerCredentials(Username: Empty(endpoint.Socks5.Username), Password: Empty(endpoint.Socks5.Password));
+                break;
+        }
+
+        if (ForwardProxyRules.IsForwardProxy(protocol)
+            && (!ForwardProxyRules.IsValidEndpoint(endpoint.Host, (int)endpoint.Port) || !ForwardProxyRules.AcceptsCredentials(protocol, credentials)))
+        {
+            throw new ArgumentException("Неверные параметры внешнего прокси", nameof(endpoint));
         }
 
         var kind = transport.Type.ToCore();
+        if (ForwardProxyRules.IsForwardProxy(protocol) && !ForwardProxyRules.AcceptsTransport(protocol, kind, security.Type.ToCore()))
+        {
+            throw new ArgumentException("Неверный транспорт внешнего прокси", nameof(endpoint));
+        }
+
         return new ServerDefinition(
             endpoint.Name,
             string.Empty,

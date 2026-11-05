@@ -72,7 +72,7 @@
   при подключении», а не «Готово». В демо-режиме шаг службы пропускается и есть «Сначала посмотреть на демо-серверах». Имя ОС в текстах
   программа подставляет свое. В v1.0 на этом шаге был тумблер «Показывать название Wi-Fi» и островок на «Добавьте первый сервер» — в
   программе их нет. На телефоне (решение 555) шага службы нет: «Начать» ведет сразу к «Добавьте первый сервер», где есть еще «Позже»;
-  выбор языка — только на Android 13+, на iOS язык приложения выбирается в Настройках iOS.</p>
+  выбор языка — только на Android 13+, на iOS язык приложения выбирается в Настройках iOS. На десктопе ссылка «Открыть настройки» на шаге добавления сервера открывает общий экран настроек: выбор режима остается в существующих «Основных», ссылка сама его не меняет.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-caption="1 · Приветствие — «Начать» ведет по шагам">
@@ -138,7 +138,8 @@
       </div>
       <div class="ob-bottom">
         <button class="btn-primary" data-goto="a-done">Установить</button>
-        <button class="btn-link ob-skip" data-goto="a-proxy">Без службы — только режим прокси</button>
+        <button class="btn-link ob-skip" data-os="desktop" data-nav="04-settings.html">Без службы — только режим прокси</button>
+        <button class="btn-link ob-skip" data-os="phone" data-goto="a-proxy">Без службы — только режим прокси</button>
       </div>
     </div>
     <!-- Установка службы — шаг 1 из 2: done -->
@@ -185,6 +186,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
         <button class="btn-secondary ob-demo" data-os="phone" data-nav="01-main.html">Позже — сразу на главную</button>
       </div>
       <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
@@ -202,6 +204,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <div class="pg-page-end"></div>
     </div>
@@ -238,7 +241,8 @@
       </div>
       <div class="ob-bottom">
         <button class="btn-primary" data-goto="b-done">Установить</button>
-        <button class="btn-link ob-skip" data-goto="b-proxy">Без службы — только режим прокси</button>
+        <button class="btn-link ob-skip" data-os="desktop" data-nav="04-settings.html">Без службы — только режим прокси</button>
+        <button class="btn-link ob-skip" data-os="phone" data-goto="b-proxy">Без службы — только режим прокси</button>
       </div>
     </div>
     <!-- Установка службы — шаг 1 из 2: done -->
@@ -285,6 +289,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
@@ -301,6 +306,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <div class="pg-page-end"></div>
     </div>
@@ -374,7 +380,8 @@
       </div>
       <div class="ob-bottom">
         <button class="btn-primary" data-goto="d-done">Установить</button>
-        <button class="btn-link ob-skip" data-goto="d-proxy">Без службы — только режим прокси</button>
+        <button class="btn-link ob-skip" data-os="desktop" data-nav="04-settings.html">Без службы — только режим прокси</button>
+        <button class="btn-link ob-skip" data-os="phone" data-goto="d-proxy">Без службы — только режим прокси</button>
       </div>
     </div>
     <!-- Установка службы — шаг 1 из 2: done -->
@@ -421,6 +428,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
@@ -437,6 +445,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <div class="pg-page-end"></div>
     </div>
@@ -487,6 +496,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
@@ -506,6 +516,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
       </div>
       <span class="t-caption t-success ob-note" data-os="desktop">Служба установлена · блок при обрыве включится при первом подключении</span>
       <div class="pg-page-end"></div>
@@ -525,6 +536,7 @@
         <span class="ob-h pg-center">Добавьте первый сервер</span>
         <span class="ob-text pg-center">Вставьте ссылку от вашего VPN-сервера или список серверов: vless://, vmess://, trojan://, ss://, hy2://, tuic://, WireGuard.</span>
         <button class="btn-primary ob-add-btn" data-nav="03-import.html">Добавить сервер</button>
+        <button class="btn-link" data-os="desktop" data-nav="04-settings.html" data-ui-text="externalProxy.onboarding.settings">Открыть настройки</button>
           <button class="btn-secondary ob-demo" data-nav="01-main.html">Сначала посмотреть на демо-серверах</button>
       </div>
       <span class="t-caption ob-note">Демо-режим: подключение имитируется, серверы — для примера.</span>

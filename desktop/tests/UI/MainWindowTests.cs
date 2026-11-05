@@ -698,12 +698,13 @@ public sealed class MainWindowTests : WindowHarness
     public async Task Proxy_mode_is_amber_and_says_what_is_not_protected()
     {
         var (window, shell) = Open();
+        Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         await Connect(shell);
         var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
 
         Text(window, "StatusTitle").ShouldBe("Прокси включен");
-        main.StatusSubtitle.ShouldBe("Защищен не весь трафик");
+        main.StatusSubtitle.ShouldBe("Только приложения с прокси; DNS системы отдельно. Разрешенные исключения сайтов и локальной сети могут идти напрямую.");
         main.Chips.Select(c => c.Value).ShouldBe(["только прокси", "только прокси", "не контролируется", "недоступен"]);
         main.CheckedText.ShouldBe("Блок при обрыве в режиме прокси недоступен");
         main.HasCheckAction.ShouldBeTrue();
@@ -734,6 +735,10 @@ public sealed class MainWindowTests : WindowHarness
         });
         Service<SettingsService>().Update(s => s with { Mode = mode });
         Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        if (mode == ConnectionMode.Proxy)
+        {
+            Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Port: 8080), string.Empty, string.Empty);
+        }
 
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
