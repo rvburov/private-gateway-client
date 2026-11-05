@@ -110,6 +110,10 @@
   };
   Object.keys(OS).forEach(function (id) {
     Object.assign(OS[id], OS_GROUPS.desktop.indexOf(id) >= 0 ? DNS_DESKTOP : DNS_PHONE);
+    // Блок при обрыве: на Windows — и почему сеть пишет «Нет подключения к Интернету» (check.ks.text.windows, 2026-11-05).
+    OS[id].ksInfo = id === "windows"
+      ? "Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую. Пока VPN не подключен, Windows пишет у сети «Нет подключения к Интернету»: это блок закрыл ее проверку сети, сама сеть в порядке."
+      : "Если связь с сервером пропадет, интернет остановится, а не пойдет напрямую.";
   });
 
   var params = new URLSearchParams(location.search);

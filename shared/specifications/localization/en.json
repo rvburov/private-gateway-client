@@ -315,6 +315,7 @@
   "check.ks.off": "disabled",
   "check.ks.warning": "unavailable",
   "check.ks.text": "If the server connection drops, internet stops instead of going direct.",
+  "check.ks.text.windows": "If the connection to the server drops, the internet stops instead of going directly. Until the VPN connects, Windows shows “No internet” for the network: the kill switch blocks its network check, the network itself is fine.",
   "checked.at": "Checked at {0}",
   "checked.now": "Just checked",
   "checked.running": "Checking…",

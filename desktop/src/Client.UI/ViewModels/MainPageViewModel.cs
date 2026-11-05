@@ -705,7 +705,10 @@ public sealed partial class CheckChipViewModel(string id) : ObservableObject
     public string Value => Loc.Instance[$"{(Id == "dns" ? "desktop.check.dns" : "check." + Id)}.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}"];
 
     public string Text => Id == "dns" ? Loc.Instance[$"desktop.check.dns.{(IsPaused ? "paused" : Variant ?? State.ToString().ToLowerInvariant())}.text"]
-        : Loc.Instance[Variant is { } variant && !IsPaused ? $"check.{Id}.{variant}.text" : $"check.{Id}.text"];
+        : Variant is { } variant && !IsPaused ? Loc.Instance[$"check.{Id}.{variant}.text"]
+        // Windows под блоком пишет у сети «Нет подключения к Интернету» — пользователь 2026-11-05 принял это за поломку.
+        : Id == "ks" && OperatingSystem.IsWindows() ? Loc.Instance["check.ks.text.windows"]
+        : Loc.Instance[$"check.{Id}.text"];
 
     /// <summary>Ключ иконки в кружке: Icon.Chip.*.</summary>
     public string Icon => CheckIcon.For(State);
