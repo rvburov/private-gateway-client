@@ -55,7 +55,7 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         await stream.CopyToAsync(buffer).ConfigureAwait(true);
         if (buffer.Length > IFileOpenService.MaxImageBytes)
         {
-            throw new InvalidDataException("Картинка больше 30 МБ");
+            throw new InvalidDataException(Loc.Instance["import.image.too_large"]);
         }
 
         buffer.Position = 0;
@@ -76,7 +76,7 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         await stream.CopyToAsync(buffer).ConfigureAwait(true);
         if (buffer.Length > IFileOpenService.MaxBytes)
         {
-            throw new InvalidDataException("Файл больше 1 МБ");
+            throw new InvalidDataException(Loc.Instance["import.file.too_large"]);
         }
 
         try
@@ -86,7 +86,7 @@ public sealed class AvaloniaFileOpenService : IFileOpenService
         }
         catch (DecoderFallbackException e)
         {
-            throw new InvalidDataException("Файл не текстовый (не UTF-8)", e);
+            throw new InvalidDataException(Loc.Instance["import.file.not_text"], e);
         }
     }
 

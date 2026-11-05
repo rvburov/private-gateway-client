@@ -4,6 +4,8 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using PrivateGateway.Client.Application.Import;
 
+using PrivateGateway.Client.UI.Localization;
+
 namespace PrivateGateway.Client.UI.Services;
 
 /// <summary>Картинка Avalonia — в пиксели BGRA для распознавания QR-кода, в каком бы формате она ни пришла.</summary>
@@ -42,7 +44,7 @@ public static class BitmapPixels
         }
         catch (Exception e) when (e is not InvalidDataException and not OutOfMemoryException)
         {
-            throw new InvalidDataException("Файл не картинка", e);
+            throw new InvalidDataException(Loc.Instance["import.image.not_image"], e);
         }
     }
 }
