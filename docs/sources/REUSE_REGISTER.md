@@ -15,6 +15,7 @@
 | Автор коммитов в облаке | `Scripts/cloud-session.sh`, `.claude/settings.json` | перенесены; добавлена подсказка про установку .NET пакетом ОС | — | перенесено с правкой |
 | Вывод сборки и кеш пакетов | `Directory.Build.props`, `nuget.config` | идея перенесена: artifacts/, кеш в packages/, кеш основной папки для рабочих; добавлены общие свойства сборки | сборка | перенесено с правкой |
 | Запрет сетевых вызовов | `BannedSymbols.txt` | идея перенесена (BannedApiAnalyzers), список свой: `desktop/BannedSymbols.NoNetwork.txt` для слоев без сети | мутант: HttpClient в Core → ошибка RS0030 | переписано |
+| Инструкция в окне образа macOS | `Scripts/github-release/dmg-background.swift`, шаг «Упаковка — macOS» в `.github/workflows/release.yml` (коммит `13da1bbf34a8ce8c83473d2125892ac6fadd1714`, 05.11.2026) | переписано: `scripts/dmg-background.swift` — фон окна рисуется кодом, цвета из `design-tokens.json`, шаги RU и строка EN, стрелка «перетащить в Программы»; в `scripts/package-macos.sh` — образ в два приема (UDRW → UDZO), оформление окна Finder через AppleScript без падения сборки, контрольное монтирование | контрольное монтирование в `package-macos.sh` (фон, программа, ярлык, подпись), `publish.yml` на macOS | перенесено с изменениями (решение пользователя 2026-11-05) |
 
 ## Hiddify — исследовательский образец
 

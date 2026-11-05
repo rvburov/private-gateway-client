@@ -194,6 +194,19 @@
   .os-fact-row { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; padding: 9px 0; }
   .os-fact-row + .os-fact-row { border-top: 1px solid var(--pg-color-line-divider); }
   .os-fact-row > :last-child { text-align: right; font-weight: 600; }
+  /* Окно образа .dmg macOS (scripts/dmg-background.swift): фон-инструкция 640×480, значки ставит Finder */
+  .dmg { width: 640px; height: 480px; position: relative; background: var(--pg-color-bg-window); color: var(--pg-color-text-primary);
+    font-family: var(--font-ui); border-radius: 10px; box-shadow: var(--pg-shadow-dialog); overflow: hidden; }
+  .dmg-icon { position: absolute; top: 64px; width: 112px; display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 13px; }
+  .dmg-icon .dmg-art { width: 96px; height: 96px; border-radius: 22px; display: grid; place-items: center; background: var(--pg-color-accent-tint); color: var(--pg-color-accent-base); }
+  .dmg-arrow { position: absolute; top: 108px; left: 262px; width: 116px; height: 3px; background: var(--pg-color-accent-base); border-radius: 2px; }
+  .dmg-arrow::after { content: ""; position: absolute; right: -2px; top: -7px; width: 14px; height: 14px; border-top: 3px solid var(--pg-color-accent-base);
+    border-right: 3px solid var(--pg-color-accent-base); transform: rotate(45deg); }
+  .dmg-line { position: absolute; top: 222px; left: 56px; right: 56px; height: 1px; background: var(--pg-color-line-strong); }
+  .dmg-text { position: absolute; top: 240px; left: 56px; right: 56px; display: flex; flex-direction: column; gap: 7px; font-size: 13.5px; }
+  .dmg-text b { font-size: 17px; font-weight: 600; margin-bottom: 4px; }
+  .dmg-text .dmg-en { font-size: 11.5px; color: var(--pg-color-text-secondary); margin-top: 6px; }
+  .dmg-foot { position: absolute; bottom: 18px; left: 56px; font-size: 11px; color: var(--pg-color-text-muted); }
 </style>
 </head>
 <body>
@@ -470,6 +483,27 @@
         <button class="os-btn main" data-close data-goto="windows-done">Да</button>
         <button class="os-btn" data-close data-goto="windows-err">Нет</button>
       </div>
+    </div>
+  </section>
+
+  <!-- ===================== macOS · окно образа .dmg ===================== -->
+  <!-- Решение пользователя 2026-11-05: инструкция до предупреждения Gatekeeper — фоном окна образа (scripts/dmg-background.swift),
+       RU и строка EN; программа без подписи Apple сама ее показать не может. -->
+  <section class="pg-screen" data-device="macos" data-caption="macOS · окно образа .dmg с инструкцией" style="height: 560px">
+    <div class="dmg" aria-label="Окно образа Private Gateway">
+      <div class="dmg-icon" style="left: 114px"><span class="dmg-art"><i data-icon="Shield" data-detail="Mark.Ok" data-size="56"></i></span>Private Gateway.app</div>
+      <div class="dmg-arrow"></div>
+      <div class="dmg-icon" style="left: 414px"><span class="dmg-art"><i data-icon="File" data-size="56"></i></span>Applications</div>
+      <div class="dmg-line"></div>
+      <div class="dmg-text">
+        <b>Как установить и запустить</b>
+        <span>1. Перетащите Private Gateway в «Программы».</span>
+        <span>2. Откройте ее из «Программ» — в окне о проверке нажмите «Готово».</span>
+        <span>3. Системные настройки → Конфиденциальность и безопасность.</span>
+        <span>4. Внизу, в разделе «Безопасность», — «Все равно открыть».</span>
+        <span class="dmg-en">Drag Private Gateway to Applications and open it. In the warning click Done, then System Settings → Privacy &amp; Security → Open Anyway.</span>
+      </div>
+      <div class="dmg-foot">Программа пока без подписи Apple · Not yet signed by Apple</div>
     </div>
   </section>
 
@@ -782,7 +816,7 @@
     <div class="os-fact-row"><span class="t-muted">Права на установку</span><span>пароль администратора (osascript)</span></div>
     <div class="os-fact-row"><span class="t-muted">Служба</span><span>LaunchDaemon (launchd)</span></div>
     <div class="os-fact-row"><span class="t-muted">Блок при обрыве</span><span>pf</span></div>
-    <div class="os-fact-row"><span class="t-muted">Установщик</span><span>.dmg, подпись ad-hoc</span></div>
+    <div class="os-fact-row"><span class="t-muted">Установщик</span><span>.dmg, подпись ad-hoc, инструкция в окне образа</span></div>
   </div>
   <div class="card os-fact" aria-label="Linux">
     <div class="os-fact-row"><span class="t-muted">Значок</span><span>в панели (AppIndicator)</span></div>

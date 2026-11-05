@@ -183,11 +183,21 @@ string Notes()
     lines.AddRange(
     [
         string.Empty, "## Как поставить", string.Empty,
-        "- Windows — `PrivateGateway-" + version + "-win-x64.msi`.",
-        "- Linux — `.deb` (Debian, Ubuntu) или `.rpm` (Fedora, openSUSE).",
-        "- macOS (Apple Silicon) — `PrivateGateway-" + version + "-osx-arm64.dmg`: откройте образ и перетащите Private Gateway в "
-            + "«Программы». Программа пока не подписана сертификатом Apple: при первом запуске macOS ее не откроет — тогда "
-            + "«Системные настройки» → «Конфиденциальность и безопасность» → «Все равно открыть».",
+        "**Windows** — `PrivateGateway-" + version + "-win-x64.msi`. Установщик пока не подписан сертификатом, поэтому Windows "
+            + "может показать «Система Windows защитила ваш компьютер»:",
+        string.Empty,
+        "1. Нажмите **«Подробнее»**.",
+        "2. Внизу окна нажмите **«Выполнить в любом случае»**.",
+        string.Empty,
+        "**macOS (Apple Silicon)** — `PrivateGateway-" + version + "-osx-arm64.dmg`. Программа пока не подписана сертификатом Apple; "
+            + "инструкция нарисована и в окне образа:",
+        string.Empty,
+        "1. Откройте образ и перетащите **Private Gateway** в **«Программы»**.",
+        "2. Откройте программу из «Программ» — в окне о проверке нажмите **«Готово»**.",
+        "3. Откройте **«Системные настройки» → «Конфиденциальность и безопасность»**.",
+        "4. Внизу, в разделе **«Безопасность»**, нажмите **«Все равно открыть»** и подтвердите (один раз).",
+        string.Empty,
+        "**Linux** — `.deb` (Debian, Ubuntu) или `.rpm` (Fedora, openSUSE); дополнительно ничего делать не нужно.",
         string.Empty, "## Как сверить загрузку", string.Empty,
         "Скачайте `SHA256SUMS` рядом с файлом и выполните `sha256sum -c SHA256SUMS --ignore-missing` (Linux, Git Bash на Windows) или "
             + "`shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS). Состав каждого выпуска — `*.cdx.json` (SBOM), лицензии открытых "

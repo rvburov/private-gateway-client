@@ -8,7 +8,9 @@
 # cores/, как у архива: окно ставит службу оттуда). Подпись — ad-hoc, без сертификата: на Apple Silicon код без подписи
 # не запускается, а подпись пакета — печать его целостности (подпись Developer ID и нотаризация — «Отложено», README).
 # Кладет PrivateGateway-<версия>-<rid>.dmg (программа и ярлык на «Программы») в artifacts/release и пересчитывает
-# SHA256SUMS.
+# SHA256SUMS. Окно образа оформлено: фон с инструкцией, как поставить и открыть программу без подписи Apple
+# (scripts/dmg-background.swift, RU и строка EN), значки на своих местах. Оформляет Finder через AppleScript; не вышло (нет
+# графического сеанса) — образ остается рабочим, без инструкции, с предупреждением в журнале.
 set -euo pipefail
 
 version=${1:?версия выпуска}
@@ -75,10 +77,67 @@ codesign --force --sign - "$app"
 codesign --verify --deep --strict --verbose=2 "$app"
 
 ln -s /Applications "$staging/Applications"
+
+# Фон окна с инструкцией: две плотности в одном TIFF, иначе на Retina текст выходит мылом.
+mkdir -p "$staging/.background"
+swift scripts/dmg-background.swift "$staging/.background" shared/specifications/design-tokens.json
+tiffutil -cathidpicheck "$staging/.background/background.png" "$staging/.background/background@2x.png" \
+  -out "$staging/.background/background.tiff"
+rm "$staging/.background/background.png" "$staging/.background/background@2x.png"
+
 mkdir -p artifacts/release
 out="artifacts/release/PrivateGateway-$version-$rid.dmg"
 rm -f "$out"
-hdiutil create -volname "Private Gateway" -srcfolder "$staging" -fs HFS+ -format UDZO -ov "$out"
+
+# Образ — в два приема: записываемый (UDRW), чтобы Finder разложил окно, потом сжатый только для чтения (UDZO) — в выпуск.
+# Имя тома — заголовок окна, по нему же Finder находит диск.
+volume="Private Gateway"
+rw="artifacts/dmg/PrivateGateway-$version-$rid-rw.dmg"
+rm -f "$rw"
+hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
+mount="/Volumes/$volume"
+hdiutil attach -quiet -noautoopen -mountpoint "$mount" "$rw"
+osascript << 'APPLESCRIPT' || echo "::warning::Finder не оформил окно образа — образ собран без инструкции"
+tell application "Finder"
+  tell disk "Private Gateway"
+    open
+    set current view of container window to icon view
+    set toolbar visible of container window to false
+    set statusbar visible of container window to false
+    set the bounds of container window to {200, 120, 840, 600}
+    set opts to the icon view options of container window
+    set arrangement of opts to not arranged
+    set icon size of opts to 112
+    set text size of opts to 13
+    set label position of opts to bottom
+    set background picture of opts to file ".background:background.tiff"
+    set position of item "Private Gateway.app" of container window to {170, 120}
+    set position of item "Applications" of container window to {470, 120}
+    close
+    open
+    update without registering applications
+    delay 2
+    close
+  end tell
+end tell
+APPLESCRIPT
+sync
+hdiutil detach -quiet "$mount"
+hdiutil convert -quiet "$rw" -format UDZO -imagekey zlib-level=9 -o "$out"
+rm -f "$rw"
+
+# Контрольное монтирование: программа, ярлык «Программы» и фон на месте, подпись пережила упаковку.
+check=$(mktemp -d)
+hdiutil attach -quiet -nobrowse -readonly -mountpoint "$check" "$out"
+problem=""
+[ -d "$check/Private Gateway.app" ] || problem="в образе нет Private Gateway.app"
+[ "$(readlink "$check/Applications")" = /Applications ] || problem="в образе нет ярлыка на «Программы»"
+[ -f "$check/.background/background.tiff" ] || problem="в образе нет фона с инструкцией"
+codesign --verify --deep --strict "$check/Private Gateway.app" || problem="подпись программы не пережила упаковку"
+[ -f "$check/.DS_Store" ] || echo "::warning::в образе нет .DS_Store — окно откроется без оформления"
+hdiutil detach -quiet "$check"
+rmdir "$check"
+[ -z "$problem" ] || { echo "Образ диска: $problem" >&2; exit 1; }
 
 cd artifacts/release
 shasum -a 256 $(LC_ALL=C ls | grep -v "^SHA256SUMS$") > SHA256SUMS
