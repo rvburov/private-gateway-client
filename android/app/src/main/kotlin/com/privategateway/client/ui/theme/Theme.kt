@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.scale
@@ -111,21 +112,26 @@ fun Modifier.pgShadow(layers: List<PgShadowLayer>, shape: Shape): Modifier {
     return shadow(elevation = deepest.blur / 3, shape = shape, clip = false, ambientColor = color, spotColor = color)
 }
 
-/** Стеклянная карточка: заливка surface.card, рамка line.border, скругление radius.card, тень shadow.card. */
+/** Карточка: оттенок surface.card на bg.window, рамка line.border, скругление radius.card, тень shadow.card. */
 @Composable
 fun PgCard(modifier: Modifier = Modifier, padding: Dp = PgSpace.Card, content: @Composable ColumnScope.() -> Unit) {
     PgCard(modifier, PaddingValues(padding), content)
 }
 
-/** Карточка со своими полями: строки настроек и строки-ссылки сами до краев карточки (.card с padding 4px 0). */
+/**
+ * Карточка со своими полями: строки настроек и строки-ссылки сами до краев карточки (.card с padding 4px 0).
+ * Фон заранее смешан с bg.window и непрозрачен: системная тень не просвечивает внутрь карточки. Оттенок получается из
+ * исходных токенов, без отдельного графического буфера на всю высоту длинного текста лицензии или списка правил.
+ */
 @Composable
 fun PgCard(modifier: Modifier = Modifier, contentPadding: PaddingValues, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(PgRadius.Card)
+    val background = PgColor.Surface.Card.compositeOver(PgColor.Bg.Window)
     Column(
         modifier
             .pgShadow(PgShadow.Card, shape)
             .clip(shape)
-            .background(PgColor.Surface.Card)
+            .background(background)
             .border(1.dp, PgColor.Line.Border, shape)
             .padding(contentPadding),
         content = content,

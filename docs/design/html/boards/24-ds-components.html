@@ -549,6 +549,19 @@
     <section class="ds-card">
       <div class="ds-card-head"><h2>Карточка и строка сервера</h2><span class="ds-key">Border.card · server-row</span></div>
       <div class="pg-app ds-stage pg-stack pg-gap-10" data-reveal-scope>
+        <div class="pg-frame pg-stack pg-gap-8" data-device="android">
+          <span class="t-overline">Android · карточка</span>
+          <div class="card" data-card-fill-demo style="padding: 4px 16px">
+            <div class="pg-row pg-gap-12" data-card-plain-row style="padding: 12px 0">
+              <span class="pg-stack pg-grow"><span class="t-strong">Сетевое ядро</span><span class="t-caption">Xray-core</span></span>
+              <span class="pill success">В порядке</span>
+            </div>
+            <div class="divider"></div>
+            <div class="pg-row pg-gap-12" data-card-plain-row style="padding: 12px 0">
+              <span class="pg-stack pg-grow"><span class="t-strong">TUN-драйвер</span><span class="t-caption">встроен в ОС</span></span>
+            </div>
+          </div>
+        </div>
         <div class="card" style="padding: 14px 8px 12px 16px">
           <span class="t-overline">Сайты видят ваш IP</span>
           <div class="pg-row">
@@ -573,6 +586,9 @@
       </div>
       <ul class="ds-list">
         <li>Карточка: surface.card, рамка line.border, скругление radius.card, тень shadow.card; заголовок — overline</li>
+        <li>Заливка карточки общая: обычные строки и текст прозрачны, без отдельных белых прямоугольников</li>
+        <li>Android: surface.card заранее совмещен с bg.window; готовая карточка непрозрачна, оттенок задан прежними токенами</li>
+        <li>Цветные чипы, подложки значков и кнопки сохраняют свои смысловые заливки</li>
         <li>Выбранный сервер — рамка 1,5 accent.base и тень shadow.chosen; наведение — синий текст</li>
         <li>Задержка: до 120 мс — зеленым, дольше — серым, нет ответа — «нет» оранжевым</li>
         <li>Скрытые данные — звездочками: нажмите глаз</li>

@@ -197,6 +197,10 @@ input, textarea { font: inherit; color: inherit; }
   background: var(--pg-color-surface-card); border: 1px solid var(--pg-color-line-border);
   border-radius: var(--pg-radius-card); box-shadow: var(--pg-shadow-card);
 }
+/* Android: цвет полупрозрачного токена заранее совмещен с фоном окна; готовая карточка непрозрачна для системной тени. */
+.pg-frame[data-device="android"] .card {
+  background: linear-gradient(var(--pg-color-surface-card), var(--pg-color-surface-card)), var(--pg-color-bg-window);
+}
 .divider { height: 1px; background: var(--pg-color-line-divider); }
 .group-label { display: block; margin: 16px 6px 8px; }
 .group-label:first-child { margin-top: 0; }
