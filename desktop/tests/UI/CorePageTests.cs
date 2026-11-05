@@ -1,9 +1,9 @@
-using Avalonia.VisualTree;
-using Avalonia.Controls;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
