@@ -171,6 +171,18 @@ public sealed class ServiceIpcTests
     }
 
     [Fact]
+    public void Short_proxy_login_is_hidden_only_as_a_whole_word()
+    {
+        // Логин «a» прокси HTTP/SOCKS (includeShort): раньше каждая буква «a» журнала становилась «***».
+        var journal = new ServiceJournal(TimeProvider.System);
+        journal.Hide(["a", "pw-very-secret-1"], includeShort: true);
+
+        journal.Add(JournalLevel.Info, "service", "proxy auth a:pw-very-secret-1 failed, a — логин");
+
+        journal.Tail(1).ShouldHaveSingleItem().Message.ShouldBe("proxy auth ***:*** failed, *** — логин", "слова с буквой «a» не трогаются");
+    }
+
+    [Fact]
     public async Task Core_that_cannot_open_the_port_is_an_error_with_a_code()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");

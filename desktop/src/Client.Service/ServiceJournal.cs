@@ -23,6 +23,10 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
     private readonly Lock _gate = new();
     private string[] _secrets = [];
 
+    // Короткие секреты (логин прокси из одной-трех букв) — только отдельным словом: замена внутри слов превращала каждую
+    // букву «a» журнала в «***» (логин «a» прокси HTTP/SOCKS, аудит 2026-11-05).
+    private System.Text.RegularExpressions.Regex[] _shortSecrets = [];
+
     /// <summary>Новая запись; приходит из любого потока.</summary>
     public event EventHandler<JournalEntry>? Added;
 
@@ -32,10 +36,16 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
         lock (_gate)
         {
             // Сначала длинная форма (например, Basic), затем ее короткие составляющие: иначе останется часть токена.
-            _secrets = [.. secrets.OfType<string>().Where(s => s.Length >= (includeShort ? 1 : 4))
-                .Distinct(StringComparer.Ordinal).OrderByDescending(s => s.Length)];
+            var all = secrets.OfType<string>().Where(s => s.Length >= (includeShort ? 1 : 4)).Distinct(StringComparer.Ordinal).ToList();
+            _secrets = [.. all.Where(s => s.Length >= ShortSecret).OrderByDescending(s => s.Length)];
+            _shortSecrets = [.. all.Where(s => s.Length < ShortSecret).OrderByDescending(s => s.Length)
+                .Select(s => new System.Text.RegularExpressions.Regex($@"(?<![\p{{L}}\p{{N}}_]){System.Text.RegularExpressions.Regex.Escape(s)}(?![\p{{L}}\p{{N}}_])",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant))];
         }
     }
+
+    /// <summary>Секрет короче — прячется только отдельным словом.</summary>
+    private const int ShortSecret = 4;
 
     public void Add(JournalLevel level, string source, string message)
     {
@@ -46,6 +56,11 @@ public sealed class ServiceJournal(TimeProvider time, JournalFile? file = null)
             foreach (var secret in _secrets)
             {
                 text = text.Replace(secret, "***", StringComparison.Ordinal);
+            }
+
+            foreach (var secret in _shortSecrets)
+            {
+                text = secret.Replace(text, "***");
             }
 
             text = SecretMasker.Mask(text);
