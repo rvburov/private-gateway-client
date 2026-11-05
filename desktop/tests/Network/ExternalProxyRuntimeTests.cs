@@ -76,8 +76,10 @@ public sealed class ExternalProxyRuntimeTests : IDisposable
         // В dTpw есть короткий пароль p: его замена раньше полного Basic-токена оставила бы узнаваемый хвост.
         service.Journal.Add(JournalLevel.Warning, "xray", $"Proxy-Authorization: Basic {basic}");
         var journal = string.Join('\n', service.Journal.Tail(ServiceJournal.Capacity).Select(line => line.Message));
-        journal.ShouldNotContain(username, Case.Sensitive);
-        journal.ShouldNotContain(password, Case.Sensitive);
+        // Короткие логин и пароль скрываются только целым словом: буквы «u» и «p» в других словах журнала не трогаются.
+        foreach (var secret in new[] { username, password })
+            System.Text.RegularExpressions.Regex.IsMatch(journal, $@"(?<![\p{{L}}\p{{N}}_]){secret}(?![\p{{L}}\p{{N}}_])")
+                .ShouldBeFalse($"короткий секрет «{secret}» остался в журнале отдельным словом");
         journal.ShouldNotContain(basic, Case.Sensitive);
         journal.ShouldContain("credential check: *** / ***");
         journal.ShouldContain("Basic ***");
