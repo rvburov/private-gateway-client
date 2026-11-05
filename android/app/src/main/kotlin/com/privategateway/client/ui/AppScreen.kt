@@ -147,18 +147,14 @@ fun AppScreen(
         fromSubscriptions = false
         viewModel.closeImport()
     }
-    // Добавлено — итог подсказкой и «Серверы» (доска 3: «Добавить N серверов» ведет к списку), экран добавления сброшен. Язык
-    // форм чисел — из LocalConfiguration: конфигурацию через LocalContext Compose не отслеживает (и Lint это запрещает).
+    // Добавлено — итог подсказкой «Добавлено N» и экран, откуда пришли: главная, «Серверы» или «Профили и подписки»
+    // (DECISIONS.md, п. 21.7); первый сервер уже выбран, если выбора не было (MainViewModel.add). Язык форм чисел — из
+    // LocalConfiguration: конфигурацию через LocalContext Compose не отслеживает (и Lint это запрещает).
     val language = Texts.language(LocalConfiguration.current.locales)
     LaunchedEffect(importing.added) {
         val done = importDone(importing, language) ?: return@LaunchedEffect
         toast.show(done.render(context))
-        adding = false
-        scanning = false
-        fromSubscriptions = false
-        tab = Tab.Servers
-        card = null
-        viewModel.closeImport()
+        closeImport()
     }
     val hasCamera = remember(context) { context.packageManager.hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY) }
     // Первый запуск (доска 10): до первого сервера или «Позже»; пока флаг не прочитан (null) — не показывать, чтобы

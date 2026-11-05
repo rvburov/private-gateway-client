@@ -426,14 +426,12 @@ struct RootView: View {
         importing.reset()
     }
 
-    /// «Добавить» сохранило серверы (доска 03, ImportPage десктопа): итог подсказкой сверху, экран «Добавить профиль» сброшен,
-    /// вкладка — «Серверы».
+    /// «Добавить» сохранило серверы: итог подсказкой сверху («Добавлено N»), экран «Добавить профиль» сброшен, а вкладка и
+    /// страница настроек — те, откуда открыли: главная, «Серверы» или «Профили и подписки» (DECISIONS.md, п. 21.7). Первый
+    /// сервер уже выбран, если выбора не было (ImportFlow).
     private func imported(_ result: AddResult, existing: String?) {
         layers.show(ImportLook.added(result, existing: existing, model.texts))
         closeImport()
-        tab = .servers
-        cardOpen = false
-        settingsPage = .main
         layers.closeMenu()
     }
 }
