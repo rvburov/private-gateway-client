@@ -14,7 +14,6 @@ import android.os.Bundle
 import android.os.LocaleList
 import android.os.PersistableBundle
 import android.provider.Settings
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
@@ -70,8 +69,9 @@ class MainActivity : ComponentActivity() {
         if (result.resultCode == RESULT_OK) {
             GatewayVpnService.connect(this)
         } else if (!viewModel.consentRefused()) {
-            // VPN занят другим приложением — страница «Работает другой VPN» (DECISIONS.md, п. 4); иначе — просто отказ.
-            Toast.makeText(this, R.string.android_permission_denied, Toast.LENGTH_LONG).show()
+            // VPN занят другим приложением — страница «Работает другой VPN» (DECISIONS.md, п. 4); иначе — просто отказ:
+            // подсказкой окна сверху, как у остальных сообщений (не системным Toast).
+            appWindow.toast(getString(R.string.android_permission_denied))
         }
     }
 
@@ -236,9 +236,9 @@ class MainActivity : ComponentActivity() {
         val clip = ClipData.newPlainText(getString(R.string.app_title), text)
         clip.description.extras = PersistableBundle().apply { putBoolean(EXTRA_IS_SENSITIVE, true) }
         clipboard.setPrimaryClip(clip)
-        // С Android 13 система сама показывает, что скопировано; раньше — свое сообщение.
+        // С Android 13 система сама показывает, что скопировано; раньше — своя подсказка окна сверху.
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-            Toast.makeText(this, R.string.card_share_copied, Toast.LENGTH_SHORT).show()
+            appWindow.toast(getString(R.string.card_share_copied))
         }
     }
 
