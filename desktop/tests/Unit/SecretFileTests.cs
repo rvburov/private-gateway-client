@@ -42,7 +42,9 @@ public sealed class SecretFileTests : IDisposable
         var subscription = catalog.Subscriptions.ShouldHaveSingleItem().Id;
         catalog.ApplyUpdate(subscription, Parse("trojan://pw-a@198.51.100.1:443#A", "trojan://pw-c@198.51.100.3:443#C"));
         catalog.Restore(catalog.Snapshot());
-        (DateTime.UtcNow - started).ShouldBeLessThan(TimeSpan.FromSeconds(10), "запись секрета не ждет транзакцию каталога");
+        // Взаимное ожидание записи секрета и транзакции каталога — это «database is locked» через 30 с (срок SQLite): порог
+        // 25 с его ловит, а медленная машина Windows CI (10,97 с на теге v0.1.0-beta.1) его не задевает.
+        (DateTime.UtcNow - started).ShouldBeLessThan(TimeSpan.FromSeconds(25), "запись секрета не ждет транзакцию каталога");
 
         catalog.Servers.Count.ShouldBe(2);
         catalog.Servers.Select(s => catalog.Definition(s.Id)!.Credentials).ShouldAllBe(c => c != null);
