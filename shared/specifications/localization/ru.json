@@ -1086,6 +1086,7 @@
   "diag.report.state": "Состояние: {0}",
   "diag.report.checks": "Проверки",
   "diag.report.problems": "Ошибки и предупреждения (весь журнал окна)",
+  "diag.report.repeated": "(повторов: {0}, последний — {1})",
   "diag.report.delay": "Задержка",
   "diag.delay.title": "Задержка",
   "diag.delay.toServer": "До сервера",

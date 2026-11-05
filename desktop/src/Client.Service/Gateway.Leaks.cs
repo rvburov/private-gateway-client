@@ -35,6 +35,12 @@ public sealed partial class Gateway
     private readonly ConcurrentDictionary<string, bool> _serverIpv6 = new();
 
     /// <summary>
+    /// Серверы, у которых проверочный адрес IPv6 уже не ответил: повторное молчание на следующих подключениях — без нового
+    /// предупреждения (у пользователя 2026-11-02 оно стояло после каждого переподключения, HS-13); ответ снимает отметку.
+    /// </summary>
+    private readonly ConcurrentDictionary<string, bool> _ipv6Silent = new();
+
+    /// <summary>
     /// Вывод по ответам проверочного адреса через сервер: по IPv6 ответил адресом IPv6 — сервер открывает IPv6; по IPv4
     /// ответил, а по IPv6 нет — не открывает; не ответил по IPv4 — вывода нет (null): медленным или недоступным бывает и сервер.
     /// </summary>
@@ -75,17 +81,23 @@ public sealed partial class Gateway
             {
                 case true:
                     _serverIpv6[key] = true;
+                    _ipv6Silent.TryRemove(key, out _);
                     _journal.Add(JournalLevel.Info, "service", "Сервер открывает IPv6 — IPv6 идет через туннель");
                     return true;
                 case false:
                     _serverIpv6[key] = false;
+                    _ipv6Silent.TryRemove(key, out _);
                     _journal.Add(JournalLevel.Info, "service", core.Protection.BlockIpv6
                         ? "Сервер не открывает IPv6 — IPv6 закрыт, мимо туннеля он не уйдет"
                         : "Сервер не открывает IPv6 — «Блокировать IPv6 вне туннеля» выключено");
                     return false;
                 default:
                     _serverIpv6.TryRemove(key, out _);
-                    _journal.Add(JournalLevel.Warning, "service", "Проверочный адрес не ответил через сервер — открывает ли он IPv6, неизвестно: на это подключение IPv6 закрыт");
+                    if (_ipv6Silent.TryAdd(key, true))
+                    {
+                        _journal.Add(JournalLevel.Warning, "service", "Проверочный адрес не ответил через сервер — открывает ли он IPv6, неизвестно: на это подключение IPv6 закрыт");
+                    }
+
                     return false;
             }
         };
@@ -319,6 +331,7 @@ public sealed partial class Gateway
     /// <summary>«Защищено»: проверять связь с сервером и, если включено, проверить утечки.</summary>
     private void AfterConnected(int session)
     {
+        Volatile.Write(ref _serverTcpVerdict, 0);
         StartWatch(session);
         if (_request is { Protection.CheckLeaksAfterConnect: true } && _options.Trace is not null)
         {

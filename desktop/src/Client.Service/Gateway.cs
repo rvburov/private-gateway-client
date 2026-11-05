@@ -1356,6 +1356,11 @@ public sealed partial class Gateway : IAsyncDisposable
             _switch.Release();
         }
 
+        if (failureCode == ErrorCodes.ServerNotResponding && _request is { } failed)
+        {
+            _ = NoteServerTcpAsync(failed.Server, _addresses);
+        }
+
         _ = ReconnectAsync(session, failureCode);
     }
 

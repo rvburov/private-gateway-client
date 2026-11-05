@@ -42,6 +42,11 @@ verify() {
 
 # Пока ключей нет — выпуск без подписи; папка ключей здесь своя, ключи репозитория проверку не меняют.
 export UPDATE_KEYS="$TMP/keys"
+
+# Темы коммитов для заметок: «@слово» из коммита не должно стать упоминанием учетной записи (в v0.1.0-beta.1 так в
+# «Contributors» попал чужой пользователь), почта остается как есть.
+printf '%s\n' 'feat(ui): первое' 'fix(android): @param:ApplicationContext в TunnelControl' 'docs: почта user@example.com' > "$TMP/subjects.txt"
+export RELEASE_SUBJECTS="$TMP/subjects.txt"
 unset UPDATE_SIGNING_KEY
 
 builds stable 0.3.0
@@ -52,6 +57,8 @@ check "в манифесте главное из заметок" "grep -q '\"hig
 check "без ключей — без подписи" "[ ! -e '$TMP/stable-out/update.json.sig' ]"
 check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-dmg '$TMP/stable-out/update.json'"
 check "в заметках — как поставить на macOS без подписи" "grep -q 'Все равно открыть' '$TMP/notes.md'"
+check "«@слово» из коммита — кодом, почта как есть" "grep -qF '\`@param:ApplicationContext\` в TunnelControl' '$TMP/notes.md' && grep -qF 'user@example.com' '$TMP/notes.md'"
+check "в заметках автор — владелец репозитория, других упоминаний нет" "grep -q '^Автор — @rvburov$' '$TMP/notes.md' && [ \"\$(grep -oE '(^|[^\`[:alnum:]])@[[:alnum:]]' '$TMP/notes.md' | wc -l)\" = 1 ]"
 check "заметки рядом, а не в файлах выпуска" "[ -f '$TMP/notes.md' ] && [ ! -e '$TMP/stable-out/notes.md' ]"
 check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
 check "доля 0 останавливает раскатку" "run rollout '$TMP/stable-out' 0 && grep -q '\"rollout\": 0' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"

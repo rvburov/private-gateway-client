@@ -28,6 +28,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
 
 if (args is ["keygen", var privatePath])
 {
@@ -167,7 +168,7 @@ string Notes()
     lines.Add(previous is null ? $"Первый выпуск: изменения с начала разработки ({subjects.Count} коммитов)." : $"Изменения с {previous} ({subjects.Count} коммитов).");
     foreach (var (title, types) in new[] { ("Новое", new[] { "feat" }), ("Исправлено", new[] { "fix" }), ("Сборка, проверки, документация", new[] { "ci", "build", "test", "docs", "chore", "refactor", "perf" }) })
     {
-        var group = subjects.Where(s => types.Contains(Type(s))).Select(s => "- " + Subject(s)).ToList();
+        var group = subjects.Where(s => types.Contains(Type(s))).Select(s => "- " + NoMentions(Subject(s))).ToList();
         if (group.Count > 0)
         {
             lines.AddRange([string.Empty, $"## {title}", string.Empty, .. group]);
@@ -177,7 +178,7 @@ string Notes()
     var other = subjects.Where(s => Type(s) is not ("feat" or "fix" or "ci" or "build" or "test" or "docs" or "chore" or "refactor" or "perf")).ToList();
     if (other.Count > 0)
     {
-        lines.AddRange([string.Empty, "## Прочее", string.Empty, .. other.Select(s => "- " + s)]);
+        lines.AddRange([string.Empty, "## Прочее", string.Empty, .. other.Select(s => "- " + NoMentions(s))]);
     }
 
     lines.AddRange(
@@ -202,6 +203,8 @@ string Notes()
         "Скачайте `SHA256SUMS` рядом с файлом и выполните `sha256sum -c SHA256SUMS --ignore-missing` (Linux, Git Bash на Windows) или "
             + "`shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS). Состав каждого выпуска — `*.cdx.json` (SBOM), лицензии открытых "
             + "компонентов — `THIRD-PARTY-NOTICES.txt` в архиве и в папке программы.",
+        // «Contributors» выпуска GitHub собирает из упоминаний в тексте: автор — владелец репозитория (решение 2026-11-05).
+        string.Empty, $"Автор — @{repository.Split('/')[0]}",
     ]);
     return string.Join('\n', lines) + "\n";
 
@@ -210,6 +213,12 @@ string Notes()
 // Коммиты с прошлого тега: тег (нет — первый выпуск) и темы коммитов.
 static (string? Previous, List<string> Subjects) Changes()
 {
+    // Проверка заметок (release-assembly-smoke.sh): темы коммитов из файла, а не из истории репозитория.
+    if (Environment.GetEnvironmentVariable("RELEASE_SUBJECTS") is { Length: > 0 } file)
+    {
+        return (null, File.ReadAllLines(file).Where(l => l.Length > 0).ToList());
+    }
+
     var previous = Git("describe", "--tags", "--abbrev=0", "HEAD^") is { Length: > 0 } tag ? tag.Trim() : null;
     var subjects = Git("log", "--no-merges", "--format=%s", previous is null ? "HEAD" : $"{previous}..HEAD")
         .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
@@ -225,6 +234,11 @@ static string Type(string subject) => subject.IndexOfAny(['(', ':']) is > 0 and 
 
 // «feat(ui): суть» → «суть».
 static string Subject(string subject) => subject[(subject.IndexOf(':', StringComparison.Ordinal) + 1)..].Trim();
+
+// «@слово» в тексте выпуска GitHub считает упоминанием учетной записи и ставит ее в «Contributors» выпуска: из коммита
+// «@param:ApplicationContext» в v0.1.0-beta.1 туда попал чужой пользователь param. Такие слова — кодом в обратных кавычках,
+// почта (буква перед «@») не трогается.
+static string NoMentions(string text) => Regex.Replace(text, @"(?<![\w`])@[A-Za-z0-9](?:[\w:.\-/]*\w)?", m => "`" + m.Value + "`");
 
 static string Git(params string[] arguments)
 {

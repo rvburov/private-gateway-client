@@ -61,15 +61,34 @@ public sealed class SystemNetworkEvents : INetworkEvents, IDisposable
 
     /// <summary>
     /// Отпечаток сети: включенные адаптеры, кроме петли и <paramref name="ownAdapter"/>, с их адресами — по
-    /// порядку имен и адресов, чтобы тот же набор давал ту же строку.
+    /// порядку имен и адресов, чтобы тот же набор давал ту же строку. IPv6 — только сетью /64: временные адреса
+    /// (RFC 8981) ОС меняет сама внутри той же сети, а на раздаче iPhone их несколько; локальные fe80:: — без смысла
+    /// для пути наружу. Иначе каждая их смена была «сменой сети»: служба стирала замер реального IP (под блоком его
+    /// заново не измерить — строка на главной пропадала) и проверяла сервер вне очереди (отчет пользователя 2026-11-05).
     /// </summary>
     public static string Fingerprint(IEnumerable<(string Name, bool IsLoopback, IEnumerable<IPAddress> Addresses)> adapters, string? ownAdapter)
     {
         ArgumentNullException.ThrowIfNull(adapters);
         return string.Join('\n', adapters
             .Where(a => !a.IsLoopback && !string.Equals(a.Name, ownAdapter, StringComparison.OrdinalIgnoreCase))
-            .Select(a => a.Name + "=" + string.Join(',', a.Addresses.Select(x => x.ToString()).Order(StringComparer.Ordinal)))
+            .Select(a => a.Name + "=" + string.Join(',', a.Addresses
+                .Where(x => !x.IsIPv6LinkLocal)
+                .Select(Network)
+                .Distinct(StringComparer.Ordinal)
+                .Order(StringComparer.Ordinal)))
             .Order(StringComparer.Ordinal));
+
+        static string Network(IPAddress address)
+        {
+            if (address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetworkV6 || address.IsIPv4MappedToIPv6)
+            {
+                return address.ToString();
+            }
+
+            var bytes = address.GetAddressBytes();
+            Array.Clear(bytes, 8, 8);
+            return new IPAddress(bytes) + "/64";
+        }
     }
 
     public void Dispose()

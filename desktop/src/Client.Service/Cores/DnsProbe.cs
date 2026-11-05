@@ -80,8 +80,13 @@ public static class DnsProbe
         return query;
     }
 
-    private static void BindTo(Socket socket, string adapter)
+    /// <summary>
+    /// Привязать сокет IPv4 к карте <paramref name="adapter"/>: он пойдет ее маршрутом, мимо TUN. Нет карты —
+    /// <see cref="SocketException"/>; ОС без такой привязки — <see cref="PlatformNotSupportedException"/>.
+    /// </summary>
+    public static void BindTo(Socket socket, string adapter)
     {
+        ArgumentNullException.ThrowIfNull(socket);
         if (OperatingSystem.IsLinux())
         {
             socket.SetRawSocketOption(SolSocket, SoBindToDevice, Encoding.ASCII.GetBytes(adapter + "\0"));

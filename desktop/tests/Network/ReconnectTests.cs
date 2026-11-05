@@ -368,6 +368,22 @@ public sealed partial class ReconnectTests
     }
 
     [Fact]
+    public void Network_fingerprint_ignores_rotating_temporary_ipv6_and_link_local_but_sees_a_new_ipv6_network()
+    {
+        (string, bool, IEnumerable<IPAddress>) Wlan(params string[] addresses) => ("wlan0", false, addresses.Select(IPAddress.Parse));
+
+        // Раздача iPhone: постоянный и временные адреса одной сети /64, плюс fe80::.
+        var before = SystemNetworkEvents.Fingerprint([Wlan("172.20.10.2", "2001:db8:a:1::10", "2001:db8:a:1:1111:2222:3333:4444", "fe80::1")], "pgtun0");
+
+        SystemNetworkEvents.Fingerprint([Wlan("172.20.10.2", "2001:db8:a:1::10", "2001:db8:a:1:5555:6666:7777:8888", "fe80::2")], "pgtun0")
+            .ShouldBe(before, "ОС сменила временный IPv6 и локальный fe80:: в той же сети — сеть та же");
+        SystemNetworkEvents.Fingerprint([Wlan("172.20.10.2", "2001:db8:b:2::10", "fe80::1")], "pgtun0")
+            .ShouldNotBe(before, "другая сеть IPv6 — другая сеть");
+        SystemNetworkEvents.Fingerprint([Wlan("172.20.10.3", "2001:db8:a:1::10", "fe80::1")], "pgtun0")
+            .ShouldNotBe(before, "другой IPv4 — другая сеть");
+    }
+
+    [Fact]
     public void Network_change_is_reported_once_after_the_system_falls_quiet_and_only_if_the_network_differs()
     {
         var time = new FakeTimeProvider();

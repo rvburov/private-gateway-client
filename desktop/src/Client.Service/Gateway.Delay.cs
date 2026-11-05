@@ -19,6 +19,9 @@ public sealed partial class Gateway
     /// <summary>Сколько замеров на каждое число; на экране — медиана.</summary>
     public const int DelaySamples = 3;
 
+    /// <summary>Последний вывод <see cref="NoteServerTcpAsync"/>: 0 — не было (или подключение удалось), 1 — молчит, 2 — отвечает.</summary>
+    private int _serverTcpVerdict;
+
     public async Task<DelayBreakdown> MeasureDelayAsync(CancellationToken cancellationToken = default)
     {
         var request = _request;
@@ -48,16 +51,52 @@ public sealed partial class Gateway
         return sorted.Length % 2 == 1 ? sorted[middle] : (int)Math.Round((sorted[middle - 1] + sorted[middle]) / 2.0, MidpointRounding.AwayFromZero);
     }
 
-    /// <summary>Прямое TCP-соединение с сервером — его адрес тот, к которому соединяется ядро; сервер по UDP — null.</summary>
-    private async Task<int?> ToServerAsync(ServerDefinition server, CancellationToken cancellationToken)
+    /// <summary>
+    /// Прямое TCP-соединение с сервером — его адрес тот, к которому соединяется ядро; сервер по UDP — null. В режиме VPN сокет
+    /// службы без привязки ушел бы в свой же TUN, и соединение за миллисекунды завершал бы sing-box на этой машине — «До
+    /// сервера: 2 мс» на раздаче iPhone (отчет пользователя 2026-11-02, HS-10). Поэтому под туннелем замер — через карту
+    /// маршрута по умолчанию, как ходит само ядро (сервер блок при обрыве пропускает); карты нет или привязка не удалась — null,
+    /// а не число пути внутри машины.
+    /// </summary>
+    private async Task<int?> ToServerAsync(ServerDefinition server, CancellationToken cancellationToken) =>
+        (await ServerTcpAsync(server, DelaySamples, cancellationToken).ConfigureAwait(false))?.Ms;
+
+    /// <summary>Ответ сервера по TCP: <see cref="Ms"/> — медиана, null — ни один замер не ответил.</summary>
+    private sealed record TcpAnswer(int? Ms);
+
+    /// <summary>
+    /// Соединения TCP с сервером (<paramref name="count"/> замеров, как в <see cref="ToServerAsync"/>). null — путь не
+    /// измерить (сервер по UDP, нет карты мимо туннеля, адрес не найден); <see cref="TcpAnswer"/> без числа — сервер не ответил.
+    /// <paramref name="addresses"/> — адреса именно этого сервера; null — адреса нынешнего подключения.
+    /// </summary>
+    private async Task<TcpAnswer?> ServerTcpAsync(ServerDefinition server, int count, CancellationToken cancellationToken,
+        IReadOnlyList<IPAddress>? addresses = null)
     {
         if (server.Protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic or ProxyProtocol.WireGuard)
         {
             return null;
         }
 
-        var known = _addresses;
-        var address = known.Count > 0 ? known[0] : IPAddress.TryParse(server.Host.Trim('[', ']'), out var literal) ? literal : null;
+        string? outside = null;
+        if (Volatile.Read(ref _tunnel) is not null)
+        {
+            outside = OutsideAdapter();
+            if (outside is null)
+            {
+                return null;
+            }
+        }
+
+        var known = addresses ?? _addresses;
+        var address = outside is null
+            ? known.Count > 0 ? known[0] : IPAddress.TryParse(server.Host.Trim('[', ']'), out var literal) ? literal : null
+            : known.FirstOrDefault(a => a.AddressFamily == AddressFamily.InterNetwork);
+        if (address is null && outside is not null)
+        {
+            // Привязка к карте — только для IPv4; имя сервера в туннеле не ищется (DNS ОС смотрит в туннель).
+            return null;
+        }
+
         if (address is null)
         {
             try
@@ -76,13 +115,18 @@ public sealed partial class Gateway
         }
 
         var samples = new List<int>();
-        for (var i = 0; i < DelaySamples; i++)
+        for (var i = 0; i < count; i++)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             timeout.CancelAfter(Timing.ProbeTimeout);
             try
             {
                 using var socket = new Socket(address.AddressFamily, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+                if (outside is not null)
+                {
+                    DnsProbe.BindTo(socket, outside);
+                }
+
                 var started = _time.GetTimestamp();
                 await socket.ConnectAsync(new IPEndPoint(address, server.Port), timeout.Token).ConfigureAwait(false);
                 samples.Add(Milliseconds(started));
@@ -91,9 +135,56 @@ public sealed partial class Gateway
             {
                 // Не ответил — замер не в счет.
             }
+            catch (Exception e) when (e is System.Net.NetworkInformation.NetworkInformationException or PlatformNotSupportedException)
+            {
+                // Привязка к карте не удалась: путь мимо туннеля не измерить.
+                return null;
+            }
         }
 
-        return Median(samples);
+        return new TcpAnswer(Median(samples));
+    }
+
+    /// <summary>
+    /// Профиль не ответил: отвечает ли сам сервер по TCP — в журнал (а с ним в «Проверку» и отчет) понятным выводом. Так видно,
+    /// работает ли ссылка: сервер молчит — выключен, порт закрыт или путь до него режется; отвечает — жив, но через него связи
+    /// нет: профиль не принят (ключ, REALITY, flow) или сервер не выпускает в интернет. Пользователь 2026-11-05: при «попытке
+    /// 130» из окна было не понять, в ссылке дело или в сети. Соединение — только к адресу и порту сервера, их блок пропускает.
+    /// </summary>
+    private async Task NoteServerTcpAsync(ServerDefinition server, IReadOnlyList<IPAddress> addresses)
+    {
+        TcpAnswer? answer;
+        try
+        {
+            answer = await ServerTcpAsync(server, 2, CancellationToken.None, addresses).ConfigureAwait(false);
+        }
+        catch (Exception e) when (e is SocketException or IOException or ObjectDisposedException)
+        {
+            return;
+        }
+
+        // Вывод — только когда он сменился: на каждой из сотни попыток подряд одна и та же строка не нужна.
+        if (answer is null || Interlocked.Exchange(ref _serverTcpVerdict, answer.Ms is null ? 1 : 2) == (answer.Ms is null ? 1 : 2))
+        {
+            return;
+        }
+
+        _journal.Add(JournalLevel.Warning, "service", answer.Ms is { } ms
+            ? $"Сервер отвечает по TCP на порт {server.Port} ({ms} мс), но связи через него нет: профиль не принят (ключ, REALITY, flow) или сервер не выпускает в интернет — проверьте ссылку или выберите другой сервер"
+            : $"Сервер не отвечает по TCP на порт {server.Port}: он выключен, порт закрыт или путь до него режется — дело не в настройках этого компьютера, если другие серверы отвечают");
+    }
+
+    /// <summary>Карта маршрута по умолчанию, не туннель: через нее ядро идет к серверу. Маршрутов служба не читает — null.</summary>
+    private string? OutsideAdapter()
+    {
+        try
+        {
+            return _options.Routes?.DefaultRoutes().FirstOrDefault(r => !r.IsTunnel)?.Adapter;
+        }
+        catch (Exception e) when (e is IOException or System.Net.NetworkInformation.NetworkInformationException or PlatformNotSupportedException or InvalidOperationException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

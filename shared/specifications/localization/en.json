@@ -1086,6 +1086,7 @@
   "diag.report.state": "State: {0}",
   "diag.report.checks": "Checks",
   "diag.report.problems": "Errors and warnings (whole window journal)",
+  "diag.report.repeated": "(repeated {0} times, last at {1})",
   "diag.report.delay": "Latency",
   "diag.delay.title": "Latency",
   "diag.delay.toServer": "To the server",

@@ -563,9 +563,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         {
             lines.Add(string.Empty);
             lines.Add(loc["diag.report.problems"]);
-            lines.AddRange(problems
-                .Select(e => new JournalLineViewModel(e.Time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture), e.Level, e.Source, SecretMasker.Mask(e.Message)))
-                .Select(j => $"  {j.Time} {j.Level} {j.Source}  {j.Message}"));
+            lines.AddRange(ProblemLines(problems, loc["diag.report.repeated"]));
         }
 
         lines.Add(string.Empty);
@@ -591,6 +589,25 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
                 ? row.Detail.Replace(ip, Hidden, StringComparison.Ordinal)
                 : row.Detail;
     }
+
+    /// <summary>
+    /// Строки раздела «Ошибки и предупреждения»: одинаковые (уровень, источник, текст без секретов) — одной, с числом повторов
+    /// и временем последнего (<paramref name="repeated"/> — формат «{0} раз, последний {1}»); порядок — по первому появлению.
+    /// У пользователя 2026-11-02 одно предупреждение пробы раз в минуту дало 216 строк и спрятало остальные (HS-09).
+    /// </summary>
+    public static IEnumerable<string> ProblemLines(IEnumerable<JournalEntry> problems, string repeated) => problems
+        .Select(e => (Entry: e, Message: SecretMasker.Mask(e.Message)))
+        .GroupBy(p => (p.Entry.Level, p.Entry.Source, p.Message))
+        .Select(g =>
+        {
+            var first = g.First().Entry;
+            var line = new JournalLineViewModel(Clock(first.Time), first.Level, first.Source, g.Key.Message);
+            var count = g.Count();
+            var repeats = count > 1 ? "  " + string.Format(CultureInfo.CurrentCulture, repeated, count, Clock(g.Last().Entry.Time)) : string.Empty;
+            return $"  {line.Time} {line.Level} {line.Source}  {line.Message}{repeats}";
+        });
+
+    private static string Clock(DateTimeOffset time) => time.ToLocalTime().ToString("HH:mm:ss", CultureInfo.InvariantCulture);
 
     // ── Строки ───────────────────────────────────────────────────────────────
 

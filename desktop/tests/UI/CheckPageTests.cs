@@ -102,6 +102,29 @@ public sealed class CheckPageTests : WindowHarness
         problems.ShouldBeLessThan(Array.IndexOf(report, "Журнал (секреты скрыты)"));
     }
 
+    [Fact]
+    public void Same_warnings_in_the_report_are_one_line_with_the_count_and_the_last_time()
+    {
+        // HS-09: проба раз в минуту дала 216 одинаковых строк и спрятала остальные ошибки.
+        var start = new DateTimeOffset(2026, 11, 2, 14, 8, 23, TimeSpan.Zero);
+        JournalEntry Warn(int minute, string text) => new(start.AddMinutes(minute), JournalLevel.Warning, "service", text);
+        var entries = new[]
+        {
+            Warn(0, "Проверка связи через ядро: TLS"),
+            Warn(1, "Сервер не отвечает — переподключение"),
+            Warn(2, "Проверка связи через ядро: TLS"),
+            Warn(51, "Проверка связи через ядро: TLS"),
+        };
+
+        var lines = CheckPageViewModel.ProblemLines(entries, "(повторов: {0}, последний — {1})").ToList();
+
+        lines.Count.ShouldBe(2, "одинаковые — одной строкой, разные — своими");
+        lines[0].ShouldContain("Проверка связи через ядро: TLS", Case.Sensitive, "порядок — по первому появлению");
+        lines[0].ShouldEndWith($"(повторов: 3, последний — {start.AddMinutes(51).ToLocalTime():HH:mm:ss})");
+        lines[0].ShouldContain($" {start.ToLocalTime():HH:mm:ss} ", Case.Sensitive, "время — первого");
+        lines[1].ShouldNotContain("повторов", Case.Sensitive, "одиночная строка — без счетчика");
+    }
+
     [AvaloniaFact]
     public void Things_on_this_computer_that_may_interfere_are_named_and_a_dead_user_proxy_is_fixed()
     {

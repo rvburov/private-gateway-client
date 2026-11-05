@@ -163,6 +163,11 @@ public sealed partial class Gateway
             if (!result.Reachability.Reached)
             {
                 _journal.Add(JournalLevel.Warning, "service", "Профиль не ответил до включения VPN: " + result.Reachability.Description);
+                if (!coreFailed)
+                {
+                    _ = NoteServerTcpAsync(core.Server, addresses);
+                }
+
                 var reply = await RejectAsync(request, core.Mode, coreFailed ? ErrorCodes.CoreFailed : ErrorCodes.ServerNotResponding,
                     coreFailed ? "Не удалось запустить или завершить проверку выбранного профиля; VPN и новая блокировка не включены"
                         : "Выбранный профиль не ответил; VPN и новая блокировка не включены — выберите другой сервер",
