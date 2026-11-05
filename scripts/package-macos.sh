@@ -95,6 +95,19 @@ volume="Private Gateway"
 rw="artifacts/dmg/PrivateGateway-$version-$rid-rw.dmg"
 rm -f "$rw"
 hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
+
+# Отмонтировать: Finder после оформления окна и индексатор Spotlight держат том еще несколько секунд — hdiutil отвечает
+# «Resource busy» (код 16; так упала сборка 2026-11-05). Пять попыток с паузой, последняя — принудительная.
+detach() {
+  local attempt
+  for attempt in 1 2 3 4 5; do
+    hdiutil detach "$1" && return 0
+    echo "Том $1 занят — повтор через $((attempt * 2)) с" >&2
+    sleep $((attempt * 2))
+  done
+  hdiutil detach -force "$1"
+}
+
 mount="/Volumes/$volume"
 hdiutil attach -quiet -noautoopen -mountpoint "$mount" "$rw"
 osascript << 'APPLESCRIPT' || echo "::warning::Finder не оформил окно образа — образ собран без инструкции"
@@ -122,7 +135,7 @@ tell application "Finder"
 end tell
 APPLESCRIPT
 sync
-hdiutil detach -quiet "$mount"
+detach "$mount"
 hdiutil convert -quiet "$rw" -format UDZO -imagekey zlib-level=9 -o "$out"
 rm -f "$rw"
 
@@ -135,7 +148,7 @@ problem=""
 [ -f "$check/.background/background.tiff" ] || problem="в образе нет фона с инструкцией"
 codesign --verify --deep --strict "$check/Private Gateway.app" || problem="подпись программы не пережила упаковку"
 [ -f "$check/.DS_Store" ] || echo "::warning::в образе нет .DS_Store — окно откроется без оформления"
-hdiutil detach -quiet "$check"
+detach "$check"
 rmdir "$check"
 [ -z "$problem" ] || { echo "Образ диска: $problem" >&2; exit 1; }
 

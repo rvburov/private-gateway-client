@@ -20,6 +20,7 @@ on:
       - scripts/package-windows.sh
       - scripts/tests/windows-installer-smoke.sh
       - scripts/package-macos.sh
+      - scripts/dmg-background.swift
       - scripts/tests/macos-package-smoke.sh
       - .github/workflows/release.yml
       - scripts/tests/linux-package-smoke.sh
