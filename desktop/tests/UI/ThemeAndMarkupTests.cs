@@ -72,6 +72,18 @@ public partial class ThemeAndMarkupTests
             (BitConverter.ToInt32(bmp, 18), BitConverter.ToInt32(bmp, 22), BitConverter.ToUInt16(bmp, 28)).ShouldBe((width, height, (ushort)24), name);
         }
 
+        // Под флажком «Запустить Private Gateway» последней страницы (X 135–355, Y 190–230 единиц диалога 370 × 234 — в
+        // точках 180–473 × 253–307) — цвет поверхности диалогов Windows #F0F0F0: флажок MSI закрашивает себя им же, и на
+        // белой картинке он был серым прямоугольником (пользователь 2026-11-05).
+        var dialog = File.ReadAllBytes(Path.Combine(folder, "dialog.bmp"));
+        var pixels = BitConverter.ToInt32(dialog, 10);
+        var stride = ((493 * 3) + 3) & ~3;
+        foreach (var (x, y) in new[] { (185, 256), (300, 280), (470, 305) })
+        {
+            var at = pixels + ((312 - 1 - y) * stride) + (x * 3);
+            (dialog[at + 2], dialog[at + 1], dialog[at]).ShouldBe(((byte)0xF0, (byte)0xF0, (byte)0xF0), $"точка {x},{y} под флажком");
+        }
+
         var product = File.ReadAllText(Path.Combine(folder, "Product.wxs"));
         product.ShouldContain("WixVariable Id=\"WixUIBannerBmp\" Value=\"$(sys.SOURCEFILEDIR)banner.bmp\"");
         product.ShouldContain("WixVariable Id=\"WixUIDialogBmp\" Value=\"$(sys.SOURCEFILEDIR)dialog.bmp\"");

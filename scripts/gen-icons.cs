@@ -97,9 +97,13 @@ File.WriteAllBytes(Path.Combine(packaging, "banner.bmp"), Bitmap(493, 58, canvas
     canvas.DrawRect(0, 56, 493, 2, line);
     DrawShield(canvas, shield, mark, accent, SKColors.White, 437, 7, 44);
 }));
+// Правая часть — цвет поверхности диалогов Windows (COLOR_BTNFACE, #F0F0F0), а не белый: флажок «Запустить Private Gateway»
+// на последней странице MSI прозрачным не бывает и рисуется этим цветом поверх картинки — на белом он был серым
+// прямоугольником (пользователь 2026-11-05). Тот же цвет у полосы кнопок внизу мастера, так что страница — одного тона.
+var dialogFace = new SKColor(0xF0, 0xF0, 0xF0);
 File.WriteAllBytes(Path.Combine(packaging, "dialog.bmp"), Bitmap(493, 312, canvas =>
 {
-    canvas.Clear(SKColors.White);
+    canvas.Clear(dialogFace);
     using var panel = new SKPaint
     {
         Shader = SKShader.CreateLinearGradient(new SKPoint(0, 0), new SKPoint(0, 312),
