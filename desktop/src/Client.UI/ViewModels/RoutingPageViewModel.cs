@@ -44,10 +44,19 @@ public sealed partial class RoutingPageViewModel : ObservableObject
         set => Set(r => r with { Mode = value ? RoutingMode.AllTraffic : RoutingMode.Split });
     }
 
-    public bool IsSplit
+    /// <summary>
+    /// «Раздельный режим» — только через «Перейти» в диалоге (просьба пользователя 2026-11-05): сегмент сам не отмечается
+    /// (<see cref="Controls.ConfirmRadioButton"/>), до ответа остается «Весь трафик». Обратно на «Весь трафик» — без вопроса.
+    /// </summary>
+    public bool IsSplit => R.Mode == RoutingMode.Split;
+
+    [RelayCommand]
+    private async Task ChooseSplitAsync()
     {
-        get => R.Mode == RoutingMode.Split;
-        set => Set(r => r with { Mode = value ? RoutingMode.Split : RoutingMode.AllTraffic });
+        if (R.Mode != RoutingMode.Split && await SafetyDialogs.ConfirmSplitModeAsync(_overlay).ConfigureAwait(true))
+        {
+            Set(r => r with { Mode = RoutingMode.Split });
+        }
     }
 
     public string ModeNote => IsSplit

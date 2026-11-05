@@ -325,7 +325,7 @@
           <span class="t-strong">Что идет через VPN</span>
           <div class="segments" role="radiogroup" aria-label="Что идет через VPN">
             <button class="segment on" data-route="all" role="radio" aria-checked="true">Весь трафик</button>
-            <button class="segment" data-route="split" role="radio" aria-checked="false">Раздельный режим</button>
+            <button class="segment" data-route="split" data-confirm="dlg-split" role="radio" aria-checked="false">Раздельный режим</button>
           </div>
           <span class="t-caption t-wrap" data-when="all">Весь трафик <span data-os-word="name">Windows</span> идет через VPN. Исключение — только локальная сеть, если она разрешена.</span>
           <span class="t-caption t-wrap" data-when="split">VPN для всего, кроме выбранных программ и сайтов.</span>
@@ -569,6 +569,16 @@
       </div>
     </div>
 
+    <!-- «Раздельный режим» — после подтверждения, как «Только прокси» (просьба пользователя 2026-11-05); обратно — без вопроса -->
+    <div class="dialog" id="dlg-split" role="dialog" aria-modal="true" aria-label="Перейти в раздельный режим?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.splitMode.title">Перейти в раздельный режим?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.splitMode.text">«Программы мимо VPN» и сайты с правилом «Напрямую» пойдут через провайдера: они увидят ваш реальный IP, и блок при обрыве на них не действует. Остальной трафик останется в туннеле.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.splitMode.keep">Оставить весь трафик</button>
+        <button class="btn-secondary danger" data-confirm-yes data-ui-text="dialog.splitMode.switch">Перейти</button>
+      </div>
+    </div>
     <div class="pg-island" data-active="settings"></div>
   </section>
 </div>

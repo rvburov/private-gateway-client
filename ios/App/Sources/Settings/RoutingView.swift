@@ -80,6 +80,7 @@ struct RoutingView: View {
             Text(texts.routingModeTitle).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary))
             PgSegments(
                 options: RoutingLook.modeOptions(texts), selection: routing.mode, identifier: "routing.mode",
+                confirm: { RoutingLook.modeDialog($0, texts) },
                 onSelect: { mode in
                     var next = routing
                     next.mode = mode
@@ -205,6 +206,16 @@ enum RoutingLook {
 
     static func modeOptions(_ texts: PgTexts) -> [PgOption<RoutingMode>] {
         [PgOption(value: RoutingMode.allTraffic, title: texts.routingModeAll), PgOption(value: RoutingMode.split, title: texts.routingModeSplit)]
+    }
+
+    /// Вопрос перед «Раздельным режимом» (просьба пользователя 2026-11-05, ConfirmSplitModeAsync десктопа): часть трафика уходит
+    /// мимо туннеля и блока при обрыве. Основная кнопка — «Оставить весь трафик»; на «Весь трафик» — без вопроса.
+    static func modeDialog(_ mode: RoutingMode, _ texts: PgTexts) -> PgDialog? {
+        guard mode == .split else { return nil }
+        return PgDialog(
+            kind: .warning, icon: PgIcons.shield, detail: PgIcons.markAlert, title: texts.dialogSplitModeTitle, text: texts.dialogSplitModeText,
+            primary: texts.dialogSplitModeKeep, secondary: texts.dialogSplitModeSwitch, secondaryDanger: true
+        )
     }
 
     /// Подпись под сегментами: «Весь трафик iOS идет через VPN…» или «VPN для всего, кроме…».

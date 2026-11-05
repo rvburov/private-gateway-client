@@ -70,6 +70,7 @@ import com.privategateway.client.ui.theme.LocalPgToast
 import com.privategateway.client.ui.theme.Overline
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
+import com.privategateway.client.ui.theme.PgDialog
 import com.privategateway.client.ui.theme.PgIcon
 import com.privategateway.client.ui.theme.PgIcons
 import com.privategateway.client.ui.theme.PgInput
@@ -82,6 +83,7 @@ import com.privategateway.client.ui.theme.PgSegments
 import com.privategateway.client.ui.theme.PgSheet
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgSwitch
+import com.privategateway.client.ui.theme.PgTone
 import com.privategateway.client.ui.theme.PgType
 import com.privategateway.client.ui.theme.pgTopDivider
 
@@ -105,6 +107,8 @@ fun RoutingScreen(
     // Открытый лист правила: null — закрыт, NEW_RULE — новое, иначе — номер правила в списке.
     var editing by rememberSaveable { mutableStateOf<Int?>(null) }
     var picking by rememberSaveable { mutableStateOf(false) }
+    // «Раздельный режим» — через вопрос, как у десктопа (просьба пользователя 2026-11-05); обратно — без вопроса.
+    var askingSplit by rememberSaveable { mutableStateOf(false) }
     val routing = tunnel.routing
     val change: (RoutingSettings) -> Unit = { onTunnel(tunnel.copy(routing = it)) }
     Column(Modifier.fillMaxSize().statusBarsPadding().testTag("routing")) {
@@ -120,7 +124,9 @@ fun RoutingScreen(
                 .padding(start = PgSpace.WindowSideMobile, top = PgSpace.L, end = PgSpace.WindowSideMobile, bottom = PgLayout.ScrollBottomPadding),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            ModeCard(routing.mode) { change(routing.copy(mode = it)) }
+            ModeCard(routing.mode) {
+                if (it == RoutingMode.Split && !routing.split) askingSplit = true else change(routing.copy(mode = it))
+            }
             if (routing.split) {
                 SplitWarning()
                 Section(stringResource(R.string.routing_apps_title)) {
@@ -207,6 +213,26 @@ fun RoutingScreen(
                 }
             },
             onClose = { picking = false },
+        )
+    }
+
+    if (askingSplit) {
+        PgDialog(
+            stringResource(R.string.dialog_splitMode_title),
+            stringResource(R.string.dialog_splitMode_text),
+            PgIcons.Shield,
+            PgTone.Caution,
+            stringResource(R.string.dialog_splitMode_keep),
+            { askingSplit = false },
+            stringResource(R.string.dialog_splitMode_switch),
+            {
+                askingSplit = false
+                change(routing.copy(mode = RoutingMode.Split))
+            },
+            { askingSplit = false },
+            "dialog.split",
+            detail = PgIcons.MarkAlert,
+            secondaryDanger = true,
         )
     }
 }

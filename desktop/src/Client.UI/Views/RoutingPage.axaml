@@ -96,8 +96,8 @@
               <UniformGrid Columns="2">
                 <RadioButton x:Name="AllTraffic" Classes="segment" GroupName="routing" IsChecked="{Binding IsAllTraffic}"
                              Content="{l:L routing.mode.all}" />
-                <RadioButton x:Name="Split" Classes="segment" GroupName="routing" IsChecked="{Binding IsSplit}"
-                             Content="{l:L routing.mode.split}" />
+                <c:ConfirmRadioButton x:Name="Split" Classes="segment" GroupName="routing" IsChecked="{Binding IsSplit, Mode=OneWay}"
+                                     Command="{Binding ChooseSplitCommand}" Content="{l:L routing.mode.split}" />
               </UniformGrid>
             </Border>
             <TextBlock x:Name="ModeNote" Classes="caption" Text="{Binding ModeNote}" TextWrapping="Wrap" />

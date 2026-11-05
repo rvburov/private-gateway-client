@@ -34,6 +34,22 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.proxyMode.switch"])
         { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
+    /// <summary>
+    /// «Раздельный режим» — после подтверждения, как «Только прокси» (просьба пользователя 2026-11-05): программы и сайты из
+    /// списков «Мимо VPN» уходят мимо туннеля и блока при обрыве. Безопасный ответ — основная кнопка.
+    /// </summary>
+    /// <returns>true — пользователь выбрал «Перейти».</returns>
+    public static async Task<bool> ConfirmSplitModeAsync(OverlayViewModel overlay) =>
+        await overlay.AskAsync(new DialogViewModel(
+            DialogKind.Warning,
+            "Icon.Shield",
+            "Icon.Mark.Alert",
+            Loc.Instance["dialog.splitMode.title"],
+            Loc.Instance["dialog.splitMode.text"],
+            Loc.Instance["dialog.splitMode.keep"],
+            Loc.Instance["dialog.splitMode.switch"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+
     /// <param name="overlay">Слой диалогов.</param>
     /// <param name="strict">«Блокировка» строгого режима: после паузы сеть снова закроется, а не вернется VPN.</param>
     /// <returns>true — пользователь выбрал «Открыть на 5 минут».</returns>

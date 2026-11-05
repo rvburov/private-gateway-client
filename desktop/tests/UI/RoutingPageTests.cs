@@ -66,12 +66,29 @@ public sealed class RoutingPageTests : WindowHarness
     [AvaloniaFact]
     public void Mode_is_saved_at_once()
     {
-        var (window, _, page) = OpenRouting();
+        var (window, shell, page) = OpenRouting();
+        var split = Find<RadioButton>(window, "Split");
 
-        Find<RadioButton>(window, "Split").IsChecked = true;
+        // Просьба пользователя 2026-11-05: «Раздельный режим» — через вопрос, как «Только прокси»; до ответа — «Весь трафик».
+        split.Command!.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        var dialog = shell.Overlay.Dialog.ShouldNotBeNull();
+        (dialog.Title, dialog.PrimaryText, dialog.SecondaryText).ShouldBe(("Перейти в раздельный режим?", "Оставить весь трафик", "Перейти"));
+        dialog.IsSecondaryDanger.ShouldBeTrue();
+        dialog.Text.ShouldContain("реальный IP");
+        (page.IsSplit, split.IsChecked).ShouldBe((false, false), "до ответа режим прежний");
+
+        shell.Overlay.DismissCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Service<SettingsService>().Current.Routing.Mode.ShouldBe(RoutingMode.AllTraffic, "отказ — остаться на «Весь трафик»");
+
+        split.Command.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
 
         Service<SettingsService>().Current.Routing.Mode.ShouldBe(RoutingMode.Split);
+        split.IsChecked.ShouldBe(true);
         Find<Border>(window, "SplitWarning").IsVisible.ShouldBeTrue();
         Find<StackPanel>(window, "AppsSection").IsVisible.ShouldBeTrue();
         Find<TextBlock>(window, "AppsEmpty").IsVisible.ShouldBeTrue();
@@ -80,6 +97,7 @@ public sealed class RoutingPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         Service<SettingsService>().Current.Routing.Mode.ShouldBe(RoutingMode.AllTraffic);
         page.IsSplit.ShouldBeFalse();
+        shell.Overlay.Dialog.ShouldBeNull("обратно на «Весь трафик» — без вопроса");
     }
 
     [AvaloniaFact]
@@ -200,7 +218,9 @@ public sealed class RoutingPageTests : WindowHarness
         sheet.IsIdle.ShouldBeTrue();
         sheet.CancelCommand.Execute(null);
 
-        page.IsSplit = true;
+        page.ChooseSplitCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         Find<TextBlock>(window, "IdleNote").IsVisible.ShouldBeFalse();
         page.Rules.ShouldAllBe(r => !r.IsIdle);

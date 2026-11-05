@@ -160,6 +160,13 @@ final class SettingsTests: XCTestCase {
             let texts = PgTexts(language)
             XCTAssertEqual(RoutingLook.modeOptions(texts).map(\.value), [.allTraffic, .split])
             XCTAssertEqual(RoutingLook.modeOptions(texts).map(\.title), [texts.routingModeAll, texts.routingModeSplit])
+            // «Раздельный режим» — через вопрос, «Весь трафик» — без него (просьба пользователя 2026-11-05).
+            XCTAssertNil(RoutingLook.modeDialog(.allTraffic, texts))
+            let split = RoutingLook.modeDialog(.split, texts)
+            XCTAssertEqual(split?.title, texts.dialogSplitModeTitle)
+            XCTAssertEqual(split?.primary, texts.dialogSplitModeKeep)
+            XCTAssertEqual(split?.secondary, texts.dialogSplitModeSwitch)
+            XCTAssertEqual(split?.secondaryDanger, true)
             let all = RoutingLook.modeNote(.allTraffic, texts)
             XCTAssertTrue(all.contains("iOS"), all)
             XCTAssertFalse(all.contains("{"), all)

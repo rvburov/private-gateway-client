@@ -229,7 +229,7 @@ class AdvancedSettingsTest {
     }
 
     @Test
-    fun `routing mode switches without a question and split shows its blocks`() {
+    fun `split mode asks first while all traffic does not and split shows its blocks`() {
         var tunnel by mutableStateOf(TunnelSettings())
         compose.setContent { WithToast { RoutingScreen(tunnel, { tunnel = it }, {}, {}, { emptyList() }) } }
 
@@ -241,7 +241,16 @@ class AdvancedSettingsTest {
         compose.onNodeWithTag("routing.apps.add").assertDoesNotExist()
         compose.onNodeWithTag("routing.rules.empty").performScrollTo().assertTextEquals(text(R.string.routing_rules_empty))
 
+        // Просьба пользователя 2026-11-05: «Раздельный режим» — через вопрос; отказ оставляет «Весь трафик».
         compose.onNodeWithTag("routing.mode.Split").performClick()
+        compose.onNodeWithTag("dialog.split").assertIsDisplayed()
+        assertEquals(RoutingMode.AllTraffic, tunnel.routing.mode)
+        compose.onNodeWithTag("dialog.split.primary").assertTextEquals(text(R.string.dialog_splitMode_keep)).performClick()
+        compose.onNodeWithTag("dialog.split").assertDoesNotExist()
+        assertEquals(RoutingMode.AllTraffic, tunnel.routing.mode)
+
+        compose.onNodeWithTag("routing.mode.Split").performClick()
+        compose.onNodeWithTag("dialog.split.secondary").assertTextEquals(text(R.string.dialog_splitMode_switch)).performClick()
         assertEquals(RoutingMode.Split, tunnel.routing.mode)
         compose.onNodeWithTag("routing.mode.Split").assertIsSelected()
         compose.onNodeWithTag("routing.mode.note").assertTextEquals(text(R.string.routing_mode_split_note))
@@ -252,6 +261,7 @@ class AdvancedSettingsTest {
         compose.onNodeWithTag("routing.apps.add").performScrollTo().assertIsDisplayed()
 
         compose.onNodeWithTag("routing.mode.AllTraffic").performScrollTo().performClick()
+        compose.onNodeWithTag("dialog.split").assertDoesNotExist()
         assertEquals(TunnelSettings(), tunnel)
         compose.onNodeWithTag("routing.warning").assertDoesNotExist()
     }
