@@ -1,3 +1,6 @@
+using Avalonia.VisualTree;
+using Avalonia.Controls;
+using Avalonia;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
@@ -194,6 +197,26 @@ public sealed class CorePageTests : WindowHarness
 
         Text(window, "XrayVersion").ShouldBe("25.8.3");
         Text(window, "SecondCore").ShouldBe("sing-box 1.14.3", "Hysteria2 и TUIC ведет ретранслятор sing-box за Xray");
+    }
+
+    [AvaloniaFact]
+    public void Scrolling_the_page_closes_an_open_drop_down()
+    {
+        // Просьба пользователя 2026-11-05: открытый список «Отпечаток TLS» ехал вместе со страницей поверх нижнего меню.
+        var (window, _, page) = OpenCore();
+        var scroll = window.GetVisualDescendants().OfType<CorePage>().Single().GetVisualDescendants().OfType<ScrollViewer>().First();
+
+        var popup = window.GetVisualDescendants().OfType<Popup>().Single(p => p.PlacementTarget?.Name == "FingerprintChoice");
+
+        page.ToggleFingerprintCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        popup.IsOpen.ShouldBeTrue();
+
+        scroll.Offset = new Vector(0, scroll.Offset.Y + 40);
+        Dispatcher.UIThread.RunJobs();
+
+        page.IsFingerprintOpen.ShouldBeFalse("прокрутка страницы закрывает список, как системные списки");
+        popup.IsOpen.ShouldBeFalse();
     }
 
     private (MainWindow Window, ShellViewModel Shell, CorePageViewModel Page) OpenCore()

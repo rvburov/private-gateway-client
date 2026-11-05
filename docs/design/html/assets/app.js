@@ -661,6 +661,16 @@
       });
     });
     document.addEventListener("click", function (e) { closeOnOutside(e); onClick(e); });
+    // Прокрутка страницы закрывает открытые меню, как в программе и в системных списках (просьба пользователя 2026-11-05):
+    // меню у кнопки выбора не едет вместе со страницей поверх нижнего меню.
+    document.addEventListener("scroll", function (e) {
+      var page = e.target.closest && e.target.closest(".pg-page");
+      var app = page && page.closest(".pg-app");
+      if (!app) { return; }
+      app.querySelectorAll(".popup.is-open").forEach(function (p) {
+        if (!p.contains(e.target)) { p.classList.remove("is-open"); }
+      });
+    }, true);
     document.addEventListener("input", function (e) {
       var form = e.target.closest && e.target.closest("[data-external-proxy]");
       if (form) { updateExternalProxy(form, true); }
