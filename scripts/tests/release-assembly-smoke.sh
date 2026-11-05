@@ -47,6 +47,35 @@ export UPDATE_KEYS="$TMP/keys"
 # «Contributors» попал чужой пользователь), почта остается как есть.
 printf '%s\n' 'feat(ui): первое' 'fix(android): @param:ApplicationContext в TunnelControl' 'docs: почта user@example.com' > "$TMP/subjects.txt"
 export RELEASE_SUBJECTS="$TMP/subjects.txt"
+# История версий для «Что нового»: у 0.3.0 своя секция — она важнее общей «Не выпущено» выше; у беты 0.4.0-beta.1
+# секции нет — новое берется из коммитов.
+cat > "$TMP/CHANGELOG.md" <<'CHANGES'
+# Изменения
+
+## [Не выпущено] — 0.3.0
+
+### Добавлено — 30 ноября
+
+- Общий список до выпуска, в заметки 0.3.0 не попадает.
+
+## [0.3.0] — 1 декабря
+
+### Добавлено — 1 декабря
+
+- Окно подтверждения перед раздельным режимом. Подробнее
+  в инструкции.
+
+### Исправлено — 2 декабря
+
+- Строка реального IP не пропадает.
+
+## [0.2.0]
+
+### Добавлено — 1 ноября
+
+- Старое, в 0.3.0 не попадает.
+CHANGES
+export RELEASE_CHANGELOG="$TMP/CHANGELOG.md"
 unset UPDATE_SIGNING_KEY
 
 builds stable 0.3.0
@@ -57,7 +86,10 @@ check "в манифесте главное из заметок" "grep -q '\"hig
 check "без ключей — без подписи" "[ ! -e '$TMP/stable-out/update.json.sig' ]"
 check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-dmg '$TMP/stable-out/update.json'"
 check "в заметках — как поставить на macOS без подписи" "grep -q 'Все равно открыть' '$TMP/notes.md'"
-check "«@слово» из коммита — кодом, почта как есть" "grep -qF '\`@param:ApplicationContext\` в TunnelControl' '$TMP/notes.md' && grep -qF 'user@example.com' '$TMP/notes.md'"
+check "«Что нового» — из секции версии CHANGELOG, перенос строк склеен" "grep -qxF -- '- Окно подтверждения перед раздельным режимом. Подробнее в инструкции.' '$TMP/notes.md' && grep -qxF '**Исправлено**' '$TMP/notes.md' && ! grep -q 'Старое' '$TMP/notes.md' && ! grep -q 'Общий список' '$TMP/notes.md' && ! grep -q 'первое' '$TMP/notes.md'"
+check "таблица «Система · Файл · Что сделать» с пакетами этой версии" "grep -qF '| Система | Файл | Что сделать |' '$TMP/notes.md' && grep -qF '\`sudo apt install ./private-gateway_0.3.0_amd64.deb\`' '$TMP/notes.md' && grep -qF 'PrivateGateway-0.3.0-android.apk' '$TMP/notes.md'"
+check "главное манифеста — из той же секции, первое предложение" "python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))[\"highlights\"]; sys.exit(h != [\"Окно подтверждения перед раздельным режимом.\", \"Строка реального IP не пропадает.\"])' '$TMP/stable-out/update.json'"
+check "заметки короткие — не больше 45 строк" "[ \"\$(wc -l < '$TMP/notes.md')\" -le 45 ]"
 check "в заметках автор — владелец репозитория, других упоминаний нет" "grep -q '^Автор — @rvburov$' '$TMP/notes.md' && [ \"\$(grep -oE '(^|[^\`[:alnum:]])@[[:alnum:]]' '$TMP/notes.md' | wc -l)\" = 1 ]"
 check "заметки рядом, а не в файлах выпуска" "[ -f '$TMP/notes.md' ] && [ ! -e '$TMP/stable-out/notes.md' ]"
 check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
@@ -66,6 +98,8 @@ check "доля 101 — ошибка" "! run rollout '$TMP/stable-out' 101"
 
 builds beta 0.4.0-beta.1
 check "бета — канал beta" "run assemble 0.4.0-beta.1 '$TMP/beta' '$TMP/beta-out' && grep -q '\"channel\": \"beta\"' '$TMP/beta-out/update.json'"
+check "без секции в CHANGELOG — новое и исправленное из коммитов, без docs" "grep -qxF -- '- первое' '$TMP/notes.md' && ! grep -q 'почта user' '$TMP/notes.md'"
+check "«@слово» из коммита — кодом" "grep -qF '\`@param:ApplicationContext\` в TunnelControl' '$TMP/notes.md'"
 
 builds broken 0.3.0
 echo corrupt >> "$TMP/broken/release-macOS/PrivateGateway-0.3.0-osx-arm64.tar.gz"

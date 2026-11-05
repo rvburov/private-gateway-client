@@ -14,8 +14,9 @@
 //     (секрет GitHub, PEM PKCS#8). Подпись сразу сверяется с открытыми ключами shared/update/keys/*.pem — с ними
 //     служба проверяет обновление. Ключа нет: пока открытых ключей в репозитории нет — выпуск без подписи (обновление
 //     из него служба не поставит), а если они уже есть — ошибка: такой выпуск не примет ни один клиент;
-//   ../notes.md — заметки к выпуску из коммитов с прошлого тега: «Новое» (feat), «Исправлено» (fix), остальное
-//     в «Сборка, проверки, документация»; и как сверить загрузку.
+//   ../notes.md — короткие заметки к выпуску: «Что нового» из секции версии в CHANGELOG.md (нет секции — feat и fix из
+//     коммитов с прошлого тега), таблица «Система · Файл · Что сделать», первый запуск на macOS, сверка загрузки, автор;
+//     главное из той же секции — highlights манифеста.
 // rollout: меняет долю раскатки в update.json уже опубликованного выпуска, подписывает его заново (подписанный без ключа
 // не меняется) и обновляет строки в SHA256SUMS (workflow release-rollout.yml). notes.md пишется рядом с папкой выпуска —
 // в файлы выпуска он не идет.
@@ -124,7 +125,8 @@ foreach (var required in new[] { "win-x64-msi", "linux-x64-deb", "osx-arm64-dmg"
 }
 
 var repository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") ?? "rvburov/private-gateway-client";
-var (previous, subjects) = Changes();
+var (_, subjects) = Changes();
+var news = News(version, subjects);
 var update = new JsonObject
 {
     ["version"] = version,
@@ -132,7 +134,7 @@ var update = new JsonObject
     ["rollout"] = rollout,
     ["published"] = Timestamp().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
     ["notes"] = $"https://github.com/{repository}/releases/tag/v{version}",
-    ["highlights"] = new JsonArray([.. Highlights(subjects).Select(h => JsonValue.Create(h))]),
+    ["highlights"] = new JsonArray([.. Highlights(news).Select(h => JsonValue.Create(h))]),
     ["assets"] = assets,
 };
 var updatePath = Path.Combine(release.FullName, "update.json");
@@ -156,7 +158,10 @@ File.WriteAllText(Path.Combine(release.Parent!.FullName, "notes.md"), Notes());
 Console.WriteLine($"Выпуск {version} ({update["channel"]}, раскатка {rollout} %{(File.Exists(updatePath + ".sig") ? ", подписан" : string.Empty)}): {files.Count} файлов → {release.FullName}");
 return 0;
 
-// Заметки к выпуску: коммиты с прошлого тега по видам (тип(область): суть), затем как сверить загрузку.
+// Заметки к выпуску — коротко, как в SmartBase (решение пользователя 2026-11-05): страница выпуска — место, где скачивают
+// программу, а не отчет о работе. «Что нового» — секция версии в CHANGELOG.md, написанная для людей (нет секции — новое и
+// исправленное из коммитов), таблица «Система · Файл · Что сделать», первый запуск на macOS без подписи Apple, одна строка
+// о сверке загрузки и автор.
 string Notes()
 {
     var lines = new List<string> { $"# Private Gateway {version}", string.Empty };
@@ -165,49 +170,122 @@ string Notes()
         lines.AddRange(["Бета-выпуск: приходит тем, у кого в «О программе» выбран канал «Бета».", string.Empty]);
     }
 
-    lines.Add(previous is null ? $"Первый выпуск: изменения с начала разработки ({subjects.Count} коммитов)." : $"Изменения с {previous} ({subjects.Count} коммитов).");
-    foreach (var (title, types) in new[] { ("Новое", new[] { "feat" }), ("Исправлено", new[] { "fix" }), ("Сборка, проверки, документация", new[] { "ci", "build", "test", "docs", "chore", "refactor", "perf" }) })
+    lines.AddRange(["## Что нового", string.Empty]);
+    foreach (var (title, items) in news)
     {
-        var group = subjects.Where(s => types.Contains(Type(s))).Select(s => "- " + NoMentions(Subject(s))).ToList();
-        if (group.Count > 0)
-        {
-            lines.AddRange([string.Empty, $"## {title}", string.Empty, .. group]);
-        }
+        lines.AddRange([$"**{title}**", string.Empty, .. items.Select(i => "- " + NoMentions(i)), string.Empty]);
     }
 
-    var other = subjects.Where(s => Type(s) is not ("feat" or "fix" or "ci" or "build" or "test" or "docs" or "chore" or "refactor" or "perf")).ToList();
-    if (other.Count > 0)
+    var deb = (string)assets["linux-x64-deb"]!["file"]!;
+    var rpm = assets["linux-x64-rpm"]?["file"]?.GetValue<string>();
+    lines.AddRange(
+    [
+        "## Скачать", string.Empty,
+        "| Система | Файл | Что сделать |",
+        "| --- | --- | --- |",
+        $"| Windows 10 и 11 | `PrivateGateway-{version}-win-x64.msi` | Запустить. Если Windows покажет «Система Windows защитила ваш компьютер» — **«Подробнее»** → **«Выполнить в любом случае»** |",
+        $"| macOS (Apple Silicon) | `PrivateGateway-{version}-osx-arm64.dmg` | Открыть образ, перетащить Private Gateway в «Программы»; первый запуск — ниже |",
+        $"| Linux: Debian, Ubuntu | `{deb}` | `sudo apt install ./{deb}` |",
+    ]);
+    if (rpm is not null)
     {
-        lines.AddRange([string.Empty, "## Прочее", string.Empty, .. other.Select(s => "- " + NoMentions(s))]);
+        lines.Add($"| Linux: Fedora, openSUSE | `{rpm}` | `sudo dnf install ./{rpm}` |");
     }
 
     lines.AddRange(
     [
-        string.Empty, "## Как поставить", string.Empty,
-        "**Windows** — `PrivateGateway-" + version + "-win-x64.msi`. Установщик пока не подписан сертификатом, поэтому Windows "
-            + "может показать «Система Windows защитила ваш компьютер»:",
+        $"| Android | `PrivateGateway-{version}-android.apk` | Открыть на телефоне, разрешить установку из этого источника; следующие версии ставятся поверх |",
         string.Empty,
-        "1. Нажмите **«Подробнее»**.",
-        "2. Внизу окна нажмите **«Выполнить в любом случае»**.",
+        "Архивы `.zip` и `.tar.gz` — та же программа без установки. Приложение для iPhone и iPad появится после подписи Apple.",
+        string.Empty, "## Первый запуск на macOS", string.Empty,
+        "Программа пока не подписана Apple — та же инструкция нарисована в окне образа:",
         string.Empty,
-        "**macOS (Apple Silicon)** — `PrivateGateway-" + version + "-osx-arm64.dmg`. Программа пока не подписана сертификатом Apple; "
-            + "инструкция нарисована и в окне образа:",
-        string.Empty,
-        "1. Откройте образ и перетащите **Private Gateway** в **«Программы»**.",
-        "2. Откройте программу из «Программ» — в окне о проверке нажмите **«Готово»**.",
-        "3. Откройте **«Системные настройки» → «Конфиденциальность и безопасность»**.",
-        "4. Внизу, в разделе **«Безопасность»**, нажмите **«Все равно открыть»** и подтвердите (один раз).",
-        string.Empty,
-        "**Linux** — `.deb` (Debian, Ubuntu) или `.rpm` (Fedora, openSUSE); дополнительно ничего делать не нужно.",
-        string.Empty, "## Как сверить загрузку", string.Empty,
-        "Скачайте `SHA256SUMS` рядом с файлом и выполните `sha256sum -c SHA256SUMS --ignore-missing` (Linux, Git Bash на Windows) или "
-            + "`shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS). Состав каждого выпуска — `*.cdx.json` (SBOM), лицензии открытых "
-            + "компонентов — `THIRD-PARTY-NOTICES.txt` в архиве и в папке программы.",
+        "1. Откройте Private Gateway из «Программ» — в окне о проверке нажмите **«Готово»**.",
+        "2. Откройте **«Системные настройки» → «Конфиденциальность и безопасность»**.",
+        "3. Внизу, в разделе **«Безопасность»**, нажмите **«Все равно открыть»** и подтвердите (один раз).",
+        string.Empty, "## Сверка загрузки", string.Empty,
+        "`sha256sum -c SHA256SUMS --ignore-missing` (Linux, Git Bash) или `shasum -a 256 -c SHA256SUMS --ignore-missing` (macOS) рядом "
+            + "со скачанным файлом.",
         // «Contributors» выпуска GitHub собирает из упоминаний в тексте: автор — владелец репозитория (решение 2026-11-05).
         string.Empty, $"Автор — @{repository.Split('/')[0]}",
     ]);
     return string.Join('\n', lines) + "\n";
+}
 
+// «Что нового»: секция версии в CHANGELOG.md — «## [1.2.3]»; у беты — и ее выпуска («1.3.0-beta.1» → «[1.3.0]»), и секция
+// «[Не выпущено] — 1.3.0», которую пишут до тега. Внутри — «### Добавлено — 5 ноября» и пункты «- …» с продолжением строк;
+// одинаковые заголовки разных дней — одной группой. Нет секции — «Добавлено» и «Исправлено» из тем коммитов feat и fix.
+static List<(string Title, List<string> Items)> News(string version, List<string> subjects)
+{
+    var path = Environment.GetEnvironmentVariable("RELEASE_CHANGELOG") is { Length: > 0 } custom ? custom : "CHANGELOG.md";
+    var plain = version.Split('-')[0];
+    var groups = new List<(string Title, List<string> Items)>();
+    if (File.Exists(path))
+    {
+        var all = File.ReadAllLines(path);
+
+        // Какая секция: своя версия, затем выпуск беты, затем «Не выпущено» с этим номером; 0 — не подходит.
+        int Rank(string header) =>
+            header.Contains($"[{version}]", StringComparison.Ordinal) ? 3
+            : header.Contains($"[{plain}]", StringComparison.Ordinal) ? 2
+            : header.Contains("[Не выпущено]", StringComparison.Ordinal) && Regex.IsMatch(header, $@"(?<![\d.]){Regex.Escape(plain)}(?![\d.])") ? 1
+            : 0;
+        var start = Enumerable.Range(0, all.Length)
+            .Where(i => all[i].StartsWith("## ", StringComparison.Ordinal) && Rank(all[i]) > 0)
+            .OrderByDescending(i => Rank(all[i])).ThenBy(i => i)
+            .DefaultIfEmpty(-1).First();
+        var inside = false;
+        List<string>? items = null;
+        foreach (var raw in start < 0 ? [] : all.Skip(start))
+        {
+            if (raw.StartsWith("## ", StringComparison.Ordinal))
+            {
+                if (inside)
+                {
+                    break;
+                }
+
+                inside = true;
+                continue;
+            }
+
+            if (raw.StartsWith("### ", StringComparison.Ordinal))
+            {
+                var title = raw[4..].Split(" — ")[0].Trim();
+                items = groups.FirstOrDefault(g => g.Title == title).Items;
+                if (items is null)
+                {
+                    items = [];
+                    groups.Add((title, items));
+                }
+            }
+            else if (items is not null && raw.StartsWith("- ", StringComparison.Ordinal))
+            {
+                items.Add(raw[2..].Trim());
+            }
+            else if (items is { Count: > 0 } && raw.StartsWith("  ", StringComparison.Ordinal) && raw.Trim().Length > 0)
+            {
+                items[^1] += " " + raw.Trim();
+            }
+        }
+    }
+
+    groups.RemoveAll(g => g.Items.Count == 0);
+    if (groups.Count > 0)
+    {
+        return groups;
+    }
+
+    foreach (var (title, type) in new[] { ("Добавлено", "feat"), ("Исправлено", "fix") })
+    {
+        var items = subjects.Where(s => Type(s) == type).Select(Subject).ToList();
+        if (items.Count > 0)
+        {
+            groups.Add((title, items));
+        }
+    }
+
+    return groups.Count > 0 ? groups : [("Изменения", ["Исправления и улучшения."])];
 }
 
 // Коммиты с прошлого тега: тег (нет — первый выпуск) и темы коммитов.
@@ -225,9 +303,10 @@ static (string? Previous, List<string> Subjects) Changes()
     return (previous, subjects);
 }
 
-// Главное для карточки «Доступно обновление»: до трех строк — сначала новое, потом исправленное, суть без вида.
-static List<string> Highlights(List<string> subjects) =>
-    [.. subjects.Where(s => Type(s) == "feat").Concat(subjects.Where(s => Type(s) == "fix")).Take(3).Select(Subject)];
+// Главное для карточки «Доступно обновление»: до трех строк из «Что нового» по порядку групп — первое предложение пункта,
+// без разметки Markdown.
+static List<string> Highlights(List<(string Title, List<string> Items)> news) =>
+    [.. news.SelectMany(g => g.Items).Take(3).Select(i => Regex.Replace(i.Split(". ")[0].TrimEnd('.'), @"[`*]", string.Empty) + ".")];
 
 // «feat(ui): …» → feat.
 static string Type(string subject) => subject.IndexOfAny(['(', ':']) is > 0 and var at ? subject[..at] : string.Empty;

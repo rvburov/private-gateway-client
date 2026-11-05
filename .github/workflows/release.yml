@@ -142,17 +142,6 @@ jobs:
           [[ "$version" != *-* ]] || rollout=100
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) dotnet run scripts/release.cs assemble "$version" artifacts/builds artifacts/release "$rollout"
           cp artifacts/android/* artifacts/release/
-          sed "s/{version}/$version/g" >> artifacts/notes.md <<'NOTES'
-
-          ## Где что скачать
-
-          - **Windows** — установщик `.msi` (мастер установки) или архив `.zip`.
-          - **Linux** — пакеты `.deb` и `.rpm` или архив `.tar.gz`.
-          - **Android** — `PrivateGateway-{version}-android.apk`, подписан ключом выпуска. Скачайте на телефон, откройте и
-            разрешите установку из этого источника; следующие версии ставятся поверх. Проверка — `.apk.sha256`.
-          - **Apple (macOS, iPhone, iPad)** — в разработке. Сборка macOS в списке файлов — для проверки, без подписи Apple;
-            приложение для iPhone и iPad появится после подписи Apple (TestFlight, App Store).
-          NOTES
 
       - name: Выпуск на GitHub
         env:
