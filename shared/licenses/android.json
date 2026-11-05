@@ -9,8 +9,16 @@
 //   maven — модули «группа:имя» из runtime-зависимостей выпуска, «*» в конце — любой хвост; модуль идет к компоненту с
 //           самым длинным подходящим шаблоном. Сборка не идет, если модуль ничем не покрыт или у компонента нет модулей;
 //   aar — свой .aar в android/app/libs, версия — android/<имя строчными>.version;
-//   inside — входит в другой компонент этого списка (Xray-core — внутри libXray).
+//   inside — входит в другой компонент этого списка (Xray-core — внутри libXray);
+//   files — файлы в самом приложении, пути от android/ (шрифт Roboto Mono — res/font).
 [
+  {
+    "name": "Roboto Mono",
+    "license": "OFL-1.1",
+    "copyright": "Copyright 2015 The Roboto Mono Project Authors (https://github.com/googlefonts/robotomono)",
+    "url": "https://github.com/googlefonts/robotomono",
+    "files": ["app/src/main/res/font/roboto_mono_*.ttf"]
+  },
   {
     "name": "OkHttp",
     "license": "Apache-2.0",

@@ -57,7 +57,9 @@ class ThemeWriterTest {
         assertTrue(tokens.contains("const val OVERLINE_UPPERCASE = true"))
         assertTrue(tokens.contains("val NavMobile = TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight(500))"))
         assertTrue(tokens.contains("val NavMobileActive = TextStyle(fontSize = 10.5.sp, fontWeight = FontWeight(600))"))
-        assertTrue(tokens.contains("val Mono = TextStyle(fontSize = 13.sp, fontWeight = FontWeight(500), fontFamily = FontFamily.Monospace)"))
+        assertTrue(tokens.contains("val Mono = TextStyle(fontSize = 13.sp, fontWeight = FontWeight(500), fontFamily = PgFonts.Mono)"))
+        // Roboto Mono встроен (DECISIONS.md, п. 21.4): шрифт приложения, а не системный моноширинный.
+        assertTrue(tokens.contains("Font(R.font.roboto_mono_medium, FontWeight.Medium)"))
     }
 
     @Test

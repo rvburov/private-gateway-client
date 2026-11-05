@@ -40,13 +40,24 @@ internal object ThemeWriter {
         listOf(
             "androidx.compose.ui.graphics.Color",
             "androidx.compose.ui.text.TextStyle",
+            "androidx.compose.ui.text.font.Font",
             "androidx.compose.ui.text.font.FontFamily",
             "androidx.compose.ui.text.font.FontWeight",
+            "com.privategateway.client.R",
             "androidx.compose.ui.unit.Dp",
             "androidx.compose.ui.unit.dp",
             "androidx.compose.ui.unit.em",
             "androidx.compose.ui.unit.sp",
         ).forEach { out.line("import $it") }
+        out.line()
+        out.line("/** Моноширинный шрифт макета (font.android.mono — Roboto Mono): встроен в приложение (res/font), а не системный. */")
+        out.block("object PgFonts") {
+            out.line("val Mono = FontFamily(")
+            out.line("    Font(R.font.roboto_mono_regular, FontWeight.Normal),")
+            out.line("    Font(R.font.roboto_mono_medium, FontWeight.Medium),")
+            out.line("    Font(R.font.roboto_mono_semibold, FontWeight.SemiBold),")
+            out.line(")")
+        }
         out.line()
         out.line("/** Слой тени (shadow.*): смещение, размытие и цвет — как box-shadow макета. */")
         out.line("data class PgShadowLayer(val x: Dp, val y: Dp, val blur: Dp, val color: Color)")
@@ -177,7 +188,7 @@ internal object ThemeWriter {
         style["tracking"]?.let { parts.add("letterSpacing = ${em(number(it, "$path.tracking"))}") }
         style["lineHeight"]?.let { parts.add("lineHeight = ${em(number(it, "$path.lineHeight"))}") }
         if (mono) {
-            parts.add("fontFamily = FontFamily.Monospace")
+            parts.add("fontFamily = PgFonts.Mono")
         }
 
         return "TextStyle(${parts.joinToString(", ")})"

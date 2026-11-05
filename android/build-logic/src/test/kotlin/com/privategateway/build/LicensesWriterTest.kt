@@ -42,7 +42,7 @@ class LicensesWriterTest {
             assertEquals(texts.getValue(id as String).trimEnd() + "\n", files.getValue("licenses/$id.txt"))
         }
 
-        assertEquals(setOf(LicensesWriter.LIST, LicensesWriter.NOTICES, LicensesWriter.SBOM, "licenses/MIT.txt", "licenses/MPL-2.0.txt", "licenses/Apache-2.0.txt"),
+        assertEquals(setOf(LicensesWriter.LIST, LicensesWriter.NOTICES, LicensesWriter.SBOM, "licenses/MIT.txt", "licenses/MPL-2.0.txt", "licenses/Apache-2.0.txt", "licenses/OFL-1.1.txt"),
             files.keys)
         val notices = files.getValue(LicensesWriter.NOTICES)
         assertTrue(notices.startsWith("Private Gateway Client 0.1.0 (Android)\n"))

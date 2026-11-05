@@ -21,7 +21,7 @@ internal object LicensesWriter {
     const val NOTICES = "THIRD-PARTY-NOTICES.txt"
     const val SBOM = "sbom.cdx.json"
 
-    /** Строка android.json; приходит ровно одним путем: [maven], [aar] или [inside]. */
+    /** Строка android.json; приходит ровно одним путем: [maven], [aar], [inside] или [files] — файлы в самом приложении (шрифт). */
     class Component(
         val name: String,
         val license: String,
@@ -31,6 +31,7 @@ internal object LicensesWriter {
         val maven: List<String>,
         val aar: String?,
         val inside: String?,
+        val files: List<String>,
         val source: String?,
         val notice: String?,
     )
@@ -214,6 +215,12 @@ internal object LicensesWriter {
                 else -> throw GradleException("android.json: «maven» в строке ${index + 1} — не массив")
             }
 
+            val files = when (val value = map["files"]) {
+                null -> emptyList()
+                is List<*> -> value.map { it as? String ?: throw GradleException("android.json: «files» в строке ${index + 1} — не строки") }
+                else -> throw GradleException("android.json: «files» в строке ${index + 1} — не массив")
+            }
+
             val component = Component(
                 name = required("name"),
                 license = required("license"),
@@ -223,12 +230,13 @@ internal object LicensesWriter {
                 maven = maven,
                 aar = string("aar"),
                 inside = string("inside"),
+                files = files,
                 source = string("source"),
                 notice = string("notice"),
             )
-            val ways = listOf(component.maven.isNotEmpty(), component.aar != null, component.inside != null).count { it }
+            val ways = listOf(component.maven.isNotEmpty(), component.aar != null, component.inside != null, component.files.isNotEmpty()).count { it }
             if (ways != 1) {
-                throw GradleException("android.json: «${component.name}» должен приходить одним путем — maven, aar или inside")
+                throw GradleException("android.json: «${component.name}» должен приходить одним путем — maven, aar, inside или files")
             }
 
             component

@@ -1370,6 +1370,7 @@
   Сейчас: Генератор ставит FontFamily.Monospace — системный моноширинный Android (не Roboto Mono)
   Код: android/build-logic/src/main/kotlin/com/privategateway/build/ThemeWriter.kt:179-181
   Сделать: Вложить Roboto Mono (строка в shared/licenses/android.json и текст лицензии) или поменять токен
+  Сделано 2026-11-05: Roboto Mono в res/font, PgFonts.Mono в теме, строка в android.json (files).
 - **Фон окна: пятна под стеклом** — Android и iOS, иначе (доска 23-ds-foundations).
   Макет: Три пятна в заданных местах, градиент сплошной до 35 % и прозрачный к 70 %, поверх — слой glass.fill (rgba(246,248,252,0.70)), фон бледный (app.css:126-137; app.js:244)
   Сейчас: Пятна без слоя glass.fill, градиент от центра до края, другие места — фон заметно насыщеннее
