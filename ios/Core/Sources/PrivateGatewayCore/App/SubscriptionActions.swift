@@ -80,4 +80,19 @@ extension TextKeys {
         case let .stale(subscription, _): return ("subs.failed", [subscription])
         }
     }
+
+    /// Сообщение окна о подписке. «Не обновилась» — «notify.stale.title · notify.stale.text» с причиной словами, как подсказка
+    /// десктопа о событии (доска 19); остальное — по `notice(_:)`. `text` — перевод ключа с подстановками «{0}», «{1}»…
+    public static func window(_ notice: SubscriptionNotice, _ text: (String, [String]) -> String?) -> String? {
+        guard case let .stale(subscription, reason) = notice else {
+            let line = self.notice(notice)
+            return text(line.key, line.arguments)
+        }
+
+        let cause = Self.failure(reason)
+        let because = text(cause.key, cause.value.map { [$0] } ?? []) ?? ""
+        // {0} — сервер: в тексте о подписке его нет.
+        guard let title = text("notify.stale.title", []), let body = text("notify.stale.text", ["", subscription, because]) else { return nil }
+        return title + " · " + body
+    }
 }

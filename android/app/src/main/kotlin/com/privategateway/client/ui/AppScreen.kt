@@ -118,14 +118,14 @@ fun AppScreen(
     val toast = remember { PgToastState() }
     LaunchedEffect(viewModel, subscriptions, checks) {
         merge(viewModel.messages, subscriptions.messages, checks.messages).collect {
-            toast.show(context.getString(it.text, *it.args), long = it.long)
+            toast.show(it.render(context), long = it.long)
         }
     }
     LaunchedEffect(actions) {
         actions.events.collect { toast.show(it, long = true) }
     }
     LaunchedEffect(backups) {
-        backups?.messages?.collect { toast.show(context.getString(it.text, *it.args), long = it.long) }
+        backups?.messages?.collect { toast.show(it.render(context), long = it.long) }
     }
     LaunchedEffect(requested) {
         requested?.let {
@@ -152,7 +152,7 @@ fun AppScreen(
     val language = Texts.language(LocalConfiguration.current.locales)
     LaunchedEffect(importing.added) {
         val done = importDone(importing, language) ?: return@LaunchedEffect
-        toast.show(context.getString(done.text, *done.args))
+        toast.show(done.render(context))
         adding = false
         scanning = false
         fromSubscriptions = false

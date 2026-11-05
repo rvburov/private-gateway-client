@@ -311,7 +311,7 @@ final class AppModel: ObservableObject {
         let notices = await subscriptionActions.updater.updateDue(connected: connected)
         await reload()
         if let notice = notices.first {
-            say(TextKeys.notice(notice), event: true)
+            post(TextKeys.window(notice) { texts.text(key: $0, $1) }, event: true)
         }
     }
 
@@ -357,7 +357,7 @@ final class AppModel: ObservableObject {
 
     private func tell(_ report: UpdateReport, name: String) {
         if let notice = report.notices.first {
-            say(TextKeys.notice(notice), event: true)
+            post(TextKeys.window(notice) { texts.text(key: $0, $1) }, event: true)
         } else if let text = TextKeys.updated(report.outcome, name: name) {
             // «Сначала включите защиту» — просьба, а не итог: держится дольше, как LongDuration десктопа.
             say(text, event: report.outcome == .blocked(.protectionOff))

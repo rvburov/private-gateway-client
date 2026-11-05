@@ -89,4 +89,24 @@ final class SubscriptionActionsTests: XCTestCase {
         XCTAssertEqual(TextKeys.notice(.changed(server: "A", subscription: "B")).arguments, ["A", "B"])
         XCTAssertEqual(TextKeys.notice(.stale(subscription: "B", reason: .timeout)).key, "subs.failed")
     }
+
+    func testStaleSubscriptionInTheWindowIsTheTitleAndTheTextWithTheReason() {
+        // Доска 19: «Серверы не обновились · «Основная»: <причина>. Оставлен прошлый список.» — как подсказка десктопа.
+        let texts = [
+            "notify.stale.title": "Серверы не обновились",
+            "notify.stale.text": "«{1}»: {2}. Оставлен прошлый список.",
+            "import.download.forbidden": "сервер подписки отказал в доступе ({0})",
+            "subs.notice.missing": "«{0}» пропал из «{1}»",
+        ]
+        let fill: (String, [String]) -> String? = { key, arguments in
+            texts[key].map { line in
+                arguments.enumerated().reduce(line) { $0.replacingOccurrences(of: "{\($1.offset)}", with: $1.element) }
+            }
+        }
+
+        XCTAssertEqual(
+            TextKeys.window(.stale(subscription: "Основная", reason: .forbidden(403)), fill),
+            "Серверы не обновились · «Основная»: сервер подписки отказал в доступе (403). Оставлен прошлый список.")
+        XCTAssertEqual(TextKeys.window(.gone(server: "A", subscription: "B"), fill), "«A» пропал из «B»")
+    }
 }

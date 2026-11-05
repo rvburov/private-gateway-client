@@ -468,7 +468,7 @@
   Сделать: Общий диалог по макету (dialog-icon danger, кнопки столбиком) на обеих платформах вместо системного
 - **Всплывающие итоги («обновлена», «не обновилась», «удалена», «сначала включите защиту»)** — Android, иначе (доска 12-subscriptions).
   Макет: Подсказка toast сверху экрана (12-subscriptions.html:72-78, 413)
-  Сейчас: Системный Toast Android внизу экрана (LENGTH_LONG); на iOS — свой баннер сверху, как в макете
+  Сейчас: Сделано: на Android своя подсказка сверху (PgToast), системного Toast в приложении нет (2026-11-05)
   Код: android/.../ui/AppScreen.kt:129-133 (Toast.makeText); ios PrivateGatewayApp.swift:73-77 (MessageBanner сверху)
   Сделать: Свой всплывающий баннер сверху экрана в стиле .toast, как MessageBanner iOS
 
@@ -1152,7 +1152,7 @@
   Сделать: Различать отказ в разрешении и занятый VPN; для настоящего PGC-NET-010 — страница проблемы по ProblemPage
 - **Подсказка сверху окна (Toast): действие 1,8 с, событие «Заголовок · текст» 6 с** — Android, иначе (доска 19-notifications).
   Макет: 19-notifications.html:87-90, 173 («IP скопирован» сверху окна), 258, 341; 18-dialogs.html:19-24 (на телефоне — под строкой состояния ОС)
-  Сейчас: Все сообщения окна — системный android.widget.Toast внизу экрана, LENGTH_LONG (~3,5 с) для любых; вид Android, не из токенов
+  Сейчас: Сделано: своя подсказка сверху окна (PgToast, 1,8 и 6 с); 2026-11-05 последние системные Toast (отказ в разрешении VPN, «Скопировано» до Android 13) заменены ею
   Код: android/app/src/main/kotlin/com/privategateway/client/ui/AppScreen.kt:129-133; android/app/src/main/kotlin/com/privategateway/client/MainActivity.kt:57,174; эталон desktop/src/Client.UI/ViewModels/ToastViewModel.cs:9,30
   Сделать: Своя Compose-подсказка сверху окна по Toast десктопа (токены), 1,8 с для итога действия, 6 с для события; Toast Android убрать
 - **Подсказка сверху окна (Toast): действие 1,8 с, событие 6 с** — iOS, иначе (доска 19-notifications).
@@ -1167,7 +1167,7 @@
   Сделать: При видимом окне показывать событие подсказкой «notify.*.title · текст» 6 с (как ShowInWindow); на iOS — из willPresent или по отчету расширения в общей папке
 - **Окно открыто · подписка не обновилась** — Android и iOS, иначе (доска 19-notifications).
   Макет: 19-notifications.html:403: «Серверы не обновились» · «…: сервер подписки не ответил за 20 секунд. Оставлен прошлый список.» (notify.stale.* с причиной)
-  Сейчас: Подсказка ««{0}» не обновилась — прошлый список оставлен» (subs.failed), без причины
+  Сейчас: Сделано 2026-11-05: подсказка «notify.stale.title · notify.stale.text» с причиной словами на 6 с (Android `Message.render`, iOS `TextKeys.window`)
   Код: android/app/src/main/kotlin/com/privategateway/client/ui/MainViewModel.kt:158; ios/Core/Sources/PrivateGatewayCore/App/SubscriptionActions.swift:80
   Сделать: В окне — notify.stale.title · notify.stale.text с причиной (Texts.failure / TextKeys.failure), как у десктопа
 - **Уведомление «Нужен вход в Wi-Fi» (Войти | Позже)** — Android и iOS, нет (доска 19-notifications).
@@ -1352,7 +1352,7 @@
   Сделать: Пометить экраны 16 data-os="desktop" в макете и записать решение; ошибки туннеля телефона показывать по 09 («Ошибка»)
 - **Подсказки в окне (toast) — во всем приложении** — Android и iOS, иначе (доска 19-notifications).
   Макет: Подсказка сверху окна; действие («IP скопирован») — 1,8 с, событие «Заголовок · текст» — 6 с (19-notifications.html, заметка; app.css:466-471)
-  Сейчас: Android: все сообщения — системный Toast внизу, LENGTH_LONG (в карте отмечено только для подписок, а это общее для всех экранов); iOS: баннер сверху, 4 с для всех
+  Сейчас: Сделано: Android — своя подсказка сверху (PgToast), системного Toast нет (2026-11-05); iOS — баннер сверху, событие держится дольше итога действия (messageIsEvent)
   Код: android/.../ui/AppScreen.kt:129-133; ios/App/Sources/PrivateGatewayApp.swift:73-88
   Сделать: Свой toast сверху на обеих платформах, длительность по виду сообщения
 - **Компоненты дизайн-системы телефона** — Android и iOS, нет (доска 24-ds-components).

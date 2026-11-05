@@ -1,5 +1,6 @@
 package com.privategateway.client.ui
 
+import android.content.Context
 import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
@@ -129,7 +130,23 @@ data class MainUi(
  * Короткое сообщение окна: текст и подстановки. [long] — сообщение о событии, а не итог нажатия: подсказка держится 6 с
  * вместо 1,8 с, его надо успеть прочесть (как LongDuration у десктопа).
  */
-class Message(@param:StringRes val text: Int, vararg val args: String, val long: Boolean = false)
+class Message(
+    @param:StringRes val text: Int,
+    vararg val args: String,
+    val long: Boolean = false,
+    @param:StringRes val title: Int? = null,
+    val reason: FailureReason? = null,
+) {
+    /**
+     * Текст подсказки: «Заголовок · текст», если есть [title], как подсказка о событии у десктопа. [reason] — причина
+     * словами (import.download.*) последней подстановкой после [args].
+     */
+    fun render(context: Context): String {
+        val because = reason?.let { Texts.failure(it) }?.let { (id, arg) -> if (arg == null) context.getString(id) else context.getString(id, arg) }
+        val body = context.getString(text, *args, *listOfNotNull(because).toTypedArray())
+        return title?.let { context.getString(it) + " · " + body } ?: body
+    }
+}
 
 enum class PowerAction {
     /** Включить или выключить защиту. */
@@ -261,7 +278,11 @@ class MainViewModel @Inject constructor(
                     when (notice) {
                         is SubscriptionNotice.Gone -> Message(R.string.subs_notice_missing, notice.server, notice.subscription, long = true)
                         is SubscriptionNotice.Changed -> Message(R.string.subs_notice_changed, notice.server, notice.subscription, long = true)
-                        is SubscriptionNotice.Stale -> Message(R.string.subs_failed, notice.subscription, long = true)
+                        // Как у десктопа и на доске 19: «Серверы не обновились · «Имя»: причина. Оставлен прошлый список.» ({0} — сервер).
+                        is SubscriptionNotice.Stale -> Message(
+                            R.string.notify_stale_text, "", notice.subscription, long = true,
+                            title = R.string.notify_stale_title, reason = notice.reason,
+                        )
                     },
                 )
             }
