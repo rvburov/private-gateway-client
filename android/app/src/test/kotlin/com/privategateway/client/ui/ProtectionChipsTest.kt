@@ -104,7 +104,7 @@ class ProtectionChipsTest {
         assertEquals(R.string.power_label_connected, StateLook.of(TunnelState.Connected).power)
         assertEquals(R.string.power_label_off, StateLook.of(TunnelState.Off).power)
         assertEquals(R.string.power_label_error, StateLook.of(TunnelState.Error).power)
-        assertEquals(R.string.status_error_title, StateLook.of(TunnelState.Error).title)
+        assertEquals(R.string.status_error_title_mobile, StateLook.of(TunnelState.Error).title)
         assertEquals(StateLook.of(TunnelState.Connecting), StateLook.of(TunnelState.Stopping))
     }
 

@@ -252,6 +252,7 @@
   "status.strict.sub": "Strict mode: no network without VPN",
   "status.strict.subError": "{0} · strict mode: no network without VPN",
   "status.error.title": "Service error",
+  "status.error.title.mobile": "Protection error",
   "status.error.sub": "{0} · traffic blocked",
   "status.error.sub.direct": "{0} · no protection, traffic goes direct",
   "status.error.sub.proxy": "{0} · proxy stopped",

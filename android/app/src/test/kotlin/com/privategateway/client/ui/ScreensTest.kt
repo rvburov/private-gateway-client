@@ -226,7 +226,7 @@ class ScreensTest {
             }
         }
 
-        compose.onNodeWithTag("status.title").assertTextEquals(text(R.string.status_error_title))
+        compose.onNodeWithTag("status.title").assertTextEquals(text(R.string.status_error_title_mobile))
         compose.onNodeWithText(text(R.string.status_error_sub_direct, "PGC-NET-010")).assertIsDisplayed()
         compose.onNodeWithTag("status.checked").assertTextEquals(text(R.string.checked_error))
         compose.onNodeWithTag("status.retry").assertTextEquals(text(R.string.action_retry)).performClick()

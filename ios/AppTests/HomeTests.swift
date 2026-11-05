@@ -143,7 +143,7 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(StateLook.of(.off, texts).power, texts.powerLabelOff)
         XCTAssertEqual(StateLook.of(.reconnecting, texts).ring, StateLook.of(.connecting, texts).ring, "переподключение — вид подключения")
         XCTAssertNotEqual(StateLook.of(.error, texts).mark, StateLook.of(.connected, texts).mark, "состояние видно не только цветом")
-        XCTAssertEqual(StateLook.of(.error, texts).title, texts.statusErrorTitle)
+        XCTAssertEqual(StateLook.of(.error, texts).title, texts.statusErrorTitleMobile, "«Ошибка защиты» — службы на телефоне нет (п. 21.5)")
         XCTAssertEqual(StatusCard.online(Date(timeIntervalSince1970: 0), now: Date(timeIntervalSince1970: 8_049)), "02:14:09")
 
         let blocked = StateLook.of(.error, texts, blocked: true)

@@ -142,7 +142,8 @@ data class StateLook(
                 PgColor.Status.Danger.Tint,
                 PgIcons.MarkAlert,
                 R.string.power_label_error,
-                R.string.status_error_title,
+                // Телефон: «Ошибка защиты» — службы на телефоне нет (DECISIONS.md, п. 21.5); код PGC-… — строкой ниже.
+                R.string.status_error_title_mobile,
             )
 
             ProtectionView.Off -> StateLook(

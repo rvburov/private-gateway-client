@@ -62,7 +62,7 @@ struct StateLook: Equatable {
         case .error:
             return StateLook(
                 ring: PgState.Error.ring, icon: PgState.Error.icon, glow: PgState.Error.glow, fill: PgState.Error.fill,
-                tint: PgColor.Status.Danger.tint, mark: PgIcons.markAlert, power: texts.powerLabelError, title: texts.statusErrorTitle
+                tint: PgColor.Status.Danger.tint, mark: PgIcons.markAlert, power: texts.powerLabelError, title: texts.statusErrorTitleMobile
             )
         case .off:
             return StateLook(
