@@ -62,6 +62,10 @@ final class AppModel: ObservableObject {
 
     /// Отказ самого приложения (iOS не дала сохранить профиль VPN): показывается как ошибка, пока туннель не поднимется.
     private var appError: String?
+    /// Проба сети без VPN после «Ошибки» при блоке при обрыве (DECISIONS.md 2026-11-03, п. 10): для какой ошибки и ответила ли
+    /// сеть (nil — проба идет). Другая ошибка или не «Ошибка» — пробы нет.
+    private var blockCheck: (error: String?, answered: Bool?)?
+    private var blockTask: Task<Void, Never>?
     /// «Подключаться при запуске» уже решено за этот запуск приложения: окно, открытое заново, не подключает второй раз.
     private var launchHandled = false
 
@@ -274,10 +278,50 @@ final class AppModel: ObservableObject {
         systemVpn = tunnel.system
         home.status = TunnelView.status(system: tunnel.system, report: container.status.read(), appError: appError)
         // «Ошибка» при поднятом туннеле — расширение оставило его без ядра (TunnelView): трафик закрыт, а не идет напрямую.
-        blocked = home.status.state == .error && (tunnel.system == .connected || tunnel.system == .reasserting)
+        // При блоке при обрыве это проверяет проба сети (п. 10): ее итог важнее догадки по состоянию туннеля.
+        let tunnelUp = home.status.state == .error && (tunnel.system == .connected || tunnel.system == .reasserting)
+        if BlockProbe.needed(home.status, killSwitch: settings.killSwitch) {
+            if blockCheck == nil || blockCheck?.error != home.status.error {
+                probeBlock(home.status)
+            }
+        } else if blockCheck != nil {
+            blockTask?.cancel()
+            blockTask = nil
+            blockCheck = nil
+        }
+
+        blocked = BlockProbe.blocked(home.status, answered: blockCheck?.answered, tunnelUp: tunnelUp)
         // Защита подключилась — подпискам «только через VPN» теперь можно обновиться.
         if before != .connected, home.status.state == .connected {
             Task { await checkSubscriptions() }
+        }
+    }
+
+    /// Короткая проба сети без VPN (п. 10): соединения TCP с адресами `BlockProbe.targets`. Туннель без ядра их не пропустит —
+    /// «Блокировка»; iOS сняла туннель — проба проходит: «Ошибка» и уведомление «трафик идет напрямую» вместо «Интернет
+    /// заблокирован» расширения, теми же словами, что на главной. Итог — строкой в журнал «Проверки».
+    private func probeBlock(_ status: TunnelStatus) {
+        blockTask?.cancel()
+        blockCheck = (error: status.error, answered: nil)
+        let server = home.inUse?.displayName
+        blockTask = Task { [weak self] in
+            let answered = await withTaskGroup(of: Bool.self) { group in
+                for target in BlockProbe.targets {
+                    group.addTask { await ProbeRunner.tcp(target.host, target.port).steps.first?.outcome == .ok }
+                }
+
+                return await group.contains(true)
+            }
+            guard let self, !Task.isCancelled, let check = self.blockCheck, check.error == status.error, check.answered == nil else {
+                return
+            }
+
+            self.blockCheck = (error: status.error, answered: answered)
+            self.container.log.add(BlockProbe.logLine(answered: answered), level: .warning)
+            self.refreshStatus()
+            if let notice = BlockProbe.notice(status, answered: answered, server: server), NotificationPolicy.allowed(self.settings.notifications, notice) {
+                Notifications.post(notice, self.texts)
+            }
         }
     }
 
