@@ -312,8 +312,9 @@ public sealed class WfpKillSwitchTests
     /// <summary>
     /// Проба: закрывают ли фильтры пересылки контейнер Windows за NAT (WinNAT — как у Docker, WSL и ВМ на «Default Switch»).
     /// Источники расходятся: по Mullvad, трафик WSL за NAT мимо слоев IP WFP. Только вручную (PG_FORWARD_PROBE=1), от
-    /// администратора: тянет образ nanoserver. Фильтры соединений — только для копии curl, машина остается в сети; пересылка
-    /// закрывается на всю машину. Итог — в artifacts/forward-probe.txt.
+    /// администратора: тянет образ nanoserver под эту сборку Windows (<see cref="ProbeImage"/>: Windows 10 и 11, Pro и
+    /// Корпоративная). Фильтры соединений — только для копии curl, машина остается в сети; пересылка закрывается на всю
+    /// машину. Итог — в artifacts/forward-probe.txt.
     /// </summary>
     [Fact]
     public async Task Probe_container_behind_nat_and_the_forward_filters()
@@ -325,19 +326,14 @@ public sealed class WfpKillSwitchTests
             return;
         }
 
-        var tag = Environment.OSVersion.Version.Build switch
-        {
-            >= 26100 => "ltsc2025",
-            >= 20348 => "ltsc2022",
-            _ => null,
-        };
-        Assert.SkipWhen(tag is null, "нет образа nanoserver под эту сборку Windows");
-        var image = $"mcr.microsoft.com/windows/nanoserver:{tag}";
+        var probe = ProbeImage(Environment.OSVersion.Version.Build);
+        Assert.SkipWhen(probe is null, "нет образа nanoserver под эту сборку Windows (нужна Windows 10 1809 или новее)");
+        var (image, isolation) = probe.Value;
         var github = (await Dns.GetHostAddressesAsync("github.com", AddressFamily.InterNetwork, TestContext.Current.CancellationToken)).FirstOrDefault();
         Assert.SkipWhen(github is null, "github.com не разрешился");
         var curl = Path.Combine(Path.GetTempPath(), "pg-probe-curl.exe");
         File.Copy(Path.Combine(Environment.SystemDirectory, "curl.exe"), curl, overwrite: true);
-        var report = new List<string> { $"образ {image}, github.com {github}" };
+        var report = new List<string> { $"Windows {Environment.OSVersion.Version}, образ {image}, изоляция {isolation}, github.com {github}" };
         var killSwitch = new WfpKillSwitch(onlyProgram: curl);
         try
         {
@@ -358,8 +354,37 @@ public sealed class WfpKillSwitchTests
             File.WriteAllLines(Path.Combine(RepositoryRoot(), "artifacts", "forward-probe.txt"), report);
         }
 
-        async Task<bool> Container() => await Docker("run", "--rm", "--isolation=process", image, "curl.exe", "-sS", "-o", "NUL",
+        async Task<bool> Container() => await Docker("run", "--rm", "--isolation=" + isolation, image, "curl.exe", "-sS", "-o", "NUL",
             "--connect-timeout", "5", "-m", "10", "--resolve", $"github.com:443:{github}", "https://github.com/") is not null;
+    }
+
+    /// <summary>
+    /// Образ и изоляция пробы для сборки Windows: образ не может быть новее системы. Windows 11 24H2 и Server 2025 —
+    /// ltsc2025, Windows 11 до 23H2 и Server 2022 — ltsc2022, оба в изоляции процессов. Windows 10 1809–22H2 —
+    /// ltsc2019 в изоляции Hyper-V: образа своей сборки у Windows 10 нет, а контейнер в маленькой ВМ выходит в сеть через
+    /// тот же WinNAT. Server 2019 (17763) — ltsc2019 в изоляции процессов. Старше 1809 — null: контейнеров Windows там нет.
+    /// </summary>
+    public static (string Image, string Isolation)? ProbeImage(int build) => build switch
+    {
+        >= 26100 => ("mcr.microsoft.com/windows/nanoserver:ltsc2025", "process"),
+        >= 20348 => ("mcr.microsoft.com/windows/nanoserver:ltsc2022", "process"),
+        > 17763 => ("mcr.microsoft.com/windows/nanoserver:ltsc2019", "hyperv"),
+        17763 => ("mcr.microsoft.com/windows/nanoserver:ltsc2019", "process"),
+        _ => null,
+    };
+
+    [Theory]
+    [InlineData(26100, "ltsc2025", "process")]
+    [InlineData(22631, "ltsc2022", "process")]
+    [InlineData(22000, "ltsc2022", "process")]
+    [InlineData(20348, "ltsc2022", "process")]
+    [InlineData(19045, "ltsc2019", "hyperv")]
+    [InlineData(17763, "ltsc2019", "process")]
+    public void Probe_picks_an_image_that_this_windows_can_run(int build, string tag, string isolation)
+    {
+        ProbeImage(build).ShouldBe(("mcr.microsoft.com/windows/nanoserver:" + tag, isolation),
+            "образ не новее системы: Windows 10 — ltsc2019 в изоляции Hyper-V, Windows 11 — образ своей сборки");
+        ProbeImage(17134).ShouldBeNull("старше 1809 контейнеров Windows нет");
     }
 
     /// <summary>docker с аргументами; не вышел успешно за 3 минуты — null; docker нет — тест пропускается.</summary>
