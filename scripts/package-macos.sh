@@ -96,20 +96,32 @@ rw="artifacts/dmg/PrivateGateway-$version-$rid-rw.dmg"
 rm -f "$rw"
 hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
 
-# Отмонтировать: Finder после оформления окна и индексатор Spotlight держат том еще несколько секунд — hdiutil отвечает
-# «Resource busy» (код 16; так упала сборка 2026-11-05). Пять попыток с паузой, последняя — принудительная.
+# Отключить образ по устройству (/dev/diskN из вывода attach), а не по пути тома. Finder после оформления окна и
+# индексатор Spotlight держат его еще несколько секунд: hdiutil отвечает «Resource busy» (код 16; так упала сборка
+# 2026-11-05) и бывает, что том уже отмонтирован, а диск еще не отключен — тогда пути тома нет, и повтор по пути падал
+# с «No such file or directory» (сборка выпуска master 2026-11-05). Пропало устройство — образ отключен.
 detach() {
   local attempt
   for attempt in 1 2 3 4 5; do
+    [ -e "$1" ] || return 0
     hdiutil detach "$1" && return 0
-    echo "Том $1 занят — повтор через $((attempt * 2)) с" >&2
+    echo "Образ $1 занят — повтор через $((attempt * 2)) с" >&2
     sleep $((attempt * 2))
   done
+  [ -e "$1" ] || return 0
   hdiutil detach -force "$1"
 }
 
+# Подключить образ и вернуть его устройство /dev/diskN.
+attach() {
+  local device
+  device=$(hdiutil attach "$@" | grep -o '^/dev/disk[0-9]*' | head -1)
+  [ -n "$device" ] || { echo "hdiutil attach не назвал устройство образа" >&2; return 1; }
+  echo "$device"
+}
+
 mount="/Volumes/$volume"
-hdiutil attach -quiet -noautoopen -mountpoint "$mount" "$rw"
+device=$(attach -noautoopen -mountpoint "$mount" "$rw")
 osascript << 'APPLESCRIPT' || echo "::warning::Finder не оформил окно образа — образ собран без инструкции"
 tell application "Finder"
   tell disk "Private Gateway"
@@ -135,20 +147,20 @@ tell application "Finder"
 end tell
 APPLESCRIPT
 sync
-detach "$mount"
+detach "$device"
 hdiutil convert -quiet "$rw" -format UDZO -imagekey zlib-level=9 -o "$out"
 rm -f "$rw"
 
 # Контрольное монтирование: программа, ярлык «Программы» и фон на месте, подпись пережила упаковку.
 check=$(mktemp -d)
-hdiutil attach -quiet -nobrowse -readonly -mountpoint "$check" "$out"
+device=$(attach -nobrowse -readonly -mountpoint "$check" "$out")
 problem=""
 [ -d "$check/Private Gateway.app" ] || problem="в образе нет Private Gateway.app"
 [ "$(readlink "$check/Applications")" = /Applications ] || problem="в образе нет ярлыка на «Программы»"
 [ -f "$check/.background/background.tiff" ] || problem="в образе нет фона с инструкцией"
 codesign --verify --deep --strict "$check/Private Gateway.app" || problem="подпись программы не пережила упаковку"
 [ -f "$check/.DS_Store" ] || echo "::warning::в образе нет .DS_Store — окно откроется без оформления"
-detach "$check"
+detach "$device"
 rmdir "$check"
 [ -z "$problem" ] || { echo "Образ диска: $problem" >&2; exit 1; }
 
