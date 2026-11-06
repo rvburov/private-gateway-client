@@ -199,5 +199,7 @@ dependencies {
 
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.junit)
+    // Системные окна (запрос VPN) в проверке первого запуска на эмуляторе; в приложение не попадает.
+    androidTestImplementation(libs.androidx.test.uiautomator)
     androidTestImplementation(kotlin("test-junit"))
 }
