@@ -26,4 +26,36 @@ public static class CoreLines
             _ => JournalLevel.Info,
         };
     }
+
+    /// <summary>
+    /// Последняя с <paramref name="since"/> строка Xray об отказе выхода к серверу — причина словами самого ядра, без отметки
+    /// времени, не длиннее <see cref="ReasonLength"/>; нет — null. Строки DNS не в счет: при неработающем выходе DNS через сервер
+    /// тоже не отвечает, и это следствие, а не причина (отчет пользователя 2026-11-06 18:46: в журнале «Отладка» конец занят
+    /// ими, а отказ сервера остался выше и в отчет не попал).
+    /// </summary>
+    public static string? OutboundFailure(IEnumerable<JournalEntry> entries, DateTimeOffset since)
+    {
+        ArgumentNullException.ThrowIfNull(entries);
+        var line = entries.LastOrDefault(e => e.Source == "xray" && e.Time >= since && IsOutboundFailure(e.Message))?.Message;
+        if (line is null)
+        {
+            return null;
+        }
+
+        // «2026/11/06 18:46:14.289512 [Warning] …» — с уровня.
+        var level = line.IndexOf('[', StringComparison.Ordinal);
+        var reason = level > 0 ? line[level..] : line;
+        return reason.Length > ReasonLength ? reason[..ReasonLength] + "…" : reason;
+    }
+
+    /// <summary>Сколько знаков причины ядра идет в вывод.</summary>
+    public const int ReasonLength = 300;
+
+    private static bool IsOutboundFailure(string line) =>
+        !line.Contains("app/dns", StringComparison.Ordinal) && !line.Contains("proxy/dns", StringComparison.Ordinal)
+        && (line.Contains("failed to process outbound traffic", StringComparison.Ordinal)
+            || line.Contains("/outbound:", StringComparison.Ordinal) && (line.Contains("failed", StringComparison.Ordinal)
+                || line.Contains("EOF", StringComparison.Ordinal) || line.Contains("reset", StringComparison.Ordinal))
+            || line.Contains("reality", StringComparison.OrdinalIgnoreCase) && (line.Contains("failed", StringComparison.OrdinalIgnoreCase)
+                || line.Contains("invalid", StringComparison.OrdinalIgnoreCase) || line.Contains("verif", StringComparison.OrdinalIgnoreCase)));
 }

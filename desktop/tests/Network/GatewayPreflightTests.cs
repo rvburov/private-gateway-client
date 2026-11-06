@@ -43,6 +43,38 @@ public sealed class GatewayPreflightTests : IDisposable
     }
 
     [Fact]
+    public async Task Refused_profile_on_a_live_port_names_the_reason_of_the_core()
+    {
+        // Отчет пользователя 2026-11-06 18:46: «Сервер отвечает по TCP, но связи через него нет», а почему — строка Xray среди
+        // обычных записей, ниже ее заняли строки DNS. Теперь причина ядра — в самом выводе.
+        using var listener = new System.Net.Sockets.TcpListener(IPAddress.Loopback, 0);
+        listener.Start();
+        var port = ((IPEndPoint)listener.LocalEndpoint).Port;
+        var journal = new ServiceJournal(TimeProvider.System);
+        await using var gateway = Create(new FakeFirewall(), (_, _, _) =>
+        {
+            journal.Add(JournalLevel.Info, "xray", "2026/11/06 18:46:01.000000 [Warning] [12] app/proxyman/outbound: failed to process "
+                + "outbound traffic > proxy/vless/outbound: failed to find an available destination");
+            journal.Add(JournalLevel.Info, "xray", "2026/11/06 18:46:13.000000 [Error] app/dns: failed to retrieve response for ***.");
+            return Task.FromResult(ProbeReachability.TimedOut());
+        }, journal: journal);
+
+        var reply = await gateway.ConnectAsync(Request("127.0.0.1", "refused", port), TestContext.Current.CancellationToken);
+
+        reply.Error.Code.ShouldBe(ErrorCodes.ServerNotResponding);
+        var waited = System.Diagnostics.Stopwatch.StartNew();
+        while (!journal.Tail(ServiceJournal.Capacity).Any(e => e.Message.StartsWith("Сервер отвечает по TCP", StringComparison.Ordinal))
+            && waited.Elapsed < TimeSpan.FromSeconds(15))
+        {
+            await Task.Delay(50, TestContext.Current.CancellationToken);
+        }
+
+        journal.Tail(ServiceJournal.Capacity).Single(e => e.Message.StartsWith("Сервер отвечает по TCP", StringComparison.Ordinal)).Message
+            .ShouldEndWith(". Ядро: [Warning] [12] app/proxyman/outbound: failed to process outbound traffic > proxy/vless/outbound: "
+                + "failed to find an available destination");
+    }
+
+    [Fact]
     public async Task Disconnect_cancels_the_preflight_and_a_late_success_cannot_start_a_tunnel()
     {
         var entered = Signal();
@@ -413,9 +445,9 @@ public sealed class GatewayPreflightTests : IDisposable
             Resolve: resolve, Preflight: check), clock, journal ?? new ServiceJournal(clock));
     }
 
-    private static V1.ConnectRequest Request(string host, string id)
+    private static V1.ConnectRequest Request(string host, string id, int port = 443)
     {
-        var definition = new ServerDefinition("test", string.Empty, ProxyProtocol.Vless, host, 443, TransportOptions.Tcp,
+        var definition = new ServerDefinition("test", string.Empty, ProxyProtocol.Vless, host, port, TransportOptions.Tcp,
             new SecurityOptions(TransportSecurity.Tls, Sni: "example.com"), ProtocolOptions.Empty,
             new ServerCredentials(Uuid: "11111111-2222-3333-4444-555555555555"));
         var settings = AppSettings.Default with { Protection = ProtectionSettings.Default with { CheckLeaksAfterConnect = false, BootProtection = false } };

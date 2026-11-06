@@ -169,8 +169,14 @@ public sealed partial class Gateway
             return;
         }
 
+        // Причина словами ядра — строка Xray об отказе выхода к серверу за последние минуты: обычной записью она тонет среди
+        // строк соединений, а в выводе видна и в «Ошибках и предупреждениях» отчета.
+        var core = answer.Ms is not null
+            ? CoreLines.OutboundFailure(_journal.Tail(ServiceJournal.Capacity), _time.GetUtcNow() - TimeSpan.FromMinutes(2))
+            : null;
         _journal.Add(JournalLevel.Warning, "service", answer.Ms is { } ms
             ? $"Сервер отвечает по TCP на порт {server.Port} ({ms} мс), но связи через него нет: профиль не принят (ключ, REALITY, flow) или сервер не выпускает в интернет — проверьте ссылку или выберите другой сервер"
+                + (core is null ? string.Empty : ". Ядро: " + core)
             : $"Сервер не отвечает по TCP на порт {server.Port}: он выключен, порт закрыт или путь до него режется — дело не в настройках этого компьютера, если другие серверы отвечают");
     }
 
