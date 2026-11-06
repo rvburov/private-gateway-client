@@ -1,5 +1,7 @@
 using System.Diagnostics;
 using System.Security.Principal;
+using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Platform.Linux;
@@ -655,6 +657,95 @@ public sealed class ServiceSetupTests : IDisposable
                 using var bootout = Process.Start("/bin/launchctl", ["bootout", "system/" + name]);
                 await bootout.WaitForExitAsync(Ct);
                 File.Delete(plist);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task First_launch_install_through_the_window_installer_puts_a_service_that_answers()
+    {
+        // Путь экрана «Установка службы» (первый запуск, «Установить»): окно находит файл службы так же, как в программе
+        // (UserServiceLauncher.Find у папки окна: автономная служба разработки или сборка службы), ServiceInstaller передает
+        // свою команду (--install --owner --setup-attempt), показывает этапы из файла прогресса и ждет ответа службы. Права
+        // здесь уже есть (CI от администратора или root): вместо запроса UAC, пароля или pkexec — прямой запуск той же
+        // команды. Имя службы, адрес IPC и папки — тестовые, дописаны к команде окна: настоящую службу машины не трогать.
+        if (!(OperatingSystem.IsWindows() || OperatingSystem.IsMacOS() || OperatingSystem.IsLinux()) || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("установка службы путем окна — только от администратора или root (CI)");
+            return;
+        }
+
+        Assert.SkipWhen(OperatingSystem.IsLinux() && !Directory.Exists("/run/systemd/system"), "нет systemd — служба Linux ставится под systemd");
+        var configuration = AppContext.BaseDirectory.Contains($"{Path.DirectorySeparatorChar}release{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+            ? "release" : "debug";
+        var service = UserServiceLauncher.Find(Path.Combine(XrayKit.Root, "artifacts", "bin", "Client.UI", configuration));
+        Assert.SkipWhen(service is null, "нет сборки окна со службой рядом");
+        var id = Guid.NewGuid().ToString("N")[..8];
+        var name = OperatingSystem.IsWindows() ? "PrivateGatewayTest" + id
+            : OperatingSystem.IsMacOS() ? "io.github.rvburov.pg-test-" + id : "pg-test-" + id;
+        var endpoint = OperatingSystem.IsWindows() ? "PrivateGateway.Test." + id
+            : OperatingSystem.IsMacOS() ? $"/var/run/pg-test-{id}.sock" : $"/run/pg-test-{id}.sock";
+        var folder = Path.Combine(_root, "service");
+        var state = Path.Combine(_root, "service state");
+        string[] test = ["--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", endpoint];
+        IReadOnlyList<string>? asked = null;
+        var installer = new ServiceInstaller(service,
+            async (file, arguments) =>
+            {
+                asked = arguments;
+                return await Run(file, [.. arguments, .. test]);
+            },
+            () => IpcChannel.Answers(endpoint, system: true, TimeSpan.FromSeconds(2)),
+            TimeProvider.System,
+            SetupResult.For(folder));
+        var stages = new List<int>();
+        try
+        {
+            installer.IsAvailable.ShouldBeTrue("окно видит файл службы");
+
+            var result = await installer.InstallAsync(new Stages(stages), Ct);
+
+            result.ShouldBe(ServiceInstallResult.Installed, installer.LastError ?? installer.ErrorKey ?? "без причины");
+            asked.ShouldNotBeNull();
+            asked.Take(2).ShouldBe(["--install", "--owner"], "команда окна: установить для пользователя окна");
+            asked[2].ShouldBe(ServiceInstaller.Owner());
+            stages[^1].ShouldBe(100, "окно дошло до «Готово» только после ответа службы");
+            using var channel = IpcChannel.Create(endpoint, system: true);
+            var info = await RetryAsync(() => new V1.GatewayService.GatewayServiceClient(channel).GetServiceInfoAsync(new V1.GetServiceInfoRequest(),
+                cancellationToken: Ct).ResponseAsync);
+            info.ServiceVersion.ShouldBe(ServiceVersion.Current, "окну отвечает служба, которую запустила ОС");
+            File.Exists(SetupResult.For(folder)).ShouldBeFalse("удачная установка не оставляет причины отказа");
+        }
+        finally
+        {
+            await Run(service!, "--uninstall", "--service-name", name, "--install-dir", folder, "--state-dir", state);
+            if (OperatingSystem.IsWindows())
+            {
+                WindowsServices.Uninstall(name, TimeSpan.FromSeconds(20));
+            }
+            else if (File.Exists($"/Library/LaunchDaemons/{name}.plist"))
+            {
+                using var bootout = Process.Start("/bin/launchctl", ["bootout", "system/" + name]);
+                await bootout.WaitForExitAsync(Ct);
+                File.Delete($"/Library/LaunchDaemons/{name}.plist");
+            }
+            else if (File.Exists($"/etc/systemd/system/{name}.service"))
+            {
+                using var disable = Process.Start("systemctl", ["disable", "--now", name + ".service"]);
+                await disable.WaitForExitAsync(Ct);
+                File.Delete($"/etc/systemd/system/{name}.service");
+            }
+        }
+    }
+
+    /// <summary>Этапы установки по порядку — синхронно, без контекста синхронизации.</summary>
+    private sealed class Stages(List<int> list) : IProgress<int>
+    {
+        public void Report(int value)
+        {
+            lock (list)
+            {
+                list.Add(value);
             }
         }
     }

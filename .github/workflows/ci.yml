@@ -110,7 +110,7 @@ jobs:
           dbus-run-session -- scripts/tests/secret-service.sh -c Release --no-build --results-directory artifacts/test-results --report-ctrf
 
       # Тесты в своих сетевых пространствах Linux (TUN sing-box, nftables, блок при обрыве, systemd-creds) — от root:
-      # без него они пропускаются. Правила и TUN ставятся только внутри своих пространств, машина CI их не видит.
+      # без него они пропускаются. ServiceSetupTests — установка службы путем окна под systemd машины CI (тестовое имя). Правила и TUN ставятся только внутри своих пространств, машина CI их не видит.
       # После остальных тестов: файлы результатов от root не мешают шагам без него.
       - name: Сетевые пространства Linux (root)
         if: ${{ !cancelled() && steps.build.outcome == 'success' && runner.os == 'Linux' }}
@@ -121,7 +121,7 @@ jobs:
             dotnet test --project desktop/tests/Network -c Release --no-build --results-directory artifacts/test-results --report-ctrf -- \
             --filter-class '*.VpnTunnelTests' --filter-class '*.VpnModeTests' --filter-class '*.KillSwitchTests' \
             --filter-class '*.RouteTableTests' --filter-class '*.BootConnectionTests' --filter-class '*.NetworkNamespaceTests' \
-            --filter-class '*.PlatformContractTests' --filter-class '*.RelayTests'
+            --filter-class '*.PlatformContractTests' --filter-class '*.RelayTests' --filter-class '*.ServiceSetupTests'
 
       # Служба launchd на macOS — от root: ставится по-настоящему и удаляется (машина CI одноразовая); pf — правила разных
       # политик грузятся в свой якорь, который основные правила не вызывают (сеть машины CI не закрывается); DNS — на своей
