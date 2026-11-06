@@ -163,6 +163,7 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             // Профиль должен ответить через туннель до «Защищено» (решение 556): иначе неверный ключ или неработающий сервер
             // подписки выглядели бы защитой, а потом бесконечным «Переподключением» за закрытым блоком при обрыве.
             guard await StartCheck.answers(probe: { await self.probe() }) else {
+                await noteServerTcp(launch.server)
                 throw TunnelFailure(TunnelErrors.serverNotResponding, detail: "no answer through the tunnel before protected")
             }
 
@@ -270,6 +271,29 @@ final class PacketTunnelProvider: NEPacketTunnelProvider, @unchecked Sendable {
             guard self.current(session), !Task.isCancelled else { return }
             self.markReconnecting(attempt)
         }
+
+        // Первый обрыв — проба сервера мимо туннеля в журнал, не задерживая переподключение (очередь ядра не занимает).
+        if attempt == 1 {
+            Task { [weak self] in
+                guard let self, let launch = try? await TunnelLaunch.prepare(settings: self.container.settings, servers: self.container.servers) else {
+                    return
+                }
+
+                await self.noteServerTcp(launch.server)
+            }
+        }
+    }
+
+    /// После отказа туннеля — пускает ли эта сеть к серверу по TCP мимо туннеля (`ServerDelay.verdict`): строка в журнал
+    /// «Проверки» и отчет. Отличает «сеть или оператор не пускают к серверу» от «сервер отвечает, но профиль не принят», как
+    /// Android и служба десктопа. Адрес сервера в строку не попадает.
+    private func noteServerTcp(_ server: ServerDefinition) async {
+        var step: ProbeStep?
+        if ServerDelay.measures(server.protocol) {
+            step = await ProbeRunner.tcp(server.host, server.port).steps.first
+        }
+
+        container.log.add(ServerDelay.verdict(server.protocol, port: server.port, step: step), level: .warning)
     }
 
     private func markReconnecting(_ attempt: Int) {

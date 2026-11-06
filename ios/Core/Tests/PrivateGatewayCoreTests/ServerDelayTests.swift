@@ -17,6 +17,23 @@ final class ServerDelayTests: XCTestCase {
         XCTAssertEqual(ProxyProtocol.allCases.filter(ServerDelay.measures), [.vless, .vmess, .trojan, .shadowsocks])
     }
 
+    func testTheVerdictTellsASilentServerFromOneThatAnswers() {
+        let answered = ProbeStep(index: 1, address: "203.0.113.10", timeMs: 38, outcome: .ok)
+        XCTAssertEqual(ServerDelay.verdict(.vless, port: 443, step: answered),
+                       "server answers on tcp  port=443 ms=38  profile not accepted or no internet through the server")
+        for outcome in [ProbeOutcome.timedOut, .refused, .unreachable, .failed] {
+            let silent = ServerDelay.verdict(.trojan, port: 8443, step: ProbeStep(index: 1, address: "203.0.113.10", timeMs: nil, outcome: outcome))
+            XCTAssertEqual(silent, "server silent on tcp  port=8443  this network does not reach it or the server is off", outcome.rawValue)
+            XCTAssertFalse(silent.contains("203.0.113.10"), "адреса сервера в журнале нет")
+        }
+
+        XCTAssertFalse(ServerDelay.verdict(.vless, port: 443, step: answered).contains("203.0.113.10"))
+        XCTAssertEqual(ServerDelay.verdict(.vless, port: 443, step: ProbeStep(index: 1, address: nil, timeMs: nil, outcome: .notFound)),
+                       "server tcp not checked  name not found in this network")
+        XCTAssertEqual(ServerDelay.verdict(.hysteria2, port: 443, step: nil), "server tcp not checked  udp protocol", "UDP по TCP не судим")
+        XCTAssertEqual(ServerDelay.verdict(.vless, port: 443, step: nil), "server tcp not checked  no answer from the probe")
+    }
+
     func testTheTunnelAnswersWithMilliseconds() {
         XCTAssertEqual(TunnelMessages.delayMs(TunnelMessages.delayAnswer(38)), 38)
         XCTAssertNil(TunnelMessages.delayMs(TunnelMessages.delayAnswer(nil)), "не измерено — пустой ответ")

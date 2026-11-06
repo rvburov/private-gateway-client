@@ -29,6 +29,27 @@ public enum ServerDelay {
         case .hysteria2, .tuic, .wireGuard: return false
         }
     }
+
+    /// Строка журнала после отказа туннеля — соединение TCP с сервером мимо туннеля (`step`; не мерили — nil): сервер ответил
+    /// (сколько мс) или молчит. Различает «эта сеть не пускает к серверу» и «сервер принимает соединение, но связи через него
+    /// нет» (отчет Android 2026-11-05: мобильная сеть, PGC-NET-001 без причины) — те же строки, что у Android. Порт — да,
+    /// адрес — нет.
+    public static func verdict(_ kind: ProxyProtocol, port: Int, step: ProbeStep?) -> String {
+        guard measures(kind) else {
+            return "server tcp not checked  udp protocol"
+        }
+
+        switch step?.outcome {
+        case .ok?:
+            return "server answers on tcp  port=\(port) ms=\(step?.timeMs ?? 0)  profile not accepted or no internet through the server"
+        case .notFound?:
+            return "server tcp not checked  name not found in this network"
+        case nil:
+            return "server tcp not checked  no answer from the probe"
+        default:
+            return "server silent on tcp  port=\(port)  this network does not reach it or the server is off"
+        }
+    }
 }
 
 extension TunnelMessages {
