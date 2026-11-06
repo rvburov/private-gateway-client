@@ -304,14 +304,12 @@ final class AppModel: ObservableObject {
         blockTask?.cancel()
         blockCheck = (error: status.error, answered: nil)
         let server = home.inUse?.displayName
+        let targets = BlockProbe.targets
         blockTask = Task { [weak self] in
-            let answered = await withTaskGroup(of: Bool.self) { group in
-                for target in BlockProbe.targets {
-                    group.addTask { await ProbeRunner.tcp(target.host, target.port).steps.first?.outcome == .ok }
-                }
-
-                return await group.contains(true)
-            }
+            // Оба адреса — одновременно: сеть открыта, если ответил хоть один.
+            async let first = Self.answers(targets[0].host, targets[0].port)
+            async let second = Self.answers(targets[1].host, targets[1].port)
+            let answered = await [first, second].contains(true)
             guard let self, !Task.isCancelled, let check = self.blockCheck, check.error == status.error, check.answered == nil else {
                 return
             }
@@ -323,6 +321,11 @@ final class AppModel: ObservableObject {
                 Notifications.post(notice, self.texts)
             }
         }
+    }
+
+    /// Соединение TCP с узлом прошло.
+    nonisolated private static func answers(_ host: String, _ port: Int) async -> Bool {
+        await ProbeRunner.tcp(host, port).steps.first?.outcome == .ok
     }
 
     private var connected: Bool { home.status.state == .connected }
