@@ -204,7 +204,8 @@ public sealed class MainWindowTests : WindowHarness
 
         // Служба запустилась под блоком при обрыве: до подключения сеть закрыта, реальный IP не измерен (отчет 2026-11-06).
         service!.Push(s => s.MoveTo(ConnectionState.Connecting, Time.GetUtcNow()).MoveTo(ConnectionState.Connected, Time.GetUtcNow())
-            with { Exit = ExitInfo.Unknown with { Ip = "203.0.113.24", DirectIp = null } });
+            with
+        { Exit = ExitInfo.Unknown with { Ip = "203.0.113.24", DirectIp = null } });
         Dispatcher.UIThread.RunJobs();
 
         main.HasRealIp.ShouldBeFalse();
