@@ -103,6 +103,12 @@ public sealed class ExternalProxyBackupTests : IDisposable
         away.Settings.Current.ExternalProxy.Revision.ShouldBeGreaterThan(old.Revision);
     }
 
+    /// <summary>
+    /// Сколько ждать того, что должно случиться: на занятой машине Windows CI SQLite на временном диске дает и 5 с до первого
+    /// чтения секрета (прогон 42216978250, 2026-11-06). Срок платится только при сбое.
+    /// </summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(30);
+
     [Fact]
     public async Task A_backup_captures_one_endpoint_and_its_credentials_while_another_save_waits()
     {
@@ -121,18 +127,18 @@ public sealed class ExternalProxyBackupTests : IDisposable
         Task? saving = null;
         try
         {
-            await secrets.ReadEntered.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            await secrets.ReadEntered.Task.WaitAsync(Patience, ct);
             var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
             saving = Task.Factory.StartNew(() =>
             {
                 started.TrySetResult();
                 proxy.Save(Profile("second.example.com"), "second-user", "second-password");
             }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-            await started.Task.WaitAsync(TimeSpan.FromSeconds(5), ct);
+            await started.Task.WaitAsync(Patience, ct);
             await Task.WhenAny(secrets.SecondWriteEntered.Task, Task.Delay(TimeSpan.FromMilliseconds(300), ct));
             if (secrets.SecondWriteEntered.Task.IsCompletedSuccessfully)
             {
-                await saving.WaitAsync(TimeSpan.FromSeconds(5), ct);
+                await saving.WaitAsync(Patience, ct);
             }
         }
         finally
@@ -140,8 +146,8 @@ public sealed class ExternalProxyBackupTests : IDisposable
             secrets.ReleaseRead.TrySetResult();
         }
 
-        var encrypted = await capturing.WaitAsync(TimeSpan.FromSeconds(5), ct);
-        await saving.ShouldNotBeNull().WaitAsync(TimeSpan.FromSeconds(5), ct);
+        var encrypted = await capturing.WaitAsync(Patience, ct);
+        await saving.ShouldNotBeNull().WaitAsync(Patience, ct);
         var payload = JsonNode.Parse(OpenPortablePayload(encrypted)).ShouldNotBeNull();
         payload["Settings"]!["external_proxy.host"]!.GetValue<string>().ShouldBe("first.example.com");
         payload["ExternalProxyCredentials"].ShouldNotBeNull()["Username"]!.GetValue<string>().ShouldBe("first-user");
@@ -223,7 +229,7 @@ public sealed class ExternalProxyBackupTests : IDisposable
             if (Interlocked.Increment(ref _reads) == 1)
             {
                 ReadEntered.TrySetResult();
-                ReleaseRead.Task.WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+                ReleaseRead.Task.WaitAsync(Patience).GetAwaiter().GetResult();
             }
 
             return _values.GetValueOrDefault(key);

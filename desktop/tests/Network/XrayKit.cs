@@ -263,11 +263,30 @@ internal static class XrayKit
             throw;
         }
 
+        // Вышло само — дочитать вывод: строки идут из потока чтения позже, чем процесс выходит, и без этого ошибка теста была
+        // пустой (Windows CI 2026-11-06, ExternalProxyTests: «Ядро не открыло порт 29302:» без причины).
+        var exited = string.Empty;
+        if (xray.HasExited)
+        {
+            using var drain = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+            drain.CancelAfter(TimeSpan.FromSeconds(5));
+            try
+            {
+                await xray.StopAsync(cancellationToken: drain.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!TestContext.Current.CancellationToken.IsCancellationRequested)
+            {
+                // Вывод не закрылся за 5 с — что есть.
+            }
+
+            exited = " (ядро вышло с кодом " + xray.ExitCode + ")";
+        }
+
         xray.Dispose();
         TestContext.Current.CancellationToken.ThrowIfCancellationRequested();
         lock (output)
         {
-            throw new InvalidOperationException("Ядро не открыло порт " + port + ":\n" + string.Join('\n', output));
+            throw new InvalidOperationException("Ядро не открыло порт " + port + exited + ":\n" + string.Join('\n', output));
         }
     }
 

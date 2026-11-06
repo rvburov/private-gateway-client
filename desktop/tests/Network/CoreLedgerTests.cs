@@ -118,7 +118,12 @@ public sealed class CoreLedgerTests : IDisposable
         StartService(endpoint);
         await ConnectAsync(endpoint, request);
 
-        orphan.HasExited.ShouldBeTrue("новый запуск снял ядро прошлого");
+        var cores = JsonNode.Parse(File.ReadAllText(CoreLedger.In(_root)))!.AsArray().Select(e => e!["pid"]!.GetValue<int>()).ToList();
+        cores.ShouldNotBeEmpty("новый запуск подключился своим ядром");
+        cores.ShouldNotContain(pid, "ядро прошлого запуска служба забыла");
+        // Ядра умершей службы Windows снимает ее объектом задания не мгновенно: снимок сразу после подключения застал ядро
+        // прошлого еще живым (CI 2026-11-06, прогон 42215155643). Ждать его выхода; не вышло — журнал второго запуска в ошибке.
+        orphan.WaitForExit(TimeSpan.FromSeconds(15)).ShouldBeTrue("новый запуск снял ядро прошлого\n" + JournalOnDisk());
         await DisconnectAsync(endpoint);
         JsonNode.Parse(File.ReadAllText(CoreLedger.In(_root)))!.AsArray().ShouldBeEmpty("ядро остановлено — служба его забыла");
     }

@@ -523,8 +523,8 @@ public sealed class ServiceSetupTests : IDisposable
 
         calls.ShouldBe([
             "print system/io.example.pg", $"bootstrap system {plist}",
-            "print system/io.example.pg", "bootout system/io.example.pg", $"bootstrap system {plist}",
-            "print system/io.example.pg", "bootout system/io.example.pg",
+            "print system/io.example.pg", "bootout system/io.example.pg", "print system/io.example.pg", $"bootstrap system {plist}",
+            "print system/io.example.pg", "bootout system/io.example.pg", "print system/io.example.pg",
             "print system/io.example.pg",
         ], "загруженная — перезагружается с новым описанием; выгруженная второй раз не выгружается");
         File.ReadAllText(plist).ShouldContain("<string>/opt/pg/svc</string>");
@@ -536,12 +536,65 @@ public sealed class ServiceSetupTests : IDisposable
         launchd.Start("io.example.pg");
         calls.Clear();
         launchd.Uninstall("io.example.pg");
-        calls.ShouldBe(["print system/io.example.pg", "bootout system/io.example.pg"]);
+        calls.ShouldBe(["print system/io.example.pg", "bootout system/io.example.pg", "print system/io.example.pg"]);
         File.Exists(plist).ShouldBeFalse();
 
         var failing = new LaunchdService(_ => (5, "Bootstrap failed: 5: Input/output error"), daemons);
         failing.Register("io.example.pg", ["/opt/pg/svc"]);
         Should.Throw<IOException>(() => failing.Start("io.example.pg")).Message.ShouldContain("Input/output error");
+    }
+
+    [Fact]
+    public void Launchd_service_is_loaded_again_only_after_launchd_forgets_the_old_one()
+    {
+        // macOS CI 2026-11-06: bootout вернулся, а запись службы еще две проверки в домене; повторный bootout на ней — «3: No such
+        // process», и обновление поверх работающей службы откатывалось.
+        var daemons = Directory.CreateDirectory(Path.Combine(_root, "lingering")).FullName;
+        var calls = new List<string>();
+        var loaded = true;
+        var lingering = 0;
+        var launchd = new LaunchdService(arguments =>
+        {
+            calls.Add(arguments[0]);
+            switch (arguments[0])
+            {
+                case "print" when lingering > 0:
+                    lingering--;
+                    return (0, string.Empty);
+                case "print":
+                    return (loaded ? 0 : 113, string.Empty);
+                case "bootout" when !loaded:
+                    return (3, "Boot-out failed: 3: No such process");
+                case "bootout":
+                    loaded = false;
+                    lingering = 2;
+                    return (0, string.Empty);
+                case "bootstrap" when loaded || lingering > 0:
+                    return (5, "Bootstrap failed: 5: Input/output error");
+                case "bootstrap":
+                    loaded = true;
+                    return (0, string.Empty);
+                default:
+                    return (1, "?");
+            }
+        }, daemons);
+        launchd.Register("io.example.pg", ["/opt/pg/svc"]);
+
+        launchd.Stop("io.example.pg");
+        launchd.Start("io.example.pg");
+
+        calls.ShouldBe(["print", "bootout", "print", "print", "print", "print", "bootstrap"], "загрузка — когда launchd забыл прежнюю");
+        loaded.ShouldBeTrue();
+
+        // Запись еще в домене, а службы уже нет: «No such process» — выгружено, не отказ.
+        loaded = false;
+        lingering = 1;
+        calls.Clear();
+        launchd.Start("io.example.pg");
+        calls.ShouldBe(["print", "bootout", "print", "bootstrap"]);
+
+        var stuck = new LaunchdService(_ => (0, string.Empty), daemons, forget: TimeSpan.FromMilliseconds(300));
+        Should.Throw<IOException>(() => stuck.Start("io.example.pg")).Message.ShouldContain("не выгрузил");
     }
 
     [Fact]

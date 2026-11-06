@@ -12,9 +12,16 @@ namespace PrivateGateway.Client.Platform.MacOS;
 /// </summary>
 /// <param name="launchctl">Вызов launchctl: аргументы → код выхода и текст ошибки.</param>
 /// <param name="daemonFolder">Папка описаний служб; тесты дают свою.</param>
-public sealed class LaunchdService(Func<IReadOnlyList<string>, (int Code, string Error)> launchctl, string daemonFolder = "/Library/LaunchDaemons")
+/// <param name="forget">Сколько ждать, пока launchd забудет выгруженную службу; не задано — 10 с.</param>
+public sealed class LaunchdService(
+    Func<IReadOnlyList<string>, (int Code, string Error)> launchctl, string daemonFolder = "/Library/LaunchDaemons", TimeSpan? forget = null)
 {
     private const string Program = "/bin/launchctl";
+
+    /// <summary>Ответ bootout «3: No such process» (ESRCH): службы в домене уже нет — выгружать нечего.</summary>
+    private const int NoSuchProcess = 3;
+
+    private readonly TimeSpan _forget = forget ?? TimeSpan.FromSeconds(10);
 
     /// <summary>launchctl этой машины; не macOS — null.</summary>
     public static LaunchdService? ForThisMachine() =>
@@ -63,20 +70,16 @@ public sealed class LaunchdService(Func<IReadOnlyList<string>, (int Code, string
     /// <summary>Загрузить описание — служба стартует (RunAtLoad); уже загружена — перезапустить с новым описанием.</summary>
     public void Start(string label)
     {
-        if (IsLoaded(label))
-        {
-            Check(["bootout", "system/" + label]);
-        }
-
+        Unload(label);
         Check(["bootstrap", "system", PlistPath(label)]);
     }
 
     /// <summary>Выгрузить: launchd останавливает службу (SIGTERM, потом SIGKILL) и ждет ее конца; не загружена — ничего.</summary>
     public void Stop(string label)
     {
-        if (IsInstalled(label) && IsLoaded(label))
+        if (IsInstalled(label))
         {
-            Check(["bootout", "system/" + label]);
+            Unload(label);
         }
     }
 
@@ -93,6 +96,36 @@ public sealed class LaunchdService(Func<IReadOnlyList<string>, (int Code, string
     }
 
     private string PlistPath(string label) => Path.Combine(daemonFolder, label + ".plist");
+
+    /// <summary>
+    /// Выгрузить и дождаться, пока launchd забудет службу. bootout возвращается, когда процесс остановлен, но запись службы
+    /// в домене исчезает чуть позже: <c>print</c> еще находит ее, повторный bootout отвечает «3: No such process» (macOS CI
+    /// 2026-11-06 — обновление поверх работающей откатилось), а bootstrap на ней не загрузит новое описание.
+    /// </summary>
+    private void Unload(string label)
+    {
+        if (!IsLoaded(label))
+        {
+            return;
+        }
+
+        var (code, error) = launchctl(["bootout", "system/" + label]);
+        if (code != 0 && code != NoSuchProcess)
+        {
+            throw new IOException($"launchctl bootout system/{label}: {code} {error}".Trim());
+        }
+
+        var waited = Stopwatch.StartNew();
+        while (IsLoaded(label))
+        {
+            if (waited.Elapsed > _forget)
+            {
+                throw new IOException($"launchd не выгрузил службу {label} за {_forget.TotalSeconds:0} с");
+            }
+
+            Thread.Sleep(100);
+        }
+    }
 
     private void Check(IReadOnlyList<string> arguments)
     {
