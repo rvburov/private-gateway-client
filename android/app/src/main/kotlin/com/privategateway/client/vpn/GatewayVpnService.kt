@@ -261,7 +261,19 @@ class GatewayVpnService : VpnService() {
         }
 
         journal.error("no answer through the tunnel before protected")
+        noteServerTcp()
         return TunnelErrors.SERVER_NOT_RESPONDING
+    }
+
+    /**
+     * После отказа туннеля — пускает ли эта сеть к серверу по TCP мимо туннеля ([ServerTcp]): в журнал «Проверки» и отчет.
+     * Отличает «мобильная сеть или провайдер не пускают к серверу» от «сервер отвечает, но профиль не принят» (отчет Android
+     * 2026-11-05: сотовая сеть, PGC-NET-001 без причины), как служба десктопа (Gateway.Delay).
+     */
+    private suspend fun noteServerTcp() {
+        val id = settings.selectedServerId.first() ?: return
+        val server = servers.load(id) ?: return
+        journal.warning(withContext(Dispatchers.IO) { ServerTcp.verdict(this@GatewayVpnService, server) })
     }
 
     /** Под замком: защита не включилась или переподключение сдалось — «Ошибка» с кодом, ядра и карты нет. */
@@ -313,6 +325,8 @@ class GatewayVpnService : VpnService() {
                     journal.warning("no answer through the tunnel  reconnecting attempt=$attempt")
                     monitor.update { it.copy(state = TunnelState.Reconnecting, since = null, attempt = attempt) }
                     foreground(notification(getString(R.string.status_reconnecting_title), up?.name))
+                    // Первый обрыв — проба сервера мимо туннеля в журнал, не задерживая переподключение.
+                    if (attempt == 1) scope.launch { noteServerTcp() }
                 }
 
                 override suspend fun protectedAgain() {

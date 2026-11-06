@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
 import com.privategateway.client.core.servers.ProxyProtocol
+import com.privategateway.client.core.servers.ServerDefinition
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.xray.PingBatch
@@ -77,57 +78,18 @@ class DeviceTunnelDelay @Inject constructor(
 
         val server = servers.load(id)
         return withContext(Dispatchers.IO) {
-            val direct = server?.takeIf { it.protocol !in UDP_PROTOCOLS && it.transport.kind !in UDP_TRANSPORTS }
+            val direct = server?.takeIf(ServerTcp::measurable)
             val toServer = direct?.let { toServer(it.host.trim('[', ']'), it.port) }
             val target = URI(PingBatch.TARGET)
             DelayBreakdown(toServer, through(target, warm = true), through(target, warm = false), System.currentTimeMillis())
         }
     }
 
-    /** Соединение TCP с сервером через сеть под туннелем; адрес ищет DNS этой сети, а не туннеля (там FakeDNS). */
+    /** Соединение TCP с сервером через сеть под туннелем ([ServerTcp]), медиана [SAMPLES] замеров. */
     private fun toServer(host: String, port: Int): Int? {
-        val network = underlying() ?: return null
-        val address = resolve(network, host) ?: return null
-        val samples = mutableListOf<Int>()
-        repeat(SAMPLES) {
-            try {
-                network.socketFactory.createSocket().use { socket ->
-                    socket.tcpNoDelay = true
-                    val started = System.nanoTime()
-                    socket.connect(InetSocketAddress(address, port), TIMEOUT_MS)
-                    samples += millis(started)
-                }
-            } catch (_: IOException) {
-                // Не ответил — замер не в счет.
-            } catch (_: SecurityException) {
-                // Android не дал сокет мимо туннеля — замер не в счет.
-            }
-        }
-
-        return DelayBreakdown.median(samples)
-    }
-
-    /** Адрес сервера через DNS сети под туннелем; не нашелся — null. */
-    private fun resolve(network: Network, host: String): InetAddress? = try {
-        network.getAllByName(host).firstOrNull()
-    } catch (_: IOException) {
-        null
-    } catch (_: SecurityException) {
-        null
-    }
-
-    /** Сеть под туннелем с выходом в интернет: проверенная Android — раньше непроверенной. */
-    private fun underlying(): Network? {
-        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
-        @Suppress("DEPRECATION")
-        val all = manager.allNetworks
-        val physical = all.mapNotNull { network ->
-            manager.getNetworkCapabilities(network)
-                ?.takeIf { !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) }
-                ?.let { network to it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) }
-        }
-
-        return (physical.firstOrNull { it.second } ?: physical.firstOrNull())?.first
+        val network = ServerTcp.underlying(context) ?: return null
+        val address = ServerTcp.resolve(network, host) ?: return null
+        return DelayBreakdown.median((1..SAMPLES).mapNotNull { ServerTcp.connectMs(network, address, port, TIMEOUT_MS) })
     }
 
     /** Запрос к проверочному адресу через туннель: [warm] — по одному соединению, иначе каждый раз по новому. */
@@ -243,7 +205,74 @@ class DeviceTunnelDelay @Inject constructor(
         const val HTTPS_PORT = 443
         const val HEAD_LIMIT = 16 * 1024
         val CONTENT_LENGTH = Regex("""(?im)^content-length:\s*(\d+)""")
-        val UDP_PROTOCOLS = setOf(ProxyProtocol.Hysteria2, ProxyProtocol.Tuic, ProxyProtocol.WireGuard)
-        val UDP_TRANSPORTS = setOf(TransportKind.Quic, TransportKind.Udp)
+    }
+}
+
+/**
+ * Отвечает ли сервер по TCP мимо туннеля — через сеть под ним (сокет на этой сети владельцу VPN Android разрешает), адрес —
+ * через DNS этой же сети, а не туннеля (там FakeDNS). Нужна, чтобы различать «сеть не пускает к серверу» и «сервер принимает
+ * соединение, но связи через него нет» (отчет Android 2026-11-05: мобильная сеть, PGC-NET-001), как служба десктопа
+ * (Gateway.Delay). Адрес сервера никуда не пишется.
+ */
+object ServerTcp {
+    private val UDP_PROTOCOLS = setOf(ProxyProtocol.Hysteria2, ProxyProtocol.Tuic, ProxyProtocol.WireGuard)
+    private val UDP_TRANSPORTS = setOf(TransportKind.Quic, TransportKind.Udp)
+    private const val PROBE_TIMEOUT_MS = 5_000
+
+    /** По TCP сервер мерить можно: не UDP-протокол (Hysteria2, TUIC, WireGuard) и не QUIC. */
+    fun measurable(server: ServerDefinition): Boolean = server.protocol !in UDP_PROTOCOLS && server.transport.kind !in UDP_TRANSPORTS
+
+    /**
+     * Строка журнала после отказа туннеля: сервер ответил по TCP (сколько мс) или молчит. Порт — да, адрес — нет. Мерить
+     * нечем (UDP, нет сети под туннелем, имя не нашлось) — так и сказано, без вердикта.
+     */
+    fun verdict(context: Context, server: ServerDefinition): String {
+        if (!measurable(server)) return "server tcp not checked  udp protocol"
+        val network = underlying(context) ?: return "server tcp not checked  no network under the tunnel"
+        val address = resolve(network, server.host.trim('[', ']')) ?: return "server tcp not checked  name not found in this network"
+        val ms = connectMs(network, address, server.port, PROBE_TIMEOUT_MS)
+        return if (ms != null) {
+            "server answers on tcp  port=${server.port} ms=$ms  profile not accepted or no internet through the server"
+        } else {
+            "server silent on tcp  port=${server.port}  this network does not reach it or the server is off"
+        }
+    }
+
+    /** Одно соединение TCP с сервером через [network]; не открылось — null. */
+    fun connectMs(network: Network, address: InetAddress, port: Int, timeoutMs: Int): Int? = try {
+        network.socketFactory.createSocket().use { socket ->
+            socket.tcpNoDelay = true
+            val started = System.nanoTime()
+            socket.connect(InetSocketAddress(address, port), timeoutMs)
+            ((System.nanoTime() - started) / 1_000_000.0).roundToInt().coerceAtLeast(1)
+        }
+    } catch (_: IOException) {
+        null
+    } catch (_: SecurityException) {
+        // Android не дал сокет мимо туннеля — не измерено.
+        null
+    }
+
+    /** Адрес сервера через DNS сети под туннелем; не нашелся — null. */
+    fun resolve(network: Network, host: String): InetAddress? = try {
+        network.getAllByName(host).firstOrNull()
+    } catch (_: IOException) {
+        null
+    } catch (_: SecurityException) {
+        null
+    }
+
+    /** Сеть под туннелем с выходом в интернет: проверенная Android — раньше непроверенной. */
+    fun underlying(context: Context): Network? {
+        val manager = context.getSystemService(ConnectivityManager::class.java) ?: return null
+        @Suppress("DEPRECATION")
+        val all = manager.allNetworks
+        val physical = all.mapNotNull { network ->
+            manager.getNetworkCapabilities(network)
+                ?.takeIf { !it.hasTransport(NetworkCapabilities.TRANSPORT_VPN) && it.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) }
+                ?.let { network to it.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) }
+        }
+
+        return (physical.firstOrNull { it.second } ?: physical.firstOrNull())?.first
     }
 }
