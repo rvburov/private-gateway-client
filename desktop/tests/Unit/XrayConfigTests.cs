@@ -392,6 +392,37 @@ public sealed class XrayConfigTests
     }
 
     [Fact]
+    public void Counters_for_the_total_speed_are_read_only_and_on_loopback()
+    {
+        var request = Request(Link("vless/reality-vision"));
+        var counted = new ProbeLink(32000, "probe-user", "probe-pass", StatsPort: 32001);
+
+        foreach (var config in new[]
+        {
+            XrayConfigBuilder.Build(request, probe: counted).Config!,
+            XrayConfigBuilder.Build(request with { Connection = request.Connection with { VpnSystemProxy = true } },
+                new TunLink(31000, TunKey, "198.51.100.20"), counted).Config!,
+        })
+        {
+            config["stats"].ShouldBeOfType<JsonObject>();
+            var api = config["api"]!;
+            api["listen"]!.GetValue<string>().ShouldBe("127.0.0.1:32001", "счетчики — только для службы на этой машине");
+            api["services"]!.AsArray().Select(s => s!.GetValue<string>()).ShouldBe(["StatsService"], "только чтение счетчиков: ядром не управлять");
+            var system = config["policy"]!["system"]!;
+            (system["statsInboundUplink"]!.GetValue<bool>(), system["statsInboundDownlink"]!.GetValue<bool>()).ShouldBe((true, true));
+            config["inbounds"]!.AsArray().Select(i => i!["tag"]!.GetValue<string>()).ShouldNotContain("api", "API — не вход для программ");
+        }
+
+        XrayConfigBuilder.CountedInbounds.ShouldBe([XrayConfigBuilder.InboundTag, XrayConfigBuilder.LocalProxyTag]);
+        foreach (var plain in new[] { XrayConfigBuilder.Build(request).Config!, XrayConfigBuilder.Build(request, probe: counted with { StatsPort = 0 }).Config! })
+        {
+            plain["api"].ShouldBeNull("без порта счетчиков API нет");
+            plain["stats"].ShouldBeNull();
+            plain["policy"].ShouldBeNull();
+        }
+    }
+
+    [Fact]
     public void Tun_link_takes_only_its_own_tun_and_dials_the_resolved_address()
     {
         var tun = new TunLink(31000, TunKey, "198.51.100.20");

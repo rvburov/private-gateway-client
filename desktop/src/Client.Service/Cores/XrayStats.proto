@@ -1,0 +1,29 @@
+// Чтение счетчиков ядра Xray для общей скорости на главной (служба — клиент StatsService ядра на 127.0.0.1).
+// Только то, что службе нужно: имена пакета, службы, метода и номера полей — как в Xray-core v26.10.21
+// (app/stats/command/command.proto, коммит 1b1647cd9ddf0abc34b981d4611fc03bcac1ca74, MPL-2.0), текст написан заново
+// (docs/sources/REUSE_REGISTER.md).
+syntax = "proto3";
+
+package xray.app.stats.command;
+
+option csharp_namespace = "PrivateGateway.Client.Service.Cores.XrayApi";
+
+message QueryStatsRequest {
+  // Начало имени счетчика, например «inbound>>>».
+  string pattern = 1;
+  // Сбросить счетчики после чтения — служба не сбрасывает.
+  bool reset = 2;
+}
+
+message Stat {
+  string name = 1;
+  int64 value = 2;
+}
+
+message QueryStatsResponse {
+  repeated Stat stat = 1;
+}
+
+service StatsService {
+  rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse) {}
+}

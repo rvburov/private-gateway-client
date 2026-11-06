@@ -75,9 +75,10 @@ public sealed record TunLink(int Port, string Password, string ServerAddress, in
 /// Вход проверки связи с сервером: SOCKS5 на 127.0.0.1:<paramref name="Port"/> с паролем на это
 /// подключение — только для службы. Его соединения идут прямо в выход сервера, мимо правил
 /// маршрутизации: проба проверяет сервер, а не правила пользователя («Напрямую» для проверочного
-/// адреса или локальная сеть не обманут пробу).
+/// адреса или локальная сеть не обманут пробу). <paramref name="StatsPort"/> — счетчики байт входов ядра для общей скорости
+/// на главной: StatsService Xray по gRPC на 127.0.0.1 (<see cref="XrayConfigBuilder.CountedInbounds"/>); 0 — без счетчиков.
 /// </summary>
-public sealed record ProbeLink(int Port, string User, string Password);
+public sealed record ProbeLink(int Port, string User, string Password, int StatsPort = 0);
 
 /// <summary>
 /// Вход ретранслятора sing-box для Hysteria2 и TUIC — их Xray не знает (решение 452): SOCKS5 на 127.0.0.1:<paramref name="Port"/>
@@ -116,6 +117,13 @@ public static class XrayConfigBuilder
 
     /// <summary>Вход программ мимо туннеля, пришедших на адрес FakeDNS (<see cref="TunLink.BypassPort"/>).</summary>
     public const string BypassTag = "bypass-in";
+
+    /// <summary>
+    /// Чей трафик входит в общую скорость на главной: вход программ (режим прокси), вход своего TUN и прямой локальный вход
+    /// HTTP/SOCKS (режим VPN) — так в скорость попадает и то, что идет в ядро мимо адаптера туннеля. Вход проверки службы и
+    /// вход программ мимо туннеля — не трафик через сервер, их нет.
+    /// </summary>
+    public static IReadOnlyList<string> CountedInbounds { get; } = [InboundTag, LocalProxyTag];
 
     /// <summary>
     /// Адреса FakeDNS: сеть для тестов производительности (RFC 2544) — в интернете ее нет, в исключения
@@ -322,6 +330,11 @@ public static class XrayConfigBuilder
             config["fakedns"] = new JsonArray(new JsonObject { ["ipPool"] = FakeDnsPool, ["poolSize"] = 65535 });
         }
 
+        if (probe is { StatsPort: > 0 } counted)
+        {
+            Counters(config, counted.StatsPort);
+        }
+
         return new XrayConfigResult(config, null);
     }
 
@@ -440,6 +453,20 @@ public static class XrayConfigBuilder
     /// TUN) по умолчанию закрывает частные адреса — разрешенная локальная сеть и сервер в ней иначе были бы недоступны.
     /// </summary>
     private static JsonArray AllowAll() => new(new JsonObject { ["action"] = "allow" });
+
+    /// <summary>
+    /// Счетчики байт входов для общей скорости: StatsService на 127.0.0.1:<paramref name="port"/> — только чтение счетчиков,
+    /// без управления ядром (HandlerService и другие службы API не включаются). Входы с тегом считает само ядро.
+    /// </summary>
+    private static void Counters(JsonObject config, int port)
+    {
+        config["stats"] = new JsonObject();
+        config["api"] = new JsonObject { ["tag"] = "api", ["listen"] = "127.0.0.1:" + port, ["services"] = new JsonArray("StatsService") };
+        config["policy"] = new JsonObject
+        {
+            ["system"] = new JsonObject { ["statsInboundUplink"] = true, ["statsInboundDownlink"] = true },
+        };
+    }
 
     private static JsonObject Inbound(CoreRequest request, string tag = InboundTag) => new()
     {

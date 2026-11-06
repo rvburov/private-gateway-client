@@ -380,7 +380,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     }
 
     /// <summary>Вход проверки связи на одно подключение: свободный порт на 127.0.0.1, имя и пароль — по 128 случайных бит.</summary>
-    public static ProbeLink NewProbe() => new(LocalPort.FreeForTcpAndUdp(), Secret(), Secret());
+    public static ProbeLink NewProbe() => new(LocalPort.FreeForTcpAndUdp(), Secret(), Secret(), LocalPort.FreeForTcpAndUdp());
 
     /// <summary>
     /// Внешний интерфейс: первый маршрут по умолчанию (или половина интернета) не через туннель — так же служба ищет карту для

@@ -9,9 +9,9 @@ namespace PrivateGateway.Client.Tests.Unit;
 /// </summary>
 public partial class PrivacyListTests
 {
-    // Не обращения программы: примеры и подсказки в тексте (домены и адреса документации), петля, DTD в заголовке plist macOS
-    // (не загружается).
-    private static readonly string[] NotContacted = ["example.com", "example.org", "localhost", "www.apple.com", "IP"];
+    // Не обращения программы: примеры и подсказки в тексте (домены и адреса документации), петля (localhost и 127.0.0.1 —
+    // свои ядра на этой машине, например счетчики Xray для скорости), DTD в заголовке plist macOS (не загружается).
+    private static readonly string[] NotContacted = ["example.com", "example.org", "localhost", "127.0.0.1", "www.apple.com", "IP"];
 
     [Fact]
     public void Every_address_the_code_contacts_is_named_in_privacy_md()

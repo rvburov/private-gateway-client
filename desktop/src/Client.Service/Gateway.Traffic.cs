@@ -9,8 +9,9 @@ namespace PrivateGateway.Client.Service;
 
 /// <summary>
 /// Пинг и скорость на главном экране. Служба их не заполняла, и окно всегда показывало «—» и «0,0» (у пользователя на
-/// Windows 2026-10-30). Пока «Защищено»: раз в <see cref="TrafficEvery"/> — скорость по счетчикам адаптера своего туннеля
-/// (в режиме VPN через него идет весь трафик машины; в режиме прокси общего счетчика нет — скорость не измеряется), раз в
+/// Windows 2026-10-30). Пока «Защищено»: раз в <see cref="TrafficEvery"/> — скорость по счетчикам входов самого ядра Xray
+/// (<see cref="XrayStatsClient"/>: режим прокси и режим VPN вместе с прямым локальным входом HTTP/SOCKS); ядро не ответило — в
+/// режиме VPN по счетчикам адаптера своего туннеля, в режиме прокси скорости нет; раз в
 /// <see cref="PingEvery"/> — задержка запроса через ядро и сервер к проверочному адресу по уже открытому соединению: новое
 /// соединение — это рукопожатия с сервером и TLS до проверочного адреса, и пинг выходил втрое больше, чем у других
 /// клиентов к тому же серверу (480 мс против 124 у пользователя 2026-10-31). Соединение живет, пока живет вход проверки.
@@ -26,7 +27,8 @@ public sealed partial class Gateway
     private ITimer? _trafficTimer;
     private HttpClient? _pingClient;
     private ProbeLink? _pingLink;
-    private (long Received, long Sent, long At)? _lastCounters;
+    private (long Received, long Sent, long At, bool Core)? _lastCounters;
+    private XrayStatsClient? _stats;
     private long _lastPing;
     private int _sampling;
 
@@ -52,6 +54,7 @@ public sealed partial class Gateway
                 _lastCounters = null;
                 _lastPing = 0;
                 ForgetPingClient();
+                ForgetStats();
                 if (Status.Traffic != TrafficStats.Empty)
                 {
                     Update(s => s with { Traffic = TrafficStats.Empty });
@@ -60,7 +63,7 @@ public sealed partial class Gateway
                 return;
             }
 
-            var (down, up) = status.Mode == ConnectionMode.Vpn ? Speed() : (0, 0);
+            var (down, up) = await SpeedAsync(status.Mode).ConfigureAwait(false);
             var ping = status.Traffic.LatencyMs;
             var now = _time.GetTimestamp();
             if ((_lastPing == 0 || _time.GetElapsedTime(_lastPing, now) >= PingEvery) && _probe is { } link)
@@ -143,10 +146,21 @@ public sealed partial class Gateway
         (_pingClient, _pingLink) = (null, null);
     }
 
-    /// <summary>Мбит/с с прошлого замера по счетчикам адаптера туннеля; первого замера или адаптера нет — 0.</summary>
-    private (double Down, double Up) Speed()
+    /// <summary>
+    /// Мбит/с с прошлого замера: по счетчикам входов ядра (<see cref="ProbeLink.StatsPort"/>), а если ядро не ответило — в
+    /// режиме VPN по счетчикам адаптера туннеля. Первый замер, смена источника или счетчиков нет — 0: числа разных источников
+    /// между собой не сравниваются.
+    /// </summary>
+    private async Task<(double Down, double Up)> SpeedAsync(ConnectionMode mode)
     {
-        if ((_options.TunnelCounters ?? TunnelCounters)() is not { } counters)
+        (long Received, long Sent)? counters = _probe is { StatsPort: > 0 } link ? await CoreCountersAsync(link.StatsPort).ConfigureAwait(false) : null;
+        var core = counters is not null;
+        if (!core && mode == ConnectionMode.Vpn)
+        {
+            counters = (_options.TunnelCounters ?? TunnelCounters)();
+        }
+
+        if (counters is not { } current)
         {
             _lastCounters = null;
             return (0, 0);
@@ -154,15 +168,38 @@ public sealed partial class Gateway
 
         var now = _time.GetTimestamp();
         var last = _lastCounters;
-        _lastCounters = (counters.Received, counters.Sent, now);
-        if (last is not { } before || _time.GetElapsedTime(before.At, now) is not { TotalSeconds: > 0 } elapsed
-            || counters.Received < before.Received || counters.Sent < before.Sent)
+        _lastCounters = (current.Received, current.Sent, now, core);
+        if (last is not { } before || before.Core != core || _time.GetElapsedTime(before.At, now) is not { TotalSeconds: > 0 } elapsed
+            || current.Received < before.Received || current.Sent < before.Sent)
         {
             return (0, 0);
         }
 
-        // Принятое адаптером туннеля — то, что пришло с сервера (загрузка); отправленное в него — отдача.
-        return (Mbps(counters.Received - before.Received, elapsed), Mbps(counters.Sent - before.Sent, elapsed));
+        // Принятое (ядром для программ или адаптером туннеля) — то, что пришло с сервера (загрузка); отправленное — отдача.
+        return (Mbps(current.Received - before.Received, elapsed), Mbps(current.Sent - before.Sent, elapsed));
+    }
+
+    /// <summary>Счетчики входов ядра этого подключения; <see cref="GatewayOptions.CoreCounters"/> — подделка (тесты).</summary>
+    private Task<(long Received, long Sent)?> CoreCountersAsync(int port)
+    {
+        if (_options.CoreCounters is { } counters)
+        {
+            return counters(port);
+        }
+
+        if (_stats?.Port != port)
+        {
+            ForgetStats();
+            _stats = new XrayStatsClient(port);
+        }
+
+        return _stats.TotalsAsync();
+    }
+
+    private void ForgetStats()
+    {
+        _stats?.Dispose();
+        _stats = null;
     }
 
     private static double Mbps(long bytes, TimeSpan elapsed) => Math.Round(bytes * 8 / elapsed.TotalSeconds / 1_000_000, 1);

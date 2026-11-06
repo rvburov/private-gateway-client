@@ -82,6 +82,7 @@ public sealed record GatewayOptions(
     Func<NetworkInfo>? CurrentNetwork = null,
     Func<ServerProbe, CancellationToken, Task<int?>>? Delay = null,
     Func<(long Received, long Sent)?>? TunnelCounters = null,
+    Func<int, Task<(long Received, long Sent)?>>? CoreCounters = null,
     TimeSpan? TrafficWatch = null,
     Func<IReadOnlyList<RunningProcess>>? Processes = null,
     TimeSpan? OtherClientsWatch = null,
@@ -1062,6 +1063,7 @@ public sealed partial class Gateway : IAsyncDisposable
             await _trafficTimer.DisposeAsync().ConfigureAwait(false);
         }
         ForgetPingClient();
+        ForgetStats();
 
         if (_options.Network is { } network)
         {

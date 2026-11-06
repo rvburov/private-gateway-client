@@ -27,7 +27,14 @@
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
     <PackageReference Include="Grpc.AspNetCore.Server" />
+    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Grpc.Tools" PrivateAssets="all" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+  </ItemGroup>
+
+  <!-- Счетчики ядра Xray для общей скорости: служба — клиент его StatsService на 127.0.0.1. -->
+  <ItemGroup>
+    <Protobuf Include="Cores/XrayStats.proto" GrpcServices="Client" Access="Internal" />
   </ItemGroup>
 
   <!-- macOS трактует окончание .Service особо: для native apphost нужно имя без этого суффикса.
