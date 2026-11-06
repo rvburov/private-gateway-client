@@ -96,8 +96,13 @@ jobs:
         run: scripts/get-singbox.sh
 
       # Каждый запуск тестов пишет отчет CTRF в artifacts/test-results: по ним последний шаг считает итог и пропуски.
+      # Срок: 2026-11-06 шаг на macOS висел 27 минут, и отмена сняла машину вместе с журналом. Теперь тестовое приложение само
+      # останавливается через 20 минут, а xUnit называет тест, который идет дольше минуты, — зависший тест виден в журнале.
       - name: Тесты
-        run: dotnet test --solution PrivateGateway.slnx -c Release --no-build --results-directory artifacts/test-results --report-ctrf
+        timeout-minutes: 25
+        run: >-
+          dotnet test --solution PrivateGateway.slnx -c Release --no-build --results-directory artifacts/test-results --report-ctrf
+          --timeout 20m -- --long-running 60
 
       # Независимые проверки идут и после отказа обычных тестов, если сборка готова: иначе отчет
       # получает каскад запрещенных пропусков вместо результатов root и Secret Service.
