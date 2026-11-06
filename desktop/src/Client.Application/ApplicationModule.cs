@@ -23,6 +23,7 @@ public static class ApplicationModule
         services.AddSingleton<SubscriptionUpdater>();
         services.AddSingleton<AutostartSync>();
         services.AddSingleton<ProtectionSync>();
+        services.AddSingleton<ExitMemory>();
         services.AddSingleton<NetworkEventLog>();
         services.AddSingleton<LaunchConnect>();
         services.AddSingleton<NotificationCenter>();

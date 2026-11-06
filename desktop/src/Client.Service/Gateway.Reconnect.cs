@@ -634,6 +634,7 @@ public sealed partial class Gateway
             }
             else
             {
+                await RemeasureDirectIpAsync(request, attempt, starting).ConfigureAwait(false);
                 pending = BeginTunnelStart(request, _addresses, reuseIpv6: true, starting);
             }
         }
@@ -713,6 +714,40 @@ public sealed partial class Gateway
         finally
         {
             _switch.Release();
+        }
+    }
+
+    /// <summary>
+    /// Реальный IP забыт, а туннеля сейчас нет — замерить до его подъема, как при подключении (под <c>_switch</c>). Ядро туннеля
+    /// упало и убрало свой адаптер — Windows сообщает о смене сети, и <see cref="OnNetworkChanged"/> забывает адрес (в другой сети
+    /// он другой); без замера после переподключения на главной «не определен» (отчет пользователя 2026-11-06 18:22). Под блоком —
+    /// исключение только для службы (<see cref="DirectIpPastBlockLockedAsync"/>), без блока — прямой путь открыт. Только в первой
+    /// попытке: сеть недоступна — замер не задерживает следующие.
+    /// </summary>
+    private async Task RemeasureDirectIpAsync(CoreRequest request, int attempt, CancellationToken cancellationToken)
+    {
+        if (attempt != 1 || _directIp is not null || !request.Protection.CheckLeaksAfterConnect || Volatile.Read(ref _tunnel) is not null)
+        {
+            return;
+        }
+
+        string? ip;
+        try
+        {
+            ip = _blocking
+                ? await DirectIpPastBlockLockedAsync(cancellationToken).ConfigureAwait(false)
+                : await DirectIpAsync(Timing.ProbeTimeout, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Пауза для входа в Wi-Fi: попытка встанет и так, замер — в следующий раз.
+            return;
+        }
+
+        if (ip is not null)
+        {
+            _directIp = ip;
+            Update(s => s.State == ConnectionState.Reconnecting ? s with { Exit = s.Exit with { DirectIp = ip } } : s);
         }
     }
 

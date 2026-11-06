@@ -187,6 +187,24 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public void RememberExit(string serverId, string ip)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(serverId);
+        ArgumentException.ThrowIfNullOrEmpty(ip);
+        lock (_gate)
+        {
+            if (Rows.Find(r => r.Profile.Id == serverId) is not { } row || row.Profile.ExitIp == ip)
+            {
+                return;
+            }
+
+            Execute("UPDATE servers SET exit_ip = $ip WHERE id = $id", ("$ip", ip), ("$id", serverId));
+            Replace(row with { Profile = row.Profile with { ExitIp = ip } });
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     // ── Импорт ───────────────────────────────────────────────────────────────
 
     public int CountDuplicates(IReadOnlyList<ServerDefinition> servers)
@@ -531,7 +549,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             foreach (var (row, server) in kept)
             {
                 var profile = ToProfile(row.Profile.Id, Stored.From(server), subscriptionId, row.CustomName, row.Profile.LatencyMs,
-                    row.Profile.IsFavorite, row.Profile.LastUsedAt);
+                    row.Profile.IsFavorite, row.Profile.LastUsedAt, exitIp: row.Profile.ExitIp);
                 Replace(row with { Profile = profile, Endpoint = Endpoint(server), LinkName = server.Name });
             }
 
@@ -882,7 +900,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         using (var command = connection.CreateCommand())
         {
             command.CommandText = "SELECT id, subscription_id, position, definition, custom_name, latency_ms, is_favorite, last_used_at, "
-                + "missing_since FROM servers ORDER BY position";
+                + "missing_since, exit_ip FROM servers ORDER BY position";
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
@@ -895,7 +913,8 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                     reader.IsDBNull(5) ? null : reader.GetInt32(5),
                     reader.GetInt64(6) != 0,
                     Time(reader, 7),
-                    Time(reader, 8));
+                    Time(reader, 8),
+                    reader.IsDBNull(9) ? null : reader.GetString(9));
                 _rows.Add(new Row(profile, reader.GetInt64(2), Endpoint(stored.ToDefinition(new ServerCredentials())), stored.Name,
                     reader.IsDBNull(4) ? null : reader.GetString(4)));
             }
@@ -1043,7 +1062,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
 
     private static ServerProfile ToProfile(
         string id, Stored stored, string? groupId, string? customName, int? latencyMs, bool isFavorite, DateTimeOffset? lastUsedAt,
-        DateTimeOffset? missingSince = null) =>
+        DateTimeOffset? missingSince = null, string? exitIp = null) =>
         new(id,
             customName ?? stored.Name,
             stored.Country,
@@ -1061,7 +1080,8 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             SubscriptionId: groupId,
             IsFavorite: isFavorite,
             LastUsedAt: lastUsedAt,
-            MissingSince: missingSince);
+            MissingSince: missingSince,
+            ExitIp: exitIp);
 
     private static string SecretKey(string serverId) => "server:" + serverId;
 

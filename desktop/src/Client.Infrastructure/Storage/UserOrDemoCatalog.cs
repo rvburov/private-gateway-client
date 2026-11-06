@@ -54,6 +54,8 @@ public sealed class UserOrDemoCatalog : IServerCatalog
 
     public void Remove(string serverId) => Current.Remove(serverId);
 
+    public void RememberExit(string serverId, string ip) => Current.RememberExit(serverId, ip);
+
     public async Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
     {
         if (IsDemo)

@@ -484,6 +484,7 @@
   "servers.tag.active": "активен",
   "servers.tag.selected": "выбран",
   "servers.latency.none": "нет",
+  "servers.exit": "{0} → выход {1}",
   "servers.latency.noneHint": "Сервер не ответил на проверку",
   "servers.more": "Подробнее",
   "servers.more.name": "Подробнее о сервере {0}",

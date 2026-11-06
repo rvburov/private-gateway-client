@@ -114,7 +114,7 @@ public static class ServerList
             return true;
         }
 
-        return new[] { server.Name, server.City, server.CountryCode, server.Host, ServerFacts.ProtocolName(server.Protocol) }
+        return new[] { server.Name, server.City, server.CountryCode, server.Host, server.ExitIp, ServerFacts.ProtocolName(server.Protocol) }
             .Any(field => field is not null && field.Contains(text, StringComparison.OrdinalIgnoreCase));
     }
 

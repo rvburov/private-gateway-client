@@ -285,7 +285,9 @@ public sealed class SubscriptionUpdateTests : IDisposable
         using (var connection = new SqliteDatabase(_paths).Open())
         using (var command = connection.CreateCommand())
         {
-            command.CommandText = "UPDATE subscriptions SET address = 'https://sub.example.com/sub/\u2022\u2022\u2022\u2022'; PRAGMA user_version = 4;";
+            // База до миграции 5 — и без колонок более поздних миграций (0006: servers.exit_ip).
+            command.CommandText = "UPDATE subscriptions SET address = 'https://sub.example.com/sub/\u2022\u2022\u2022\u2022'; "
+                + "ALTER TABLE servers DROP COLUMN exit_ip; PRAGMA user_version = 4;";
             command.ExecuteNonQuery();
         }
 

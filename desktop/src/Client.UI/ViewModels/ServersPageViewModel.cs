@@ -298,11 +298,23 @@ public sealed partial class ServersPageViewModel : ObservableObject
         _ => Loc.Instance["servers.updated.never"],
     };
 
+    /// <summary>
+    /// Адрес подключения, а если сайты через сервер видели другой IP (сервер «VPS + прокси», решение 583) — и он:
+    /// «адрес → выход IP».
+    /// </summary>
+    public static string Address(ServerProfile server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        return server.ExitIp is { Length: > 0 } exit && !string.Equals(exit, server.Host, StringComparison.OrdinalIgnoreCase)
+            ? Loc.Instance.Format("servers.exit", server.Host, exit)
+            : server.Host;
+    }
+
     private ServerRowViewModel Row(ServerProfile server, bool isSelected, bool connected) => new(
         server.Id,
         server.CountryCode,
         server.Name,
-        server.Host + " · " + ServerFacts.Summary(server),
+        Address(server) + " · " + ServerFacts.Summary(server),
         isSelected ? Loc.Instance[connected ? "servers.tag.active" : _target.IsExternalProxy ? "externalProxy.vpn.selected" : "servers.tag.selected"] : null,
         server.LatencyMs is { } ms
             ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"]

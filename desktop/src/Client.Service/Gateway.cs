@@ -2010,43 +2010,45 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private async Task<string?> DirectIpPastBlockAsync(int generation, CancellationToken cancellationToken)
     {
-        if (_options is not { KillSwitch: { } killSwitch, Trace: { } trace } || !IPAddress.TryParse(trace.Host.Trim('[', ']'), out var traceAddress))
-        {
-            return null;
-        }
-
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (!IsLatestConnect(generation) || !_blocking || _held is not { Open: false } held || Volatile.Read(ref _tunnel) is not null)
-            {
-                return null;
-            }
-
-            var lookup = new ServiceLookup(Environment.ProcessPath ?? string.Empty, LookupMark, [new KillSwitchEndpoint(traceAddress, trace.Port)]);
-            if (!Try(() => { killSwitch.Enable(held.Policy with { Lookup = lookup }); return true; }, "Исключение для замера реального IP под блоком не встало"))
-            {
-                return null;
-            }
-
-            try
-            {
-                var ip = await (_options.DirectIpPastBlock ?? Measure)(trace, LookupMark, cancellationToken).ConfigureAwait(false);
-                _journal.Add(ip is null ? JournalLevel.Warning : JournalLevel.Info, "service", ip is null
-                    ? "Реальный IP под блоком не измерен — на главной «не определен»"
-                    : "Реальный IP измерен под блоком запросом службы к проверочному адресу");
-                return ip;
-            }
-            finally
-            {
-                // Прежний блок — без исключения; не вернулся — исключение к одному проверочному адресу для программы службы
-                // остается, остальное закрыто, и это в журнале.
-                Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве после замера реального IP не вернулся");
-            }
+            return IsLatestConnect(generation) ? await DirectIpPastBlockLockedAsync(cancellationToken).ConfigureAwait(false) : null;
         }
         finally
         {
             _switch.Release();
+        }
+    }
+
+    /// <summary>То же, что <see cref="DirectIpPastBlockAsync"/>, под уже взятым <c>_switch</c> (переподключение).</summary>
+    private async Task<string?> DirectIpPastBlockLockedAsync(CancellationToken cancellationToken)
+    {
+        if (_options is not { KillSwitch: { } killSwitch, Trace: { } trace } || !IPAddress.TryParse(trace.Host.Trim('[', ']'), out var traceAddress)
+            || !_blocking || _held is not { Open: false } held || Volatile.Read(ref _tunnel) is not null)
+        {
+            return null;
+        }
+
+        var lookup = new ServiceLookup(Environment.ProcessPath ?? string.Empty, LookupMark, [new KillSwitchEndpoint(traceAddress, trace.Port)]);
+        if (!Try(() => { killSwitch.Enable(held.Policy with { Lookup = lookup }); return true; }, "Исключение для замера реального IP под блоком не встало"))
+        {
+            return null;
+        }
+
+        try
+        {
+            var ip = await (_options.DirectIpPastBlock ?? Measure)(trace, LookupMark, cancellationToken).ConfigureAwait(false);
+            _journal.Add(ip is null ? JournalLevel.Warning : JournalLevel.Info, "service", ip is null
+                ? "Реальный IP под блоком не измерен — на главной «не определен»"
+                : "Реальный IP измерен под блоком запросом службы к проверочному адресу");
+            return ip;
+        }
+        finally
+        {
+            // Прежний блок — без исключения; не вернулся — исключение к одному проверочному адресу для программы службы
+            // остается, остальное закрыто, и это в журнале.
+            Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве после замера реального IP не вернулся");
         }
 
         Task<string?> Measure(Uri trace, uint mark, CancellationToken cancellationToken) =>

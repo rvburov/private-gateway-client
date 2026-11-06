@@ -93,6 +93,26 @@ public sealed class ServerCatalogStorageTests : IDisposable
     }
 
     [Fact]
+    public void Exit_seen_through_a_server_survives_a_restart_and_is_found_by_search()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse("trojan://pw-a@198.51.100.1:443#VPS"), null);
+        var id = catalog.Servers[0].Id;
+        var changes = 0;
+        catalog.Changed += (_, _) => changes++;
+
+        catalog.RememberExit(id, "203.0.113.55");
+        catalog.RememberExit(id, "203.0.113.55");
+        catalog.RememberExit("nobody", "203.0.113.56");
+
+        changes.ShouldBe(1, "тот же выход и чужой сервер — без записи");
+        var reopened = Catalog();
+        var server = reopened.Servers.ShouldHaveSingleItem();
+        server.ExitIp.ShouldBe("203.0.113.55");
+        ServerList.Matches(server, "203.0.113.55").ShouldBeTrue("поиск по IP находит сервер и по выходу");
+    }
+
+    [Fact]
     public void Same_server_twice_is_a_duplicate_but_other_credentials_are_not()
     {
         var catalog = Catalog();

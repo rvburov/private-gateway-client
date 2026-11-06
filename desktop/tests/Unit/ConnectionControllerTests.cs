@@ -343,6 +343,10 @@ public class ConnectionControllerTests
         {
         }
 
+        public void RememberExit(string serverId, string ip) => Exits[serverId] = ip;
+
+        public Dictionary<string, string> Exits { get; } = [];
+
         public void Rename(string serverId, string name)
         {
         }

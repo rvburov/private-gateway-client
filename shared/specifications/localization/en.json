@@ -484,6 +484,7 @@
   "servers.tag.active": "active",
   "servers.tag.selected": "selected",
   "servers.latency.none": "n/a",
+  "servers.exit": "{0} → exit {1}",
   "servers.latency.noneHint": "The server did not answer the check",
   "servers.more": "Details",
   "servers.more.name": "Details for {0}",

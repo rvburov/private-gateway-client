@@ -47,6 +47,25 @@ public sealed class ServersPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Server_with_another_exit_shows_where_it_connects_and_what_sites_see()
+    {
+        // Отчет пользователя 2026-11-06 17:59: сервер «VPS + прокси» — в списке был только адрес VPS (решение 583).
+        var (_, _, page) = OpenServers();
+        var catalog = Service<IServerCatalog>();
+        var nl = catalog.Servers.Single(s => s.Name == "Нидерланды 01");
+
+        catalog.RememberExit(nl.Id, "198.51.100.77");
+        Dispatcher.UIThread.RunJobs();
+
+        page.Groups.SelectMany(g => g.Rows).Single(r => r.Id == nl.Id).Address
+            .ShouldBe("203.0.113.24 → выход 198.51.100.77 · VLESS · REALITY");
+        catalog.RememberExit(nl.Id, "203.0.113.24");
+        Dispatcher.UIThread.RunJobs();
+        page.Groups.SelectMany(g => g.Rows).Single(r => r.Id == nl.Id).Address
+            .ShouldBe("203.0.113.24 · VLESS · REALITY", "выход совпал с адресом — второй раз не пишется");
+    }
+
+    [AvaloniaFact]
     public void Selected_server_is_marked_selected_until_protection_is_on()
     {
         var (_, _, page) = OpenServers();

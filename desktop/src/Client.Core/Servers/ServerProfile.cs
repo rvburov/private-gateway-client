@@ -21,6 +21,10 @@ namespace PrivateGateway.Client.Core.Servers;
 /// Когда сервер пропал из подписки при обновлении; null — на месте. Пропавший сервер остается в
 /// списке, только пока он выбран: сам выбор программа не меняет.
 /// </param>
+/// <param name="ExitIp">
+/// IP, который сайты видели через этот сервер при последнем подключении; null — не мерили. У сервера «VPS + прокси»
+/// он не совпадает с <paramref name="Host"/>: программа подключается к VPS, а сайты видят выход прокси за ним.
+/// </param>
 public sealed record ServerProfile(
     string Id,
     string Name,
@@ -35,5 +39,6 @@ public sealed record ServerProfile(
     string? SubscriptionId = null,
     bool IsFavorite = false,
     DateTimeOffset? LastUsedAt = null,
-    DateTimeOffset? MissingSince = null);
+    DateTimeOffset? MissingSince = null,
+    string? ExitIp = null);
 

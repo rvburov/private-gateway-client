@@ -634,6 +634,46 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Real_ip_forgotten_with_the_network_is_measured_again_while_reconnecting_past_the_block()
+    {
+        // Отчет пользователя 2026-11-06 18:22: снятый sing-box убрал свой адаптер, Windows сообщила о смене сети, служба забыла
+        // реальный IP, а переподключение его не мерило — на главной «не определен». Здесь адреса нет с самого начала.
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        using var trace = new LocalSite($"fl=1\nip={RealIp}\n", rig.Public);
+        var traceUri = new Uri($"http://{rig.Public}:{trace.Url.Port}/");
+        var pastBlock = 0;
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Trace = traceUri,
+            ExitIp = (probe, ct) => probe.Port == 0 ? Task.FromResult<string?>(null) : rig.ExitIpAsync(probe, ct),
+            DirectIpPastBlock = async (uri, mark, _) =>
+            {
+                Interlocked.Increment(ref pastBlock);
+                return LatencyProbe.TraceIp(await rig.Netns.FetchAsync(uri, mark, seconds: 5));
+            },
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        var first = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error, service.Journal))[^1];
+        first.State.ShouldBe(V1.ConnectionState.Connected, first.Error?.Message);
+        first.Exit.DirectIp.ShouldBeEmpty();
+
+        using (var singBox = Process.GetProcessById(SingBoxProcessId(service)))
+        {
+            singBox.Kill();
+        }
+
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Reconnecting, service.Journal);
+        var back = (await ServiceIpcTests.ReadUntilAsync(watch, s =>
+            s.State == V1.ConnectionState.Connected && !string.IsNullOrEmpty(s.Exit?.DirectIp) || s.State == V1.ConnectionState.Error, service.Journal))[^1];
+        back.State.ShouldBe(V1.ConnectionState.Connected, back.Error?.Message);
+        back.Exit.DirectIp.ShouldBe(RealIp, "переподключение измерило реальный IP под блоком, пока туннеля не было");
+        pastBlock.ShouldBe(1);
+        rig.KillSwitch.Last!.Lookup.ShouldBeNull("после замера исключения нет");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Реальный IP измерен под блоком запросом службы к проверочному адресу");
+    }
+
+    [Fact]
     public async Task New_server_by_name_is_found_past_the_block_by_the_service_alone()
     {
         await using var rig = await Rig.CreateAsync();

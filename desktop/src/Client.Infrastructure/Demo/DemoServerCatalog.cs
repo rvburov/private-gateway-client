@@ -95,6 +95,22 @@ public sealed class DemoServerCatalog : IServerCatalog
         Changed?.Invoke(this, EventArgs.Empty);
     }
 
+    public void RememberExit(string serverId, string ip)
+    {
+        lock (_gate)
+        {
+            var index = _servers.FindIndex(s => s.Id == serverId);
+            if (index < 0 || _servers[index].ExitIp == ip)
+            {
+                return;
+            }
+
+            _servers[index] = _servers[index] with { ExitIp = ip };
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
     public void SetFavorite(string serverId, bool isFavorite)
     {
         lock (_gate)
