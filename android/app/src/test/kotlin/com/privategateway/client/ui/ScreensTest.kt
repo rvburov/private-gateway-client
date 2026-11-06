@@ -166,7 +166,15 @@ class ScreensTest {
         compose.onNodeWithTag("ip.address").assertTextEquals("—")
         compose.onNodeWithTag("ip.meta").assertTextEquals(text(R.string.ip_meta_waiting))
         compose.onNodeWithTag("ip.real").assertTextContains("198.51.100.7", substring = true).assertTextContains(text(R.string.ip_real_hidden), substring = true)
+        compose.onNodeWithTag("ip.real.unknown").assertDoesNotExist()
         compose.onNodeWithTag("ip.copy").assertIsNotEnabled()
+
+        // Реальный адрес не измерен (сеть до подключения была закрыта): «не определен», а не пропавшая строка — как у десктопа.
+        ui = ui.copy(ip = WebIp(direct = null))
+        compose.onNodeWithTag("ip.real").assertDoesNotExist()
+        compose.onNodeWithTag("ip.real.unknown").assertTextContains(text(R.string.ip_real_unknown), substring = true)
+            .assertTextContains(text(R.string.ip_real_hidden), substring = true)
+        ui = ui.copy(ip = ip)
 
         ui = ui.copy(status = TunnelStatus(TunnelState.Reconnecting, serverId = "nl", attempt = 2, lockdown = true))
         compose.onNodeWithTag("status.sub").assertTextEquals(text(R.string.status_reconnecting_sub, "2"))

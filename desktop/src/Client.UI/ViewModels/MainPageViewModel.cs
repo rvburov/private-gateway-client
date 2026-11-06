@@ -415,6 +415,15 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public bool HasRealIp => Status.Exit.DirectIp is not null;
 
+    /// <summary>
+    /// Защита включена, а реальный IP не измерен (например, служба запустилась под блоком при обрыве — до подключения сеть
+    /// была закрыта): вместо пропавшей строки — «Ваш реальный IP: не определен · скрыт» с подсказкой, как перемерить.
+    /// Выключено — строки нет: адрес выше и есть реальный.
+    /// </summary>
+    public bool IsRealIpUnknown => Status.Exit.DirectIp is null && Status.State != ConnectionState.Off;
+
+    public string RealIpUnknownText => $"{Loc.Instance["ip.real"]} {Loc.Instance["ip.real.unknown"]} · {RealIpState}";
+
     public string RealIp => Mask(Status.Exit.DirectIp ?? IpPlaceholder);
 
     public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused || Status.HasExitIpLeak

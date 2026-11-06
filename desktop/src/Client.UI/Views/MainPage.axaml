@@ -208,6 +208,8 @@
               <Run Text="·" />
               <Run Text="{Binding RealIpState}" />
             </TextBlock>
+            <TextBlock x:Name="RealIpUnknown" Classes="small" IsVisible="{Binding IsRealIpUnknown}" Text="{Binding RealIpUnknownText}"
+                       TextTrimming="CharacterEllipsis" ToolTip.Tip="{l:L ip.real.unknown.hint}" />
           </StackPanel>
           <Border Classes="divider" Margin="16,0" />
           <!-- Сервер: слева обновить, справа «Сменить» — выпадающий список, как в «Подключении и ядре» -->

@@ -241,6 +241,13 @@ final class HomeTests: XCTestCase {
         XCTAssertEqual(connected.real, "198.51.100.7")
         XCTAssertFalse(connected.realVisible, "реальный — скрыт")
         XCTAssertTrue(connected.canCopy)
+        XCTAssertFalse(connected.realUnknown)
+
+        // Реальный адрес не измерен (сеть до подключения была закрыта): строка «не определен», а не пропажа — как у десктопа.
+        let unmeasured = WebIp(exit: "203.0.113.24", direct: nil)
+        XCTAssertTrue(WebIpLook.of(.connected, blocked: false, ip: unmeasured, masked: false, texts).realUnknown)
+        XCTAssertTrue(WebIpLook.of(.reconnecting, blocked: false, ip: unmeasured, masked: false, texts).realUnknown)
+        XCTAssertFalse(WebIpLook.of(.off, blocked: false, ip: unmeasured, masked: false, texts).realUnknown, "выключено — адрес выше и есть реальный")
 
         var unknown = ip
         unknown.info = nil

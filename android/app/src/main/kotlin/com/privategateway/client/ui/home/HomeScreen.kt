@@ -543,6 +543,18 @@ private fun IpCard(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSelec
                     color = PgColor.Text.Secondary,
                     style = PgType.Small,
                 )
+            } else if (view != ProtectionView.Off) {
+                // Защита включена, а реальный адрес не измерен (сеть до подключения была закрыта): сказать это, а не прятать строку.
+                val visible = view == ProtectionView.Error || view == ProtectionView.Leak || view == ProtectionView.Paused
+                Text(
+                    stringResource(R.string.ip_real) + " " + stringResource(R.string.ip_real_unknown) + " · " +
+                        stringResource(if (visible) R.string.ip_real_visible else R.string.ip_real_hidden),
+                    Modifier.testTag("ip.real.unknown"),
+                    color = PgColor.Text.Secondary,
+                    style = PgType.Small,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
 

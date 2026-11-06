@@ -195,6 +195,35 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Unmeasured_real_ip_says_so_under_protection_instead_of_vanishing()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time,
+            () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        // Служба запустилась под блоком при обрыве: до подключения сеть закрыта, реальный IP не измерен (отчет 2026-11-06).
+        service!.Push(s => s.MoveTo(ConnectionState.Connecting, Time.GetUtcNow()).MoveTo(ConnectionState.Connected, Time.GetUtcNow())
+            with { Exit = ExitInfo.Unknown with { Ip = "203.0.113.24", DirectIp = null } });
+        Dispatcher.UIThread.RunJobs();
+
+        main.HasRealIp.ShouldBeFalse();
+        main.IsRealIpUnknown.ShouldBeTrue("строка не пропадает молча");
+        Text(window, "RealIpUnknown").ShouldBe("Ваш реальный IP: не определен · скрыт");
+        Find<TextBlock>(window, "RealIpUnknown").IsEffectivelyVisible.ShouldBeTrue();
+        ToolTip.GetTip(Find<TextBlock>(window, "RealIpUnknown")).ShouldBe(Loc.Instance["ip.real.unknown.hint"]);
+
+        service.Push(s => s with { Exit = s.Exit with { DirectIp = "198.51.100.7" } });
+        Dispatcher.UIThread.RunJobs();
+        main.IsRealIpUnknown.ShouldBeFalse("измерен — обычная строка с адресом");
+        main.HasRealIp.ShouldBeTrue();
+
+        service.Push(s => s.MoveTo(ConnectionState.Off, Time.GetUtcNow()) with { Exit = ExitInfo.Unknown });
+        Dispatcher.UIThread.RunJobs();
+        main.IsRealIpUnknown.ShouldBeFalse("выключено — адрес выше и есть реальный");
+    }
+
+    [AvaloniaFact]
     public void Hidden_ipv6_masks_letters_in_the_exit_and_real_addresses()
     {
         ScriptedService? service = null;

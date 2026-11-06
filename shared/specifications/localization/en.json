@@ -337,6 +337,8 @@
   "ip.real": "Your real IP:",
   "ip.real.hidden": "hidden",
   "ip.real.visible": "visible to sites",
+  "ip.real.unknown": "not detected",
+  "ip.real.unknown.hint": "Your real IP is measured before protection turns on, while traffic still goes direct. This time it could not be measured — for example, the network was closed by the kill switch. Turn protection off and on to measure it again.",
   "ip.meta.off": "Your ISP",
   "ip.meta.stopped": "Traffic stopped — no leak",
   "ip.meta.waiting": "No access until the tunnel is ready",

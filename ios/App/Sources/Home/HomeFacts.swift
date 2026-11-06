@@ -171,6 +171,8 @@ struct WebIpLook: Equatable {
     let real: String?
     /// Реальный адрес виден сайтам (защиты нет или утечка), иначе — скрыт.
     let realVisible: Bool
+    /// Защита включена, а реальный адрес не измерен — «Ваш реальный IP: не определен», а не пропавшая строка (как у десктопа).
+    let realUnknown: Bool
 
     static func of(_ state: TunnelState, blocked: Bool, ip: WebIp, masked: Bool, _ texts: PgTexts, paused: Bool = false) -> WebIpLook {
         let leak = HomeFacts(blocked: blocked, ip: ip).leak(state)
@@ -202,7 +204,7 @@ struct WebIpLook: Equatable {
 
         return WebIpLook(
             ip: shown.map { masked ? mask($0) : $0 } ?? placeholder, plain: shown, canCopy: shown != nil && !masked, meta: meta,
-            real: ip.direct.map { masked ? mask($0) : $0 }, realVisible: visible
+            real: ip.direct.map { masked ? mask($0) : $0 }, realVisible: visible, realUnknown: ip.direct == nil && state != .off
         )
     }
 

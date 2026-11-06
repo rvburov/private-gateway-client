@@ -411,6 +411,15 @@ struct WebIpCard: View {
                     .minimumScaleFactor(0.8)
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("ip.real")
+                } else if look.realUnknown {
+                    // Защита включена, а реальный адрес не измерен (сеть до подключения была закрыта): сказать это, а не прятать строку.
+                    Text(texts.ipReal + " " + texts.ipRealUnknown + " · " + (look.realVisible ? texts.ipRealVisible : texts.ipRealHidden))
+                        .pgText(PgType.small)
+                        .foregroundStyle(Color(PgColor.Text.secondary))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .accessibilityHint(texts.ipRealUnknownHint)
+                        .accessibilityIdentifier("ip.real.unknown")
                 }
             }
             .padding(.top, 14)
