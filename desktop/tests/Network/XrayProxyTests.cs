@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.Sockets;
 using System.Text.Json.Nodes;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -99,6 +100,24 @@ public sealed class XrayProxyTests
         await Should.ThrowAsync<Exception>(() => Get(site.Url, $"socks5://127.0.0.1:{proxyPort}"));
 
         site.Requests.ShouldBe(0, "локальная сеть — блок: до сайта в локальной сети запрос не дошел");
+    }
+
+    [Fact]
+    public async Task Core_on_a_taken_port_names_who_holds_it()
+    {
+        // macOS Intel CI 2026-11-06: порт сервера теста к запуску ядра оказался занят («bind: address already in use»), а кем —
+        // не видно. Теперь сообщение теста называет процесс; здесь порт держит сам тест.
+        Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
+        using var holder = new TcpListener(IPAddress.Loopback, XrayKit.FreePort());
+        holder.Start();
+        var port = ((IPEndPoint)holder.LocalEndpoint).Port;
+        var (_, serverConfig) = XrayKit.Pair("vless", port);
+
+        var error = await Should.ThrowAsync<InvalidOperationException>(() => XrayKit.Start(serverConfig, port));
+
+        error.Message.ShouldContain("Порт держит:");
+        error.Message.ShouldContain(Environment.ProcessId.ToString(CultureInfo.InvariantCulture), Case.Sensitive,
+            "номер процесса, который держит порт");
     }
 
     [Theory]

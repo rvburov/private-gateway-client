@@ -284,9 +284,76 @@ internal static class XrayKit
 
         xray.Dispose();
         TestContext.Current.CancellationToken.ThrowIfCancellationRequested();
+        string taken;
         lock (output)
         {
-            throw new InvalidOperationException("Ядро не открыло порт " + port + exited + ":\n" + string.Join('\n', output));
+            taken = output.Any(Busy) ? "\nПорт держит:\n" + PortHolders(port) : string.Empty;
+        }
+
+        lock (output)
+        {
+            throw new InvalidOperationException("Ядро не открыло порт " + port + exited + ":\n" + string.Join('\n', output) + taken);
+        }
+
+        static bool Busy(string line) => line.Contains("address already in use", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("Only one usage of each socket address", StringComparison.OrdinalIgnoreCase)
+            || line.Contains("forbidden by its access permissions", StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// Кто держит порт — для сообщения теста, когда ядро не встало на выбранный порт: порт свободен в момент выбора, а к запуску
+    /// ядра его занимает кто-то еще (macOS Intel CI 2026-11-06, XrayProxyTests: «bind: address already in use»; Windows,
+    /// ExternalProxyTests). Номер и имя процесса — `lsof` на macOS и Linux, `netstat -ano` на Windows; не вышло — так и сказано.
+    /// </summary>
+    public static string PortHolders(int port)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var netstat = Capture("netstat", ["-ano"]);
+                var holders = netstat.Split('\n').Where(l => l.Contains($":{port} ", StringComparison.Ordinal)).Select(l => l.Trim()).ToList();
+                return holders.Count == 0 ? "(netstat: никого)" : string.Join('\n', holders.Select(Named));
+            }
+
+            var lsof = Capture("lsof", ["-nP", $"-iTCP:{port}", $"-iUDP:{port}"]);
+            return lsof.Trim().Length == 0 ? "(lsof: никого)" : lsof.Trim();
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+        {
+            return "(не узнать: " + e.Message + ")";
+        }
+
+        static string Named(string line)
+        {
+            var pid = line.Split(' ', StringSplitOptions.RemoveEmptyEntries).LastOrDefault();
+            try
+            {
+                return int.TryParse(pid, out var id) ? $"{line} — {Process.GetProcessById(id).ProcessName}" : line;
+            }
+            catch (ArgumentException)
+            {
+                return line + " — процесс уже вышел";
+            }
+        }
+
+        static string Capture(string file, string[] arguments)
+        {
+            var start = new ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+            foreach (var argument in arguments)
+            {
+                start.ArgumentList.Add(argument);
+            }
+
+            using var process = Process.Start(start) ?? throw new InvalidOperationException(file + " не запустился");
+            var text = process.StandardOutput.ReadToEndAsync();
+            _ = process.StandardError.ReadToEnd();
+            if (!process.WaitForExit(TimeSpan.FromSeconds(10)))
+            {
+                process.Kill();
+            }
+
+            return text.GetAwaiter().GetResult();
         }
     }
 
