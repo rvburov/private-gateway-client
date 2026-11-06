@@ -579,6 +579,61 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Real_ip_unmeasured_before_the_block_is_measured_past_it_by_the_service_alone()
+    {
+        // Отчет пользователя 2026-11-06: служба запустилась под блоком (обновление при включенной защите) — замера реального IP до
+        // подключения нет, и главная прятала строку. Теперь служба мерит его сама: исключение в блоке только для своего сокета.
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        using var trace = new LocalSite($"fl=1\nip={RealIp}\n", rig.Public);
+        var traceUri = new Uri($"http://{rig.Public}:{trace.Url.Port}/");
+        var others = new List<bool>();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Trace = traceUri,
+            // Первого прямого замера нет — как у службы, которая стартовала уже под блоком.
+            ExitIp = (probe, ct) => probe.Port == 0 ? Task.FromResult<string?>(null) : rig.ExitIpAsync(probe, ct),
+            DirectIpPastBlock = async (uri, mark, _) =>
+            {
+                // Пока исключение стоит, сокет без метки службы к проверочному адресу не проходит.
+                try
+                {
+                    await rig.Netns.FetchAsync(uri, seconds: 2);
+                    others.Add(true);
+                }
+                catch (InvalidOperationException)
+                {
+                    others.Add(false);
+                }
+
+                return LatencyProbe.TraceIp(await rig.Netns.FetchAsync(uri, mark, seconds: 5));
+            },
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        var first = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error, service.Journal))[^1];
+        first.State.ShouldBe(V1.ConnectionState.Connected, first.Error?.Message);
+        first.Exit.DirectIp.ShouldBeEmpty("до блока прямой замер не удался");
+        await service.Client.DisconnectAsync(new V1.DisconnectRequest { KeepBlock = true }, cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Blocked, service.Journal);
+        await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.FetchAsync(traceUri, seconds: 2), "под блоком проверочный адрес закрыт");
+
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+
+        var connected = (await ServiceIpcTests.ReadUntilAsync(watch, s =>
+            s.State == V1.ConnectionState.Connected && !string.IsNullOrEmpty(s.Exit?.DirectIp) || s.State == V1.ConnectionState.Error, service.Journal))[^1];
+        connected.State.ShouldBe(V1.ConnectionState.Connected, connected.Error?.Message);
+        connected.Exit.DirectIp.ShouldBe(RealIp, "реальный IP измерен под блоком запросом службы");
+        others.ShouldBe([false], "исключение — только для сокета службы");
+        var lookups = rig.KillSwitch.Policies.Where(p => p.Lookup is not null).ToList();
+        lookups.ShouldHaveSingleItem().Lookup!.Endpoints.ShouldBe([new KillSwitchEndpoint(rig.Public, trace.Url.Port)],
+            "на время замера — одно исключение, к проверочному адресу");
+        lookups[0].TunnelInterface.ShouldBeNull("туннеля в это время нет");
+        rig.KillSwitch.Last!.Lookup.ShouldBeNull("после замера исключения нет");
+        trace.Requests.ShouldBe(1, "проверочный адрес спрошен один раз — запросом службы");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == "Реальный IP измерен под блоком запросом службы к проверочному адресу");
+    }
+
+    [Fact]
     public async Task New_server_by_name_is_found_past_the_block_by_the_service_alone()
     {
         await using var rig = await Rig.CreateAsync();

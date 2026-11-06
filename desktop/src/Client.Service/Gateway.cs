@@ -35,7 +35,8 @@ namespace PrivateGateway.Client.Service;
 /// null — только через систему; <paramref name="Lookup"/> — этот поиск (тесты); null — <see cref="LatencyProbe.LookupAsync"/>;
 /// <paramref name="Resolve"/> — поиск адреса через систему (тесты); null — DNS ОС;
 /// <paramref name="LookupPastBlock"/> — поиск DoH самой службы под блоком без туннеля (тесты); null —
-/// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
+/// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="DirectIpPastBlock"/> — замер реального IP самой службой под
+/// блоком без туннеля (тесты); null — <see cref="LatencyProbe.ExitIpDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
 /// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
 /// пришел — true, подтвержденного ответа нет — false, мерить нечем — null; null — через карту маршрута по умолчанию
 /// (<see cref="DnsProbe"/>). false/null не доказывают отсутствие всех DNS-утечек;
@@ -70,6 +71,7 @@ public sealed record GatewayOptions(
     Func<ServerProbe, string, CancellationToken, Task<IReadOnlyList<IPAddress>>>? Lookup = null,
     Func<string, CancellationToken, Task<IPAddress[]>>? Resolve = null,
     Func<Uri, string, uint, CancellationToken, Task<IReadOnlyList<IPAddress>>>? LookupPastBlock = null,
+    Func<Uri, uint, CancellationToken, Task<string?>>? DirectIpPastBlock = null,
     IPEndPoint? OutsideDns = null,
     Func<IPEndPoint, CancellationToken, Task<bool?>>? DnsPastTunnel = null,
     TimeSpan? BlockWatch = null,
@@ -561,6 +563,13 @@ public sealed partial class Gateway : IAsyncDisposable
         if (!IsLatestConnect(generation))
         {
             return SupersededConnect();
+        }
+
+        // Служба запустилась под блоком (обновление или перезапуск при включенной защите, отчет 2026-11-06): реальный IP не
+        // измерен, а прямого пути нет — тот же замер с исключением в блоке только для службы и только на время запроса.
+        if (vpn && ip is null && _directIp is null && core.Protection.CheckLeaksAfterConnect && _blocking && Volatile.Read(ref _tunnel) is null)
+        {
+            ip = await DirectIpPastBlockAsync(generation, cancellationToken).ConfigureAwait(false);
         }
 
         // Дальше подключение доводится до конца и при отмене вызова: поиск адреса мог остановить прежнее подключение, и
@@ -1990,6 +1999,58 @@ public sealed partial class Gateway : IAsyncDisposable
 
         Task<IReadOnlyList<IPAddress>> Lookup(Uri doh, string host, uint mark, CancellationToken cancellationToken) =>
             LatencyProbe.LookupDirectAsync(doh, host, mark, Timing.ProbeTimeout, cancellationToken);
+    }
+
+    /// <summary>
+    /// Реальный IP под блоком при обрыве без туннеля — запрос самой службы к проверочному адресу (<see cref="GatewayOptions.Trace"/>,
+    /// по адресу): на время запроса блок пропускает только программу службы (WFP) или ее помеченный сокет (nftables) и только к
+    /// этому адресу, потом возвращается прежний — как <see cref="LookupPastBlockAsync"/>. Это тот же замер, что служба делает
+    /// перед подключением без блока; трафик программ блок держит закрытым. Блока нет, он открытый, туннель поднят или адрес
+    /// проверки не по IP — null.
+    /// </summary>
+    private async Task<string?> DirectIpPastBlockAsync(int generation, CancellationToken cancellationToken)
+    {
+        if (_options is not { KillSwitch: { } killSwitch, Trace: { } trace } || !IPAddress.TryParse(trace.Host.Trim('[', ']'), out var traceAddress))
+        {
+            return null;
+        }
+
+        await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            if (!IsLatestConnect(generation) || !_blocking || _held is not { Open: false } held || Volatile.Read(ref _tunnel) is not null)
+            {
+                return null;
+            }
+
+            var lookup = new ServiceLookup(Environment.ProcessPath ?? string.Empty, LookupMark, [new KillSwitchEndpoint(traceAddress, trace.Port)]);
+            if (!Try(() => { killSwitch.Enable(held.Policy with { Lookup = lookup }); return true; }, "Исключение для замера реального IP под блоком не встало"))
+            {
+                return null;
+            }
+
+            try
+            {
+                var ip = await (_options.DirectIpPastBlock ?? Measure)(trace, LookupMark, cancellationToken).ConfigureAwait(false);
+                _journal.Add(ip is null ? JournalLevel.Warning : JournalLevel.Info, "service", ip is null
+                    ? "Реальный IP под блоком не измерен — на главной «не определен»"
+                    : "Реальный IP измерен под блоком запросом службы к проверочному адресу");
+                return ip;
+            }
+            finally
+            {
+                // Прежний блок — без исключения; не вернулся — исключение к одному проверочному адресу для программы службы
+                // остается, остальное закрыто, и это в журнале.
+                Try(() => { killSwitch.Enable(held.Policy); return true; }, "Блок при обрыве после замера реального IP не вернулся");
+            }
+        }
+        finally
+        {
+            _switch.Release();
+        }
+
+        Task<string?> Measure(Uri trace, uint mark, CancellationToken cancellationToken) =>
+            LatencyProbe.ExitIpDirectAsync(trace, mark, DirectTimeout, cancellationToken);
     }
 
     /// <summary>Тот же сервер, что у нынешнего подключения режима VPN (имя и порт): его адреса — в <see cref="_addresses"/>.</summary>

@@ -194,35 +194,62 @@ public static class LatencyProbe
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(doh);
-        using var handler = new SocketsHttpHandler
-        {
-            UseProxy = false,
-            AllowAutoRedirect = false,
-            UseCookies = false,
-            ConnectCallback = async (context, token) =>
-            {
-                var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
-                try
-                {
-                    if (OperatingSystem.IsLinux() && mark != 0)
-                    {
-                        // SOL_SOCKET = 1, SO_MARK = 36.
-                        socket.SetRawSocketOption(1, 36, BitConverter.GetBytes(mark));
-                    }
-
-                    await socket.ConnectAsync(context.DnsEndPoint, token).ConfigureAwait(false);
-                    return new NetworkStream(socket, ownsSocket: true);
-                }
-                catch
-                {
-                    socket.Dispose();
-                    throw;
-                }
-            },
-        };
+        using var handler = Marked(mark);
         using var http = new HttpClient(handler) { Timeout = timeout };
         return await QueryAsync(http, doh, name, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Реальный IP напрямую, мимо туннеля, по ответу проверочного адреса <paramref name="trace"/> (строка «ip=…»): замер самой
+    /// службы под блоком при обрыве. Сокет на Linux помечен <paramref name="mark"/>, как у <see cref="LookupDirectAsync"/>.
+    /// Нет ответа или IP в нем — null.
+    /// </summary>
+    public static async Task<string?> ExitIpDirectAsync(Uri trace, uint mark, TimeSpan timeout, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(trace);
+        using var handler = Marked(mark);
+        using var http = new HttpClient(handler) { Timeout = timeout };
+        try
+        {
+            return TraceIp(await http.GetStringAsync(trace, cancellationToken).ConfigureAwait(false));
+        }
+        catch (HttpRequestException)
+        {
+            return null;
+        }
+        catch (TaskCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Прямые соединения без прокси; на Linux сокет помечен <paramref name="mark"/> — по метке его пропускает блок.</summary>
+    private static SocketsHttpHandler Marked(uint mark) => new()
+    {
+        UseProxy = false,
+        AllowAutoRedirect = false,
+        UseCookies = false,
+        ConnectCallback = async (context, token) =>
+        {
+            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            try
+            {
+                if (OperatingSystem.IsLinux() && mark != 0)
+                {
+                    // SOL_SOCKET = 1, SO_MARK = 36.
+                    socket.SetRawSocketOption(1, 36, BitConverter.GetBytes(mark));
+                }
+
+                await socket.ConnectAsync(context.DnsEndPoint, token).ConfigureAwait(false);
+                return new NetworkStream(socket, ownsSocket: true);
+            }
+            catch
+            {
+                socket.Dispose();
+                throw;
+            }
+        },
+    };
 
     private static async Task<IReadOnlyList<IPAddress>> QueryAsync(HttpClient http, Uri doh, string name, CancellationToken cancellationToken)
     {
