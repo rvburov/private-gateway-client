@@ -19,6 +19,18 @@ public enum WfpHook
 {
     Connection,
     Forward,
+
+    /// <summary>Исходящие IP-пакеты (OUTBOUND_IPPACKET) — только проба слоев (<see cref="WfpKillSwitch.EnableProbe"/>), блок их не ставит.</summary>
+    OutboundPacket,
+
+    /// <summary>Входящие IP-пакеты (INBOUND_IPPACKET) — только проба слоев.</summary>
+    InboundPacket,
+
+    /// <summary>Исходящий транспорт (OUTBOUND_TRANSPORT) — только проба слоев.</summary>
+    OutboundTransport,
+
+    /// <summary>Входящий транспорт (INBOUND_TRANSPORT) — только проба слоев.</summary>
+    InboundTransport,
 }
 
 /// <summary>Поле условия фильтра WFP.</summary>

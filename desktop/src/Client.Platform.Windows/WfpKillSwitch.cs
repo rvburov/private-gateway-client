@@ -64,6 +64,12 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     private static readonly Guid ForwardV4 = new("a82acc24-4ee1-4ee1-b465-fd1d25cb10a4");
     private static readonly Guid ForwardV6 = new("7b964818-19c7-493a-b71f-832c3684d28c");
 
+    // Слои IP-пакетов и транспорта IPv4 — только для пробы (EnableProbe): FWPM_LAYER_OUTBOUND_IPPACKET_V4 и прочие из fwpmu.h.
+    private static readonly Guid OutboundPacketV4 = new("1e5c9fae-8a84-4135-a331-950b54229ecd");
+    private static readonly Guid InboundPacketV4 = new("c86fd1bf-21cd-497e-a0bb-17425c885c58");
+    private static readonly Guid OutboundTransportV4 = new("09e61aea-d214-46e2-9b21-b26b0b2f28c8");
+    private static readonly Guid InboundTransportV4 = new("5926dfc8-e3cf-4426-a283-dc393f5d0f9d");
+
     // Раньше словаря полей: статические поля заполняются по порядку текста.
     private static readonly Guid AppId = new("d78e1e87-8644-4ea5-9437-d809ecefc971");
 
@@ -177,9 +183,41 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     {
         (WfpHook.Forward, WfpFamily.V4) => [ForwardV4],
         (WfpHook.Forward, _) => [ForwardV6],
-        (_, WfpFamily.V4) => [ConnectV4, AcceptV4],
-        _ => [ConnectV6, AcceptV6],
+        (WfpHook.OutboundPacket, WfpFamily.V4) => [OutboundPacketV4],
+        (WfpHook.InboundPacket, WfpFamily.V4) => [InboundPacketV4],
+        (WfpHook.OutboundTransport, WfpFamily.V4) => [OutboundTransportV4],
+        (WfpHook.InboundTransport, WfpFamily.V4) => [InboundTransportV4],
+        (WfpHook.Connection, WfpFamily.V4) => [ConnectV4, AcceptV4],
+        (WfpHook.Connection, _) => [ConnectV6, AcceptV6],
+        _ => throw new NotSupportedException("слой пробы — только IPv4: " + rule),
     };
+
+    /// <summary>
+    /// Проба слоев на машине пользователя (WfpKillSwitchTests, утечка WSL при обрыве на Windows 10): поставить только эти фильтры —
+    /// без правил блока и без брандмауэра Hyper-V, не сохраняя после перезагрузки; снимает <see cref="Disable"/>. Программы
+    /// у фильтров нет: слои пакетов и транспорта ее не знают.
+    /// </summary>
+    public void EnableProbe(IReadOnlyList<WfpRule> rules)
+    {
+        ArgumentNullException.ThrowIfNull(rules);
+        WithEngine(engine => Transaction(engine, () =>
+        {
+            DeleteFilters(engine);
+            AddBase(engine);
+            using var memory = new NativeMemory();
+            var index = 0;
+            foreach (var rule in rules)
+            {
+                foreach (var layer in Layers(rule))
+                {
+                    Check(FwpmFilterAdd0(engine, Filter(memory, WfpRules.FilterKey(index++), layer, rule, IntPtr.Zero, persistent: false), IntPtr.Zero, out _),
+                        "фильтр " + rule.Name);
+                }
+            }
+
+            Volatile.Write(ref _filters, index);
+        }));
+    }
 
     public void Disable()
     {

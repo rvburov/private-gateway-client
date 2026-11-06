@@ -359,6 +359,106 @@ public sealed class WfpKillSwitchTests
     }
 
     /// <summary>
+    /// Проба утечки WSL при обрыве (Windows 10 пользователя, 2026-11-06): трафик WSL идет через WinNAT мимо фильтров пересылки, а
+    /// брандмауэра Hyper-V на Windows 10 нет. Проба по очереди ставит один фильтр WFP на каждом слое — только к 1.1.1.1, остальная
+    /// сеть машины открыта — и спрашивает <c>curl https://1.1.1.1/cdn-cgi/trace</c> из WSL и из самой Windows. Какой слой закрыл
+    /// WSL, тем блок и закроет WSL на Windows 10. Фильтры не переживают перезагрузку и снимаются после каждого варианта. Вручную:
+    /// PG_WSL_PROBE=1, права администратора, установленная WSL с curl. Итог — в artifacts/wsl-probe.txt.
+    /// </summary>
+    [Fact]
+    public async Task Probe_wsl_behind_winnat_by_wfp_layer()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("PG_WSL_PROBE") == "1", "проба WSL — вручную (PG_WSL_PROBE=1, нужна WSL)");
+        if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("фильтры WFP ставятся только на Windows с правами администратора (CI)");
+            return;
+        }
+
+        var target = IPAddress.Parse("1.1.1.1");
+        var report = new List<string> { $"Windows {Environment.OSVersion.Version}, проба к {target}:443" };
+        var killSwitch = new WfpKillSwitch();
+        try
+        {
+            var open = await Wsl();
+            report.Add("без фильтров: WSL " + (open ? "проходит" : "НЕ проходит"));
+            Assert.SkipUnless(open, "WSL не выходит к 1.1.1.1 и без фильтров — проверять нечего");
+            foreach (var (name, hook, field) in WslProbeLayers)
+            {
+                killSwitch.EnableProbe([new WfpRule("проба WSL " + name, WfpFamily.V4, Permit: false, Weight: 15,
+                    [new WfpCondition(field, Address: target)], hook)]);
+                var wsl = await Wsl();
+                var windows = await Windows();
+                killSwitch.Disable();
+                report.Add($"{name}: WSL {(wsl ? "ПРОХОДИТ" : "закрыта")}, Windows {(windows ? "проходит" : "закрыта")}");
+            }
+
+            report.Add("после снятия: WSL " + (await Wsl() ? "проходит" : "НЕ ПРОХОДИТ — фильтры остались или сеть пропала"));
+        }
+        finally
+        {
+            killSwitch.Disable();
+            Directory.CreateDirectory(Path.Combine(RepositoryRoot(), "artifacts"));
+            File.WriteAllLines(Path.Combine(RepositoryRoot(), "artifacts", "wsl-probe.txt"), report);
+            TestContext.Current.SendDiagnosticMessage(string.Join(Environment.NewLine, report));
+        }
+
+        async Task<bool> Wsl() => (await Command("wsl.exe", "-e", "curl", "-s", "-m", "8", $"https://{target}/cdn-cgi/trace"))?.Contains("ip=",
+            StringComparison.Ordinal) == true;
+
+        async Task<bool> Windows() => (await Run(Path.Combine(Environment.SystemDirectory, "curl.exe"), "-s", "-m", "8",
+            $"https://{target}/cdn-cgi/trace"))?.Contains("ip=", StringComparison.Ordinal) == true;
+    }
+
+    /// <summary>Слои пробы WSL: пересылка — как у блока сейчас, затем соединения машины, IP-пакеты и транспорт.</summary>
+    public static readonly (string Name, WfpHook Hook, WfpField Field)[] WslProbeLayers =
+    [
+        ("пересылка (IPFORWARD)", WfpHook.Forward, WfpField.DestinationAddress),
+        ("соединения (ALE connect и accept)", WfpHook.Connection, WfpField.RemoteAddress),
+        ("исходящие IP-пакеты (OUTBOUND_IPPACKET)", WfpHook.OutboundPacket, WfpField.RemoteAddress),
+        ("входящие IP-пакеты (INBOUND_IPPACKET)", WfpHook.InboundPacket, WfpField.RemoteAddress),
+        ("исходящий транспорт (OUTBOUND_TRANSPORT)", WfpHook.OutboundTransport, WfpField.RemoteAddress),
+        ("входящий транспорт (INBOUND_TRANSPORT)", WfpHook.InboundTransport, WfpField.RemoteAddress),
+    ];
+
+    /// <summary>Вывод программы; не вышла успешно за минуту или ее нет — null.</summary>
+    private static async Task<string?> Command(string file, params string[] arguments)
+    {
+        var start = new ProcessStartInfo(file) { RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        Process? started;
+        try
+        {
+            started = Process.Start(start);
+        }
+        catch (System.ComponentModel.Win32Exception)
+        {
+            return null;
+        }
+
+        using var process = started!;
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        timeout.CancelAfter(TimeSpan.FromMinutes(1));
+        var output = process.StandardOutput.ReadToEndAsync(timeout.Token);
+        _ = process.StandardError.ReadToEndAsync(timeout.Token);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            process.Kill(entireProcessTree: true);
+            return null;
+        }
+
+        return process.ExitCode == 0 ? await output : null;
+    }
+
+    /// <summary>
     /// Образ и изоляция пробы для сборки Windows: образ не может быть новее системы. Windows 11 24H2 и Server 2025 —
     /// ltsc2025, Windows 11 до 23H2 и Server 2022 — ltsc2022, оба в изоляции процессов. Windows 10 1809–22H2 —
     /// ltsc2019 в изоляции Hyper-V: образа своей сборки у Windows 10 нет, а контейнер в маленькой ВМ выходит в сеть через
