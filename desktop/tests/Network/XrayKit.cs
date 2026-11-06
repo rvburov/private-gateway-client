@@ -234,7 +234,18 @@ internal static class XrayKit
                 {
                     using var probe = new TcpClient();
                     await probe.ConnectAsync(listen, port, wait.Token).ConfigureAwait(false);
-                    return xray;
+                    // Порт входа Xray открывает раньше, чем запустит выходы: первое соединение сразу после этого могло уйти в
+                    // ядро, которое его еще не отправит дальше (ARM CI 2026-11-05, shadowsocks). Готово — когда ядро
+                    // написало «Xray … started» (уровень warning, его пишут все конфиги тестов).
+                    lock (output)
+                    {
+                        if (output.Any(l => l.Contains(" started", StringComparison.Ordinal)))
+                        {
+                            return xray;
+                        }
+                    }
+
+                    await Task.Delay(50, wait.Token).ConfigureAwait(false);
                 }
                 catch (SocketException)
                 {
