@@ -18,7 +18,7 @@ namespace PrivateGateway.Client.Platform.MacOS;
 /// </summary>
 /// <param name="pfctl">Вызов pfctl: аргументы и stdin → код выхода, вывод и текст ошибок.</param>
 /// <param name="tokenFile">Где помнить ссылку на включенный pf (переживает перезапуск службы).</param>
-/// <param name="anchor">Якорь; тесты дают свой, на который основные правила не ссылаются.</param>
+/// <param name="anchor">Якорь; тесты дают неактивный или ограниченный собственным тестовым TUN.</param>
 public sealed partial class PfKillSwitch(
     Func<IReadOnlyList<string>, string?, (int Code, string Output, string Error)> pfctl,
     string tokenFile = "/var/run/private-gateway/pf.token",
@@ -107,7 +107,10 @@ public sealed partial class PfKillSwitch(
                 throw new ArgumentException("Недопустимое имя адаптера туннеля: " + tunnel, nameof(policy));
             }
 
-            rules.Add($"pass out quick on {tunnel} all");
+            // Системный стек sing-box вводит в TUN SYN к своему локальному TCP-приемнику и получает через него
+            // SYN-ACK. Одного pass out с неявными flags S/SA недостаточно: входящий SYN не создает состояние,
+            // ответ не подходит под исходящий SYN и попадает в block. Внутри нашего TUN обе стороны без состояния.
+            rules.Add($"pass quick on {tunnel} all no state");
         }
 
         foreach (var server in policy.Servers)

@@ -7,8 +7,8 @@ namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
 /// Блок при обрыве на macOS: текст правил pf, как они ставятся и снимаются (с подделкой pfctl), и настоящий pfctl на
-/// macOS от root — правила разных политик загружаются в свой якорь, на который основные правила машины не ссылаются:
-/// синтаксис и загрузку проверяет pf, а сеть машины CI не закрывается.
+/// macOS от root. Синтаксис политик — в неактивном якоре; настоящий трафик TUN — в отдельном якоре только на адаптере
+/// стенда (PfKillSwitchTests.Tunnel.cs). Основные маршруты и DNS машины CI не меняются.
 /// </summary>
 [Collection(FirewallSerial.Name)]
 public sealed partial class PfKillSwitchTests : IDisposable
@@ -26,7 +26,7 @@ public sealed partial class PfKillSwitchTests : IDisposable
 
         Lines(rules).ShouldBe([
             "pass quick on lo0 all no state",
-            "pass out quick on utun225 all",
+            "pass quick on utun225 all no state",
             "pass out quick inet proto { tcp, udp } from any to 198.51.100.20 port 443",
             "pass out quick inet6 proto { tcp, udp } from any to 2001:db8::20 port 8443",
             "pass out quick inet proto udp from any port 68 to any port 67",

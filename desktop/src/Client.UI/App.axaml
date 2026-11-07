@@ -4,6 +4,7 @@
              xmlns:views="using:PrivateGateway.Client.UI.Views"
              xmlns:conv="using:PrivateGateway.Client.UI.Converters"
              x:Class="PrivateGateway.Client.UI.App"
+             Name="Private Gateway"
              RequestedThemeVariant="Light">
   <Application.Resources>
     <ResourceDictionary>
