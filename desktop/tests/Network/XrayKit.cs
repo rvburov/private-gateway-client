@@ -357,13 +357,41 @@ internal static class XrayKit
         }
     }
 
+    private static readonly Lock PortGate = new();
+    private static readonly HashSet<int> TestPorts = [];
+
     /// <summary>
-    /// Порт для сервера и сайтов теста — тот же выбор, что у входов ядра службы (<see cref="LocalPort"/>): вне временных портов
-    /// ОС и не выданный недавно. Сервер, который тест останавливает и запускает снова на том же порту (сбои долгого прогона),
-    /// иначе застал бы свой порт у чужого исходящего соединения: на Windows такое соединение держит порт исключительно, и Xray
-    /// получал «bind: … forbidden by its access permissions» (soak 5, 2026-10-28).
+    /// Порты стенда — вне диапазона внутренних входов службы и временных портов ОС. Дочерняя служба из CoreLedgerTests
+    /// выбирает внутренние порты в другом процессе и не видит выданные тестам номера LocalPort. Диапазоны разделены:
+    /// иначе она могла занять уже выбранный тестом порт до запуска его Xray (CI macOS #616, порт 24492).
+    /// Выданный номер не повторяется до конца процесса: некоторые тесты останавливают и запускают сервер снова.
     /// </summary>
-    public static int FreePort() => LocalPort.FreeForTcpAndUdp();
+    public static int FreePort()
+    {
+        lock (PortGate)
+        {
+            for (var attempt = 0; attempt < 2000; attempt++)
+            {
+                var port = Random.Shared.Next(10000, LocalPort.First);
+                if (!TestPorts.Add(port))
+                {
+                    continue;
+                }
+
+                try
+                {
+                    using var lease = LocalPort.ReserveForTcpAndUdp(port);
+                    return port;
+                }
+                catch (SocketException)
+                {
+                    // Уже занят посторонним процессом или зарезервирован ОС — другой кандидат того же диапазона.
+                }
+            }
+        }
+
+        throw new InvalidOperationException("Не найден свободный TCP/UDP-порт стенда вне диапазона службы");
+    }
 
     /// <summary>Вывод ядра, запущенного <see cref="Start"/>, — для сообщения об ошибке теста; последние 40 строк.</summary>
     public static string Log(CoreProcess core)

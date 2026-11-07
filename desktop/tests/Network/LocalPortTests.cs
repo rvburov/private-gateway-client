@@ -12,6 +12,18 @@ namespace PrivateGateway.Client.Tests.Network;
 /// </summary>
 public sealed class LocalPortTests(ITestOutputHelper output)
 {
+    [Fact]
+    public void Test_ports_are_separate_from_service_ports_and_never_repeat()
+    {
+        var ports = Enumerable.Range(0, 100).Select(_ => XrayKit.FreePort()).ToArray();
+        ports.Distinct().Count().ShouldBe(ports.Length);
+        foreach (var port in ports)
+        {
+            port.ShouldBeInRange(1024, LocalPort.First - 1,
+                "дочерняя служба не должна выбирать внутренний вход в диапазоне серверов и прокси стенда");
+        }
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -62,6 +63,7 @@ public sealed partial class PfKillSwitchTests
             }
         });
         var parent = "com.apple/249.pg-test-" + Guid.NewGuid().ToString("N")[..8];
+        var systemDns = ScutilDns.ForThisMachine(Path.Combine(_root, "system-dns")).ShouldNotBeNull();
         var pf = new PfKillSwitch(Pfctl, Path.Combine(_root, "tun-pf.token"), parent + "/traffic");
         try
         {
@@ -74,6 +76,40 @@ public sealed partial class PfKillSwitchTests
             pf.Enable(policy);
             (await output.TraceAsync(Page, "HTTP после pf")).ShouldBe("HTTP через TUN macOS под pf");
             await output.TraceAsync(Dns, "DNS после pf");
+            // Отдельный запрос к адресу DNS не проверяет путь браузера: тот использует системный резолвер macOS.
+            // Только одноразовый CI от root: DNS на время проверки, затем обязательный возврат в finally.
+            systemDns.Apply(subnet.Dns);
+            using (var waitDns = CancellationTokenSource.CreateLinkedTokenSource(cancellation))
+            {
+                waitDns.CancelAfter(TimeSpan.FromSeconds(10));
+                while (!(await DnsConfiguration()).Contains("nameserver[0] : " + subnet.Dns, StringComparison.Ordinal))
+                {
+                    await Task.Delay(100, waitDns.Token);
+                }
+            }
+            output.Add("DNS macOS", await DnsConfiguration());
+            var host = "pg-" + Guid.NewGuid().ToString("N") + ".example.com";
+            var resolved = await output.TraceAsync(async () =>
+            {
+                try
+                {
+                    return await System.Net.Dns.GetHostAddressesAsync(host, AddressFamily.InterNetwork, cancellation)
+                        .WaitAsync(TimeSpan.FromSeconds(15), cancellation);
+                }
+                catch (Exception error) when (error is SocketException or TimeoutException)
+                {
+                    throw new InvalidOperationException("Системный DNS не ответил: " + error.Message, error);
+                }
+            }, "Системный DNS macOS через TUN");
+            resolved.ShouldContain(address);
+            dns.Queries.ShouldContain(host, "имя должен разрешить DNS стенда через туннель");
+            using (var handler = new SocketsHttpHandler { UseProxy = false })
+            using (var http = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(5) })
+            {
+                (await output.TraceAsync(() => http.GetStringAsync(new Uri($"http://{host}/"), cancellation),
+                    "HTTP по имени через системный DNS")).ShouldBe("HTTP через TUN macOS под pf");
+            }
+            systemDns.Restore();
 
             // Отсутствующий разрешенный TUN должен закрыть тот же запрос: иначе успешный тест не доказывает работу pf.
             pf.Enable(policy with { TunnelInterface = null });
@@ -91,6 +127,7 @@ public sealed partial class PfKillSwitchTests
         {
             try
             {
+                systemDns.Restore();
                 pf.Disable();
             }
             finally
@@ -99,6 +136,19 @@ public sealed partial class PfKillSwitchTests
                 await singBox.StopAsync(TimeSpan.FromSeconds(5), CancellationToken.None);
                 await xray.StopAsync(cancellationToken: CancellationToken.None);
             }
+        }
+
+        async Task<string> DnsConfiguration()
+        {
+            using var process = Process.Start(new ProcessStartInfo("/usr/sbin/scutil")
+            {
+                ArgumentList = { "--dns" }, RedirectStandardOutput = true, RedirectStandardError = true, UseShellExecute = false,
+            }).ShouldNotBeNull();
+            var text = process.StandardOutput.ReadToEndAsync(cancellation);
+            var error = process.StandardError.ReadToEndAsync(cancellation);
+            await process.WaitForExitAsync(cancellation).WaitAsync(TimeSpan.FromSeconds(5), cancellation);
+            process.ExitCode.ShouldBe(0, await error);
+            return await text;
         }
 
         async Task WaitForXray()
