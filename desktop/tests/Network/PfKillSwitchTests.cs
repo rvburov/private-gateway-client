@@ -25,7 +25,7 @@ public sealed class PfKillSwitchTests : IDisposable
         var rules = PfKillSwitch.Ruleset(new KillSwitchPolicy("utun225", [new(Server, 443), new(IPAddress.Parse("2001:db8::20"), 8443)]));
 
         Lines(rules).ShouldBe([
-            "pass out quick on lo0 all",
+            "pass quick on lo0 all no state",
             "pass out quick on utun225 all",
             "pass out quick inet proto { tcp, udp } from any to 198.51.100.20 port 443",
             "pass out quick inet6 proto { tcp, udp } from any to 2001:db8::20 port 8443",

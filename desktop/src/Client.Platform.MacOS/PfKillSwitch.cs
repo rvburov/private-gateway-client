@@ -96,7 +96,9 @@ public sealed partial class PfKillSwitch(
     public static string Ruleset(KillSwitchPolicy policy)
     {
         ArgumentNullException.ThrowIfNull(policy);
-        var rules = new List<string> { "pass out quick on lo0 all" };
+        // По lo0 служба проверяет Xray, а sing-box передает ему трафик. Оба конца локального TCP идут через один
+        // интерфейс, поэтому пропускаем обе стороны без учета состояния. По умолчанию pass проверяет SYN (flags S/SA).
+        var rules = new List<string> { "pass quick on lo0 all no state" };
         if (policy.TunnelInterface is { } tunnel)
         {
             // Имя попадает в текст правил — только буквы, цифры, «_», «.», «-» и не длиннее 15 знаков.

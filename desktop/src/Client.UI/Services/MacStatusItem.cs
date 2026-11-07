@@ -9,7 +9,7 @@ namespace PrivateGateway.Client.UI.Services;
 
 /// <summary>
 /// Значок строки меню macOS. Avalonia привязывает к нему меню AppKit и не получает события кнопок мыши.
-/// Здесь AppKit показывает то же меню по левому нажатию, а по правому открывается окно.
+/// Левое нажатие открывает окно. Правое нажатие показывает меню AppKit.
 /// </summary>
 internal sealed class MacStatusItem : IDisposable
 {
@@ -79,11 +79,11 @@ internal sealed class MacStatusItem : IDisposable
         var mouse = Send(application, Selector("currentEvent"));
         if (Send(mouse, Selector("type")) == RightMouseUp)
         {
-            Dispatcher.UIThread.Post(current._show);
+            current.OpenMenu();
         }
         else
         {
-            current.OpenMenu();
+            Dispatcher.UIThread.Post(current._show);
         }
     }
 
