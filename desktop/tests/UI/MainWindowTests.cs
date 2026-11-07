@@ -521,6 +521,35 @@ public sealed class MainWindowTests : WindowHarness
         (row.Detail, row.ChipText).ShouldBe(("Проверка обнаружила ваш реальный IP вне туннеля", "IP открыт"));
     }
 
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Other_vpn_conflict_reports_actual_block_and_opens_its_details(bool blocked)
+    {
+        var (_, shell) = Open(gateway: sp => new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Outcome = c => c.MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
+            {
+                ErrorCode = ErrorCodes.OtherVpn,
+                Protection = ProtectionChecks.For(blocked ? ConnectionState.Error : ConnectionState.Off),
+            },
+        });
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://pw-a@198.51.100.1:443#Мой").Server!], null);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Error);
+        Dispatcher.UIThread.RunJobs();
+
+        main.StatusTitle.ShouldBe("Работает другой VPN или прокси-клиент");
+        main.WebIpMeta.ShouldBe(blocked ? "Трафик остановлен — утечки нет" : "Трафик не защищен Private Gateway");
+        main.RealIpState.ShouldBe(blocked ? "скрыт" : "не защищен Private Gateway");
+        main.CheckActionText.ShouldBe("Проверить");
+        shell.Navigate(Pages.Home);
+        await main.CheckActionCommand.ExecuteAsync(null);
+        shell.CurrentKey.ShouldBe(Pages.Problem);
+    }
+
     [AvaloniaFact]
     public async Task Unverified_firewall_never_claims_blocked_traffic_or_hidden_real_ip()
     {

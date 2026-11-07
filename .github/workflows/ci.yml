@@ -104,6 +104,12 @@ jobs:
           dotnet test --solution PrivateGateway.slnx -c Release --no-build --results-directory artifacts/test-results --report-ctrf
           --timeout 20m -- --long-running 60
 
+      - name: Трей AppKit и проверка ошибки владения
+        if: runner.os == 'macOS'
+        timeout-minutes: 5
+        shell: bash
+        run: scripts/tests/macos-tray-smoke.sh
+
       # Независимые проверки идут и после отказа обычных тестов, если сборка готова: иначе отчет
       # получает каскад запрещенных пропусков вместо результатов root и Secret Service.
       # На Linux хранилища секретов без рабочего стола нет — поднимаем GNOME Keyring в своей сессии.

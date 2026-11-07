@@ -35,7 +35,8 @@ internal sealed class MacStatusItem : IDisposable
         _tray = tray;
         _show = show;
         _bar = Send(Class("NSStatusBar"), Selector("systemStatusBar"));
-        _item = SendDouble(_bar, Selector("statusItemWithLength:"), -2);
+        // NSStatusBar не удерживает выданный объект: после первого оборота AppKit освобождал значок и его кнопку.
+        _item = Send(SendDouble(_bar, Selector("statusItemWithLength:"), -2), Selector("retain"));
         _button = Send(_item, Selector("button"));
         _target = Send(TargetClass(), Selector("new"));
         _current = this;
@@ -149,10 +150,25 @@ internal sealed class MacStatusItem : IDisposable
         }
     }
 
-    private void OnTrayChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e) => Update();
+    private void OnTrayChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            Update();
+        }
+        else
+        {
+            Dispatcher.UIThread.Post(Update);
+        }
+    }
 
     private void Update()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         var pool = Send(Class("NSAutoreleasePool"), Selector("new"));
         try
         {
@@ -189,9 +205,40 @@ internal sealed class MacStatusItem : IDisposable
 
         _disposed = true;
         _tray.PropertyChanged -= OnTrayChanged;
-        _current = null;
+        if (ReferenceEquals(_current, this))
+        {
+            _current = null;
+        }
         SendPointer(_bar, Selector("removeStatusItem:"), _item);
+        Send(_item, Selector("release"));
         Send(_target, Selector("release"));
+    }
+
+    // Только отдельный процесс проверки на macOS CI: настоящий AppKit, без окна, службы и изменений сети.
+    internal static void CheckLifetime(TrayViewModel tray)
+    {
+        var pool = Send(Class("NSAutoreleasePool"), Selector("new"));
+        var item = new MacStatusItem(tray, () => { });
+        Send(pool, Selector("drain"));
+        using (item)
+        {
+            for (var i = 0; i < 8; i++)
+            {
+                Localization.Loc.Instance.SetLanguage(i % 2 == 0 ? "en" : "ru");
+                Dispatcher.UIThread.RunJobs();
+                item.Update();
+                if (Send(item._item, Selector("button")) != item._button || Send(item._button, Selector("image")) == 0)
+                {
+                    throw new InvalidOperationException("Значок не пережил очистку autorelease pool");
+                }
+            }
+
+            // Обновление уже в очереди при завершении не должно обращаться к освобожденной кнопке.
+            Dispatcher.UIThread.Post(item.Update);
+        }
+
+        Dispatcher.UIThread.RunJobs();
+        item.Dispose();
     }
 
     [StructLayout(LayoutKind.Sequential)]

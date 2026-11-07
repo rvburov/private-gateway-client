@@ -363,6 +363,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         ConnectionState.Blocked when Status.StrictBlock => Loc.Instance["action.captive"],
         ConnectionState.Reconnecting => Loc.Instance["action.captive"],
         ConnectionState.Blocked => Loc.Instance["action.retry"],
+        ConnectionState.Error when Status.ErrorCode == ErrorCodes.OtherVpn => Loc.Instance["action.check"],
         ConnectionState.Error => Loc.Instance["action.restartService"],
         _ => Loc.Instance["action.check"],
     };
@@ -409,6 +410,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
             ConnectionState.Off => Loc.Instance["ip.meta.off"],
             ConnectionState.Error when Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning =>
                 Loc.Instance["ip.meta.unverified"],
+            ConnectionState.Blocked or ConnectionState.Error when Status.Protection.AllTraffic == CheckState.Off => Loc.Instance["ip.meta.unprotected"],
             ConnectionState.Blocked or ConnectionState.Error => Loc.Instance["ip.meta.stopped"],
             _ => Loc.Instance["ip.meta.waiting"],
         };
@@ -428,6 +430,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string RealIpState => Status.State == ConnectionState.Off || Status.IsPaused || Status.HasExitIpLeak
         ? Loc.Instance["ip.real.visible"]
+        : Status.Protection.AllTraffic == CheckState.Off ? Loc.Instance["ip.real.unprotected"]
         : Status.Mode == ConnectionMode.Proxy ? Loc.Instance["externalProxy.ip.real"]
         : Status.ErrorCode == ErrorCodes.KillSwitchFailed && Status.Protection.KillSwitch == CheckState.Warning
             ? Loc.Instance["ip.real.unverified"]
@@ -597,6 +600,12 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         if (NeedsNetworkCheck)
         {
             _navigator.Navigate(Pages.Check);
+            return;
+        }
+
+        if (Status.State == ConnectionState.Error && Status.ErrorCode == ErrorCodes.OtherVpn)
+        {
+            _navigator.Navigate(Pages.Problem);
             return;
         }
 

@@ -57,7 +57,9 @@ public sealed partial class ProtectionViewModel : ObservableObject
     public string StateKey => Status.IsPaused ? "paused" : Status.IsProxy ? "proxy" : Status.HasExitIpLeak ? "leak" : Status.StrictBlock ? "strict" : Status.State.ToString().ToLowerInvariant();
 
     /// <summary>Заголовок состояния: «IP скрыт», «Прокси включен», «Защита на паузе».</summary>
-    public string Title => HasNetworkProblem ? Loc.Instance["status.offline.title"] : Loc.Instance[$"status.{StateKey}.title"];
+    public string Title => HasNetworkProblem ? Loc.Instance["status.offline.title"]
+        : Status is { State: ConnectionState.Error, ErrorCode: ErrorCodes.OtherVpn } ? Loc.Instance["problem.conflict.title"]
+        : Loc.Instance[$"status.{StateKey}.title"];
 
     public bool HasServer => _target.Selected is not null;
 

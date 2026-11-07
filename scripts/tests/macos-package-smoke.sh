@@ -58,6 +58,9 @@ done
 notifications=$("$app/Contents/MacOS/PrivateGateway" --check-notifications) || fail "центр уведомлений: $notifications"
 echo "$notifications"
 
+# Настоящий значок переживает очистку памяти AppKit и обновления состояния в собранном пакете.
+"$app/Contents/MacOS/PrivateGateway" --check-tray || fail "жизненный цикл значка macOS"
+
 # Запрос прав из окна (osascript) передает установщику заблокированный SIGCHLD. Повторяем эту маску в CI.
 sudo /usr/bin/perl -MPOSIX=SIG_BLOCK,SIGCHLD,sigprocmask \
   -e 'sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGCHLD)) or die "sigprocmask: $!"; exec @ARGV or die "exec: $!"' \

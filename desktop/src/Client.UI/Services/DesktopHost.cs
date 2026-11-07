@@ -108,6 +108,13 @@ public sealed class DesktopHost
 
     private void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        // Cmd+Q, «Завершить» в Dock и выход из ОС завершают процесс, даже если крестик сворачивает окно в трей.
+        if (e.CloseReason is WindowCloseReason.ApplicationShutdown or WindowCloseReason.OSShutdown)
+        {
+            _quitting = true;
+            return;
+        }
+
         if (!_quitting && _settings.Current.MinimizeToTray)
         {
             e.Cancel = true;

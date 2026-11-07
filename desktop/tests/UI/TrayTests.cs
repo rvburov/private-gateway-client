@@ -189,6 +189,32 @@ public sealed class TrayTests : WindowHarness
         Host(window, minimized: true).MainWindow.ShouldBe(window, "первый запуск — приветствие и при --minimized");
     }
 
+    [AvaloniaTheory]
+    [InlineData(WindowCloseReason.WindowClosing, true)]
+    [InlineData(WindowCloseReason.ApplicationShutdown, false)]
+    [InlineData(WindowCloseReason.OSShutdown, false)]
+    public void Quit_is_not_replaced_with_hiding_in_the_tray(WindowCloseReason reason, bool canceled)
+    {
+        var (_, shell) = Open();
+        Service<SettingsService>().Update(s => s with { MinimizeToTray = true });
+        var window = new ClosingWindow { DataContext = shell };
+        _ = Host(window, minimized: false);
+
+        window.RequestClose(reason).Cancel.ShouldBe(canceled);
+    }
+
+    private sealed class ClosingWindow : MainWindow
+    {
+        public WindowClosingEventArgs RequestClose(WindowCloseReason reason)
+        {
+            // Конструктор события закрыт в Avalonia: передаем те же аргументы, что дает платформа.
+            var args = (WindowClosingEventArgs)Activator.CreateInstance(typeof(WindowClosingEventArgs),
+                System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic, null, [reason, false], null)!;
+            OnClosing(args);
+            return args;
+        }
+    }
+
     // Жизненный цикл окна без Start: DesktopHost только назначает ему главное окно.
     private ClassicDesktopStyleApplicationLifetime Host(MainWindow window, bool minimized)
     {

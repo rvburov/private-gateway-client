@@ -406,11 +406,12 @@ public sealed partial class Gateway
                     }
                 }
 
-                _journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.OtherVpn}: {what} — подключение остановлено"
-                    + (_blocking ? ", блок при обрыве держит трафик" : string.Empty));
                 Move(s => s with { ErrorCode = ErrorCodes.OtherVpn, OtherClients = clients ?? s.OtherClients }, ConnectionState.Error);
                 await StopCoreAsync().ConfigureAwait(false);
                 BlockWithoutTunnel();
+                _journal.Add(JournalLevel.Error, "service", $"{ErrorCodes.OtherVpn}: {what} — подключение остановлено"
+                    + (Status.Protection.KillSwitch == CheckState.Ok ? ", блок при обрыве держит трафик"
+                        : Status.Protection.AllTraffic == CheckState.Off ? ", защита Private Gateway выключена" : ", блокировка не подтверждена"));
             }
             finally
             {

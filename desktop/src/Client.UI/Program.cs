@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Controls;
+using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Infrastructure.Notifications;
 using PrivateGateway.Client.Infrastructure.Startup;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -16,6 +17,11 @@ internal static class Program
         if (args.Contains("--check-notifications"))
         {
             return CheckNotifications();
+        }
+
+        if (args.Contains("--check-tray"))
+        {
+            return CheckTray();
         }
 
         var paths = AppPaths.ForCurrentUser();
@@ -52,6 +58,21 @@ internal static class Program
             Console.WriteLine("Уведомления macOS: центр уведомлений не ответил");
             return 2;
         }
+    }
+
+    private static int CheckTray()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return 1;
+        }
+
+        BuildAvaloniaApp().SetupWithoutStarting();
+        var directory = Path.Combine(Path.GetTempPath(), "pg-tray-" + Guid.NewGuid().ToString("N"));
+        using var services = App.BuildServices(new AppPaths(directory), demo: true);
+        Services.MacStatusItem.CheckLifetime(services.GetRequiredService<ViewModels.TrayViewModel>());
+        Console.WriteLine("Трей macOS: значок пережил очистку памяти, обновление и завершение");
+        return 0;
     }
 
     // Используется и дизайнером Avalonia, и тестами без экрана.
