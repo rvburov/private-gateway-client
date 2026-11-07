@@ -74,6 +74,7 @@ public sealed class ServiceGatewayClientTests
             SingBoxPath = XrayKit.Xray,
             KillSwitch = new NoKillSwitch(),
             Routes = routes,
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>([]),
         });
         var (definition, _) = XrayKit.Pair("vless", 443);
         definition = definition with { Host = "server.invalid" };
@@ -255,14 +256,17 @@ public sealed class ServiceGatewayClientTests
         await using var service = await RunningService.StartAsync(options: o => o with { Processes = () => processes });
         using var client = Client(service.Endpoint, null, Settings(XrayKit.FreePort()));
 
-        var probe = (await client.CheckEntriesAsync([liveAddress, deadAddress, "192.0.2.1:3128", "не адрес"], Ct)).ShouldNotBeNull();
+        // TCP не подключается к широковещательному адресу. Зарезервированный адрес из документации
+        // мог принять TCP через сторонний VPN, который перехватывает исходящие соединения.
+        const string broadcast = "255.255.255.255:3128";
+        var probe = (await client.CheckEntriesAsync([liveAddress, deadAddress, broadcast, "не адрес"], Ct)).ShouldNotBeNull();
 
         probe.Entries.ShouldBe(
         [
             new EntryCheck(liveAddress, true, null),
             new EntryCheck(deadAddress, false, null),
-            new EntryCheck("192.0.2.1:3128", false, null),
-        ], "вход в сети — пробным соединением: адрес документации не отвечает; не адрес — не проверяется");
+            new EntryCheck(broadcast, false, null),
+        ], "вход в сети — пробным соединением; не адрес — не проверяется");
         probe.Clients.ShouldBe([new OtherClient(OtherClientSign.Process, "mihomo")]);
         (await client.CheckEntriesAsync([.. Enumerable.Range(1, 40).Select(i => $"127.0.0.1:{i}")], Ct))!.Entries.Count
             .ShouldBe(PrivateGateway.Client.Service.Gateway.EntryLimit, "служба не сканер портов");

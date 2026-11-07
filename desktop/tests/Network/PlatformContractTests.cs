@@ -75,7 +75,7 @@ public sealed class PlatformContractTests
     {
         var routes = ServiceHost.Routes().ShouldNotBeNull("маршруты служба читает на каждой ОС").DefaultRoutes();
 
-        routes.ShouldContain(r => !r.IsTunnel, "у машины маршрут ко всему интернету — через сетевую карту");
+        routes.ShouldNotBeEmpty("маршрут ко всему интернету может идти через сетевую карту или активный туннель");
         routes.ShouldAllBe(r => r.Adapter.Length > 0 && r.Adapter.Trim() == r.Adapter, "имя адаптера — без пробелов и концов строк");
     }
 

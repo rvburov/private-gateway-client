@@ -109,10 +109,16 @@ public sealed partial class VpnModeTests
     {
         Assert.SkipWhen(XrayKit.Xray is null || XrayKit.SingBox is null, "нет Xray или sing-box — scripts/get-xray.sh, scripts/get-singbox.sh");
         var killSwitch = new FakeKillSwitch(enabled: true);
-        await using var service = await RunningService.StartAsync(options: o => o with { CanVpn = true, SingBoxPath = XrayKit.SingBox, KillSwitch = killSwitch });
+        await using var service = await RunningService.StartAsync(options: o => o with
+        {
+            CanVpn = true,
+            SingBoxPath = XrayKit.SingBox,
+            KillSwitch = killSwitch,
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>([]),
+        });
         var (definition, _) = XrayKit.Pair("vless", 443);
 
-        // .invalid не разрешается никогда (RFC 2606); за VLESS через QUIC ядро прокси не возьмется.
+        // Стенд задает отказ DNS; за VLESS через QUIC ядро прокси не возьмется.
         var request = vpn
             ? VpnRequest(definition with { Host = "server.invalid" }, killSwitch: killSwitchOn)
             : ServiceIpcTests.Request(XrayKit.Refused, XrayKit.FreePort());

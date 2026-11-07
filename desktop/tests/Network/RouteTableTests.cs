@@ -129,6 +129,10 @@ public sealed class RouteTableTests
         NetstatRouteTable.Parse("default 192.168.1.1 UGSc en0\r\n").Single().Adapter.ShouldBe("en0", "конец строки CRLF — не часть имени адаптера");
         NetstatRouteTable.Parse("default 10.0.0.1 UGSc utunnel").Single().IsTunnel.ShouldBeFalse("туннель — utun с номером");
         NetstatRouteTable.Parse("default 192.168.1.1 GSc en0").ShouldBeEmpty("маршрут не поднят (нет U)");
+        NetstatRouteTable.Parse("""
+            default            link#25            UCSg                  utun6
+            default            192.0.2.1          UGScIg                en0
+            """).ShouldBe([new DefaultRoute("utun6", true)], "чужой VPN может оставить сетевой карте только привязанный маршрут");
     }
 
     [Fact]
@@ -142,7 +146,7 @@ public sealed class RouteTableTests
 
         var routes = NetstatRouteTable.ForThisMachine()!.DefaultRoutes();
 
-        routes.ShouldContain(r => !r.IsTunnel, "у машины CI маршрут ко всему интернету — через сетевую карту");
+        routes.ShouldNotBeEmpty("маршрут по умолчанию через активный VPN тоже должен быть прочитан");
         TestContext.Current.TestOutputHelper?.WriteLine(string.Join('\n', routes));
     }
 

@@ -224,6 +224,7 @@ public sealed partial class VpnModeTests
             SingBoxPath = program,
             KillSwitch = killSwitch,
             BootBlock = held.Path,
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>([]),
         });
         var request = VpnRequest(XrayKit.Pair("vless", 443).Server);
         request.Protection.StrictMode = strict;
@@ -322,6 +323,7 @@ public sealed partial class VpnModeTests
             SingBoxPath = program,
             KillSwitch = killSwitch,
             BootBlock = held.Path,
+            Resolve = (_, _) => Task.FromResult<IPAddress[]>([]),
         });
         (await service.Client.PauseForCaptivePortalAsync(FiveMinutes, cancellationToken: Ct)).Until.ShouldNotBeNull();
         var other = XrayKit.Pair("vless", 443).Server with { Host = "other.invalid" };
