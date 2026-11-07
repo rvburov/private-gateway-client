@@ -62,6 +62,9 @@
   .ob-add-btn { height: 50px; margin-top: 6px; }
   .ob-demo { height: 46px; }
   .ob-note { display: block; margin: 14px calc(var(--side) + 8px) 0; text-align: center; }
+  .startup-shell { display: flex; flex-direction: column; justify-content: center; align-items: center;
+    gap: var(--pg-space-card); padding: var(--pg-space-island); text-align: center; }
+  .startup-shell progress { width: 240px; accent-color: var(--pg-color-accent-base); }
 </style>
 </head>
 <body>
@@ -75,6 +78,15 @@
   выбор языка — только на Android 13+, на iOS язык приложения выбирается в Настройках iOS. На десктопе ссылка «Открыть настройки» на шаге добавления сервера открывает общий экран настроек: выбор режима остается в существующих «Основных», ссылка сама его не меняет.</p>
 
 <div class="pg-screens">
+  <section class="pg-screen startup-shell" data-os="desktop" data-caption="0 · Окно до загрузки настроек и поиска службы">
+    <span class="t-brand">Private Gateway</span>
+    <progress aria-label="Запуск приложения"></progress>
+  </section>
+  <section class="pg-screen startup-shell" data-os="desktop" data-caption="0 · Ошибка подготовки окна">
+    <span class="t-brand">Private Gateway</span>
+    <span class="t-muted" data-ui-text="startup.failed">Не удалось открыть приложение. Закройте его и попробуйте снова.</span>
+    <button class="btn-primary" data-ui-text="card.close">Закрыть</button>
+  </section>
   <section class="pg-screen" data-caption="1 · Приветствие — «Начать» ведет по шагам">
     <!-- Приветствие: язык, знак, слоган, три обещания, «Начать» -->
     <div class="pg-page ob-page" data-page="a-greet">
@@ -119,7 +131,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
@@ -153,7 +165,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
@@ -222,7 +234,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
@@ -256,7 +268,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
@@ -324,7 +336,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark busy"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
@@ -360,7 +372,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark"><i data-icon="Chip.Dots" data-stroke="2.2" data-size="16"></i></span>
@@ -395,7 +407,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>
@@ -463,7 +475,7 @@
       <div class="ob-scroll">
         <div class="ob-body">
           <span class="ob-h">Установка службы</span>
-          <span class="ob-text">Служба включает VPN для всей системы и держит блок при обрыве, даже когда окно закрыто. <span class="ob-os"></span> один раз попросит права администратора.</span>
+          <span class="ob-text">Служба нужна для VPN всей системы. Для установки <span class="ob-os"></span> запросит права администратора.</span>
           <div class="card ob-rows">
           <div class="ob-row">
             <span class="ob-mark done"><i data-icon="Chip.Ok" data-stroke="2.2" data-size="16"></i></span>

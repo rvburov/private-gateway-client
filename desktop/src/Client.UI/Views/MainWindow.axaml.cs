@@ -3,15 +3,62 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using PrivateGateway.Client.UI.Services;
 
 namespace PrivateGateway.Client.UI.Views;
 
 public partial class MainWindow : Window
 {
+    private Action? _closeStartup;
+
     public MainWindow()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) =>
+        {
+            ShellPanel.IsVisible = DataContext is not null;
+            StartupPanel.IsVisible = DataContext is null;
+        };
         AddHandler(ScrollViewer.ScrollChangedEvent, OnScrolled, RoutingStrategies.Bubble);
+    }
+
+    /// <summary>Сначала кадр окна, потом подготовка данных; при запуске в трей окно остается скрытым.</summary>
+    public async Task StartAsync(Func<Task> initialize, bool show, CancellationToken cancellationToken = default)
+    {
+        if (show)
+        {
+            Show();
+            var frame = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            RequestAnimationFrame(_ => frame.TrySetResult());
+            await frame.Task.WaitAsync(cancellationToken);
+            StartupTiming.Mark("window-frame");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        await initialize();
+    }
+
+    public void ShowStartupFailure(Action? close = null)
+    {
+        _closeStartup = close;
+        ShellPanel.IsVisible = false;
+        StartupPanel.IsVisible = true;
+        StartupProgress.IsVisible = false;
+        StartupError.IsVisible = true;
+        StartupClose.IsVisible = true;
+        Show();
+    }
+
+    private void CloseStartup(object? sender, RoutedEventArgs e)
+    {
+        if (_closeStartup is { } close)
+        {
+            close();
+        }
+        else
+        {
+            Close();
+        }
     }
 
     /// <summary>

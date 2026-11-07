@@ -43,7 +43,7 @@
       </Ellipse>
     </Canvas>
 
-    <Panel Background="{StaticResource PgBrush.Glass.Fill}">
+    <Panel x:Name="ShellPanel" IsVisible="False" Background="{StaticResource PgBrush.Glass.Fill}">
       <ContentControl Content="{Binding CurrentPage}" />
 
       <Border VerticalAlignment="Top" HorizontalAlignment="Center" Margin="20,56,20,0"
@@ -78,5 +78,14 @@
       <ContentControl x:Name="Dialog" ZIndex="70" IsVisible="{Binding Overlay.HasDialog}"
                       Content="{Binding Overlay.Dialog}" VerticalAlignment="Center" Margin="24,0" />
     </Panel>
+    <StackPanel x:Name="StartupPanel" VerticalAlignment="Center" HorizontalAlignment="Center"
+                Spacing="{StaticResource PgSpace.Card}" Margin="{StaticResource PgPad.Island}">
+      <TextBlock Text="Private Gateway" FontSize="{StaticResource PgFontSize.Display}" FontWeight="SemiBold"
+                 Foreground="{StaticResource PgBrush.Text.Primary}" HorizontalAlignment="Center" />
+      <ProgressBar x:Name="StartupProgress" IsIndeterminate="True" />
+      <TextBlock x:Name="StartupError" IsVisible="False" Text="{l:L startup.failed}" TextWrapping="Wrap"
+                 TextAlignment="Center" Foreground="{StaticResource PgBrush.Text.Secondary}" />
+      <Button x:Name="StartupClose" IsVisible="False" Classes="primary" Content="{l:L card.close}" Click="CloseStartup" />
+    </StackPanel>
   </Panel>
 </Window>

@@ -6,12 +6,15 @@
 //
 //   swift scripts/dmg-background.swift <папка вывода> <design-tokens.json>
 //
-// Пишет background.png (640×480) и background@2x.png (1280×960); scripts/package-macos.sh склеивает их в один TIFF, иначе
-// на Retina текст выходит мылом. Значки ставит Finder (там же): программа {170, 120}, «Программы» {470, 120}, размер 112.
+// Пишет фон 4096×4096 точек в плотностях 1x и 2x; scripts/package-macos.sh склеивает их в один TIFF, иначе
+// на Retina текст выходит мылом. Значки ставит Finder (там же): программа {200, 120}, «Программы» {520, 120}, размер 112.
 import AppKit
 import Foundation
 
-let W: CGFloat = 640, H: CGFloat = 480
+// Finder не растягивает фон. Запас покрывает окно до 4096 точек по каждой стороне (8K Retina).
+// Инструкция остается в левом верхнем углу, остальное поле — тот же цвет.
+let W: CGFloat = 4096, H: CGFloat = 4096
+let layoutWidth: CGFloat = 720, layoutHeight: CGFloat = 600
 
 let args = CommandLine.arguments
 guard args.count == 3 else {
@@ -56,17 +59,18 @@ func text(_ s: String, _ font: NSFont, _ color: NSColor, x: CGFloat, top: CGFloa
 }
 
 let side: CGFloat = 56
-let column = W - 2 * side
+let column = layoutWidth - 2 * side
 
 // Шаги — дословно названия кнопок macOS 15–26 (без буквы «е с точками», как во всех текстах проекта).
 let steps = [
     "Перетащите Private Gateway в «Программы».",
-    "Откройте ее из «Программ» — в окне о проверке нажмите «Готово».",
+    "Откройте ее из «Программ». Если появится «Файл не был открыт», нажмите «Готово».",
     "Системные настройки → Конфиденциальность и безопасность.",
-    "Внизу, в разделе «Безопасность», — «Все равно открыть».",
+    "В разделе «Безопасность» нажмите «Все равно открыть».",
+    "В новом окне снова нажмите «Все равно открыть» и подтвердите запуск.",
 ]
 let english = "Drag Private Gateway to Applications and open it. In the warning click Done, then System Settings → "
-    + "Privacy & Security → Open Anyway."
+    + "Privacy & Security → Open Anyway. In the next dialog click Open Anyway again and confirm."
 
 func render(scale: CGFloat) -> Data {
     let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(W * scale), pixelsHigh: Int(H * scale),
@@ -85,11 +89,11 @@ func render(scale: CGFloat) -> Data {
     arrow.lineWidth = 3
     arrow.lineCapStyle = .round
     arrow.lineJoinStyle = .round
-    arrow.move(to: NSPoint(x: 262, y: arrowY))
-    arrow.line(to: NSPoint(x: 378, y: arrowY))
-    arrow.move(to: NSPoint(x: 364, y: arrowY + 12))
-    arrow.line(to: NSPoint(x: 378, y: arrowY))
-    arrow.line(to: NSPoint(x: 364, y: arrowY - 12))
+    arrow.move(to: NSPoint(x: 292, y: arrowY))
+    arrow.line(to: NSPoint(x: 428, y: arrowY))
+    arrow.move(to: NSPoint(x: 414, y: arrowY + 12))
+    arrow.line(to: NSPoint(x: 428, y: arrowY))
+    arrow.line(to: NSPoint(x: 414, y: arrowY - 12))
     accent.setStroke()
     arrow.stroke()
 
@@ -108,7 +112,7 @@ func render(scale: CGFloat) -> Data {
     top += 6
     text(english, .systemFont(ofSize: 11.5, weight: .regular), secondary, x: side, top: top, width: column)
     text("Программа пока без подписи Apple · Not yet signed by Apple", .systemFont(ofSize: 11, weight: .regular), muted,
-         x: side, top: H - 30, width: column)
+         x: side, top: layoutHeight - 30, width: column)
 
     NSGraphicsContext.restoreGraphicsState()
     return rep.representation(using: .png, properties: [:])!

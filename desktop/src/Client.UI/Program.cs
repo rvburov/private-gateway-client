@@ -11,6 +11,7 @@ internal static class Program
     [STAThread]
     public static int Main(string[] args)
     {
+        Services.StartupTiming.Mark("entry");
         // --check-notifications — проверка пакета macOS (CI): центр уведомлений отвечает программе из пакета .app.
         if (args.Contains("--check-notifications"))
         {

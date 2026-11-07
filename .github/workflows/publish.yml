@@ -149,6 +149,14 @@ jobs:
         if: runner.os == 'macOS'
         run: scripts/tests/macos-package-smoke.sh "${{ steps.version.outputs.version }}"
 
+      - name: Установщик macOS — только DMG
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-macOS-${{ steps.version.outputs.version }}
+          path: artifacts/release/*.dmg
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ runner.os }}

@@ -23,9 +23,10 @@ esac
 build="artifacts/publish/PrivateGateway-$version-$rid"
 [ -d "$build" ] || { echo "Нет сборки $build — сначала scripts/publish.sh $version" >&2; exit 1; }
 
-staging="artifacts/dmg/PrivateGateway-$version-$rid"
+# Отдельная папка на каждую упаковку: уже открытая проверочная копия не теряет свои файлы.
+mkdir -p artifacts/dmg
+staging=$(mktemp -d "artifacts/dmg/PrivateGateway-$version-$rid.XXXXXX")
 app="$staging/Private Gateway.app"
-rm -rf "$staging"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$build/." "$app/Contents/MacOS/"
 cp shared/specifications/icons/app.icns "$app/Contents/Resources/PrivateGateway.icns"
@@ -69,6 +70,15 @@ cat > "$app/Contents/Info.plist" << EOF
 EOF
 plutil -lint "$app/Contents/Info.plist"
 
+# Фон окна с инструкцией: две плотности в одном TIFF, иначе на Retina текст выходит мылом.
+mkdir -p "$app/Contents/Resources/Installer"
+swift scripts/dmg-background.swift "$app/Contents/Resources/Installer" shared/specifications/design-tokens.json
+tiffutil -cathidpicheck "$app/Contents/Resources/Installer/background.png" "$app/Contents/Resources/Installer/background@2x.png" \
+  -out "$app/Contents/Resources/Installer/background-raw.tiff"
+tiffutil -lzw "$app/Contents/Resources/Installer/background-raw.tiff" -out "$app/Contents/Resources/Installer/background.tiff"
+rm "$app/Contents/Resources/Installer/background-raw.tiff"
+rm "$app/Contents/Resources/Installer/background.png" "$app/Contents/Resources/Installer/background@2x.png"
+
 # Сначала каждый файл Contents/MacOS, кроме главного исполняемого: codesign считает их вложенным кодом и требует подписи у
 # всех, не только у Mach-O (у сборок .NET и данных она ложится в расширенные атрибуты файла). Главный исполняемый
 # подписывается вместе с пакетом: его подпись запечатывает все файлы, и измененный файл macOS заметит.
@@ -78,20 +88,13 @@ codesign --verify --deep --strict --verbose=2 "$app"
 
 ln -s /Applications "$staging/Applications"
 
-# Фон окна с инструкцией: две плотности в одном TIFF, иначе на Retina текст выходит мылом.
-mkdir -p "$staging/.background"
-swift scripts/dmg-background.swift "$staging/.background" shared/specifications/design-tokens.json
-tiffutil -cathidpicheck "$staging/.background/background.png" "$staging/.background/background@2x.png" \
-  -out "$staging/.background/background.tiff"
-rm "$staging/.background/background.png" "$staging/.background/background@2x.png"
-
 mkdir -p artifacts/release
 out="artifacts/release/PrivateGateway-$version-$rid.dmg"
 rm -f "$out"
 
 # Образ — в два приема: записываемый (UDRW), чтобы Finder разложил окно, потом сжатый только для чтения (UDZO) — в выпуск.
 # Имя тома — заголовок окна, по нему же Finder находит диск.
-volume="Private Gateway"
+volume="Private Gateway $version"
 rw="artifacts/dmg/PrivateGateway-$version-$rid-rw.dmg"
 rm -f "$rw"
 hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
@@ -122,22 +125,23 @@ attach() {
 
 mount="/Volumes/$volume"
 device=$(attach -noautoopen -mountpoint "$mount" "$rw")
-osascript << 'APPLESCRIPT' || echo "::warning::Finder не оформил окно образа — образ собран без инструкции"
+osascript - "$volume" << 'APPLESCRIPT' || echo "::warning::Finder не оформил окно образа — образ собран без инструкции"
+on run argv
 tell application "Finder"
-  tell disk "Private Gateway"
+  tell disk (item 1 of argv)
     open
     set current view of container window to icon view
     set toolbar visible of container window to false
     set statusbar visible of container window to false
-    set the bounds of container window to {200, 120, 840, 600}
+    set the bounds of container window to {200, 120, 920, 750}
     set opts to the icon view options of container window
     set arrangement of opts to not arranged
     set icon size of opts to 112
     set text size of opts to 13
     set label position of opts to bottom
-    set background picture of opts to file ".background:background.tiff"
-    set position of item "Private Gateway.app" of container window to {170, 120}
-    set position of item "Applications" of container window to {470, 120}
+    set background picture of opts to file "Private Gateway.app:Contents:Resources:Installer:background.tiff"
+    set position of item "Private Gateway.app" of container window to {200, 120}
+    set position of item "Applications" of container window to {520, 120}
     close
     open
     update without registering applications
@@ -145,10 +149,14 @@ tell application "Finder"
     close
   end tell
 end tell
+end run
 APPLESCRIPT
+# Переносим только оформление Finder. Журнал .fseventsd принадлежит временному записываемому тому.
+# Чистый финальный образ создается сразу только для чтения: служебные папки в него не попадают.
 sync
+if [ -f "$mount/.DS_Store" ]; then cp "$mount/.DS_Store" "$staging/.DS_Store"; fi
 detach "$device"
-hdiutil convert -quiet "$rw" -format UDZO -imagekey zlib-level=9 -o "$out"
+hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$out"
 rm -f "$rw"
 
 # Контрольное монтирование: программа, ярлык «Программы» и фон на месте, подпись пережила упаковку.
@@ -157,7 +165,8 @@ device=$(attach -nobrowse -readonly -mountpoint "$check" "$out")
 problem=""
 [ -d "$check/Private Gateway.app" ] || problem="в образе нет Private Gateway.app"
 [ "$(readlink "$check/Applications")" = /Applications ] || problem="в образе нет ярлыка на «Программы»"
-[ -f "$check/.background/background.tiff" ] || problem="в образе нет фона с инструкцией"
+[ -f "$check/Private Gateway.app/Contents/Resources/Installer/background.tiff" ] || problem="в образе нет фона с инструкцией"
+[ ! -e "$check/.background" ] && [ ! -e "$check/.fseventsd" ] || problem="в корне образа остались служебные папки"
 codesign --verify --deep --strict "$check/Private Gateway.app" || problem="подпись программы не пережила упаковку"
 [ -f "$check/.DS_Store" ] || echo "::warning::в образе нет .DS_Store — окно откроется без оформления"
 detach "$device"

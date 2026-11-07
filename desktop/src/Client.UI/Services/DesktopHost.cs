@@ -76,6 +76,7 @@ public sealed class DesktopHost
         if (!minimized || !settings.Current.OnboardingDone)
         {
             desktop.MainWindow = window;
+            window.Show();
         }
     }
 

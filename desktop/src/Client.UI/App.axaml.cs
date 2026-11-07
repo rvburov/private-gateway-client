@@ -30,23 +30,71 @@ public partial class App : Avalonia.Application
 
     public override void OnFrameworkInitializationCompleted()
     {
-        var startup = Startup ?? new AppStartup(AppPaths.ForCurrentUser(), null, Minimized: false, Demo: false);
-        Services = BuildServices(startup.Paths, demo: startup.Demo);
-        var settings = Services.GetRequiredService<SettingsService>();
-        Loc.Instance.SetLanguage(settings.Current.Language);
+        // Без настольного жизненного цикла (дизайнер, headless) настоящую службу и фоновые задачи не запускаем.
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            desktop.Exit += (_, _) => Services.GetRequiredService<IUserProxyController>().Shutdown();
-            var window = new MainWindow { DataContext = Services.GetRequiredService<ShellViewModel>() };
-            _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
-                startup.Minimized, Services.GetRequiredService<NoticeWindow>(), Services.GetRequiredService<UpdateWatcher>());
-
-            // Уведомления ОС — только у настоящего окна: тесты без экрана их не шлют.
-            NotifyIcon.Write(startup.Paths);
-            Services.GetRequiredService<NoticeActions>().Start();
+            var startup = Startup ?? new AppStartup(AppPaths.ForCurrentUser(), null, Minimized: false, Demo: false);
+            var window = new MainWindow();
+            var stop = new CancellationTokenSource();
+            var ready = false;
+            window.Closed += (_, _) =>
+            {
+                if (!ready)
+                {
+                    stop.Cancel();
+                    desktop.Shutdown();
+                }
+            };
+            desktop.Exit += (_, _) => stop.Cancel();
+            _ = StartDesktopAsync(desktop, window, startup, () => ready = true, stop.Token);
         }
 
-        // Обновление подписок по расписанию — в потоке окна: список серверов меняется там, где его показывают.
+        base.OnFrameworkInitializationCompleted();
+    }
+
+    private async Task StartDesktopAsync(IClassicDesktopStyleApplicationLifetime desktop, MainWindow window, AppStartup startup,
+        Action ready, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await window.StartAsync(async () =>
+            {
+                Services = BuildServices(startup.Paths, demo: startup.Demo);
+                var settings = Services.GetRequiredService<SettingsService>();
+                // Миграции SQLite и поиск IPC могут ждать диск или службу. Первый кадр уже показан, поток окна свободен.
+                await Task.Run(() =>
+                {
+                    _ = settings.Current;
+                    _ = Services.GetRequiredService<IGatewayClient>();
+                    _ = Services.GetRequiredService<IServerCatalog>().Servers;
+                }, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
+                Loc.Instance.SetLanguage(settings.Current.Language);
+                window.DataContext = Services.GetRequiredService<ShellViewModel>();
+                _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
+                    startup.Minimized, Services.GetRequiredService<NoticeWindow>(), Services.GetRequiredService<UpdateWatcher>());
+                desktop.Exit += (_, _) => Services.GetRequiredService<IUserProxyController>().Shutdown();
+                ready();
+                StartupTiming.Mark("ready");
+                StartBackground(startup.Paths);
+            }, show: !startup.Minimized, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            (Services as IDisposable)?.Dispose();
+        }
+        catch (Exception error)
+        {
+            Console.Error.WriteLine(Core.Logging.SecretMasker.Mask("Запуск окна: " + error));
+            window.ShowStartupFailure(() => desktop.Shutdown());
+        }
+    }
+
+    private void StartBackground(AppPaths paths)
+    {
+        NotifyIcon.Write(paths);
+        Services.GetRequiredService<NoticeActions>().Start();
+        // Подписки и подписчики состояния запускаются в потоке окна после его подготовки.
         Services.GetRequiredService<SubscriptionUpdater>().Start();
         Services.GetRequiredService<AutostartSync>().Start();
         Services.GetRequiredService<ProtectionSync>().Start();
@@ -55,8 +103,6 @@ public partial class App : Avalonia.Application
         Services.GetRequiredService<NetworkEventLog>().Start();
         Services.GetRequiredService<UpdateWatcher>().Start();
         _ = Services.GetRequiredService<LaunchConnect>().RunAsync();
-
-        base.OnFrameworkInitializationCompleted();
     }
 
     /// <summary>Тот же состав, что у программы; тесты без экрана строят окно отсюда (в демо-режиме).</summary>
