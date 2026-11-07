@@ -49,12 +49,12 @@ public sealed class EventsPageTests : WindowHarness
         Snapshot(window, "events");
 
         await shell.Protection.ToggleCommand.ExecuteAsync(null);
-        WaitFor(() => page.Rows[0].Kind == NetworkEventKind.StrictBlock);
-        page.Rows[0].Title.ShouldBe("Блокировка без VPN");
+        WaitFor(() => page.Rows[0].Kind == NetworkEventKind.Off);
+        page.Rows[0].Title.ShouldBe("Защита выключена");
 
         Loc.Instance.SetLanguage("en");
         Dispatcher.UIThread.RunJobs();
-        page.Rows.Select(r => r.Title).ShouldBe(["Blocked without VPN", "Address seen by sites: 203.0.113.24", "Protection is on", "Connecting"]);
+        page.Rows.Select(r => r.Title).ShouldBe(["Protection is off", "Address seen by sites: 203.0.113.24", "Protection is on", "Connecting"]);
     }
 
     [AvaloniaFact]

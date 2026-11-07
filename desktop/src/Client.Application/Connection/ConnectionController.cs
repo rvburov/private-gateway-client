@@ -160,8 +160,8 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
         state is ConnectionState.Off or ConnectionState.Error;
 
     /// <summary>
-    /// Нажатие подключает: защита выключена, сломана или выключена вручную с Kill Switch.
-    /// В «Блокировке» сеть закрыта, щит включает VPN, а тумблер Kill Switch снимает блок.
+    /// Нажатие подключает: защита выключена, сломана или выключена вручную в строгом режиме («Блокировка» строгого
+    /// режима — сеть закрыта, а защиты нет: щит ее включает, выключает ее сам строгий режим в настройках).
     /// </summary>
     public static bool WantsConnect(ConnectionStatus status)
     {
@@ -169,10 +169,10 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
         return WantsConnect(status.State) || status.StrictBlock;
     }
 
-    /// <summary>Kill Switch действует: ручное отключение VPN оставляет сеть закрытой.</summary>
+    /// <summary>Строгий режим действует: режим VPN с блоком при обрыве, ручное отключение оставляет сеть закрытой.</summary>
     public static bool KeepsBlock(AppSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        return settings is { Mode: ConnectionMode.Vpn, KillSwitch: true };
+        return settings is { Mode: ConnectionMode.Vpn, KillSwitch: true, Protection.StrictMode: true };
     }
 }

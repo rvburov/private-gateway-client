@@ -45,7 +45,7 @@ public sealed class TrayTests : WindowHarness
         Headers(tray.Menu)[0].ShouldBe("IP скрыт · NL · Нидерланды 01 · 42 мс");
         (tray.Tone, tray.Mark).ShouldBe((Tone.Connected, "Icon.Mark.Ok"));
         Item(tray.Menu, "Выключить защиту").Command!.Execute(null);
-        WaitFor(() => shell.Protection.Status.StrictBlock);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
     }
 
     [AvaloniaFact]
@@ -105,7 +105,6 @@ public sealed class TrayTests : WindowHarness
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Blocked);
         Dispatcher.UIThread.RunJobs();
 
-        Service<SettingsService>().Update(s => s with { KillSwitch = false });
         Item(tray.Menu, "Выключить защиту").Command!.Execute(null);
         Dispatcher.UIThread.RunJobs();
 

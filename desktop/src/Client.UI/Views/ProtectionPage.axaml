@@ -51,6 +51,16 @@
             <Border Classes="divider" />
             <Grid ColumnDefinitions="*,Auto" Margin="0,12">
               <StackPanel Spacing="3" Margin="0,0,14,0">
+                <TextBlock Classes="strong" Text="{l:L prot.strict.title}" TextWrapping="Wrap" />
+                <TextBlock Classes="caption" Text="{l:L prot.strict.text}" TextWrapping="Wrap" />
+              </StackPanel>
+              <c:ConfirmSwitch x:Name="StrictToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center" IsEnabled="{Binding CanStrictMode}"
+                               IsChecked="{Binding StrictMode, Mode=OneWay}" Command="{Binding FlipStrictModeCommand}"
+                               AutomationProperties.Name="{l:L prot.strict.title}" />
+            </Grid>
+            <Border Classes="divider" />
+            <Grid ColumnDefinitions="*,Auto" Margin="0,12">
+              <StackPanel Spacing="3" Margin="0,0,14,0">
                 <TextBlock Classes="strong" Text="{l:L desktop.prot.captive.title}" TextWrapping="Wrap" />
                 <TextBlock Classes="caption" Text="{l:L prot.captive.text}" TextWrapping="Wrap" />
               </StackPanel>

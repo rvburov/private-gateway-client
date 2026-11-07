@@ -228,10 +228,10 @@ public sealed class ServerCardTests : WindowHarness
         shell.Overlay.Dialog!.Text.ShouldBe("Защита сейчас идет через этот сервер: VPN отключится, и другой сервер вы выберете сами.");
         Press(window, "DialogPrimary");
         await delete;
-        WaitFor(() => shell.Protection.Status.StrictBlock);
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
 
         page.Groups[0].Rows.ShouldNotContain(r => r.IsSelected);
-        shell.Protection.Label.ShouldBe("Блокировка");
+        shell.Protection.Label.ShouldBe("Нет сервера");
     }
 
     [AvaloniaFact]
@@ -259,8 +259,6 @@ public sealed class ServerCardTests : WindowHarness
         await connect;
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Blocked);
 
-        Service<SettingsService>().Update(s => s with { KillSwitch = false });
-
         // «Оставить защиту» — ничего не меняется.
         var keep = shell.Protection.ToggleCommand.ExecuteAsync(null);
         Dispatcher.UIThread.RunJobs();
@@ -283,9 +281,10 @@ public sealed class ServerCardTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public async Task Shield_in_block_with_kill_switch_closes_the_network_without_promising_the_real_ip()
+    public async Task Shield_in_block_with_strict_mode_closes_the_network_without_promising_the_real_ip()
     {
         var (_, shell, page) = OpenServers();
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
         var connect = OpenCard(page, "Турция 01").ConnectCommand.ExecuteAsync(null);
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         await connect;

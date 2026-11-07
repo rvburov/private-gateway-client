@@ -27,13 +27,13 @@ public sealed class ProtectionPageTests : WindowHarness
 
         shell.IsSettings.ShouldBeTrue();
         shell.IsIslandVisible.ShouldBeTrue();
-        (page.KillSwitch, page.BootProtection).ShouldBe((true, true));
+        (page.KillSwitch, page.BootProtection, page.StrictMode).ShouldBe((true, true, false));
         (page.BlockOutsideDns, page.FakeDns, page.CheckLeaksAfterConnect).ShouldBe((true, false, true));
         (page.BlockIpv6, page.AllowLan, page.LanDiscovery).ShouldBe((true, false, false));
         Text(window, "DnsChoiceText").ShouldBe("По умолчанию: Cloudflare");
         Text(window, "AddressChoiceText").ShouldBe("Предпочитать IPv4");
-        page.KillSwitchText.ShouldStartWith("При обрыве и ручном отключении VPN сеть блокируется ");
-        page.KillSwitchText.ShouldEndWith("Блок сохраняется до выключения Kill Switch.");
+        page.KillSwitchText.ShouldStartWith("Обрыв, сбой ядра или службы — весь трафик блокируется ");
+        page.KillSwitchText.ShouldEndWith("Исключение: только адрес выбранного сервера.");
         page.BootTitle.ShouldBe("Защита при загрузке " + AppInfo.OsName);
         Find<ToggleButton>(window, "LanDiscoveryToggle").IsEnabled.ShouldBeFalse("без локальной сети обнаружение недоступно");
         Snapshot(window, "protection");
@@ -103,7 +103,7 @@ public sealed class ProtectionPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public void Kill_switch_goes_off_only_after_confirmation()
+    public void Kill_switch_goes_off_only_after_confirmation_and_takes_strict_mode_with_it()
     {
         var (_, shell, page) = OpenProtection();
 
@@ -116,33 +116,29 @@ public sealed class ProtectionPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         page.KillSwitch.ShouldBeFalse();
+        page.CanStrictMode.ShouldBeFalse("строгий режим — часть блока при обрыве");
         page.KillSwitch = true;
         shell.Overlay.HasDialog.ShouldBeFalse("включить можно без вопроса");
         page.KillSwitch.ShouldBeTrue();
     }
 
     [AvaloniaFact]
-    public async Task Disconnect_blocks_until_kill_switch_is_turned_off_without_a_second_toggle()
+    public void Strict_mode_asks_before_turning_on_but_not_off()
     {
-        var (_, shell) = Open();
-        Service<ProtectionSync>().Start();
-        await Connect(shell);
-        await Service<IGatewayClient>().DisconnectAsync();
-        WaitFor(() => shell.Protection.Status.StrictBlock);
-        var page = Navigate(shell);
-        Service<SettingsService>().Current.Protection.StrictMode.ShouldBeFalse();
+        var (_, shell, page) = OpenProtection();
 
-        page.KillSwitch = false;
+        page.StrictMode = true;
         Dispatcher.UIThread.RunJobs();
-        shell.Overlay.Dialog.ShouldNotBeNull();
-        shell.Protection.Status.StrictBlock.ShouldBeTrue("до подтверждения сеть закрыта");
-        shell.Overlay.Dialog.SecondaryCommand.Execute(null);
+        var dialog = shell.Overlay.Dialog.ShouldNotBeNull();
+        dialog.Title.ShouldBe("Включить строгий режим?");
+        page.StrictMode.ShouldBeFalse();
+        dialog.PrimaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
-        Time.Advance(ProtectionSync.Quiet * 2);
-        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
+        page.StrictMode.ShouldBeTrue();
 
-        page.KillSwitch.ShouldBeFalse();
-        shell.Protection.Status.StrictBlock.ShouldBeFalse();
+        page.StrictMode = false;
+        shell.Overlay.HasDialog.ShouldBeFalse();
+        page.StrictMode.ShouldBeFalse();
     }
 
     [AvaloniaFact]
@@ -352,6 +348,7 @@ public sealed class ProtectionPageTests : WindowHarness
 
         Find<ToggleButton>(window, "KillSwitchToggle").IsEnabled.ShouldBeFalse();
         page.KillSwitchNote.ShouldBe("В режиме «Только прокси» блок при обрыве недоступен.");
+        page.CanStrictMode.ShouldBeFalse();
     }
 
     [AvaloniaFact]

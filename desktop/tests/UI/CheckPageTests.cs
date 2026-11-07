@@ -53,10 +53,9 @@ public sealed class CheckPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public async Task Turning_protection_off_without_kill_switch_rechecks_and_shows_the_real_ip()
+    public async Task Turning_protection_off_rechecks_and_shows_the_real_ip()
     {
         var (_, shell) = Open();
-        Service<SettingsService>().Update(s => s with { KillSwitch = false });
         await Connect(shell);
         var page = OpenCheck(shell);
         Finish(page);

@@ -59,7 +59,7 @@ public class ConnectionControllerTests
         var strict = AppSettings.Default with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = ProtectionSettings.Default with { StrictMode = true } };
 
         ConnectionController.KeepsBlock(strict).ShouldBeTrue();
-        ConnectionController.KeepsBlock(strict with { Protection = strict.Protection with { StrictMode = false } }).ShouldBeTrue("Kill Switch не требует второго переключателя");
+        ConnectionController.KeepsBlock(strict with { Protection = strict.Protection with { StrictMode = false } }).ShouldBeFalse();
         ConnectionController.KeepsBlock(strict with { KillSwitch = false }).ShouldBeFalse("без блока при обрыве закрывать нечем");
         ConnectionController.KeepsBlock(strict with { Mode = ConnectionMode.Proxy }).ShouldBeFalse("в режиме прокси блока нет");
     }

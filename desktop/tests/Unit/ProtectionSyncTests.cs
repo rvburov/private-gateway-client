@@ -18,7 +18,7 @@ public sealed class ProtectionSyncTests
     {
         var (settings, gateway, time) = Start(ConnectionState.Connected);
 
-        settings.Update(s => s with { Protection = s.Protection with { AllowLan = true, StrictMode = false } });
+        settings.Update(s => s with { Protection = s.Protection with { AllowLan = true } });
         time.Advance(ProtectionSync.Quiet / 2);
         settings.Update(s => s with { KillSwitch = false });
         time.Advance(ProtectionSync.Quiet / 2);
@@ -55,29 +55,29 @@ public sealed class ProtectionSyncTests
     }
 
     [Fact]
-    public void Manual_block_opens_the_network_only_when_kill_switch_stops_and_never_reconnects()
+    public void Strict_mode_block_opens_the_network_when_strict_mode_stops_and_never_reconnects()
     {
         var (settings, gateway, time) = Start(ConnectionState.Blocked, strict: true,
             change: s => s with { Protection = s.Protection with { StrictMode = true } });
 
-        settings.Update(s => s with { Protection = s.Protection with { AllowLan = true, StrictMode = false } });
+        settings.Update(s => s with { Protection = s.Protection with { AllowLan = true } });
         time.Advance(ProtectionSync.Quiet * 2);
 
         gateway.Calls.ShouldBeEmpty("защиту выключили вручную — подключаться без просьбы нельзя, сеть закрыта по-прежнему");
 
-        settings.Update(s => s with { KillSwitch = false });
+        settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
         time.Advance(ProtectionSync.Quiet * 2);
 
-        gateway.Calls.ShouldBe(["disconnect"], "Kill Switch выключен — сеть открывается");
+        gateway.Calls.ShouldBe(["disconnect"], "строгий режим выключен — сеть открывается");
     }
 
     [Fact]
-    public void Kill_switch_turned_off_while_the_service_was_away_opens_the_block_it_sends_later_once()
+    public void Strict_mode_turned_off_while_the_service_was_away_opens_the_block_it_sends_later_once()
     {
         var (settings, gateway, time) = Start(ConnectionState.Error, change: s => s with { Protection = s.Protection with { StrictMode = true } });
 
         // Службы нет («Ошибка»): строгий режим выключили, а открыть еще нечего.
-        settings.Update(s => s with { KillSwitch = false });
+        settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
         time.Advance(ProtectionSync.Quiet * 2);
         gateway.Calls.ShouldBeEmpty();
 
@@ -93,7 +93,7 @@ public sealed class ProtectionSyncTests
     public void Strict_block_this_window_did_not_turn_off_is_left_closed()
     {
         // Другой пользователь машины или сброшенные настройки окна: строгий режим в окне выключен, а выключало его не оно.
-        var (_, gateway, _) = Start(ConnectionState.Blocked, strict: true, change: s => s with { KillSwitch = false });
+        var (_, gateway, _) = Start(ConnectionState.Blocked, strict: true);
 
         gateway.Announce();
 

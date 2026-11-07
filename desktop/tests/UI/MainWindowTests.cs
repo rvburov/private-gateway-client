@@ -87,8 +87,8 @@ public sealed class MainWindowTests : WindowHarness
         Snapshot(window, "main-connected");
 
         Press(window, "Power");
-        WaitFor(() => shell.Protection.Status.State == ConnectionState.Blocked);
-        Text(window, "StatusTitle").ShouldBe("Интернет заблокирован");
+        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
+        Text(window, "StatusTitle").ShouldBe("IP открыт");
     }
 
     [AvaloniaFact]
@@ -96,6 +96,7 @@ public sealed class MainWindowTests : WindowHarness
     {
         var (window, shell) = Open();
         var main = (MainPageViewModel)shell.CurrentPage!;
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
         Press(window, "Power");
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
@@ -104,9 +105,9 @@ public sealed class MainWindowTests : WindowHarness
         WaitFor(() => shell.Protection.Status.StrictBlock);
 
         (Text(window, "StatusTitle"), main.StatusSubtitle, Text(window, "StateLabel"))
-            .ShouldBe(("Интернет заблокирован", "Kill Switch: без VPN сеть закрыта", "Блокировка"));
+            .ShouldBe(("Интернет заблокирован", "Строгий режим: без VPN сеть закрыта", "Блокировка"));
         shell.Protection.ActionText.ShouldBe(Loc.Instance["power.action.connect"], "щит в строгом режиме включает защиту");
-        (main.CheckedText, main.CheckActionText).ShouldBe(("Сеть закрыта до выключения Kill Switch", "Вход в Wi-Fi"), "подключает щит, а сеть отеля без входа не пустит");
+        (main.CheckedText, main.CheckActionText).ShouldBe(("Выключается в «Защите и утечках»", "Вход в Wi-Fi"), "подключает щит, а сеть отеля без входа не пустит");
         Snapshot(window, "main-strict");
 
         Press(window, "Power");
@@ -121,6 +122,7 @@ public sealed class MainWindowTests : WindowHarness
     {
         var (window, shell) = Open();
         var main = (MainPageViewModel)shell.CurrentPage!;
+        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
         Press(window, "Power");
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
@@ -147,7 +149,7 @@ public sealed class MainWindowTests : WindowHarness
         WaitFor(() => !shell.Protection.Status.IsPaused);
 
         (shell.Protection.Status.State, shell.Protection.Status.StrictBlock).ShouldBe((ConnectionState.Blocked, true));
-        (Text(window, "StatusTitle"), main.StatusSubtitle, shell.Protection.Tone).ShouldBe(("Интернет заблокирован", "Kill Switch: без VPN сеть закрыта", Tone.Blocked));
+        (Text(window, "StatusTitle"), main.StatusSubtitle, shell.Protection.Tone).ShouldBe(("Интернет заблокирован", "Строгий режим: без VPN сеть закрыта", Tone.Blocked));
 
         (await Service<ConnectionController>().PauseForCaptivePortalAsync()).ShouldBeTrue();
         WaitFor(() => shell.Protection.Status.IsPaused);
@@ -805,10 +807,10 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaTheory]
-    [InlineData(true, ErrorCodes.ServerNotFound, "PGC-NET-002 · Kill Switch держит сеть закрытой", Pages.Home)]
+    [InlineData(true, ErrorCodes.ServerNotFound, "PGC-NET-002 · строгий режим: без VPN сеть закрыта", Pages.Home)]
     [InlineData(false, ErrorCodes.ServerNotFound, "PGC-NET-002 · под блоком адрес не найти: отключите защиту", Pages.Home)]
     [InlineData(false, ErrorCodes.UnsupportedServer, "PGC-SVC-005 · трафик заблокирован", Pages.Home)]
-    [InlineData(true, ErrorCodes.OtherVpn, "PGC-NET-010 · Kill Switch держит сеть закрытой", Pages.Problem)]
+    [InlineData(true, ErrorCodes.OtherVpn, "PGC-NET-010 · строгий режим: без VPN сеть закрыта", Pages.Problem)]
     public async Task Refusal_that_keeps_the_block_is_shown_with_its_reason(bool strict, string code, string subtitle, string page)
     {
         // Строгий режим, загрузка и блок при обрыве: отказ в подключении сеть не открывает — «Блокировка» с причиной.

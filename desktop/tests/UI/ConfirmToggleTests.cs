@@ -11,7 +11,7 @@ using PrivateGateway.Client.UI.Services;
 namespace PrivateGateway.Client.Tests.UI;
 
 /// <summary>
-/// Переключатели с вопросом (блок при обрыве, прокси для локальной сети): нажатие мышью — вопрос; отказ
+/// Переключатели с вопросом (блок при обрыве, строгий режим, прокси для локальной сети): нажатие мышью — вопрос; отказ
 /// возвращает переключатель на место на экране, а не только в настройках; согласие — переключает.
 /// </summary>
 public sealed class ConfirmToggleTests : WindowHarness
@@ -19,6 +19,7 @@ public sealed class ConfirmToggleTests : WindowHarness
     [AvaloniaTheory]
     [InlineData(Pages.Settings, "KillSwitchToggle", true, "DialogPrimary")]
     [InlineData(Pages.Protection, "KillSwitchToggle", true, "DialogPrimary")]
+    [InlineData(Pages.Protection, "StrictToggle", false, "DialogSecondary")]
     [InlineData(Pages.Core, "LanProxyToggle", false, "DialogPrimary")]
     public void Declining_puts_the_switch_back(string page, string name, bool before, string decline)
     {
@@ -34,7 +35,7 @@ public sealed class ConfirmToggleTests : WindowHarness
 
     [AvaloniaTheory]
     [InlineData(Pages.Settings, "KillSwitchToggle", true, "DialogSecondary")]
-    [InlineData(Pages.Protection, "KillSwitchToggle", true, "DialogSecondary")]
+    [InlineData(Pages.Protection, "StrictToggle", false, "DialogPrimary")]
     [InlineData(Pages.Core, "LanProxyToggle", false, "DialogSecondary")]
     public void Agreeing_switches_it(string page, string name, bool before, string agree)
     {
