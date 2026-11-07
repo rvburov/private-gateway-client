@@ -267,7 +267,7 @@ public sealed partial class Gateway
             _ = SuspendForNetworkAsync(session);
             return;
         }
-        if (status.State is ConnectionState.Connected or ConnectionState.Reconnecting && OtherVpnStarted(session))
+        if (status.State is ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Reconnecting && OtherVpnStarted(session))
         {
             return;
         }
@@ -305,14 +305,14 @@ public sealed partial class Gateway
     }
 
     /// <summary>
-    /// Во время подключения включился чужой VPN с маршрутом ко всему интернету: трафик может пойти мимо
+    /// В режиме VPN или прокси включился чужой VPN с маршрутом ко всему интернету: трафик может пойти мимо
     /// туннеля, а окно говорило бы «Защищено». Пользователь его не разрешал — подключение останавливается
     /// с PGC-NET-010, как при подключении. Проверка — при смене сети и с каждой пробой: выход через VPN,
     /// у которого адаптер уже был (Tailscale), включается одними маршрутами, без смены адресов.
     /// </summary>
     private bool OtherVpnStarted(int session)
     {
-        if (Status is not { Mode: ConnectionMode.Vpn, IsPaused: false } || _allowOtherVpn || OtherVpnAdapters() is not { Count: > 0 } other)
+        if (Status.IsPaused || _allowOtherVpn || OtherVpnAdapters() is not { Count: > 0 } other)
         {
             return false;
         }
@@ -335,7 +335,7 @@ public sealed partial class Gateway
             return;
         }
 
-        var found = OtherClientsNow(vpn: false, foreignProxy: null);
+        var found = OtherClientsNow(includeAdapters: false, foreignProxy: null);
         var list = found.Count == 0 ? null : new OtherClientList(found);
         lock (_gate)
         {
@@ -377,7 +377,7 @@ public sealed partial class Gateway
             session = _session;
         }
 
-        var found = OtherClientsNow(vpn: false, foreignProxy: address);
+        var found = OtherClientsNow(includeAdapters: false, foreignProxy: address);
         if (!found.Any(c => c.Sign == OtherClientSign.SystemProxy))
         {
             return false;

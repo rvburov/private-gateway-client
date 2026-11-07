@@ -114,7 +114,7 @@ public sealed class ServiceGatewayClientTests
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
         // Другой клиент ведет трафик своим ядром; свое ядро службы (тот же путь, что у Xray службы) — не помеха; окно клиента
-        // без ядра — тоже. Туннель другого VPN режиму прокси не помеха.
+        // без ядра — тоже. Системный туннель другого клиента блокирует и режим прокси.
         IReadOnlyList<RunningProcess> processes =
         [
             new(100, "ClientApp", @"C:\Program Files\ClientApp\ClientApp.exe"),
@@ -122,7 +122,7 @@ public sealed class ServiceGatewayClientTests
             new(102, "xray", Path.GetFullPath(XrayKit.Xray!)),
         ];
         var running = processes;
-        var routes = new FakeRoutes { Routes = [new DefaultRoute("wg0", IsTunnel: true)] };
+        var routes = new FakeRoutes();
         await using var service = await RunningService.StartAsync(options: o => o with { Processes = () => running, Routes = routes });
         var (definition, _) = XrayKit.Pair("vless", 443);
         var settings = Settings(XrayKit.FreePort());
@@ -135,6 +135,12 @@ public sealed class ServiceGatewayClientTests
             service.Journal.Tail(50).ShouldContain(e => e.Message.Contains("Работает другой VPN или прокси-клиент: работает ядро прокси", StringComparison.Ordinal));
 
             running = [processes[0], processes[2]];
+            routes.Routes = [new DefaultRoute("wg0", IsTunnel: true)];
+            await client.ConnectAsync(Profile(definition), Ct);
+            (client.Status.State, client.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.OtherVpn));
+            client.Status.OtherClients.ShouldBe(new OtherClientList([new OtherClient(OtherClientSign.Adapter, "wg0")]));
+
+            routes.Routes = [];
             await client.ConnectAsync(Profile(definition), Ct);
 
             client.Status.ErrorCode.ShouldNotBe(ErrorCodes.OtherVpn, "клиент открыт, но выключен: его ядро не работает — трафик он не ведет");
@@ -143,11 +149,13 @@ public sealed class ServiceGatewayClientTests
         }
 
         running = processes;
+        routes.Routes = [new DefaultRoute("wg0", IsTunnel: true)];
         using var allowed = Client(service.Endpoint, definition, settings with { Protection = settings.Protection with { AllowOtherVpn = true } });
         await allowed.ConnectAsync(Profile(definition), Ct);
 
         allowed.Status.ErrorCode.ShouldNotBe(ErrorCodes.OtherVpn, "«Разрешить работу рядом с другим VPN» — подключение идет");
-        service.Journal.Tail(50).ShouldContain(e => e.Message == "Работает другой VPN или прокси-клиент (работает ядро прокси) — подключение по выбору пользователя");
+        service.Journal.Tail(50).ShouldContain(e => e.Message.EndsWith(" — подключение по выбору пользователя", StringComparison.Ordinal)
+            && e.Message.Contains("туннель с маршрутом ко всему интернету", StringComparison.Ordinal));
     }
 
     [Fact]

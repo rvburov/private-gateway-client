@@ -26,7 +26,7 @@ public sealed partial class Gateway
         ArgumentNullException.ThrowIfNull(addresses);
         var entries = await Task.WhenAll(addresses.Distinct(StringComparer.OrdinalIgnoreCase).Take(EntryLimit)
             .Select(a => CheckEntryAsync(a, cancellationToken))).ConfigureAwait(false);
-        return ([.. entries.OfType<EntryState>()], OtherClientsNow(vpn: true, foreignProxy: null));
+        return ([.. entries.OfType<EntryState>()], OtherClientsNow(includeAdapters: true, foreignProxy: null));
     }
 
     private async Task<EntryState?> CheckEntryAsync(string address, CancellationToken cancellationToken)

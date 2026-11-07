@@ -54,10 +54,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         text.WidthIncludingTrailingWhitespace.ShouldBeLessThan(selector.Bounds.Width - 36,
             "имя авторизации остается целиком видимым на узком окне");
         Find<TextBox>(window, "ExternalProxyHost").Bounds.Width.ShouldBeLessThan(window.Width);
-        page.ExternalProxy.TransportNote.ShouldContain("TCP");
-        page.ExternalProxy.EncryptionNote.ShouldContain(language == "ru" ? "проверкой сертификата" : "verifies its certificate");
-        page.ExternalProxy.OpenLocalSettingsCommand.Execute(null);
-        shell.CurrentKey.ShouldBe(Pages.Core);
+        page.ExternalProxy.IsUnencrypted.ShouldBeFalse("HTTPS шифрует соединение с прокси");
     }
 
     [AvaloniaFact]
@@ -93,14 +90,20 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         settings.Current.KillSwitch.ShouldBe(original.KillSwitch);
         catalog.Selected.ShouldBe(vpn);
         Dispatcher.UIThread.RunJobs();
-        Find<TextBlock>(window, "ExternalProxySaveState").Text.ShouldBe(editor.SaveState);
+        Find<TextBlock>(window, "ExternalProxySaveState").Text.ShouldBe("Прокси сохранен");
+        Find<TextBox>(window, "ExternalProxyHost").IsEffectivelyVisible.ShouldBeFalse();
+        Find<Button>(window, "EditExternalProxy").IsEffectivelyVisible.ShouldBeTrue();
+        Press(window, "EditExternalProxy");
+        Dispatcher.UIThread.RunJobs();
+        Find<TextBox>(window, "ExternalProxyHost").IsEffectivelyVisible.ShouldBeTrue();
+        Find<TextBox>(window, "ExternalProxyHost").Text.ShouldBe(saved.Host);
 
-        page.IsVpnMode = true;
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn });
         settings.Current.ExternalProxy.ShouldBe(saved);
         settings.Update(s => s with { Mode = ConnectionMode.Proxy });
         settings.Current.ExternalProxy.ShouldBe(saved);
         catalog.Selected.ShouldBe(vpn);
-        using var reopened = new ExternalProxyEditorViewModel(settings, Service<IExternalProxyStore>(), shell);
+        using var reopened = new ExternalProxyEditorViewModel(settings, Service<IExternalProxyStore>());
         WaitFor(() => !reopened.IsBusy);
         reopened.Username.ShouldBe("proxy-test-user");
         reopened.Password.ShouldBe("proxy-test-pass");
@@ -121,6 +124,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         var settings = Service<SettingsService>();
         settings.Update(s => s with { Mode = ConnectionMode.Proxy });
         var editor = Settings(shell).ExternalProxy;
+        editor.EditCommand.Execute(null);
         var before = settings.Current.ExternalProxy;
         switch (field)
         {
@@ -241,7 +245,8 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         WaitFor(() => !editor.IsBusy);
 
         editor.RequiresCredentials.ShouldBeTrue();
-        editor.SaveState.ShouldContain("Введите их повторно");
+        editor.SaveState.ShouldContain("Введите логин и пароль заново");
+        editor.IsEditing.ShouldBeTrue();
         settings.Current.ExternalProxy.Authentication.ShouldBe(ProxyAuthentication.UserPassword);
         store.Definition().ShouldBeNull("потеря секрета не разрешает анонимное подключение");
     }
@@ -277,7 +282,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         Settings(shell);
         using var gate = new GatedStore(Service<IExternalProxyStore>());
-        using var editor = new ExternalProxyEditorViewModel(Service<SettingsService>(), gate, shell);
+        using var editor = new ExternalProxyEditorViewModel(Service<SettingsService>(), gate);
         Find<Control>(window, "ExternalProxyEditor").DataContext = editor;
         editor.Host = "proxy.example.com";
         editor.Port = "1080";
@@ -314,7 +319,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         settings.Update(s => s with { Mode = ConnectionMode.Proxy });
         var store = Service<IExternalProxyStore>();
         using var gate = new CommitBeforeReturnStore(store);
-        using var editor = new ExternalProxyEditorViewModel(settings, gate, shell);
+        using var editor = new ExternalProxyEditorViewModel(settings, gate);
         editor.Host = "first.proxy.example.com";
         editor.Port = "1080";
         editor.Authentication = anonymousFirst ? ProxyAuthentication.None : ProxyAuthentication.UserPassword;
@@ -343,6 +348,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         editor.HasChanges.ShouldBeFalse();
 
         // Повторное сохранение не должно отправить старые данные доступа новому адресу.
+        editor.EditCommand.Execute(null);
         await editor.SaveCommand.ExecuteAsync(null);
         var credentials = store.ReadCredentials().ShouldNotBeNull();
         credentials.Username.ShouldBe("restored-account");
@@ -357,7 +363,7 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         Service<IExternalProxyStore>().Save(new ExternalProxySettings(Host: "proxy.example.com", Authentication: ProxyAuthentication.UserPassword),
             "proxy-test-user", "proxy-test-pass");
         using var gate = new GatedStore(Service<IExternalProxyStore>()) { BlockRead = true };
-        using var editor = new ExternalProxyEditorViewModel(Service<SettingsService>(), gate, shell);
+        using var editor = new ExternalProxyEditorViewModel(Service<SettingsService>(), gate);
         gate.ReadEntered.IsSet.ShouldBeFalse("скрытая форма режима VPN не запрашивает Keychain внешнего прокси");
         Service<SettingsService>().Update(s => s with { Mode = ConnectionMode.Proxy });
         WaitFor(() => gate.ReadEntered.IsSet);
@@ -395,7 +401,10 @@ public sealed class ExternalProxySettingsTests : WindowHarness
         var card = shell.Overlay.Sheet.ShouldBeOfType<ServerCardViewModel>();
         card.IsInUse.ShouldBeFalse();
         card.ConnectText.ShouldBe("Подключить VPN");
-        await card.ConnectCommand.ExecuteAsync(null);
+        var connect = card.ConnectCommand.ExecuteAsync(null);
+        settings.Current.Mode.ShouldBe(ConnectionMode.Proxy);
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        await connect;
         Dispatcher.UIThread.RunJobs();
 
         settings.Current.Mode.ShouldBe(ConnectionMode.Vpn);

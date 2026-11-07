@@ -144,6 +144,11 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task ConnectAsync()
     {
+        if (_target?.IsExternalProxy == true && !await SafetyDialogs.ConfirmVpnModeAsync(_overlay).ConfigureAwait(true))
+        {
+            return;
+        }
+
         _overlay.CloseSheet();
         await _controller.ConnectToAsync(Id).ConfigureAwait(true);
     }

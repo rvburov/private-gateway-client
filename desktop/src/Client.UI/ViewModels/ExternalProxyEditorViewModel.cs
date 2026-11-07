@@ -8,7 +8,6 @@ using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
-using PrivateGateway.Client.UI.Services;
 
 namespace PrivateGateway.Client.UI.ViewModels;
 
@@ -20,7 +19,6 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
 {
     private readonly SettingsService _settings;
     private readonly IExternalProxyStore _store;
-    private readonly INavigator _navigator;
     private ExternalProxySettings _saved;
     private bool _saving;
     private bool _disposed;
@@ -32,14 +30,14 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
     private string _savedUsername = string.Empty;
     private string _savedPassword = string.Empty;
 
-    public ExternalProxyEditorViewModel(SettingsService settings, IExternalProxyStore store, INavigator navigator)
+    public ExternalProxyEditorViewModel(SettingsService settings, IExternalProxyStore store)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(store);
         _settings = settings;
         _store = store;
-        _navigator = navigator;
         _saved = settings.Current.ExternalProxy;
+        IsEditing = !_saved.IsConfigured;
         ProtocolOptions = [.. Enum.GetValues<ExternalProxyProtocol>().Select(value =>
             new ChoiceOptionViewModel(() => ProtocolLabel(value), () => Protocol == value, () => ChooseProtocol(value)))];
         AuthenticationOptions = [.. Enum.GetValues<ProxyAuthentication>().Select(value =>
@@ -78,6 +76,9 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
     [NotifyPropertyChangedFor(nameof(SaveState), nameof(SaveText))]
     public partial bool IsBusy { get; private set; }
 
+    [ObservableProperty]
+    public partial bool IsEditing { get; private set; }
+
     public string SaveText => Loc.Instance[IsBusy ? "externalProxy.busy" : "externalProxy.save"];
 
     public IReadOnlyList<ChoiceOptionViewModel> ProtocolOptions { get; }
@@ -93,11 +94,7 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
 
     public string AuthenticationText => AuthenticationLabel(Authentication);
 
-    public string TransportNote => Loc.Instance[Protocol == ExternalProxyProtocol.Socks5
-        ? "externalProxy.transport.socks5" : "externalProxy.transport.http"];
-
-    public string EncryptionNote => Loc.Instance[Protocol == ExternalProxyProtocol.Https
-        ? "externalProxy.encryption.tls" : "externalProxy.encryption.plain"];
+    public bool IsUnencrypted => Protocol != ExternalProxyProtocol.Https;
 
     public string? Error => _errorKey is { } key ? Loc.Instance[key] : null;
 
@@ -118,7 +115,7 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
     private void ToggleAuthentication() => IsAuthenticationOpen = !IsAuthenticationOpen;
 
     [RelayCommand]
-    private void OpenLocalSettings() => _navigator.Navigate(Pages.Core);
+    private void Edit() => IsEditing = true;
 
     private bool CanSave() => !IsBusy;
 
@@ -187,6 +184,10 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
             var preserveDraft = _editVersion != version;
             Load(preserveDraft, preserveDraft ? version : null);
             await CredentialsRead.ConfigureAwait(true);
+            if (!_disposed && !preserveDraft && !HasChanges && !_missingCredentials)
+            {
+                IsEditing = false;
+            }
         }
         catch (InvalidOperationException)
         {
@@ -275,6 +276,11 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
         }
 
         _missingCredentials = credentials is null;
+        if (_missingCredentials)
+        {
+            IsEditing = true;
+        }
+
         _credentialsLoaded = true;
         IsBusy = false;
         OnPropertyChanged(string.Empty);
@@ -313,8 +319,7 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
             base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(RequiresCredentials)));
             base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(ProtocolText)));
             base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(AuthenticationText)));
-            base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(TransportNote)));
-            base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(EncryptionNote)));
+            base.OnPropertyChanged(new System.ComponentModel.PropertyChangedEventArgs(nameof(IsUnencrypted)));
         }
     }
 
@@ -333,6 +338,7 @@ public sealed partial class ExternalProxyEditorViewModel : ObservableObject, IDi
         if (!_disposed && !_saving && _settings.Current.ExternalProxy == next.ExternalProxy && next.ExternalProxy != _saved && !HasChanges)
         {
             Load();
+            IsEditing = !_saved.IsConfigured;
         }
         else if (!_disposed && !_saving && !IsBusy && !_credentialsLoaded && next.Mode == ConnectionMode.Proxy
             && _settings.Current.Mode == ConnectionMode.Proxy && RequiresCredentials && !HasChanges)

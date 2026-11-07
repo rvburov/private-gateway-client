@@ -63,7 +63,7 @@
 </head>
 <body>
 <p class="pg-board-note">Настройки (SettingsPage программы). «Основные» сохраняются сразу; форма внешнего прокси на десктопе применяет черновик кнопкой «Сохранить прокси». «Только прокси» — только после диалога
-  «Перейти в режим прокси?», в режиме прокси блок при обрыве недоступен, а щит островка после подтверждения — «Прокси». Выключить блок при обрыве — тоже через
+  «Перейти в режим прокси?», обратно — «Перейти в режим VPN?». В режиме прокси блок при обрыве недоступен, а щит островка после подтверждения — «Прокси». Выключить блок при обрыве — тоже через
   диалог. Подпись под
   уведомлениями меняется по выбору. Строки «Для опытных» открывают свои экраны: 5, 6, 13, 12, 7, 14, 15. Справа — тот же экран в режиме
   «Только прокси»: отдельная внешняя цель, не выбранный VPN-сервер. Протокол и авторизация меняют поля и пояснения; Кнопка сохранения проверяет только форму, не сетевое подключение. В макете учетные данные остаются в памяти страницы и не отправляются.</p>
@@ -80,56 +80,52 @@
         <div class="setting stacked">
           <span class="t-strong">Режим</span>
           <div class="segments" role="radiogroup" aria-label="Режим">
-            <button class="segment on" data-mode="vpn" role="radio" aria-checked="true">VPN · вся система</button>
+            <button class="segment on" data-mode="vpn" data-confirm="dlg-vpn-2" role="radio" aria-checked="true">VPN · вся система</button>
             <button class="segment" data-mode="proxy" data-confirm="dlg-proxy" role="radio" aria-checked="false">Только прокси</button>
           </div>
           <span class="t-caption t-wrap" data-when="vpn" data-os="phone">Весь трафик <span data-os-word="name">Windows</span> идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
           <span class="t-caption t-wrap" data-when="vpn" data-os="desktop" data-ui-text="externalProxy.vpn.note">Весь трафик <span data-os-word="name">Windows</span> идет через выбранный VPN-сервер. Дальнейший выход выбирает сервер; учетные данные настроенного на нем прокси здесь не нужны.</span>
           <span class="t-caption t-wrap" data-when="proxy" data-os="phone">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
-          <span class="t-caption t-wrap" data-ui-text="externalProxy.mode.note" data-when="proxy" data-os="desktop">Устройство → внешний прокси → интернет, без VPN-сервера. Только приложения, использующие прокси. Блок при обрыве недоступен.</span>
+          <span class="t-caption t-wrap" data-ui-text="externalProxy.mode.note" data-when="proxy" data-os="desktop">Прокси не охватывает весь трафик. WebRTC может раскрыть ваш IP. Блок при обрыве недоступен.</span>
           <div class="external-proxy" data-os="desktop" data-when="proxy" data-external-proxy="external-editor-1"
-               data-protocol="socks5" data-auth="none" data-save="Сохранить прокси" data-busy="Подождите…" data-state-busy="Ожидание защищенного хранилища ОС…" data-power-label="Настроить" data-power-configure="Настроить прокси" data-configured="0" data-state-draft="Есть несохраненные изменения. До сохранения подключение использует прежнюю конфигурацию." data-state-saved="Конфигурация сохранена. Проверка подключения выполняется при включении прокси." data-state-empty="Внешний прокси еще не настроен." data-error-host="Укажите IP-адрес или домен без протокола, пути и учетных данных." data-error-port="Укажите порт от 1 до 65535." data-error-credentials="Проверьте логин и пароль: для выбранной авторизации нужны оба значения.">
+               data-protocol="socks5" data-auth="none" data-save="Сохранить прокси" data-busy="Подождите…" data-state-busy="Сохранение…" data-power-label="Настроить" data-power-configure="Настроить прокси" data-configured="0" data-state-draft="Есть несохраненные изменения." data-state-saved="Прокси сохранен" data-state-empty="Введите адрес и порт прокси." data-error-host="Укажите IP-адрес или домен без протокола, пути и учетных данных." data-error-port="Укажите порт от 1 до 65535." data-error-credentials="Проверьте логин и пароль: для выбранной авторизации нужны оба значения.">
             <span class="t-strong t-wrap" data-ui-text="externalProxy.title">Внешний прокси</span>
-            <span class="t-caption t-wrap" data-ui-text="externalProxy.route">Введите параметры внешнего прокси. Выбранный VPN-сервер сохранится отдельно.</span>
-            <div class="proxy-field">
-              <span class="t-small" data-ui-text="externalProxy.protocol">Протокол прокси</span>
-              <button class="btn-select" data-open="external-editor-1-protocol" aria-label="Протокол прокси"><span data-select-label>SOCKS5</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="proxy-fields" data-proxy-collapsed hidden>
+              <span class="t-caption" data-ui-text="externalProxy.state.saved" role="status">Прокси сохранен</span>
+              <button class="btn-primary" data-proxy-edit data-ui-text="externalProxy.edit">Изменить прокси</button>
             </div>
-            <label class="proxy-field">
-              <span class="t-small t-wrap" data-ui-text="externalProxy.host">IP-адрес или домен</span>
-              <input class="input" data-proxy-input="host" aria-label="IP-адрес или домен" placeholder="proxy.example.com" autocomplete="off">
-            </label>
-            <label class="proxy-field">
-              <span class="t-small t-wrap" data-ui-text="externalProxy.port">Порт внешнего прокси</span>
-              <input class="input" data-proxy-input="port" aria-label="Порт внешнего прокси" inputmode="numeric" maxlength="5" value="1080" autocomplete="off">
-            </label>
-            <div class="proxy-field">
-              <span class="t-small t-wrap" data-ui-text="externalProxy.auth">Способ авторизации</span>
-              <button class="btn-select" data-open="external-editor-1-auth" aria-label="Способ авторизации"><span data-select-label data-ui-text="externalProxy.auth.none">Без авторизации</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
-            </div>
-            <div class="proxy-fields" data-proxy-auth-fields hidden>
+            <div class="proxy-fields" data-proxy-editor>
+              <div class="proxy-field">
+                <span class="t-small" data-ui-text="externalProxy.protocol">Протокол прокси</span>
+                <button class="btn-select" data-open="external-editor-1-protocol" aria-label="Протокол прокси"><span data-select-label>SOCKS5</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+              </div>
               <label class="proxy-field">
-                <span class="t-small" data-ui-text="externalProxy.username">Логин</span>
-                <input class="input" data-proxy-input="username" aria-label="Логин" autocomplete="off">
+                <span class="t-small t-wrap" data-ui-text="externalProxy.host">IP-адрес или домен</span>
+                <input class="input" data-proxy-input="host" aria-label="IP-адрес или домен" placeholder="proxy.example.com" autocomplete="off">
               </label>
               <label class="proxy-field">
-                <span class="t-small" data-ui-text="externalProxy.password">Пароль</span>
-                <input class="input" type="password" data-proxy-input="password" aria-label="Пароль" autocomplete="new-password">
+                <span class="t-small t-wrap" data-ui-text="externalProxy.port">Порт внешнего прокси</span>
+                <input class="input" data-proxy-input="port" aria-label="Порт внешнего прокси" inputmode="numeric" maxlength="5" value="1080" autocomplete="off">
               </label>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.secrets.note">Логин и пароль сохраняются в защищенном хранилище ОС и не включаются в отчет.</span>
+              <div class="proxy-field">
+                <span class="t-small t-wrap" data-ui-text="externalProxy.auth">Способ авторизации</span>
+                <button class="btn-select" data-open="external-editor-1-auth" aria-label="Способ авторизации"><span data-select-label data-ui-text="externalProxy.auth.none">Без авторизации</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+              </div>
+              <div class="proxy-fields" data-proxy-auth-fields hidden>
+                <label class="proxy-field">
+                  <span class="t-small" data-ui-text="externalProxy.username">Логин</span>
+                  <input class="input" data-proxy-input="username" aria-label="Логин" autocomplete="off">
+                </label>
+                <label class="proxy-field">
+                  <span class="t-small" data-ui-text="externalProxy.password">Пароль</span>
+                  <input class="input" type="password" data-proxy-input="password" aria-label="Пароль" autocomplete="new-password">
+                </label>
+              </div>
+              <span class="t-caption t-wrap" data-ui-text="externalProxy.encryption.short" data-proxy-encryption="plain">HTTP и SOCKS5 не шифруют соединение до прокси.</span>
+              <span class="t-caption t-warning t-wrap" data-proxy-error role="alert" hidden></span>
+              <button class="btn-primary" data-proxy-save data-ui-text="externalProxy.save">Сохранить прокси</button>
+              <span class="t-caption t-wrap" data-proxy-state role="status"></span>
             </div>
-            <div class="proxy-notes">
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.transport.socks5" data-proxy-transport="socks5">TCP через SOCKS5. UDP доступен только при поддержке UDP ASSOCIATE внешним прокси; успешный TCP этого не подтверждает.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.transport.http" data-proxy-transport="http" hidden>HTTP CONNECT и HTTPS-прокси передают TCP. UDP этим подключением не поддерживается.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.encryption.plain" data-proxy-encryption="plain">HTTP и SOCKS5 сами не шифруют участок до прокси, включая авторизацию. HTTPS сайта защищает его содержимое отдельно.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.encryption.tls" data-proxy-encryption="tls" hidden>HTTPS шифрует участок от устройства до прокси с проверкой сертификата. Дальнейшую защиту соединения с сайтом определяет HTTPS самого сайта.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.scope">Режим не перехватывает весь трафик и DNS системы. Собственный DNS браузера и программы без прокси могут идти отдельно. Разрешенные исключения сайтов и локальной сети продолжают действовать.</span>
-            </div>
-            <span class="t-caption t-warning t-wrap" data-proxy-error role="alert" hidden></span>
-            <button class="btn-primary" data-proxy-save data-ui-text="externalProxy.save">Сохранить прокси</button>
-            <span class="t-caption t-wrap" data-proxy-state role="status"></span>
-            <span class="t-caption t-wrap" data-ui-text="externalProxy.local.note">Локальный HTTP/SOCKS-порт приложения и системный прокси настраиваются отдельно в «Подключение и ядро».</span>
-            <button class="btn-link" data-nav="06-advanced.html" data-ui-text="externalProxy.local.open" style="align-self: flex-start">Подключение и ядро</button>
           </div>
         </div>
 
@@ -234,10 +230,20 @@
     </div>
 
     <!-- «Только прокси» — после подтверждения (решение 529): безопасный вариант — основная кнопка -->
+    <div class="dialog" id="dlg-vpn" role="dialog" aria-modal="true" aria-label="Перейти в режим VPN?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.vpnMode.title">Перейти в режим VPN?</div>
+      <p class="t-small t-wrap" data-ui-text="dialog.vpnMode.text">Активное подключение сменится на выбранный VPN-сервер. Настройки прокси сохранятся.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.vpnMode.keep">Оставить прокси</button>
+        <button class="btn-secondary" data-confirm-yes data-ui-text="dialog.vpnMode.switch">Перейти на VPN</button>
+      </div>
+    </div>
+
     <div class="dialog" id="dlg-proxy" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
       <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
       <div class="t-status t-wrap">Перейти в режим прокси?</div>
-      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)"><span data-os="phone">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</span><span data-os="desktop" data-ui-text="externalProxy.dialog.text">После перехода блок при обрыве работать не будет. Прокси охватывает только использующие его приложения. Текущее подключение сменится на внешний прокси; если он еще не настроен, подключение завершится. VPN-сервер и его настройки сохранятся.</span></p>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)"><span data-os="phone">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</span><span data-os="desktop" data-ui-text="externalProxy.dialog.text">Блок при обрыве работать не будет. Текущее подключение сменится на внешний прокси, если он настроен. Настройки VPN сохранятся.</span></p>
       <div class="dialog-actions stack">
         <button class="btn-primary" data-close>Оставить VPN</button>
         <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>
@@ -279,56 +285,52 @@
         <div class="setting stacked">
           <span class="t-strong">Режим</span>
           <div class="segments" role="radiogroup" aria-label="Режим">
-            <button class="segment" data-mode="vpn" role="radio" aria-checked="false">VPN · вся система</button>
+            <button class="segment" data-mode="vpn" data-confirm="dlg-vpn-2" role="radio" aria-checked="false">VPN · вся система</button>
             <button class="segment on" data-mode="proxy" data-confirm="dlg-proxy-2" role="radio" aria-checked="true">Только прокси</button>
           </div>
           <span class="t-caption t-wrap" data-when="vpn" data-os="phone">Весь трафик <span data-os-word="name">Windows</span> идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
           <span class="t-caption t-wrap" data-when="vpn" data-os="desktop" data-ui-text="externalProxy.vpn.note">Весь трафик <span data-os-word="name">Windows</span> идет через выбранный VPN-сервер. Дальнейший выход выбирает сервер; учетные данные настроенного на нем прокси здесь не нужны.</span>
           <span class="t-caption t-wrap" data-when="proxy" data-os="phone">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
-          <span class="t-caption t-wrap" data-ui-text="externalProxy.mode.note" data-when="proxy" data-os="desktop">Устройство → внешний прокси → интернет, без VPN-сервера. Только приложения, использующие прокси. Блок при обрыве недоступен.</span>
+          <span class="t-caption t-wrap" data-ui-text="externalProxy.mode.note" data-when="proxy" data-os="desktop">Прокси не охватывает весь трафик. WebRTC может раскрыть ваш IP. Блок при обрыве недоступен.</span>
           <div class="external-proxy" data-os="desktop" data-when="proxy" data-external-proxy="external-editor-2"
-               data-protocol="socks5" data-auth="none" data-save="Сохранить прокси" data-busy="Подождите…" data-state-busy="Ожидание защищенного хранилища ОС…" data-power-label="Настроить" data-power-configure="Настроить прокси" data-configured="1" data-state-draft="Есть несохраненные изменения. До сохранения подключение использует прежнюю конфигурацию." data-state-saved="Конфигурация сохранена. Проверка подключения выполняется при включении прокси." data-state-empty="Внешний прокси еще не настроен." data-error-host="Укажите IP-адрес или домен без протокола, пути и учетных данных." data-error-port="Укажите порт от 1 до 65535." data-error-credentials="Проверьте логин и пароль: для выбранной авторизации нужны оба значения.">
+               data-protocol="socks5" data-auth="none" data-save="Сохранить прокси" data-busy="Подождите…" data-state-busy="Сохранение…" data-power-label="Настроить" data-power-configure="Настроить прокси" data-configured="1" data-state-draft="Есть несохраненные изменения." data-state-saved="Прокси сохранен" data-state-empty="Введите адрес и порт прокси." data-error-host="Укажите IP-адрес или домен без протокола, пути и учетных данных." data-error-port="Укажите порт от 1 до 65535." data-error-credentials="Проверьте логин и пароль: для выбранной авторизации нужны оба значения.">
             <span class="t-strong t-wrap" data-ui-text="externalProxy.title">Внешний прокси</span>
-            <span class="t-caption t-wrap" data-ui-text="externalProxy.route">Введите параметры внешнего прокси. Выбранный VPN-сервер сохранится отдельно.</span>
-            <div class="proxy-field">
-              <span class="t-small" data-ui-text="externalProxy.protocol">Протокол прокси</span>
-              <button class="btn-select" data-open="external-editor-2-protocol" aria-label="Протокол прокси"><span data-select-label>SOCKS5</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+            <div class="proxy-fields" data-proxy-collapsed hidden>
+              <span class="t-caption" data-ui-text="externalProxy.state.saved" role="status">Прокси сохранен</span>
+              <button class="btn-primary" data-proxy-edit data-ui-text="externalProxy.edit">Изменить прокси</button>
             </div>
-            <label class="proxy-field">
-              <span class="t-small t-wrap" data-ui-text="externalProxy.host">IP-адрес или домен</span>
-              <input class="input" data-proxy-input="host" aria-label="IP-адрес или домен" placeholder="proxy.example.com" autocomplete="off" value="proxy.example.com">
-            </label>
-            <label class="proxy-field">
-              <span class="t-small t-wrap" data-ui-text="externalProxy.port">Порт внешнего прокси</span>
-              <input class="input" data-proxy-input="port" aria-label="Порт внешнего прокси" inputmode="numeric" maxlength="5" value="1080" autocomplete="off">
-            </label>
-            <div class="proxy-field">
-              <span class="t-small t-wrap" data-ui-text="externalProxy.auth">Способ авторизации</span>
-              <button class="btn-select" data-open="external-editor-2-auth" aria-label="Способ авторизации"><span data-select-label data-ui-text="externalProxy.auth.none">Без авторизации</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
-            </div>
-            <div class="proxy-fields" data-proxy-auth-fields hidden>
+            <div class="proxy-fields" data-proxy-editor>
+              <div class="proxy-field">
+                <span class="t-small" data-ui-text="externalProxy.protocol">Протокол прокси</span>
+                <button class="btn-select" data-open="external-editor-2-protocol" aria-label="Протокол прокси"><span data-select-label>SOCKS5</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+              </div>
               <label class="proxy-field">
-                <span class="t-small" data-ui-text="externalProxy.username">Логин</span>
-                <input class="input" data-proxy-input="username" aria-label="Логин" autocomplete="off">
+                <span class="t-small t-wrap" data-ui-text="externalProxy.host">IP-адрес или домен</span>
+                <input class="input" data-proxy-input="host" aria-label="IP-адрес или домен" placeholder="proxy.example.com" autocomplete="off" value="proxy.example.com">
               </label>
               <label class="proxy-field">
-                <span class="t-small" data-ui-text="externalProxy.password">Пароль</span>
-                <input class="input" type="password" data-proxy-input="password" aria-label="Пароль" autocomplete="new-password">
+                <span class="t-small t-wrap" data-ui-text="externalProxy.port">Порт внешнего прокси</span>
+                <input class="input" data-proxy-input="port" aria-label="Порт внешнего прокси" inputmode="numeric" maxlength="5" value="1080" autocomplete="off">
               </label>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.secrets.note">Логин и пароль сохраняются в защищенном хранилище ОС и не включаются в отчет.</span>
+              <div class="proxy-field">
+                <span class="t-small t-wrap" data-ui-text="externalProxy.auth">Способ авторизации</span>
+                <button class="btn-select" data-open="external-editor-2-auth" aria-label="Способ авторизации"><span data-select-label data-ui-text="externalProxy.auth.none">Без авторизации</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+              </div>
+              <div class="proxy-fields" data-proxy-auth-fields hidden>
+                <label class="proxy-field">
+                  <span class="t-small" data-ui-text="externalProxy.username">Логин</span>
+                  <input class="input" data-proxy-input="username" aria-label="Логин" autocomplete="off">
+                </label>
+                <label class="proxy-field">
+                  <span class="t-small" data-ui-text="externalProxy.password">Пароль</span>
+                  <input class="input" type="password" data-proxy-input="password" aria-label="Пароль" autocomplete="new-password">
+                </label>
+              </div>
+              <span class="t-caption t-wrap" data-ui-text="externalProxy.encryption.short" data-proxy-encryption="plain">HTTP и SOCKS5 не шифруют соединение до прокси.</span>
+              <span class="t-caption t-warning t-wrap" data-proxy-error role="alert" hidden></span>
+              <button class="btn-primary" data-proxy-save data-ui-text="externalProxy.save">Сохранить прокси</button>
+              <span class="t-caption t-wrap" data-proxy-state role="status"></span>
             </div>
-            <div class="proxy-notes">
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.transport.socks5" data-proxy-transport="socks5">TCP через SOCKS5. UDP доступен только при поддержке UDP ASSOCIATE внешним прокси; успешный TCP этого не подтверждает.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.transport.http" data-proxy-transport="http" hidden>HTTP CONNECT и HTTPS-прокси передают TCP. UDP этим подключением не поддерживается.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.encryption.plain" data-proxy-encryption="plain">HTTP и SOCKS5 сами не шифруют участок до прокси, включая авторизацию. HTTPS сайта защищает его содержимое отдельно.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.encryption.tls" data-proxy-encryption="tls" hidden>HTTPS шифрует участок от устройства до прокси с проверкой сертификата. Дальнейшую защиту соединения с сайтом определяет HTTPS самого сайта.</span>
-              <span class="t-caption t-wrap" data-ui-text="externalProxy.scope">Режим не перехватывает весь трафик и DNS системы. Собственный DNS браузера и программы без прокси могут идти отдельно. Разрешенные исключения сайтов и локальной сети продолжают действовать.</span>
-            </div>
-            <span class="t-caption t-warning t-wrap" data-proxy-error role="alert" hidden></span>
-            <button class="btn-primary" data-proxy-save data-ui-text="externalProxy.save">Сохранить прокси</button>
-            <span class="t-caption t-wrap" data-proxy-state role="status"></span>
-            <span class="t-caption t-wrap" data-ui-text="externalProxy.local.note">Локальный HTTP/SOCKS-порт приложения и системный прокси настраиваются отдельно в «Подключение и ядро».</span>
-            <button class="btn-link" data-nav="06-advanced.html" data-ui-text="externalProxy.local.open" style="align-self: flex-start">Подключение и ядро</button>
           </div>
         </div>
 
@@ -430,10 +432,20 @@
       <div class="pg-page-end"></div>
     </div>
 
+    <div class="dialog" id="dlg-vpn-2" role="dialog" aria-modal="true" aria-label="Перейти в режим VPN?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.vpnMode.title">Перейти в режим VPN?</div>
+      <p class="t-small t-wrap" data-ui-text="dialog.vpnMode.text">Активное подключение сменится на выбранный VPN-сервер. Настройки прокси сохранятся.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.vpnMode.keep">Оставить прокси</button>
+        <button class="btn-secondary" data-confirm-yes data-ui-text="dialog.vpnMode.switch">Перейти на VPN</button>
+      </div>
+    </div>
+
     <div class="dialog" id="dlg-proxy-2" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
       <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
       <div class="t-status t-wrap">Перейти в режим прокси?</div>
-      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)"><span data-os="phone">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</span><span data-os="desktop" data-ui-text="externalProxy.dialog.text">После перехода блок при обрыве работать не будет. Прокси охватывает только использующие его приложения. Текущее подключение сменится на внешний прокси; если он еще не настроен, подключение завершится. VPN-сервер и его настройки сохранятся.</span></p>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)"><span data-os="phone">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</span><span data-os="desktop" data-ui-text="externalProxy.dialog.text">Блок при обрыве работать не будет. Текущее подключение сменится на внешний прокси, если он настроен. Настройки VPN сохранятся.</span></p>
       <div class="dialog-actions stack">
         <button class="btn-primary" data-close>Оставить VPN</button>
         <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>

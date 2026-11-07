@@ -38,20 +38,33 @@ public sealed class DesktopHost
         _settings = settings;
         desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
-        var icon = new TrayIcon { Menu = tray.Menu, ToolTipText = tray.ToolTip, Icon = Icon(tray) };
-        icon.Clicked += (_, _) => Show();
-        tray.PropertyChanged += (_, _) =>
+        if (OperatingSystem.IsMacOS() && MacStatusItem.IsMainThread())
         {
-            icon.ToolTipText = tray.ToolTip;
-            icon.Icon = Icon(tray);
-        };
+            var statusItem = new MacStatusItem(tray, Show);
+            desktop.Exit += (_, _) => statusItem.Dispose();
+            if (app.TryGetFeature(typeof(IActivatableLifetime)) is IActivatableLifetime activatable)
+            {
+                activatable.Activated += OnActivation;
+                desktop.Exit += (_, _) => activatable.Activated -= OnActivation;
+            }
+        }
+        else
+        {
+            var icon = new TrayIcon { Menu = tray.Menu, ToolTipText = tray.ToolTip, Icon = Icon(tray) };
+            icon.Clicked += (_, _) => Show();
+            tray.PropertyChanged += (_, _) =>
+            {
+                icon.ToolTipText = tray.ToolTip;
+                icon.Icon = Icon(tray);
+            };
+            TrayIcon.SetIcons(app, [icon]);
+            desktop.Exit += (_, _) => icon.Dispose();
+        }
         tray.ShowWindowRequested += (_, _) => Show();
         tray.QuitRequested += (_, _) => Quit();
 
         // Установщик обновления запущен, окно откроется после него само (AppRelauncher): закрыться, освободив свои файлы.
         updates.RestartRequested += (_, _) => Dispatcher.UIThread.Post(Quit);
-        TrayIcon.SetIcons(app, [icon]);
-        desktop.Exit += (_, _) => icon.Dispose();
 
         notices.Attach(window, Show);
         window.Closing += OnClosing;
@@ -63,6 +76,14 @@ public sealed class DesktopHost
         if (!minimized || !settings.Current.OnboardingDone)
         {
             desktop.MainWindow = window;
+        }
+    }
+
+    private void OnActivation(object? sender, ActivatedEventArgs e)
+    {
+        if (e.Kind == ActivationKind.Reopen)
+        {
+            Show();
         }
     }
 

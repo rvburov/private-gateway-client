@@ -107,7 +107,7 @@ public sealed class SettingsPageTests : IDisposable
         var dialog = overlay.Dialog.ShouldNotBeNull();
         (dialog.Title, dialog.PrimaryText, dialog.SecondaryText).ShouldBe(("Перейти в режим прокси?", "Оставить VPN", "Перейти на прокси"));
         dialog.IsSecondaryDanger.ShouldBeTrue();
-        dialog.Text.ShouldContain("блок при обрыве работать не будет");
+        dialog.Text.ShouldContain("Блок при обрыве работать не будет");
         (page.IsVpnMode, page.IsProxyMode, proxy.IsChecked).ShouldBe((true, false, false), "до ответа режим прежний и переключатель стоит на VPN");
         Build().GetRequiredService<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Vpn);
 
@@ -122,9 +122,17 @@ public sealed class SettingsPageTests : IDisposable
         Dispatcher.UIThread.RunJobs();
 
         (page.IsProxyMode, proxy.IsChecked).ShouldBe((true, true));
-        page.IsVpnMode = true;
+        var vpn = window.GetVisualDescendants().OfType<RadioButton>().Single(b => b.Name == "VpnMode");
+        Press(window, vpn);
+        (page.IsProxyMode, vpn.IsChecked).ShouldBe((true, false), "до подтверждения прокси остается выбранным");
+        overlay.Dialog.ShouldNotBeNull().PrimaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
-        (page.IsVpnMode, overlay.Dialog).ShouldBe((true, null), "обратно на VPN — без вопроса");
+        page.IsProxyMode.ShouldBeTrue("отказ сохраняет режим прокси");
+
+        Press(window, vpn);
+        overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        (page.IsVpnMode, vpn.IsChecked, overlay.Dialog).ShouldBe((true, true, null));
     }
 
     [AvaloniaFact]

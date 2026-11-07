@@ -6,98 +6,96 @@
              x:Class="PrivateGateway.Client.UI.Views.ExternalProxyEditorView"
              x:DataType="vm:ExternalProxyEditorViewModel">
   <!-- Внешний прокси — адрес выхода, а не локальный вход ядра. Черновик сохраняется одной операцией. -->
-  <StackPanel x:Name="ExternalProxyEditorBody" Spacing="10" Margin="0,4,0,0" IsEnabled="{Binding !IsBusy}">
+  <StackPanel Spacing="10" Margin="0,4,0,0">
     <TextBlock Classes="strong" Text="{l:L externalProxy.title}" TextWrapping="Wrap" />
-    <TextBlock Classes="caption" Text="{l:L externalProxy.route}" TextWrapping="Wrap" />
-    <StackPanel Spacing="5">
-      <TextBlock Classes="small" Text="{l:L externalProxy.protocol}" />
-      <Button x:Name="ExternalProxyProtocol" Classes="select" HorizontalAlignment="Stretch"
-              HorizontalContentAlignment="Stretch" Command="{Binding ToggleProtocolCommand}"
-              AutomationProperties.Name="{l:L externalProxy.protocol}">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Text="{Binding ProtocolText}" VerticalAlignment="Center" />
-          <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14"
-                  StrokeThickness="2.6" Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" />
-        </Grid>
-      </Button>
-      <Popup PlacementTarget="{Binding #ExternalProxyProtocol}" Placement="BottomEdgeAlignedRight"
-             IsOpen="{Binding IsProtocolOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
-        <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
-                BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
-                CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
-          <ItemsControl ItemsSource="{Binding ProtocolOptions}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
-                <Button Classes="option" Padding="14,10" Classes.current="{Binding IsCurrent}" Command="{Binding ChooseCommand}"
-                        Content="{Binding Label}" HorizontalAlignment="Stretch" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </Border>
-      </Popup>
+    <StackPanel Spacing="6" IsVisible="{Binding !IsEditing}">
+      <TextBlock x:Name="ExternalProxySaveState" Classes="caption" Text="{l:L externalProxy.state.saved}" />
+      <Button x:Name="EditExternalProxy" Classes="primary" Command="{Binding EditCommand}"
+              Content="{l:L externalProxy.edit}" HorizontalAlignment="Stretch" />
     </StackPanel>
-    <StackPanel Spacing="5">
-      <TextBlock Classes="small" Text="{l:L externalProxy.host}" TextWrapping="Wrap" />
-      <TextBox x:Name="ExternalProxyHost" Classes="input" Text="{Binding Host}"
-               PlaceholderText="{l:L externalProxy.host.placeholder}" AutomationProperties.Name="{l:L externalProxy.host}" />
-    </StackPanel>
-    <StackPanel Spacing="5">
-      <TextBlock Classes="small" Text="{l:L externalProxy.port}" TextWrapping="Wrap" />
-      <TextBox x:Name="ExternalProxyPort" Classes="input" Text="{Binding Port}" MaxLength="5"
-               AutomationProperties.Name="{l:L externalProxy.port}" />
-    </StackPanel>
-    <StackPanel Spacing="5">
-      <TextBlock Classes="small" Text="{l:L externalProxy.auth}" TextWrapping="Wrap" />
-      <Button x:Name="ExternalProxyAuthentication" Classes="select" HorizontalAlignment="Stretch"
-              HorizontalContentAlignment="Stretch" Command="{Binding ToggleAuthenticationCommand}"
-              AutomationProperties.Name="{l:L externalProxy.auth}">
-        <Grid ColumnDefinitions="*,Auto">
-          <TextBlock Text="{Binding AuthenticationText}" VerticalAlignment="Center" />
-          <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14"
-                  StrokeThickness="2.6" Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" />
-        </Grid>
-      </Button>
-      <Popup PlacementTarget="{Binding #ExternalProxyAuthentication}" Placement="BottomEdgeAlignedRight"
-             IsOpen="{Binding IsAuthenticationOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
-        <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
-                BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
-                CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
-          <ItemsControl ItemsSource="{Binding AuthenticationOptions}">
-            <ItemsControl.ItemTemplate>
-              <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
-                <Button Classes="option" Padding="14,10" Classes.current="{Binding IsCurrent}" Command="{Binding ChooseCommand}"
-                        Content="{Binding Label}" HorizontalAlignment="Stretch" />
-              </DataTemplate>
-            </ItemsControl.ItemTemplate>
-          </ItemsControl>
-        </Border>
-      </Popup>
-    </StackPanel>
-    <StackPanel x:Name="ExternalProxyCredentials" Spacing="10" IsVisible="{Binding RequiresCredentials}">
+    <StackPanel x:Name="ExternalProxyEditorBody" Spacing="10" IsEnabled="{Binding !IsBusy}" IsVisible="{Binding IsEditing}">
       <StackPanel Spacing="5">
-        <TextBlock Classes="small" Text="{l:L externalProxy.username}" />
-        <TextBox x:Name="ExternalProxyUsername" Classes="input" Text="{Binding Username}"
-                 AutomationProperties.Name="{l:L externalProxy.username}" />
+        <TextBlock Classes="small" Text="{l:L externalProxy.protocol}" />
+        <Button x:Name="ExternalProxyProtocol" Classes="select" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch" Command="{Binding ToggleProtocolCommand}"
+                AutomationProperties.Name="{l:L externalProxy.protocol}">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding ProtocolText}" VerticalAlignment="Center" />
+            <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14"
+                    StrokeThickness="2.6" Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" />
+          </Grid>
+        </Button>
+        <Popup PlacementTarget="{Binding #ExternalProxyProtocol}" Placement="BottomEdgeAlignedRight"
+               IsOpen="{Binding IsProtocolOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
+          <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                  BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                  CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+            <ItemsControl ItemsSource="{Binding ProtocolOptions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                  <Button Classes="option" Padding="14,10" Classes.current="{Binding IsCurrent}" Command="{Binding ChooseCommand}"
+                          Content="{Binding Label}" HorizontalAlignment="Stretch" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </Popup>
       </StackPanel>
       <StackPanel Spacing="5">
-        <TextBlock Classes="small" Text="{l:L externalProxy.password}" />
-        <TextBox x:Name="ExternalProxyPassword" Classes="input" Text="{Binding Password}" PasswordChar="●"
-                 AutomationProperties.Name="{l:L externalProxy.password}" />
+        <TextBlock Classes="small" Text="{l:L externalProxy.host}" TextWrapping="Wrap" />
+        <TextBox x:Name="ExternalProxyHost" Classes="input" Text="{Binding Host}"
+                 PlaceholderText="{l:L externalProxy.host.placeholder}" AutomationProperties.Name="{l:L externalProxy.host}" />
       </StackPanel>
-      <TextBlock Classes="caption" Text="{l:L externalProxy.secrets.note}" TextWrapping="Wrap" />
+      <StackPanel Spacing="5">
+        <TextBlock Classes="small" Text="{l:L externalProxy.port}" TextWrapping="Wrap" />
+        <TextBox x:Name="ExternalProxyPort" Classes="input" Text="{Binding Port}" MaxLength="5"
+                 AutomationProperties.Name="{l:L externalProxy.port}" />
+      </StackPanel>
+      <StackPanel Spacing="5">
+        <TextBlock Classes="small" Text="{l:L externalProxy.auth}" TextWrapping="Wrap" />
+        <Button x:Name="ExternalProxyAuthentication" Classes="select" HorizontalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch" Command="{Binding ToggleAuthenticationCommand}"
+                AutomationProperties.Name="{l:L externalProxy.auth}">
+          <Grid ColumnDefinitions="*,Auto">
+            <TextBlock Text="{Binding AuthenticationText}" VerticalAlignment="Center" />
+            <c:Icon Grid.Column="1" Data="{StaticResource Icon.ChevronDown}" Width="14" Height="14"
+                    StrokeThickness="2.6" Margin="6,0,0,0" Foreground="{StaticResource PgBrush.Accent.Text}" />
+          </Grid>
+        </Button>
+        <Popup PlacementTarget="{Binding #ExternalProxyAuthentication}" Placement="BottomEdgeAlignedRight"
+               IsOpen="{Binding IsAuthenticationOpen, Mode=TwoWay}" IsLightDismissEnabled="True">
+          <Border Background="{StaticResource PgBrush.Surface.Solid}" Padding="6" Margin="8"
+                  BorderBrush="{StaticResource PgBrush.Line.Border}" BorderThickness="1"
+                  CornerRadius="{StaticResource PgRadius.Card}" BoxShadow="{StaticResource PgShadow.Popup}">
+            <ItemsControl ItemsSource="{Binding AuthenticationOptions}">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:ChoiceOptionViewModel">
+                  <Button Classes="option" Padding="14,10" Classes.current="{Binding IsCurrent}" Command="{Binding ChooseCommand}"
+                          Content="{Binding Label}" HorizontalAlignment="Stretch" />
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+          </Border>
+        </Popup>
+      </StackPanel>
+      <StackPanel x:Name="ExternalProxyCredentials" Spacing="10" IsVisible="{Binding RequiresCredentials}">
+        <StackPanel Spacing="5">
+          <TextBlock Classes="small" Text="{l:L externalProxy.username}" />
+          <TextBox x:Name="ExternalProxyUsername" Classes="input" Text="{Binding Username}"
+                   AutomationProperties.Name="{l:L externalProxy.username}" />
+        </StackPanel>
+        <StackPanel Spacing="5">
+          <TextBlock Classes="small" Text="{l:L externalProxy.password}" />
+          <TextBox x:Name="ExternalProxyPassword" Classes="input" Text="{Binding Password}" PasswordChar="●"
+                   AutomationProperties.Name="{l:L externalProxy.password}" />
+        </StackPanel>
+      </StackPanel>
+      <TextBlock Classes="caption" Text="{l:L externalProxy.encryption.short}" IsVisible="{Binding IsUnencrypted}" TextWrapping="Wrap" />
+      <TextBlock Classes="caption" Text="{Binding SaveState}" TextWrapping="Wrap" />
+      <TextBlock x:Name="ExternalProxyError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
+                 Foreground="{StaticResource PgBrush.Status.Warning.Badge}" TextWrapping="Wrap" />
+      <Button x:Name="SaveExternalProxy" Classes="primary" Command="{Binding SaveCommand}"
+              Content="{Binding SaveText}" HorizontalAlignment="Stretch" />
     </StackPanel>
-    <StackPanel Spacing="5">
-      <TextBlock Classes="caption" Text="{Binding TransportNote}" TextWrapping="Wrap" />
-      <TextBlock Classes="caption" Text="{Binding EncryptionNote}" TextWrapping="Wrap" />
-      <TextBlock Classes="caption" Text="{l:L externalProxy.scope}" TextWrapping="Wrap" />
-    </StackPanel>
-    <TextBlock x:Name="ExternalProxyError" Classes="caption" Text="{Binding Error}" IsVisible="{Binding HasError}"
-               Foreground="{StaticResource PgBrush.Status.Warning.Badge}" TextWrapping="Wrap" />
-    <Button x:Name="SaveExternalProxy" Classes="primary" Command="{Binding SaveCommand}"
-            Content="{Binding SaveText}" HorizontalAlignment="Stretch" />
-    <TextBlock x:Name="ExternalProxySaveState" Classes="caption" Text="{Binding SaveState}" TextWrapping="Wrap" />
-    <TextBlock Classes="caption" Text="{l:L externalProxy.local.note}" TextWrapping="Wrap" />
-    <Button Classes="link" Command="{Binding OpenLocalSettingsCommand}" Content="{l:L externalProxy.local.open}"
-            HorizontalAlignment="Left" />
   </StackPanel>
 </UserControl>

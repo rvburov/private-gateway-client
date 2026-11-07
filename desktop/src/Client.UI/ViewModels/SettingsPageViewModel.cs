@@ -29,7 +29,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
         _navigator = navigator;
         _gateway = gateway;
         _overlay = overlay;
-        ExternalProxy = new ExternalProxyEditorViewModel(settings, externalProxy, navigator);
+        ExternalProxy = new ExternalProxyEditorViewModel(settings, externalProxy);
         settings.Changed += OnSettingsChanged;
         Loc.Instance.LanguageChanged += OnLanguageChanged;
         Advanced =
@@ -48,17 +48,14 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 
     // ── Режим ────────────────────────────────────────────────────────────────
 
-    /// <summary>Режим VPN — без вопроса: он только усиливает защиту.</summary>
-    public bool IsVpnMode
+    public bool IsVpnMode => S.Mode == ConnectionMode.Vpn;
+
+    [RelayCommand]
+    private async Task ChooseVpnAsync()
     {
-        get => S.Mode == ConnectionMode.Vpn;
-        set
+        if (!IsVpnMode && await SafetyDialogs.ConfirmVpnModeAsync(_overlay).ConfigureAwait(true))
         {
-            // Снятие отметки VPN — часть выбора «Только прокси»: тот спрашивает сам (ChooseProxyCommand).
-            if (value)
-            {
-                Set(s => s with { Mode = ConnectionMode.Vpn });
-            }
+            Set(s => s with { Mode = ConnectionMode.Vpn });
         }
     }
 

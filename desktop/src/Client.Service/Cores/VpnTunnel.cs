@@ -254,10 +254,32 @@ public sealed class VpnTunnel : IAsyncDisposable
         {
             // Вход Xray в своем сетевом пространстве отсюда не виден — тогда по строке «Xray … started»: ее ядро
             // печатает, когда входы уже слушают. Ретранслятор — тоже по строке готовности.
-            await WaitAsync(() => !xrayCore.HasExited && Volatile.Read(ref xrayStarted) == 1 && (netns is null
-                    ? Listens(link.Port) && (!request.Connection.VpnSystemProxy || Listens(request.Connection.ProxyPort))
-                    : Volatile.Read(ref xrayStarted) == 1) && relayReady(),
-                "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken).ConfigureAwait(false);
+            string? waitingFor = null;
+            await WaitAsync(XrayReady, "Xray", xrayCore, timeout - time.GetElapsedTime(started), time, cancellationToken,
+                () => waitingFor).ConfigureAwait(false);
+
+            bool XrayReady()
+            {
+                if (xrayCore.HasExited || Volatile.Read(ref xrayStarted) != 1)
+                {
+                    return false;
+                }
+
+                if (netns is null && !Listens(link.Port))
+                {
+                    waitingFor = "Xray запустился, но локальный вход туннеля на 127.0.0.1 не отвечает";
+                    return false;
+                }
+
+                if (netns is null && request.Connection.VpnSystemProxy && !Listens(request.Connection.ProxyPort))
+                {
+                    waitingFor = "Xray запустился, но локальный вход системного прокси на 127.0.0.1 не отвечает";
+                    return false;
+                }
+
+                waitingFor = "Xray запустился, но ретранслятор sing-box не готов";
+                return relayReady();
+            }
 
             // IPv6 через туннель — только если сервер его открывает: иначе соединения IPv6 принимал бы TUN, а рвал сервер, и
             // программа не перешла бы на IPv4. С сервером Xray соединяется по IPv6 — у него IPv6 есть, проверять нечего: без
@@ -616,7 +638,7 @@ public sealed class VpnTunnel : IAsyncDisposable
     }
 
     private static async Task WaitAsync(Func<bool> ready, string name, CoreProcess core, TimeSpan left, TimeProvider time,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, Func<string?>? timeoutMessage = null)
     {
         cancellationToken.ThrowIfCancellationRequested();
         var started = time.GetTimestamp();
@@ -629,7 +651,7 @@ public sealed class VpnTunnel : IAsyncDisposable
 
             if (time.GetElapsedTime(started) >= left)
             {
-                throw new TunnelException($"{name} не поднялся за {left.TotalSeconds:0} с");
+                throw new TunnelException(timeoutMessage?.Invoke() ?? $"{name} не поднялся за {left.TotalSeconds:0} с");
             }
 
             await Task.Delay(TimeSpan.FromMilliseconds(100), time, cancellationToken).ConfigureAwait(false);
@@ -642,10 +664,9 @@ public sealed class VpnTunnel : IAsyncDisposable
         try
         {
             using var probe = new TcpClient();
-            probe.Connect(IPAddress.Loopback, port);
-            return true;
+            return probe.ConnectAsync(IPAddress.Loopback, port).Wait(TimeSpan.FromMilliseconds(100));
         }
-        catch (SocketException)
+        catch (AggregateException e) when (e.InnerException is SocketException)
         {
             return false;
         }

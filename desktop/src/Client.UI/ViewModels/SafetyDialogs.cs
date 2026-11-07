@@ -34,6 +34,17 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.proxyMode.switch"])
         { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
+    /// <summary>Вернуться к сохраненному VPN-профилю после подтверждения смены подключения.</summary>
+    public static async Task<bool> ConfirmVpnModeAsync(OverlayViewModel overlay) =>
+        await overlay.AskAsync(new DialogViewModel(
+            DialogKind.Warning,
+            "Icon.Shield",
+            "Icon.Mark.Alert",
+            Loc.Instance["dialog.vpnMode.title"],
+            Loc.Instance["dialog.vpnMode.text"],
+            Loc.Instance["dialog.vpnMode.keep"],
+            Loc.Instance["dialog.vpnMode.switch"])).ConfigureAwait(true) == DialogChoice.Secondary;
+
     /// <summary>
     /// «Раздельный режим» — после подтверждения, как «Только прокси» (просьба пользователя 2026-11-05): программы и сайты из
     /// списков «Мимо VPN» уходят мимо туннеля и блока при обрыве. Безопасный ответ — основная кнопка.

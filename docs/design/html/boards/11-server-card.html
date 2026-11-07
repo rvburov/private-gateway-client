@@ -124,7 +124,7 @@
   спрашивает подтверждение. «Поделиться» доступна только у сервера, добавленного ссылкой или из списка серверов (у демо-серверов ключа нет):
   QR-код со ссылкой, предупреждение о ключе и «Копировать ссылку»; «Скрыть QR» возвращает сведения. Щелчок мимо листа и крестик
   закрывают его, «⋯» в списке открывает снова. У выбранного сервера метка и кнопка внизу идут за щитом: защита включена —
-  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления. Отдельный пример десктопа в режиме внешнего прокси показывает «Выбран для VPN» и «Подключить VPN»: выбор сохранен, но этот VPN-сервер сейчас не используется.</p>
+  «Активен» и «Используется сейчас», выключена — «Выбран» и «Подключиться»; от этого же зависит текст подтверждения удаления. Отдельный пример десктопа в режиме внешнего прокси показывает «Выбран для VPN» и «Подключить VPN»: выбор сохранен, а «Подключить VPN» просит подтвердить смену режима.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Карточка · сервер в работе">
@@ -290,7 +290,7 @@
       <div class="sc-bottom">
           <div class="sc-inuse" data-show-state="connected connecting reconnecting blocked paused"><i data-icon="Chip.Ok" data-stroke="2.4" data-size="18"></i>Используется сейчас</div>
           <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="off error strict">Подключиться</button>
-          <button class="btn-primary sc-connect" data-close data-set-state="connected" data-show-state="proxy" data-ui-text="externalProxy.vpn.connect">Подключить VPN</button>
+          <button class="btn-primary sc-connect" data-open="sc-vpn-from-proxy" data-show-state="proxy" data-ui-text="externalProxy.vpn.connect">Подключить VPN</button>
         <div class="sc-tiles">
             <button class="btn-secondary sc-tile" data-goto="rename"><i data-icon="Edit" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Переименовать</span></button>
             <button class="btn-secondary sc-tile" disabled title="Поделиться можно сервером, добавленным ссылкой или из списка серверов: в ссылке есть ключ доступа."><i data-icon="Qr" data-stroke="1.9" data-size="18"></i><span class="pg-ellipsis">Поделиться</span></button>
@@ -300,6 +300,16 @@
     </div>
 
     <!-- Удаление: диалог поверх листа -->
+    <div class="dialog sc-dialog" id="sc-vpn-from-proxy" role="dialog" aria-modal="true" aria-label="Перейти в режим VPN?">
+      <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.vpnMode.title">Перейти в режим VPN?</div>
+      <div class="t-small t-wrap sc-dialog-text" data-ui-text="dialog.vpnMode.text">Активное подключение сменится на выбранный VPN-сервер. Настройки прокси сохранятся.</div>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-open="sc-card-1-proxy" data-ui-text="dialog.vpnMode.keep">Оставить прокси</button>
+        <button class="btn-secondary" data-confirm-yes data-set-state="connected" data-ui-text="dialog.vpnMode.switch">Перейти на VPN</button>
+      </div>
+    </div>
+
     <div class="dialog sc-dialog" id="sc-delete-1-proxy">
       <div class="dialog-icon danger"><i data-icon="Trash" data-stroke="1.9" data-size="26"></i></div>
       <div class="t-status t-wrap">Удалить сервер «Нидерланды 01»?</div>

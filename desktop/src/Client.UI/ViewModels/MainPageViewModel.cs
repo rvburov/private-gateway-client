@@ -647,7 +647,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         Chips[1].Update(protection.Dns, paused, Status.IsProxy && !paused ? "proxy" : null);
         // IPv6 в режиме VPN: через туннель (сервер его открывает) или мимо него — свои заголовок, подпись и пояснение.
         Chips[2].Update(protection.Ipv6, paused,
-            protection.Ipv6Tunnel ? "tunnel"
+            Status.IsProxy ? "proxy" : protection.Ipv6Tunnel ? "tunnel"
             : Status.Mode == ConnectionMode.Vpn && Status.State == ConnectionState.Connected && protection.Ipv6 == CheckState.Warning ? "outside"
             : null);
         Chips[3].Update(protection.KillSwitch, paused);

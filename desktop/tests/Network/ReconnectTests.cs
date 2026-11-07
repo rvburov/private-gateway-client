@@ -122,11 +122,10 @@ public sealed partial class ReconnectTests
     [Fact]
     public async Task Network_change_checks_the_server_at_once_and_skips_the_rest_of_the_pause()
     {
-        // Пробы раз в час и паузы по часу: успеть может только смена сети. Другой VPN режиму прокси не помеха.
+        // Пробы раз в час и паузы по часу: успеть может только смена сети.
         var hour = TimeSpan.FromHours(1);
         var network = new FakeNetwork();
-        var routes = new FakeRoutes { Routes = [new DefaultRoute("wg0", IsTunnel: true)] };
-        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network, routes);
+        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, TimeSpan.FromSeconds(2), hour, hour, hour), network);
         using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
         await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
         await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
@@ -151,6 +150,24 @@ public sealed partial class ReconnectTests
 
         (await rig.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).State
             .ShouldBe(V1.ConnectionState.Connected, "сервер отвечает — смена сети ничего не ломает");
+    }
+
+    [Fact]
+    public async Task A_foreign_default_tunnel_stops_an_active_proxy_on_network_change()
+    {
+        var hour = TimeSpan.FromHours(1);
+        var network = new FakeNetwork();
+        var routes = new FakeRoutes();
+        await using var rig = await ProxyRig.CreateAsync(new ReconnectTiming(hour, hour, hour, hour, hour), network, routes);
+        using var watch = rig.Service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await rig.Service.Client.ConnectAsync(ServiceIpcTests.Request(rig.Definition, XrayKit.FreePort()), cancellationToken: Ct);
+        await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
+
+        routes.Routes = [new DefaultRoute("wg0", IsTunnel: true)];
+        network.Raise();
+
+        var stopped = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Error, rig.Service.Journal))[^1];
+        stopped.Error.Code.ShouldBe(ErrorCodes.OtherVpn);
     }
 
     [Fact]

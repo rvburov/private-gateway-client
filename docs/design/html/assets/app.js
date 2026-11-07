@@ -411,9 +411,10 @@
     form.querySelectorAll("[data-proxy-auth-fields]").forEach(function (fields) {
       fields.hidden = form.dataset.auth !== "password";
     });
-    form.querySelectorAll("[data-proxy-transport]").forEach(function (note) {
-      note.hidden = (form.dataset.protocol === "socks5" ? "socks5" : "http") !== note.dataset.proxyTransport;
-    });
+    var collapsed = form.dataset.configured === "1" && form.dataset.editing !== "1";
+    var editor = form.querySelector("[data-proxy-editor]");
+    var summary = form.querySelector("[data-proxy-collapsed]");
+    if (editor && summary) { editor.hidden = collapsed; summary.hidden = !collapsed; }
     form.querySelectorAll("[data-proxy-encryption]").forEach(function (note) {
       note.hidden = (form.dataset.protocol === "https" ? "tls" : "plain") !== note.dataset.proxyEncryption;
     });
@@ -470,6 +471,7 @@
     // Короткая имитация ожидания показывает IsBusy редактора; настоящего обращения к хранилищу здесь нет.
     setTimeout(function () {
       form.dataset.configured = "1";
+      delete form.dataset.editing;
       delete form.dataset.saving;
       form.querySelectorAll("input, button").forEach(function (control) { control.disabled = false; });
       save.textContent = form.dataset.save;
@@ -490,6 +492,12 @@
       return;
     }
     if (!app) { return; }
+    if (el.matches("[data-proxy-edit]")) {
+      var proxyEditor = el.closest("[data-external-proxy]");
+      proxyEditor.dataset.editing = "1";
+      updateExternalProxy(proxyEditor, false);
+      return;
+    }
     if (el.matches("[data-proxy-save]")) { saveExternalProxy(el.closest("[data-external-proxy]")); return; }
     if (el.matches("[data-close]")) { closeAll(app); }
     if (el.matches("[data-confirm-yes]")) {
