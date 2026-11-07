@@ -17,11 +17,23 @@ build() {
 check() {
   python3 - "$output/bin/Client.UI/release/PrivateGateway.dll" "$1" <<'PY'
 import os, subprocess, sys
-result = subprocess.run(['dotnet', sys.argv[1], '--check-tray'], env={**os.environ, 'NSZombieEnabled': 'YES', 'PG_STARTUP_TRACE': '1'},
-                        capture_output=True, text=True, timeout=30)
+expected = sys.argv[2]
+try:
+    result = subprocess.run(['dotnet', sys.argv[1], '--check-tray'],
+                            env={**os.environ, 'NSZombieEnabled': 'YES', 'PG_STARTUP_TRACE': '1'},
+                            capture_output=True, text=True, timeout=30)
+except subprocess.TimeoutExpired as error:
+    stdout = error.stdout.decode(errors='replace') if isinstance(error.stdout, bytes) else error.stdout or ''
+    stderr = error.stderr.decode(errors='replace') if isinstance(error.stderr, bytes) else error.stderr or ''
+    print(stdout)
+    print(stderr)
+    # NSZombie может оставить AppKit работающим после ошибки вместо немедленного SIGABRT.
+    # Один тайм-аут не считается воспроизведением: обязательна диагностика освобожденного объекта.
+    assert expected == 'fail' and 'deallocated instance' in stderr, 'Трей завис без ожидаемой ошибки владения'
+    print('Мутант без retain: зависание после обращения к освобожденному значку')
+    sys.exit(0)
 print(result.stdout)
 print(result.stderr)
-expected = sys.argv[2]
 if expected == 'pass':
     assert result.returncode == 0, f'Трей упал: {result.returncode}'
     assert 'Трей macOS:' in result.stdout, 'Проверка не дошла до конца'
