@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using Avalonia.Controls;
+using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using PrivateGateway.Client.UI.ViewModels;
@@ -214,31 +215,38 @@ internal sealed class MacStatusItem : IDisposable
         Send(_target, Selector("release"));
     }
 
-    // Только отдельный процесс проверки на macOS CI: настоящий AppKit, без окна, службы и изменений сети.
-    internal static void CheckLifetime(TrayViewModel tray)
+    // Только отдельный процесс CI: тот же запуск после первого кадра и настоящий цикл AppKit, служба — имитация.
+    internal static void CheckLifetime(IClassicDesktopStyleApplicationLifetime desktop)
     {
-        var pool = Send(Class("NSAutoreleasePool"), Selector("new"));
-        var item = new MacStatusItem(tray, () => { });
-        Send(pool, Selector("drain"));
-        using (item)
+        var item = _current ?? throw new InvalidOperationException("Нативный значок не создан");
+        var turns = 0;
+        var timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(100) };
+        timer.Tick += (_, _) =>
         {
-            for (var i = 0; i < 8; i++)
+            // Между тактами AppKit очищает свои autorelease pools — как при обычном запуске приложения.
+            Localization.Loc.Instance.SetLanguage(turns % 2 == 0 ? "en" : "ru");
+            item.Update();
+            if (Send(item._item, Selector("button")) != item._button || Send(item._button, Selector("image")) == 0)
             {
-                Localization.Loc.Instance.SetLanguage(i % 2 == 0 ? "en" : "ru");
-                Dispatcher.UIThread.RunJobs();
-                item.Update();
-                if (Send(item._item, Selector("button")) != item._button || Send(item._button, Selector("image")) == 0)
-                {
-                    throw new InvalidOperationException("Значок не пережил очистку autorelease pool");
-                }
+                throw new InvalidOperationException("Значок не пережил очистку autorelease pool");
             }
 
+            if (++turns < 8)
+            {
+                return;
+            }
+
+            timer.Stop();
             // Обновление уже в очереди при завершении не должно обращаться к освобожденной кнопке.
             Dispatcher.UIThread.Post(item.Update);
-        }
-
-        Dispatcher.UIThread.RunJobs();
-        item.Dispose();
+            item.Dispose();
+            Dispatcher.UIThread.RunJobs();
+            item.Dispose();
+            Console.WriteLine("Трей macOS: значок пережил очистку памяти, обновление и завершение");
+            desktop.Shutdown();
+        };
+        desktop.Exit += (_, _) => timer.Stop();
+        timer.Start();
     }
 
     [StructLayout(LayoutKind.Sequential)]

@@ -76,7 +76,14 @@ public partial class App : Avalonia.Application
                 desktop.Exit += (_, _) => Services.GetRequiredService<IUserProxyController>().Shutdown();
                 ready();
                 StartupTiming.Mark("ready");
-                StartBackground(startup.Paths);
+                if (startup.CheckTray)
+                {
+                    MacStatusItem.CheckLifetime(desktop);
+                }
+                else
+                {
+                    StartBackground(startup.Paths);
+                }
             }, show: !startup.Minimized, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -153,4 +160,4 @@ public partial class App : Avalonia.Application
 }
 
 /// <summary>С чем запущена программа: папка данных, замок одной копии (null — в дизайнере), запуск в трей, демо-режим.</summary>
-internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized, bool Demo);
+internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized, bool Demo, bool CheckTray = false);

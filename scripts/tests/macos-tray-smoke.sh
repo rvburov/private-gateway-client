@@ -1,5 +1,5 @@
 #!/bin/bash
-# Только машина CI с AppKit: настоящий значок без запуска окна, службы, TUN и изменения сети.
+# Только машина CI с AppKit: настоящий запуск окна с имитацией службы, без TUN и изменения сети.
 # Сначала исправленный код; затем мутант без retain обязан упасть, после возврата исходника — снова успех.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
@@ -17,7 +17,7 @@ build() {
 check() {
   python3 - "$output/bin/Client.UI/release/PrivateGateway.dll" "$1" <<'PY'
 import os, subprocess, sys
-result = subprocess.run(['dotnet', sys.argv[1], '--check-tray'], env={**os.environ, 'NSZombieEnabled': 'YES'},
+result = subprocess.run(['dotnet', sys.argv[1], '--check-tray'], env={**os.environ, 'NSZombieEnabled': 'YES', 'PG_STARTUP_TRACE': '1'},
                         capture_output=True, text=True, timeout=30)
 print(result.stdout)
 print(result.stderr)

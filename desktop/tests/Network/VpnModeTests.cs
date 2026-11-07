@@ -1125,18 +1125,19 @@ public sealed partial class VpnModeTests
         rig.KillSwitch.IsEnabled.ShouldBeTrue("трафик стоит, пока пользователь не решит");
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(rig.Lan.Url, seconds: 2));
         await Should.ThrowAsync<InvalidOperationException>(() => rig.Netns.CurlAsync(new Uri("http://1.1.1.1/"), seconds: 2), "ядра остановлены");
-        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e =>
-            e.Message == "PGC-NET-010: включился другой VPN: туннель с маршрутом ко всему интернету — подключение остановлено, блок при обрыве держит трафик");
+        const string stoppedMessage = "PGC-NET-010: включился другой VPN: туннель с маршрутом ко всему интернету — подключение остановлено, блок при обрыве держит трафик";
         stopped.OtherClients.Select(c => (c.Program, c.Sign)).ShouldBe([(string.Empty, V1.OtherClientSign.Adapter)],
             "экран покажет туннель другого клиента — признаком, без имени адаптера");
 
-        // Ядра останавливаются после «Ошибки», блок без туннеля встает следом.
-        for (var i = 0; i < 100 && rig.KillSwitch.Last!.TunnelInterface is not null; i++)
+        // Итоговая запись появляется после остановки ядер и применения блока, а не в первом снимке «Ошибки».
+        for (var i = 0; i < 100 && (rig.KillSwitch.Last!.TunnelInterface is not null
+            || !service.Journal.Tail(ServiceJournal.Capacity).Any(e => e.Message == stoppedMessage)); i++)
         {
             await Task.Delay(100, Ct);
         }
 
         rig.KillSwitch.Last!.TunnelInterface.ShouldBeNull("туннеля нет — блок без разрешения ему: на Windows так закрыта и пересылка");
+        service.Journal.Tail(ServiceJournal.Capacity).ShouldContain(e => e.Message == stoppedMessage);
 
         // «Продолжить (не рекомендуется)»: выбор держится и на ходу.
         var despite = VpnRequest(rig.Definition);
