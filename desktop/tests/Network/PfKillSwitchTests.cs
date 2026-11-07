@@ -11,7 +11,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// синтаксис и загрузку проверяет pf, а сеть машины CI не закрывается.
 /// </summary>
 [Collection(FirewallSerial.Name)]
-public sealed class PfKillSwitchTests : IDisposable
+public sealed partial class PfKillSwitchTests : IDisposable
 {
     private static readonly IPAddress Server = IPAddress.Parse("198.51.100.20");
 
