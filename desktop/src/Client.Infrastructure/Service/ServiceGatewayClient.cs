@@ -569,7 +569,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    /// <summary>Запрос отключения: в строгом режиме защита выключается, а сеть остается закрытой.</summary>
+    /// <summary>Запрос отключения: включенный Kill Switch сохраняет сеть закрытой.</summary>
     public static V1.DisconnectRequest Disconnect(AppSettings settings) => new() { KeepBlock = ConnectionController.KeepsBlock(settings) };
 
     /// <summary>Пауза началась — в ответе службы есть срок; службы нет — паузы нет.</summary>

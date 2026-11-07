@@ -115,3 +115,15 @@
 Регрессия — `PrivateGatewayCompatibilityTests.Https`: прямой HTTPS-контроль с точным сертификатом, TCP Vision/XHTTP,
 прокси/VPN-входы и включенная/выключенная фрагментация, TLS 1.3 на Linux и отдельный TLS 1.2. Первые неудачные
 стенды без исправного прямого HTTPS не считались доказательством дефекта приложения.
+
+## 08.11.2026 — системный DNS macOS для TUN
+
+Задача: устранить привязку DNS туннеля к физическому интерфейсу основной сети.
+Прочитаны исходники Apple configd, коммит `585b7f2fca293f4642d21d15c5daf187f63c4796`:
+[ip_plugin.c](https://github.com/apple-oss-distributions/configd/blob/585b7f2fca293f4642d21d15c5daf187f63c4796/Plugins/IPMonitor/ip_plugin.c),
+[dns-configuration.c](https://github.com/apple-oss-distributions/configd/blob/585b7f2fca293f4642d21d15c5daf187f63c4796/Plugins/IPMonitor/dns-configuration.c).
+Лицензия исходников — APSL-2.0. Код не переносится: собственная реализация использует формат динамического
+хранилища (дополнительный DNS с `SupplementalMatchDomains` и `SupplementalMatchOrders`, без InterfaceName).
+Проверка: прежняя реализация воспроизвела таймаут системного резолвера на обоих стеках TUN в CI
+`42414978050`; отдельный UDP-запрос и HTTP по IP там же проходили. Повторный тест проверяет имя через
+резолвер ОС, HTTP по имени и восстановление записей. Решение: собственная DNS-запись, без подмены DNS Wi-Fi.

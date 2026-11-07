@@ -191,7 +191,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
 
         shell.Overlay.Dialog.PrimaryCommand.Execute(null);
         await remove;
-        WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
+        WaitFor(() => shell.Protection.Status.StrictBlock);
 
         store.Selected.ShouldBeNull("другой сервер выбирает пользователь");
     }

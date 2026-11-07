@@ -202,12 +202,13 @@ public sealed class GatewayHostTests
     }
 
     [Fact]
-    public void Disconnect_asks_the_service_to_keep_the_block_only_in_strict_mode()
+    public void Disconnect_asks_the_service_to_keep_the_block_when_kill_switch_is_on()
     {
         var strict = AppSettings.Default with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = ProtectionSettings.Default with { StrictMode = true } };
 
         ServiceGatewayClient.Disconnect(strict).KeepBlock.ShouldBeTrue("строгий режим: защита выключается, сеть остается закрытой");
-        ServiceGatewayClient.Disconnect(strict with { Protection = ProtectionSettings.Default }).KeepBlock.ShouldBeFalse();
+        ServiceGatewayClient.Disconnect(strict with { Protection = ProtectionSettings.Default }).KeepBlock.ShouldBeTrue();
+        ServiceGatewayClient.Disconnect(strict with { KillSwitch = false }).KeepBlock.ShouldBeFalse();
         ServiceGatewayClient.Disconnect(strict with { Mode = ConnectionMode.Proxy }).KeepBlock.ShouldBeFalse("в режиме прокси блока нет");
     }
 

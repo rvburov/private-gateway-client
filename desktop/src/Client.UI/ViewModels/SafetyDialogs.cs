@@ -75,18 +75,6 @@ internal static class SafetyDialogs
             Loc.Instance["pause.dialog.open"])
         { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
 
-    /// <summary>Строгий режим делает сеть недоступной без VPN — включать только осознанно.</summary>
-    /// <returns>true — пользователь выбрал «Включить».</returns>
-    public static async Task<bool> ConfirmStrictModeAsync(OverlayViewModel overlay) =>
-        await overlay.AskAsync(new DialogViewModel(
-            DialogKind.Info,
-            "Icon.Shield",
-            "Icon.Mark.Ok",
-            Loc.Instance["dialog.strict.title"],
-            Loc.Instance["dialog.strict.text"],
-            Loc.Instance["dialog.strict.on"],
-            Loc.Instance["dialog.cancel"])).ConfigureAwait(true) == DialogChoice.Primary;
-
     /// <summary>Прокси для локальной сети: чужие устройства пойдут в интернет через сервер пользователя.</summary>
     /// <returns>true — пользователь выбрал «Открыть».</returns>
     public static async Task<bool> ConfirmLanProxyAsync(OverlayViewModel overlay) =>

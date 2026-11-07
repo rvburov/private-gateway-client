@@ -8,49 +8,42 @@ using PrivateGateway.Client.Core.Platform;
 namespace PrivateGateway.Client.Platform.MacOS;
 
 /// <summary>
-/// DNS macOS для туннеля через динамическое хранилище configd (<c>scutil</c>): у основной сети
-/// (<c>State:/Network/Global/IPv4</c> → PrimaryService) серверы DNS заменяются адресом DNS туннеля — и в выданных DHCP
-/// (<c>State:</c>), и в заданных вручную (<c>Setup:</c>, если есть: они важнее); остальное в записи (домены поиска)
-/// остается. Прежние серверы — в файле копии в папке состояния службы: <see cref="Restore"/> возвращает их и после
-/// аварии службы (вызывается при ее запуске). Изменения динамического хранилища не переживают перезагрузку и не
-/// трогают настройки сети пользователя на диске.
+/// DNS macOS для туннеля: дополнительный резолвер всех имен в своей записи configd.
+/// DNS физической сети не подменяется: иначе macOS привязывает адрес туннеля к en0,
+/// и системные запросы идут мимо TUN. Запись не имеет InterfaceName; маршрут определяет TUN.
+/// Restore удаляет только свою запись и восстанавливает копию старого формата после обновления службы.
 /// </summary>
 /// <param name="scutil">Вызов scutil: команды на stdin → вывод.</param>
-/// <param name="backupFile">Файл копии прежних серверов.</param>
-/// <param name="primaryService">Основная сеть (тесты дают свою); null — из <c>State:/Network/Global/IPv4</c>.</param>
-public sealed class ScutilDns(Func<string, string> scutil, string backupFile, Func<string?>? primaryService = null) : ISystemDns
+/// <param name="backupFile">Копия DNS физической сети, оставленная прежней версией.</param>
+/// <param name="service">Имя собственной записи configd (тесты дают свое).</param>
+public sealed class ScutilDns(Func<string, string> scutil, string backupFile, string service = "PrivateGateway-Tunnel") : ISystemDns
 {
     private const string Program = "/usr/sbin/scutil";
 
-    /// <summary>scutil этой машины, копия — в папке состояния; не macOS — null.</summary>
+    /// <summary>scutil этой машины; не macOS — null.</summary>
     public static ScutilDns? ForThisMachine(string stateFolder) =>
         OperatingSystem.IsMacOS() && File.Exists(Program) ? new ScutilDns(Run, Path.Combine(stateFolder, "dns-backup.json")) : null;
 
     public void Apply(IPAddress server)
     {
         ArgumentNullException.ThrowIfNull(server);
-        var primary = (primaryService ?? PrimaryService)() ?? throw new IOException("У macOS нет основной сети — DNS туннеля прописать некуда");
-        Check(primary);
-        if (Load() is { } saved && saved.Service != primary)
-        {
-            // Основная сеть сменилась (другой Wi-Fi, кабель): прежней — ее DNS, новой — DNS туннеля.
-            Restore();
-        }
-
-        if (Load() is null)
-        {
-            Save(new Backup(primary, Servers(StateKey(primary)), Servers(SetupKey(primary))));
-        }
-
-        var backup = Load()!;
-        Set(StateKey(primary), [server.ToString()]);
-        if (backup.Setup is not null)
-        {
-            Set(SetupKey(primary), [server.ToString()]);
-        }
+        Check(service);
+        RestoreLegacy();
+        // Пустой домен охватывает все имена. Порядок — массив чисел, не строк; SearchOrder
+        // у записи без IPv4/IPv6 configd удаляет. Не добавлять InterfaceName физической сети.
+        scutil($"d.init\nd.add ServerAddresses * {Address(server.ToString())}\n"
+            + "d.add SupplementalMatchDomains * \"\"\nd.add SupplementalMatchOrders * # 1\n"
+            + $"set {StateKey(service)}\nquit\n");
     }
 
     public void Restore()
+    {
+        Check(service);
+        scutil($"remove {StateKey(service)}\nquit\n");
+        RestoreLegacy();
+    }
+
+    private void RestoreLegacy()
     {
         if (Load() is not { } backup)
         {
@@ -65,14 +58,6 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, Fu
         }
 
         File.Delete(backupFile);
-    }
-
-    /// <summary>Основная сеть из вывода <c>show State:/Network/Global/IPv4</c>: строка «PrimaryService : …»; нет — null.</summary>
-    public static string? ParsePrimary(string output)
-    {
-        ArgumentNullException.ThrowIfNull(output);
-        return output.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith("PrimaryService : ", StringComparison.Ordinal))
-            .Select(l => l["PrimaryService : ".Length..].Trim()).FirstOrDefault();
     }
 
     /// <summary>Серверы DNS из вывода <c>show</c>: элементы массива ServerAddresses; записи нет — null, массива нет — пусто.</summary>
@@ -122,10 +107,6 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, Fu
         ? server
         : throw new IOException("Непонятный адрес DNS: " + server);
 
-    private string? PrimaryService() => ParsePrimary(scutil("show State:/Network/Global/IPv4\nquit\n"));
-
-    private IReadOnlyList<string>? Servers(string key) => ParseServers(scutil($"show {key}\nquit\n"));
-
     // Только серверы: остальное в записи (домены поиска) берется из нее же.
     private void Set(string key, IReadOnlyList<string> servers) =>
         scutil($"d.init\nget {key}\nd.add ServerAddresses * {string.Join(' ', servers.Select(Address))}\nset {key}\nquit\n");
@@ -157,12 +138,6 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, Fu
         {
             return null;
         }
-    }
-
-    private void Save(Backup backup)
-    {
-        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(backupFile))!);
-        File.WriteAllText(backupFile, JsonSerializer.Serialize(backup));
     }
 
     private static string Run(string commands)

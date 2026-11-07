@@ -8,7 +8,7 @@ namespace PrivateGateway.Client.Tests.Network;
 /// <summary>
 /// Блок при обрыве на macOS: текст правил pf, как они ставятся и снимаются (с подделкой pfctl), и настоящий pfctl на
 /// macOS от root. Синтаксис политик — в неактивном якоре; настоящий трафик TUN — в отдельном якоре только на адаптере
-/// стенда (PfKillSwitchTests.Tunnel.cs). Основные маршруты и DNS машины CI не меняются.
+/// стенда (PfKillSwitchTests.Tunnel.cs). Основные маршруты не меняются; системный DNS временно применяется и восстанавливается в CI.
 /// </summary>
 [Collection(FirewallSerial.Name)]
 public sealed partial class PfKillSwitchTests : IDisposable

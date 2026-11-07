@@ -145,11 +145,11 @@ public class SimulatedGatewayClientTests
     }
 
     [Fact]
-    public async Task Strict_mode_disconnect_keeps_the_network_closed_until_strict_mode_is_off()
+    public async Task Kill_switch_disconnect_keeps_the_network_closed_until_switch_is_off()
     {
         var time = new FakeTimeProvider();
         var settings = new SettingsService(new MemorySettings());
-        settings.Update(s => s with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = s.Protection with { StrictMode = false } });
         using var gateway = new SimulatedGatewayClient(time, settings);
         var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
         time.Advance(SimulatedGatewayClient.ConnectDelay);
@@ -163,7 +163,7 @@ public class SimulatedGatewayClientTests
 
         gateway.Status.StrictBlock.ShouldBeTrue("строгий режим действует — повторное отключение сеть не открывает");
 
-        settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
+        settings.Update(s => s with { KillSwitch = false });
         await gateway.DisconnectAsync(TestContext.Current.CancellationToken);
 
         (gateway.Status.State, gateway.Status.StrictBlock).ShouldBe((ConnectionState.Off, false));
@@ -174,7 +174,7 @@ public class SimulatedGatewayClientTests
     {
         var time = new FakeTimeProvider();
         var settings = new SettingsService(new MemorySettings());
-        settings.Update(s => s with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn, KillSwitch = true, Protection = s.Protection with { StrictMode = false } });
         using var gateway = new SimulatedGatewayClient(time, settings);
         var connect = gateway.ConnectAsync(Server, TestContext.Current.CancellationToken);
         time.Advance(SimulatedGatewayClient.ConnectDelay);

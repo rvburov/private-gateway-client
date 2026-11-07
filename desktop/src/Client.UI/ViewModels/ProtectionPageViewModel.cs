@@ -13,7 +13,7 @@ namespace PrivateGateway.Client.UI.ViewModels;
 /// <summary>
 /// «Защита и утечки» по макету (доска 5): блок при обрыве, DNS, IPv6, локальная сеть. Сохраняется
 /// сразу; то, что ослабляет защиту, — с вопросом (выключить блок, открыть интернет для входа в
-/// Wi-Fi), строгий режим — тоже с вопросом: без VPN сети не будет совсем.
+/// Wi-Fi). Kill Switch сохраняет блок и после ручного отключения VPN.
 /// </summary>
 public sealed partial class ProtectionPageViewModel : ObservableObject
 {
@@ -77,7 +77,7 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
     [RelayCommand]
     private void FlipKillSwitch() => KillSwitch = !KillSwitch;
 
-    public string KillSwitchText => Loc.Instance.Format("prot.ks.text", Loc.Instance[
+    public string KillSwitchText => Loc.Instance.Format("desktop.prot.ks.text", Loc.Instance[
         OperatingSystem.IsWindows() ? "prot.firewall.windows" : OperatingSystem.IsMacOS() ? "prot.firewall.macos" : "prot.firewall.linux"]);
 
     public string? KillSwitchNote => CanKillSwitch ? null : Loc.Instance["prot.ks.proxy"];
@@ -103,28 +103,6 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         get => P.BootProtection;
         set => Set(p => p with { BootProtection = value });
     }
-
-    /// <summary>Строгий режим — часть блока при обрыве: без него недоступен.</summary>
-    public bool CanStrictMode => CanKillSwitch && KillSwitch;
-
-    public bool StrictMode
-    {
-        get => P.StrictMode;
-        set
-        {
-            if (!value || P.StrictMode)
-            {
-                Set(p => p with { StrictMode = value });
-                return;
-            }
-
-            _ = TurnStrictModeOnAsync();
-        }
-    }
-
-    /// <summary>Нажатие на переключатель: включение — через вопрос.</summary>
-    [RelayCommand]
-    private void FlipStrictMode() => StrictMode = !StrictMode;
 
     // ── DNS ──────────────────────────────────────────────────────────────────
 
@@ -276,14 +254,6 @@ public sealed partial class ProtectionPageViewModel : ObservableObject
         if (await SafetyDialogs.ConfirmKillSwitchOffAsync(_overlay).ConfigureAwait(true))
         {
             _settings.Update(s => s with { KillSwitch = false });
-        }
-    }
-
-    private async Task TurnStrictModeOnAsync()
-    {
-        if (await SafetyDialogs.ConfirmStrictModeAsync(_overlay).ConfigureAwait(true))
-        {
-            Set(p => p with { StrictMode = true });
         }
     }
 

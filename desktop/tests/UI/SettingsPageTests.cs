@@ -160,7 +160,7 @@ public sealed class SettingsPageTests : IDisposable
         Dispatcher.UIThread.RunJobs();
 
         Loc.Instance.Language.ShouldBe("en");
-        window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ShouldContain("Block internet if the VPN drops");
+        window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ShouldContain("Block internet without VPN");
         Build().GetRequiredService<SettingsService>().Current.Language.ShouldBe("en");
         Snapshot(window, "settings-en");
     }

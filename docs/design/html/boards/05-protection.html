@@ -23,7 +23,7 @@
   .card > .setting .setting-text.pg-gap-8 { gap: var(--pg-space-s); }
   .card > .setting .setting-text > .btn-select { max-width: none; }
 
-  /* Строгий режим — часть блока при обрыве (CanStrictMode); обнаружение устройств — только в разрешенной локальной сети */
+  /* Мобильный строгий режим зависит от блока; обнаружение устройств — от разрешенной локальной сети */
   .pg-page:has([data-ks]:not(.on)) [data-needs-ks] { opacity: .45; pointer-events: none; }
   .pg-page:has([data-lan]:not(.on)) [data-needs-lan] { opacity: .45; pointer-events: none; }
 
@@ -65,7 +65,7 @@
         <div class="setting">
           <div class="setting-text">
             <span class="setting-title">Kill Switch (fail-closed)</span>
-            <span class="setting-caption">Обрыв, сбой ядра или службы — весь трафик блокируется <span data-os-word="firewall">брандмауэром Windows</span>. Исключение: только адрес выбранного сервера.</span>
+            <span class="setting-caption"><span data-os="desktop">При обрыве и ручном отключении VPN сеть блокируется <span data-os-word="firewall">брандмауэром Windows</span>. Блок сохраняется до выключения Kill Switch.</span><span data-os="phone">Обрыв, сбой ядра или службы — весь трафик блокируется <span data-os-word="firewall">брандмауэром Windows</span>. Исключение: только адрес выбранного сервера.</span></span>
           </div>
           <button class="switch on" data-ks role="switch" aria-checked="true" aria-label="Kill Switch (fail-closed)" data-confirm-off="dlg-ks"></button>
         </div>
@@ -83,7 +83,7 @@
           </div>
           <button class="switch on" role="switch" aria-checked="true" aria-label="Защита при загрузке Windows"></button>
         </div>
-        <div class="setting">
+        <div class="setting" data-os="phone">
           <div class="setting-text">
             <span class="setting-title">Строгий режим</span>
             <span class="setting-caption">Блокировать сеть и при ручном отключении VPN.</span>
@@ -236,7 +236,7 @@
     <div class="dialog" id="dlg-ks" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
       <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
       <div class="t-status t-wrap">Выключить блок при обрыве?</div>
-      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Без VPN трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
       <div class="dialog-actions stack">
         <button class="btn-primary" data-close>Оставить включенным</button>
         <button class="btn-secondary danger" data-confirm-yes>Выключить</button>
@@ -244,7 +244,7 @@
     </div>
 
     <!-- Строгий режим: без VPN сети не будет совсем — включение с вопросом (синий значок) -->
-    <div class="dialog" id="dlg-strict" role="dialog" aria-modal="true" aria-label="Включить строгий режим?">
+    <div class="dialog" data-os="phone" id="dlg-strict" role="dialog" aria-modal="true" aria-label="Включить строгий режим?">
       <div class="dialog-icon accent"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="26"></i></div>
       <div class="t-status t-wrap">Включить строгий режим?</div>
       <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Интернет будет работать только через VPN — и после ручного отключения тоже. Чтобы выйти в сеть без VPN, выключите строгий режим.</p>

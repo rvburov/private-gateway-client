@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Net;
+using System.Text.Json;
 using PrivateGateway.Client.Platform.MacOS;
 
 namespace PrivateGateway.Client.Tests.Network;
@@ -20,79 +21,65 @@ public sealed class ScutilDnsTests : IDisposable
 
     private string Backup => Path.Combine(_root, "dns-backup.json");
 
-    [Fact]
-    public void Primary_network_dns_points_at_the_tunnel_and_comes_back_with_its_search_domains()
-    {
-        _store.Primary = "6A8B-11";
-        _store.Keys["State:/Network/Service/6A8B-11/DNS"] = new() { ["ServerAddresses"] = ["192.168.1.1", "fe80::1%en0"], ["SearchDomains"] = ["example.org"] };
-        var dns = new ScutilDns(_store.Run, Backup);
-
-        dns.Apply(Tunnel);
-        dns.Apply(Tunnel);
-
-        _store.Keys["State:/Network/Service/6A8B-11/DNS"]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
-        _store.Keys["State:/Network/Service/6A8B-11/DNS"]["SearchDomains"].ShouldBe(["example.org"], "домены поиска остаются");
-        _store.Keys.ShouldNotContainKey("Setup:/Network/Service/6A8B-11/DNS", "DNS вручную не задан — и не появляется");
-        File.Exists(Backup).ShouldBeTrue("копия прежнего — на случай аварии службы");
-
-        dns.Restore();
-
-        _store.Keys["State:/Network/Service/6A8B-11/DNS"]["ServerAddresses"].ShouldBe(["192.168.1.1", "fe80::1%en0"], "второй Apply копию не затер");
-        _store.Keys["State:/Network/Service/6A8B-11/DNS"]["SearchDomains"].ShouldBe(["example.org"]);
-        File.Exists(Backup).ShouldBeFalse();
-        dns.Restore();
-        _store.Scripts.Count(s => s.Contains("set ", StringComparison.Ordinal)).ShouldBe(3, "возвращать нечего — ничего не меняется");
-    }
+    private const string OwnKey = "State:/Network/Service/PrivateGateway-Tunnel/DNS";
 
     [Fact]
-    public void Manual_dns_is_overridden_too_and_a_new_primary_network_gets_the_tunnel_while_the_old_one_gets_its_dns_back()
+    public void Supplemental_dns_uses_the_tunnel_without_binding_to_the_physical_network()
     {
-        _store.Primary = "WIFI";
-        _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["192.168.1.1"] };
+        _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["192.168.1.1"], ["SearchDomains"] = ["example.org"] };
         _store.Keys["Setup:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["192.0.2.53"] };
         var dns = new ScutilDns(_store.Run, Backup);
 
         dns.Apply(Tunnel);
-        _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["172.19.0.2"], "заданный вручную DNS важнее выданного DHCP");
-
-        _store.Primary = "ETHERNET";
         dns.Apply(Tunnel);
 
-        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.168.1.1"], "прежней сети — ее DNS");
+        _store.Keys[OwnKey]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
+        _store.Keys[OwnKey]["SupplementalMatchDomains"].ShouldBe(["\"\""]);
+        _store.Scripts.ShouldContain(s => s.Contains("d.add SupplementalMatchOrders * # 1", StringComparison.Ordinal));
+        _store.Keys[OwnKey].ShouldNotContainKey("InterfaceName", "адрес туннеля нельзя привязать к Wi-Fi");
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.168.1.1"]);
         _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.0.2.53"]);
-        _store.Keys["State:/Network/Service/ETHERNET/DNS"]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["SearchDomains"].ShouldBe(["example.org"]);
+        File.Exists(Backup).ShouldBeFalse("DNS физической сети больше не меняется");
 
+        // DHCP сменил DNS во время VPN; новый экземпляр службы убирает только свою запись.
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"] = ["192.168.1.2"];
+        new ScutilDns(_store.Run, Backup).Restore();
         dns.Restore();
-        _store.Keys.ShouldNotContainKey("State:/Network/Service/ETHERNET/DNS", "записи не было — ее и нет");
+        _store.Keys.ShouldNotContainKey(OwnKey);
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.168.1.2"]);
+    }
+
+    [Fact]
+    public void Upgrade_restores_legacy_physical_dns_before_registering_the_supplemental_resolver()
+    {
+        _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["172.19.0.2"], ["SearchDomains"] = ["example.org"] };
+        _store.Keys["Setup:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["172.19.0.2"] };
+        File.WriteAllText(Backup, JsonSerializer.Serialize(new { Service = "WIFI", State = (string[])["192.168.1.1"], Setup = (string[])["192.0.2.53"] }));
+        var dns = new ScutilDns(_store.Run, Backup);
+        dns.Apply(Tunnel);
+
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.168.1.1"]);
+        _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.0.2.53"]);
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["SearchDomains"].ShouldBe(["example.org"]);
+        _store.Keys[OwnKey]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
+        File.Exists(Backup).ShouldBeFalse();
     }
 
     [Fact]
     public void Strange_answers_of_the_os_do_not_reach_the_commands()
     {
-        _store.Primary = "6A8B remove State:/Network/Global/DNS";
+        Should.Throw<IOException>(() => new ScutilDns(_store.Run, Backup, "bad; remove x").Apply(Tunnel));
+        _store.Scripts.ShouldBeEmpty();
+        File.WriteAllText(Backup, JsonSerializer.Serialize(new { Service = "WIFI", State = (string[])["192.168.1.1; remove x"], Setup = (string[]?)null }));
         Should.Throw<IOException>(() => new ScutilDns(_store.Run, Backup).Apply(Tunnel));
-
-        _store.Primary = null;
-        Should.Throw<IOException>(() => new ScutilDns(_store.Run, Backup).Apply(Tunnel)).Message.ShouldContain("основной сети");
-
-        _store.Primary = "WIFI";
-        _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["192.168.1.1; remove x"] };
-        var dns = new ScutilDns(_store.Run, Backup);
-        dns.Apply(Tunnel);
-        Should.Throw<IOException>(dns.Restore, "непонятный прежний адрес в команду не попадает");
+        _store.Scripts.ShouldBeEmpty("непонятный прежний адрес в команду не попадает");
+        File.Exists(Backup).ShouldBeTrue("не терять копию при отказе восстановления");
     }
 
     [Fact]
     public void Scutil_output_is_read_as_scutil_prints_it()
     {
-        ScutilDns.ParsePrimary("""
-            <dictionary> {
-              PrimaryInterface : en0
-              PrimaryService : 6A8B1F2C-1111-2222-3333-444455556666
-              Router : 192.168.1.1
-            }
-            """).ShouldBe("6A8B1F2C-1111-2222-3333-444455556666");
-        ScutilDns.ParsePrimary("  No such key\n").ShouldBeNull();
         ScutilDns.ParseServers("""
             <dictionary> {
               SearchDomains : <array> {
@@ -123,14 +110,12 @@ public sealed class ScutilDnsTests : IDisposable
         Scutil($"d.init\nd.add ServerAddresses * 192.0.2.53\nd.add SearchDomains * example.org\nset {key}\nquit\n");
         try
         {
-            var dns = new ScutilDns(Scutil, Backup, () => service);
-            dns.Apply(Tunnel);
-            var applied = Scutil($"show {key}\nquit\n");
-            ScutilDns.ParseServers(applied).ShouldBe(["172.19.0.2"]);
-            applied.ShouldContain("example.org");
-
-            dns.Restore();
-            ScutilDns.ParseServers(Scutil($"show {key}\nquit\n")).ShouldBe(["192.0.2.53"]);
+            // Копия старой версии: восстановление без регистрации резолвера машины.
+            File.WriteAllText(Backup, JsonSerializer.Serialize(new { Service = service, State = (string[])["192.0.2.54"], Setup = (string[]?)null }));
+            new ScutilDns(Scutil, Backup, service + "-own").Restore();
+            var restored = Scutil($"show {key}\nquit\n");
+            ScutilDns.ParseServers(restored).ShouldBe(["192.0.2.54"]);
+            restored.ShouldContain("example.org");
         }
         finally
         {

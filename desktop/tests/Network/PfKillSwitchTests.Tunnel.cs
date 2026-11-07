@@ -16,7 +16,7 @@ public sealed partial class PfKillSwitchTests
 {
     /// <summary>
     /// Настоящий TUN и pf: сайт и DNS отвечают за двумя Xray на петле. Маршруты только к адресу теста и DNS TUN,
-    /// системный DNS не меняется. Родительский якорь применяет правила только к тестовому TUN: остальная сеть CI открыта.
+    /// системный DNS временно направлен в TUN с восстановлением. Родительский якорь применяет правила только к тестовому TUN: остальная сеть CI открыта.
     /// Проверка без pf, с правилами программы и с запретом TUN отличает отказ туннеля от отказа его фильтрации.
     /// </summary>
     [Theory]
@@ -127,8 +127,14 @@ public sealed partial class PfKillSwitchTests
         {
             try
             {
-                systemDns.Restore();
-                pf.Disable();
+                try
+                {
+                    systemDns.Restore();
+                }
+                finally
+                {
+                    pf.Disable();
+                }
             }
             finally
             {
