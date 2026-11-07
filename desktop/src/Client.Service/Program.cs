@@ -1,5 +1,6 @@
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Platform.MacOS;
 using PrivateGateway.Client.Service;
 using PrivateGateway.Client.Service.Cores;
 using PrivateGateway.Client.Service.Ipc;
@@ -21,6 +22,11 @@ if (args.Contains("--install") || args.Contains("--uninstall"))
     var stateDir = Option("--state-dir") ?? ServiceSetup.DefaultStateFolder;
     try
     {
+        if (OperatingSystem.IsMacOS())
+        {
+            MacProcessSignals.UnblockChildExit();
+        }
+
         using var installationLock = ServiceSetup.LockInstallation(folder);
         if (args.Contains("--uninstall"))
         {

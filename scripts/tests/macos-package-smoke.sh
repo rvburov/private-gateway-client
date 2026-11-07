@@ -58,8 +58,10 @@ done
 notifications=$("$app/Contents/MacOS/PrivateGateway" --check-notifications) || fail "центр уведомлений: $notifications"
 echo "$notifications"
 
-# Как окно (ServiceInstaller): служба из пакета, от root, владелец — пользователь окна.
-sudo "$app/Contents/MacOS/PrivateGatewayService" --install --owner "$(id -u)"
+# Запрос прав из окна (osascript) передает установщику заблокированный SIGCHLD. Повторяем эту маску в CI.
+sudo /usr/bin/perl -MPOSIX=SIG_BLOCK,SIGCHLD,sigprocmask \
+  -e 'sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGCHLD)) or die "sigprocmask: $!"; exec @ARGV or die "exec: $!"' \
+  "$app/Contents/MacOS/PrivateGatewayService" --install --owner "$(id -u)"
 [ -f "$plist" ] || fail "нет $plist"
 sudo launchctl print "system/$label" | grep -q 'state = running' || fail "служба не работает: $(sudo launchctl print "system/$label" 2>&1 | head -20)"
 [ "$("$service/PrivateGatewayService" --version)" = "Private Gateway Service $version (IPC v1)" ] || fail "поставлена служба не $version"
