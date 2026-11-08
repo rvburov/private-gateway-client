@@ -195,7 +195,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     private void ShowProblem(ConnectionStatus status)
     {
         // Подтвержденный ответ установленной службы снимает старый экран ошибки. Начальный Off окна не считается ответом.
-        if (CurrentPage is ProblemPageViewModel { Code: ErrorCodes.ServiceNotRunning }
+        if (CurrentPage is ProblemPageViewModel { Code: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired }
             && _gateway.Service == ServiceKind.Installed && _gateway.HasReceivedStatus && status.ErrorCode is null)
         {
             Navigate(Pages.Home);

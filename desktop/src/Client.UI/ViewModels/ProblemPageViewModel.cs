@@ -98,17 +98,17 @@ public sealed partial class ProblemPageViewModel : ObservableObject
 
     private bool IsServiceError => Code == ErrorCodes.ServiceNotRunning;
 
-    public bool NeedsApproval => IsServiceError && Registration == ServiceAccess.RequiresApproval;
+    public bool NeedsApproval => (IsServiceError || IsAdmin) && Registration == ServiceAccess.RequiresApproval;
 
-    public bool CanCheckService => IsServiceError && _access.IsSupported && Registration != ServiceAccess.NotInstalled;
+    public bool CanCheckService => NeedsApproval || IsServiceError && _access.IsSupported && Registration != ServiceAccess.NotInstalled;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(NeedsApproval), nameof(IsPermission), nameof(IsCaution), nameof(IsService), nameof(Title), nameof(Text), nameof(Facts), nameof(CanInstall), nameof(CanCheckService), nameof(ProxyIsPrimary))]
+    [NotifyPropertyChangedFor(nameof(NeedsApproval), nameof(IsPermission), nameof(IsCaution), nameof(IsService), nameof(Title), nameof(Text), nameof(Facts), nameof(CanInstall), nameof(CanCheckService), nameof(ProxyIsPrimary), nameof(HasProxy), nameof(HasCancel))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     public partial ServiceAccess Registration { get; private set; } = ServiceAccess.Unknown;
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(ProxyIsPrimary))]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(ProxyIsPrimary), nameof(HasProxy))]
     [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(CheckServiceCommand))]
     public partial bool IsCheckingAccess { get; private set; }
 
@@ -137,7 +137,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// чужим VPN только туннель, который держит маршрут ко всему интернету. И системный прокси, если его поставила
     /// другая программа (читает окно: настройки пользователя), — когда служба не назвала его сама.
     /// </summary>
-    public IReadOnlyList<ProblemFact> Facts => IsServiceError && _access.IsSupported
+    public IReadOnlyList<ProblemFact> Facts => (IsServiceError || NeedsApproval) && _access.IsSupported
         ?
         [
             new(Loc.Instance["problem.fact.service"], Loc.Instance[Registration switch
@@ -183,13 +183,13 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         ];
 
     /// <summary>«Отмена» — только у «Нужны права администратора»: там уже есть рабочая служба.</summary>
-    public bool HasCancel => IsAdmin;
+    public bool HasCancel => IsAdmin && !NeedsApproval;
 
     /// <summary>
     /// Установить службу можно, если доступен установщик и на macOS подтверждено отсутствие службы.
     /// Уже установленной службе и другому VPN повторная установка не предлагается.
     /// </summary>
-    public bool CanInstall => _installer.IsAvailable && !IsConflict && !IsCheckingAccess
+    public bool CanInstall => _installer.IsAvailable && !IsConflict && !IsCheckingAccess && !NeedsApproval
         && (!IsServiceError || !_access.IsSupported || Registration == ServiceAccess.NotInstalled);
 
     /// <summary>«Установить службу» или, когда уже работает служба пользователя, «Запросить еще раз» (макет).</summary>
@@ -328,7 +328,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// <summary>Только чтение разрешения ОС: ошибка проверки не означает запрет или отсутствие установки.</summary>
     public async Task RefreshServiceAccessAsync()
     {
-        if (!IsServiceError || !_access.IsSupported)
+        if (!(IsServiceError || IsAdmin) || !_access.IsSupported)
         {
             return;
         }

@@ -82,6 +82,33 @@ public sealed class ProblemPageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task User_proxy_service_does_not_offer_reinstall_when_system_background_service_is_denied()
+    {
+        _answering.Add(User);
+        BackgroundAccess.IsSupported = true;
+        BackgroundAccess.Value = ServiceAccess.RequiresApproval;
+        Installer.IsAvailable = true;
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentPage is ProblemPageViewModel { NeedsApproval: true, IsCheckingAccess: false });
+        var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
+        page.Code.ShouldBe(ErrorCodes.AdminRequired);
+        Text(window, "ProblemTitle").ShouldBe("Разрешите фоновую работу службы");
+        Find<Button>(window, "Install").IsVisible.ShouldBeFalse();
+        Find<Button>(window, "OpenServiceSettings").IsVisible.ShouldBeTrue();
+        Find<Button>(window, "Cancel").IsVisible.ShouldBeFalse();
+        page.InstallCommand.CanExecute(null).ShouldBeFalse();
+        await page.CheckServiceCommand.ExecuteAsync(null);
+        Installer.Installs.ShouldBe(0);
+        shell.CurrentKey.ShouldBe(Pages.Problem);
+        BackgroundAccess.Value = ServiceAccess.Installed;
+        _answering.Add(Installed);
+        await page.CheckServiceCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        _installed.ShouldNotBeNull().Status.State.ShouldBe(ConnectionState.Off);
+    }
+
+    [AvaloniaFact]
     public async Task Unknown_service_permission_is_not_reported_as_denied_or_missing()
     {
         BackgroundAccess.IsSupported = true;
