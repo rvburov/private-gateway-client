@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Text;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Core.Platform;
 
 namespace PrivateGateway.Client.Infrastructure.Service;
 
@@ -10,7 +11,7 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// </summary>
 public sealed partial class MacServiceAccess(Func<bool> installed, Func<nint> status, Action openSettings) : IServiceAccess
 {
-    public const string PlistPath = "/Library/LaunchDaemons/io.github.rvburov.private-gateway.plist";
+    public const string PlistPath = "/Library/LaunchDaemons/" + MacAppIdentity.BundleIdentifier + ".plist";
     private const string ObjC = "/usr/lib/libobjc.A.dylib";
     private const string CoreFoundation = "/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation";
     private static readonly Lazy<nint> Framework = new(() => NativeLibrary.Load(

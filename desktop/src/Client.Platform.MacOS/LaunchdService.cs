@@ -28,15 +28,21 @@ public sealed class LaunchdService(
         OperatingSystem.IsMacOS() && File.Exists(Program) ? new LaunchdService(Run) : null;
 
     /// <summary>Описание службы: метка, команда — путь и параметры по отдельности (кавычки не нужны), запуск с ОС.</summary>
-    public static string Plist(string label, IReadOnlyList<string> command)
+    public static string Plist(string label, IReadOnlyList<string> command, string? bundleIdentifier = null)
     {
         ArgumentNullException.ThrowIfNull(command);
         var text = new StringBuilder()
             .Append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
             .Append("<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n")
             .Append("<plist version=\"1.0\">\n<dict>\n")
-            .Append("  <key>Label</key>\n  <string>").Append(SecurityElement.Escape(label)).Append("</string>\n")
-            .Append("  <key>ProgramArguments</key>\n  <array>\n");
+            .Append("  <key>Label</key>\n  <string>").Append(SecurityElement.Escape(label)).Append("</string>\n");
+        if (bundleIdentifier is not null)
+        {
+            text.Append("  <key>AssociatedBundleIdentifiers</key>\n  <array>\n    <string>")
+                .Append(SecurityElement.Escape(bundleIdentifier)).Append("</string>\n  </array>\n");
+        }
+
+        text.Append("  <key>ProgramArguments</key>\n  <array>\n");
         foreach (var argument in command)
         {
             text.Append("    <string>").Append(SecurityElement.Escape(argument)).Append("</string>\n");
@@ -57,10 +63,10 @@ public sealed class LaunchdService(
     public bool IsLoaded(string label) => launchctl(["print", "system/" + label]).Code == 0;
 
     /// <summary>Записать описание (права 0644); не запускает — это делает <see cref="Start"/>.</summary>
-    public void Register(string label, IReadOnlyList<string> command)
+    public void Register(string label, IReadOnlyList<string> command, string? bundleIdentifier = null)
     {
         var path = PlistPath(label);
-        File.WriteAllText(path, Plist(label, command));
+        File.WriteAllText(path, Plist(label, command, bundleIdentifier));
         if (!OperatingSystem.IsWindows())
         {
             File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead | UnixFileMode.OtherRead);

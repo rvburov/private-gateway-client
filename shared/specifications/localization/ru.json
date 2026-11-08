@@ -1,9 +1,9 @@
 {
   "problem.background.title": "Разрешите фоновую работу службы",
-  "problem.background.text": "Служба установлена, но macOS запретила ее фоновую работу. Откройте «Объекты входа и расширения» и включите PrivateGatewayService. Затем проверьте снова.",
+  "problem.background.text": "Служба установлена, но macOS запретила ее фоновую работу. Откройте «Объекты входа и расширения» и разрешите фоновую работу Private Gateway (или PrivateGatewayService). Затем проверьте снова.",
   "problem.background.open": "Открыть настройки macOS",
   "problem.background.retry": "Проверить снова",
-  "problem.background.open_failed": "Откройте Системные настройки → Основные → Объекты входа и расширения и включите PrivateGatewayService.",
+  "problem.background.open_failed": "Откройте Системные настройки → Основные → Объекты входа и расширения и разрешите фоновую работу Private Gateway (или PrivateGatewayService).",
   "problem.background.fact": "Фоновая работа",
   "problem.background.denied": "запрещена macOS",
   "problem.missing.title": "Служба не установлена",

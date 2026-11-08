@@ -1,9 +1,9 @@
 {
   "problem.background.title": "Allow the service to run in the background",
-  "problem.background.text": "The service is installed, but macOS has blocked it from running in the background. Open Login Items & Extensions and enable PrivateGatewayService. Then check again.",
+  "problem.background.text": "The service is installed, but macOS has blocked it from running in the background. Open Login Items & Extensions and allow Private Gateway (or PrivateGatewayService) to run in the background. Then check again.",
   "problem.background.open": "Open macOS settings",
   "problem.background.retry": "Check again",
-  "problem.background.open_failed": "Open System Settings → General → Login Items & Extensions and enable PrivateGatewayService.",
+  "problem.background.open_failed": "Open System Settings → General → Login Items & Extensions and allow Private Gateway (or PrivateGatewayService) to run in the background.",
   "problem.background.fact": "Background activity",
   "problem.background.denied": "blocked by macOS",
   "problem.missing.title": "Service is not installed",

@@ -77,7 +77,7 @@ public static class ServiceSetup
         : "private-gateway";
 
     /// <summary>Метка службы launchd на macOS.</summary>
-    public const string MacLabel = "io.github.rvburov.private-gateway";
+    public const string MacLabel = MacAppIdentity.BundleIdentifier;
 
     /// <summary>Защищенная папка службы: на запись — только администраторам или root.</summary>
     public static string DefaultFolder => OperatingSystem.IsWindows()
@@ -606,7 +606,7 @@ public static class ServiceSetup
     {
         public bool IsInstalled(string name) => launchd.IsInstalled(name);
 
-        public void Register(string name, IReadOnlyList<string> command) => launchd.Register(name, command);
+        public void Register(string name, IReadOnlyList<string> command) => launchd.Register(name, command, MacAppIdentity.BundleIdentifier);
 
         public void Start(string name) => launchd.Start(name);
 

@@ -11,4 +11,7 @@ public interface IAutostart
 
     /// <summary>Записать или убрать запуск вместе с ОС — с флагом «в трей», без окна.</summary>
     void Apply(bool enabled);
+
+    /// <summary>Обновить оформление существующей своей записи, не создавая и не включая автозапуск.</summary>
+    void RefreshMetadata() { }
 }

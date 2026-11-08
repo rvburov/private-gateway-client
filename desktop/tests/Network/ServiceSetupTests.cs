@@ -488,6 +488,23 @@ public sealed class ServiceSetupTests : IDisposable
     }
 
     [Fact]
+    public void Launchd_background_item_uses_the_app_bundle_identity()
+    {
+        var folder = Path.Combine(_root, "daemons-icon");
+        Directory.CreateDirectory(folder);
+        var launchd = new LaunchdService(_ => throw new InvalidOperationException("регистрация не запускает службу"), folder);
+        launchd.Register("io.example.pg", ["/Library/Application Support/Private Gateway/Service/svc", "--owner", "501"],
+            MacAppIdentity.BundleIdentifier);
+
+        var document = System.Xml.Linq.XDocument.Load(Path.Combine(folder, "io.example.pg.plist"));
+        var dictionary = document.Root!.Element("dict")!;
+        var key = dictionary.Elements("key").Single(e => e.Value == "AssociatedBundleIdentifiers");
+        key.ElementsAfterSelf().First().Elements("string").Select(e => e.Value).ShouldBe([MacAppIdentity.BundleIdentifier]);
+        ServiceSetup.MacLabel.ShouldBe(MacAppIdentity.BundleIdentifier);
+        LaunchdService.Plist("test", ["svc"], "io.example.A&B").ShouldContain("io.example.A&amp;B");
+    }
+
+    [Fact]
     public void Launchd_service_is_registered_loaded_reloaded_and_removed()
     {
         var daemons = Directory.CreateDirectory(Path.Combine(_root, "daemons")).FullName;

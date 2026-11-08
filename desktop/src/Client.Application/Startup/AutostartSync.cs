@@ -16,6 +16,11 @@ public sealed class AutostartSync(SettingsService settings, IAutostart autostart
     public void Start()
     {
         _last = settings.Current;
+        if (autostart.IsSupported)
+        {
+            autostart.RefreshMetadata();
+        }
+
         settings.Changed += (_, next) => OnChanged(next);
     }
 

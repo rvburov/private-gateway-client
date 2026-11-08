@@ -1,7 +1,10 @@
 using System.Runtime.Versioning;
 using System.Security;
+using System.Xml;
+using System.Xml.Linq;
 using Microsoft.Win32;
 using PrivateGateway.Client.Application.Startup;
+using PrivateGateway.Client.Core.Platform;
 
 namespace PrivateGateway.Client.Infrastructure.Startup;
 
@@ -97,7 +100,70 @@ public sealed class OsAutostart : IAutostart
         File.WriteAllText(EntryPath, _kind == AutostartKind.LaunchAgent ? LaunchAgent(_executable!) : DesktopEntry(_executable!));
     }
 
-    /// <summary>LaunchAgent: запустить при входе, путь — экранированный для XML.</summary>
+    /// <summary>
+    /// Миграция только существующего своего plist: путь, параметры, Disabled и RunAtLoad остаются прежними.
+    /// Удаленную пользователем запись не возвращает и разрешение macOS не меняет. Чужой или испорченный plist не трогает.
+    /// </summary>
+    public void RefreshMetadata()
+    {
+        if (!IsSupported || _kind != AutostartKind.LaunchAgent || !File.Exists(EntryPath))
+        {
+            return;
+        }
+
+        string? temporary = null;
+        try
+        {
+            if ((File.GetAttributes(EntryPath) & FileAttributes.ReparsePoint) != 0)
+            {
+                return;
+            }
+
+            using var reader = XmlReader.Create(EntryPath, new XmlReaderSettings { DtdProcessing = DtdProcessing.Ignore, XmlResolver = null });
+            var document = XDocument.Load(reader, LoadOptions.PreserveWhitespace);
+            reader.Close();
+            var dictionary = document.Root?.Element("dict");
+            XElement? Value(string name) => dictionary?.Elements("key").SingleOrDefault(k => k.Value == name)?.ElementsAfterSelf().FirstOrDefault();
+            if (Value("Label")?.Value != Identifier
+                || Value("ProgramArguments") is not { Name.LocalName: "array" } arguments
+                || !arguments.Elements().Select(e => e.Value).SequenceEqual([_executable!, MinimizedArgument]))
+            {
+                return;
+            }
+
+            // Другую явно заданную связь не подменяем. Обновление требуется только старым записям без этого ключа.
+            if (dictionary!.Elements("key").Any(k => k.Value == "AssociatedBundleIdentifiers"))
+            {
+                return;
+            }
+
+            dictionary.Add(new XElement("key", "AssociatedBundleIdentifiers"),
+                new XElement("array", new XElement("string", MacAppIdentity.BundleIdentifier)));
+            temporary = EntryPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+            document.Save(temporary);
+            File.Move(temporary, EntryPath, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or XmlException or InvalidOperationException)
+        {
+            // Неудача необязательной миграции оформления не мешает запуску окна.
+        }
+        finally
+        {
+            try
+            {
+                if (temporary is not null && File.Exists(temporary))
+                {
+                    File.Delete(temporary);
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                // Ошибка удаления временного файла тоже не должна мешать запуску окна.
+            }
+        }
+    }
+
+    /// <summary>LaunchAgent: запустить при входе; связать системную запись с именем и иконкой пакета.</summary>
     public static string LaunchAgent(string executable) => $"""
         <?xml version="1.0" encoding="UTF-8"?>
         <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -105,6 +171,8 @@ public sealed class OsAutostart : IAutostart
         <dict>
           <key>Label</key>
           <string>{Identifier}</string>
+          <key>AssociatedBundleIdentifiers</key>
+          <array><string>{MacAppIdentity.BundleIdentifier}</string></array>
           <key>ProgramArguments</key>
           <array>
             <string>{SecurityElement.Escape(executable)}</string>

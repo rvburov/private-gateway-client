@@ -22,6 +22,7 @@ on:
       - scripts/package-macos.sh
       - scripts/tests/macos-icon-smoke.sh
       - scripts/tests/macos-icon-compare.swift
+      - scripts/tests/macos-background-icon.swift
       - scripts/dmg-background.swift
       - scripts/tests/macos-package-smoke.sh
       - .github/workflows/release.yml

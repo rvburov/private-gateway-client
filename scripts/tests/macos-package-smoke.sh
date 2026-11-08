@@ -61,11 +61,34 @@ echo "$notifications"
 # Настоящий значок переживает очистку памяти AppKit и обновления состояния в собранном пакете.
 "$app/Contents/MacOS/PrivateGateway" --check-tray || fail "жизненный цикл значка macOS"
 
+# Finder регистрирует пакет обычного пользователя. На одноразовой машине CI делаем это явно до launchd.
+swift scripts/tests/macos-background-icon.swift "$app" --register
+
 # Запрос прав из окна (osascript) передает установщику заблокированный SIGCHLD. Повторяем эту маску в CI.
 sudo /usr/bin/perl -MPOSIX=SIG_BLOCK,SIGCHLD,sigprocmask \
   -e 'sigprocmask(SIG_BLOCK, POSIX::SigSet->new(SIGCHLD)) or die "sigprocmask: $!"; exec @ARGV or die "exec: $!"' \
   "$app/Contents/MacOS/PrivateGatewayService" --install --owner "$(id -u)"
 [ -f "$plist" ] || fail "нет $plist"
+[ "$(plutil -extract AssociatedBundleIdentifiers.0 raw "$plist")" = "$(plutil -extract CFBundleIdentifier raw "$app/Contents/Info.plist")" ] \
+  || fail "фоновая служба не связана с пакетом приложения"
+# Проверяется связь настоящей установленной службы и доступность иконки пакета через Launch Services.
+swift scripts/tests/macos-background-icon.swift "$app" "$plist"
+# BTM может не атрибутировать ad-hoc код без Team ID. Пишем отдельно фактический ответ системы,
+# не выдавая проверку plist и иконки пакета за проверку оформления системного списка.
+python3 - <<'BTM'
+import re
+import subprocess
+result = subprocess.run(["/usr/bin/sfltool", "dumpbtm"], capture_output=True, text=True, timeout=20)
+found = False
+for block in result.stdout.split("\n\n"):
+    if re.search(r"Identifier:\s+16\.io\.github\.rvburov\.private-gateway\s*$", block, re.M):
+        found = True
+        for line in block.splitlines():
+            if re.match(r"\s*(Name|Type|Parent Identifier):", line):
+                print("BTM " + line.strip())
+if not found:
+    print("BTM: запись недоступна; визуальная атрибуция этим прогоном не подтверждена")
+BTM
 sudo launchctl print "system/$label" | grep -q 'state = running' || fail "служба не работает: $(sudo launchctl print "system/$label" 2>&1 | head -20)"
 [ "$("$service/PrivateGatewayService" --version)" = "Private Gateway Service $version (IPC v1)" ] || fail "поставлена служба не $version"
 [ -x "$service/cores/xray/xray" ] && [ -x "$service/cores/sing-box/sing-box" ] || fail "ядра не скопированы к службе"
