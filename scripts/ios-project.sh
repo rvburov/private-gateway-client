@@ -22,5 +22,9 @@ if [ ! -x "$xcodegen" ]; then
   unzip -q -o "$tools/xcodegen.zip" -d "$tools"
 fi
 
+# Один источник отображаемой версии для десктопа, Android, приложения iOS и его расширения.
+PG_APP_VERSION=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' "$root/Directory.Build.props" | head -1)
+[[ "$PG_APP_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Некорректная общая версия: $PG_APP_VERSION" >&2; exit 1; }
+export PG_APP_VERSION
 "$xcodegen" generate --spec "$root/ios/project.yml" --quiet
 echo "Проект: ios/PrivateGateway.xcodeproj (XcodeGen $version)"

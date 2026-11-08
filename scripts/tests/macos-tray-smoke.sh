@@ -1,6 +1,6 @@
 #!/bin/bash
 # Только машина CI с AppKit: настоящий запуск окна с имитацией службы, без TUN и изменения сети.
-# Сначала исправленный код; затем мутант без retain обязан упасть, после возврата исходника — снова успех.
+# Сначала исправленный код; мутанты владения и разделителей обязаны упасть; после возврата исходника — успех.
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 [ "$(uname -s)" = Darwin ] || { echo 'Нужна macOS' >&2; exit 1; }
@@ -37,6 +37,10 @@ print(result.stderr)
 if expected == 'pass':
     assert result.returncode == 0, f'Трей упал: {result.returncode}'
     assert 'Трей macOS:' in result.stdout, 'Проверка не дошла до конца'
+elif expected == 'separators':
+    assert result.returncode != 0, 'Мутант разделителей выжил'
+    assert 'Разделители меню macOS:' in result.stderr, 'Мутант упал по другой причине'
+    print('Мутант разделителей: обычные пункты вместо линий обнаружены')
 else:
     assert result.returncode != 0, 'Мутант без retain выжил'
     assert 'deallocated instance' in result.stderr or 'Значок не пережил' in result.stderr, 'Мутант упал по другой причине'
@@ -56,6 +60,18 @@ path.write_text(source.replace(old, '_item = SendDouble(_bar, Selector("statusIt
 PY
 build
 check fail
+cp "$backup" "$source_file"
+python3 - "$source_file" <<'PY_MUTANT'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+source = path.read_text()
+old = ' && item is not NativeMenuItemSeparator'
+assert source.count(old) == 1
+path.write_text(source.replace(old, ''))
+PY_MUTANT
+build
+check separators
 cp "$backup" "$source_file"
 touch "$source_file"
 build

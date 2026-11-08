@@ -23,9 +23,15 @@ class CoroutineAgentArguments(@get:Classpath val agent: FileCollection) : Comman
     override fun asArguments(): Iterable<String> = listOf("-javaagent:${agent.singleFile.absolutePath}")
 }
 
-// Версия выпуска — из тега (`-PpgVersion=0.1.0-beta.1`, scripts/android-release-apk.sh); без нее — версия разработки.
+// Версия выпуска — из тега (-PpgVersion); по умолчанию общая версия всех платформ из Directory.Build.props.
 // versionCode растет с версией, а бета ниже своего выпуска: Android ставит обновление только с большим кодом.
 val releaseVersion: String? = providers.gradleProperty("pgVersion").orNull
+val repositoryVersion = providers.fileContents(rootProject.layout.projectDirectory.file("../Directory.Build.props"))
+    .asText.map { text ->
+        Regex("<Version>([^<]+)</Version>").find(text)?.groupValues?.get(1)
+            ?: error("В Directory.Build.props нет общей версии приложения")
+    }
+val applicationVersion = releaseVersion ?: repositoryVersion.get()
 
 fun versionCodeOf(version: String): Int {
     val match = Regex("""^(\d+)\.(\d+)\.(\d+)(?:-[0-9A-Za-z]+\.(\d+))?$""").matchEntire(version)
@@ -49,8 +55,8 @@ android {
         applicationId = "com.privategateway.client"
         minSdk = 28
         targetSdk = 36
-        versionCode = releaseVersion?.let(::versionCodeOf) ?: 1
-        versionName = releaseVersion ?: "0.1.0"
+        versionCode = versionCodeOf(applicationVersion)
+        versionName = applicationVersion
         // Проверки на эмуляторе и устройстве (androidTest): настоящий туннель — пункт 9.4.
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

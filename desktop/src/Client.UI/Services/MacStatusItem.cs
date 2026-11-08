@@ -109,7 +109,9 @@ internal sealed class MacStatusItem : IDisposable
         }
     }
 
-    private void OpenMenu()
+    private void OpenMenu() => WithMenu(menu => SendPointer(_item, Selector("popUpStatusItemMenu:"), menu));
+
+    private void WithMenu(Action<nint> useMenu)
     {
         _items = [.. _tray.Menu.Items];
         var menu = Send(Class("NSMenu"), Selector("new"));
@@ -118,7 +120,8 @@ internal sealed class MacStatusItem : IDisposable
         {
             for (var i = 0; i < _items.Length; i++)
             {
-                if (_items[i] is NativeMenuItem item)
+                // NativeMenuItemSeparator наследует NativeMenuItem: его заголовок «-» не является пунктом меню.
+                if (_items[i] is NativeMenuItem item && item is not NativeMenuItemSeparator)
                 {
                     var row = Send(Class("NSMenuItem"), Selector("new"));
                     SendPointer(row, Selector("setTitle:"), String(item.Header ?? string.Empty));
@@ -142,7 +145,7 @@ internal sealed class MacStatusItem : IDisposable
                 }
             }
 
-            SendPointer(_item, Selector("popUpStatusItemMenu:"), menu);
+            useMenu(menu);
         }
         finally
         {
@@ -215,6 +218,28 @@ internal sealed class MacStatusItem : IDisposable
         Send(_target, Selector("release"));
     }
 
+    // Проверяем уже созданные элементы AppKit, а не только модель меню Avalonia.
+    private bool CheckMenuSeparators()
+    {
+        var valid = true;
+        WithMenu(menu =>
+        {
+            valid = Send(menu, Selector("numberOfItems")) == _items.Length;
+            var separators = 0;
+            for (var i = 0; valid && i < _items.Length; i++)
+            {
+                var expected = _items[i] is NativeMenuItemSeparator;
+                var row = SendPointer(menu, Selector("itemAtIndex:"), i);
+                var actual = (Send(row, Selector("isSeparatorItem")) & 0xff) != 0;
+                valid &= actual == expected;
+                separators += actual ? 1 : 0;
+            }
+
+            valid &= separators == 4;
+        });
+        return valid;
+    }
+
     // Только отдельный процесс CI: тот же запуск после первого кадра и настоящий цикл AppKit, служба — имитация.
     internal static void CheckLifetime(IClassicDesktopStyleApplicationLifetime desktop)
     {
@@ -226,6 +251,14 @@ internal sealed class MacStatusItem : IDisposable
             // Между тактами AppKit очищает свои autorelease pools — как при обычном запуске приложения.
             Localization.Loc.Instance.SetLanguage(turns % 2 == 0 ? "en" : "ru");
             item.Update();
+            if (!item.CheckMenuSeparators())
+            {
+                timer.Stop();
+                Console.Error.WriteLine("Разделители меню macOS: вместо системных линий созданы обычные пункты");
+                desktop.Shutdown(1);
+                return;
+            }
+
             if (Send(item._item, Selector("button")) != item._button || Send(item._button, Selector("image")) == 0)
             {
                 throw new InvalidOperationException("Значок не пережил очистку autorelease pool");
@@ -242,7 +275,7 @@ internal sealed class MacStatusItem : IDisposable
             item.Dispose();
             Dispatcher.UIThread.RunJobs();
             item.Dispose();
-            Console.WriteLine("Трей macOS: значок пережил очистку памяти, обновление и завершение");
+            Console.WriteLine("Трей macOS: 4 системных разделителя; значок пережил очистку памяти, обновление и завершение");
             desktop.Shutdown();
         };
         desktop.Exit += (_, _) => timer.Stop();

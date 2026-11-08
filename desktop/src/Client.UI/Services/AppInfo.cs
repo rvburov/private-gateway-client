@@ -15,8 +15,8 @@ public static class AppInfo
         typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion.Split('+')[0] ?? "0.0.0";
 
     /// <summary>
-    /// Коммит исходников окна (<see cref="SemVer.Build"/>): сборки из исходников — все 0.1.0, и установленную службу из
-    /// прежних исходников окно узнает по нему.
+    /// Коммит исходников окна (<see cref="SemVer.Build"/>): сборки с одним номером версии могут отличаться;
+    /// установленную службу из прежних исходников окно узнает по коммиту.
     /// </summary>
     public static string Build { get; } =
         SemVer.Build(typeof(AppInfo).Assembly.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion);

@@ -369,11 +369,12 @@ jobs:
       - name: APK выпуска на временном ключе
         if: steps.app.outcome == 'success'
         run: |
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
           key="$RUNNER_TEMP/ci-release.p12"
           keytool -genkeypair -keystore "$key" -storetype PKCS12 -alias ci -keyalg RSA -keysize 2048 -validity 1 \
             -storepass ci-password -dname "CN=Private Gateway CI" -noprompt
           ANDROID_KEYSTORE_BASE64=$(base64 -w0 "$key") ANDROID_KEYSTORE_PASSWORD=ci-password ANDROID_KEY_ALIAS=ci \
-            ANDROID_KEY_PASSWORD=ci-password scripts/android-release-apk.sh 0.1.0-beta.1 "$RUNNER_TEMP/apk"
+            ANDROID_KEY_PASSWORD=ci-password scripts/android-release-apk.sh "$version" "$RUNNER_TEMP/apk"
           rm -f "$key"
 
       - if: steps.robolectric.outputs.cache-hit != 'true' && steps.app.outcome == 'success'
