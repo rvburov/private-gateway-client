@@ -22,8 +22,11 @@ plist="/Library/LaunchDaemons/$label.plist"
 service="/Library/Application Support/Private Gateway/Service"
 state="/Library/Application Support/Private Gateway/ServiceState"
 mnt=$(mktemp -d)
-apps=$(mktemp -d)
-trap 'hdiutil detach "$mnt" -quiet 2> /dev/null || true; rm -rf "$apps"' EXIT
+# Launch Services не обязана регистрировать приложения из временных каталогов. В CI повторяем
+# обычную установку в /Applications; существующий пакет никогда не заменяем.
+app="/Applications/Private Gateway.app"
+[ ! -e "$app" ] || { echo "В /Applications уже есть Private Gateway.app; проверка остановлена" >&2; exit 1; }
+trap 'hdiutil detach "$mnt" -quiet 2> /dev/null || true; sudo rm -rf "$app"' EXIT
 
 fail() {
   echo "НЕ ТАК: $*" >&2
@@ -37,10 +40,9 @@ hdiutil attach -nobrowse -readonly -mountpoint "$mnt" "$dmg" > /dev/null
 [ -d "$mnt/Private Gateway.app" ] || fail "в образе нет Private Gateway.app"
 [ "$(readlink "$mnt/Applications")" = /Applications ] || fail "в образе нет ярлыка на «Программы»"
 codesign --verify --deep --strict "$mnt/Private Gateway.app" || fail "подпись пакета в образе не цела"
-ditto "$mnt/Private Gateway.app" "$apps/Private Gateway.app"
+sudo ditto "$mnt/Private Gateway.app" "$app"
 hdiutil detach "$mnt" -quiet
 
-app="$apps/Private Gateway.app"
 codesign --verify --deep --strict "$app" || fail "подпись пакета после копирования не цела"
 [ "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "${version%%-*}" ] || fail "версия в Info.plist"
 [ "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = PrivateGateway ] || fail "исполняемый файл в Info.plist"
@@ -78,7 +80,9 @@ swift scripts/tests/macos-background-icon.swift "$app" "$plist"
 python3 - <<'BTM'
 import re
 import subprocess
-result = subprocess.run(["/usr/bin/sfltool", "dumpbtm"], capture_output=True, text=True, timeout=20)
+result = subprocess.run(["/usr/bin/sudo", "-n", "/usr/bin/sfltool", "dumpbtm"], capture_output=True, text=True, timeout=20)
+if result.returncode != 0:
+    raise SystemExit("sfltool dumpbtm: не удалось прочитать системный список")
 found = False
 for block in result.stdout.split("\n\n"):
     if re.search(r"Identifier:\s+16\.io\.github\.rvburov\.private-gateway\s*$", block, re.M):

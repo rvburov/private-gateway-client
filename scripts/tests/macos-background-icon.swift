@@ -50,8 +50,18 @@ if args[1] == "--register" {
 }
 // На сборочной машине остаются staging и копия из DMG с одним ID. Первый результат — эвристика ОС,
 // а не обещание вернуть последнюю регистрацию. Ищем именно установленную копию среди всех результатов.
-let registered = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identifier)
-    .map { $0.resolvingSymlinksInPath().standardizedFileURL }
+func registeredApps() -> [URL] {
+    NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identifier)
+        .map { $0.resolvingSymlinksInPath().standardizedFileURL }
+}
+var registered = registeredApps()
+// Регистрация возвращается раньше, чем отдельный процесс Launch Services обновит индекс.
+if args[1] == "--register" {
+    for _ in 0..<50 where !registered.contains(where: { $0.path == app.path }) {
+        Thread.sleep(forTimeInterval: 0.1)
+        registered = registeredApps()
+    }
+}
 guard let resolved = registered.first(where: { $0.path == app.path }) else {
     fail("Launch Services не нашла \(app.path); зарегистрированы: \(registered.map(\.path).joined(separator: "; "))")
 }
