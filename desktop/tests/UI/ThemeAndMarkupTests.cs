@@ -44,19 +44,19 @@ public partial class ThemeAndMarkupTests
         XDocument.Load(Path.Combine(Repo.UiSource, "Client.UI.csproj")).Descendants("ApplicationIcon").Single().Value
             .ShouldEndWith("shared/specifications/icons/app.ico", customMessage: "у файла окна — тот же значок");
 
-        // ICNS macOS: «icns», длина файла (big-endian), записи PNG до 1024 px (ic10 — 512@2x, для Retina).
-        var icns = File.ReadAllBytes(Path.Combine(folder, "app.icns"));
-        static int BigEndian(byte[] data, int at) => (data[at] << 24) | (data[at + 1] << 16) | (data[at + 2] << 8) | data[at + 3];
-        Encoding.ASCII.GetString(icns, 0, 4).ShouldBe("icns");
-        BigEndian(icns, 4).ShouldBe(icns.Length);
-        var types = new List<string>();
-        for (var at = 8; at < icns.Length; at += BigEndian(icns, at + 4))
+        // macOS получает пары PNG: ICNS собирает iconutil и проверяет системный декодер в CI на ARM и Intel.
+        var iconset = Path.Combine(folder, "app.iconset");
+        Directory.GetFiles(iconset, "*.png").Length.ShouldBe(10);
+        foreach (var size in new[] { 16, 32, 128, 256, 512 })
         {
-            types.Add(Encoding.ASCII.GetString(icns, at, 4));
-            icns.AsSpan(at + 8, 4).ToArray().ShouldBe(new byte[] { 0x89, 0x50, 0x4E, 0x47 }, "записи — PNG");
+            foreach (var scale in new[] { 1, 2 })
+            {
+                var suffix = scale == 2 ? "@2x" : string.Empty;
+                using var bitmap = SkiaSharp.SKBitmap.Decode(Path.Combine(iconset, $"icon_{size}x{size}{suffix}.png"));
+                bitmap.ShouldNotBeNull();
+                (bitmap.Width, bitmap.Height).ShouldBe((size * scale, size * scale));
+            }
         }
-
-        types.ShouldBe(["icp4", "icp5", "icp6", "ic07", "ic08", "ic09", "ic10", "ic11", "ic12", "ic13", "ic14"]);
     }
 
     [Fact]

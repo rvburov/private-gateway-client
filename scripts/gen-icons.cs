@@ -2,7 +2,7 @@
 //   desktop/src/Client.UI/Themes/Icons.axaml (Icon.Shield, Icon.Mark.Ok) + design-tokens.json (state.connected.ring)
 //     → shared/specifications/icons/app.svg — Linux: значок записи .desktop (hicolor/scalable/apps);
 //     → shared/specifications/icons/app.ico — Windows: файл окна, ярлыки, «Установленные приложения» (MSI);
-//     → shared/specifications/icons/app.icns — macOS: значок программы (Private Gateway.app, scripts/package-macos.sh).
+//     → shared/specifications/icons/app.iconset — macOS: PNG всех размеров; scripts/package-macos.sh собирает ICNS через iconutil.
 //     → desktop/packaging/windows/banner.bmp, dialog.bmp — картинки мастера установки MSI в стиле программы: светлый фон
 //       окна (color.bg.window), синяя панель (color.accent.base) и тот же щит; без них WiX рисует свои красные картинки.
 //
@@ -68,21 +68,15 @@ using (var ico = new BinaryWriter(File.Create(Path.Combine(output, "app.ico"))))
     images.ForEach(ico.Write);
 }
 
-// ICNS с картинками PNG (macOS 10.7 и новее): тип записи → размер в точках; длины — big-endian, как в формате.
-(string Type, int Size)[] icns = [("icp4", 16), ("icp5", 32), ("icp6", 64), ("ic07", 128), ("ic08", 256), ("ic09", 512), ("ic10", 1024),
-    ("ic11", 32), ("ic12", 64), ("ic13", 256), ("ic14", 512)];
-var entries = icns.Select(e => (e.Type, Png: Render(e.Size, shield, mark, SKColor.Parse(color)))).ToList();
-using (var file = new BinaryWriter(File.Create(Path.Combine(output, "app.icns"))))
+// Исходники macOS: стандартный размер и @2x для Retina. Сам ICNS собирает штатный iconutil при упаковке на Mac.
+// PNG внутри самодельных icp4/icp5 macOS читала как поврежденные маленькие значки; проверка только заголовков PNG
+// этого не замечала. Генератор остается общим для всех ОС, формат контейнера больше не собирается вручную.
+var iconset = Directory.CreateDirectory(Path.Combine(output, "app.iconset")).FullName;
+int[] macSizes = [16, 32, 128, 256, 512];
+foreach (var size in macSizes)
 {
-    static byte[] BigEndian(int value) => [(byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value];
-    file.Write("icns"u8);
-    file.Write(BigEndian(8 + entries.Sum(e => 8 + e.Png.Length)));
-    foreach (var (type, png) in entries)
-    {
-        file.Write(Encoding.ASCII.GetBytes(type));
-        file.Write(BigEndian(8 + png.Length));
-        file.Write(png);
-    }
+    File.WriteAllBytes(Path.Combine(iconset, $"icon_{size}x{size}.png"), Render(size, shield, mark, SKColor.Parse(color)));
+    File.WriteAllBytes(Path.Combine(iconset, $"icon_{size}x{size}@2x.png"), Render(size * 2, shield, mark, SKColor.Parse(color)));
 }
 
 // Картинки мастера установки WiX (WixUI): полоса сверху 493×58 и боковая панель приветствия и итога 493×312 (текст
@@ -114,7 +108,7 @@ File.WriteAllBytes(Path.Combine(packaging, "dialog.bmp"), Bitmap(493, 312, canva
 }));
 
 Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-    $"Значок: {output}/app.svg, app.ico ({string.Join(", ", sizes)} px) и app.icns ({string.Join(", ", icns.Select(e => e.Size).Distinct())} px), icon-sha256 {hash}"));
+    $"Значок: {output}/app.svg, app.ico ({string.Join(", ", sizes)} px) и app.iconset (16–1024 px), icon-sha256 {hash}"));
 
 // Щит и галочка в квадрате size×size: геометрии — в сетке 24×24, как у значков окна.
 static byte[] Render(int size, string shield, string mark, SKColor color)

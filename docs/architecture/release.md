@@ -131,7 +131,7 @@ WiX 5.0.2 (MS-RL; с v6 у WiX отдельный сбор Open Source Maintenan
 его в образ диска `PrivateGateway-<версия>-osx-arm64.dmg` (HFS+, сжатый) рядом с ярлыком на «Программы» (решение 367):
 
 - `Contents/MacOS/` — папка сборки целиком: окно (`CFBundleExecutable` — `PrivateGateway`), служба рядом с ним, ядра в
-  `cores/`, SBOM и THIRD-PARTY-NOTICES; `Contents/Resources/PrivateGateway.icns` — значок (`scripts/gen-icons.cs`);
+  `cores/`, SBOM и THIRD-PARTY-NOTICES; `Contents/Resources/PrivateGateway.icns` — значок из `app.iconset`, собранный штатным `iconutil`;
   `Info.plist` — идентификатор `io.github.rvburov.private-gateway` (как метка службы launchd), версия без суффикса
   предварительного выпуска, macOS 14 и новее;
 - подпись — ad-hoc, без сертификата: сначала каждый файл `Contents/MacOS`, кроме главного исполняемого (codesign
@@ -309,6 +309,14 @@ Windows — MSI (ключ реестра его ярлыка), Linux — пак�
 `scripts/gen-icons.cs` из геометрий `Icons.axaml` и токена цвета (SkiaSharp), руками не правятся. SVG — значок записи
 меню Linux, ICO (16–256 px) — значок файла окна на Windows (`ApplicationIcon`) и установщика. Тест UI сверяет хеш
 источников в шапке SVG.
+
+Для macOS генератор готовит `shared/specifications/icons/app.iconset`: 16, 32, 128, 256 и 512 точек, каждый размер
+в обычной плотности и @2x (до 1024 px). `package-macos.sh` формирует ICNS через `iconutil` перед подписью и проверяет
+готовый файл скриптом `scripts/tests/macos-icon-smoke.sh`. Скрипт декодирует все 10 кадров штатной утилитой и сравнивает
+маску прозрачности и цвета непрозрачных пикселей ImageIO с исходными PNG (допуск — один уровень из 255).
+RGB полупрозрачного края отдельно не сравнивается: маленькие кадры iconutil переводит через RGB и маску. Проверка идет
+также в CI на Apple Silicon и Intel. Самодельный контейнер с PNG в маленьких icp4/icp5 больше не используется: macOS показывала
+вместо щита полосы, хотя проверка заголовков PNG проходила. [Разбор и ручная проверка](../operations/incidents/2026-11-08-macos-icon.md).
 
 ## Лицензии открытых компонентов
 

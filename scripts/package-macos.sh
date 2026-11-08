@@ -4,7 +4,7 @@
 #   scripts/package-macos.sh <версия>          # только на macOS: codesign и hdiutil
 #
 # Берет artifacts/publish/PrivateGateway-<версия>-<rid> (osx-arm64 или osx-x64 — по машине), собирает Private Gateway.app:
-# Info.plist, значок app.icns (scripts/gen-icons.cs), вся сборка — в Contents/MacOS (окно, служба рядом с ним, ядра в
+# Info.plist, значок из app.iconset (scripts/gen-icons.cs и iconutil), вся сборка — в Contents/MacOS (окно, служба рядом с ним, ядра в
 # cores/, как у архива: окно ставит службу оттуда). Подпись — ad-hoc, без сертификата: на Apple Silicon код без подписи
 # не запускается, а подпись пакета — печать его целостности (подпись Developer ID и нотаризация — «Отложено», README).
 # Кладет PrivateGateway-<версия>-<rid>.dmg (программа и ярлык на «Программы») в artifacts/release и пересчитывает
@@ -29,7 +29,9 @@ staging=$(mktemp -d "artifacts/dmg/PrivateGateway-$version-$rid.XXXXXX")
 app="$staging/Private Gateway.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp -R "$build/." "$app/Contents/MacOS/"
-cp shared/specifications/icons/app.icns "$app/Contents/Resources/PrivateGateway.icns"
+# Apple формирует контейнер для маленьких размеров и Retina. Перед подписью проверяем именно упакованный файл.
+iconutil -c icns shared/specifications/icons/app.iconset -o "$app/Contents/Resources/PrivateGateway.icns"
+bash scripts/tests/macos-icon-smoke.sh "$app/Contents/Resources/PrivateGateway.icns"
 
 # Версия пакета — только цифры: 1.2.3-beta.1 → 1.2.3. Идентификатор — обратный домен репозитория, как метка службы
 # launchd. Минимальная macOS — как у .NET 10.

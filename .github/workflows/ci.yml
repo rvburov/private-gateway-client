@@ -81,6 +81,10 @@ jobs:
         with:
           dotnet-version: 10.0.402
 
+      - name: Иконка macOS — системный декодер, все размеры
+        if: runner.os == 'macOS'
+        run: bash scripts/tests/macos-icon-smoke.sh
+
       - name: Сборка
         id: build
         run: dotnet build PrivateGateway.slnx -c Release
@@ -188,6 +192,10 @@ jobs:
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
+
+      - name: Иконка macOS — системный декодер, все размеры
+        if: runner.os == 'macOS'
+        run: bash scripts/tests/macos-icon-smoke.sh
 
       - name: Сборка
         id: build
