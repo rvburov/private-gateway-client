@@ -426,6 +426,11 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     }
 
     /// <summary>Своя запись окна; та же, что последняя, не повторяется — проверки ищут службу при каждом открытии экрана.</summary>
+    public void ReportSubscriptionAttempt(DownloadFailure? failure, int? statusCode, int attempt, TimeSpan elapsed, bool throughCore) =>
+        Log(failure is null ? JournalLevel.Info : JournalLevel.Warning,
+            $"Загрузка списка серверов: попытка {attempt}, {(throughCore ? "через ядро" : "системная сеть")}, {elapsed.TotalSeconds:0.0} с; "
+            + (failure is null ? "загружено" : $"причина: {failure}; HTTP: {statusCode?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "нет"}"));
+
     private void Log(JournalLevel level, string message)
     {
         var entry = new JournalEntry(_time.GetUtcNow(), level, "app", message);

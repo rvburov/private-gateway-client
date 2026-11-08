@@ -74,14 +74,14 @@ public static partial class ContractMapping
         ArgumentNullException.ThrowIfNull(result);
         return result.Milliseconds is { } ms
             ? new V1.LatencyResult { Id = id, Reachable = true, LatencyMs = ms }
-            : new V1.LatencyResult { Id = id, Reachable = false, Failure = result.Failure!.Value.ToContract() };
+            : new V1.LatencyResult { Id = id, Reachable = false, Failure = result.Failure!.Value.ToContract(), Diagnostic = result.Diagnostic ?? string.Empty };
     }
 
     /// <summary>Результат из ответа службы; недоступный без причины — ошибка отправителя.</summary>
     public static CoreLatency ToCore(this V1.LatencyResult result)
     {
         ArgumentNullException.ThrowIfNull(result);
-        return result.Reachable ? new CoreLatency(result.LatencyMs, null) : CoreLatency.Failed(result.Failure.ToCore());
+        return result.Reachable ? new CoreLatency(result.LatencyMs, null) : new CoreLatency(null, result.Failure.ToCore(), result.Diagnostic is "Timeout" or "NameResolution" or "Tls" or "Connection" or "Proxy" or "ProtectionBlocked" ? result.Diagnostic : null);
     }
 
     public static V1.UpdateChannel ToContract(this CoreUpdateChannel channel) => channel switch

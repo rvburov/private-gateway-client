@@ -25,6 +25,10 @@ namespace PrivateGateway.Client.Core.Servers;
 /// IP, который сайты видели через этот сервер при последнем подключении; null — не мерили. У сервера «VPS + прокси»
 /// он не совпадает с <paramref name="Host"/>: программа подключается к VPS, а сайты видят выход прокси за ним.
 /// </param>
+/// <param name="LatencyFailure">Причина неудачного замера; null — ошибки не было или еще не проверяли.</param>
+/// <param name="LatencyDiagnostic">Безопасная категория ошибки без адресов и ключей.</param>
+/// <param name="LatencyCheckedAt">Время последнего завершенного замера.</param>
+/// <param name="IsMeasuringLatency">Сейчас выполняется новый замер.</param>
 public sealed record ServerProfile(
     string Id,
     string Name,
@@ -40,5 +44,9 @@ public sealed record ServerProfile(
     bool IsFavorite = false,
     DateTimeOffset? LastUsedAt = null,
     DateTimeOffset? MissingSince = null,
-    string? ExitIp = null);
+    string? ExitIp = null,
+    LatencyFailure? LatencyFailure = null,
+    string? LatencyDiagnostic = null,
+    DateTimeOffset? LatencyCheckedAt = null,
+    bool IsMeasuringLatency = false);
 

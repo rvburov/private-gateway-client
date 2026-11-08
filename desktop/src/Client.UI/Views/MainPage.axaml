@@ -192,7 +192,7 @@
             <TextBlock Classes="overline" Text="{l:L ip.title, Upper=True}" />
             <Grid ColumnDefinitions="*,Auto,Auto">
               <Grid ColumnDefinitions="Auto,*" Margin="0,0,8,0">
-                <c:CountryFlag CountryCode="{Binding WebCountryCode}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <c:CountryFlag x:Name="WebCountryFlag" IsVisible="{Binding CanCopyIp}" CountryCode="{Binding WebCountryCode}" VerticalAlignment="Center" Margin="0,0,10,0" />
                 <TextBlock Grid.Column="1" Classes="monoLarge" Text="{Binding WebIp}" VerticalAlignment="Center"
                            TextTrimming="CharacterEllipsis" />
               </Grid>

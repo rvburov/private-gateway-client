@@ -300,12 +300,23 @@ public static class LatencyProbe
             .FirstOrDefault(v => IPAddress.TryParse(v, out _));
     }
 
-    private static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,
+    public static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,
         NetworkCredential? credentials = null)
     {
-        var started = time.GetTimestamp();
-        var result = await CheckAsync(new ServerProbe(port, credentials, target, timeout), cancellationToken).ConfigureAwait(false);
-        return result.Reached ? LatencyResult.Of(time.GetElapsedTime(started)) : LatencyResult.Failed(LatencyFailure.NoResponse);
+        ProbeReachability? result = null;
+        // Один повтор: другой контрольный адрес по IP исключает сбой DNS первого сайта. Оба запроса только через SOCKS.
+        foreach (var endpoint in new[] { target, target == DefaultTarget ? DefaultTrace : target })
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var started = time.GetTimestamp();
+            result = await CheckAsync(new ServerProbe(port, credentials, endpoint, timeout), cancellationToken).ConfigureAwait(false);
+            if (result.Reached)
+            {
+                return LatencyResult.Of(time.GetElapsedTime(started));
+            }
+        }
+
+        return new LatencyResult(null, LatencyFailure.NoResponse, result!.Failure?.ToString());
     }
 
     private static LatencyResult[] Done(LatencyResult?[] results) => [.. results.Select(r => r!)];

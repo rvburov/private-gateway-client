@@ -111,13 +111,11 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
 
     public bool HasStatus => StatusText is not null;
 
-    public string LatencyText => _server.LatencyMs is { } ms
-        ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"]
-        : Loc.Instance["card.latency.none"];
+    public string LatencyText => ServerLatencyText.Of(_server, card: true);
 
     public bool IsSlow => _server.LatencyMs > ServersPageViewModel.SlowLatencyMs;
 
-    public bool IsDown => _server.LatencyMs is null;
+    public bool IsDown => !_server.IsMeasuringLatency && _server.LatencyFailure is not null;
 
     // ── Сведения ─────────────────────────────────────────────────────────────
 
@@ -128,12 +126,23 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
             var details = new List<CardDetail>
             {
                 new(Loc.Instance["card.address"], FormatAddress(_server.Host, _server.Port)),
+                new(Loc.Instance["card.exitIp"], _server.ExitIp ?? Loc.Instance["card.exitIp.unknown"]),
                 new(Loc.Instance["card.protocol"], ServerFacts.ProtocolName(_server.Protocol)),
                 new(Loc.Instance["card.transport"], ServerFacts.TransportName(_server.Transport) ?? _server.Transport.ToUpperInvariant()),
                 new(Loc.Instance["card.security"], ServerFacts.SecurityName(_server.Security)
                     ?? Loc.Instance[ServerFacts.IsEncrypted(_server) ? "card.security.builtin" : "card.security.none"]),
                 new(Loc.Instance["card.core"], ServerFacts.CoreName(_server.Protocol)),
             };
+            if (ServerLatencyText.Reason(_server) is { } reason)
+            {
+                details.Add(new(Loc.Instance["card.latency.reason"], reason));
+            }
+
+            if (_server.LatencyCheckedAt is { } at)
+            {
+                details.Add(new(Loc.Instance["card.latency.checked"], at.ToLocalTime().ToString("dd.MM HH:mm", CultureInfo.InvariantCulture)));
+            }
+
             return details;
         }
     }

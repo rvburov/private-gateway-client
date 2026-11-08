@@ -100,14 +100,17 @@ public sealed class SubscriptionDownloadException : Exception
     {
     }
 
-    public SubscriptionDownloadException(DownloadFailure failure, int? statusCode = null, Exception? innerException = null)
+    public SubscriptionDownloadException(DownloadFailure failure, int? statusCode = null, Exception? innerException = null, TimeSpan? retryAfter = null)
         : base(statusCode is { } code ? $"{failure} {code}" : failure.ToString(), innerException)
     {
         Failure = failure;
         StatusCode = statusCode;
+        RetryAfter = retryAfter;
     }
 
     public DownloadFailure Failure { get; }
 
     public int? StatusCode { get; }
+
+    public TimeSpan? RetryAfter { get; }
 }

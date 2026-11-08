@@ -81,6 +81,13 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: scripts/android-release-apk.sh "${GITHUB_REF_NAME#v}" artifacts/android
 
+      - name: Установщик Android — только APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-Android-${{ github.ref_name }}
+          path: artifacts/android/*.apk
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: android-apk

@@ -411,6 +411,13 @@ jobs:
             python3 -c 'import json, sys; bom = json.load(open(sys.argv[1])); print(sys.argv[1], len(bom["components"]), "компонентов")' "${apk%.apk}.cdx.json"
           done
 
+      - name: Установщик Android — только APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-Android-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
       - name: APK и отчеты
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

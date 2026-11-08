@@ -169,18 +169,48 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         return Task.FromResult(false);
     }
 
-    public void SetLatency(IReadOnlyDictionary<string, int?> latency)
+    public void SetLatency(IReadOnlyDictionary<string, int?> latency) =>
+        SetLatency(latency.ToDictionary(p => p.Key, p => new LatencyResult(p.Value, p.Value is null ? LatencyFailure.NoResponse : null)));
+
+    public void SetLatency(IReadOnlyDictionary<string, LatencyResult> latency)
     {
         ArgumentNullException.ThrowIfNull(latency);
         lock (_gate)
         {
-            foreach (var (id, ms) in latency)
+            foreach (var (id, result) in latency)
             {
                 if (Rows.Find(r => r.Profile.Id == id) is { } row)
                 {
-                    Execute("UPDATE servers SET latency_ms = $ms WHERE id = $id", ("$ms", (object?)ms ?? DBNull.Value), ("$id", id));
-                    Replace(row with { Profile = row.Profile with { LatencyMs = ms } });
+                    var at = _time.GetUtcNow();
+                    Execute("UPDATE servers SET latency_ms = $ms, latency_failure = $failure, latency_diagnostic = $diagnostic, latency_checked_at = $at WHERE id = $id",
+                        ("$ms", (object?)result.Milliseconds ?? DBNull.Value), ("$failure", result.Failure is { } failure ? (int)failure : DBNull.Value),
+                        ("$diagnostic", (object?)result.Diagnostic ?? DBNull.Value), ("$at", Text(at)), ("$id", id));
+                    Replace(row with
+                    {
+                        Profile = row.Profile with
+                        {
+                            LatencyMs = result.Milliseconds,
+                            LatencyFailure = result.Failure,
+                            LatencyDiagnostic = result.Diagnostic,
+                            LatencyCheckedAt = at,
+                            IsMeasuringLatency = false
+                        }
+                    });
                 }
+            }
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>Промежуточное состояние не записываем на диск: после сбоя окна замер не остается вечным.</summary>
+    public void SetMeasuringLatency(bool measuring)
+    {
+        lock (_gate)
+        {
+            foreach (var row in Rows.ToArray())
+            {
+                Replace(row with { Profile = row.Profile with { IsMeasuringLatency = measuring } });
             }
         }
 
@@ -549,7 +579,13 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             foreach (var (row, server) in kept)
             {
                 var profile = ToProfile(row.Profile.Id, Stored.From(server), subscriptionId, row.CustomName, row.Profile.LatencyMs,
-                    row.Profile.IsFavorite, row.Profile.LastUsedAt, exitIp: row.Profile.ExitIp);
+                    row.Profile.IsFavorite, row.Profile.LastUsedAt, exitIp: row.Profile.ExitIp) with
+                {
+                    LatencyFailure = row.Profile.LatencyFailure,
+                    LatencyDiagnostic = row.Profile.LatencyDiagnostic,
+                    LatencyCheckedAt = row.Profile.LatencyCheckedAt,
+                    IsMeasuringLatency = row.Profile.IsMeasuringLatency,
+                };
                 Replace(row with { Profile = profile, Endpoint = Endpoint(server), LinkName = server.Name });
             }
 
@@ -900,7 +936,7 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         using (var command = connection.CreateCommand())
         {
             command.CommandText = "SELECT id, subscription_id, position, definition, custom_name, latency_ms, is_favorite, last_used_at, "
-                + "missing_since, exit_ip FROM servers ORDER BY position";
+                + "missing_since, exit_ip, latency_failure, latency_diagnostic, latency_checked_at FROM servers ORDER BY position";
             using var reader = command.ExecuteReader();
             while (reader.Read())
             {
@@ -914,7 +950,12 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                     reader.GetInt64(6) != 0,
                     Time(reader, 7),
                     Time(reader, 8),
-                    reader.IsDBNull(9) ? null : reader.GetString(9));
+                    reader.IsDBNull(9) ? null : reader.GetString(9)) with
+                {
+                    LatencyFailure = reader.IsDBNull(10) ? null : (LatencyFailure)reader.GetInt32(10),
+                    LatencyDiagnostic = reader.IsDBNull(11) ? null : reader.GetString(11),
+                    LatencyCheckedAt = Time(reader, 12),
+                };
                 _rows.Add(new Row(profile, reader.GetInt64(2), Endpoint(stored.ToDefinition(new ServerCredentials())), stored.Name,
                     reader.IsDBNull(4) ? null : reader.GetString(4)));
             }

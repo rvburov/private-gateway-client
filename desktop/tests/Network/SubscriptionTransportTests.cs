@@ -61,6 +61,33 @@ public sealed class SubscriptionTransportTests
         result.Content.ShouldBeNull();
     }
 
+    [Fact]
+    public async Task Retry_after_survives_transport_and_ipc()
+    {
+        using var proxy = new SocksEndpoint();
+        var serving = proxy.AnswerAsync("HTTP/1.1 429 Too Many Requests\r\nRetry-After: 7\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray());
+        var result = await SubscriptionTransport.DownloadAsync(new ProbeLink(proxy.Port, "user", "password"), new Uri("http://example.invalid/sub/fake-token"), TimeProvider.System, Ct);
+        await serving;
+        result.Failure.ShouldBe(DownloadFailure.Status);
+        result.RetryAfter.ShouldBe(TimeSpan.FromSeconds(7));
+        PrivateGateway.Client.Contracts.SubscriptionContractMapping.ToCore(
+            PrivateGateway.Client.Contracts.SubscriptionContractMapping.ToContract(result)).RetryAfter.ShouldBe(result.RetryAfter);
+    }
+
+    [Fact]
+    public async Task Latency_retries_a_temporary_control_failure_through_the_same_authenticated_proxy()
+    {
+        using var proxy = new SocksEndpoint();
+        var first = proxy.AnswerAsync("invalid HTTP response\r\n\r\n"u8.ToArray());
+        var pending = LatencyProbe.RequestAsync(proxy.Port, new Uri("http://example.invalid/check"), TimeSpan.FromSeconds(5), TimeProvider.System, Ct, new NetworkCredential("user", "password"));
+        (await first).ShouldBe(("user", "password", "example.invalid"));
+        var second = proxy.AnswerAsync("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"u8.ToArray());
+        var result = await pending;
+        (await second.WaitAsync(TimeSpan.FromSeconds(5), Ct)).ShouldBe(("user", "password", "example.invalid"));
+        result.Failure.ShouldBeNull();
+        result.Milliseconds.ShouldNotBeNull();
+    }
+
     private sealed class SocksEndpoint : IDisposable
     {
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);

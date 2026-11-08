@@ -116,6 +116,7 @@
   .sc-dialog-main { height: 48px; font-size: var(--pg-type-title-size); }
   .sc-dialog-second { height: 46px; font-weight: 600; }
   .sc-dialog .t-status { margin-top: 0; }
+  .sc-detail .sc-val { white-space: normal; overflow-wrap: anywhere; }
 </style>
 </head>
 <body>
@@ -149,6 +150,7 @@
         </div>
           <div class="sc-inset sc-details" data-page="details">
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.24:443</span></div>
+            <div class="sc-detail"><span class="t-small">Выходной IP</span><span class="sc-val">198.51.100.42</span></div>
             <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">VLESS</span></div>
             <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
             <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">REALITY</span></div>
@@ -268,14 +270,17 @@
           <span class="sc-chip active" data-show-state="connected connecting reconnecting blocked paused"><span class="sc-dot"></span>Активен</span>
           <span class="sc-chip selected" data-show-state="off error strict"><span class="sc-dot"></span>Выбран</span>
           <span class="sc-chip selected" data-show-state="proxy"><span class="sc-dot"></span><span data-ui-text="externalProxy.vpn.selected">Выбран для VPN</span></span>
-          <span class="sc-chip"><span class="sc-ping ">42 мс</span></span>
+          <span class="sc-chip"><span class="sc-ping down">нет ответа</span></span>
         </div>
           <div class="sc-inset sc-details" data-page="details">
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.24:443</span></div>
+            <div class="sc-detail"><span class="t-small">Выходной IP</span><span class="sc-val">Не измерен</span></div>
             <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">VLESS</span></div>
             <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
             <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">REALITY</span></div>
             <div class="sc-detail"><span class="t-small">Ядро</span><span class="sc-val">Xray-core</span></div>
+            <div class="sc-detail"><span class="t-small">Проверка</span><span class="sc-val">Время ожидания ответа истекло</span></div>
+            <div class="sc-detail"><span class="t-small">Измерено</span><span class="sc-val">08.11 23:08</span></div>
           </div>
           <div class="sc-inset pg-stack" style="padding: 14px; gap: 10px" data-page="rename" hidden>
             <span class="t-overline">Название</span>
@@ -402,6 +407,7 @@
         </div>
           <div class="sc-inset sc-details" data-page="details" hidden>
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">192.0.2.88:443</span></div>
+            <div class="sc-detail"><span class="t-small">Выходной IP</span><span class="sc-val">Не измерен</span></div>
             <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">TUIC</span></div>
             <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">QUIC</span></div>
             <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">TLS</span></div>
@@ -521,6 +527,7 @@
         </div>
           <div class="sc-inset sc-details" data-page="details" hidden>
             <div class="sc-detail"><span class="t-small">Адрес</span><span class="sc-val">203.0.113.10:443</span></div>
+            <div class="sc-detail"><span class="t-small">Выходной IP</span><span class="sc-val">Не измерен</span></div>
             <div class="sc-detail"><span class="t-small">Протокол</span><span class="sc-val">VLESS</span></div>
             <div class="sc-detail"><span class="t-small">Транспорт</span><span class="sc-val">TCP</span></div>
             <div class="sc-detail"><span class="t-small">Защита</span><span class="sc-val">TLS</span></div>

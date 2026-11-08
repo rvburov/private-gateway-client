@@ -299,7 +299,7 @@ public sealed class ServerCatalogStorageTests : IDisposable
         var gateway = new LatencyGateway(new Dictionary<string, LatencyResult>
         {
             [ids["A"]] = new(42, null),
-            [ids["B"]] = LatencyResult.Failed(LatencyFailure.NoResponse),
+            [ids["B"]] = new(null, LatencyFailure.NoResponse, "Timeout"),
         });
         var catalog = new UserOrDemoCatalog(user, new DemoServerCatalog(_time), gateway);
 
@@ -308,6 +308,14 @@ public sealed class ServerCatalogStorageTests : IDisposable
         gateway.Asked.ShouldBe([ids["A"], ids["B"], ids["C"]], ignoreOrder: true);
         Catalog().Servers.ToDictionary(s => s.Name, s => s.LatencyMs).ShouldBe(
             new Dictionary<string, int?> { ["A"] = 42, ["B"] = null, ["C"] = null }, "после перезапуска — тоже");
+
+        var reopened = Catalog().Servers.ToDictionary(s => s.Name);
+        reopened["B"].LatencyFailure.ShouldBe(LatencyFailure.NoResponse);
+        reopened["B"].LatencyDiagnostic.ShouldBe("Timeout");
+        reopened["B"].LatencyCheckedAt.ShouldBe(_time.GetUtcNow());
+        reopened["C"].LatencyFailure.ShouldBeNull("сервер C еще не проверяли");
+        reopened["C"].LatencyCheckedAt.ShouldBeNull();
+        reopened.Values.ShouldAllBe(s => !s.IsMeasuringLatency);
 
         var silent = new UserOrDemoCatalog(Catalog(), new DemoServerCatalog(_time), new SimulatedGatewayClient(_time));
         (await silent.RefreshAsync(TestContext.Current.CancellationToken)).ShouldBeFalse("службы нет — пинг не мерился");

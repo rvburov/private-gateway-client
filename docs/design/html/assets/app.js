@@ -220,6 +220,14 @@
       holder.innerHTML = "";
       holder.appendChild(icon("Shield", info.mark, "1.9"));
     });
+    root.querySelectorAll("[data-web-ip]").forEach(function (ip) {
+      var measured = ["connected", "proxy", "off", "paused"].indexOf(state) >= 0;
+      var scope = ip.closest("[data-reveal-scope]");
+      var reveal = scope.querySelector("[data-reveal]");
+      var visible = !reveal || reveal.dataset.revealed === "1";
+      ip.textContent = measured ? (visible ? ip.dataset.plain : ip.dataset.masked) : "—";
+      scope.querySelectorAll("[data-ip-country]").forEach(function (flag) { flag.hidden = !measured || !visible; });
+    });
     root.querySelectorAll("[data-show-state]").forEach(function (el) {
       el.hidden = el.dataset.showState.split(/\s+/).indexOf(state) < 0;
     });
@@ -627,9 +635,12 @@
       var scope = el.closest("[data-reveal-scope]") || app;
       var shown = el.dataset.revealed === "1";
       el.dataset.revealed = shown ? "0" : "1";
-      scope.querySelectorAll("[data-masked]").forEach(function (m) { m.textContent = shown ? m.dataset.masked : m.dataset.plain; });
+      var measured = ["connecting", "reconnecting", "blocked", "strict", "error"].indexOf(app.dataset.state) < 0;
+      scope.querySelectorAll("[data-masked]").forEach(function (m) {
+        m.textContent = m.hasAttribute("data-web-ip") && !measured ? "—" : shown ? m.dataset.masked : m.dataset.plain;
+      });
       scope.querySelectorAll("[data-ip-country]").forEach(function (flag) {
-        flag.querySelector("img").src = "../assets/countries/" + (shown ? "UNKNOWN" : flag.dataset.ipCountry) + ".png";
+        flag.hidden = shown || !measured;
       });
       // Значок — состояние, как MaskIcon программы: IP скрыт — глаз зачеркнут
       el.innerHTML = "";

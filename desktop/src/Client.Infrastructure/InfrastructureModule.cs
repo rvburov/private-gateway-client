@@ -86,10 +86,11 @@ public static class InfrastructureModule
         services.AddSingleton<IAutostart>(_ => OsAutostart.ForCurrentUser());
         services.AddSingleton(_ => SystemNotifiers.ForCurrentOs(File.Exists(paths.NotifyIcon) ? paths.NotifyIcon : null));
         services.AddSingleton<ISubscriptionDownloader>(sp =>
-            new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>(),
+            new SessionSubscriptionDownloader(new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>(),
                 HttpSubscriptionDownloader.CreateDirectClient(),
                 url => HttpSubscriptionDownloader.IsForeignProxy(HttpClient.DefaultProxy, url,
-                    sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)));
+                    sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)),
+                sp.GetRequiredService<IGatewayClient>(), sp.GetRequiredService<TimeProvider>()));
         return services;
     }
 

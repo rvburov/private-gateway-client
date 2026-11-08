@@ -160,6 +160,30 @@ jobs:
           path: artifacts/release/*.dmg
           if-no-files-found: error
 
+      - name: Установщик Windows — только MSI
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-Windows-msi-${{ steps.version.outputs.version }}
+          path: artifacts/release/*.msi
+          if-no-files-found: error
+
+      - name: Установщик Linux — только DEB
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-Linux-deb-${{ steps.version.outputs.version }}
+          path: artifacts/release/*.deb
+          if-no-files-found: error
+
+      - name: Установщик Linux — только RPM
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: installer-Linux-rpm-${{ steps.version.outputs.version }}
+          path: artifacts/release/*.rpm
+          if-no-files-found: error
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: release-${{ runner.os }}

@@ -87,6 +87,10 @@ public sealed class ServiceIpcTests
         states.Select(s => s.State).ShouldBe([V1.ConnectionState.Connecting, V1.ConnectionState.Connected]);
         var connected = states[^1].ToCore();
         (connected.Mode, connected.ServerId, connected.Protection.AllTraffic).ShouldBe((ConnectionMode.Proxy, "srv-1", CheckState.Warning));
+        // Подписка в режиме прокси тоже обязана пройти через парольный вход текущего ядра.
+        var subscription = (await service.Client.DownloadSubscriptionAsync(new V1.SubscriptionDownloadRequest { Address = site.Url.AbsoluteUri }, cancellationToken: Ct)).ToCore();
+        subscription.Failure.ShouldBeNull();
+        System.Text.Encoding.UTF8.GetString(subscription.Content!).ShouldBe("через службу");
         // Локальная сеть разрешена в запросе — сайт на 127.0.0.1 отвечает через прокси службы.
         (await Get(site.Url, proxyPort)).ShouldBe("через службу");
 

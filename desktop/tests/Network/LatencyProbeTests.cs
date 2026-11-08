@@ -77,7 +77,8 @@ public sealed partial class LatencyProbeTests
         var results = await LatencyProbe.MeasureAsync(
             XrayKit.Xray!, null, [wrongKey], ConnectionSettings.Default, site.Url, timeout, TimeProvider.System, TestContext.Current.CancellationToken);
 
-        results.ShouldBe([LatencyResult.Failed(LatencyFailure.NoResponse)]);
+        results.ShouldHaveSingleItem().Failure.ShouldBe(LatencyFailure.NoResponse);
+        results[0].Diagnostic.ShouldNotBeNull();
         TimeProvider.System.GetElapsedTime(started).ShouldBeLessThan(timeout / 2, "обрыв, а не ожидание до таймаута");
         site.Requests.ShouldBe(0);
     }

@@ -287,7 +287,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
         {
             // База до миграции 5 — и без колонок более поздних миграций (0006: servers.exit_ip).
             command.CommandText = "UPDATE subscriptions SET address = 'https://sub.example.com/sub/\u2022\u2022\u2022\u2022'; "
-                + "ALTER TABLE servers DROP COLUMN exit_ip; PRAGMA user_version = 4;";
+                + "ALTER TABLE servers DROP COLUMN exit_ip; ALTER TABLE servers DROP COLUMN latency_failure; ALTER TABLE servers DROP COLUMN latency_diagnostic; ALTER TABLE servers DROP COLUMN latency_checked_at; PRAGMA user_version = 4;";
             command.ExecuteNonQuery();
         }
 
@@ -457,16 +457,16 @@ public sealed class SubscriptionUpdateTests : IDisposable
         {
             url.ShouldBe(Url);
             protectedCalls++;
-            return Task.FromResult(SubscriptionDownload.Failed(DownloadFailure.Connection));
+            return Task.FromResult(SubscriptionDownload.Failed(DownloadFailure.Connection, retryAfter: TimeSpan.Zero));
         };
 
         (await updater.UpdateAsync(id, Ct)).Failure.ShouldBe(DownloadFailure.Connection);
-        protectedCalls.ShouldBe(1);
+        protectedCalls.ShouldBe(3);
         _downloads.Requested.ShouldBeEmpty("ошибка ядра не разрешает прямой повтор");
 
         _gateway.Mode = ConnectionMode.Proxy;
         (await updater.UpdateAsync(id, Ct)).Block.ShouldBe(UpdateBlock.ProtectionOff);
-        protectedCalls.ShouldBe(1, "одного Connected без режима VPN недостаточно");
+        protectedCalls.ShouldBe(3, "одного Connected без режима VPN недостаточно");
         _downloads.Requested.ShouldBeEmpty();
     }
 
@@ -544,7 +544,7 @@ public sealed class SubscriptionUpdateTests : IDisposable
             }
             catch (SubscriptionDownloadException e)
             {
-                return SubscriptionDownload.Failed(e.Failure, e.StatusCode);
+                return SubscriptionDownload.Failed(e.Failure, e.StatusCode, TimeSpan.Zero);
             }
         };
         return new(catalog, _downloads, _gateway, Settings(), _time, NullLogger<SubscriptionUpdater>.Instance);

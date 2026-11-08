@@ -17,13 +17,14 @@ public sealed partial class Gateway
         }
 
         ProbeLink link;
-        VpnTunnel tunnel;
+        VpnTunnel? tunnel;
+        CoreProcess? core;
         int session;
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
-            if (Status is not { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn, IsPaused: false }
-                || _tunnel is null || _probe is null)
+            if (Status is not { State: ConnectionState.Connected, IsPaused: false }
+                || (_tunnel is null && _core is null) || _probe is null)
             {
                 return SubscriptionDownload.Failed(DownloadFailure.Connection);
             }
@@ -35,7 +36,7 @@ public sealed partial class Gateway
                 return refusal;
             }
 
-            (link, session, tunnel) = (_probe, _session, _tunnel);
+            (link, session, tunnel, core) = (_probe, _session, _tunnel, _core);
         }
         finally
         {
@@ -55,11 +56,12 @@ public sealed partial class Gateway
             }
         }
 
-        tunnel.Exited += CoreExited;
+        if (tunnel is not null) tunnel.Exited += CoreExited;
+        if (core is not null) core.Exited += CoreExited;
         SubscriptionDownload result;
         try
         {
-            if (tunnel.HasExited)
+            if (tunnel?.HasExited == true || core?.HasExited == true)
             {
                 return SubscriptionDownload.Failed(DownloadFailure.Connection);
             }
@@ -78,14 +80,15 @@ public sealed partial class Gateway
         }
         finally
         {
-            tunnel.Exited -= CoreExited;
+            if (tunnel is not null) tunnel.Exited -= CoreExited;
+            if (core is not null) core.Exited -= CoreExited;
         }
         // Переключение, пауза или обрыв за время загрузки: результат старой сессии не применять.
         await _switch.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             return _session != session || _probe != link
-                || Status is not { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn, IsPaused: false }
+                || Status is not { State: ConnectionState.Connected, IsPaused: false }
                 ? SubscriptionDownload.Failed(DownloadFailure.Connection) : result;
         }
         finally

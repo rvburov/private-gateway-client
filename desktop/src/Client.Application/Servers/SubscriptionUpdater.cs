@@ -206,14 +206,8 @@ public sealed partial class SubscriptionUpdater : IDisposable
             {
                 if (_settings.Current.UpdateOnlyViaVpn)
                 {
-                    var response = await _gateway.DownloadSubscriptionAsync(url, stop.Token).ConfigureAwait(true);
-                    if (response.Failure is { } failure)
-                    {
-                        return IsCurrent(subscriptionId, url, stop) ? Fail(subscriptionId, failure, response.StatusCode)
-                            : new UpdateResult(null, Block: UpdateBlock.Superseded);
-                    }
-
-                    text = response.Content is { Length: <= SubscriptionDownload.MaxBytes } content ? Encoding.UTF8.GetString(content) : string.Empty;
+                    text = (await new SessionSubscriptionDownloader(_downloader, _gateway, _time)
+                        .DownloadAsync(url, stop.Token).ConfigureAwait(true)).Text;
                 }
                 else
                 {

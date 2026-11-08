@@ -39,7 +39,7 @@ public sealed class DemoServerCatalog : IServerCatalog
                 with { LastUsedAt = now.AddDays(-3) },
             Demo("demo-pl-03", "Польша 03", "PL", "Варшава", ProxyProtocol.Tuic, TransportSecurity.Tls, "192.0.2.88", 443, "quic", 64),
             Demo("demo-us-01", "США 01", "US", "Нью-Йорк", ProxyProtocol.Trojan, TransportSecurity.Tls, "198.51.100.201", 443, "ws", 148),
-            Demo("demo-tr-01", "Турция 01", "TR", "Стамбул", ProxyProtocol.Vless, TransportSecurity.Tls, "192.0.2.150", 443, "grpc", null),
+            Demo("demo-tr-01", "Турция 01", "TR", "Стамбул", ProxyProtocol.Vless, TransportSecurity.Tls, "192.0.2.150", 443, "grpc", null) with { LatencyFailure = LatencyFailure.NoResponse },
         ];
     }
 

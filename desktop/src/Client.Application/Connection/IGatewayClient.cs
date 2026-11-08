@@ -30,7 +30,11 @@ public interface IGatewayClient
 
     Task ConnectAsync(ServerProfile server, CancellationToken cancellationToken = default);
 
-    /// <summary>Подписка только через сервер активной VPN-сессии, независимо от системного прокси и раздельных маршрутов.</summary>
+    /// <summary>Диагностика импорта без адреса, имени профиля и текста исключения.</summary>
+    void ReportSubscriptionAttempt(DownloadFailure? failure, int? statusCode, int attempt, TimeSpan elapsed, bool throughCore) { }
+
+
+    /// <summary>Подписка только через сервер активной VPN- или прокси-сессии, независимо от системного прокси и раздельных маршрутов.</summary>
     Task<SubscriptionDownload> DownloadSubscriptionAsync(Uri address, CancellationToken cancellationToken = default) =>
         Task.FromResult(SubscriptionDownload.Failed(DownloadFailure.Connection));
 

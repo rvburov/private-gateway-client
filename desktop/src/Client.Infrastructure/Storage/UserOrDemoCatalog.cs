@@ -56,6 +56,8 @@ public sealed class UserOrDemoCatalog : IServerCatalog
 
     public void RememberExit(string serverId, string ip) => Current.RememberExit(serverId, ip);
 
+    private int _measuring;
+
     public async Task<bool> RefreshAsync(CancellationToken cancellationToken = default)
     {
         if (IsDemo)
@@ -63,15 +65,28 @@ public sealed class UserOrDemoCatalog : IServerCatalog
             return await _demo.RefreshAsync(cancellationToken).ConfigureAwait(false);
         }
 
-        var measured = await _gateway.MeasureLatencyAsync([.. _user.Servers.Select(s => s.Id)], cancellationToken).ConfigureAwait(false);
-        if (measured.Count == 0)
+        if (Interlocked.Exchange(ref _measuring, 1) != 0)
         {
-            await _user.RefreshAsync(cancellationToken).ConfigureAwait(false);
             return false;
         }
 
-        _user.SetLatency(measured.ToDictionary(r => r.Key, r => r.Value.Milliseconds));
-        return true;
+        _user.SetMeasuringLatency(true);
+        try
+        {
+            var measured = await _gateway.MeasureLatencyAsync([.. _user.Servers.Select(s => s.Id)], cancellationToken).ConfigureAwait(false);
+            if (measured.Count == 0)
+            {
+                return false;
+            }
+
+            _user.SetLatency(measured);
+            return true;
+        }
+        finally
+        {
+            _user.SetMeasuringLatency(false);
+            Volatile.Write(ref _measuring, 0);
+        }
     }
 
     private IServerCatalog Current => IsDemo ? _demo : _user;

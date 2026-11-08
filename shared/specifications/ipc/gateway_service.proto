@@ -149,6 +149,7 @@ message SubscriptionDownloadReply {
   string title = 2;
   string failure = 3;
   int32 status_code = 4;
+  int64 retry_after_ms = 5;
 }
 
 // ── Состояние ───────────────────────────────────────────────────────────────
@@ -656,6 +657,7 @@ enum LatencyFailure {
 
 message MeasureLatencyRequest {
   repeated LatencyTarget targets = 1;
+  ConnectionSettings connection = 2;
 }
 
 message LatencyResult {
@@ -664,6 +666,8 @@ message LatencyResult {
   int32 latency_ms = 3;
   // Почему reachable = false; у доступного — UNSPECIFIED.
   LatencyFailure failure = 4;
+  // Только категория отказа, без адреса и текста исключения.
+  string diagnostic = 5;
 }
 
 message MeasureLatencyReply {

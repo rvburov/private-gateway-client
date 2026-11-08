@@ -57,6 +57,26 @@ public sealed class CountryFlagTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Main_flag_requires_a_visible_measured_ip()
+    {
+        var (window, shell) = Open();
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+        var connecting = shell.Protection.ToggleCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        Find<CountryFlag>(window, "WebCountryFlag").IsVisible.ShouldBeFalse();
+        Time.Advance(PrivateGateway.Client.Infrastructure.Demo.SimulatedGatewayClient.ConnectDelay);
+        await connecting;
+        Dispatcher.UIThread.RunJobs();
+        Find<CountryFlag>(window, "WebCountryFlag").IsVisible.ShouldBeTrue();
+        main.ToggleIpMaskCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Find<CountryFlag>(window, "WebCountryFlag").IsVisible.ShouldBeFalse();
+        main.ToggleIpMaskCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        Find<CountryFlag>(window, "WebCountryFlag").IsVisible.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
     public void Main_ip_flag_does_not_reuse_the_selected_server_country()
     {
         var (window, shell) = Open();

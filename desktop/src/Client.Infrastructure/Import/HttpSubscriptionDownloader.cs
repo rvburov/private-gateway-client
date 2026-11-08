@@ -62,12 +62,12 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
         {
             try
             {
-                return await FetchAsync(http, url, linked.Token).ConfigureAwait(false);
+                return await FetchAsync(http, url, time, linked.Token).ConfigureAwait(false);
             }
             catch (HttpRequestException e) when (direct is not null && e.HttpRequestError is HttpRequestError.ProxyTunnelError or HttpRequestError.ConnectionError
                 && (mayBypass?.Invoke(url) ?? true))
             {
-                return await FetchAsync(direct, url, linked.Token).ConfigureAwait(false);
+                return await FetchAsync(direct, url, time, linked.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
@@ -87,7 +87,7 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
         }
     }
 
-    private static async Task<SubscriptionContent> FetchAsync(HttpClient client, Uri url, CancellationToken cancellationToken)
+    private static async Task<SubscriptionContent> FetchAsync(HttpClient client, Uri url, TimeProvider time, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
         request.Headers.UserAgent.ParseAdd("PrivateGateway/0.1");
@@ -95,7 +95,8 @@ public sealed class HttpSubscriptionDownloader(HttpClient http, TimeProvider tim
             .ConfigureAwait(false);
         if (!response.IsSuccessStatusCode)
         {
-            throw new SubscriptionDownloadException(DownloadFailure.Status, (int)response.StatusCode);
+            throw new SubscriptionDownloadException(DownloadFailure.Status, (int)response.StatusCode,
+                retryAfter: response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - time.GetUtcNow()));
         }
 
         if (response.Content.Headers.ContentLength > MaxBytes)

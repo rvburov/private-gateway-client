@@ -12,6 +12,7 @@ public static class SubscriptionContractMapping
         Title = result.Title ?? string.Empty,
         Failure = result.Failure?.ToString() ?? string.Empty,
         StatusCode = result.StatusCode ?? 0,
+        RetryAfterMs = (long)(result.RetryAfter?.TotalMilliseconds ?? 0),
     };
 
     public static SubscriptionDownload ToCore(this V1.SubscriptionDownloadReply result)
@@ -25,7 +26,8 @@ public static class SubscriptionContractMapping
         if (result.Failure.Length > 0)
         {
             return SubscriptionDownload.Failed(Enum.TryParse<DownloadFailure>(result.Failure, out var failure) && Enum.IsDefined(failure)
-                ? failure : DownloadFailure.Network, result.StatusCode is > 0 ? result.StatusCode : null);
+                ? failure : DownloadFailure.Network, result.StatusCode is > 0 ? result.StatusCode : null,
+                result.RetryAfterMs > 0 ? TimeSpan.FromMilliseconds(Math.Min(result.RetryAfterMs, 86400000)) : null);
         }
 
         return new SubscriptionDownload(result.Content.ToByteArray(), result.Title.Length == 0 ? null : result.Title);

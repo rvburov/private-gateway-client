@@ -26,7 +26,8 @@ public static class SubscriptionTransport
             using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, stop.Token).ConfigureAwait(false);
             if (!response.IsSuccessStatusCode)
             {
-                return SubscriptionDownload.Failed(DownloadFailure.Status, (int)response.StatusCode);
+                return SubscriptionDownload.Failed(DownloadFailure.Status, (int)response.StatusCode,
+                    response.Headers.RetryAfter?.Delta ?? (response.Headers.RetryAfter?.Date - time.GetUtcNow()));
             }
 
             if (response.Content.Headers.ContentLength > SubscriptionDownload.MaxBytes)

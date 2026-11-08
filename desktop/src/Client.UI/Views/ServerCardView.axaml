@@ -188,7 +188,7 @@
                   <TextBlock Classes="small" Text="{Binding Label}" Foreground="{StaticResource PgBrush.Text.Muted}"
                              VerticalAlignment="Center" />
                   <TextBlock Grid.Column="1" Text="{Binding Value}" Margin="12,0,0,0" TextAlignment="Right"
-                             TextTrimming="CharacterEllipsis" VerticalAlignment="Center"
+                             TextWrapping="Wrap" VerticalAlignment="Center"
                              FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Small}"
                              FontWeight="Medium" />
                 </Grid>

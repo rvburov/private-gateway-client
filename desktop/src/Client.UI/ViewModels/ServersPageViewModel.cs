@@ -316,17 +316,15 @@ public sealed partial class ServersPageViewModel : ObservableObject
         server.Name,
         Address(server) + " · " + ServerFacts.Summary(server),
         isSelected ? Loc.Instance[connected ? "servers.tag.active" : _target.IsExternalProxy ? "externalProxy.vpn.selected" : "servers.tag.selected"] : null,
-        server.LatencyMs is { } ms
-            ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"]
-            : Loc.Instance["servers.latency.none"],
-        server.LatencyMs switch
+        ServerLatencyText.Of(server),
+        server.IsMeasuringLatency ? LatencyKind.Unchecked : server.LatencyMs switch
         {
-            null => LatencyKind.None,
+            null => server.LatencyFailure is null ? LatencyKind.Unchecked : LatencyKind.None,
             > SlowLatencyMs => LatencyKind.Slow,
             _ => LatencyKind.Good,
         },
         ChooseCommand,
-        OpenCardCommand);
+        OpenCardCommand, ServerLatencyText.Reason(server));
 }
 
 /// <summary>Как окрашен пинг в строке: быстрый — зеленым, медленный — серым, нет ответа — оранжевым.</summary>
@@ -335,6 +333,7 @@ public enum LatencyKind
     Good,
     Slow,
     None,
+    Unchecked,
 }
 
 /// <summary>Группа строк: заголовок подписки или вкладки и время обновления подписки.</summary>
@@ -353,7 +352,8 @@ public sealed record ServerRowViewModel(
     string LatencyText,
     LatencyKind Latency,
     IAsyncRelayCommand<string> ChooseCommand,
-    IRelayCommand<string> OpenCommand)
+    IRelayCommand<string> OpenCommand,
+    string? FailureHint = null)
 {
     public bool IsSelected => Tag is not null;
 
@@ -362,7 +362,7 @@ public sealed record ServerRowViewModel(
     public bool IsDown => Latency == LatencyKind.None;
 
     /// <summary>Подсказка к «нет»: пинг показан словом и цветом, причина — в подсказке.</summary>
-    public string? LatencyHint => IsDown ? Loc.Instance["servers.latency.noneHint"] : null;
+    public string LatencyHint => FailureHint ?? Loc.Instance["latency.method"];
 
     public string MoreName => Loc.Instance.Format("servers.more.name", Name);
 }

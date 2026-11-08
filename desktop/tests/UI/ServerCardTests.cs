@@ -7,7 +7,9 @@ using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Infrastructure.Demo;
+using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI.Services;
 using PrivateGateway.Client.UI.ViewModels;
 using PrivateGateway.Client.UI.Views;
@@ -37,6 +39,7 @@ public sealed class ServerCardTests : WindowHarness
         card.Details.Select(d => d.Label + ": " + d.Value).ShouldBe(
         [
             "Адрес: 203.0.113.24:443",
+            "Выходной IP: Не измерен",
             "Протокол: VLESS",
             "Транспорт: TCP",
             "Защита: REALITY",
@@ -111,6 +114,34 @@ public sealed class ServerCardTests : WindowHarness
         se.Details.Single(d => d.Label == "Ядро").Value.ShouldBe("Xray-core", "WireGuard ведет Xray, sing-box — только Hysteria2 и TUIC");
         se.Details.Single(d => d.Label == "Транспорт").Value.ShouldBe("UDP");
         se.StatusText.ShouldBeNull("не выбран — без отметки");
+    }
+
+    [AvaloniaFact]
+    public void Card_keeps_measured_exit_and_explains_failed_latency()
+    {
+        var (window, shell) = Open();
+        _shell = shell;
+        var store = Service<SqliteServerCatalog>();
+        store.Add([LinkParser.Parse("trojan://fake@192.0.2.10:443#Проверка").Server!], null);
+        var id = store.Servers.Single().Id;
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        var card = OpenCard(shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>(), "Проверка");
+        card.LatencyText.ShouldBe("Не проверен");
+        card.IsDown.ShouldBeFalse();
+        card.Details.Single(d => d.Label == "Выходной IP").Value.ShouldBe("Не измерен");
+        store.SetLatency(new Dictionary<string, LatencyResult> { [id] = new(null, LatencyFailure.NoResponse, "Timeout") });
+        store.RememberExit(id, "198.51.100.42");
+        Dispatcher.UIThread.RunJobs();
+        card.LatencyText.ShouldBe("нет ответа");
+        card.Details.Single(d => d.Label == "Выходной IP").Value.ShouldBe("198.51.100.42");
+        card.Details.Single(d => d.Label == "Проверка").Value.ShouldBe("Время ожидания ответа истекло");
+        card.Details.ShouldContain(d => d.Label == "Измерено");
+        Snapshot(window, "server-card-exit-and-failure");
+        store.SetMeasuringLatency(true);
+        Dispatcher.UIThread.RunJobs();
+        card.LatencyText.ShouldBe("…");
+        card.IsDown.ShouldBeFalse();
     }
 
     [AvaloniaFact]

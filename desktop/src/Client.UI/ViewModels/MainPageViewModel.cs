@@ -386,7 +386,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     // ── IP и сервер ──────────────────────────────────────────────────────────
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WebIp), nameof(WebCountryCode), nameof(MaskIcon), nameof(MaskHint))]
+    [NotifyPropertyChangedFor(nameof(WebIp), nameof(WebCountryCode), nameof(CanCopyIp), nameof(MaskIcon), nameof(MaskHint))]
     public partial bool IsIpMasked { get; private set; }
 
     /// <summary>IP, который видят сайты: в туннеле — выходной сервера, без защиты — реальный.</summary>

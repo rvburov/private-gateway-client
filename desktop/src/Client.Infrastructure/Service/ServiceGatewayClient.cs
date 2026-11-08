@@ -626,7 +626,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     public async Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(serverIds);
-        var request = new V1.MeasureLatencyRequest();
+        var request = new V1.MeasureLatencyRequest { Connection = _settings().ToConnection() };
         foreach (var id in serverIds)
         {
             if (_definitions(id) is { } definition)
