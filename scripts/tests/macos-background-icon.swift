@@ -36,7 +36,7 @@ func pixels(_ image: NSImage) -> [UInt8] {
 
 let args = Array(CommandLine.arguments.dropFirst())
 guard args.count == 2 else { fail("ожидаются путь .app и --register или путь launchd plist") }
-let app = URL(fileURLWithPath: args[0]).standardizedFileURL
+let app = URL(fileURLWithPath: args[0]).resolvingSymlinksInPath().standardizedFileURL
 let info = try plist(app.appendingPathComponent("Contents/Info.plist"))
 guard let identifier = info["CFBundleIdentifier"] as? String,
       let resource = info["CFBundleIconFile"] as? String else { fail("нет идентификатора или иконки пакета") }
@@ -48,8 +48,13 @@ if args[1] == "--register" {
         ?? (job["AssociatedBundleIdentifiers"] as? String).map { [$0] } ?? []
     guard associations == [identifier] else { fail("запись не связана с этим пакетом") }
 }
-guard let resolved = NSWorkspace.shared.urlForApplication(withBundleIdentifier: identifier),
-      resolved.standardizedFileURL == app else { fail("Launch Services не нашла проверяемый пакет по идентификатору") }
+// На сборочной машине остаются staging и копия из DMG с одним ID. Первый результат — эвристика ОС,
+// а не обещание вернуть последнюю регистрацию. Ищем именно установленную копию среди всех результатов.
+let registered = NSWorkspace.shared.urlsForApplications(withBundleIdentifier: identifier)
+    .map { $0.resolvingSymlinksInPath().standardizedFileURL }
+guard let resolved = registered.first(where: { $0.path == app.path }) else {
+    fail("Launch Services не нашла \(app.path); зарегистрированы: \(registered.map(\.path).joined(separator: "; "))")
+}
 let iconName = resource.hasSuffix(".icns") ? resource : resource + ".icns"
 guard NSImage(contentsOf: app.appendingPathComponent("Contents/Resources/" + iconName)) != nil else {
     fail("ресурс иконки не читается")
