@@ -766,7 +766,7 @@ public sealed class ServiceSetupTests : IDisposable
         string[] test = ["--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", endpoint];
         IReadOnlyList<string>? asked = null;
         var installer = new ServiceInstaller(service,
-            async (file, arguments) =>
+            async (file, arguments, _) =>
             {
                 asked = arguments;
                 return await Run(file, [.. arguments, .. test]);

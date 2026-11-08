@@ -70,7 +70,7 @@ public sealed class ServiceHostTests : IDisposable
     {
         Assert.SkipWhen(!Path.Exists(Path.Combine(XrayKit.Root, ".git")), "сборка не из git — коммита в версии нет");
         static ServiceInstaller For(string executable) =>
-            new(executable, (_, _) => Task.FromResult<int?>(0), () => true, TimeProvider.System);
+            new(executable, (_, _, _) => Task.FromResult<int?>(0), () => true, TimeProvider.System);
 
         For(Path.Combine(AppContext.BaseDirectory, UserServiceLauncher.FileName)).SourceBuild.ShouldBe(ServiceVersion.Build,
             "библиотека службы лежит рядом с тестами — та же сборка");
