@@ -32,6 +32,11 @@
 flag-icons (MIT), URL и SHA256. Авторство включено в «О программе» и THIRD-PARTY-NOTICES.
 Земля — собственный SVG согласованного макета. База встроена в Core, PNG 112 × 112 — в UI.
 Нет зависимости от внешнего GeoIP-сервиса или системного шрифта эмодзи.
+Для базы и флагов явно задано `WithCulture="false"`: MSBuild на Windows может принять `.bin`
+в имени `country.bin.gz` за код культуры и вынести базу в отдельную сборку, где загрузчик ее
+не найдет. Тест `Shipped_database_is_valid_and_has_expected_scale` проверяет наличие и чтение
+базы именно из основной сборки на каждой ОС. Основание —
+[метаданные EmbeddedResource в MSBuild](https://learn.microsoft.com/en-us/visualstudio/msbuild/common-msbuild-project-items#embeddedresource).
 
 Формат `country.bin.gz`: `PGCTRY1\0`, uint32 big-endian количества, записи из начала и конца
 диапазона (16+16 байт) и ISO-кода (2 ASCII-байта). IPv4 представлен в `::ffff:0:0/96`.

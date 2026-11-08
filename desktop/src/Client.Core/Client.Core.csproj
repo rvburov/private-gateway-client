@@ -5,7 +5,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="../../../shared/countries/country.bin.gz" LogicalName="PrivateGateway.Countries.Database" />
+    <!-- .bin распознается как культура на Windows: база всегда должна оставаться в основной сборке. -->
+    <EmbeddedResource Include="../../../shared/countries/country.bin.gz" LogicalName="PrivateGateway.Countries.Database" WithCulture="false" />
   </ItemGroup>
 
 </Project>
