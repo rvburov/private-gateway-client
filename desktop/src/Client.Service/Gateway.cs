@@ -1059,7 +1059,10 @@ public sealed partial class Gateway : IAsyncDisposable
         var connection = request.Connection?.ToCore() ?? _request?.Connection ?? ConnectionSettings.Default;
         var activeIndex = status.State == ConnectionState.Connected && !status.IsPaused && active is not null
             ? ids.IndexOf(status.ServerId ?? string.Empty) : -1;
-        if (activeIndex >= 0 && _request?.Server != servers[activeIndex])
+        // IPC создает новые списки ALPN и закрепленных сертификатов. Protobuf сравнивает их содержимое,
+        // record ServerDefinition — ссылки на списки: одинаковый профиль ошибочно получил бы отдельное ядро.
+        if (activeIndex >= 0 && (_request is null
+            || !_request.Server.ToContract(string.Empty).Equals(servers[activeIndex].ToContract(string.Empty))))
         {
             activeIndex = -1;
         }
