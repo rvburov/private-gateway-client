@@ -454,7 +454,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         UpdateFailed = false;
         try
         {
-            var result = await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
+            var result = await _installer.InstallAsync(Loc.Instance[ServiceMissing ? "service.permission.install" : "service.permission.update"], new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
             _updateError = _installer.ErrorKey is { } key ? Loc.Instance[key] : _installer.LastError;
             UpdateFailed = result == ServiceInstallResult.Failed;
             await LoadDetailsAsync().ConfigureAwait(true);

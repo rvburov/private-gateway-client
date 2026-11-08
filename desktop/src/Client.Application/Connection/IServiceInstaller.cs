@@ -40,5 +40,9 @@ public interface IServiceInstaller
     /// <summary>Прогресс по завершенным этапам: 0 — запрос прав, 100 — служба отвечает.</summary>
     Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default) => InstallAsync(cancellationToken);
 
+    /// <summary>Локализованное пояснение для системного запроса прав; macOS может добавить собственное предупреждение.</summary>
+    Task<ServiceInstallResult> InstallAsync(string prompt, IProgress<int> progress, CancellationToken cancellationToken = default) =>
+        InstallAsync(progress, cancellationToken);
+
     Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default);
 }

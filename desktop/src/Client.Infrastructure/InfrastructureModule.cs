@@ -71,7 +71,7 @@ public static class InfrastructureModule
             new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
         services.AddSingleton<IServiceAccess>(_ => demo ? new NoServiceAccess() : MacServiceAccess.ForThisMachine());
         services.AddSingleton<IServiceInstaller>(sp => demo
-            ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
+            ? new ServiceInstaller(null, (_, _, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IAppRelauncher>(_ => demo ? new AppRelauncher(null) : AppRelauncher.ForThisWindow());
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));

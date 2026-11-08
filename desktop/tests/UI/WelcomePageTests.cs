@@ -131,6 +131,7 @@ public sealed class WelcomePageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         Installer.Installs.ShouldBe(1);
+        Installer.Prompt.ShouldBe("Разрешите установить службу Private Gateway для работы VPN. Введите пароль администратора Mac.");
         page.Rows.Select(r => (r.Detail, r.State)).ShouldBe([("Готово", SetupRowState.Done),
             ("Появятся при подключении", SetupRowState.Pending), ("Появятся при подключении", SetupRowState.Pending)],
             "ставится служба; адаптер и правила появятся при подключении — не «готово»");

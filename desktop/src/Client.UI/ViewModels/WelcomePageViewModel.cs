@@ -164,7 +164,7 @@ public sealed partial class WelcomePageViewModel : ObservableObject
                 return;
             }
 
-            switch (await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true))
+            switch (await _installer.InstallAsync(Loc.Instance["service.permission.install"], new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true))
             {
                 case ServiceInstallResult.Installed:
                     IsInstalled = true;

@@ -216,6 +216,8 @@
   "problem.fact.proxy.available": "available",
   "problem.proxy": "Use proxy mode",
   "problem.proxy.failed": "The user service did not start — see the log",
+  "service.permission.install": "Allow Private Gateway to install its service for VPN access. Enter your Mac administrator password.",
+  "service.permission.update": "Allow Private Gateway to update its service. Enter your Mac administrator password.",
   "problem.install": "Install service",
   "problem.admin.retry": "Ask again",
   "problem.install.done": "Service installed",

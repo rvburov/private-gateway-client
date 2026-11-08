@@ -304,6 +304,7 @@ public sealed class AboutPageTests : WindowHarness
         Press(window, "UpdateService");
         Dispatcher.UIThread.RunJobs();
         Installer.Installs.ShouldBe(1);
+        Installer.Prompt.ShouldBe("Разрешите установить службу Private Gateway для работы VPN. Введите пароль администратора Mac.");
     }
 
     [AvaloniaFact]
@@ -333,6 +334,7 @@ public sealed class AboutPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
 
         Installer.Installs.ShouldBe(1, "та же установка, что «Установить службу»: из этой копии программы");
+        Installer.Prompt.ShouldBe("Разрешите обновить службу Private Gateway. Введите пароль администратора Mac.");
         page.HasServiceNotice.ShouldBeFalse("после переустановки версии совпадают");
         Text(window, "ServiceState").ShouldBe($"работает · {AppInfo.Version}");
 

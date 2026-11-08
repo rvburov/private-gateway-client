@@ -16,13 +16,13 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// Потом окно ждет, пока установленная служба ответит.
 /// </summary>
 /// <param name="executable">Файл службы; null — установка на этой ОС недоступна.</param>
-/// <param name="elevate">Запуск с правами: файл и аргументы → код выхода; пользователь отказал в правах — null.</param>
+/// <param name="elevate">Запуск с правами: файл, аргументы и пояснение → код выхода; пользователь отказал в правах — null.</param>
 /// <param name="installedAnswers">Отвечает ли установленная служба.</param>
 /// <param name="time">Часы для ожидания ответа.</param>
 /// <param name="resultFile">Файл итога установки (<see cref="SetupResult"/>): причина отказа; null — не читать.</param>
 public sealed class ServiceInstaller(
     string? executable,
-    Func<string, IReadOnlyList<string>, Task<int?>> elevate,
+    Func<string, IReadOnlyList<string>, string, Task<int?>> elevate,
     Func<bool> installedAnswers,
     TimeProvider time,
     string? resultFile = null) : IServiceInstaller
@@ -46,11 +46,12 @@ public sealed class ServiceInstaller(
     private static readonly string[] MacScript =
     [
         "on run argv",
+        "set promptText to item 1 of argv",
         "set command to \"\"",
-        "repeat with argument in argv",
+        "repeat with argument in items 2 thru -1 of argv",
         "set command to command & quoted form of (argument as text) & \" \"",
         "end repeat",
-        "do shell script command with administrator privileges",
+        "do shell script command with administrator privileges with prompt promptText",
         "end run",
     ];
 
@@ -89,7 +90,10 @@ public sealed class ServiceInstaller(
 
     public Task<ServiceInstallResult> InstallAsync(CancellationToken cancellationToken = default) => InstallAsync(new Progress<int>(), cancellationToken);
 
-    public async Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default)
+    public Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default) =>
+        InstallAsync(string.Empty, progress, cancellationToken);
+
+    public async Task<ServiceInstallResult> InstallAsync(string prompt, IProgress<int> progress, CancellationToken cancellationToken = default)
     {
         if (Interlocked.CompareExchange(ref _active, 1, 0) != 0)
         {
@@ -98,7 +102,7 @@ public sealed class ServiceInstaller(
 
         try
         {
-            return await InstallCoreAsync(progress, cancellationToken).ConfigureAwait(false);
+            return await InstallCoreAsync(prompt, progress, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception e) when (e is Win32Exception or IOException)
         {
@@ -111,7 +115,7 @@ public sealed class ServiceInstaller(
         }
     }
 
-    private async Task<ServiceInstallResult> InstallCoreAsync(IProgress<int> progress, CancellationToken cancellationToken)
+    private async Task<ServiceInstallResult> InstallCoreAsync(string prompt, IProgress<int> progress, CancellationToken cancellationToken)
     {
         LastError = null;
         ErrorKey = null;
@@ -130,7 +134,7 @@ public sealed class ServiceInstaller(
         // Время файла — настоящее, файловой системы: прежний итог (старше этой попытки) — не про нее.
         var attempt = DateTime.UtcNow.AddSeconds(-2);
         var attemptId = Guid.NewGuid().ToString("N");
-        _pending = elevate(executable!, ["--install", "--owner", Owner(), "--setup-attempt", attemptId]);
+        _pending = elevate(executable!, ["--install", "--owner", Owner(), "--setup-attempt", attemptId], prompt);
         var startedInstall = time.GetTimestamp();
         while (!_pending.IsCompleted)
         {
@@ -239,16 +243,16 @@ public sealed class ServiceInstaller(
     }
 
     /// <summary>Параметры osascript для запуска <paramref name="executable"/> от администратора на macOS.</summary>
-    public static IReadOnlyList<string> MacArguments(string executable, IReadOnlyList<string> arguments) =>
-        [.. MacScript.SelectMany(line => new[] { "-e", line }), executable, .. arguments];
+    public static IReadOnlyList<string> MacArguments(string executable, IReadOnlyList<string> arguments, string prompt) =>
+        [.. MacScript.SelectMany(line => new[] { "-e", line }), "--", prompt, executable, .. arguments];
 
-    private static async Task<int?> ElevateAsync(string executable, IReadOnlyList<string> arguments)
+    private static async Task<int?> ElevateAsync(string executable, IReadOnlyList<string> arguments, string prompt)
     {
         ProcessStartInfo start;
         if (OperatingSystem.IsMacOS())
         {
             start = new ProcessStartInfo(Osascript) { UseShellExecute = false, RedirectStandardError = true };
-            foreach (var argument in MacArguments(executable, arguments))
+            foreach (var argument in MacArguments(executable, arguments, prompt))
             {
                 start.ArgumentList.Add(argument);
             }

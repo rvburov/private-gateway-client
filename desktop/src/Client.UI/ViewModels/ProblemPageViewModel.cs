@@ -227,7 +227,7 @@ public sealed partial class ProblemPageViewModel : ObservableObject
         ServiceInstallResult result;
         try
         {
-            result = await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
+            result = await _installer.InstallAsync(Loc.Instance["service.permission.install"], new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true);
             if (result == ServiceInstallResult.Installed && _target.Selected is { } server)
             {
                 await _gateway.ConnectAsync(server).ConfigureAwait(true);

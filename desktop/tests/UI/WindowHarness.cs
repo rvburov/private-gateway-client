@@ -405,6 +405,14 @@ public abstract class WindowHarness : IDisposable
 
         public IProgress<int>? Progress { get; private set; }
 
+        public string? Prompt { get; private set; }
+
+        public Task<ServiceInstallResult> InstallAsync(string prompt, IProgress<int> progress, CancellationToken cancellationToken = default)
+        {
+            Prompt = prompt;
+            return InstallAsync(progress, cancellationToken);
+        }
+
         public Task<ServiceInstallResult> InstallAsync(IProgress<int> progress, CancellationToken cancellationToken = default)
         {
             Progress = progress;

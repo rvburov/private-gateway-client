@@ -257,6 +257,7 @@ public sealed class ProblemPageTests : WindowHarness
         (gateway.Service, gateway.Status.State, gateway.Status.Mode).ShouldBe((ServiceKind.Installed, ConnectionState.Connected, ConnectionMode.Vpn));
         shell.Toast.Text.ShouldBe("Служба установлена");
         Installer.Installs.ShouldBe(1);
+        Installer.Prompt.ShouldBe("Разрешите установить службу Private Gateway для работы VPN. Введите пароль администратора Mac.");
     }
 
     [AvaloniaTheory]

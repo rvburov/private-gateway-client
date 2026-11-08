@@ -11,6 +11,7 @@ public sealed class ServiceInstallerTests : IDisposable
     private readonly string _executable = Path.Combine(Path.GetTempPath(), "pg-installer-" + Guid.NewGuid().ToString("N")[..8]);
     private readonly FakeTimeProvider _time = new();
     private readonly List<string> _calls = [];
+    private readonly List<string> _prompts = [];
 
     public ServiceInstallerTests() => File.WriteAllText(_executable, "служба");
 
@@ -24,9 +25,10 @@ public sealed class ServiceInstallerTests : IDisposable
         var answers = 0;
         var installer = Installer(0, () => Interlocked.Increment(ref answers) >= 3);
 
-        (await Run(installer.InstallAsync(Ct))).ShouldBe(ServiceInstallResult.Installed);
+        (await Run(installer.InstallAsync("Причина запроса прав", new InlineProgress(_ => { }), Ct))).ShouldBe(ServiceInstallResult.Installed);
 
         _calls.Count.ShouldBe(1);
+        _prompts.ShouldBe(["Причина запроса прав"]);
         _calls[0].ShouldStartWith($"{_executable} --install --owner {ServiceInstaller.Owner()} --setup-attempt ");
         Guid.TryParseExact(_calls[0].Split(' ')[^1], "N", out _).ShouldBeTrue();
         answers.ShouldBe(3, "окно ждет, пока установленная служба ответит");
@@ -53,7 +55,7 @@ public sealed class ServiceInstallerTests : IDisposable
     [Fact]
     public async Task Without_a_service_file_there_is_nothing_to_install()
     {
-        var installer = new ServiceInstaller(null, (_, _) => throw new InvalidOperationException(), () => true, _time);
+        var installer = new ServiceInstaller(null, (_, _, _) => throw new InvalidOperationException(), () => true, _time);
 
         installer.IsAvailable.ShouldBeFalse("кнопки «Установить службу» нет");
         (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
@@ -69,7 +71,7 @@ public sealed class ServiceInstallerTests : IDisposable
         var result = _executable + "-result.txt";
         try
         {
-            var installer = new ServiceInstaller(_executable, (_, _) =>
+            var installer = new ServiceInstaller(_executable, (_, _, _) =>
             {
                 File.WriteAllText(result, "служба работает от имени системы, а ей не виден .NET 10\n");
                 return Task.FromResult<int?>(1);
@@ -79,13 +81,13 @@ public sealed class ServiceInstallerTests : IDisposable
             installer.LastError.ShouldBe("служба работает от имени системы, а ей не виден .NET 10");
 
             File.SetLastWriteTimeUtc(result, DateTime.UtcNow.AddMinutes(-10));
-            var stale = new ServiceInstaller(_executable, (_, _) => Task.FromResult<int?>(1), () => true, _time, result);
+            var stale = new ServiceInstaller(_executable, (_, _, _) => Task.FromResult<int?>(1), () => true, _time, result);
             (await stale.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
             stale.LastError.ShouldBeNull("итог прежней попытки — не причина этой");
 
             (await installer.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Failed);
             File.Delete(result);
-            var cancelled = new ServiceInstaller(_executable, (_, _) => Task.FromResult<int?>(null), () => true, _time, result);
+            var cancelled = new ServiceInstaller(_executable, (_, _, _) => Task.FromResult<int?>(null), () => true, _time, result);
             (await cancelled.InstallAsync(Ct)).ShouldBe(ServiceInstallResult.Cancelled);
             cancelled.LastError.ShouldBeNull("права не дали — причина и так ясна");
         }
@@ -105,7 +107,7 @@ public sealed class ServiceInstallerTests : IDisposable
         Directory.CreateDirectory(Path.GetDirectoryName(result)!);
         var file = legacy ? result + ".lock" : SetupResult.LockForResult(result);
         var calls = 0;
-        var installer = new ServiceInstaller(_executable, (_, _) => { calls++; return Task.FromResult<int?>(0); }, () => true, _time, result);
+        var installer = new ServiceInstaller(_executable, (_, _, _) => { calls++; return Task.FromResult<int?>(0); }, () => true, _time, result);
         try
         {
             using (var held = new FileStream(file, FileMode.Create, FileAccess.ReadWrite, FileShare.None))
@@ -129,7 +131,7 @@ public sealed class ServiceInstallerTests : IDisposable
     {
         var pending = new TaskCompletionSource<int?>();
         var calls = 0;
-        var installer = new ServiceInstaller(_executable, (_, _) => { calls++; return pending.Task; }, () => true, _time);
+        var installer = new ServiceInstaller(_executable, (_, _, _) => { calls++; return pending.Task; }, () => true, _time);
         var installation = installer.InstallAsync(Ct);
         _time.Advance(ServiceInstaller.InstallTimeout);
         (await installation.WaitAsync(TimeSpan.FromSeconds(5), Ct)).ShouldBe(ServiceInstallResult.Failed);
@@ -149,7 +151,7 @@ public sealed class ServiceInstallerTests : IDisposable
         var pending = new TaskCompletionSource<int?>();
         var values = new List<int>();
         string? attempt = null;
-        var installer = new ServiceInstaller(_executable, (_, args) => { attempt = args[^1]; return pending.Task; }, () => true, _time, result);
+        var installer = new ServiceInstaller(_executable, (_, args, _) => { attempt = args[^1]; return pending.Task; }, () => true, _time, result);
         var copied = new TaskCompletionSource();
         var progress = new InlineProgress(value =>
         {
@@ -187,13 +189,18 @@ public sealed class ServiceInstallerTests : IDisposable
     [Fact]
     public void Mac_elevation_passes_the_command_as_arguments_not_inside_the_script()
     {
-        var arguments = ServiceInstaller.MacArguments("/Applications/Private Gateway.app/Contents/MacOS/PrivateGateway.Service", ["--install", "--owner", "501"]);
+        const string prompt = "Разрешите установить службу Private Gateway. \"Цитата\"; $()\nНовая строка";
+        var arguments = ServiceInstaller.MacArguments("/Applications/Private Gateway.app/Contents/MacOS/PrivateGateway.Service", ["--install", "--owner", "501"], prompt);
 
         arguments.TakeLast(4).ShouldBe(["/Applications/Private Gateway.app/Contents/MacOS/PrivateGateway.Service", "--install", "--owner", "501"]);
-        var script = arguments.SkipLast(4).ToList();
+        arguments[^5].ShouldBe(prompt, "пояснение передается отдельно от команды и AppleScript");
+        arguments[^6].ShouldBe("--", "пояснение не может стать параметром osascript");
+        var script = arguments.SkipLast(6).ToList();
         script.Where((_, i) => i % 2 == 0).ShouldAllBe(flag => flag == "-e");
         var lines = script.Where((_, i) => i % 2 == 1).ToList();
-        lines.ShouldContain("do shell script command with administrator privileges");
+        lines.ShouldContain("do shell script command with administrator privileges with prompt promptText");
+        lines.ShouldContain("set promptText to item 1 of argv");
+        lines.ShouldContain("repeat with argument in items 2 thru -1 of argv");
         lines.ShouldContain(line => line.Contains("quoted form of", StringComparison.Ordinal), "каждый параметр — в кавычках оболочки");
         lines.ShouldAllBe(line => !line.Contains("Private Gateway", StringComparison.Ordinal) && !line.Contains("501", StringComparison.Ordinal),
             "путь и владелец в текст скрипта не попадают");
@@ -211,9 +218,10 @@ public sealed class ServiceInstallerTests : IDisposable
         return await install;
     }
 
-    private ServiceInstaller Installer(int? exitCode, Func<bool> answers) => new(_executable, (file, arguments) =>
+    private ServiceInstaller Installer(int? exitCode, Func<bool> answers) => new(_executable, (file, arguments, prompt) =>
     {
         _calls.Add(file + " " + string.Join(' ', arguments));
+        _prompts.Add(prompt);
         return Task.FromResult(exitCode);
     }, answers, _time);
 }

@@ -645,13 +645,13 @@
     <!-- Пароль администратора: запрос osascript «with administrator privileges» -->
     <div class="dialog os-mac is-open" id="ask-macos" role="dialog" aria-label="Пароль администратора">
       <span class="os-app big"><i data-icon="Lock" data-stroke="2" data-size="28"></i></span>
-      <span class="t-strong pg-center">«osascript» хочет внести изменения.</span>
-      <span class="t-small pg-center">Введите пароль, чтобы разрешить это.</span>
+      <span class="t-strong pg-center">Разрешите установить службу Private Gateway для работы VPN.</span>
+      <span class="t-small pg-center">Введите пароль администратора Mac.</span>
       <span class="os-field">user</span>
       <span class="os-field">********</span>
       <div class="os-actions">
-        <button class="os-btn" data-close data-goto="macos-err">Отменить</button>
-        <button class="os-btn main" data-close data-goto="macos-done">OK</button>
+        <button class="os-btn" data-close data-goto="macos-err">Не разрешать</button>
+        <button class="os-btn main" data-close data-goto="macos-done">Разрешить доступ</button>
       </div>
     </div>
   </section>
@@ -823,7 +823,10 @@
     <div class="os-fact-row"><span class="t-muted">Блок при обрыве</span><span>pf</span></div>
     <div class="os-fact-row"><span class="t-muted">Установщик</span><span>.dmg, подпись ad-hoc. Фон и инструкция внутри пакета приложения; в корне только программа и ярлык «Программы». Серое поле до 4096 × 4096 точек.</span></div>
     <div class="os-fact-row"><span class="t-muted">Первый запуск</span><span>1. Перетащите в «Программы». 2. Откройте: если «Файл не был открыт», нажмите «Готово». 3. Системные настройки → Конфиденциальность и безопасность. 4. В «Безопасности» — «Все равно открыть». 5. В новом окне снова «Все равно открыть», подтвердите запуск.</span></div>
-    <div class="os-fact-row"><span class="t-muted">Запрос прав</span><span>После «Установить». Текст системного предупреждения задает macOS; приложение его не сокращает.</span></div>
+    <div class="os-fact-row"><span class="t-muted">Запрос прав</span><span>После «Установить» приложение передает короткое пояснение на выбранном языке. На макете показано только это пояснение: macOS может добавить собственное предупреждение о правах и проверке Apple. Оно, поле пароля и кнопки остаются системными.</span></div>
+    <div class="os-fact-row" data-os="macos"><span class="t-muted">Обновление службы · RU</span><span>Разрешите обновить службу Private Gateway. Введите пароль администратора Mac.</span></div>
+    <div class="os-fact-row" data-os="macos" lang="en"><span class="t-muted">Install · EN</span><span>Allow Private Gateway to install its service for VPN access. Enter your Mac administrator password.</span></div>
+    <div class="os-fact-row" data-os="macos" lang="en"><span class="t-muted">Update · EN</span><span>Allow Private Gateway to update its service. Enter your Mac administrator password.</span></div>
   </div>
   <div class="card os-fact" aria-label="Linux">
     <div class="os-fact-row"><span class="t-muted">Значок</span><span>в панели (AppIndicator)</span></div>
