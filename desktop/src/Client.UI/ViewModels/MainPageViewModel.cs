@@ -9,6 +9,7 @@ using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Countries;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.UI.Localization;
@@ -385,7 +386,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
     // ── IP и сервер ──────────────────────────────────────────────────────────
 
     [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(WebIp), nameof(MaskIcon), nameof(MaskHint))]
+    [NotifyPropertyChangedFor(nameof(WebIp), nameof(WebCountryCode), nameof(MaskIcon), nameof(MaskHint))]
     public partial bool IsIpMasked { get; private set; }
 
     /// <summary>IP, который видят сайты: в туннеле — выходной сервера, без защиты — реальный.</summary>
@@ -397,6 +398,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         ConnectionState.Off => Status.Exit.DirectIp ?? IpPlaceholder,
         _ => IpPlaceholder,
     });
+
+    public string? WebCountryCode => IsIpMasked ? null : CountryDatabase.Lookup(WebIp);
 
     public bool CanCopyIp => WebIp != IpPlaceholder && !IsIpMasked;
 
@@ -453,7 +456,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string ServerTitle => Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
         ? Loc.Instance["externalProxy.title"] : Server is { } s
-        ? (string.IsNullOrEmpty(s.CountryCode) ? s.Name : s.CountryCode + " · " + s.Name)
+        ? s.Name
         : Status is { Mode: ConnectionMode.Proxy, State: not ConnectionState.Off } ? Loc.Instance["externalProxy.title"]
         : Loc.Instance[IsExternalProxy ? "externalProxy.unconfigured" : "server.none"];
 

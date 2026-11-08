@@ -4,4 +4,8 @@
     <PgNoNetwork>true</PgNoNetwork>
   </PropertyGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="../../../shared/countries/country.bin.gz" LogicalName="PrivateGateway.Countries.Database" />
+  </ItemGroup>
+
 </Project>

@@ -106,6 +106,7 @@ public partial class App : Avalonia.Application
         Services.GetRequiredService<AutostartSync>().Start();
         Services.GetRequiredService<ProtectionSync>().Start();
         Services.GetRequiredService<ExitMemory>().Start();
+        Services.GetRequiredService<PrivateGateway.Client.Infrastructure.Storage.CountryServerCatalog>().Start();
         Services.GetRequiredService<IUserProxyController>().Start();
         Services.GetRequiredService<NetworkEventLog>().Start();
         Services.GetRequiredService<UpdateWatcher>().Start();

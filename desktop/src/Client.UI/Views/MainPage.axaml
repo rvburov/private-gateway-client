@@ -191,7 +191,11 @@
           <StackPanel Margin="16,14,8,12" Spacing="3">
             <TextBlock Classes="overline" Text="{l:L ip.title, Upper=True}" />
             <Grid ColumnDefinitions="*,Auto,Auto">
-              <TextBlock Classes="monoLarge" Text="{Binding WebIp}" VerticalAlignment="Center" />
+              <Grid ColumnDefinitions="Auto,*" Margin="0,0,8,0">
+                <c:CountryFlag CountryCode="{Binding WebCountryCode}" VerticalAlignment="Center" Margin="0,0,10,0" />
+                <TextBlock Grid.Column="1" Classes="monoLarge" Text="{Binding WebIp}" VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis" />
+              </Grid>
               <Button Grid.Column="1" Classes="icon" Command="{Binding CopyIpCommand}" IsEnabled="{Binding CanCopyIp}"
                       ToolTip.Tip="{l:L ip.copy}" AutomationProperties.Name="{l:L ip.copy}">
                 <c:Icon Data="{StaticResource Icon.Copy}" Width="18" Height="18" StrokeThickness="2" />
@@ -245,12 +249,7 @@
                         <Button Classes="option" Classes.current="{Binding IsCurrent}" Padding="10,0"
                                 Command="{Binding ChooseCommand}" CommandParameter="{Binding Id}">
                           <Grid ColumnDefinitions="Auto,*,Auto">
-                            <Border Width="30" Height="22" CornerRadius="{StaticResource PgRadius.Chip}"
-                                    Background="{StaticResource PgBrush.Accent.Tint}">
-                              <TextBlock Text="{Binding CountryCode}" FontSize="{StaticResource PgFontSize.Overline}"
-                                         FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"
-                                         Foreground="{StaticResource PgBrush.Accent.Text}" />
-                            </Border>
+                            <c:CountryFlag CountryCode="{Binding CountryCode}" VerticalAlignment="Center" />
                             <StackPanel Grid.Column="1" Margin="10,6" Spacing="1">
                               <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                               <TextBlock Classes="caption" Text="{Binding Meta}" />

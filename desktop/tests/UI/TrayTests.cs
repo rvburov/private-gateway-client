@@ -27,8 +27,8 @@ public sealed class TrayTests : WindowHarness
 
         Headers(tray.Menu).ShouldBe(
         [
-            "IP открыт · NL · Нидерланды 01 · 42 мс", "—", "Включить защиту", "—", "Сменить сервер",
-            "NL · Нидерланды 01 · 42 мс", "FI · Финляндия 01 · 38 мс", "DE · Германия 02 · 51 мс", "SE · Швеция 01 · 57 мс",
+            "IP открыт · Нидерланды 01 · 42 мс", "—", "Включить защиту", "—", "Сменить сервер",
+            "Нидерланды 01 · 42 мс", "Финляндия 01 · 38 мс", "Германия 02 · 51 мс", "Швеция 01 · 57 мс",
             "Все серверы…", "Обновить серверы", "—", "Открыть окно", "Проверка", "—", "Закрыть программу",
         ]);
         Item(tray.Menu, "Сменить сервер").IsEnabled.ShouldBeFalse("подпись группы серверов — не кнопка");
@@ -42,7 +42,7 @@ public sealed class TrayTests : WindowHarness
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
         Dispatcher.UIThread.RunJobs();
 
-        Headers(tray.Menu)[0].ShouldBe("IP скрыт · NL · Нидерланды 01 · 42 мс");
+        Headers(tray.Menu)[0].ShouldBe("IP скрыт · Нидерланды 01 · 42 мс");
         (tray.Tone, tray.Mark).ShouldBe((Tone.Connected, "Icon.Mark.Ok"));
         Item(tray.Menu, "Выключить защиту").Command!.Execute(null);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Off);
@@ -54,13 +54,13 @@ public sealed class TrayTests : WindowHarness
         var (_, _) = Open();
         var tray = Service<TrayViewModel>();
         var servers = tray.Menu;
-        servers.Items.OfType<NativeMenuItem>().Where(i => i.IsChecked).Select(i => i.Header).ShouldBe(["NL · Нидерланды 01 · 42 мс"]);
+        servers.Items.OfType<NativeMenuItem>().Where(i => i.IsChecked).Select(i => i.Header).ShouldBe(["Нидерланды 01 · 42 мс"]);
 
-        Item(servers, "FI · Финляндия 01 · 38 мс").Command!.Execute("demo-fi-01");
+        Item(servers, "Финляндия 01 · 38 мс").Command!.Execute("demo-fi-01");
         WaitFor(() => Service<IServerCatalog>().Selected?.Id == "demo-fi-01");
         Dispatcher.UIThread.RunJobs();
 
-        Headers(tray.Menu)[0].ShouldBe("IP открыт · FI · Финляндия 01 · 38 мс");
+        Headers(tray.Menu)[0].ShouldBe("IP открыт · Финляндия 01 · 38 мс");
 
         var catalog = Service<IServerCatalog>();
         catalog.Choose("demo-nl-01");

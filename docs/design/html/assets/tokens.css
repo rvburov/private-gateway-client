@@ -1,7 +1,7 @@
 /*
   Сгенерировано scripts/gen-design-html.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-design-html.cs».
-  tokens-sha256: aac55c3e719853f8118064b86ec05affa489a791d77613aa1d809e61a092ad2b
+  tokens-sha256: d3dd9c20854c589d00eb49ef634c90448fcbf174dd7e096f87ebacedeb7d74f1
 */
 :root {
   /* color */
@@ -128,6 +128,7 @@
   --pg-type-mono-size: 13px;
   --pg-type-mono-weight: 500;
   /* space */
+  --pg-space-hairline: 1px;
   --pg-space-xxs: 4px;
   --pg-space-xs: 6px;
   --pg-space-s: 8px;
@@ -138,6 +139,7 @@
   --pg-space-window-side-mobile: 16px;
   --pg-space-island: 24px;
   /* radius */
+  --pg-radius-country-flag: 5px;
   --pg-radius-chip: 7px;
   --pg-radius-input: 10px;
   --pg-radius-button: 13px;
@@ -159,6 +161,7 @@
   --pg-glass-saturate: 1.7;
   --pg-glass-fallback: #EEF2F8;
   /* layout */
+  --pg-layout-country-flag-size: 28px;
   --pg-layout-desktop-window-width: 440px;
   --pg-layout-desktop-window-height: 760px;
   --pg-layout-mobile-width-min: 360px;

@@ -176,7 +176,7 @@ public sealed partial class TrayViewModel : ObservableObject
         OnPropertyChanged(string.Empty);
     }
 
-    /// <summary>«NL · Нидерланды 01 · 42 мс»: пинг — измеренный в туннеле, иначе из списка.</summary>
+    /// <summary>«Нидерланды 01 · 42 мс»: пинг — измеренный в туннеле, иначе из списка.</summary>
     private static string ServerLine(ServerProfile server, ConnectionStatus? status)
     {
         var latency = status is { State: ConnectionState.Connected } && status.ServerId == server.Id && status.Traffic.LatencyMs is { } live
@@ -184,7 +184,6 @@ public sealed partial class TrayViewModel : ObservableObject
             : server.LatencyMs;
         return string.Join(" · ", new[]
         {
-            server.CountryCode,
             ExternalProxySettings.IsExternalId(server.Id) ? Loc.Instance["externalProxy.title"] : server.Name,
             latency is { } ms ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"] : null,
         }.Where(s => !string.IsNullOrEmpty(s)));

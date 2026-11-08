@@ -1,0 +1,9 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="PrivateGateway.Client.UI.Controls.CountryFlag"
+             Width="{DynamicResource PgLayout.CountryFlag.Size}"
+             Height="{DynamicResource PgLayout.CountryFlag.Size}">
+  <Border x:Name="Frame" CornerRadius="{DynamicResource PgRadius.CountryFlag}"
+          BorderBrush="{DynamicResource PgBrush.Line.Strong}"
+          BorderThickness="{DynamicResource PgPad.Hairline}" />
+</UserControl>

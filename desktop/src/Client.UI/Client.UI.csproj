@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets/**" />
+    <EmbeddedResource Include="../../../shared/countries/flags/*.png" LogicalName="flags.%(Filename).png" />
     <!-- Тексты RU/EN — общие для всех приложений (shared/specifications/localization). -->
     <EmbeddedResource Include="../../../shared/specifications/localization/*.json"
                       LogicalName="loc.%(Filename).json" />

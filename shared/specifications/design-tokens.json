@@ -104,6 +104,7 @@
   },
 
   "space": {
+    "hairline": 1,
     "xxs": 4,
     "xs": 6,
     "s": 8,
@@ -116,6 +117,7 @@
   },
 
   "radius": {
+    "countryFlag": 5,
     "chip": 7,
     "input": 10,
     "button": 13,
@@ -143,6 +145,7 @@
   },
 
   "layout": {
+    "countryFlag": { "size": 28 },
     "desktopWindow": { "width": 440, "height": 760 },
     "mobileWidth": { "min": 360, "max": 440 },
     "scrollBottomPadding": 160,

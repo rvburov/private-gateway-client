@@ -78,7 +78,7 @@
         <div class="pg-stack pg-gap-2" style="padding: 14px 8px 12px 16px; gap: 3px">
           <span class="t-overline">Сайты видят ваш IP</span>
           <div class="pg-row">
-            <span class="t-mono-large pg-grow" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span>
+            <span class="country-glyph" data-ip-country="NL"><img src="../assets/countries/NL.png" alt="" /></span><span class="t-mono-large pg-grow" data-masked="***.*.***.**" data-plain="203.0.113.24">203.0.113.24</span>
             <button class="btn-icon" data-toast="IP скопирован" aria-label="Скопировать IP"><i data-icon="Copy" data-stroke="2" data-size="18"></i></button>
             <button class="btn-icon" data-reveal data-revealed="1" aria-label="Скрыть IP"><i data-icon="Eye" data-stroke="2" data-size="18"></i></button>
           </div>
@@ -89,7 +89,7 @@
         <div class="pg-row" style="padding: 8px 10px 10px">
           <button class="btn-icon steady tinted" data-spin data-toast="Список серверов обновлен" aria-label="Обновить серверы"><i data-icon="Refresh" data-stroke="2" data-size="20"></i></button>
           <div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px">
-            <span class="t-title pg-ellipsis" data-select-label>NL · Нидерланды 01</span>
+            <span class="t-title pg-ellipsis" data-select-label>Нидерланды 01</span>
             <span class="t-small pg-ellipsis">VLESS · REALITY · порт 443</span>
           </div>
           <button class="btn-select" data-open="switch-menu" aria-label="Сменить сервер"><span>Сменить</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
@@ -116,18 +116,18 @@
     <!-- Быстрая смена сервера («Сменить»): сервер в работе и два самых быстрых (MainPageViewModel.QuickServers) -->
     <div class="popup" id="switch-menu" style="width: 340px">
       <div class="t-overline" style="margin: 6px 10px 4px">Быстрая смена · вручную</div>
-      <button class="btn-option current" data-value="NL · Нидерланды 01" data-toast="Подключение к NL · Нидерланды 01">
-        <span class="badge accent country">NL</span>
+      <button class="btn-option current" data-value="Нидерланды 01" data-toast="Подключение к Нидерланды 01">
+        <span class="country-glyph"><img src="../assets/countries/NL.png" alt="" /></span>
         <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">Нидерланды 01</span><span class="t-caption">VLESS · REALITY</span></span>
         <span class="t-mono latency good">42 мс</span>
       </button>
-      <button class="btn-option" data-os="desktop" data-value="FI · Финляндия 01" data-toast="Подключение к FI · Финляндия 01">
-        <span class="badge accent country">FI</span>
+      <button class="btn-option" data-os="desktop" data-value="Финляндия 01" data-toast="Подключение к Финляндия 01">
+        <span class="country-glyph"><img src="../assets/countries/FI.png" alt="" /></span>
         <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">Финляндия 01</span><span class="t-caption">Hysteria2</span></span>
         <span class="t-mono latency good">38 мс</span>
       </button>
-      <button class="btn-option" data-value="DE · Германия 02" data-toast="Подключение к DE · Германия 02">
-        <span class="badge accent country">DE</span>
+      <button class="btn-option" data-value="Германия 02" data-toast="Подключение к Германия 02">
+        <span class="country-glyph"><img src="../assets/countries/DE.png" alt="" /></span>
         <span class="pg-stack pg-grow" style="margin: 6px 10px"><span class="t-strong">Германия 02</span><span class="t-caption">VLESS · XHTTP</span></span>
         <span class="t-mono latency good">51 мс</span>
       </button>

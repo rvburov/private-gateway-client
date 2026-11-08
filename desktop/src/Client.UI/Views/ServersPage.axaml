@@ -150,13 +150,7 @@
                                   Command="{Binding ChooseCommand}" CommandParameter="{Binding Id}"
                                   AutomationProperties.Name="{Binding Name}">
                             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
-                              <Border Width="40" Height="28" CornerRadius="{StaticResource PgRadius.Chip}"
-                                      Background="{StaticResource PgBrush.Accent.Tint}"
-                                      BorderBrush="{StaticResource PgBrush.Accent.Line}" BorderThickness="1">
-                                <TextBlock Text="{Binding CountryCode}" FontSize="{StaticResource PgFontSize.Caption}"
-                                           FontWeight="Bold" Foreground="{StaticResource PgBrush.Accent.Text}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                              </Border>
+                              <c:CountryFlag CountryCode="{Binding CountryCode}" VerticalAlignment="Center" />
                               <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
                                 <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding Address}" TextTrimming="CharacterEllipsis"

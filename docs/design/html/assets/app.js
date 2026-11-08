@@ -628,6 +628,9 @@
       var shown = el.dataset.revealed === "1";
       el.dataset.revealed = shown ? "0" : "1";
       scope.querySelectorAll("[data-masked]").forEach(function (m) { m.textContent = shown ? m.dataset.masked : m.dataset.plain; });
+      scope.querySelectorAll("[data-ip-country]").forEach(function (flag) {
+        flag.querySelector("img").src = "../assets/countries/" + (shown ? "UNKNOWN" : flag.dataset.ipCountry) + ".png";
+      });
       // Значок — состояние, как MaskIcon программы: IP скрыт — глаз зачеркнут
       el.innerHTML = "";
       el.appendChild(icon(shown ? "EyeOff" : "Eye", null, "2"));

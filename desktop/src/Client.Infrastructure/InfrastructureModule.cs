@@ -78,7 +78,10 @@ public static class InfrastructureModule
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());
         services.AddSingleton<DemoServerCatalog>();
-        services.AddSingleton<IServerCatalog, UserOrDemoCatalog>();
+        services.AddSingleton<UserOrDemoCatalog>();
+        services.AddSingleton<CountryServerCatalog>(sp => new(sp.GetRequiredService<UserOrDemoCatalog>(),
+            sp.GetRequiredService<IGatewayClient>(), sp.GetRequiredService<TimeProvider>()));
+        services.AddSingleton<IServerCatalog>(sp => sp.GetRequiredService<CountryServerCatalog>());
         services.AddSingleton<BackupService>();
         services.AddSingleton<IAutostart>(_ => OsAutostart.ForCurrentUser());
         services.AddSingleton(_ => SystemNotifiers.ForCurrentOs(File.Exists(paths.NotifyIcon) ? paths.NotifyIcon : null));

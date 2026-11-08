@@ -1,0 +1,16 @@
+{
+  "database": {
+    "name": "DB-IP Country Lite",
+    "version": "2026-11",
+    "url": "https://download.db-ip.com/free/dbip-country-lite-2026-11.csv.gz",
+    "sha256": "e5c8459d638a272ece7f4d7cfa49dce18d91b4f403f6940ba9249bf0db3781fd",
+    "license": "CC-BY-4.0"
+  },
+  "flags": {
+    "name": "flag-icons",
+    "commit": "ac7e0eb3259eb62aa6100c435607e2fe03896a97",
+    "url": "https://codeload.github.com/lipis/flag-icons/tar.gz/ac7e0eb3259eb62aa6100c435607e2fe03896a97",
+    "sha256": "6f2d0915213dbc4b15276e89485ab6f8f8b3f441648b10f0ad37dabccea60b28",
+    "license": "MIT"
+  }
+}

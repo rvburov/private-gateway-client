@@ -81,12 +81,7 @@
 
     <!-- Заголовок: страна, название, откуда сервер, звезда, закрыть -->
     <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
-      <Border Width="52" Height="38" CornerRadius="{StaticResource PgRadius.Input}"
-              Background="{StaticResource PgBrush.Accent.Tint}" BorderBrush="{StaticResource PgBrush.Accent.Line}"
-              BorderThickness="1">
-        <TextBlock Text="{Binding CountryCode}" FontSize="{StaticResource PgFontSize.Title}" FontWeight="Bold"
-                   Foreground="{StaticResource PgBrush.Accent.Text}" HorizontalAlignment="Center" VerticalAlignment="Center" />
-      </Border>
+      <c:CountryFlag CountryCode="{Binding CountryCode}" VerticalAlignment="Center" />
       <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
         <TextBlock x:Name="CardName" Classes="status" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
         <TextBlock Classes="caption" Text="{Binding Subtitle}" TextWrapping="Wrap" />

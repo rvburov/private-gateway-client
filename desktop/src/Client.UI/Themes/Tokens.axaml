@@ -1,7 +1,7 @@
 <!--
   Сгенерировано scripts/gen-tokens.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-tokens.cs».
-  tokens-sha256: aac55c3e719853f8118064b86ec05affa489a791d77613aa1d809e61a092ad2b
+  tokens-sha256: d3dd9c20854c589d00eb49ef634c90448fcbf174dd7e096f87ebacedeb7d74f1
 -->
 <ResourceDictionary xmlns="https://github.com/avaloniaui"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
@@ -228,6 +228,8 @@
   <FontWeight x:Key="PgFontWeight.Mono">Medium</FontWeight>
 
   <!-- Отступы -->
+  <x:Double x:Key="PgSpace.Hairline">1</x:Double>
+  <Thickness x:Key="PgPad.Hairline">1</Thickness>
   <x:Double x:Key="PgSpace.Xxs">4</x:Double>
   <Thickness x:Key="PgPad.Xxs">4</Thickness>
   <x:Double x:Key="PgSpace.Xs">6</x:Double>
@@ -248,6 +250,7 @@
   <Thickness x:Key="PgPad.Island">24</Thickness>
 
   <!-- Скругления -->
+  <CornerRadius x:Key="PgRadius.CountryFlag">5</CornerRadius>
   <CornerRadius x:Key="PgRadius.Chip">7</CornerRadius>
   <CornerRadius x:Key="PgRadius.Input">10</CornerRadius>
   <CornerRadius x:Key="PgRadius.Button">13</CornerRadius>
@@ -265,6 +268,7 @@
   <BoxShadows x:Key="PgShadow.Chosen">0 4 14 0 #1F2563EB</BoxShadows>
 
   <!-- Размеры -->
+  <x:Double x:Key="PgLayout.CountryFlag.Size">28</x:Double>
   <x:Double x:Key="PgLayout.DesktopWindow.Width">440</x:Double>
   <x:Double x:Key="PgLayout.DesktopWindow.Height">760</x:Double>
   <x:Double x:Key="PgLayout.MobileWidth.Min">360</x:Double>

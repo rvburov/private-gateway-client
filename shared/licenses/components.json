@@ -10,6 +10,22 @@
 //   data — файл геобазы рядом с ядром Xray, версия — shared/cores/<имя файла без .dat>.version.
 [
   {
+    "name": "DB-IP Country Lite (2026-11)",
+    "license": "CC-BY-4.0",
+    "copyright": "DB-IP.com",
+    "url": "https://db-ip.com",
+    "notice": "IP Geolocation by DB-IP (https://db-ip.com). November 2026, CC-BY-4.0. Converted from CSV to a compact range database; no location accuracy guarantee.",
+    "files": ["shared/countries/country.bin.gz"]
+  },
+  {
+    "name": "flag-icons",
+    "license": "MIT",
+    "copyright": "Copyright (c) 2013 Panayiotis Lipiridis",
+    "url": "https://github.com/lipis/flag-icons",
+    "notice": "Square flag artwork converted from SVG to PNG. Original artwork: lipis/flag-icons, ac7e0eb3259eb62aa6100c435607e2fe03896a97.",
+    "files": ["shared/countries/flags/*.png"]
+  },
+  {
     "name": ".NET",
     "license": "MIT",
     "copyright": "Copyright (c) .NET Foundation and Contributors",

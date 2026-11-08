@@ -36,7 +36,7 @@ public sealed class MainWindowTests : WindowHarness
         Text(window, "StatusTitle").ShouldBe("IP открыт");
         main.WebIp.ShouldBe("198.51.100.7");
         main.RealIpState.ShouldBe("виден сайтам");
-        main.ServerTitle.ShouldBe("NL · Нидерланды 01");
+        main.ServerTitle.ShouldBe("Нидерланды 01");
         main.ServerMeta.ShouldBe("VLESS · REALITY · порт 443");
         Text(window, "StateLabel").ShouldBe("Выключено");
         Snapshot(window, "main-off");
@@ -256,7 +256,7 @@ public sealed class MainWindowTests : WindowHarness
         // Подключение к новому серверу ждет задержку имитации — часы в тесте двигаем сами.
         var choose = quick[1].ChooseCommand.ExecuteAsync("demo-fi-01");
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connecting);
-        main.ServerTitle.ShouldBe("FI · Финляндия 01");
+        main.ServerTitle.ShouldBe("Финляндия 01");
 
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         await choose;
