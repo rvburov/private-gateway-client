@@ -206,7 +206,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
             {
                 if (_settings.Current.UpdateOnlyViaVpn)
                 {
-                    text = (await new SessionSubscriptionDownloader(_downloader, _gateway, _time)
+                    text = (await new SessionSubscriptionDownloader(_downloader, _gateway, _time, requireVpn: true)
                         .DownloadAsync(url, stop.Token).ConfigureAwait(true)).Text;
                 }
                 else

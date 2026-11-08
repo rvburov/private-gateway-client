@@ -6,7 +6,7 @@ using PrivateGateway.Client.Core.Servers;
 namespace PrivateGateway.Client.Application.Import;
 
 /// <summary>Импорт и обновление: выбранный путь сохраняется на все попытки, при смене сессии загрузка отменяется.</summary>
-public sealed class SessionSubscriptionDownloader(ISubscriptionDownloader direct, IGatewayClient gateway, TimeProvider time) : ISubscriptionDownloader
+public sealed class SessionSubscriptionDownloader(ISubscriptionDownloader direct, IGatewayClient gateway, TimeProvider time, bool requireVpn = false) : ISubscriptionDownloader
 {
     public const int MaxAttempts = 3;
     public static readonly TimeSpan AttemptTimeout = TimeSpan.FromSeconds(6);
@@ -15,7 +15,8 @@ public sealed class SessionSubscriptionDownloader(ISubscriptionDownloader direct
     {
         var initial = gateway.Status;
         var throughCore = initial.State == ConnectionState.Connected && !initial.IsPaused;
-        if (initial.State != ConnectionState.Off && !throughCore)
+        if ((requireVpn && (!throughCore || initial.Mode != ConnectionMode.Vpn))
+            || (initial.State != ConnectionState.Off && !throughCore))
         {
             gateway.ReportSubscriptionAttempt(DownloadFailure.Connection, null, 0, TimeSpan.Zero, false);
             throw new SubscriptionDownloadException(DownloadFailure.Connection);

@@ -297,6 +297,23 @@ public sealed class SubscriptionUpdateTests : IDisposable
     // ── Обновитель: когда и как ──────────────────────────────────────────────
 
     [Fact]
+    public async Task Disconnect_between_update_gate_and_download_cannot_bypass_vpn_only_setting()
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        Settings().Update(s => s with { UpdateOnlyViaVpn = true });
+        _downloads.Text = "trojan://pw-b@198.51.100.2:443#B";
+        var updater = Updater(catalog);
+        updater.BusyChanged += (_, _) => _gateway.State = ConnectionState.Off;
+
+        var result = await updater.UpdateAsync(id, Ct);
+
+        result.Failure.ShouldBe(DownloadFailure.Connection);
+        catalog.Servers.Single().Name.ShouldBe("A");
+        _downloads.Requested.ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task Failure_keeps_the_previous_list_and_remembers_why()
     {
         var catalog = Catalog();
