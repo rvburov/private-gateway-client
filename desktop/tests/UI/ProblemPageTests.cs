@@ -41,6 +41,82 @@ public sealed class ProblemPageTests : WindowHarness
     public ProblemPageTests() => _launcher = new FakeLauncher(() => _answering.Add(User));
 
     [AvaloniaFact]
+    public async Task Denied_background_service_shows_settings_instead_of_install_and_recovers_without_vpn()
+    {
+        BackgroundAccess.IsSupported = true;
+        BackgroundAccess.Value = ServiceAccess.RequiresApproval;
+        Installer.IsAvailable = true;
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentPage is ProblemPageViewModel { NeedsApproval: true, IsCheckingAccess: false });
+        var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
+
+        Text(window, "ProblemTitle").ShouldBe("Разрешите фоновую работу службы");
+        Text(window, "ProblemText").ShouldNotBeNull().ShouldContain("PrivateGatewayService");
+        Find<Button>(window, "Install").IsVisible.ShouldBeFalse();
+        page.InstallCommand.CanExecute(null).ShouldBeFalse();
+        Press(window, "OpenServiceSettings");
+        BackgroundAccess.Opened.ShouldBe(1);
+        await page.CheckServiceCommand.ExecuteAsync(null);
+        shell.CurrentKey.ShouldBe(Pages.Problem, "без разрешения экран остается");
+        Installer.Installs.ShouldBe(0);
+        Snapshot(window, "problem-background-macos");
+
+        BackgroundAccess.Value = ServiceAccess.Installed;
+        await page.CheckServiceCommand.ExecuteAsync(null);
+        shell.CurrentKey.ShouldBe(Pages.Problem, "разрешение еще не доказывает связь со службой");
+        Text(window, "ProblemText").ShouldNotBeNull().ShouldContain("пока не отвечает");
+        _answering.Add(Installed);
+        await page.CheckServiceCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        _installed.ShouldNotBeNull().Status.State.ShouldBe(ConnectionState.Off, "проверка связи не включает VPN");
+        shell.Navigate(Pages.Problem);
+        _installed.Resend();
+        Dispatcher.UIThread.RunJobs();
+        shell.CurrentKey.ShouldBe(Pages.Problem, "начальный Off без ответа не означает восстановление");
+        _installed.HasReceivedStatus = true;
+        _installed.Resend();
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        Installer.Installs.ShouldBe(0);
+        _launcher.Started.ShouldBe(0);
+    }
+
+    [AvaloniaFact]
+    public async Task Unknown_service_permission_is_not_reported_as_denied_or_missing()
+    {
+        BackgroundAccess.IsSupported = true;
+        BackgroundAccess.Value = ServiceAccess.Unknown;
+        Installer.IsAvailable = true;
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentPage is ProblemPageViewModel { IsCheckingAccess: false });
+        var page = shell.CurrentPage.ShouldBeOfType<ProblemPageViewModel>();
+        page.NeedsApproval.ShouldBeFalse();
+        page.CanInstall.ShouldBeFalse();
+        page.Facts[0].Value.ShouldBe("не определено");
+        Text(window, "ProblemText").ShouldNotBeNull().ShouldContain("Не удалось определить");
+
+        BackgroundAccess.Value = ServiceAccess.NotInstalled;
+        await page.CheckServiceCommand.ExecuteAsync(null);
+        Find<Button>(window, "Install").IsVisible.ShouldBeTrue();
+        Text(window, "ProblemTitle").ShouldBe("Служба не установлена");
+    }
+
+    [AvaloniaFact]
+    public async Task Settings_open_failure_gives_the_manual_path()
+    {
+        BackgroundAccess.IsSupported = true;
+        BackgroundAccess.Value = ServiceAccess.RequiresApproval;
+        BackgroundAccess.OpenResult = false;
+        var (window, shell) = OpenWithServer();
+        await shell.Protection.ToggleCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentPage is ProblemPageViewModel { NeedsApproval: true, IsCheckingAccess: false });
+        Press(window, "OpenServiceSettings");
+        shell.Toast.Text.ShouldContain("Объекты входа и расширения");
+        Installer.Installs.ShouldBe(0);
+    }
+
+    [AvaloniaFact]
     public async Task Connect_without_a_service_opens_the_service_screen()
     {
         var (window, shell) = OpenWithServer();
@@ -317,6 +393,7 @@ public sealed class ProblemPageTests : WindowHarness
                 address => address.System
                     ? _installed = new ScriptedService(Time, Settings, ServiceKind.Installed)
                     {
+                        Details = new ServiceDetails("0.1.0", "1", []),
                         Outcome = connecting => _otherVpn && !Settings().Protection.AllowOtherVpn
                             ? (connecting with { ErrorCode = ErrorCodes.OtherVpn, OtherClients = _others }).MoveTo(ConnectionState.Error, Time.GetUtcNow()) with
                             {

@@ -84,37 +84,6 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 
     // ── Переключатели ────────────────────────────────────────────────────────
 
-    /// <summary>В режиме прокси блок при обрыве недоступен (макет).</summary>
-    public bool CanKillSwitch => IsVpnMode;
-
-    /// <summary>Выключение — только после «Выключить» в диалоге: до ответа переключатель стоит на месте.</summary>
-    public bool KillSwitch
-    {
-        get => S.KillSwitch;
-        set
-        {
-            if (value || !S.KillSwitch)
-            {
-                Set(s => s with { KillSwitch = value });
-                return;
-            }
-
-            _ = TurnKillSwitchOffAsync();
-        }
-    }
-
-    /// <summary>Нажатие на переключатель (<see cref="Controls.ConfirmSwitch"/>): выключение — через вопрос.</summary>
-    [RelayCommand]
-    private void FlipKillSwitch() => KillSwitch = !KillSwitch;
-
-    private async Task TurnKillSwitchOffAsync()
-    {
-        if (await SafetyDialogs.ConfirmKillSwitchOffAsync(_overlay).ConfigureAwait(true))
-        {
-            Set(s => s with { KillSwitch = false });
-        }
-    }
-
     public string AutostartTitle => Loc.Instance.Format("settings.autostart.title", OsName);
 
     public string AutostartNote => Loc.Instance.Format("settings.autostart.text", OsName);

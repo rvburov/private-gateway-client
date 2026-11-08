@@ -107,19 +107,31 @@ public sealed class ProtectionPageTests : WindowHarness
     {
         var (_, shell, page) = OpenProtection();
 
+        page.StrictMode = true;
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().PrimaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        page.StrictMode.ShouldBeTrue();
         page.KillSwitch = false;
         Dispatcher.UIThread.RunJobs();
         shell.Overlay.Dialog.ShouldNotBeNull().Title.ShouldBe("Выключить блок при обрыве?");
         page.KillSwitch.ShouldBeTrue();
-
-        shell.Overlay.Dialog.SecondaryCommand.Execute(null);
+        shell.Overlay.Dialog.PrimaryCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        (page.KillSwitch, page.StrictMode).ShouldBe((true, true), "отказ не меняет ни один переключатель");
+        page.KillSwitch = false;
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
 
         page.KillSwitch.ShouldBeFalse();
         page.CanStrictMode.ShouldBeFalse("строгий режим — часть блока при обрыве");
+        page.StrictMode.ShouldBeFalse();
+        Service<SettingsService>().Current.Protection.StrictMode.ShouldBeFalse();
         page.KillSwitch = true;
         shell.Overlay.HasDialog.ShouldBeFalse("включить можно без вопроса");
         page.KillSwitch.ShouldBeTrue();
+        page.StrictMode.ShouldBeFalse("повторное включение блока не включает строгий режим");
     }
 
     [AvaloniaFact]

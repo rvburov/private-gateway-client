@@ -55,6 +55,18 @@ public abstract class WindowHarness : IDisposable
     /// <summary>Установка службы: по умолчанию недоступна, как в демо-режиме.</summary>
     protected FakeInstaller Installer { get; } = new();
 
+    protected FakeServiceAccess BackgroundAccess { get; } = new();
+
+    protected sealed class FakeServiceAccess : IServiceAccess
+    {
+        public bool IsSupported { get; set; }
+        public ServiceAccess Value { get; set; } = ServiceAccess.Unknown;
+        public int Opened { get; private set; }
+        public bool OpenResult { get; set; } = true;
+        public ServiceAccess Read() => Value;
+        public bool OpenSettings() { Opened++; return OpenResult; }
+    }
+
     /// <summary>Системный прокси пользователя: по умолчанию выключен — тесты не читают настройки машины.</summary>
     protected FakeUserProxy SystemProxy { get; } = new();
 
@@ -94,6 +106,7 @@ public abstract class WindowHarness : IDisposable
             s.AddSingleton<IUrlLauncher>(Urls);
             s.AddSingleton<IAutostart>(Autostart);
             s.AddSingleton<IServiceInstaller>(Installer);
+            s.AddSingleton<IServiceAccess>(BackgroundAccess);
             s.AddSingleton<IUserProxySettings>(SystemProxy);
             s.AddSingleton<IMachineSettings>(Machine);
             s.AddSingleton<ISystemNotifier>(Notifier);
@@ -169,6 +182,8 @@ public abstract class WindowHarness : IDisposable
         public ConnectionStatus Status { get; private set; } = ConnectionStatus.Initial(time.GetUtcNow());
 
         public ServiceKind Service => kind;
+
+        public bool HasReceivedStatus { get; set; }
 
         /// <summary>Что служба скажет о себе (GetServiceInfo); null — не ответила.</summary>
         public ServiceDetails? Details { get; set; }

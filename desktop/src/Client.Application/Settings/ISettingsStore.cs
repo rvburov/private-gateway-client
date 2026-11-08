@@ -22,9 +22,26 @@ public sealed class SettingsService(ISettingsStore store)
         {
             lock (_gate)
             {
-                return _current ??= store.Load();
+                return _current ??= Load();
             }
         }
+    }
+
+    // Строгий режим — зависимая настройка. Нормализация общая для окна, импорта и старых сохраненных значений.
+    private static AppSettings Normalize(AppSettings settings) => !settings.KillSwitch && settings.Protection.StrictMode
+        ? settings with { Protection = settings.Protection with { StrictMode = false } }
+        : settings;
+
+    private AppSettings Load()
+    {
+        var saved = store.Load();
+        var normalized = Normalize(saved);
+        if (normalized != saved)
+        {
+            store.Save(normalized);
+        }
+
+        return normalized;
     }
 
     public event EventHandler<AppSettings>? Changed;
@@ -35,8 +52,8 @@ public sealed class SettingsService(ISettingsStore store)
         AppSettings next;
         lock (_gate)
         {
-            var current = _current ??= store.Load();
-            next = change(current);
+            var current = _current ??= Load();
+            next = Normalize(change(current));
             if (next == current)
             {
                 return;

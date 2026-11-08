@@ -46,7 +46,7 @@ public sealed class SettingsPageTests : IDisposable
         var (window, page) = OpenSettings();
 
         page.IsVpnMode.ShouldBeTrue();
-        page.KillSwitch.ShouldBeTrue();
+        window.GetVisualDescendants().OfType<ToggleButton>().ShouldNotContain(t => t.Name == "KillSwitchToggle");
         page.NotifyImportant.ShouldBeTrue();
         page.IsRussian.ShouldBeTrue();
         page.Advanced.Select(a => a.Title).ShouldContain("Защита и утечки");
@@ -58,40 +58,12 @@ public sealed class SettingsPageTests : IDisposable
     {
         var (window, page) = OpenSettings();
 
-        page.KillSwitch = false;
-        Dispatcher.UIThread.RunJobs();
-        ((ShellViewModel)window.DataContext!).Overlay.Dialog!.SecondaryCommand.Execute(null);
-        Dispatcher.UIThread.RunJobs();
         page.ConnectOnLaunch = true;
         page.NotifyOff = true;
 
         var reopened = Build().GetRequiredService<SettingsService>().Current;
-        reopened.KillSwitch.ShouldBeFalse();
         reopened.ConnectOnLaunch.ShouldBeTrue();
         reopened.Notifications.ShouldBe(Core.Settings.NotificationLevel.Off);
-    }
-
-    [AvaloniaFact]
-    public void Turning_the_kill_switch_off_asks_first_and_keeps_it_by_default()
-    {
-        var (window, page) = OpenSettings();
-        var overlay = ((ShellViewModel)window.DataContext!).Overlay;
-
-        page.KillSwitch = false;
-        Dispatcher.UIThread.RunJobs();
-
-        var dialog = overlay.Dialog.ShouldNotBeNull();
-        dialog.Title.ShouldBe("Выключить блок при обрыве?");
-        dialog.PrimaryText.ShouldBe("Оставить включенным");
-        dialog.IsSecondaryDanger.ShouldBeTrue();
-        page.KillSwitch.ShouldBeTrue("до ответа ничего не меняется");
-        window.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "KillSwitchToggle").IsChecked.ShouldBe(true);
-
-        overlay.DismissCommand.Execute(null);
-        Dispatcher.UIThread.RunJobs();
-
-        page.KillSwitch.ShouldBeTrue("Escape — безопасный вариант");
-        Build().GetRequiredService<SettingsService>().Current.KillSwitch.ShouldBeTrue();
     }
 
     [AvaloniaFact]
@@ -136,7 +108,7 @@ public sealed class SettingsPageTests : IDisposable
     }
 
     [AvaloniaFact]
-    public void Proxy_mode_disables_kill_switch_and_explains_why()
+    public void Proxy_mode_explains_that_kill_switch_is_unavailable()
     {
         var (window, page) = OpenSettings();
 
@@ -145,9 +117,8 @@ public sealed class SettingsPageTests : IDisposable
         ((ShellViewModel)window.DataContext!).Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
 
-        page.CanKillSwitch.ShouldBeFalse();
         page.ModeNote.ShouldContain("Блок при обрыве недоступен");
-        window.GetVisualDescendants().OfType<ToggleButton>().Single(t => t.Name == "KillSwitchToggle").IsEnabled.ShouldBeFalse();
+        window.GetVisualDescendants().OfType<ToggleButton>().ShouldNotContain(t => t.Name == "KillSwitchToggle");
         Build().GetRequiredService<SettingsService>().Current.Mode.ShouldBe(ConnectionMode.Proxy);
     }
 
@@ -160,7 +131,7 @@ public sealed class SettingsPageTests : IDisposable
         Dispatcher.UIThread.RunJobs();
 
         Loc.Instance.Language.ShouldBe("en");
-        window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ShouldContain("Block internet if the VPN drops");
+        window.GetVisualDescendants().OfType<TextBlock>().Select(t => t.Text).ShouldContain("Connect on launch");
         Build().GetRequiredService<SettingsService>().Current.Language.ShouldBe("en");
         Snapshot(window, "settings-en");
     }

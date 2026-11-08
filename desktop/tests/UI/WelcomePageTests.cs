@@ -99,6 +99,19 @@ public sealed class WelcomePageTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task Previously_installed_but_denied_service_opens_settings_help_without_reinstalling()
+    {
+        BackgroundAccess.IsSupported = true;
+        BackgroundAccess.Value = ServiceAccess.RequiresApproval;
+        Installer.IsAvailable = true;
+        var (window, shell, page) = OpenWelcome(ServiceKind.None);
+        Press(window, "StartButton");
+        await page.InstallCommand.ExecuteAsync(null);
+        WaitFor(() => shell.CurrentPage is ProblemPageViewModel { NeedsApproval: true });
+        Installer.Installs.ShouldBe(0);
+    }
+
+    [AvaloniaFact]
     public void Service_step_installs_the_service_and_goes_on_to_the_first_server()
     {
         Installer.IsAvailable = true;

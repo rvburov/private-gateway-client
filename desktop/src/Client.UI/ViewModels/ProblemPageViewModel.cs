@@ -34,10 +34,13 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     private readonly IServiceInstaller _installer;
     private readonly IUserProxySettings _userProxy;
     private readonly ConnectionTarget _target;
+    private readonly IServiceAccess _access;
+    private int _accessRead;
 
     public ProblemPageViewModel(IGatewayClient gateway, SettingsService settings, INavigator navigator, ToastViewModel toast,
-        IServiceInstaller installer, IUserProxySettings userProxy, ConnectionTarget target)
+        IServiceInstaller installer, IUserProxySettings userProxy, ConnectionTarget target, IServiceAccess access)
     {
+        _access = access;
         _userProxy = userProxy;
         _target = target;
         _gateway = gateway;
@@ -73,8 +76,11 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// <summary>Код ошибки, которую показывает экран; меняется вместе с новой ошибкой службы.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsAdmin), nameof(IsConflict), nameof(IsCaution), nameof(IsService), nameof(Title), nameof(Text), nameof(Facts),
-        nameof(HasCancel), nameof(DetailsText), nameof(InstallText), nameof(CanInstall), nameof(HasProxy))]
+        nameof(HasCancel), nameof(DetailsText), nameof(InstallText), nameof(CanInstall), nameof(HasProxy), nameof(NeedsApproval), nameof(CanCheckService), nameof(IsPermission), nameof(ProxyIsPrimary))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
     public partial string Code { get; private set; }
+
+    partial void OnCodeChanged(string value) => _ = RefreshServiceAccessAsync();
 
     /// <summary>«Нужны права администратора» — оранжевый замок.</summary>
     public bool IsAdmin => Code == ErrorCodes.AdminRequired;
@@ -83,18 +89,46 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     public bool IsConflict => Code == ErrorCodes.OtherVpn;
 
     /// <summary>Знак оранжевый: беда не в службе, а в правах или другой программе.</summary>
-    public bool IsCaution => IsAdmin || IsConflict;
+    public bool IsCaution => IsAdmin || IsConflict || NeedsApproval;
+
+    public bool IsPermission => IsAdmin || NeedsApproval;
 
     /// <summary>«Служба не запущена» — красный щит.</summary>
     public bool IsService => !IsCaution;
+
+    private bool IsServiceError => Code == ErrorCodes.ServiceNotRunning;
+
+    public bool NeedsApproval => IsServiceError && Registration == ServiceAccess.RequiresApproval;
+
+    public bool CanCheckService => IsServiceError && _access.IsSupported && Registration != ServiceAccess.NotInstalled;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(NeedsApproval), nameof(IsPermission), nameof(IsCaution), nameof(IsService), nameof(Title), nameof(Text), nameof(Facts), nameof(CanInstall), nameof(CanCheckService), nameof(ProxyIsPrimary))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand))]
+    public partial ServiceAccess Registration { get; private set; } = ServiceAccess.Unknown;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanInstall), nameof(ProxyIsPrimary))]
+    [NotifyCanExecuteChangedFor(nameof(InstallCommand), nameof(CheckServiceCommand))]
+    public partial bool IsCheckingAccess { get; private set; }
 
     /// <summary>
     /// «Работает другой VPN или прокси-клиент» — всегда общими словами (просьба пользователя 2026-11-01): какая программа и чем
     /// выдала себя — в фактах ниже.
     /// </summary>
-    public string Title => Loc.Instance[IsConflict ? "problem.conflict.title" : IsAdmin ? "problem.admin.title" : "problem.service.title"];
+    public string Title => Loc.Instance[NeedsApproval ? "problem.background.title"
+        : IsConflict ? "problem.conflict.title" : IsAdmin ? "problem.admin.title"
+        : _access.IsSupported ? Registration == ServiceAccess.NotInstalled ? "problem.missing.title" : "problem.unavailable.title"
+        : "problem.service.title"];
 
-    public string Text => Loc.Instance[IsConflict ? "problem.conflict.text" : IsAdmin ? "problem.admin.text" : "problem.service.text"];
+    public string Text => Loc.Instance[NeedsApproval ? "problem.background.text"
+        : IsConflict ? "problem.conflict.text" : IsAdmin ? "problem.admin.text"
+        : _access.IsSupported ? Registration switch
+        {
+            ServiceAccess.Installed => "problem.unavailable.text",
+            ServiceAccess.NotInstalled => "problem.missing.text",
+            _ => "problem.unknown.text",
+        } : "problem.service.text"];
 
     /// <summary>
     /// Факты по макету. У «Работает другой VPN или прокси-клиент» — что нашла служба, признаками и без названий программ
@@ -103,7 +137,20 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     /// чужим VPN только туннель, который держит маршрут ко всему интернету. И системный прокси, если его поставила
     /// другая программа (читает окно: настройки пользователя), — когда служба не назвала его сама.
     /// </summary>
-    public IReadOnlyList<ProblemFact> Facts => IsConflict
+    public IReadOnlyList<ProblemFact> Facts => IsServiceError && _access.IsSupported
+        ?
+        [
+            new(Loc.Instance["problem.fact.service"], Loc.Instance[Registration switch
+            {
+                ServiceAccess.Installed or ServiceAccess.RequiresApproval => "problem.fact.service.installed",
+                ServiceAccess.NotInstalled => "problem.fact.service.missing",
+                _ => "problem.fact.service.unknown",
+            }]),
+            NeedsApproval
+                ? new(Loc.Instance["problem.background.fact"], Loc.Instance["problem.background.denied"], IsWarning: true)
+                : new(Loc.Instance["problem.connection.fact"], Loc.Instance["problem.connection.unavailable"], IsWarning: true),
+        ]
+        : IsConflict
         ?
         [
             .. Others is { Items.Count: > 0 } others
@@ -139,15 +186,18 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     public bool HasCancel => IsAdmin;
 
     /// <summary>
-    /// Установить службу можно: Windows или Linux, файл службы рядом с программой. Нельзя — главная кнопка
-    /// «режим прокси». Другому VPN установка не поможет.
+    /// Установить службу можно, если доступен установщик и на macOS подтверждено отсутствие службы.
+    /// Уже установленной службе и другому VPN повторная установка не предлагается.
     /// </summary>
-    public bool CanInstall => _installer.IsAvailable && !IsConflict;
+    public bool CanInstall => _installer.IsAvailable && !IsConflict && !IsCheckingAccess
+        && (!IsServiceError || !_access.IsSupported || Registration == ServiceAccess.NotInstalled);
 
     /// <summary>«Установить службу» или, когда уже работает служба пользователя, «Запросить еще раз» (макет).</summary>
     public string InstallText => Loc.Instance[IsAdmin ? "problem.admin.retry" : "problem.install"];
 
     /// <summary>«Работать в режиме прокси»: на «Нужны права» с установкой его нет — по макету «Запросить еще раз» и «Отмена».</summary>
+    public bool ProxyIsPrimary => !CanInstall && !CanCheckService;
+
     public bool HasProxy => !IsConflict && (!IsAdmin || !CanInstall);
 
     /// <summary>«Подробнее в журнале · код PGC-SVC-001».</summary>
@@ -155,16 +205,22 @@ public sealed partial class ProblemPageViewModel : ObservableObject
 
     /// <summary>Идет запуск службы пользователя и подключение.</summary>
     [ObservableProperty]
-    [NotifyCanExecuteChangedFor(nameof(UseProxyCommand), nameof(InstallCommand), nameof(RetryCommand))]
+    [NotifyCanExecuteChangedFor(nameof(UseProxyCommand), nameof(InstallCommand), nameof(RetryCommand), nameof(CheckServiceCommand), nameof(OpenServiceSettingsCommand))]
     public partial bool IsWorking { get; private set; }
 
     /// <summary>
     /// Установить службу: ОС спрашивает права, служба ставится и отвечает — подключение к выбранному
     /// серверу в режиме из настроек. Права не дали или установка не вышла — подсказка, экран остается.
     /// </summary>
-    [RelayCommand(CanExecute = nameof(CanWork))]
+    [RelayCommand(CanExecute = nameof(CanInstallNow))]
     private async Task InstallAsync()
     {
+        await RefreshServiceAccessAsync().ConfigureAwait(true);
+        if (!CanInstall)
+        {
+            return;
+        }
+
         IsInstallingService = true;
         InstallPercent = 0;
         IsWorking = true;
@@ -264,6 +320,78 @@ public sealed partial class ProblemPageViewModel : ObservableObject
     }
 
     private bool CanWork() => !IsWorking;
+
+    private bool CanInstallNow() => CanWork() && CanInstall;
+
+    private bool CanCheckNow() => CanWork() && !IsCheckingAccess;
+
+    /// <summary>Только чтение разрешения ОС: ошибка проверки не означает запрет или отсутствие установки.</summary>
+    public async Task RefreshServiceAccessAsync()
+    {
+        if (!IsServiceError || !_access.IsSupported)
+        {
+            return;
+        }
+
+        var read = ++_accessRead;
+        IsCheckingAccess = true;
+        try
+        {
+            var result = await Task.Run(_access.Read).ConfigureAwait(true);
+            if (read == _accessRead)
+            {
+                Registration = result;
+            }
+        }
+        finally
+        {
+            if (read == _accessRead)
+            {
+                IsCheckingAccess = false;
+            }
+        }
+    }
+
+    [RelayCommand(CanExecute = nameof(CanWork))]
+    private void OpenServiceSettings()
+    {
+        if (!_access.OpenSettings())
+        {
+            _toast.Show(Loc.Instance["problem.background.open_failed"], ToastViewModel.LongDuration);
+        }
+    }
+
+    /// <summary>Повторный поиск IPC, без установки службы и без подключения к VPN-серверу.</summary>
+    [RelayCommand(CanExecute = nameof(CanCheckNow))]
+    private async Task CheckServiceAsync()
+    {
+        IsWorking = true;
+        try
+        {
+            await RefreshServiceAccessAsync().ConfigureAwait(true);
+            if (NeedsApproval)
+            {
+                return;
+            }
+
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+            if (await _gateway.GetDetailsAsync(timeout.Token).ConfigureAwait(true) is not null && _gateway.Service == ServiceKind.Installed)
+            {
+                _navigator.Navigate(Pages.Home);
+                return;
+            }
+
+            _toast.Show(Loc.Instance["problem.connection.retry_failed"], ToastViewModel.LongDuration);
+        }
+        catch (OperationCanceledException)
+        {
+            _toast.Show(Loc.Instance["problem.connection.retry_failed"], ToastViewModel.LongDuration);
+        }
+        finally
+        {
+            IsWorking = false;
+        }
+    }
 
     /// <summary>
     /// Системный прокси пользователя — в фоне: на Linux и macOS его читает отдельная программа. «Работает другой

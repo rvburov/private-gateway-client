@@ -17,7 +17,6 @@ namespace PrivateGateway.Client.Tests.UI;
 public sealed class ConfirmToggleTests : WindowHarness
 {
     [AvaloniaTheory]
-    [InlineData(Pages.Settings, "KillSwitchToggle", true, "DialogPrimary")]
     [InlineData(Pages.Protection, "KillSwitchToggle", true, "DialogPrimary")]
     [InlineData(Pages.Protection, "StrictToggle", false, "DialogSecondary")]
     [InlineData(Pages.Core, "LanProxyToggle", false, "DialogPrimary")]
@@ -34,7 +33,7 @@ public sealed class ConfirmToggleTests : WindowHarness
     }
 
     [AvaloniaTheory]
-    [InlineData(Pages.Settings, "KillSwitchToggle", true, "DialogSecondary")]
+    [InlineData(Pages.Protection, "KillSwitchToggle", true, "DialogSecondary")]
     [InlineData(Pages.Protection, "StrictToggle", false, "DialogPrimary")]
     [InlineData(Pages.Core, "LanProxyToggle", false, "DialogSecondary")]
     public void Agreeing_switches_it(string page, string name, bool before, string agree)

@@ -69,6 +69,7 @@ public static class InfrastructureModule
         services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
             sp.GetRequiredService<IGatewayClient>(), userProxy.Value,
             new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
+        services.AddSingleton<IServiceAccess>(_ => demo ? new NoServiceAccess() : MacServiceAccess.ForThisMachine());
         services.AddSingleton<IServiceInstaller>(sp => demo
             ? new ServiceInstaller(null, (_, _) => Task.FromResult<int?>(1), () => false, sp.GetRequiredService<TimeProvider>())
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));

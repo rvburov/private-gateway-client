@@ -168,6 +168,10 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
             viewModel = factory();
             _created[page] = viewModel;
         }
+        else if (viewModel is ProblemPageViewModel problem)
+        {
+            _ = problem.RefreshServiceAccessAsync();
+        }
 
         Overlay.CloseSheet();
         if (page != CurrentKey)
@@ -190,6 +194,15 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     /// </summary>
     private void ShowProblem(ConnectionStatus status)
     {
+        // Подтвержденный ответ установленной службы снимает старый экран ошибки. Начальный Off окна не считается ответом.
+        if (CurrentPage is ProblemPageViewModel { Code: ErrorCodes.ServiceNotRunning }
+            && _gateway.Service == ServiceKind.Installed && _gateway.HasReceivedStatus && status.ErrorCode is null)
+        {
+            Navigate(Pages.Home);
+            _problemSince = null;
+            return;
+        }
+
         if (status is not ({ State: ConnectionState.Error, ErrorCode: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired or ErrorCodes.OtherVpn }
                 or { State: ConnectionState.Blocked, ErrorCode: ErrorCodes.OtherVpn })
             || status.Since == _problemSince)

@@ -37,14 +37,16 @@ public sealed partial class WelcomePageViewModel : ObservableObject
     private readonly IGatewayClient _gateway;
     private readonly INavigator _navigator;
     private readonly IServiceInstaller _installer;
+    private readonly IServiceAccess _access;
 
-    public WelcomePageViewModel(SettingsService settings, IServerStore servers, IGatewayClient gateway, INavigator navigator, IServiceInstaller installer)
+    public WelcomePageViewModel(SettingsService settings, IServerStore servers, IGatewayClient gateway, INavigator navigator, IServiceInstaller installer, IServiceAccess access)
     {
         _settings = settings;
         _servers = servers;
         _gateway = gateway;
         _navigator = navigator;
         _installer = installer;
+        _access = access;
         Loc.Instance.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
     }
 
@@ -156,6 +158,12 @@ public sealed partial class WelcomePageViewModel : ObservableObject
         IsInstalling = true;
         try
         {
+            if (_access.IsSupported && await Task.Run(_access.Read).ConfigureAwait(true) == ServiceAccess.RequiresApproval)
+            {
+                _navigator.Navigate(Pages.Problem);
+                return;
+            }
+
             switch (await _installer.InstallAsync(new Progress<int>(value => InstallPercent = value)).ConfigureAwait(true))
             {
                 case ServiceInstallResult.Installed:

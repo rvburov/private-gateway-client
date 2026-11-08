@@ -682,6 +682,12 @@ public sealed class ServiceSetupTests : IDisposable
             (await Run(service, "--install", "--service-name", name, "--install-dir", folder, "--state-dir", state, "--ipc", socket, "--owner", "0")).ShouldBe(0);
 
             File.Exists(plist).ShouldBeTrue("описание службы — в /Library/LaunchDaemons");
+            if (OperatingSystem.IsMacOSVersionAtLeast(13))
+            {
+                var access = MacServiceAccess.ForThisMachine(plist).Read();
+                (access is ServiceAccess.Installed or ServiceAccess.RequiresApproval).ShouldBeTrue(
+                    "SMAppService читает регистрацию настоящего launchd без запроса прав и открытия настроек");
+            }
             File.ReadAllText(plist).ShouldContain($"<string>{state}</string>", customMessage: "папка состояния с пробелом — одним параметром");
             File.Exists(Path.Combine(folder, Exe)).ShouldBeTrue();
             File.Exists(Path.Combine(state, "journal.jsonl")).ShouldBeTrue("служба, которую запустил launchd, пишет журнал в папку состояния");

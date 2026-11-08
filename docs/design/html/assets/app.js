@@ -403,6 +403,10 @@
   function setSwitch(sw, on) {
     sw.classList.toggle("on", on);
     sw.setAttribute("aria-checked", on ? "true" : "false");
+    // На десктопе строгий режим сбрасывается вместе с Kill Switch, повторное включение его не возвращает.
+    if (!on && sw.hasAttribute("data-ks") && !sw.closest(".is-phone")) {
+      sw.closest(".pg-page").querySelectorAll("[data-needs-ks]").forEach(function (strict) { setSwitch(strict, false); });
+    }
   }
 
   // Форма внешнего прокси — только демонстрация состояний. Данные остаются в полях страницы;

@@ -63,7 +63,7 @@
         <Border Classes="mark" Classes.caution="{Binding IsCaution}">
           <Panel>
             <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Off}" Width="34" Height="34" IsVisible="{Binding IsService}" />
-            <c:Icon Data="{StaticResource Icon.Lock}" Width="34" Height="34" IsVisible="{Binding IsAdmin}" />
+            <c:Icon Data="{StaticResource Icon.Lock}" Width="34" Height="34" IsVisible="{Binding IsPermission}" />
             <c:Icon Data="{StaticResource Icon.Warning}" Width="34" Height="34" IsVisible="{Binding IsConflict}" />
           </Panel>
         </Border>
@@ -92,10 +92,14 @@
         <StackPanel Spacing="12" Margin="0,16,0,0">
           <Button x:Name="Retry" Classes="primary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding IsConflict}"
                   Command="{Binding RetryCommand}" Content="{l:L problem.conflict.retry}" />
+          <Button x:Name="OpenServiceSettings" Classes="primary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding NeedsApproval}"
+                  Command="{Binding OpenServiceSettingsCommand}" Content="{l:L problem.background.open}" />
+          <Button x:Name="CheckService" Classes.primary="{Binding !NeedsApproval}" Classes.secondary="{Binding NeedsApproval}" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding CanCheckService}"
+                  Command="{Binding CheckServiceCommand}" Content="{l:L problem.background.retry}" />
           <Button x:Name="Install" Classes="primary" Height="50" HorizontalAlignment="Stretch" IsVisible="{Binding CanInstall}"
                   Command="{Binding InstallCommand}" Content="{Binding InstallText}" />
           <TextBlock Classes="caption" Text="{Binding InstallProgressText}" IsVisible="{Binding IsInstallingService}" TextWrapping="Wrap" />
-          <Button x:Name="UseProxy" Classes.primary="{Binding !CanInstall}" Classes.secondary="{Binding CanInstall}" Height="50"
+          <Button x:Name="UseProxy" Classes.primary="{Binding ProxyIsPrimary}" Classes.secondary="{Binding !ProxyIsPrimary}" Height="50"
                   HorizontalAlignment="Stretch" IsVisible="{Binding HasProxy}" Command="{Binding UseProxyCommand}" Content="{l:L problem.proxy}" />
           <Button x:Name="Cancel" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding HasCancel}"
                   Command="{Binding CancelCommand}" Content="{l:L dialog.cancel}" />

@@ -34,17 +34,6 @@
 
           <Grid ColumnDefinitions="*,Auto" Margin="0,13">
             <StackPanel Spacing="3" Margin="0,0,16,0">
-              <TextBlock Classes="strong" Text="{l:L desktop.settings.ks.title}" TextWrapping="Wrap" />
-              <TextBlock Classes="caption" Text="{l:L desktop.settings.ks.text}" TextWrapping="Wrap" />
-            </StackPanel>
-            <c:ConfirmSwitch x:Name="KillSwitchToggle" Grid.Column="1" Classes="switch" VerticalAlignment="Center"
-                             IsEnabled="{Binding CanKillSwitch}" IsChecked="{Binding KillSwitch, Mode=OneWay}"
-                             Command="{Binding FlipKillSwitchCommand}" AutomationProperties.Name="{l:L desktop.settings.ks.title}" />
-          </Grid>
-          <Border Classes="divider" />
-
-          <Grid ColumnDefinitions="*,Auto" Margin="0,13">
-            <StackPanel Spacing="3" Margin="0,0,16,0">
               <TextBlock Classes="strong" Text="{Binding AutostartTitle}" TextWrapping="Wrap" />
               <TextBlock Classes="caption" Text="{Binding AutostartNote}" TextWrapping="Wrap" />
             </StackPanel>

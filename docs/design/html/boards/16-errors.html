@@ -48,7 +48,29 @@
   подпись реального IP — «не защищен Private Gateway»: программа не утверждает ни отсутствие утечек, ни прямой выход
   через провайдера, когда маршрут мог забрать другой VPN. При подтвержденном блоке остается «Трафик остановлен — утечки нет».</p>
 
+<p class="pg-board-note" data-os="macos">Состояние разрешения читается через SMAppService. Если служба установлена, но не отвечает, экран «Нет связи со службой» предлагает «Проверить снова», без переустановки. Неизвестное состояние не называется запретом. Установку предлагают только при отсутствии plist. Ответ службы закрывает прежний экран ошибки.</p>
 <div class="pg-screens">
+  <section class="pg-screen" data-state="error" data-os="macos" data-caption="macOS: фоновая работа службы запрещена">
+    <div class="pg-page">
+      <div class="pg-header"><i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i><span class="t-brand">Private Gateway</span></div>
+      <div class="pr-body">
+        <span class="pr-mark caution"><i data-icon="Lock" data-size="34"></i></span>
+        <span class="pr-title t-wrap" data-ui-text="problem.background.title">Разрешите фоновую работу службы</span>
+        <p class="pr-text" data-ui-text="problem.background.text">Служба установлена, но macOS запретила ее фоновую работу. Откройте «Объекты входа и расширения» и включите PrivateGatewayService. Затем проверьте снова.</p>
+        <div class="card pr-facts">
+          <div class="pr-fact"><span class="pr-dot"></span><span class="pr-label">Служба Private Gateway</span><span class="pr-value" data-ui-text="problem.fact.service.installed">установлена</span></div>
+          <div class="pr-fact"><span class="pr-dot warning"></span><span class="pr-label" data-ui-text="problem.background.fact">Фоновая работа</span><span class="pr-value" data-ui-text="problem.background.denied">запрещена macOS</span></div>
+        </div>
+        <div class="pr-actions">
+          <button class="btn-primary" data-ui-text="problem.background.open" data-toast="В программе откроются Объекты входа и расширения">Открыть настройки macOS</button>
+          <button class="btn-secondary" data-ui-text="problem.background.retry" data-toast="Проверка разрешения и связи со службой, без подключения VPN">Проверить снова</button>
+          <button class="btn-secondary" data-nav="17-main-variants.html">Работать в режиме прокси</button>
+        </div>
+        <button class="btn-link" data-nav="07-diagnostics.html">Подробнее в журнале · код PGC-SVC-001</button>
+      </div><div class="pg-page-end"></div>
+    </div><div class="pg-island"></div>
+  </section>
+
   <!-- ===================== Служба не запущена · можно установить ===================== -->
   <section class="pg-screen" data-state="error" data-caption="Служба не запущена: установщик рядом">
     <div class="pg-page">
