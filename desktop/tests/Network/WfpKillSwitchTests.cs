@@ -1,10 +1,12 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Management;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Runtime.Versioning;
+using System.Text;
 using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.Windows;
 
@@ -420,6 +422,141 @@ public sealed class WfpKillSwitchTests
         ("исходящий транспорт (OUTBOUND_TRANSPORT)", WfpHook.OutboundTransport, WfpField.RemoteAddress),
         ("входящий транспорт (INBOUND_TRANSPORT)", WfpHook.InboundTransport, WfpField.RemoteAddress),
     ];
+
+    /// <summary>
+    /// Вторая проба утечки WSL (Windows 10 пользователя, итог первой 2026-11-09): ни один слой WFP трафик WSL за WinNAT не
+    /// закрыл. WinNAT отправляет пакеты WSL по таблице маршрутов Windows, поэтому проба проверяет два способа закрыть WSL при
+    /// обрыве без WFP: маршрут к 1.1.1.1/32 в петлю (Loopback Pseudo-Interface: пакет никуда не уходит) и выключенный адаптер
+    /// vEthernet (WSL) — и вернется ли сеть WSL сама, когда адаптер снова включен. Каждый вариант снимается сразу; маршрут —
+    /// только в памяти (store=active), перезагрузку не переживает. Вручную: PG_WSL_PROBE=1, права администратора, запущенная
+    /// WSL с curl. Итог — в artifacts/wsl-probe-2.txt.
+    /// </summary>
+    [Fact]
+    public async Task Probe_wsl_cut_by_route_or_adapter()
+    {
+        Assert.SkipUnless(Environment.GetEnvironmentVariable("PG_WSL_PROBE") == "1", "проба WSL — вручную (PG_WSL_PROBE=1, нужна WSL)");
+        if (!OperatingSystem.IsWindows() || !Environment.IsPrivilegedProcess)
+        {
+            Assert.Skip("фильтры WFP ставятся только на Windows с правами администратора (CI)");
+            return;
+        }
+
+        const string target = "1.1.1.1";
+        var report = new List<string> { $"Windows {Environment.OSVersion.Version}, проба к {target}:443" };
+        var interfaces = NetworkInterface.GetAllNetworkInterfaces();
+        var loopback = interfaces.FirstOrDefault(n => n.NetworkInterfaceType == NetworkInterfaceType.Loopback)?.GetIPProperties().GetIPv4Properties()?.Index;
+        var adapter = interfaces.FirstOrDefault(n => n.Name.StartsWith("vEthernet (WSL", StringComparison.OrdinalIgnoreCase))?.Name;
+        var route = loopback is { } index
+            ? new[] { $"prefix={target}/32", "interface=" + index.ToString(CultureInfo.InvariantCulture), "store=active" }
+            : null;
+        var routed = false;
+        var disabled = false;
+        try
+        {
+            var open = await Wsl();
+            report.Add("без изменений: WSL " + (open ? "проходит" : "НЕ проходит"));
+            Assert.SkipUnless(open, "WSL не выходит к 1.1.1.1 и без изменений — проверять нечего");
+
+            if (route is null)
+            {
+                report.Add("маршрут в петлю: адаптера петли нет — вариант пропущен");
+            }
+            else
+            {
+                var (added, text) = await Netsh(["interface", "ipv4", "add", "route", .. route]);
+                routed = added;
+                if (added)
+                {
+                    var (wsl, windows) = (await Wsl(), await Windows());
+                    report.Add($"маршрут к {target} в петлю: WSL {(wsl ? "ПРОХОДИТ" : "закрыта")}, Windows {(windows ? "проходит" : "закрыта")}");
+                    routed = !(await Netsh(["interface", "ipv4", "delete", "route", .. route])).Ok;
+                }
+                else
+                {
+                    report.Add("маршрут в петлю: не добавился — " + text);
+                }
+            }
+
+            if (adapter is null)
+            {
+                report.Add("адаптер WSL: адаптера vEthernet (WSL) нет — запустите Ubuntu и повторите пробу");
+            }
+            else
+            {
+                var (off, text) = await Netsh(["interface", "set", "interface", $"name={adapter}", "admin=disabled"]);
+                disabled = off;
+                if (off)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+                    var (wsl, windows) = (await Wsl(), await Windows());
+                    report.Add($"адаптер {adapter} выключен: WSL {(wsl ? "ПРОХОДИТ" : "закрыта")}, Windows {(windows ? "проходит" : "закрыта")}");
+                    disabled = !(await Netsh(["interface", "set", "interface", $"name={adapter}", "admin=enabled"])).Ok;
+                    var back = Stopwatch.StartNew();
+                    var again = false;
+                    while (!again && back.Elapsed < TimeSpan.FromSeconds(60))
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(3), TestContext.Current.CancellationToken);
+                        again = await Wsl();
+                    }
+
+                    report.Add(again
+                        ? $"адаптер снова включен: WSL снова проходит через {back.Elapsed.TotalSeconds:0} с"
+                        : "адаптер снова включен: WSL НЕ ПРОХОДИТ и через 60 с — нужна команда wsl --shutdown");
+                }
+                else
+                {
+                    report.Add($"адаптер {adapter}: не выключился — " + text);
+                }
+            }
+        }
+        finally
+        {
+            if (routed && route is not null)
+            {
+                await Netsh(["interface", "ipv4", "delete", "route", .. route]);
+            }
+
+            if (disabled && adapter is not null)
+            {
+                await Netsh(["interface", "set", "interface", $"name={adapter}", "admin=enabled"]);
+            }
+
+            Directory.CreateDirectory(Path.Combine(RepositoryRoot(), "artifacts"));
+            File.WriteAllLines(Path.Combine(RepositoryRoot(), "artifacts", "wsl-probe-2.txt"), report);
+            TestContext.Current.SendDiagnosticMessage(string.Join(Environment.NewLine, report));
+        }
+
+        async Task<bool> Wsl() => (await Command("wsl.exe", "-e", "curl", "-s", "-m", "8", $"https://{target}/cdn-cgi/trace"))?.Contains("ip=",
+            StringComparison.Ordinal) == true;
+
+        async Task<bool> Windows() => (await Run(Path.Combine(Environment.SystemDirectory, "curl.exe"), "-s", "-m", "8",
+            $"https://{target}/cdn-cgi/trace"))?.Contains("ip=", StringComparison.Ordinal) == true;
+    }
+
+    /// <summary>netsh: удалось ли и что ответил (текст — в кодировке консоли Windows, OEM).</summary>
+    private static async Task<(bool Ok, string Output)> Netsh(string[] arguments)
+    {
+        Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+        var console = Encoding.GetEncoding(CultureInfo.CurrentCulture.TextInfo.OEMCodePage);
+        var start = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "netsh.exe"))
+        {
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            StandardOutputEncoding = console,
+            StandardErrorEncoding = console,
+        };
+        foreach (var argument in arguments)
+        {
+            start.ArgumentList.Add(argument);
+        }
+
+        using var process = Process.Start(start)!;
+        var output = process.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        var error = process.StandardError.ReadToEndAsync(TestContext.Current.CancellationToken);
+        await process.WaitForExitAsync(TestContext.Current.CancellationToken);
+        return (process.ExitCode == 0, ((await output) + " " + (await error)).Trim());
+    }
 
     /// <summary>Вывод программы; не вышла успешно за минуту или ее нет — null.</summary>
     private static async Task<string?> Command(string file, params string[] arguments)
