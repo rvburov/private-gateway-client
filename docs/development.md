@@ -101,16 +101,21 @@ proxy soak — 8 кругов за 1 минуту 6 секунд, 1/1 успеш
 пользователю не нужно — он внутри), затем пакет. Версия — SemVer, по умолчанию из `Directory.Build.props`. Каждый
 скрипт в конце печатает, где лежит готовый файл.
 
+Номер выпуска — текущий из проекта, его и ставить: в командах ниже он читается из `Directory.Build.props` сам
+(`v=…`). Сборка со старым номером тоже встанет поверх новой (откат разрешен), но окно и служба покажут старую версию,
+и программа будет предлагать обновиться.
+
 ### Windows — `.msi`
 
 Один раз: `dotnet tool install --global wix --version 5.0.2` (расширения WiX скрипт ставит сам). Затем в Git Bash:
 
 ```bash
-scripts/publish.sh 0.1.0
-scripts/package-windows.sh 0.1.0
+v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
+scripts/publish.sh "$v"
+scripts/package-windows.sh "$v"
 ```
 
-Готово: `artifacts\release\PrivateGateway-0.1.0-win-x64.msi` (полный путь — последняя строка вывода). Установка —
+Готово: `artifacts\release\PrivateGateway-<версия>-win-x64.msi` (полный путь — последняя строка вывода). Установка —
 двойной щелчок: приветствие → папка установки → «Установить» (Windows спросит права администратора) → «Готово» с
 флажком «Запустить Private Gateway». Служба ставится установщиком. Удаление — «Параметры» → «Приложения» →
 «Установленные приложения» → Private Gateway → «…» → «Удалить».
@@ -123,11 +128,12 @@ scripts/package-windows.sh 0.1.0
 Только на macOS (нужны `codesign` и `hdiutil` — они есть в системе):
 
 ```bash
-scripts/publish.sh 0.1.0
-scripts/package-macos.sh 0.1.0
+v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
+scripts/publish.sh "$v"
+scripts/package-macos.sh "$v"
 ```
 
-Готово: `artifacts/release/PrivateGateway-0.1.0-osx-arm64.dmg` (на Intel — `osx-x64`). Установка — открыть образ и
+Готово: `artifacts/release/PrivateGateway-<версия>-osx-arm64.dmg` (на Intel — `osx-x64`). Установка — открыть образ и
 перетащить Private Gateway в «Программы»; первый запуск — «Системные настройки» → «Конфиденциальность и
 безопасность» → «Все равно открыть» (подписи Developer ID пока нет).
 
@@ -136,19 +142,21 @@ scripts/package-macos.sh 0.1.0
 Один раз — nfpm (нужен go): `go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.47.0`, и `~/go/bin` в `PATH`.
 
 ```bash
-scripts/publish.sh 0.1.0
-scripts/package-linux.sh 0.1.0
+v=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' Directory.Build.props | head -1)
+scripts/publish.sh "$v"
+scripts/package-linux.sh "$v"
 ```
 
-Готово: `artifacts/release/private-gateway_0.1.0_amd64.deb` и `private-gateway-0.1.0.x86_64.rpm`. Установка —
-`sudo apt install ./artifacts/release/private-gateway_0.1.0_amd64.deb` или
-`sudo dnf install ./artifacts/release/private-gateway-0.1.0.x86_64.rpm`; удаление — `sudo apt remove private-gateway`
+Готово: `artifacts/release/private-gateway_<версия>_amd64.deb` и `private-gateway-<версия>.x86_64.rpm`. Установка —
+`sudo apt install ./artifacts/release/private-gateway_${v}_amd64.deb` или
+`sudo dnf install ./artifacts/release/private-gateway-${v}.x86_64.rpm`; удаление — `sudo apt remove private-gateway`
 или `sudo dnf remove private-gateway`.
 
 ### Без сборки у себя
 
 CI собирает все три установщика при каждом изменении `master`: GitHub → «Actions» → «Сборка выпуска» → верхний
-запуск с зеленой галочкой → «Artifacts» → `release-Windows` (`release-Linux`, `release-macOS`). Выпуск с тегом —
+запуск с зеленой галочкой → «Artifacts» → `installer-Windows-msi-<версия>` (`installer-macOS-…`, `installer-Linux-deb-…`,
+`installer-Linux-rpm-…`; в каждом — только установщик, GitHub отдает его ZIP-архивом). Выпуск с тегом —
 [docs/architecture/release.md](architecture/release.md).
 
 ## 5. Частые проблемы
