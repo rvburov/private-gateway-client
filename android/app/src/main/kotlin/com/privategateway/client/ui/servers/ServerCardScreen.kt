@@ -2,6 +2,7 @@ package com.privategateway.client.ui.servers
 
 import android.os.Build
 import androidx.activity.compose.LocalActivity
+import androidx.annotation.StringRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -60,6 +61,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
 import com.privategateway.client.R
 import com.privategateway.client.core.qr.QrCode
+import com.privategateway.client.core.servers.LatencyFailure
 import com.privategateway.client.core.servers.LatencyKind
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.servers.ServerItem
@@ -343,7 +345,10 @@ private fun Chip(fill: Color, dot: Color?, tag: String, content: @Composable () 
     }
 }
 
-/** Задержка в чипе (.sc-ping): быстрый — зеленым, медленный — серым, «нет ответа» — оранжевым; не мерили — «—». */
+/**
+ * Задержка в чипе (.sc-ping): быстрый — зеленым, медленный — серым, «нет ответа» — оранжевым; не мерили — «Не проверен», как
+ * карточка десктопа (решение пользователя 2026-11-08: отсутствие замера — не отказ сервера).
+ */
 @Composable
 private fun CardLatency(server: ServerItem) {
     val kind = LatencyKind.of(server.latency)
@@ -352,7 +357,9 @@ private fun CardLatency(server: ServerItem) {
         LatencyKind.Good -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Status.Success.Text
         LatencyKind.Slow -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Text.Muted
         LatencyKind.NoAnswer -> stringResource(R.string.card_latency_none) to PgColor.Status.Warning.Text
-        LatencyKind.Never -> "—" to PgColor.Text.Muted
+        // Ядро телефона за этот сервер не берется (Hysteria2, TUIC) — мерить нечем: «—»; почему — строка «Проверка» ниже.
+        LatencyKind.Never -> (if (server.latency?.failure == LatencyFailure.Unsupported) "—" else stringResource(R.string.latency_unchecked)) to
+            PgColor.Text.Muted
     }
     val hint = if (kind == LatencyKind.Never) stringResource(R.string.android_servers_latency_never) else text
     Text(
@@ -399,7 +406,17 @@ private fun Details(server: ServerItem, address: suspend (String) -> String?, ex
             ?: stringResource(if (server.encrypted) R.string.card_security_builtin else R.string.card_security_none)
         Detail(stringResource(R.string.card_security), security, "card.security")
         Detail(stringResource(R.string.card_core), ServerFacts.coreName(server.protocol) ?: stringResource(R.string.android_card_core_none), "card.core")
+        latencyReason(server.latency?.failure)?.let { Detail(stringResource(R.string.card_latency_reason), stringResource(it), "card.latencyReason", lines = 2) }
     }
+}
+
+/** Почему замера задержки нет — строкой «Проверка», как `ServerLatencyText.Reason` десктопа; замер есть или не мерили — null. */
+@StringRes
+private fun latencyReason(failure: LatencyFailure?): Int? = when (failure) {
+    LatencyFailure.Unsupported -> R.string.latency_unsupported
+    LatencyFailure.CoreFailed -> R.string.latency_coreFailed
+    LatencyFailure.NoResponse -> R.string.latency_noResponse
+    null -> null
 }
 
 /** Значение сведений (.sc-val): моноширинным, по правому краю. */

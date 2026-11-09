@@ -320,13 +320,29 @@ class ServersScreenTest {
         card(MainUi(servers = listOf(tr)), "tr")
         compose.onNodeWithTag("card.subtitle").assertTextEquals(text(R.string.card_from_link))
         compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.card_latency_none))
+        compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_noResponse))
+    }
+
+    @Test
+    fun `card says a server never measured is not checked`() {
+        // Решение пользователя 2026-11-08 (как карточка десктопа): отсутствие замера — не отказ сервера.
+        card(MainUi(servers = listOf(nl.copy(latency = null))), "nl")
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.latency_unchecked))
+        compose.onNodeWithTag("card.latencyReason").assertDoesNotExist()
+    }
+
+    @Test
+    fun `card gives the reason when the core cannot measure the server`() {
+        card(MainUi(servers = listOf(fi.copy(latency = Latency.failed(LatencyFailure.Unsupported)))), "fi")
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_unsupported))
     }
 
     @Test
     fun `card says the phone has no core for hysteria2 and does not connect to it`() {
         val card = card(MainUi(servers = listOf(fi)), "fi")
         compose.onNodeWithTag("card.core").assertTextEquals(text(R.string.android_card_core_none))
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.latency_unchecked))
         compose.onNodeWithTag("card.connect").assertIsNotEnabled().performClick()
         assertEquals(emptyList(), card.connected)
     }

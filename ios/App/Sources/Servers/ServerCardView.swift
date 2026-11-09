@@ -493,6 +493,11 @@ enum CardLook {
     /// Задержка в чипе — как в строке, только без ответа — «нет ответа» (card.latency.none): в чипе есть место для слов.
     static func latency(_ latency: Latency?, _ texts: PgTexts) -> (text: String, color: PgRGBA, hint: String) {
         let look = LatencyLook.of(latency, texts)
+        if latency == nil {
+            // Не мерили — «Не проверен», как карточка десктопа (решение пользователя 2026-11-08); в строке списка — «—».
+            return (texts.latencyUnchecked, look.color, look.hint)
+        }
+
         guard latency?.failure != .unsupported, LatencyKind.of(latency) == .noAnswer else {
             return look
         }
@@ -504,7 +509,7 @@ enum CardLook {
     /// он не совпадает с адресом; решения 583 и пользователя 2026-11-08, как у десктопа; nil — «Не измерен»), протокол,
     /// транспорт, защита и ядро; Hysteria2 и TUIC ядру телефона не по силам — «нет: …».
     static func details(_ server: ServerItem, host: String, exit: String? = nil, _ texts: PgTexts) -> [CardDetail] {
-        [
+        var rows = [
             CardDetail(label: texts.cardAddress, value: host, identifier: "card.address"),
             CardDetail(label: texts.cardExitIp, value: exit ?? texts.cardExitIpUnknown, identifier: "card.exitIp"),
             CardDetail(label: texts.cardProtocol, value: ServerFacts.protocolName(server.protocol), identifier: "card.protocol"),
@@ -519,6 +524,21 @@ enum CardLook {
             ),
             CardDetail(label: texts.cardCore, value: ServerFacts.coreName(server.protocol) ?? texts.androidCardCoreNone, identifier: "card.core"),
         ]
+        if let reason = reason(server.latency?.failure, texts) {
+            rows.append(CardDetail(label: texts.cardLatencyReason, value: reason, identifier: "card.latencyReason"))
+        }
+
+        return rows
+    }
+
+    /// Почему замера задержки нет — строкой «Проверка», как `ServerLatencyText.Reason` десктопа; замер есть или не мерили — nil.
+    static func reason(_ failure: LatencyFailure?, _ texts: PgTexts) -> String? {
+        switch failure {
+        case .unsupported?: return texts.latencyUnsupported
+        case .coreFailed?: return texts.latencyCoreFailed
+        case .noResponse?: return texts.latencyNoResponse
+        case nil: return nil
+        }
     }
 
     /// «Сохранить»: 1–64 знака без пробелов по краям и не то же название, что сейчас.

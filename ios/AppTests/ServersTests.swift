@@ -104,9 +104,12 @@ final class ServersTests: XCTestCase {
         XCTAssertEqual(CardLook.latency(.of(42), texts).text, "42 \(texts.unitMs)")
         XCTAssertEqual(CardLook.latency(.of(42), texts).color, PgColor.Status.Success.text)
         XCTAssertEqual(CardLook.latency(.of(148), texts).color, PgColor.Text.muted, "медленный — серым")
-        XCTAssertEqual(CardLook.latency(nil, texts).text, "—")
+        XCTAssertEqual(CardLook.latency(nil, texts).text, texts.latencyUnchecked, "не мерили — «Не проверен», а не отказ (решение 2026-11-08)")
 
-        XCTAssertEqual(CardLook.details(servers[2], host: "203.0.113.57:8443", texts).last?.value, texts.androidCardCoreNone, "ядра для Hysteria2 нет")
+        let hysteria = CardLook.details(servers[2], host: "203.0.113.57:8443", texts)
+        XCTAssertEqual(hysteria.first { $0.identifier == "card.core" }?.value, texts.androidCardCoreNone, "ядра для Hysteria2 нет")
+        XCTAssertEqual(hysteria.last.map { [$0.label, $0.value] }, [texts.cardLatencyReason, texts.latencyUnsupported], "почему задержки нет")
+        XCTAssertEqual(CardLook.details(servers[3], host: "203.0.113.9:443", texts).last?.value, texts.latencyNoResponse)
     }
 
     @MainActor
