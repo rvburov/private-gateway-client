@@ -118,6 +118,12 @@ public sealed class XrayProxyTests
         error.Message.ShouldContain("Порт держит:");
         error.Message.ShouldContain(Environment.ProcessId.ToString(CultureInfo.InvariantCulture), Case.Sensitive,
             "номер процесса, который держит порт");
+        if (!OperatingSystem.IsWindows())
+        {
+            // macOS CI #637: lsof без root ответил «никого» — все сокеты порта с состоянием показывает netstat или ss.
+            error.Message.ShouldContain("Сокеты порта", Case.Sensitive);
+            error.Message.ShouldContain("LISTEN", Case.Insensitive, "слушающий сокет теста в списке сокетов порта");
+        }
     }
 
     [Theory]

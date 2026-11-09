@@ -304,6 +304,8 @@ internal static class XrayKit
     /// Кто держит порт — для сообщения теста, когда ядро не встало на выбранный порт: порт свободен в момент выбора, а к запуску
     /// ядра его занимает кто-то еще (macOS Intel CI 2026-11-06, XrayProxyTests: «bind: address already in use»; Windows,
     /// ExternalProxyTests). Номер и имя процесса — `lsof` на macOS и Linux, `netstat -ano` на Windows; не вышло — так и сказано.
+    /// На macOS и Linux еще и все сокеты порта (<see cref="Sockets"/>): macOS CI #637 2026-11-09 ответил «lsof: никого», а lsof
+    /// без root видит только процессы своего пользователя и не видит сокетов без процесса (TIME_WAIT).
     /// </summary>
     public static string PortHolders(int port)
     {
@@ -317,11 +319,30 @@ internal static class XrayKit
             }
 
             var lsof = Capture("lsof", ["-nP", $"-iTCP:{port}", $"-iUDP:{port}"]);
-            return lsof.Trim().Length == 0 ? "(lsof: никого)" : lsof.Trim();
+            return (lsof.Trim().Length == 0 ? "(lsof: никого)" : lsof.Trim()) + "\n" + Sockets(port);
         }
         catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
         {
             return "(не узнать: " + e.Message + ")";
+        }
+
+        // Все сокеты порта, чьи бы ни были, и в каком они состоянии: `netstat -anv` на macOS (адрес и порт через точку, с номером
+        // процесса), `ss -tuanp` на Linux.
+        static string Sockets(int port)
+        {
+            try
+            {
+                var (tool, lines) = OperatingSystem.IsMacOS()
+                    ? ("netstat", Capture("netstat", ["-anv", "-p", "tcp"]) + Capture("netstat", ["-anv", "-p", "udp"]))
+                    : ("ss", Capture("ss", ["-tuanp"]));
+                var mark = OperatingSystem.IsMacOS() ? $".{port} " : $":{port} ";
+                var found = lines.Split('\n').Where(l => l.Contains(mark, StringComparison.Ordinal)).Select(l => l.Trim()).ToList();
+                return found.Count == 0 ? $"({tool}: сокетов порта нет)" : $"Сокеты порта ({tool}):\n" + string.Join('\n', found);
+            }
+            catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException or IOException)
+            {
+                return "(сокеты порта не узнать: " + e.Message + ")";
+            }
         }
 
         static string Named(string line)
