@@ -346,8 +346,9 @@ private fun Chip(fill: Color, dot: Color?, tag: String, content: @Composable () 
 }
 
 /**
- * Задержка в чипе (.sc-ping): быстрый — зеленым, медленный — серым, «нет ответа» — оранжевым; не мерили — «Не проверен», как
- * карточка десктопа (решение пользователя 2026-11-08: отсутствие замера — не отказ сервера).
+ * Задержка в чипе (.sc-ping): быстрый — зеленым, медленный — серым, любой отказ — «нет ответа» оранжевым (почему — строка
+ * «Проверка» ниже); не мерили — «Не проверен», как карточка десктопа (решение пользователя 2026-11-08: отсутствие замера —
+ * не отказ сервера).
  */
 @Composable
 private fun CardLatency(server: ServerItem) {
@@ -357,9 +358,7 @@ private fun CardLatency(server: ServerItem) {
         LatencyKind.Good -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Status.Success.Text
         LatencyKind.Slow -> "$ms ${stringResource(R.string.unit_ms)}" to PgColor.Text.Muted
         LatencyKind.NoAnswer -> stringResource(R.string.card_latency_none) to PgColor.Status.Warning.Text
-        // Ядро телефона за этот сервер не берется (Hysteria2, TUIC) — мерить нечем: «—»; почему — строка «Проверка» ниже.
-        LatencyKind.Never -> (if (server.latency?.failure == LatencyFailure.Unsupported) "—" else stringResource(R.string.latency_unchecked)) to
-            PgColor.Text.Muted
+        LatencyKind.Never -> stringResource(R.string.latency_unchecked) to PgColor.Text.Muted
     }
     val hint = if (kind == LatencyKind.Never) stringResource(R.string.android_servers_latency_never) else text
     Text(

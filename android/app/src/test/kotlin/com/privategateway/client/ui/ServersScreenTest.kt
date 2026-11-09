@@ -334,7 +334,7 @@ class ServersScreenTest {
     @Test
     fun `card gives the reason when the core cannot measure the server`() {
         card(MainUi(servers = listOf(fi.copy(latency = Latency.failed(LatencyFailure.Unsupported)))), "fi")
-        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals("—")
+        compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals(text(R.string.card_latency_none))
         compose.onNodeWithTag("card.latencyReason").assertTextEquals(text(R.string.latency_unsupported))
     }
 
