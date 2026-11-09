@@ -554,6 +554,16 @@ final class AppModel: ObservableObject {
         try? await container.servers.address(id)
     }
 
+    /// «Выходной IP» карточки (решение 583): последний IP, который сайты видели через сервер; не мерили — nil.
+    func exit(_ id: String) async -> String? {
+        try? await container.servers.exit(id)
+    }
+
+    /// Запомнить IP, который сайты видели через сервер (решение 583), — для его карточки.
+    func rememberExit(_ id: String, ip: String) async {
+        try? await container.servers.rememberExit(id, ip: ip)
+    }
+
     /// Ссылка сервера для «Поделиться» — только по нажатию; ключа нет — nil.
     func shareLink(_ id: String) async -> String? {
         try? await container.servers.shareLink(id)

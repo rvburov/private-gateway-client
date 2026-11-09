@@ -121,6 +121,15 @@ struct RootView: View {
                 measureWebIp()
             }
         }
+        .onChange(of: inspector.web.exit) { exit in
+            // Выход через сервер — для его карточки (решение 583): замер этого подключения, не утечка и не пауза.
+            let state = model.home.status
+            if let seen = ServerExit.remembered(
+                state: state.state, serverId: state.serverId, exit: exit, direct: inspector.web.direct, paused: model.paused != nil
+            ) {
+                Task { await model.rememberExit(seen.id, ip: seen.ip) }
+            }
+        }
         .onChange(of: model.home.status.serverId) { _ in
             // Под защитой сменили сервер, туннель не опускался: у нового сервера — свой адрес выхода.
             if model.home.status.state == .connected {
@@ -322,7 +331,8 @@ struct RootView: View {
                 Task { await model.delete(id) }
             },
             address: { id in await model.address(id) },
-            share: { id in await model.shareLink(id) }
+            share: { id in await model.shareLink(id) },
+            exit: { id in await model.exit(id) }
         )
     }
 

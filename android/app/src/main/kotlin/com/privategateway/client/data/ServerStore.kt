@@ -22,7 +22,8 @@ import kotlinx.coroutines.flow.Flow
  * сервера и ключ без ключа Keystore этого устройства не прочитать. [name] — название из ссылки (по нему подписка узнает
  * сервер), [customName] — свое название пользователя, оно переживает обновления подписки. Группа — подписка или профиль
  * ([subscriptionId]), без группы — «Мои серверы». [missingSince] — выбранный сервер пропал из подписки и оставлен, пока
- * выбран.
+ * выбран. [sealedExit] — запечатанный IP, который сайты видели через этот сервер (решение 583): у сервера «VPS + прокси»
+ * он не совпадает с адресом подключения; у одиночного сервера это и есть его IP, поэтому открыто не хранится.
  */
 @Entity(tableName = "servers", indices = [Index("subscriptionId")])
 data class ServerEntity(
@@ -43,6 +44,7 @@ data class ServerEntity(
     @ColumnInfo(defaultValue = "NULL") val latencyFailure: String? = null,
     @ColumnInfo(defaultValue = "NULL") val lastUsedAt: Long? = null,
     @ColumnInfo(defaultValue = "NULL") val missingSince: Long? = null,
+    @ColumnInfo(defaultValue = "NULL") val sealedExit: ByteArray? = null,
 )
 
 /**
@@ -125,6 +127,10 @@ interface ServerDao {
     @Query("UPDATE servers SET latencyMs = :ms, latencyFailure = :failure WHERE id = :id")
     suspend fun setLatency(id: String, ms: Int?, failure: String?)
 
+    /** Выход, подтвержденный замером через сервер (решение 583), — запечатанным. */
+    @Query("UPDATE servers SET sealedExit = :sealed WHERE id = :id")
+    suspend fun setExit(id: String, sealed: ByteArray)
+
     /** Только описание сервера (решение 484): название, избранное, задержку и выбор, записанные тем временем, не затирает. */
     @Query("UPDATE servers SET sealed = :sealed WHERE id = :id")
     suspend fun setSealed(id: String, sealed: ByteArray)
@@ -184,10 +190,10 @@ interface SubscriptionDao {
 
 /**
  * База приложения. Схема меняется только миграцией: серверы пользователя не теряются при обновлении. Схемы версий 2 и
- * дальше выгружаются в `app/schemas` (проверка миграций MigrationTestHelper); версия 1 не выгружалась — миграцию 1 → 2
- * проверяет тест на базе, собранной по ее DDL.
+ * дальше выгружаются в `app/schemas` (CI сверяет их с сущностями); миграции проверяет MigrationTest на базах, собранных по
+ * DDL прежних версий (версия 1 не выгружалась).
  */
-@Database(entities = [ServerEntity::class, SubscriptionEntity::class], version = 2, exportSchema = true)
+@Database(entities = [ServerEntity::class, SubscriptionEntity::class], version = 3, exportSchema = true)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun servers(): ServerDao
 
@@ -197,7 +203,7 @@ abstract class AppDatabase : RoomDatabase() {
         const val NAME = "private-gateway.db"
 
         fun open(context: Context, name: String = NAME): AppDatabase =
-            Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_1_2).build()
+            Room.databaseBuilder(context, AppDatabase::class.java, name).addMigrations(MIGRATION_1_2, MIGRATION_2_3).build()
 
         /** 1 → 2: группы и подписки; свое название, избранное, задержка, когда выбирался, «пропал из подписки». */
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -215,6 +221,13 @@ abstract class AppDatabase : RoomDatabase() {
                         "`sealedUrl` BLOB, `position` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `updatedAt` INTEGER, " +
                         "`lastAttemptAt` INTEGER, `lastFailure` TEXT, `lastStatus` INTEGER, PRIMARY KEY(`id`))",
                 )
+            }
+        }
+
+        /** 2 → 3: запечатанный выход сервера (решение 583). */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `servers` ADD COLUMN `sealedExit` BLOB DEFAULT NULL")
             }
         }
     }

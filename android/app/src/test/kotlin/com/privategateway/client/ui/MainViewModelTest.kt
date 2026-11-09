@@ -708,6 +708,28 @@ class MainViewModelTest {
     }
 
     @Test
+    fun `exit through the server is remembered for its card and the real ip is not`() {
+        // Решение 583: карточка сервера «VPS + прокси» показывает, какой IP сайты видели через него.
+        runBlocking { servers.add(listOf(Fixtures.servers().first { ':' !in it.host })) }
+        val id = wait { servers.servers.first { it.isNotEmpty() }.single().id }
+        answer = { "ip=198.51.100.7\n" }
+        model.verify()
+        wait { model.ui.first { it.ip.direct == "198.51.100.7" && !it.ip.measuring } }
+
+        answer = { "ip=203.0.113.90\n" }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = id, since = 1L))
+        wait { model.ui.first { it.serverExit == (id to "203.0.113.90") } }
+        waitUntil { runBlocking { servers.exit(id) } == "203.0.113.90" }
+
+        // Утечка: замер через туннель увидел реальный IP — это не выход сервера, запомненный остается.
+        answer = { "ip=198.51.100.7\n" }
+        model.verify()
+        val leak = wait { model.ui.first { it.leak } }
+        assertNull(leak.serverExit)
+        assertEquals("203.0.113.90", runBlocking { servers.exit(id) })
+    }
+
+    @Test
     fun `an answer that came after the path changed is not trusted`() {
         val gate = CompletableDeferred<String?>()
         answer = { gate.await() }

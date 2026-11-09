@@ -302,6 +302,27 @@ class ServerRepositoryTest {
     }
 
     @Test
+    fun `exit seen through a server is kept sealed`() = runBlocking<Unit> {
+        // Решение 583: у сервера «VPS + прокси» сайты видят выход прокси за ним, а не адрес подключения.
+        repository.add(listOf(Fixtures.servers().first()))
+        val id = repository.servers.first().single().id
+        assertNull(repository.exit(id), "еще не мерили")
+
+        repository.rememberExit(id, "203.0.113.90")
+        assertEquals("203.0.113.90", repository.exit(id))
+        val sealed = assertNotNull(assertNotNull(database.servers().byId(id)).sealedExit)
+        assertFalse(String(sealed, Charsets.ISO_8859_1).contains("203.0.113.90"), "выход лежит открыто")
+        val writes = box.sealed
+        repository.rememberExit(id, "203.0.113.90")
+        assertEquals(writes, box.sealed, "тот же выход не перезаписывается")
+
+        repository.rememberExit(id, "203.0.113.91")
+        assertEquals("203.0.113.91", repository.exit(id), "новый замер заменяет прежний")
+        repository.rememberExit("gone", "203.0.113.90")
+        assertNull(repository.exit("gone"))
+    }
+
+    @Test
     fun `backup restores own names and favorites of new and existing servers`() = runBlocking<Unit> {
         // Решение пользователя 2026-11-03 (DECISIONS.md, п. 2): имя и избранное — из копии, и тем серверам, что уже есть.
         val (first, second) = Fixtures.servers().distinctBy { Fixtures.identity(it) }.take(2)

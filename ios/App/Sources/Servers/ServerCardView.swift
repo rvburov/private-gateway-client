@@ -4,7 +4,8 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// Что умеет карточка сервера. `address` и `share` открывают ссылку из Связки ключей — только когда карточка открыта.
+/// Что умеет карточка сервера. `address` и `share` открывают ссылку из Связки ключей — только когда карточка открыта; `exit` —
+/// последний IP, который сайты видели через сервер (решение 583), nil — не мерили.
 struct CardActions {
     /// Закрыть лист: крестик или сервер пропал из списка.
     var back: () -> Void = {}
@@ -16,6 +17,7 @@ struct CardActions {
     var delete: (String) -> Void = { _ in }
     var address: (String) async -> String? = { _ in nil }
     var share: (String) async -> String? = { _ in nil }
+    var exit: (String) async -> String? = { _ in nil }
 }
 
 /// Что стоит в середине карточки: сведения, поле нового названия или QR-код со ссылкой.
@@ -44,6 +46,7 @@ struct ServerCardView: View {
     /// открылся.
     @State private var host: String?
     @State private var hostLoaded = false
+    @State private var seen: String?
     /// Ссылки сервера в Связке ключей нет — делиться нечем: плитка «Поделиться» недоступна.
     @State private var noKey = false
     @Environment(\.pgLayers) private var layers
@@ -96,6 +99,7 @@ struct ServerCardView: View {
         }
         .task(id: server.id) {
             let opened = await actions.address(server.id)
+            seen = await actions.exit(server.id)
             host = opened
             hostLoaded = true
             if opened == nil {
@@ -199,7 +203,7 @@ struct ServerCardView: View {
 
     /// Сведения (вставка surface.inset): подпись слева серым, значение моноширинным по правому краю, строки через черту.
     private func details(_ server: ServerItem) -> some View {
-        let rows = CardLook.details(server, host: hostLoaded ? host ?? "—" : "…", texts)
+        let rows = CardLook.details(server, host: hostLoaded ? host ?? "—" : "…", exit: hostLoaded ? seen : "…", texts)
         return VStack(spacing: 0) {
             ForEach(rows.indices, id: \.self) { index in
                 if index > 0 {
@@ -496,11 +500,13 @@ enum CardLook {
         return (texts.cardLatencyNone, look.color, look.hint)
     }
 
-    /// Адрес (из ссылки в Связке ключей), протокол, транспорт, защита и ядро; Hysteria2 и TUIC ядру телефона не по силам —
-    /// «нет: …».
-    static func details(_ server: ServerItem, host: String, _ texts: PgTexts) -> [CardDetail] {
+    /// Адрес (из ссылки в Связке ключей), выходной IP — последний, который сайты видели через сервер (у сервера «VPS + прокси»
+    /// он не совпадает с адресом; решения 583 и пользователя 2026-11-08, как у десктопа; nil — «Не измерен»), протокол,
+    /// транспорт, защита и ядро; Hysteria2 и TUIC ядру телефона не по силам — «нет: …».
+    static func details(_ server: ServerItem, host: String, exit: String? = nil, _ texts: PgTexts) -> [CardDetail] {
         [
             CardDetail(label: texts.cardAddress, value: host, identifier: "card.address"),
+            CardDetail(label: texts.cardExitIp, value: exit ?? texts.cardExitIpUnknown, identifier: "card.exitIp"),
             CardDetail(label: texts.cardProtocol, value: ServerFacts.protocolName(server.protocol), identifier: "card.protocol"),
             CardDetail(
                 label: texts.cardTransport, value: ServerFacts.transportName(server.transport) ?? String(describing: server.transport).uppercased(),

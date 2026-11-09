@@ -148,6 +148,9 @@ public actor ServerStore {
 
     static func subscriptionKey(_ id: String) -> String { "subscription.\(id)" }
 
+    /// Ключ записи с IP, который сайты видели через сервер (решение 583).
+    static func exitKey(_ id: String) -> String { "exit.\(id)" }
+
     // MARK: Чтение
 
     /// Серверы в порядке добавления; запись с неизвестным протоколом (из будущей версии) не показывается.
@@ -198,6 +201,16 @@ public actor ServerStore {
     /// Адрес сервера для карточки — «адрес:порт», IPv6 в скобках; ссылка не открылась — nil.
     public func address(_ id: String) throws -> String? {
         try load(id).map { ServerFacts.address($0.host, $0.port) }
+    }
+
+    /// Выходной IP сервера для карточки (решения 583 и пользователя 2026-11-08, как у десктопа): последний измеренный через
+    /// него. Не мерили или сервера нет — nil («Не измерен»).
+    public func exit(_ id: String) throws -> String? {
+        guard try read().servers.contains(where: { $0.id == id }) else {
+            return nil
+        }
+
+        return try vault.load(Self.exitKey(id))
     }
 
     // MARK: Запись
@@ -336,7 +349,7 @@ public actor ServerStore {
         state.subscriptions.removeAll { merged.contains($0.id) }
         try write(state)
         for id in dropped {
-            try vault.remove(Self.serverKey(id))
+            try forget(id)
         }
 
         for id in merged {
@@ -344,11 +357,27 @@ public actor ServerStore {
         }
     }
 
+    /// Запомнить IP, который сайты видели через сервер (решение 583), — в Связке ключей: у одиночного сервера это его адрес, а
+    /// адрес открыто не хранится. Тот же уже записан или сервера нет — ничего.
+    public func rememberExit(_ id: String, ip: String) throws {
+        guard try read().servers.contains(where: { $0.id == id }), try vault.load(Self.exitKey(id)) != ip else {
+            return
+        }
+
+        try vault.store(ip, for: Self.exitKey(id))
+    }
+
+    /// Удалить секреты сервера: ссылку и запомненный выход.
+    private func forget(_ id: String) throws {
+        try vault.remove(Self.serverKey(id))
+        try vault.remove(Self.exitKey(id))
+    }
+
     public func delete(_ id: String) throws {
         var state = try read()
         state.servers.removeAll { $0.id == id }
         try write(state)
-        try vault.remove(Self.serverKey(id))
+        try forget(id)
     }
 
     /// Новый список подписки (`SubscriptionMerge`): свои серверы узнаются и остаются со своим названием, избранным, задержкой и
@@ -415,7 +444,7 @@ public actor ServerStore {
         state.subscriptions[index].lastStatus = nil
         try write(state)
         for removedId in merge.removed {
-            try vault.remove(Self.serverKey(removedId))
+            try forget(removedId)
         }
 
         return UpdateResult(added: merge.added.count, removed: merge.removed.count, selected: merge.selected, selectedName: missing.map { $0.customName ?? $0.name })
@@ -471,7 +500,7 @@ public actor ServerStore {
 
         try write(state)
         for id in ids {
-            try vault.remove(Self.serverKey(id))
+            try forget(id)
         }
 
         if let group {

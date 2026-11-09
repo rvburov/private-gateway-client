@@ -330,6 +330,7 @@ fun AppScreen(
                                     address = viewModel::address,
                                     share = viewModel::shareLink,
                                     copy = actions.copySecret,
+                                    exit = viewModel::exit,
                                 ),
                             )
                         }

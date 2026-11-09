@@ -15,8 +15,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /**
- * Обновление приложения не теряет серверы: база версии 1 (как ее создавал Room выпуска 9.1) открывается текущей схемой
- * через миграцию, а Room сверяет итог с сущностями. Схема версии 1 не выгружалась — база собирается по ее DDL.
+ * Обновление приложения не теряет серверы: база версии 1 (как ее создавал Room выпуска 9.1) и версии 2 открывается
+ * текущей схемой через миграции, а Room сверяет итог с сущностями. Схема версии 1 не выгружалась — база собирается по ее
+ * DDL; версии 2 — по DDL из выгруженной схемы.
  */
 @RunWith(AndroidJUnit4::class)
 class MigrationTest {
@@ -62,6 +63,55 @@ class MigrationTest {
             }
         } finally {
             database.close()
+        }
+    }
+
+    @Test
+    fun `servers of version 2 survive the upgrade without a remembered exit`() {
+        version2 { database ->
+            database.execSQL(
+                "INSERT INTO servers (id, name, countryCode, protocol, security, transport, port, position, addedAt, sealed, favorite, customName) " +
+                    "VALUES ('nl', 'Нидерланды 01', 'NL', 'Vless', 'Reality', 'Tcp', 443, 0, 1000, X'500102', 1, 'Дом')",
+            )
+        }
+
+        val database = AppDatabase.open(context, name)
+        try {
+            runBlocking {
+                val server = assertNotNull(database.servers().byId("nl"), "сервер версии 2 потерян")
+                assertEquals("Дом", server.customName)
+                assertEquals(true, server.favorite)
+                assertContentEquals(byteArrayOf(0x50, 0x01, 0x02), server.sealed)
+                assertNull(server.sealedExit, "выход сервера еще не мерили (решение 583)")
+
+                database.servers().setExit("nl", byteArrayOf(0x50, 0x03))
+                assertContentEquals(byteArrayOf(0x50, 0x03), database.servers().byId("nl")?.sealedExit)
+            }
+        } finally {
+            database.close()
+        }
+    }
+
+    /** База версии 2 — DDL из выгруженной схемы `schemas/…/2.json` и номер версии 2. */
+    private fun version2(fill: (SQLiteDatabase) -> Unit) {
+        val file = context.getDatabasePath(name)
+        file.parentFile?.mkdirs()
+        SQLiteDatabase.openOrCreateDatabase(file, null).use { database ->
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `servers` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `countryCode` TEXT NOT NULL, " +
+                    "`protocol` TEXT NOT NULL, `security` TEXT NOT NULL, `transport` TEXT NOT NULL, `port` INTEGER NOT NULL, " +
+                    "`position` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `sealed` BLOB NOT NULL, `subscriptionId` TEXT DEFAULT NULL, " +
+                    "`customName` TEXT DEFAULT NULL, `favorite` INTEGER NOT NULL DEFAULT 0, `latencyMs` INTEGER DEFAULT NULL, " +
+                    "`latencyFailure` TEXT DEFAULT NULL, `lastUsedAt` INTEGER DEFAULT NULL, `missingSince` INTEGER DEFAULT NULL, PRIMARY KEY(`id`))",
+            )
+            database.execSQL("CREATE INDEX IF NOT EXISTS `index_servers_subscriptionId` ON `servers` (`subscriptionId`)")
+            database.execSQL(
+                "CREATE TABLE IF NOT EXISTS `subscriptions` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `maskedUrl` TEXT, `sealedUrl` BLOB, " +
+                    "`position` INTEGER NOT NULL, `addedAt` INTEGER NOT NULL, `updatedAt` INTEGER, `lastAttemptAt` INTEGER, " +
+                    "`lastFailure` TEXT, `lastStatus` INTEGER, PRIMARY KEY(`id`))",
+            )
+            fill(database)
+            database.version = 2
         }
     }
 

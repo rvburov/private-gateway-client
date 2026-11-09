@@ -140,11 +140,15 @@ final class ServersTests: XCTestCase {
 
     @MainActor
     func testCardDetailsAndRenameRules() {
+        XCTAssertEqual(
+            Array(CardLook.details(servers[0], host: "203.0.113.24:443", exit: "203.0.113.90", texts).map(\.value).prefix(2)), ["203.0.113.24:443", "203.0.113.90"],
+            "сервер «VPS + прокси»: куда подключается телефон и что видят сайты (решение 583)"
+        )
         let rows = CardLook.details(servers[0], host: "203.0.113.24:443", texts)
-        XCTAssertEqual(rows.map(\.label), [texts.cardAddress, texts.cardProtocol, texts.cardTransport, texts.cardSecurity, texts.cardCore])
-        XCTAssertEqual(rows.map(\.value), ["203.0.113.24:443", "VLESS", "TCP", "REALITY", "Xray-core"])
+        XCTAssertEqual(rows.map(\.label), [texts.cardAddress, texts.cardExitIp, texts.cardProtocol, texts.cardTransport, texts.cardSecurity, texts.cardCore])
+        XCTAssertEqual(rows.map(\.value), ["203.0.113.24:443", texts.cardExitIpUnknown, "VLESS", "TCP", "REALITY", "Xray-core"])
         let open = ServerItem(id: "p", linkName: "Открытый", countryCode: "", protocol: .vless, security: .none, transport: .webSocket, port: 80)
-        XCTAssertEqual(CardLook.details(open, host: "—", texts).map(\.value), ["—", "VLESS", "WS", texts.cardSecurityNone, "Xray-core"])
+        XCTAssertEqual(CardLook.details(open, host: "—", texts).map(\.value), ["—", texts.cardExitIpUnknown, "VLESS", "WS", texts.cardSecurityNone, "Xray-core"])
 
         XCTAssertFalse(CardLook.canSave("Нидерланды 01", server: servers[0]), "то же название — сохранять нечего")
         XCTAssertFalse(CardLook.canSave("   ", server: servers[0]))

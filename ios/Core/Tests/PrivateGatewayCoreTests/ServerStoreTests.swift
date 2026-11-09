@@ -287,6 +287,42 @@ final class ServerStoreTests: XCTestCase {
         XCTAssertEqual(link.flatMap { LinkParser.parse($0).server }, ipv6, "«Поделиться» — та же ссылка")
     }
 
+    func testExitSeenThroughAServerIsKeptInTheVault() async throws {
+        // Решение 583: у сервера «VPS + прокси» сайты видят выход прокси за ним, а не адрес подключения.
+        try await store.add([Self.unique[0]])
+        let id = try await store.servers()[0].id
+        let none = try await store.exit(id)
+        XCTAssertNil(none, "еще не мерили")
+
+        try await store.rememberExit(id, ip: "203.0.113.90")
+        let exit = try await store.exit(id)
+        XCTAssertEqual(exit, "203.0.113.90")
+        XCTAssertFalse(try state().contains("203.0.113.90"), "выход лежит открыто")
+
+        try await store.rememberExit(id, ip: "203.0.113.91")
+        let next = try await store.exit(id)
+        XCTAssertEqual(next, "203.0.113.91", "новый замер заменяет прежний")
+        try await store.rememberExit("gone", ip: "203.0.113.90")
+        XCTAssertNil(vault.all[ServerStore.exitKey("gone")], "у удаленного сервера выход не записывается")
+
+        try await store.delete(id)
+        XCTAssertTrue(vault.all.isEmpty, "с сервером из Связки ключей ушел и его выход")
+    }
+
+    func testOnlyAnExitMeasuredThroughTheServerIsRemembered() {
+        func seen(_ state: TunnelState = .connected, id: String? = "srv", exit: String? = "203.0.113.90", direct: String? = "198.51.100.7", paused: Bool = false) -> String? {
+            ServerExit.remembered(state: state, serverId: id, exit: exit, direct: direct, paused: paused).map { "\($0.id) \($0.ip)" }
+        }
+
+        XCTAssertEqual(seen(), "srv 203.0.113.90")
+        XCTAssertEqual(seen(direct: nil), "srv 203.0.113.90", "реальный IP еще не мерили")
+        XCTAssertNil(seen(.reconnecting), "выход прежнего подключения не подтвержден")
+        XCTAssertNil(seen(id: nil))
+        XCTAssertNil(seen(exit: nil), "еще не мерили")
+        XCTAssertNil(seen(exit: "198.51.100.7"), "утечка: сайты видят реальный IP телефона")
+        XCTAssertNil(seen(paused: true), "пауза для входа в Wi-Fi: трафик мимо сервера")
+    }
+
     // MARK: Группы
 
     func testTheSameSubscriptionAddedAgainGoesIntoItsGroup() async throws {

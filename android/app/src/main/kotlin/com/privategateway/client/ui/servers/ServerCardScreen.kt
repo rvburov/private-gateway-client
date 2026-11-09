@@ -85,7 +85,8 @@ import kotlinx.coroutines.launch
 
 /**
  * Что умеет карточка сервера. [close] закрывает лист (крестик, нажатие мимо, «Назад», «Подключиться»); [address] открывает
- * запечатанную ссылку — только когда карточка открыта; [share] — ссылка для QR-кода, null — ключа нет.
+ * запечатанную ссылку — только когда карточка открыта; [exit] — последний IP, который сайты видели через сервер (решение 583),
+ * null — не мерили; [share] — ссылка для QR-кода, null — ключа нет.
  */
 class CardActions(
     val close: () -> Unit,
@@ -96,6 +97,7 @@ class CardActions(
     val address: suspend (String) -> String?,
     val share: suspend (String) -> String? = { null },
     val copy: (String) -> Unit = {},
+    val exit: suspend (String) -> String? = { null },
 )
 
 /**
@@ -146,7 +148,7 @@ fun ServerCardScreen(ui: MainUi, id: String, actions: CardActions) {
                     renaming = false
                 }
 
-                else -> Details(server, actions.address)
+                else -> Details(server, actions.address, actions.exit)
             }
         }
 
@@ -378,12 +380,19 @@ private fun Inset(modifier: Modifier, padding: PaddingValues, spacing: Dp = 0.dp
     )
 }
 
-/** Сведения: адрес (из запечатанной ссылки — по открытии карточки), протокол, транспорт, защита, ядро. */
+/**
+ * Сведения: адрес (из запечатанной ссылки — по открытии карточки), выходной IP — последний, который сайты видели через сервер
+ * (у сервера «VPS + прокси» он не совпадает с адресом; решения 583 и пользователя 2026-11-08, как у десктопа), протокол,
+ * транспорт, защита, ядро.
+ */
 @Composable
-private fun Details(server: ServerItem, address: suspend (String) -> String?) {
+private fun Details(server: ServerItem, address: suspend (String) -> String?, exit: suspend (String) -> String?) {
     val host by produceState("…", server.id) { value = address(server.id) ?: "—" }
+    val unknown = stringResource(R.string.card_exitIp_unknown)
+    val seen by produceState("…", server.id, unknown) { value = exit(server.id) ?: unknown }
     Inset(Modifier.testTag("card.details"), PaddingValues(horizontal = 14.dp, vertical = 2.dp)) {
         Detail(stringResource(R.string.card_address), host, "card.address", divider = false)
+        Detail(stringResource(R.string.card_exitIp), seen, "card.exitIp", lines = 2)
         Detail(stringResource(R.string.card_protocol), ServerFacts.protocolName(server.protocol), "card.protocol")
         Detail(stringResource(R.string.card_transport), ServerFacts.transportName(server.transport) ?: server.transport.name.uppercase(), "card.transport")
         val security = ServerFacts.securityName(server.security)
@@ -398,14 +407,14 @@ private val DetailValue = PgType.Mono.copy(textAlign = TextAlign.End)
 
 /** Строка сведений (.sc-detail): подпись слева серым, значение справа; строки разделены line.divider. */
 @Composable
-private fun Detail(label: String, value: String, tag: String, divider: Boolean = true) {
+private fun Detail(label: String, value: String, tag: String, divider: Boolean = true, lines: Int = 1) {
     Row(
         Modifier.fillMaxWidth().pgTopDivider(divider).padding(vertical = PgSpace.S),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(PgSpace.L),
     ) {
         Text(label, color = PgColor.Text.Muted, style = PgType.Small)
-        Text(value, Modifier.weight(1f).testTag(tag), style = DetailValue, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(value, Modifier.weight(1f).testTag(tag), style = DetailValue, maxLines = lines, overflow = TextOverflow.Ellipsis)
     }
 }
 

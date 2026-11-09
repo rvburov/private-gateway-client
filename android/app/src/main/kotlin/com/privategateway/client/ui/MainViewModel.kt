@@ -57,9 +57,11 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -105,6 +107,17 @@ data class MainUi(
             ProtectionView.Connected, ProtectionView.Leak -> exit
             ProtectionView.Off, ProtectionView.Error, ProtectionView.Paused -> ip.direct
             else -> null
+        }
+
+    /**
+     * Выход через рабочий сервер, который запомнит карточка (решение 583, ExitMemory десктопа): сервер и IP. Только
+     * «Подключено» без утечки и паузы и замер этого подключения: реальный IP телефона выходом сервера не записывается.
+     */
+    val serverExit: Pair<String, String>?
+        get() {
+            val id = status.serverId ?: return null
+            val address = exit ?: return null
+            return (id to address).takeIf { view == ProtectionView.Connected && !status.paused }
         }
 
     /** Защита идет или поднимается через этот сервер (строка «активен», «Используется сейчас» в карточке). */
@@ -271,6 +284,10 @@ class MainViewModel @Inject constructor(
                 val network = HomeNetwork.identity(list)
                 path(status, blocked, network) to network
             }.distinctUntilChanged().collect { (path, network) -> follow(path, network) }
+        }
+        // Выход через сервер — для карточки (решение 583): как только главная показала «Подключено» с замером выхода.
+        viewModelScope.launch {
+            ui.map { it.serverExit }.filterNotNull().distinctUntilChanged().collect { (id, address) -> servers.rememberExit(id, address) }
         }
         viewModelScope.launch {
             updater.notices.collect { notice ->
@@ -517,6 +534,9 @@ class MainViewModel @Inject constructor(
 
     /** Адрес сервера для карточки («адрес:порт»): открывается из запечатанной ссылки только по просьбе карточки. */
     suspend fun address(id: String): String? = servers.address(id)
+
+    /** «Выходной IP» карточки (решение 583): последний IP, который сайты видели через сервер; не мерили — null. */
+    suspend fun exit(id: String): String? = servers.exit(id)
 
     /** Текст поля ссылки изменился: прежний разбор и ответ подписки, который еще идет, не нужны. */
     fun edit(text: String) {

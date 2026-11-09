@@ -419,6 +419,30 @@ class ServerRepository @Inject constructor(private val database: AppDatabase, pr
     /** Адрес сервера для карточки — «адрес:порт», IPv6 в скобках; ссылка не открылась — null. */
     suspend fun address(id: String): String? = load(id)?.let { ServerFacts.address(it.host, it.port) }
 
+    /**
+     * Запомнить IP, который сайты видели через сервер (решение 583), — запечатанным: открыто он выдал бы IP одиночного
+     * сервера, а адрес сервера на телефоне запечатан (решение 399). Тот же, что уже записан, не перезаписывается; сервера
+     * уже нет — ничего.
+     */
+    suspend fun rememberExit(id: String, ip: String) = withContext(Dispatchers.IO) {
+        val entity = dao.byId(id) ?: return@withContext
+        if (entity.sealedExit?.let(::openText) != ip) {
+            dao.setExit(id, box.seal(ip.toByteArray(Charsets.UTF_8)))
+        }
+    }
+
+    /**
+     * Выходной IP сервера для карточки (решение пользователя 2026-11-08, как у десктопа): последний измеренный через него.
+     * Не мерили, ключ Keystore утерян или сервера нет — null («Не измерен»). Открывается только по просьбе карточки.
+     */
+    suspend fun exit(id: String): String? = withContext(Dispatchers.IO) { dao.byId(id)?.sealedExit?.let(::openText) }
+
+    private fun openText(sealed: ByteArray): String? = try {
+        String(box.open(sealed), Charsets.UTF_8)
+    } catch (_: Exception) {
+        null
+    }
+
     private fun entity(server: ServerDefinition, position: Int, now: Long, group: String?) = ServerEntity(
         id = UUID.randomUUID().toString(),
         name = server.name,

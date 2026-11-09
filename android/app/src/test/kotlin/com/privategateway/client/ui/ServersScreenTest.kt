@@ -258,6 +258,7 @@ class ServersScreenTest {
         val deleted = mutableListOf<String>()
         val copied = mutableListOf<String>()
         var link: String? = LINK
+        var exit: String? = null
         var closed = 0
 
         val actions = CardActions(
@@ -269,6 +270,7 @@ class ServersScreenTest {
             address = { "[2001:db8::1]:443" },
             share = { link },
             copy = { copied += it },
+            exit = { exit },
         )
     }
 
@@ -290,10 +292,19 @@ class ServersScreenTest {
         compose.onNodeWithTag("card.latency", useUnmergedTree = true).assertTextEquals("42 " + text(R.string.unit_ms))
         compose.onNodeWithTag("card.status").assertDoesNotExist()
         compose.onNodeWithTag("card.address").assertTextEquals("[2001:db8::1]:443")
+        compose.onNodeWithTag("card.exitIp").assertTextEquals(text(R.string.card_exitIp_unknown))
         compose.onNodeWithTag("card.protocol").assertTextEquals("VLESS")
         compose.onNodeWithTag("card.transport").assertTextEquals("TCP")
         compose.onNodeWithTag("card.security").assertTextEquals("REALITY")
         compose.onNodeWithTag("card.core").assertTextEquals("Xray-core")
+    }
+
+    @Test
+    fun `card shows the exit ip seen through the server`() {
+        // Решения 583 и пользователя 2026-11-08: сервер «VPS + прокси» — телефон подключается к VPS, а сайты видят выход за ним.
+        card(MainUi(servers = listOf(nl), subscriptions = listOf(provider)), "nl", Card().apply { exit = "203.0.113.90" })
+        compose.onNodeWithTag("card.address").assertTextEquals("[2001:db8::1]:443")
+        compose.onNodeWithTag("card.exitIp").assertTextEquals("203.0.113.90")
     }
 
     @Test
