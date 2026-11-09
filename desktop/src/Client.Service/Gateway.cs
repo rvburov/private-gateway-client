@@ -36,7 +36,7 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="Resolve"/> — поиск адреса через систему (тесты); null — DNS ОС;
 /// <paramref name="LookupPastBlock"/> — поиск DoH самой службы под блоком без туннеля (тесты); null —
 /// <see cref="LatencyProbe.LookupDirectAsync"/>; <paramref name="DirectIpPastBlock"/> — замер реального IP самой службой под
-/// блоком без туннеля (тесты); null — <see cref="LatencyProbe.ExitIpDirectAsync"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
+/// блоком без туннеля (тесты); null — <see cref="LatencyProbe.ExitIpDirectAsync(Uri, uint, TimeSpan, CancellationToken)"/>; <paramref name="OutsideDns"/> — резолвер для замера DNS мимо туннеля
 /// (<see cref="DnsProbe.DefaultResolver"/>); null — не мерить; <paramref name="DnsPastTunnel"/> — этот замер (тесты): ответ
 /// пришел — true, подтвержденного ответа нет — false, мерить нечем — null; null — через карту маршрута по умолчанию
 /// (<see cref="DnsProbe"/>). false/null не доказывают отсутствие всех DNS-утечек;
@@ -49,7 +49,9 @@ namespace PrivateGateway.Client.Service;
 /// <paramref name="TunnelRoutes"/> — только эти сети через TUN (тесты Windows в CI,
 /// <see cref="TunRequest.Routes"/>); null — весь трафик;
 /// <paramref name="OtherClientsWatch"/> — как часто, пока «Защищено», искать другой VPN или прокси-клиент (туннель и ядро,
-/// решение 525); null — только с пробой сервера (<see cref="ReconnectTiming.Every"/>) и при смене сети.
+/// решение 525); null — только с пробой сервера (<see cref="ReconnectTiming.Every"/>) и при смене сети;
+/// <paramref name="DirectIpPastTunnel"/> — замер реального IP мимо поднятого туннеля после смены сети (тесты): адрес проверки,
+/// внешняя карта и метка службы; null — <see cref="LatencyProbe.ExitIpDirectAsync(Uri, uint, string, TimeSpan, CancellationToken)"/>.
 /// </summary>
 public sealed record GatewayOptions(
     string? XrayPath,
@@ -88,7 +90,8 @@ public sealed record GatewayOptions(
     TimeSpan? TrafficWatch = null,
     Func<IReadOnlyList<RunningProcess>>? Processes = null,
     TimeSpan? OtherClientsWatch = null,
-    Func<CoreRequest, IPAddress, CancellationToken, Task<ProbeReachability>>? Preflight = null);
+    Func<CoreRequest, IPAddress, CancellationToken, Task<ProbeReachability>>? Preflight = null,
+    Func<Uri, string, uint, CancellationToken, Task<string?>>? DirectIpPastTunnel = null);
 
 /// <summary>
 /// Проба связи с сервером и переподключение. <paramref name="Every"/> — как часто, пока «Защищено»,

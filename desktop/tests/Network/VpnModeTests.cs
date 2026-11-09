@@ -680,6 +680,68 @@ public sealed partial class VpnModeTests
     }
 
     [Fact]
+    public async Task Real_ip_after_a_network_change_under_the_tunnel_is_measured_past_it_through_the_card()
+    {
+        // Решение 608: смена сети при поднятом туннеле забывает реальный IP (в другой сети он другой), а обычный запрос службы
+        // ушел бы в туннель и показал выход сервера — на главной «не определен». Служба спрашивает проверочный адрес сокетом на
+        // внешней карте, а правила блока на это время пропускают только ее и только к этому адресу.
+        await using var rig = await Rig.CreateAsync(page: $"fl=1\nip={TunnelIp}\n");
+        using var trace = new LocalSite($"fl=1\nip={RealIp}\n", rig.Public);
+        var traceUri = new Uri($"http://{rig.Public}:{trace.Url.Port}/");
+        var network = new FakeNetwork();
+        var cards = new List<string>();
+        var unmarked = new List<bool>();
+        await using var service = await RunningService.StartAsync(options: o => rig.Vpn(o) with
+        {
+            Trace = traceUri,
+            Routes = rig.Routes,
+            Network = network,
+            ExitIp = (probe, ct) => probe.Port == 0 ? Task.FromResult<string?>(null) : rig.ExitIpAsync(probe, ct),
+            DirectIpPastTunnel = async (uri, card, mark, _) =>
+            {
+                lock (cards)
+                {
+                    cards.Add(card);
+                }
+
+                // Пока исключение стоит, сокет на карте без метки службы к проверочному адресу не проходит.
+                try
+                {
+                    await rig.Netns.FetchAsync(uri, seconds: 2, device: card);
+                    unmarked.Add(true);
+                }
+                catch (InvalidOperationException)
+                {
+                    unmarked.Add(false);
+                }
+
+                return LatencyProbe.TraceIp(await rig.Netns.FetchAsync(uri, mark, seconds: 5, device: card));
+            },
+        });
+        using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
+        await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+        var first = (await ServiceIpcTests.ReadUntilAsync(watch, s => s.State is V1.ConnectionState.Connected or V1.ConnectionState.Error, service.Journal))[^1];
+        first.State.ShouldBe(V1.ConnectionState.Connected, first.Error?.Message);
+        first.Exit.DirectIp.ShouldBeEmpty();
+
+        network.Raise();
+        var measured = (await ServiceIpcTests.ReadUntilAsync(watch, s => !string.IsNullOrEmpty(s.Exit?.DirectIp)
+            || s.State != V1.ConnectionState.Connected, service.Journal))[^1];
+        measured.State.ShouldBe(V1.ConnectionState.Connected, measured.Error?.Message);
+        measured.Exit.DirectIp.ShouldBe(RealIp, "реальный IP измерен мимо туннеля, а не выход сервера");
+        lock (cards)
+        {
+            cards.ShouldBe(["pgnet0"], "сокет — на внешней карте, не на TUN");
+        }
+
+        unmarked.ShouldBe([false], "исключение блока — только для помеченного сокета службы");
+        rig.KillSwitch.Last!.Lookup.ShouldBeNull("после замера исключения нет");
+        rig.KillSwitch.Last.TunnelInterface.ShouldNotBeNull("правила туннеля вернулись");
+        service.Journal.Tail(ServiceJournal.Capacity)
+            .ShouldContain(e => e.Message == "Реальный IP после смены сети измерен мимо туннеля запросом службы через сетевую карту");
+    }
+
+    [Fact]
     public async Task New_server_by_name_is_found_past_the_block_by_the_service_alone()
     {
         await using var rig = await Rig.CreateAsync();

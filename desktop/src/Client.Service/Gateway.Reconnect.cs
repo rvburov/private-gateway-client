@@ -239,6 +239,127 @@ public sealed partial class Gateway
         }
 
         CheckAtOnce("Сеть машины сменилась");
+        if (Volatile.Read(ref _tunnel) is not null)
+        {
+            _ = RemeasureDirectPastTunnelAsync(Volatile.Read(ref _session));
+        }
+    }
+
+    /// <summary>Сколько после смены сети ждать замера реального IP мимо туннеля: адрес и маршруты новой сети встают не сразу.</summary>
+    private static readonly TimeSpan PastTunnelSettle = TimeSpan.FromSeconds(3);
+
+    /// <summary>1 — замер реального IP мимо туннеля уже идет: новая смена сети его не дублирует, а запускает заново по итогу.</summary>
+    private int _pastTunnel;
+
+    /// <summary>
+    /// Реальный IP после смены сети, пока туннель поднят (решение 608): прежний замер забыт (<see cref="OnNetworkChanged"/>), а
+    /// обычный запрос ушел бы в туннель и показал выход сервера — на главной «не определен», и утечку не с чем сравнить. Служба
+    /// спрашивает проверочный адрес сокетом, привязанным к внешней карте (как Xray — сервер, решение 533); под правилами блока —
+    /// с исключением только для своей программы и только к этому адресу, как <see cref="DirectIpPastBlockLockedAsync"/>. Сеть
+    /// сменилась еще раз за время замера — его итог не годится, замер повторяется. Другая сессия, нет туннеля, пауза, адрес уже
+    /// есть или проверка утечек выключена — ничего.
+    /// </summary>
+    private async Task RemeasureDirectPastTunnelAsync(int session)
+    {
+        if (Interlocked.Exchange(ref _pastTunnel, 1) == 1)
+        {
+            return;
+        }
+
+        var entered = false;
+        var again = false;
+        try
+        {
+            await Task.Delay(PastTunnelSettle, _time, _networkWaitStop.Token).ConfigureAwait(false);
+            await _switch.WaitAsync(_networkWaitStop.Token).ConfigureAwait(false);
+            entered = true;
+            var status = Status;
+            if (session != _session || _directIp is not null || Volatile.Read(ref _tunnel) is null
+                || status is not { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false, NetworkUnavailable: false }
+                || _request is not { Protection.CheckLeaksAfterConnect: true } || _options.Trace is not { } trace
+                || VpnTunnel.OutsideInterface(_options.Routes) is not { } outside)
+            {
+                return;
+            }
+
+            var ip = await DirectIpPastTunnelLockedAsync(trace, outside, _networkWaitStop.Token).ConfigureAwait(false);
+            if (Status.NetworkChangedAt != status.NetworkChangedAt)
+            {
+                again = true;
+                return;
+            }
+
+            if (ip is not null && session == _session)
+            {
+                _directIp = ip;
+                Update(s => s.State == ConnectionState.Connected ? s with { Exit = s.Exit with { DirectIp = ip } } : s);
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+            // Остановка службы опередила замер.
+        }
+        catch (OperationCanceledException) when (_networkWaitStop.IsCancellationRequested)
+        {
+            // Служба останавливается.
+        }
+        finally
+        {
+            if (entered)
+            {
+                _switch.Release();
+            }
+
+            Volatile.Write(ref _pastTunnel, 0);
+        }
+
+        if (again)
+        {
+            _ = RemeasureDirectPastTunnelAsync(session);
+        }
+    }
+
+    /// <summary>
+    /// Замер реального IP сокетом на внешней карте <paramref name="outside"/> под уже взятым <c>_switch</c>. Правила блока стоят
+    /// (с туннелем они пропускают только его и сервер) — на время запроса исключение для программы службы к проверочному адресу,
+    /// потом прежние правила; итог — в журнал.
+    /// </summary>
+    private async Task<string?> DirectIpPastTunnelLockedAsync(Uri trace, string outside, CancellationToken cancellationToken)
+    {
+        var measure = _options.DirectIpPastTunnel
+            ?? ((uri, adapter, mark, token) => LatencyProbe.ExitIpDirectAsync(uri, mark, adapter, DirectTimeout, token));
+        string? ip;
+        if (_blocking && _held is { } held && _options.KillSwitch is { } killSwitch)
+        {
+            if (!IPAddress.TryParse(trace.Host.Trim('[', ']'), out var traceAddress))
+            {
+                return null;
+            }
+
+            var lookup = new ServiceLookup(Environment.ProcessPath ?? string.Empty, LookupMark, [new KillSwitchEndpoint(traceAddress, trace.Port)]);
+            if (!Try(() => { killSwitch.Enable(held.Policy with { Lookup = lookup }); return true; }, "Исключение для замера реального IP мимо туннеля не встало"))
+            {
+                return null;
+            }
+
+            try
+            {
+                ip = await measure(trace, outside, LookupMark, cancellationToken).ConfigureAwait(false);
+            }
+            finally
+            {
+                Try(() => { killSwitch.Enable(held.Policy); return true; }, "Правила блока после замера реального IP не вернулись");
+            }
+        }
+        else
+        {
+            ip = await measure(trace, outside, LookupMark, cancellationToken).ConfigureAwait(false);
+        }
+
+        _journal.Add(ip is null ? JournalLevel.Warning : JournalLevel.Info, "service", ip is null
+            ? "Реальный IP после смены сети не измерен мимо туннеля — на главной «не определен»"
+            : "Реальный IP после смены сети измерен мимо туннеля запросом службы через сетевую карту");
+        return ip;
     }
 
     /// <summary>

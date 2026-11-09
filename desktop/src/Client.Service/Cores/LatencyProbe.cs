@@ -204,10 +204,17 @@ public static class LatencyProbe
     /// службы под блоком при обрыве. Сокет на Linux помечен <paramref name="mark"/>, как у <see cref="LookupDirectAsync"/>.
     /// Нет ответа или IP в нем — null.
     /// </summary>
-    public static async Task<string?> ExitIpDirectAsync(Uri trace, uint mark, TimeSpan timeout, CancellationToken cancellationToken = default)
+    public static Task<string?> ExitIpDirectAsync(Uri trace, uint mark, TimeSpan timeout, CancellationToken cancellationToken = default) =>
+        ExitIpDirectAsync(trace, mark, null, timeout, cancellationToken);
+
+    /// <summary>
+    /// То же, но сокет IPv4 привязан к карте <paramref name="adapter"/> (<see cref="DnsProbe.BindTo"/>): запрос идет ее маршрутом
+    /// и мимо поднятого туннеля — замер реального IP после смены сети под туннелем (решение 608). null — без привязки.
+    /// </summary>
+    public static async Task<string?> ExitIpDirectAsync(Uri trace, uint mark, string? adapter, TimeSpan timeout, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(trace);
-        using var handler = Marked(mark);
+        using var handler = Marked(mark, adapter);
         using var http = new HttpClient(handler) { Timeout = timeout };
         try
         {
@@ -223,21 +230,31 @@ public static class LatencyProbe
         }
     }
 
-    /// <summary>Прямые соединения без прокси; на Linux сокет помечен <paramref name="mark"/> — по метке его пропускает блок.</summary>
-    private static SocketsHttpHandler Marked(uint mark) => new()
+    /// <summary>
+    /// Прямые соединения без прокси; на Linux сокет помечен <paramref name="mark"/> — по метке его пропускает блок; с
+    /// <paramref name="adapter"/> — сокет IPv4 привязан к этой карте (мимо TUN).
+    /// </summary>
+    private static SocketsHttpHandler Marked(uint mark, string? adapter = null) => new()
     {
         UseProxy = false,
         AllowAutoRedirect = false,
         UseCookies = false,
         ConnectCallback = async (context, token) =>
         {
-            var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+            var socket = adapter is null
+                ? new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true }
+                : new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
             try
             {
                 if (OperatingSystem.IsLinux() && mark != 0)
                 {
                     // SOL_SOCKET = 1, SO_MARK = 36.
                     socket.SetRawSocketOption(1, 36, BitConverter.GetBytes(mark));
+                }
+
+                if (adapter is not null)
+                {
+                    DnsProbe.BindTo(socket, adapter);
                 }
 
                 await socket.ConnectAsync(context.DnsEndPoint, token).ConfigureAwait(false);
