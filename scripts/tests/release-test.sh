@@ -80,6 +80,30 @@ else
   bad "2. check-version.sh падает на текущем состоянии" "$(scripts/check-version.sh 2>&1)"
 fi
 
+# ── 2а. Заголовок версии — строкой, а не регулярным выражением ────────────────
+# Точка версии в регулярном выражении — любой знак («1.4.2» совпало бы с «1x4x2»), а «\.» в awk -v gawk (Git Bash на
+# Windows) печатает предупреждением при каждом выпуске.
+printf '# История\n\n## [Не выпущено]\n\n## [1x4x2]\n\n- Чужая секция.\n' > "$FIXTURE/dots.md"
+prob=()
+CHECK_VERSION_CHANGELOG="$FIXTURE/dots.md" scripts/check-version.sh --changelog-only 1.4.2 >/dev/null 2>&1 \
+  && prob+=("check-version.sh принял «## [1x4x2]» за 1.4.2")
+RELEASE_CHANGELOG="$FIXTURE/dots.md" scripts/release-notes.sh 1.4.2 >/dev/null 2>&1 \
+  && prob+=("release-notes.sh принял «## [1x4x2]» за 1.4.2")
+if command -v gawk >/dev/null 2>&1; then
+  mkdir -p "$FIXTURE/gawk" && ln -sf "$(command -v gawk)" "$FIXTURE/gawk/awk"
+  warn="$( { PATH="$FIXTURE/gawk:$PATH" scripts/check-version.sh "$VER" >/dev/null
+             PATH="$FIXTURE/gawk:$PATH" scripts/release-notes.sh "$VER" >/dev/null; } 2>&1 )"
+  [ -z "$warn" ] || prob+=("с gawk лишний вывод: $warn")
+fi
+if [ ${#prob[@]} -ne 0 ]; then
+  bad "2а. Заголовок версии в CHANGELOG.md" "${prob[@]}"
+elif command -v gawk >/dev/null 2>&1; then
+  ok "2а. Заголовок версии сравнивается строкой: «1x4x2» — не 1.4.2, gawk без предупреждений"
+else
+  ok "2а. Заголовок версии сравнивается строкой: «1x4x2» — не 1.4.2"
+  skip "2б. gawk не установлен — предупреждения gawk не проверены"
+fi
+
 # ── 3. release.sh отвергает плохие версии ─────────────────────────────────────
 reject() {   # отказ должен быть именно из-за версии, а не ветки, сети или истории
   local result code
@@ -95,10 +119,12 @@ reject "1.4.0" 'меньше текущей'            || bad3="$bad3 «1.4.0»
 reject "1.4.1" 'уже есть локально'         || bad3="$bad3 «1.4.1» (тег занят)"
 [ -z "$bad3" ] && ok "3. release.sh отвергает неверные и занятые версии" || bad "3. release.sh пропустил:$bad3"
 
-# Версия не меньше отладочной, но не больше прошлого выпуска: временный тег v1.5.0 выше отладочной 1.4.2.
-fixture_git tag v1.5.0 && {
+# Версия не меньше отладочной, но не больше прошлого выпуска: временный тег v1.5.0 выше отладочной 1.4.2. Выпуски
+# release.sh берет с «GitHub», поэтому тег отправляется на origin стенда.
+fixture_git tag v1.5.0 && fixture_git push -q origin v1.5.0 && {
   reject "1.4.2" 'не больше последнего выпуска' && ok "3а. release.sh: версия не больше прошлого выпуска — отказ" \
     || bad "3а. release.sh пропустил версию не больше прошлого выпуска v1.5.0"
+  fixture_git push -q origin :refs/tags/v1.5.0
   fixture_git tag -d v1.5.0 >/dev/null
 }
 
@@ -136,10 +162,15 @@ out="$(echo n | bash "$SRC/scripts/release.sh" 1.4.2 --skip-tests 2>&1)"
 if [ "$(fixture_state)" != "$before" ] || ! printf '%s\n' "$out" | grep -F 'Отменено' >/dev/null; then
   bad '5. Ответ «n» должен отменять выпуск без изменений' "$out"
 else
+  # Тег удаленного на GitHub выпуска остался только локально (git fetch --tags его не убирает) — прошлым выпуском он не
+  # считается: иначе «1.4.2-beta.1» не пустил бы 1.4.2, а ссылка «сравнить» вела бы на тег, которого на GitHub нет.
+  fixture_git tag v1.4.2-beta.1
   out="$(echo y | bash "$SRC/scripts/release.sh" 1.4.2 --skip-tests 2>&1)"
   code=$?
+  fixture_git tag -d v1.4.2-beta.1 > /dev/null
   prob=()
   [ "$code" -eq 0 ] || prob+=("код $code: $out")
+  printf '%s\n' "$out" | grep -qF 'прошлый выпуск — v1.4.1' || prob+=("прошлый выпуск — не v1.4.1 с origin: $out")
   [ "$(fixture_git log -1 --format=%s)" = "release: v1.4.2" ] || prob+=("последний коммит — не «release: v1.4.2»")
   [ "$(fixture_git cat-file -t v1.4.2 2>/dev/null)" = tag ] || prob+=("тег v1.4.2 не аннотированный или его нет")
   [ "$(git -C "$FIXTURE/origin.git" rev-parse master 2>/dev/null)" = "$(fixture_git rev-parse HEAD)" ] || prob+=("master не отправлен")
@@ -152,7 +183,7 @@ else
   [ "$(grep -c '^\[Не выпущено\]:' "$SRC/CHANGELOG.md")" = 1 ] || prob+=("ссылка «Не выпущено» задвоилась")
   [ -z "$(fixture_git status --porcelain)" ] || prob+=("после выпуска остались незакоммиченные файлы")
   if [ ${#prob[@]} -eq 0 ]; then
-    ok "5. Выпуск: «n» — без изменений; «y» — коммит, аннотированный тег, дата и ссылки, master и тег отправлены"
+    ok "5. Выпуск: «n» — без изменений; «y» — коммит, аннотированный тег, дата и ссылки, master и тег отправлены; прошлый выпуск — с origin, а не с локального тега"
   else
     bad "5. Выпуск на стенде" "${prob[@]}"
   fi

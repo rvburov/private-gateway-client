@@ -114,12 +114,23 @@ ver_cmp() {   # печатает -1, 0 или 1: $1 меньше, равна и�
 }
 [ "$(ver_cmp "$VERSION" "$CURRENT")" -ge 0 ] || die "версия $VERSION меньше текущей $CURRENT в Directory.Build.props"
 
+# Прошлый выпуск — по тегам на GitHub: локальный тег мог остаться от удаленного выпуска (git fetch --tags его не
+# убирает), и тогда ссылка «сравнить» в истории вела бы на тег, которого на GitHub нет. Без сети (--dry-run) —
+# по локальным.
+remote_tags() {
+  if [ $NET_OK -eq 1 ]; then
+    git ls-remote --tags --refs origin 'v[0-9]*' | sed -E 's#.*refs/tags/##'
+  else
+    git tag -l 'v[0-9]*'
+  fi
+}
 LAST_TAG=""
 LAST=""
 while read -r tag; do
+  [ -n "$tag" ] || continue
   v="${tag#v}"
   if [ -z "$LAST" ] || [ "$(ver_cmp "$v" "$LAST")" -gt 0 ]; then LAST="$v"; LAST_TAG="$tag"; fi
-done < <(git tag -l 'v[0-9]*')
+done < <(remote_tags)
 if [ -n "$LAST" ] && [ "$(ver_cmp "$VERSION" "$LAST")" -le 0 ]; then
   die "версия $VERSION не больше последнего выпуска $LAST_TAG"
 fi
