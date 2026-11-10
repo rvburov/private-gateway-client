@@ -99,7 +99,19 @@ rm -f "$out"
 volume="Private Gateway $version"
 rw="artifacts/dmg/PrivateGateway-$version-$rid-rw.dmg"
 rm -f "$rw"
-hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
+# hdiutil create на машинах CI изредка отказывает без объяснения: сборка выпуска 0.1.5 (2026-11-10) упала так после
+# 34 с сжатия, а ключ -quiet закрывает и вывод ошибок. Без -quiet причина попадает в журнал, отказ — повтор с паузой.
+create() {
+  local attempt
+  for attempt in 1 2 3; do
+    hdiutil create "$@" > /dev/null && return 0
+    echo "hdiutil create не удался (попытка $attempt) — повтор через $((attempt * 5)) с" >&2
+    sleep $((attempt * 5))
+  done
+  return 1
+}
+
+create -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDRW -ov "$rw"
 
 # Отключить образ по устройству (/dev/diskN из вывода attach), а не по пути тома. Finder после оформления окна и
 # индексатор Spotlight держат его еще несколько секунд: hdiutil отвечает «Resource busy» (код 16; так упала сборка
@@ -158,7 +170,7 @@ APPLESCRIPT
 sync
 if [ -f "$mount/.DS_Store" ]; then cp "$mount/.DS_Store" "$staging/.DS_Store"; fi
 detach "$device"
-hdiutil create -quiet -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$out"
+create -volname "$volume" -srcfolder "$staging" -fs HFS+ -format UDZO -imagekey zlib-level=9 -ov "$out"
 rm -f "$rw"
 
 # Контрольное монтирование: программа, ярлык «Программы» и фон на месте, подпись пережила упаковку.
