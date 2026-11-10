@@ -177,6 +177,8 @@ sed -E "s@^## \[${VERSION_RE}\].*\$@## [${VERSION}] — ${TODAY}@" "$HISTORY" > 
 if [ -n "$LAST_TAG" ]; then NEW_LINK="$REPO_URL/compare/$LAST_TAG...$TAG"; else NEW_LINK="$REPO_URL/releases/tag/$TAG"; fi
 tmp="$(mktemp)"
 awk -v new="$VERSION" -v tag="$TAG" -v url="$REPO_URL" -v link="$NEW_LINK" '
+  # Ссылка этой версии уже есть (повтор выпуска после неудачи) — заменяется, а не задваивается.
+  index($0, "[" new "]:") == 1 { next }
   /^\[Не выпущено\]:/ { print "[Не выпущено]: " url "/compare/" tag "...HEAD"; print "[" new "]: " link; done = 1; next }
   { print }
   END { if (!done) { print ""; print "[Не выпущено]: " url "/compare/" tag "...HEAD"; print "[" new "]: " link } }
@@ -187,7 +189,13 @@ awk -v new="$VERSION" -v tag="$TAG" -v url="$REPO_URL" -v link="$NEW_LINK" '
 # ── 10. Коммит, тег, отправка ─────────────────────────────────────────────────
 step "коммит и тег"
 git add "$PROPS" "$HISTORY"
-git commit -q -m "release: $TAG" || die "коммит не удался"
+# Повтор выпуска (тег удален после неудачи сборки) в тот же день: версия, дата и ссылки уже на месте — коммитить нечего,
+# тег встает на текущий коммит master.
+if git diff --cached --quiet; then
+  info "версия, дата и ссылки уже на месте — тег на текущий коммит"
+else
+  git commit -q -m "release: $TAG" || die "коммит не удался"
+fi
 git tag -a "$TAG" -m "Private Gateway $VERSION"
 
 # Порядок важен: если отправку master отклонили (кто-то успел раньше), тег на GitHub не уедет, и версию можно выпустить

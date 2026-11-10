@@ -241,6 +241,8 @@ grep -q "scripts/release-notes.sh" "$WF"   || wf_problems="$wf_problems текс
 grep -q "scripts/check-version.sh" "$WF"   || wf_problems="$wf_problems версия тега не сверяется;"
 grep -q "uses: ./.github/workflows/soak.yml" "$WF" || wf_problems="$wf_problems нет долгого прогона коммита тега;"
 grep -q "gh release edit" "$WF"            || wf_problems="$wf_problems повтор запуска не обновляет готовый выпуск;"
+grep -qF '"+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"' "$WF" \
+  || wf_problems="$wf_problems тег перед подписью качается без «+» — аннотированный тег не встанет на место простого;"
 # В шагах с «-o pipefail» «команда | grep -q …» ломается: grep закрывает канал на первом совпадении, источник получает
 # SIGPIPE, и шаг падает именно потому, что совпадение нашлось (так в SmartBase сломалась сборка linux-x64).
 if grep -nE '^[[:space:]]*[^#[:space:]].*\|[[:space:]]*grep[[:space:]]+-[A-Za-z]*q' "$WF" > /dev/null; then
@@ -256,9 +258,36 @@ else
   skip "8а. actionlint не установлен — синтаксис workflow проверит GitHub"
 fi
 
-# ── 9. Репозиторий не тронут ──────────────────────────────────────────────────
-[ "$(git status --porcelain)" = "$STATUS_BEFORE" ] && ok "9. Прогон тестов ничего не изменил в репозитории" \
-  || bad "9. Прогон тестов изменил рабочее дерево"
+# ── 9. Повтор выпуска и тег перед подписью ──────────────────────────────────
+# Выпуск 0.1.5 остановился перед подписью: checkout кладет тег простой ссылкой, а release.sh ставит аннотированный, и
+# «git fetch» без «+» отказался его заменить. Здесь тот же порядок на стенде; затем тег удаляют и выпуск повторяют.
+prob=()
+clone="$FIXTURE/clone"
+git clone -q "$FIXTURE/origin.git" "$clone" 2>/dev/null || prob+=("клон стенда не создан")
+git -C "$clone" tag -d v1.4.2 > /dev/null 2>&1 && git -C "$clone" tag v1.4.2 "$(git -C "$FIXTURE/origin.git" rev-parse 'v1.4.2^{commit}')"
+git -C "$clone" fetch -q origin master "refs/tags/v1.4.2:refs/tags/v1.4.2" 2>/dev/null \
+  && prob+=("без «+» простой тег заменился аннотированным — проверка ничего не доказывает")
+git -C "$clone" fetch -q origin master "+refs/tags/v1.4.2:refs/tags/v1.4.2" 2>/dev/null \
+  || prob+=("с «+» аннотированный тег не встал на место простого")
+[ "$(git -C "$clone" cat-file -t v1.4.2 2>/dev/null)" = tag ] || prob+=("после fetch тег не аннотированный")
+
+# Повтор: тег удален на «GitHub» и локально, тот же день — нового коммита нет, тег встает на текущий master.
+fixture_git push -q origin :refs/tags/v1.4.2 2>/dev/null && fixture_git tag -d v1.4.2 > /dev/null
+head_before="$(fixture_git rev-parse HEAD)"
+out="$(echo y | bash "$SRC/scripts/release.sh" 1.4.2 --skip-tests 2>&1)" || prob+=("повтор выпуска упал: $out")
+[ "$(fixture_git rev-parse HEAD)" = "$head_before" ] || prob+=("повтор выпуска сделал лишний коммит")
+[ "$(fixture_git rev-parse 'v1.4.2^{commit}' 2>/dev/null)" = "$head_before" ] || prob+=("тег повтора не на текущем коммите")
+git -C "$FIXTURE/origin.git" rev-parse -q --verify refs/tags/v1.4.2 > /dev/null || prob+=("тег повтора не отправлен")
+[ "$(grep -c '^\[1\.4\.2\]:' "$SRC/CHANGELOG.md")" = 1 ] || prob+=("ссылка версии задвоилась")
+if [ ${#prob[@]} -eq 0 ]; then
+  ok "9. Тег перед подписью качается с «+»; повтор выпуска после удаления тега — без лишнего коммита и двойной ссылки"
+else
+  bad "9. Повтор выпуска и тег перед подписью" "${prob[@]}"
+fi
+
+# ── 10. Репозиторий не тронут ──────────────────────────────────────────────────
+[ "$(git status --porcelain)" = "$STATUS_BEFORE" ] && ok "10. Прогон тестов ничего не изменил в репозитории" \
+  || bad "10. Прогон тестов изменил рабочее дерево"
 
 echo
 echo "Пройдено: $passed, пропущено: $skipped, провалено: $failed"

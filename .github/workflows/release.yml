@@ -152,7 +152,10 @@ jobs:
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
-          git fetch origin master "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          # «+»: checkout кладет тег простой ссылкой на коммит, а release.sh ставит аннотированный — без «+» git отказывается
+          # заменить одно другим («would clobber existing tag»; так остановился выпуск 0.1.5). Сдвинутый тег ловит
+          # release-gate.py, сравнивая коммит тега с исходным SHA.
+          git fetch origin master "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           python3 scripts/release-gate.py "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$RELEASE_SHA"
 
       - name: Файлы, суммы, манифест, подпись и заметки
