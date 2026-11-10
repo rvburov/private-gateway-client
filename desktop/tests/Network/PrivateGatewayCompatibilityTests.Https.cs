@@ -102,7 +102,11 @@ public sealed partial class PrivateGatewayCompatibilityTests
             }
             catch (Exception error) when (error is HttpRequestException or TaskCanceledException)
             {
-                throw new InvalidOperationException($"transport={transport}, VPN={vpn}, fragment={fragment}, TLS={tls}, вход={port}\nклиент:\n{XrayKit.Log(client)}\nсервер:\n{XrayKit.Log(server)}", error);
+                // Ретранслятор Shadowsocks — свой процесс между тестом и входом TUN: на macOS CI 2026-11-10 дважды соединение
+                // через него закрывалось сразу после передачи запроса (клиент видел EOF от ретранслятора), а его журнала в
+                // сообщении не было.
+                var relayLog = relay is null ? string.Empty : $"\nретранслятор:\n{XrayKit.Log(relay)}";
+                throw new InvalidOperationException($"transport={transport}, VPN={vpn}, fragment={fragment}, TLS={tls}, вход={port}\nклиент:\n{XrayKit.Log(client)}\nсервер:\n{XrayKit.Log(server)}{relayLog}", error);
             }
         }
 
@@ -141,7 +145,7 @@ public sealed partial class PrivateGatewayCompatibilityTests
     /// <summary>Парольный вход Xray режима VPN — как для TUN, без прав на адаптер ОС.</summary>
     private static JsonObject ShadowsocksInput(TunLink tun, int port) => new()
     {
-        ["log"] = new JsonObject { ["loglevel"] = "warning", ["access"] = "none" },
+        ["log"] = new JsonObject { ["loglevel"] = "info", ["access"] = "none" },
         ["inbounds"] = new JsonArray(new JsonObject
         {
             ["listen"] = "127.0.0.1", ["port"] = port, ["protocol"] = "socks",
