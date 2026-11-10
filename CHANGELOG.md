@@ -21,7 +21,7 @@
 
 ## [Не выпущено]
 
-## [0.1.5]
+## [0.1.5] — 2026-11-10
 
 Первая версия Private Gateway — для Windows, macOS, Linux и Android.
 
@@ -51,4 +51,5 @@
 - Программа пока не подписана сертификатом разработчика: при первом запуске Windows и macOS попросят подтверждение —
   что нажать, написано на странице выпуска.
 
-[Не выпущено]: https://github.com/rvburov/private-gateway-client/commits/master
+[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/rvburov/private-gateway-client/releases/tag/v0.1.5
