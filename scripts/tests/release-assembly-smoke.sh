@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# Проверка scripts/release.cs на собранных здесь «сборках» трех ОС: выпуск собирается с общим SHA256SUMS, манифестом
-# обновления (канал, доля раскатки, главное, файлы ОС с суммами) и заметками; бета-версия — канал beta; порченый файл,
-# сборка без одной ОС и доля вне 1–100 — ошибка; rollout меняет долю и сумму манифеста, 0 — останавливает раскатку.
+# Проверка scripts/release.cs на собранных здесь «сборках» трех ОС: выпуск собирается с общим SHA256SUMS и манифестом
+# обновления (канал, доля раскатки, главное из секции версии в CHANGELOG.md, файлы ОС с суммами); бета-версия — канал
+# beta; версия без секции в истории, порченый файл, сборка без одной ОС и доля вне 1–100 — ошибка; rollout меняет долю и сумму манифеста, 0 — останавливает раскатку.
 # Подпись — на ключе, созданном здесь же (keygen): openssl проверяет ее открытым ключом, rollout подписывает заново, ключ
 # не из папки ключей, ключи без секрета и rollout подписанного без ключа — ошибка. Запускается в CI (задание «Стиль и формат») и вручную:
 #
@@ -43,20 +43,22 @@ verify() {
 # Пока ключей нет — выпуск без подписи; папка ключей здесь своя, ключи репозитория проверку не меняют.
 export UPDATE_KEYS="$TMP/keys"
 
-# Темы коммитов для заметок: «@слово» из коммита не должно стать упоминанием учетной записи (в v0.1.0-beta.1 так в
-# «Contributors» попал чужой пользователь), почта остается как есть.
-printf '%s\n' 'feat(ui): первое' 'fix(android): @param:ApplicationContext в TunnelControl' 'docs: почта user@example.com' > "$TMP/subjects.txt"
-export RELEASE_SUBJECTS="$TMP/subjects.txt"
-# История версий для «Что нового»: у 0.3.0 своя секция — она важнее общей «Не выпущено» выше; у беты 0.4.0-beta.1
-# секции нет — новое берется из коммитов.
+# История версий: главное манифеста берется только из секции своей версии; «Не выпущено» и чужие версии не в счет.
+# Текст страницы выпуска из той же секции собирает scripts/release-notes.sh — его проверяет scripts/tests/release-test.sh.
 cat > "$TMP/CHANGELOG.md" <<'CHANGES'
 # Изменения
 
-## [Не выпущено] — 0.3.0
+## [Не выпущено]
 
-### Добавлено — 30 ноября
+### Добавлено
 
-- Общий список до выпуска, в заметки 0.3.0 не попадает.
+- Общий список до выпуска, в 0.3.0 не попадает.
+
+## [0.4.0-beta.1]
+
+### Добавлено
+
+- Бета.
 
 ## [0.3.0] — 1 декабря
 
@@ -85,21 +87,15 @@ check "канал stable и доля 20" "grep -q '\"channel\": \"stable\"' '$TM
 check "в манифесте главное из заметок" "grep -q '\"highlights\": \\[' '$TMP/stable-out/update.json'"
 check "без ключей — без подписи" "[ ! -e '$TMP/stable-out/update.json.sig' ]"
 check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-dmg '$TMP/stable-out/update.json'"
-check "в заметках — как поставить на macOS без подписи" "grep -q 'Все равно открыть' '$TMP/notes.md'"
-check "«Что нового» — из секции версии CHANGELOG, перенос строк склеен" "grep -qxF -- '- Окно подтверждения перед раздельным режимом. Подробнее в инструкции.' '$TMP/notes.md' && grep -qxF '**Исправлено**' '$TMP/notes.md' && ! grep -q 'Старое' '$TMP/notes.md' && ! grep -q 'Общий список' '$TMP/notes.md' && ! grep -q 'первое' '$TMP/notes.md'"
-check "таблица «Система · Файл · Что сделать» с пакетами этой версии" "grep -qF '| Система | Файл | Что сделать |' '$TMP/notes.md' && grep -qF '\`sudo apt install ./private-gateway_0.3.0_amd64.deb\`' '$TMP/notes.md' && grep -qF 'PrivateGateway-0.3.0-android.apk' '$TMP/notes.md'"
 check "главное манифеста — из той же секции, первое предложение" "python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))[\"highlights\"]; sys.exit(h != [\"Окно подтверждения перед раздельным режимом.\", \"Строка реального IP не пропадает.\"])' '$TMP/stable-out/update.json'"
-check "заметки короткие — не больше 45 строк" "[ \"\$(wc -l < '$TMP/notes.md')\" -le 45 ]"
-check "в заметках автор — владелец репозитория, других упоминаний нет" "grep -q '^Автор — @rvburov$' '$TMP/notes.md' && [ \"\$(grep -oE '(^|[^\`[:alnum:]])@[[:alnum:]]' '$TMP/notes.md' | wc -l)\" = 1 ]"
-check "заметки рядом, а не в файлах выпуска" "[ -f '$TMP/notes.md' ] && [ ! -e '$TMP/stable-out/notes.md' ]"
+builds nosection 0.2.9
+check "версия без секции в истории — ошибка, коммиты не подставляются" "! run assemble 0.2.9 '$TMP/nosection' '$TMP/nosection-out' && grep -q 'нет секции' '$TMP/out.txt'"
 check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
 check "доля 0 останавливает раскатку" "run rollout '$TMP/stable-out' 0 && grep -q '\"rollout\": 0' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
 check "доля 101 — ошибка" "! run rollout '$TMP/stable-out' 101"
 
 builds beta 0.4.0-beta.1
 check "бета — канал beta" "run assemble 0.4.0-beta.1 '$TMP/beta' '$TMP/beta-out' && grep -q '\"channel\": \"beta\"' '$TMP/beta-out/update.json'"
-check "без секции в CHANGELOG — новое и исправленное из коммитов, без docs" "grep -qxF -- '- первое' '$TMP/notes.md' && ! grep -q 'почта user' '$TMP/notes.md'"
-check "«@слово» из коммита — кодом" "grep -qF '\`@param:ApplicationContext\` в TunnelControl' '$TMP/notes.md'"
 
 builds broken 0.3.0
 echo corrupt >> "$TMP/broken/release-macOS/PrivateGateway-0.3.0-osx-arm64.tar.gz"

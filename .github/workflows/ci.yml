@@ -46,6 +46,9 @@ jobs:
       - name: Сборка выпуска на собранных сборках
         run: scripts/tests/release-assembly-smoke.sh
 
+      - name: Выпуск — release.sh, версия и текст страницы выпуска
+        run: scripts/tests/release-test.sh
+
       - name: Условия выпуска и отказы удаления пакета
         run: |
           python3 scripts/tests/release-gate-test.py

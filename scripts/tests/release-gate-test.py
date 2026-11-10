@@ -71,7 +71,8 @@ class ReleaseGateTest(unittest.TestCase):
                         patch.object(gate, "command", side_effect=local_only), self.assertRaises(subprocess.CalledProcessError):
                     gate.main()
 
-                # После проверок git оба workflow и все их задания должны подходить именно этому SHA.
+                # После проверок git проверка CI и все ее задания должны подходить именно этому SHA; долгий прогон
+                # выпуск гоняет сам и здесь не запрашивается.
                 run = self.run_data() | {"head_sha": base, "id": 7}
                 def api(*args):
                     if args[0] == "git":
@@ -79,10 +80,31 @@ class ReleaseGateTest(unittest.TestCase):
                     self.assertEqual(args[:4], ("gh", "api", "--paginate", "--slurp"))
                     if "/jobs?" in args[-1]:
                         return json.dumps([{"jobs": [{"status": "completed", "conclusion": "success"}]}])
-                    workflow = "soak.yml" if "/soak.yml/" in args[-1] else "ci.yml"
-                    return json.dumps([{"workflow_runs": [run | {"path": ".github/workflows/" + workflow}]}])
+                    self.assertIn("/ci.yml/", args[-1])
+                    return json.dumps([{"workflow_runs": [run]}])
                 with patch("sys.argv", ["release-gate.py", "owner/repo", "v0.1.0", base]), patch.object(gate, "command", side_effect=api):
                     gate.main()
+
+                # С --wait идущая проверка дожидается конца; упавшая останавливает выпуск без ожидания.
+                for final, passes in (("success", True), ("failure", False)):
+                    answers = [run | {"status": "in_progress", "conclusion": None}, run | {"conclusion": final}]
+                    sleeps = []
+                    def waiting(*args):
+                        if args[0] == "git":
+                            return subprocess.check_output(args, text=True).strip()
+                        if "/jobs?" in args[-1]:
+                            return json.dumps([{"jobs": [{"status": "completed", "conclusion": "success"}]}])
+                        return json.dumps([{"workflow_runs": [answers.pop(0) if len(answers) > 1 else answers[0]]}])
+                    with self.subTest(final=final), \
+                            patch("sys.argv", ["release-gate.py", "owner/repo", "v0.1.0", base, "--wait", "5"]), \
+                            patch.object(gate, "command", side_effect=waiting), \
+                            patch.object(gate.time, "sleep", side_effect=sleeps.append):
+                        if passes:
+                            gate.main()
+                        else:
+                            with self.assertRaises(ValueError):
+                                gate.main()
+                        self.assertEqual(sleeps, [30], "одна пауза, пока проверка шла")
             finally:
                 os.chdir(original)
 

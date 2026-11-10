@@ -1,8 +1,10 @@
 name: Выпуск на GitHub
 
-# Тег v<SemVer> → проверка master и CI/soak этого коммита → сборки трех ОС → выпуск на GitHub
+# Тег v<SemVer> (ставит scripts/release.sh, как в SmartBase) → тег на master, версия и секция в CHANGELOG.md, зеленая
+# проверка CI этого коммита (ждем ее конца) → долгий прогон на этом коммите и сборки трех ОС → выпуск на GitHub
 # (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
-# секрет UPDATE_SIGNING_KEY) и заметки из коммитов с прошлого тега. Версия с «-» — бета: выпуск помечен prerelease,
+# секрет UPDATE_SIGNING_KEY); текст страницы — scripts/release-notes.sh из секции версии в CHANGELOG.md, без списка
+# коммитов. Выпуск уже есть (повтор запуска) — текст и файлы заменяются. Версия с «-» — бета: выпуск помечен prerelease,
 # канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
 # К выпуску прикладывается приложение Android (APK, подписанный ключом выпуска из секретов; ставится вручную, «из
 # неизвестных источников»). Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
@@ -23,14 +25,28 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Точный коммит тега, master, основная проверка и долгий прогон
+      - name: Версия тега, Directory.Build.props и секция в CHANGELOG.md
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: scripts/check-version.sh "${RELEASE_TAG#v}"
+
+      # Тег ставится сразу после коммита «release: vX.Y.Z», и его проверка CI в этот момент еще идет: ждем ее конца.
+      - name: Точный коммит тега, master и основная проверка
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ github.ref_name }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
           git fetch origin master
-          python3 scripts/release-gate.py "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$RELEASE_SHA"
+          python3 scripts/release-gate.py "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$RELEASE_SHA" --wait 120
+
+  # Долгий прогон именно коммита тега (30 минут на режим), параллельно со сборками.
+  soak:
+    name: Долгий прогон
+    needs: gate
+    uses: ./.github/workflows/soak.yml
+    with:
+      minutes: '30'
 
   build:
     name: Сборки
@@ -95,7 +111,7 @@ jobs:
 
   release:
     name: Выпуск
-    needs: [gate, build, android]
+    needs: [gate, soak, build, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -149,13 +165,24 @@ jobs:
           [[ "$version" != *-* ]] || rollout=100
           SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) dotnet run scripts/release.cs assemble "$version" artifacts/builds artifacts/release "$rollout"
           cp artifacts/android/* artifacts/release/
+          scripts/release-notes.sh "$version" artifacts/release > artifacts/notes.md
 
+      # Как в SmartBase: выпуск уже есть (повтор запуска после сбоя на этом шаге) — заменить текст и файлы, а не падать.
       - name: Выпуск на GitHub
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=${GITHUB_REF_NAME#v}
-          prerelease=()
-          [[ "$version" != *-* ]] || prerelease=(--prerelease)
-          gh release create "$GITHUB_REF_NAME" artifacts/release/* --verify-tag --title "Private Gateway $version" \
-            --notes-file artifacts/notes.md "${prerelease[@]}"
+          prerelease=false
+          [[ "$version" != *-* ]] || prerelease=true
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --title "Private Gateway $version" --notes-file artifacts/notes.md \
+              --prerelease="$prerelease"
+            gh release upload "$GITHUB_REF_NAME" artifacts/release/* --clobber
+          else
+            flags=()
+            [ "$prerelease" = false ] || flags=(--prerelease)
+            gh release create "$GITHUB_REF_NAME" artifacts/release/* --verify-tag --title "Private Gateway $version" \
+              --notes-file artifacts/notes.md "${flags[@]}"
+          fi
+          gh release view "$GITHUB_REF_NAME" --json url --jq .url
