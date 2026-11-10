@@ -1,7 +1,10 @@
 name: Проверка
 
 on:
+  # Только ветки: тег выпуска стоит на коммите master, проверенном здесь же, а выпуск (release.yml) смотрит проверку
+  # master. Отдельная проверка тега дублировала бы ее на всех машинах CI — как publish.yml.
   push:
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
