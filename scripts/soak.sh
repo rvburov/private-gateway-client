@@ -12,6 +12,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 minutes="${1:-30}"
+# Тестовое приложение само останавливается, если прогон идет на 20 минут дольше заданного, и вывод — с тем, на чем
+# встало, — попадает в журнал: 2026-11-10 долгий прогон macOS выпуска 0.1.5 после «Режим прокси: 30 мин» молчал
+# 88 минут, а отмена задания сняла его без вывода.
+limit="--timeout $((minutes + 20))m"
 
 # Пропуск здесь — ошибка: время задано, долгий прогон обязан пройти.
 run() {
@@ -28,7 +32,7 @@ run() {
 }
 
 echo "Режим прокси: $minutes мин"
-run env PG_SOAK_MINUTES="$minutes" dotnet test --project desktop/tests/Network -c Release --no-build \
+run env PG_SOAK_MINUTES="$minutes" dotnet test --project desktop/tests/Network -c Release --no-build $limit \
     --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
 
 if [ "$(uname -s)" = Linux ]; then
@@ -38,14 +42,14 @@ if [ "$(uname -s)" = Linux ]; then
         sudo_prefix=(sudo env "PATH=$PATH" "DOTNET_ROOT=${DOTNET_ROOT:-}" "HOME=$HOME")
     fi
     run "${sudo_prefix[@]}" env PG_SOAK_MINUTES="$minutes" DOTNET_CLI_TELEMETRY_OPTOUT=1 DOTNET_NOLOGO=1 \
-        dotnet test --project desktop/tests/Network -c Release --no-build \
+        dotnet test --project desktop/tests/Network -c Release --no-build $limit \
         --output Detailed -- --filter-method '*.Soak_vpn_survives_failures_in_a_loop_without_traffic_around_the_tunnel'
 fi
 
 case "$(uname -s)" in
     MINGW* | MSYS* | CYGWIN*)
         echo "Режим VPN на Windows: $minutes мин (администратор)"
-        run env PG_SOAK_MINUTES="$minutes" dotnet test --project desktop/tests/Network -c Release --no-build \
+        run env PG_SOAK_MINUTES="$minutes" dotnet test --project desktop/tests/Network -c Release --no-build $limit \
             --output Detailed -- --filter-method '*.Soak_vpn_on_windows_survives_failures_in_a_loop_without_traffic_around_the_tunnel'
         ;;
 esac
