@@ -52,9 +52,12 @@ class AccountViewModel @Inject constructor(private val account: AccountRepositor
 
     fun password(text: String) = form.update { it.copy(password = text.take(PASSWORD_MAX)) }
 
-    /** Код 2FA — только цифры и не больше шести; резервный — как введен, до длины, которую принимает сайт. */
+    /**
+     * Код 2FA — только цифры 0–9 и не больше шести: сайт принимает ровно `^[0-9]{6}$`, а Char.isDigit пропустил бы и цифры
+     * других письменностей (арабские, полноширинные) — сайт ответил бы 422. Резервный — как введен, до длины сайта.
+     */
     fun code(text: String) = form.update {
-        it.copy(code = if (it.recovery) text.take(LoginUi.RECOVERY_MAX) else text.filter(Char::isDigit).take(LoginUi.CODE_LENGTH))
+        it.copy(code = if (it.recovery) text.take(LoginUi.RECOVERY_MAX) else text.filter { char -> char in '0'..'9' }.take(LoginUi.CODE_LENGTH))
     }
 
     /** «Войти по резервному коду» ↔ «Войти по коду 2FA»: поле кода очищается. */
@@ -83,10 +86,13 @@ class AccountViewModel @Inject constructor(private val account: AccountRepositor
         }
     }
 
-    /** «Выйти» в «Настройках»: защита выключается, вход стирается, экран входа — с пустыми полями. */
+    /**
+     * «Выйти» в «Настройках»: экран входа — сразу и с пустыми полями. Сам выход идет в области репозитория: окно, закрытое
+     * во время выхода, его не обрывает.
+     */
     fun logout() {
         form.value = LoginUi()
-        viewModelScope.launch { account.logout() }
+        account.signOut()
     }
 
     private companion object {

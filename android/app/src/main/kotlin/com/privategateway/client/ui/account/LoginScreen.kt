@@ -7,9 +7,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,14 +25,19 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -76,12 +84,26 @@ class LoginActions(
  */
 @Composable
 fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, language: ((String) -> Unit)?) {
+    val scroll = rememberScrollState()
+    // Окно во весь экран (edge-to-edge): клавиатуру форма учитывает сама, как ImportScreen. Отступы — до прокрутки: область
+    // прокрутки уменьшается на высоту клавиатуры, и поле в фокусе прокручивается в видимую часть.
+    var codeFocused by remember { mutableStateOf(false) }
+    val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    LaunchedEffect(codeFocused, keyboard) {
+        // Поле кода — последнее: с ним на экране должны быть и «Войти», и ошибка под формой, а не только само поле. Конец
+        // формы сдвигается, пока выезжает клавиатура и появляется ошибка, — прокрутка идет за ним.
+        if (codeFocused && keyboard) {
+            snapshotFlow { scroll.maxValue }.collect { scroll.scrollTo(it) }
+        }
+    }
+
     Column(
         Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
             .statusBarsPadding()
             .navigationBarsPadding()
+            .imePadding()
+            .verticalScroll(scroll)
             .padding(horizontal = PgSpace.WindowSideMobile)
             .padding(top = PgSpace.L, bottom = 24.dp)
             .testTag("login"),
@@ -151,6 +173,7 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
             actions.code,
             codeLabel,
             "login.code",
+            Modifier.onFocusChanged { codeFocused = it.isFocused },
             keyboard = KeyboardOptions(
                 keyboardType = if (ui.recovery) KeyboardType.Text else KeyboardType.NumberPassword,
                 autoCorrectEnabled = false,

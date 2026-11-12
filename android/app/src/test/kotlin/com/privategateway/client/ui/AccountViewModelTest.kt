@@ -82,6 +82,9 @@ class AccountViewModelTest {
         try {
             model.email("user@example.com")
             model.password("pw")
+            // Цифры других письменностей (арабско-индийские, полноширинные) Char.isDigit пропустил бы, а сайт их не примет.
+            model.code("\u0661\u0662\u0663\u0664\u0665\u0666\uFF11\uFF12")
+            assertEquals("", model.ui.value.code, "код 2FA — только цифры 0-9")
             model.code("12a34-56789")
             assertEquals("123456", model.ui.value.code, "код 2FA — только цифры, не больше шести")
             model.login()
@@ -104,7 +107,12 @@ class AccountViewModelTest {
 
             model.logout()
             assertEquals(LoginUi(), model.ui.value, "после выхода — пустые поля")
-            assertEquals(false, waitForAsync { repository.allowed() })
+            // Выход идет в области репозитория: окно его не ждет.
+            waitForAsync {
+                while (repository.allowed()) {
+                    delay(10)
+                }
+            }
         } finally {
             runBlocking { model.viewModelScope.coroutineContext.job.cancelAndJoin() }
             repository.close()

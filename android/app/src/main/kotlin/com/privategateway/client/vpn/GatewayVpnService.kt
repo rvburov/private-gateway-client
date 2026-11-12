@@ -220,8 +220,9 @@ class GatewayVpnService : VpnService() {
         work = scope.launch {
             val connected = lock.withLock {
                 // Без действующего входа в аккаунт сайта защита не поднимается ни одним путем: окно, плитка, уведомление,
-                // «Постоянная VPN» и перезапуск системой приходят сюда (решение 619).
-                val error = if (!account.allowed()) refused() else attempt(0) ?: verify()
+                // «Постоянная VPN» и перезапуск системой приходят сюда (решение 619). Вход проверяется и в конце: выход или
+                // отзыв, пришедший во время подключения, туннель не оставляет (решение 646).
+                val error = if (!account.allowed()) refused() else attempt(0) ?: verify() ?: signedOutMeanwhile()
                 if (destroyed) {
                     stopCore()
                     monitor.set(if (error != null) TunnelStatus(state = TunnelState.Error, error = error) else TunnelStatus())
@@ -241,9 +242,26 @@ class GatewayVpnService : VpnService() {
         }
     }
 
-    /** Подключение без входа в аккаунт: ядро не запускается, «Ошибка» с кодом «Нет доступа». */
+    /**
+     * Подключение без входа в аккаунт: ядро не запускается, «Ошибка» с кодом «Нет доступа». Срок мог пройти при открытом
+     * окне — проверка входа сразу, чтобы окно перешло на экран входа, а не ждало расписания.
+     */
     private fun refused(): String {
         journal.error("connect refused  no account access")
+        account.checkNow()
+        return TunnelErrors.NO_ACCESS
+    }
+
+    /**
+     * Туннель поднят, а вход за это время стерт: выход или отзыв пришел, пока монитор еще показывал «Выключено», и команда
+     * выключить защиту не ушла. Вход стирается раньше, чем репозиторий смотрит на монитор, поэтому здесь он уже виден.
+     */
+    private suspend fun signedOutMeanwhile(): String? {
+        if (account.allowed()) {
+            return null
+        }
+
+        journal.error("connect refused  sign-in removed while connecting")
         return TunnelErrors.NO_ACCESS
     }
 
@@ -330,7 +348,8 @@ class GatewayVpnService : VpnService() {
                 val timeout = settings.tunnel.first().connection.probeTimeoutMs.toInt()
                 withContext(Dispatchers.IO) { TunnelProbe.answers(timeoutMs = timeout) }
             },
-            restart = { number -> lock.withLock { attempt(number) } },
+            // Переподключение — тоже подключение: без входа туннель не поднимается, страж сдается с «Нет доступа».
+            restart = { number -> lock.withLock { signedOutMeanwhile() ?: attempt(number) } },
             events = object : GuardEvents {
                 override suspend fun reconnecting(attempt: Int) {
                     journal.warning("no answer through the tunnel  reconnecting attempt=$attempt")

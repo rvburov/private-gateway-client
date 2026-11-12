@@ -1,8 +1,11 @@
 package com.privategateway.client.account
 
 import android.os.Build
+import android.security.keystore.KeyPermanentlyInvalidatedException
 import androidx.annotation.VisibleForTesting
 import androidx.datastore.core.DataStore
+import androidx.datastore.core.handlers.ReplaceFileCorruptionHandler
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
@@ -18,33 +21,41 @@ import com.privategateway.client.core.account.AccountSource
 import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
+import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.SecretBox
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.vpn.TunnelMonitor
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.flow.retryWhen
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import java.io.File
 import java.io.IOException
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
+import javax.crypto.BadPaddingException
 import javax.inject.Inject
 import javax.inject.Qualifier
 import javax.inject.Singleton
@@ -53,6 +64,13 @@ import javax.inject.Singleton
 @Qualifier
 @Retention(AnnotationRetention.BINARY)
 annotation class AccountStore
+
+/**
+ * Хранилище входа. Испорченный файл (сбой записи, чужие байты) — «входа нет»: без замены каждое чтение бросало бы
+ * CorruptionException, и войти было бы нельзя никогда (решение 645). uid при этом создается заново.
+ */
+fun accountDataStore(scope: CoroutineScope, file: () -> File): DataStore<Preferences> =
+    PreferenceDataStoreFactory.create(corruptionHandler = ReplaceFileCorruptionHandler { emptyPreferences() }, scope = scope, produceFile = file)
 
 /** Сохраненный вход — без токена (он только запечатанным в хранилище): для «Настроек» и проверки срока. */
 data class AccountInfo(
@@ -98,6 +116,10 @@ class DeviceAccountSource @Inject constructor() : AccountSource {
  * Проверка доступа: при запуске процесса, при открытии окна и раз в 30 минут. Отзыв — только ответ 401: токен стирается,
  * защита выключается, окно показывает вход с «Доступ отозван». Без ответа сайта действует последний подтвержденный срок;
  * он прошел — выход как при истечении. В журнал «Проверки» — только итог, без токена, почты и кодов.
+ *
+ * Вход стирается всегда раньше, чем выключается защита: служба, поднимая туннель, перепроверяет вход в конце подключения, и
+ * выход, который пришелся на подключение (монитор еще «Выключено» — команда выключить не уходит), туннель не оставит
+ * (решение 646). Сбой хранилища и любая ошибка проверки процесс не роняют и проверки по расписанию не останавливают (645).
  */
 @Singleton
 class AccountRepository @Inject constructor(
@@ -108,7 +130,12 @@ class AccountRepository @Inject constructor(
     private val monitor: TunnelMonitor,
     private val journal: TunnelJournal,
 ) {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // Ошибка, которую не поймали ниже, — в журнал, а не в обработчик потока: тот завершил бы процесс вместе со службой VPN.
+    private val scope = CoroutineScope(
+        SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, failure ->
+            journal.error("account  unexpected " + failure.javaClass.simpleName)
+        },
+    )
     private val lock = Mutex()
     private val notice = MutableStateFlow<AccountNotice?>(null)
     private var started = false
@@ -116,6 +143,10 @@ class AccountRepository @Inject constructor(
     /** Часы — для тестов срока. */
     @VisibleForTesting
     internal var clock: () -> Instant = Instant::now
+
+    /** Сколько ждать ответа сайта на выход, пока защита еще идет: дольше выход не держит туннель. */
+    @VisibleForTesting
+    internal var logoutWaitMs = LOGOUT_WAIT_MS
 
     /** Когда последний раз спрашивали сайт: открытие окна сразу после запуска не спрашивает второй раз. */
     @Volatile
@@ -125,18 +156,43 @@ class AccountRepository @Inject constructor(
     @Volatile
     private var seeded = false
 
-    private val preferences = store.data.catch { failure ->
-        if (failure is IOException) emit(emptyPreferences()) else throw failure
-    }
+    /** Хранилище хоть раз прочитано (или первое чтение не удалось и показан «входа нет»). */
+    @Volatile
+    private var readOnce = false
+
+    /**
+     * Хранилище для [state]. Сбой чтения — в журнал и повтор с нарастающей паузой: окно держит последнее прочитанное, а если
+     * не прочитано ничего — экран входа (иначе пустое окно навсегда). Испорченный файл заменяет обработчик в AppModule.
+     */
+    private val preferences: Flow<Preferences> = store.data
+        .onEach { readOnce = true }
+        .retryWhen { failure, attempt ->
+            if (failure !is IOException) {
+                return@retryWhen false
+            }
+
+            journal.warning("account storage read failed  " + failure.javaClass.simpleName)
+            if (!readOnce) {
+                readOnce = true
+                emit(emptyPreferences())
+            }
+
+            delay(READ_RETRY_MS shl attempt.coerceAtMost(READ_RETRY_STEPS).toInt())
+            true
+        }
 
     /** Вход; null — хранилище еще не прочитано (экран входа не мелькает у тех, кто вошел). */
     val state: StateFlow<AccountState?> = combine(preferences, notice) { prefs, why -> AccountState(info(prefs), why) }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
-    /** Можно ли подключаться: вход есть и срок не прошел. Ждет, пока хранилище прочитано (служба при загрузке телефона). */
+    /**
+     * Можно ли подключаться: вход есть и срок не прошел. Читает само хранилище, а не [state]: тот обновляется позже записи, а
+     * выход или отзыв, записанный только что, служба должна увидеть сразу. Хранилище не прочиталось — по последнему известному.
+     */
     suspend fun allowed(): Boolean {
-        val info = state.filterNotNull().first().info ?: return false
-        return AccountGate.allowed(info.expiresAt, clock())
+        val prefs = read()
+        val info = if (prefs != null) info(prefs) else state.value?.info
+        return info != null && AccountGate.allowed(info.expiresAt, clock())
     }
 
     /** То же без ожидания — для плитки в шторке: хранилище еще не прочитано — нет. */
@@ -145,7 +201,7 @@ class AccountRepository @Inject constructor(
         return AccountGate.allowed(info.expiresAt, clock())
     }
 
-    /** uid устройства: создается один раз на установку, выход его не стирает. */
+    /** uid устройства: создается один раз на установку, выход его не стирает. Хранилище не пишется — IOException. */
     suspend fun deviceUid(): String {
         var uid = ""
         store.edit { prefs ->
@@ -154,7 +210,7 @@ class AccountRepository @Inject constructor(
         return uid
     }
 
-    /** Вход: ровно один из [code] (2FA) и [recovery] (резервный код). Хранилище ключей не работает — [AccountError.Store]. */
+    /** Вход: ровно один из [code] (2FA) и [recovery] (резервный код). Хранилище ключей или файл не работают — [AccountError.Store]. */
     suspend fun login(email: String, password: String, code: String?, recovery: String?): LoginResult = lock.withLock {
         withContext(Dispatchers.IO) {
             if (!boxWorks()) {
@@ -162,7 +218,14 @@ class AccountRepository @Inject constructor(
                 return@withContext LoginResult.Failed(AccountError.Store)
             }
 
-            val device = DeviceInfo(deviceUid(), DeviceInfo.phoneName(Build.MANUFACTURER, Build.MODEL), BuildConfig.VERSION_NAME)
+            val uid = try {
+                deviceUid()
+            } catch (_: IOException) {
+                journal.warning("account sign-in  storage unavailable")
+                return@withContext LoginResult.Failed(AccountError.Store)
+            }
+
+            val device = DeviceInfo(uid, DeviceInfo.phoneName(Build.MANUFACTURER, Build.MODEL), BuildConfig.VERSION_NAME)
             val result = source.login(email, password, code, recovery, device)
             if (result !is LoginResult.Ok) {
                 journal.info("account sign-in  " + ((result as LoginResult.Failed).error.name))
@@ -182,44 +245,67 @@ class AccountRepository @Inject constructor(
 
             notice.value = null
             lastCheck = clock()
+            // Защита не включилась из-за входа (PGC-ACC-001) — вход есть, этой ошибки больше нет: главная снова «Выключено», а
+            // уведомление о сбое ProtectionNotifier убирает по смене состояния. Другие ошибки остаются.
+            monitor.update { if (it.state == TunnelState.Error && it.error == TunnelErrors.NO_ACCESS) TunnelStatus() else it }
             journal.info("account sign-in  ok")
             result
         }
     }
 
     /**
-     * Выход («Настройки» → «Выйти»): выключить защиту, стереть токен и сведения входа (uid остается), сообщить сайту. Ошибка
-     * сети выходу не мешает.
+     * Выход («Настройки» → «Выйти»): вход стирается сразу (uid остается) — окно тут же показывает экран входа. Потом сайту
+     * POST /api/app/logout, пока защита еще идет: запрос, как весь трафик приложения, идет через туннель, а во время его
+     * разборки оборвался бы, и сайт не снял бы устройство. Ответа ждем не дольше [logoutWaitMs], и только потом защита
+     * выключается. Ошибка сети или хранилища выходу не мешает (решение 647).
      */
     suspend fun logout() {
-        lock.withLock {
-            val token = withContext(Dispatchers.IO) {
-                stopProtection()
-                val sealed = store.data.first()[TOKEN]
-                clear(null)
+        try {
+            val token = lock.withLock {
                 seeded = false
+                val sealed = read()?.get(TOKEN)
+                withContext(Dispatchers.IO) { clear(null) }
                 journal.info("account signed out")
-                sealed?.let(::open)
+                when (val opened = sealed?.let(::open)) {
+                    is Opened.Token -> opened.value
+                    else -> null
+                }
             }
 
-            // Сайт снимает устройство; ошибка сети выходу не мешает — вход на телефоне уже стерт.
-            token?.let { source.logout(it) }
+            if (token != null) {
+                // Отдельной задачей: запрос в потоке ввода-вывода по таймауту не прерывается, а выход ждать его не должен.
+                val sent = scope.async(Dispatchers.IO) { source.logout(token) }
+                if (withTimeoutOrNull(logoutWaitMs) { sent.join() } == null) {
+                    journal.warning("account sign-out  site did not answer in time")
+                }
+            }
+        } catch (e: IOException) {
+            journal.warning("account sign-out  storage error " + e.javaClass.simpleName)
+        } finally {
+            stopProtection()
         }
     }
 
-    /** Спросить сайт о доступе сейчас (запуск, открытие окна, расписание); входа нет — ничего. */
+    /** Выход из окна: в своей области — окно, закрытое во время выхода, его не обрывает, а нажатие не ждет сайта. */
+    fun signOut() {
+        scope.launch { logout() }
+    }
+
+    /**
+     * Спросить сайт о доступе сейчас (запуск, открытие окна, расписание); входа нет — ничего. Сбой хранилища или иной —
+     * в журнал, как «сайт не ответил»: вход и защита остаются, следующая проверка — по расписанию.
+     */
     suspend fun refresh() {
         if (seeded) {
             return
         }
 
-        lock.withLock {
-            // Засеять могли, пока проверка ждала замка.
-            if (seeded) {
-                return
-            }
-
+        try {
             withContext(Dispatchers.IO) { check() }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            journal.warning("account check  failed " + e.javaClass.simpleName)
         }
     }
 
@@ -262,7 +348,7 @@ class AccountRepository @Inject constructor(
         }
     }
 
-    /** Стереть вход без запроса к сайту — проверка отказа службы без входа на устройстве (androidTest). */
+    /** Стереть вход без запроса к сайту и без команды службе — проверка отказа службы без входа на устройстве (androidTest). */
     @VisibleForTesting
     suspend fun signOutForTests() {
         lock.withLock {
@@ -275,27 +361,51 @@ class AccountRepository @Inject constructor(
     @VisibleForTesting
     internal fun close() = scope.cancel()
 
+    /**
+     * Чтение и итог — под замком, запрос к сайту (до 15 с) — без него: выход и вход его не ждут. Итог применяется, только
+     * если это все тот же вход: вышли или вошли заново, пока шел запрос, — ответ про старый токен отбрасывается.
+     */
     private suspend fun check() {
-        val stored = store.data.first()
-        val sealed = stored[TOKEN] ?: return
-        val expires = stored[EXPIRES]?.let(Instant::ofEpochMilli)
-        val token = open(sealed)
-        if (expires == null || token == null) {
-            // Ключ Keystore потерян или запись неполная: вход не прочитать — войти заново.
+        val (sealed, expires) = lock.withLock {
+            if (seeded) {
+                return
+            }
+
+            // Хранилище не прочиталось — как «сайт не ответил»: вход и защита как были.
+            val stored = read() ?: return
+            val current = stored[TOKEN]
+            if (current == null) {
+                // Входа нет, а защита идет — подключение разминулось с выходом: выключить.
+                stopProtection()
+                return
+            }
+
+            current to stored[EXPIRES]?.let(Instant::ofEpochMilli)
+        }
+
+        val opened = open(sealed)
+        if (expires == null || opened == Opened.Lost) {
+            // Ключ Keystore потерян навсегда или запись неполная: вход не прочитать — войти заново.
             journal.warning("account check  sign-in unreadable")
-            stopProtection()
-            clear(null)
+            finish(sealed, null)
             return
         }
 
-        lastCheck = clock()
-        val status = source.status(token)
+        val status = if (opened is Opened.Token) {
+            lastCheck = clock()
+            source.status(opened.value)
+        } else {
+            // Хранилище ключей сейчас не отвечает (решение 648): токен не открыть, но он цел — как «сайт не ответил».
+            journal.warning("account check  key store unavailable, sign-in kept")
+            StatusResult.Unreachable
+        }
+
         when (val verdict = AccountGate.verdict(expires, status, clock())) {
             is AccessVerdict.Keep -> {
                 if (status is StatusResult.Ok) {
                     store.edit { prefs ->
-                        // Вход стерли, пока шел запрос, — подтверждение его не возвращает.
-                        if (prefs[TOKEN] != null) {
+                        // Вход стерли или сменили, пока шел запрос, — подтверждение его не возвращает.
+                        if (prefs[TOKEN] == sealed) {
                             prefs[EXPIRES] = verdict.expiresAt.toEpochMilli()
                             prefs[EMAIL] = status.user.email
                             prefs[NAME] = status.user.displayName
@@ -310,16 +420,38 @@ class AccountRepository @Inject constructor(
 
             AccessVerdict.Revoked -> {
                 journal.warning("account check  access revoked")
-                stopProtection()
-                clear(AccountNotice.Revoked)
+                finish(sealed, AccountNotice.Revoked)
             }
 
             AccessVerdict.Expired -> {
                 journal.warning("account check  sign-in expired")
-                stopProtection()
-                clear(AccountNotice.Expired)
+                finish(sealed, AccountNotice.Expired)
             }
         }
+    }
+
+    /** Вход [sealed] больше не действует: стереть его, если он все еще тот же, и только потом выключить защиту. */
+    private suspend fun finish(sealed: String, why: AccountNotice?) {
+        lock.withLock {
+            val current = read()
+            if (current != null && current[TOKEN] != sealed) {
+                return
+            }
+
+            try {
+                clear(why)
+            } finally {
+                stopProtection()
+            }
+        }
+    }
+
+    /** Хранилище сейчас; не прочиталось — null и запись в журнал (без содержимого). */
+    private suspend fun read(): Preferences? = try {
+        store.data.first()
+    } catch (e: IOException) {
+        journal.warning("account storage read failed  " + e.javaClass.simpleName)
+        null
     }
 
     /** Запечатать токен и записать вход; не вышло — исключение, вход не сохранен. */
@@ -349,7 +481,10 @@ class AccountRepository @Inject constructor(
         }
     }
 
-    /** Защита идет, поднимается или на паузе — выключить; выключена — службу не будить. */
+    /**
+     * Защита идет, поднимается или на паузе — выключить; выключена — службу не будить. Вызывать после того, как вход стерт:
+     * подключение, которое монитор еще не показал, служба отклонит сама, перепроверив вход.
+     */
     private fun stopProtection() {
         val status = monitor.status.value
         if (status.state == TunnelState.Off && !status.paused || status.state == TunnelState.Error) {
@@ -364,12 +499,22 @@ class AccountRepository @Inject constructor(
         }
     }
 
-    private fun open(sealed: String): String? = try {
-        String(box.open(Base64.getDecoder().decode(sealed)), Charsets.UTF_8)
-    } catch (e: CancellationException) {
-        throw e
-    } catch (_: Exception) {
-        null
+    /**
+     * Открыть токен. Потерян навсегда — только при явной потере ключа: тег GCM не сошелся (ключ пропал, на его месте
+     * новый), ключ признан недействительным или запись не нашего формата. Остальное (KeyStoreException, ProviderException
+     * «keystore busy» сразу после загрузки и т. п.) — хранилище ключей сейчас не отвечает (решение 648).
+     */
+    private fun open(sealed: String): Opened = try {
+        Opened.Token(String(box.open(Base64.getDecoder().decode(sealed)), Charsets.UTF_8))
+    } catch (_: IllegalArgumentException) {
+        Opened.Lost
+    } catch (_: BadPaddingException) {
+        Opened.Lost
+    } catch (_: KeyPermanentlyInvalidatedException) {
+        Opened.Lost
+    } catch (e: Exception) {
+        journal.warning("account  key store error " + e.javaClass.simpleName)
+        Opened.Unavailable
     }
 
     /** Хранилище ключей работает: запечатанное открывается тем же ключом. */
@@ -394,6 +539,15 @@ class AccountRepository @Inject constructor(
         )
     }
 
+    /** Токен из хранилища: открыт, потерян навсегда или хранилище ключей сейчас не отвечает. */
+    private sealed interface Opened {
+        class Token(val value: String) : Opened
+
+        data object Lost : Opened
+
+        data object Unavailable : Opened
+    }
+
     private companion object {
         val UID = stringPreferencesKey("device.uid")
         val TOKEN = stringPreferencesKey("token")
@@ -403,5 +557,12 @@ class AccountRepository @Inject constructor(
         val DEVICE = stringPreferencesKey("device_name")
         val CHECKED = longPreferencesKey("checked_at")
         val PROBE = "pg-account-probe".toByteArray(Charsets.UTF_8)
+
+        /** Ответ сайта на выход под защитой обычно приходит за доли секунды; дольше туннель не держим. */
+        const val LOGOUT_WAIT_MS = 3_000L
+
+        /** Повтор чтения хранилища после сбоя: 1 с, 2 с, 4 с … до 64 с. */
+        const val READ_RETRY_MS = 1_000L
+        const val READ_RETRY_STEPS = 6L
     }
 }

@@ -101,6 +101,31 @@ class TunnelOnDeviceTest {
     }
 
     @Test
+    fun sign_out_while_the_tunnel_comes_up_leaves_no_tunnel() = networkTest {
+        prepare()
+        val server = assertNotNull(LinkParser.parse(LINK).server, "ссылка проверки не разобралась")
+        app.servers().add(listOf(server))
+        app.settings().select(app.servers().servers.first().first { it.port == PORT }.id)
+
+        GatewayVpnService.connect(context)
+        // Вход проверен, туннель поднимается — и тут вход стерт без команды службе: так выглядит выход или отзыв, который
+        // увидел монитор еще «Выключенным» (решение 646). Служба должна перепроверить вход в конце подключения.
+        val coming = withTimeout(30_000) {
+            app.monitor().status.first { it.state == TunnelState.Connecting || it.state == TunnelState.Connected || it.state == TunnelState.Error }
+        }
+        assertEquals(TunnelState.Connecting, coming.state, "подключение прошло, не дав стереть вход: ${coming.error}")
+        app.account().signOutForTests()
+
+        val status = withTimeout(30_000) {
+            app.monitor().status.first { it.state == TunnelState.Connected || it.state == TunnelState.Error }
+        }
+        assertEquals(TunnelState.Error, status.state, "туннель поднялся без входа")
+        assertEquals(TunnelErrors.NO_ACCESS, status.error)
+        assertFailsWith<IOException>("без входа трафик через сервер не идет") { fetch() }
+        TestAccount.seed(app)
+    }
+
+    @Test
     fun traffic_goes_through_the_server_and_only_while_connected() = networkTest {
         prepare()
         assertFailsWith<IOException>("проверочный адрес не должен быть доступен напрямую") { fetch() }

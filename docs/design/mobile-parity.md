@@ -24,7 +24,7 @@
   `.banner.warning` (рамка `status.warning.line`, текст `status.warning.badge`); шаг между блоками — 12.
   Сейчас: знак 40 без плашки; подпись — `PgType.BodyStrong` цвета `text.primary`; «глаз» — отдельная кнопка 44 справа от
   поля (поле пароля уже остальных); плашка без рамки, текст `status.warning.text`.
-  Код: `android/app/src/main/kotlin/com/privategateway/client/ui/account/LoginScreen.kt:105-106` (знак), `:224-227` (`Field`), `:230-258` (`Password`), `:260-279` (`Notice`).
+  Код: `android/app/src/main/kotlin/com/privategateway/client/ui/account/LoginScreen.kt:127-128` (знак), `:247-250` (`Field`), `:253-281` (`Password`), `:283-302` (`Notice`).
   Сделать: плашка под знак, подпись `PgType.Small` + `FontWeight.SemiBold` + `Text.Secondary`, «глаз» — внутри поля (зона
   нажатия 44 сохранить), рамка у плашки.
 - **Android — иначе, карточка «Аккаунт»** (доски 4, 18). Макет: одна строка настройки — слева имя (заголовок строки), почта и

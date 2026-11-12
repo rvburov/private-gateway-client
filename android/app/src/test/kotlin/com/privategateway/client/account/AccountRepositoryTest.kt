@@ -1,6 +1,7 @@
 package com.privategateway.client.account
 
-import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.core.account.AccountDevice
@@ -11,6 +12,7 @@ import com.privategateway.client.core.account.AccountUser
 import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.SecretBox
@@ -21,8 +23,13 @@ import com.privategateway.client.waitForAsync
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -30,9 +37,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
+import java.io.IOException
+import java.security.KeyStoreException
+import java.security.ProviderException
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
+import javax.crypto.AEADBadTagException
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
@@ -50,18 +61,24 @@ class AccountRepositoryTest {
     private val repositories = mutableListOf<AccountRepository>()
     private val now = Instant.parse("2026-11-12T10:00:00Z")
     private val monitor = TunnelMonitor()
-    private val control = FakeControl()
     private val journal = TunnelJournal()
     private val source = FakeSource()
+    private val control = FakeControl(source.calls)
     private val box = FakeBox()
 
-    private class FakeControl : TunnelControl {
+    /** Служба без Android: команда выключить защиту — в [log] рядом с запросами к сайту, чтобы был виден порядок. */
+    private class FakeControl(private val log: MutableList<String>) : TunnelControl {
         @Volatile var disconnects = 0
+
+        /** Что сделать в момент команды (тест смотрит, стерт ли уже вход). */
+        @Volatile var onDisconnect: () -> Unit = {}
 
         override fun connect() = Unit
 
         override fun disconnect() {
             disconnects++
+            log += "disconnect"
+            onDisconnect()
         }
     }
 
@@ -72,6 +89,9 @@ class AccountRepositoryTest {
         val calls = CopyOnWriteArrayList<String>()
         val devices = CopyOnWriteArrayList<DeviceInfo>()
         val tokens = CopyOnWriteArrayList<String>()
+
+        /** Сайт не отвечает на выход (обрыв под защитой, медленная сеть). */
+        @Volatile var logoutHangs = false
 
         override suspend fun login(email: String, password: String, code: String?, recovery: String?, device: DeviceInfo): LoginResult {
             calls += "login"
@@ -88,6 +108,44 @@ class AccountRepositoryTest {
         override suspend fun logout(token: String) {
             calls += "logout"
             tokens += token
+            if (logoutHangs) {
+                awaitCancellation()
+            }
+        }
+    }
+
+    /** Ящик, который по желанию теста не открывает: [failure] — что бросает Keystore. Запечатывает как [FakeBox]. */
+    private class FlakyBox(private val inner: FakeBox = FakeBox()) : SecretBox {
+        @Volatile var failure: Exception? = null
+
+        override fun seal(plain: ByteArray): ByteArray = inner.seal(plain)
+
+        override fun open(sealed: ByteArray): ByteArray {
+            failure?.let { throw it }
+            return inner.open(sealed)
+        }
+    }
+
+    /** Хранилище, которое по желанию теста не читается или не пишется (файл не открыть, диск полон). */
+    private class FlakyStore(private val real: DataStore<Preferences>) : DataStore<Preferences> {
+        @Volatile var failReads = false
+
+        @Volatile var failWrites = false
+
+        override val data: Flow<Preferences> = flow {
+            if (failReads) {
+                throw IOException("файл не читается")
+            }
+
+            emitAll(real.data)
+        }
+
+        override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+            if (failWrites) {
+                throw IOException("диск полон")
+            }
+
+            return real.updateData(transform)
         }
     }
 
@@ -100,10 +158,14 @@ class AccountRepositoryTest {
 
     private val file by lazy { folder.root.resolve("account.preferences_pb") }
 
-    /** Хранилище и репозиторий «процесса»; новый вызов на том же файле — как перезапуск приложения. */
-    private fun repository(secrets: SecretBox = box): AccountRepository {
+    /** Хранилище (как в приложении — с заменой испорченного файла) в своей области; новый вызов на том же файле — перезапуск. */
+    private fun store(): DataStore<Preferences> {
         val scope = CoroutineScope(Dispatchers.IO + SupervisorJob()).also { scopes += it }
-        val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+        return accountDataStore(scope) { file }
+    }
+
+    /** Репозиторий «процесса» на [store]. */
+    private fun repository(secrets: SecretBox = box, store: DataStore<Preferences> = store()): AccountRepository {
         return AccountRepository(store, secrets, source, control, monitor, journal).also {
             it.clock = { now }
             repositories += it
@@ -130,7 +192,8 @@ class AccountRepositoryTest {
         source.login = LoginResult.Ok(session())
 
         assertEquals(LoginResult.Ok(session()), wait { first.login("user@example.com", "pw", "123456", null) })
-        assertTrue(box.sealed > 0, "токен прошел через ящик")
+        // Проба хранилища ключей перед входом — одна печать, токен — вторая.
+        assertTrue(box.sealed >= 2, "токен прошел через ящик")
         val raw = file.readBytes().toString(Charsets.ISO_8859_1)
         assertFalse("tok-secret-1" in raw, "открытого токена в файле нет")
         val info = assertNotNull(wait { first.state.first { it?.signedIn == true } }?.info)
@@ -218,7 +281,7 @@ class AccountRepositoryTest {
 
         source.status = StatusResult.Unreachable
         wait { repository.refresh() }
-        assertTrue(state(repository).signedIn, "сайт не ответил — вход остается")
+        assertTrue(wait { repository.state.first { it?.signedIn == true } }!!.signedIn, "сайт не ответил — вход остается")
         assertTrue(wait { repository.allowed() })
         assertEquals(0, control.disconnects, "без ответа сайта защита не выключается")
 
@@ -237,7 +300,8 @@ class AccountRepositoryTest {
         wait { repository.login("user@example.com", "pw", "123456", null) }
         source.status = StatusResult.Revoked
         wait { repository.refresh() }
-        assertFalse(state(repository).signedIn)
+        assertFalse(wait { repository.allowed() })
+        assertFalse(wait { repository.state.first { it?.signedIn == false } }!!.signedIn)
         assertEquals(0, control.disconnects)
     }
 
@@ -248,14 +312,187 @@ class AccountRepositoryTest {
         wait { repository.login("user@example.com", "pw", "123456", null) }
         monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
 
+        var allowedAtStop: Boolean? = null
+        control.onDisconnect = { allowedAtStop = runBlocking { repository.allowed() } }
+
         wait { repository.logout() }
 
-        val after = state(repository)
-        assertFalse(after.signedIn)
+        val after = wait { repository.state.first { it?.signedIn == false } }!!
         assertNull(after.notice, "выход сам — без сообщения об отзыве")
         assertEquals(1, control.disconnects)
-        assertEquals(listOf("login", "logout"), source.calls)
+        // Сайту — пока защита идет (запрос идет через туннель), и только потом защита выключается.
+        assertEquals(listOf("login", "logout", "disconnect"), source.calls)
+        assertEquals(false, allowedAtStop, "служба, получив команду, уже не пустит подключение")
         assertEquals(listOf("tok-secret-1"), source.tokens, "сайт получил тот же токен")
+    }
+
+    @Test
+    fun `sign-out does not wait long for the site and still stops protection`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        source.logoutHangs = true
+        repository.logoutWaitMs = 200
+
+        val started = System.nanoTime()
+        wait { repository.logout() }
+        val tookMs = (System.nanoTime() - started) / 1_000_000
+
+        assertTrue(tookMs < 5_000, "выход ждал сайт $tookMs мс")
+        assertEquals(1, control.disconnects, "сайт не ответил — защита все равно выключена")
+        assertFalse(wait { repository.allowed() })
+        assertTrue(journal.entries.value.any { "site did not answer" in it.message })
+    }
+
+    @Test
+    fun `window sign-out runs in the repository scope`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+
+        repository.signOut()
+        wait { repository.state.first { it?.signedIn == false } }
+        wait {
+            while ("logout" !in source.calls) {
+                delay(10)
+            }
+        }
+    }
+
+    @Test
+    fun `revocation erases the sign-in before it stops protection`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        var allowedAtStop: Boolean? = null
+        control.onDisconnect = { allowedAtStop = runBlocking { repository.allowed() } }
+
+        source.status = StatusResult.Revoked
+        wait { repository.refresh() }
+
+        assertEquals(1, control.disconnects)
+        assertEquals(false, allowedAtStop, "подключение, которое монитор еще не показал, служба отклонит сама")
+    }
+
+    @Test
+    fun `protection running without a sign-in is stopped by the check`() {
+        val repository = repository()
+        assertFalse(state(repository).signedIn)
+        // Подключение разминулось с выходом: туннель поднялся, а входа уже нет.
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        wait { repository.refresh() }
+        assertEquals(1, control.disconnects)
+        assertEquals(emptyList(), source.calls.filter { it != "disconnect" }, "без входа сайт не спрашиваем")
+
+        // Выключено — службу не будить.
+        monitor.set(TunnelStatus())
+        wait { repository.refresh() }
+        assertEquals(1, control.disconnects)
+    }
+
+    @Test
+    fun `sign-in clears the no-access error from the home screen and keeps other errors`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        monitor.set(TunnelStatus(TunnelState.Error, error = TunnelErrors.NO_ACCESS))
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        assertEquals(TunnelStatus(), monitor.status.value, "вход есть — «Нет доступа» больше не показывается")
+
+        wait { repository.logout() }
+        monitor.set(TunnelStatus(TunnelState.Error, error = TunnelErrors.SERVER_NOT_RESPONDING))
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        assertEquals(TunnelErrors.SERVER_NOT_RESPONDING, monitor.status.value.error, "другая ошибка входом не снимается")
+    }
+
+    @Test
+    fun `key store that does not answer keeps the sign-in, a lost key signs out`() {
+        val flaky = FlakyBox()
+        val repository = repository(flaky)
+        source.login = LoginResult.Ok(session())
+        source.status = StatusResult.Ok(now.plus(Duration.ofDays(30)), AccountUser("user@example.com", "Участник"), AccountDevice(42, "Pixel"))
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+
+        // «keystore busy» сразу после загрузки — временный сбой: вход и защита остаются, сайт не спрашиваем (токен не открыть).
+        flaky.failure = ProviderException("keystore busy")
+        wait { repository.refresh() }
+        assertTrue(wait { repository.allowed() })
+        assertEquals(0, control.disconnects)
+        assertEquals(listOf("login"), source.calls)
+        assertTrue(journal.entries.value.any { "key store unavailable" in it.message })
+
+        // Тег не сошелся — ключ пропал (новый на его месте): вход не вернуть, войти заново.
+        flaky.failure = AEADBadTagException("tag mismatch")
+        wait { repository.refresh() }
+        assertFalse(wait { repository.allowed() })
+        assertEquals(1, control.disconnects)
+    }
+
+    @Test
+    fun `key store failure after the confirmed term signs out as expired`() {
+        val flaky = FlakyBox()
+        val repository = repository(flaky)
+        source.login = LoginResult.Ok(session(expires = now.plus(Duration.ofHours(1))))
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+
+        flaky.failure = KeyStoreException("keystore busy")
+        repository.clock = { now.plus(Duration.ofHours(2)) }
+        wait { repository.refresh() }
+        assertEquals(AccountNotice.Expired, wait { repository.state.first { it?.signedIn == false } }!!.notice)
+    }
+
+    @Test
+    fun `damaged storage file is replaced and the sign-in works`() {
+        // Обрезанная запись protobuf: без замены каждое чтение бросало бы CorruptionException.
+        file.writeBytes(byteArrayOf(0x0A, 0x7F, 0x01))
+        val repository = repository()
+        assertFalse(state(repository).signedIn)
+        source.login = LoginResult.Ok(session())
+        assertEquals(LoginResult.Ok(session()), wait { repository.login("user@example.com", "pw", "123456", null) })
+        assertTrue(wait { repository.allowed() })
+    }
+
+    @Test
+    fun `storage that cannot be read shows the sign-in screen and recovers`() {
+        val flaky = FlakyStore(store()).apply { failReads = true }
+        val repository = repository(store = flaky)
+        assertFalse(state(repository).signedIn, "не прочитано ничего — экран входа, а не пустое окно")
+        wait { repository.refresh() }
+        assertFalse(wait { repository.allowed() })
+        assertTrue(journal.entries.value.any { "account storage read failed" in it.message })
+
+        source.login = LoginResult.Ok(session())
+        assertEquals(LoginResult.Ok(session()), wait { repository.login("user@example.com", "pw", "123456", null) })
+        flaky.failReads = false
+        assertTrue(wait { repository.state.first { it?.signedIn == true } }!!.signedIn, "чтение вернулось — вход виден")
+    }
+
+    @Test
+    fun `storage write failures do not crash the checks, the sign-in or the sign-out`() {
+        val flaky = FlakyStore(store())
+        val repository = repository(store = flaky)
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        flaky.failWrites = true
+
+        // Сайт подтвердил доступ, а записать нельзя: вход остается, проверка не падает.
+        source.status = StatusResult.Ok(now.plus(Duration.ofDays(31)), AccountUser("user@example.com", "Участник"), AccountDevice(42, "Pixel"))
+        wait { repository.refresh() }
+        assertTrue(wait { repository.allowed() })
+        assertTrue(journal.entries.value.any { "account check  failed IOException" in it.message })
+
+        // Вход: uid не записать — «хранилище не работает», сайт не спрашиваем.
+        source.calls.clear()
+        assertEquals(LoginResult.Failed(AccountError.Store), wait { repository.login("user@example.com", "pw", "123456", null) })
+        assertEquals(emptyList(), source.calls)
+
+        // Выход: вход стереть не удалось, но защита выключена и выход не упал.
+        wait { repository.logout() }
+        assertEquals(1, control.disconnects)
+        assertTrue(journal.entries.value.any { "account sign-out  storage error" in it.message })
     }
 
     @Test
@@ -282,7 +519,7 @@ class AccountRepositoryTest {
         repository.checkNow()
         wait {
             while ("status" !in source.calls) {
-                kotlinx.coroutines.delay(10)
+                delay(10)
             }
         }
     }

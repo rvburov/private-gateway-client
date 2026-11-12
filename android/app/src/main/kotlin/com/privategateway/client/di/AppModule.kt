@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
 import com.privategateway.client.account.AccountStore
 import com.privategateway.client.account.DeviceAccountSource
+import com.privategateway.client.account.accountDataStore
 import com.privategateway.client.core.account.AccountSource
 import com.privategateway.client.core.inspect.ProbeRunner
 import com.privategateway.client.data.AppDatabase
@@ -46,6 +47,9 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import javax.inject.Singleton
 
 @Module
@@ -78,7 +82,7 @@ object AppModule {
     @Singleton
     @AccountStore
     fun accountStore(@ApplicationContext context: Context): DataStore<Preferences> =
-        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("account") }
+        accountDataStore(CoroutineScope(Dispatchers.IO + SupervisorJob())) { context.preferencesDataStoreFile("account") }
 }
 
 @Module
