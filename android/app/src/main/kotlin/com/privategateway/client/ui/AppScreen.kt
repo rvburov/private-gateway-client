@@ -200,7 +200,7 @@ fun AppScreen(
                 val form by account.ui.collectAsStateWithLifecycle()
                 LoginScreen(
                     form,
-                    signedInState?.notice,
+                    signedInState.notice,
                     LoginActions(
                         email = account::email,
                         password = account::password,
@@ -426,7 +426,7 @@ fun AppScreen(
                                 }
                             },
                             // Без модели входа (тесты экранов) карточки «Аккаунт» нет.
-                            account = if (account != null) signedInState?.info else null,
+                            account = if (account != null) signedInState.info else null,
                             onSignOut = { account?.logout() },
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
