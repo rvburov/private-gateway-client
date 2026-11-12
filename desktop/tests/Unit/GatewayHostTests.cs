@@ -357,6 +357,85 @@ public sealed class GatewayHostTests
             "защиту, поднятую службой при загрузке, выключает сервис аккаунта, а не ошибка на экране");
     }
 
+    [Fact]
+    public async Task Refusal_over_a_block_keeps_the_block_so_the_tray_can_still_remove_it()
+    {
+        _answering.Add(Installed);
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => false);
+        var service = _services[Installed];
+        var now = _time.GetUtcNow();
+        service.Raise(service.Status.MoveTo(ConnectionState.Connecting, now).MoveTo(ConnectionState.Blocked, now));
+        var other = Server with { Id = "srv-2" };
+        var catalog = new ConnectionControllerTests.FakeCatalog(Server, other) { SelectedId = Server.Id };
+        var controller = new ConnectionController(host, catalog);
+
+        // Трей: другой сервер под блоком — подключение, а без входа отказ.
+        await controller.SwitchServerAsync(other.Id, Ct);
+
+        service.Connected.ShouldBeEmpty();
+        (host.Status.State, host.Status.ErrorCode).ShouldBe((ConnectionState.Blocked, ErrorCodes.AccessRequired),
+            "блок остается «Блокировкой» с причиной, а не «Ошибкой»");
+        service.Raise(service.Status);
+        host.Status.ErrorCode.ShouldBe(ErrorCodes.AccessRequired, "служба прислала то же — причина остается");
+
+        await controller.ToggleAsync(Ct);
+
+        (service.Disconnects, service.Connected.Count).ShouldBe((1, 0), "щит в трее по-прежнему снимает блок");
+    }
+
+    [Fact]
+    public async Task Drop_turns_protection_off_with_the_block_and_resume_without_access_drops_too()
+    {
+        _answering.Add(Installed);
+        var access = true;
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => access);
+        var service = _services[Installed];
+
+        await host.ResumeProtectionAsync(Ct);
+        (service.Resumes, service.Drops).ShouldBe((1, 0), "с доступом пауза кончается возвратом защиты");
+
+        access = false;
+        await host.ResumeProtectionAsync(Ct);
+        (service.Resumes, service.Drops).ShouldBe((1, 1), "без доступа защиту не вернуть — она выключается, сеть открывается");
+
+        await host.DropProtectionAsync(Ct);
+        (service.Drops, service.Disconnects).ShouldBe((2, 0), "выключение без доступа — без строгого блока, а не обычное отключение");
+    }
+
+    [Fact]
+    public void Drop_asks_the_service_not_to_keep_the_block_even_in_strict_mode() =>
+        ServiceGatewayClient.Drop().KeepBlock.ShouldBeFalse("без доступа к аккаунту сеть не остается закрытой");
+
+    [Fact]
+    public async Task Sign_in_clears_the_refusal_with_and_without_a_service()
+    {
+        using var lonely = new GatewayHost(new ServiceLocator([], _ => false, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => false);
+        await lonely.ConnectAsync(Server, Ct);
+        lonely.Status.ErrorCode.ShouldBe(ErrorCodes.AccessRequired);
+        var seen = new List<(ConnectionState, string?)>();
+        lonely.StatusChanged += (_, s) => seen.Add((s.State, s.ErrorCode));
+
+        lonely.AccessGranted();
+
+        (lonely.Status.State, lonely.Status.ErrorCode).ShouldBe((ConnectionState.Off, null));
+        seen.ShouldBe([(ConnectionState.Off, null)], "главная и трей узнают сразу");
+        lonely.AccessGranted();
+        seen.Count.ShouldBe(1, "отказа нет — ничего");
+
+        _answering.Add(Installed);
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => false);
+        await host.ConnectAsync(Server, Ct);
+        host.Status.ErrorCode.ShouldBe(ErrorCodes.AccessRequired);
+
+        host.AccessGranted();
+
+        (host.Status.State, host.Status.ErrorCode).ShouldBe((ConnectionState.Off, null), "вошли — видно состояние службы");
+    }
+
     private GatewayHost Host() => new(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time);
 
     private FakeService Attach(ServiceAddress address) => _services[address] = new FakeService(_time, address.System ? ServiceKind.Installed : ServiceKind.User);
@@ -417,9 +496,23 @@ public sealed class GatewayHostTests
             return Task.CompletedTask;
         }
 
+        public int Drops { get; private set; }
+
+        public Task DropProtectionAsync(CancellationToken cancellationToken = default)
+        {
+            Drops++;
+            return Task.CompletedTask;
+        }
+
         public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) => Task.FromResult(true);
 
-        public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+        public int Resumes { get; private set; }
+
+        public Task ResumeProtectionAsync(CancellationToken cancellationToken = default)
+        {
+            Resumes++;
+            return Task.CompletedTask;
+        }
 
         public Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult(new DiagnosticReport([], time.GetUtcNow()));

@@ -16,7 +16,8 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// снимок системного прокси после сбоя службы пользователя — окно сразу поднимает ее, чтобы она
 /// вернула настройки: иначе браузеры остались бы направлены на неработающий прокси. Без действующего входа в
 /// аккаунт сайта подключение не начинается ни одним путем (кнопка, трей, уведомление, «Подключаться при запуске»):
-/// «Ошибка» с PGC-ACC-001, служба не вызывается и не запускается.
+/// отказ с PGC-ACC-001 (<see cref="Refuse"/>), служба не вызывается и не запускается; «Вернуть защиту» после паузы
+/// для входа в Wi-Fi без доступа выключает защиту.
 /// </summary>
 public sealed class GatewayHost : IGatewayClient, IDisposable
 {
@@ -156,13 +157,36 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         Missing(server.Id, settings.Mode);
     }
 
-    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) => DisconnectAsync(open: false, cancellationToken);
+
+    /// <summary>Как <see cref="DisconnectAsync(CancellationToken)"/>, но служба снимает и блок строгого режима.</summary>
+    public Task DropProtectionAsync(CancellationToken cancellationToken = default) => DisconnectAsync(open: true, cancellationToken);
+
+    /// <summary>Вошли в аккаунт: отказ PGC-ACC-001 больше не правда — показать состояние службы (без нее — «Выключено»).</summary>
+    public void AccessGranted()
+    {
+        ClearRefusal();
+        ConnectionStatus status;
+        lock (_gate)
+        {
+            if (_service is not null || _status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.AccessRequired })
+            {
+                return;
+            }
+
+            status = _status = _status.MoveTo(ConnectionState.Off, _time.GetUtcNow());
+        }
+
+        StatusChanged?.Invoke(this, status);
+    }
+
+    private async Task DisconnectAsync(bool open, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _connectIntent);
         ClearRefusal();
         if (Current is { } service)
         {
-            await service.DisconnectAsync(cancellationToken).ConfigureAwait(false);
+            await (open ? service.DropProtectionAsync(cancellationToken) : service.DisconnectAsync(cancellationToken)).ConfigureAwait(false);
             return;
         }
 
@@ -183,8 +207,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default) =>
         Current?.PauseForCaptivePortalAsync(duration, cancellationToken) ?? Task.FromResult(false);
 
+    /// <summary>Без доступа к аккаунту защиту не вернуть — пауза кончается выключением защиты с открытой сетью.</summary>
     public Task ResumeProtectionAsync(CancellationToken cancellationToken = default) =>
-        Current?.ResumeProtectionAsync(cancellationToken) ?? Task.CompletedTask;
+        _mayConnect?.Invoke() == false ? DropProtectionAsync(cancellationToken)
+            : Current?.ResumeProtectionAsync(cancellationToken) ?? Task.CompletedTask;
 
     /// <summary>
     /// Проверки — у службы; ее нет — одна проверка «служба» с причиной «не найдена». Службу пользователя ради
@@ -446,9 +472,11 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     }
 
     /// <summary>
-    /// Входа нет — «Ошибка» с PGC-ACC-001, служба не вызывается. Защита, которую служба держит сейчас (подключена,
-    /// подключается), не трогается и не перекрывается ошибкой: ее выключает сервис аккаунта при отзыве доступа.
-    /// Из «Выключено» — через «Подключение», как <see cref="Missing"/>; из «Блокировки» и «Ошибки» блок остается, каким был.
+    /// Входа нет — отказ с PGC-ACC-001, служба не вызывается. Защита, которую служба держит сейчас (подключена,
+    /// подключается), не трогается и не перекрывается отказом: ее выключает сервис аккаунта (<c>AccountService</c>),
+    /// пока доступа нет. Из «Выключено» — «Ошибка» через «Подключение», как <see cref="Missing"/>; из «Ошибки» — та же
+    /// «Ошибка» с этим кодом. «Блокировка» остается «Блокировкой» с кодом причины: иначе щит в трее перестал бы снимать
+    /// блок и только подключал бы снова — а подключение без входа опять отказ.
     /// </summary>
     private void Refuse(string serverId, ConnectionMode mode)
     {
@@ -465,7 +493,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
                     status = connecting.MoveTo(ConnectionState.Error, now) with { Protection = ProtectionChecks.For(ConnectionState.Off) };
                     break;
                 case ConnectionState.Blocked:
-                    status = (current with { ErrorCode = ErrorCodes.AccessRequired }).MoveTo(ConnectionState.Error, now);
+                    status = current with { ErrorCode = ErrorCodes.AccessRequired };
                     break;
                 case ConnectionState.Error:
                     status = current with { ErrorCode = ErrorCodes.AccessRequired, Since = now };

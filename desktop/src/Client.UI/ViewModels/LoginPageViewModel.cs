@@ -151,6 +151,11 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         {
             outcome = await _account.SignInAsync(Email, Password, IsRecovery ? null : Code, IsRecovery ? Code : null).ConfigureAwait(true);
         }
+        catch (Exception e)
+        {
+            // Исключение из команды уронило бы окно (глобального обработчика нет): любой сбой — строкой под формой.
+            outcome = LoginOutcome.Failed(e is IOException or OperationCanceledException ? AccountFailure.Network : AccountFailure.Server);
+        }
         finally
         {
             // Пароль и код не держим дольше запроса, почта остается для следующей попытки.

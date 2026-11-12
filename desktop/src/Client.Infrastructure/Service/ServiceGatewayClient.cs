@@ -554,13 +554,17 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         return ConnectAsync(server, cancellationToken);
     }
 
-    public async Task DisconnectAsync(CancellationToken cancellationToken = default)
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) => DisconnectAsync(Disconnect(_settings()), cancellationToken);
+
+    public Task DropProtectionAsync(CancellationToken cancellationToken = default) => DisconnectAsync(Drop(), cancellationToken);
+
+    private async Task DisconnectAsync(V1.DisconnectRequest request, CancellationToken cancellationToken)
     {
         Interlocked.Increment(ref _connectIntent);
         _allowOtherVpn = false;
         try
         {
-            await _client.DisconnectAsync(Disconnect(_settings()), cancellationToken: cancellationToken).ConfigureAwait(false);
+            await _client.DisconnectAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
             Apply((await _client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore());
         }
         catch (RpcException)
@@ -571,6 +575,9 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
     /// <summary>Запрос отключения: в строгом режиме защита выключается, а сеть остается закрытой.</summary>
     public static V1.DisconnectRequest Disconnect(AppSettings settings) => new() { KeepBlock = ConnectionController.KeepsBlock(settings) };
+
+    /// <summary>Запрос выключения без доступа к аккаунту: без <c>keep_block</c> — служба снимает и блок строгого режима.</summary>
+    public static V1.DisconnectRequest Drop() => new() { KeepBlock = false };
 
     /// <summary>Пауза началась — в ответе службы есть срок; службы нет — паузы нет.</summary>
     public async Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)

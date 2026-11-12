@@ -316,7 +316,7 @@ public sealed class CheckPageTests : WindowHarness
 
         Files.Name.ShouldBe("private-gateway-report-20261024-1542.txt");
         var report = Files.Text.ShouldNotBeNull();
-        report.ShouldContain("Отчет проверки Private Gateway Client 0.1");
+        report.ShouldMatch(@"^Отчет проверки Private Gateway Client \d+\.\d+", "версия — из сборки, тест не привязан к номеру выпуска");
         report.ShouldContain("Состояние: Выключено");
         report.ShouldContain("[Виден] IP для сайтов — *** — ваш реальный IP");
         report.ShouldNotContain("198.51.100.7", customMessage: "реальный IP пользователя в отчет не попадает");

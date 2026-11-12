@@ -206,6 +206,28 @@ public sealed class AccountApiTests
         error.Message.ShouldNotContain(Token);
     }
 
+    public static TheoryData<string> BrokenBodies => new() { "http", "io", "tls" };
+
+    [Theory]
+    [MemberData(nameof(BrokenBodies))]
+    public async Task Connection_dropped_while_the_body_is_read_is_a_network_failure_and_does_not_escape(string kind)
+    {
+        // Заголовки 200 пришли, тело оборвалось: .NET бросает HttpIOException — это IOException, а не HttpRequestException.
+        Exception broken = kind switch
+        {
+            "http" => new HttpIOException(HttpRequestError.ResponseEnded, "ended " + Token),
+            "io" => new IOException("reset " + Token),
+            _ => new System.Security.Authentication.AuthenticationException("tls " + Token),
+        };
+        var api = Api(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(new BrokenStream(LoginReply[..40], broken)) });
+
+        var login = await Should.ThrowAsync<AccountApiException>(() => api.LoginAsync(new LoginRequest(Email, Password, "123456", null, Device), Ct));
+        var check = await Should.ThrowAsync<AccountApiException>(() => api.StatusAsync(Token, Ct));
+
+        (login.Failure, check.Failure).ShouldBe((AccountFailure.Network, AccountFailure.Network));
+        login.Message.ShouldNotContain(Token);
+    }
+
     [Fact]
     public async Task Silent_site_is_a_network_failure_after_the_timeout()
     {
@@ -299,6 +321,59 @@ public sealed class AccountApiTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
             Task.FromResult(respond(request));
+    }
+
+    /// <summary>Тело ответа: начало приходит, потом соединение рвется.</summary>
+    private sealed class BrokenStream(string start, Exception error) : Stream
+    {
+        private readonly byte[] _start = Encoding.UTF8.GetBytes(start);
+        private bool _sent;
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_sent)
+            {
+                throw error;
+            }
+
+            _sent = true;
+            var n = Math.Min(count, _start.Length);
+            Array.Copy(_start, 0, buffer, offset, n);
+            return n;
+        }
+
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (_sent)
+            {
+                return ValueTask.FromException<int>(error);
+            }
+
+            _sent = true;
+            var n = Math.Min(buffer.Length, _start.Length);
+            _start.AsSpan(0, n).CopyTo(buffer.Span);
+            return ValueTask.FromResult(n);
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
     /// <summary>Сайт принял соединение и молчит.</summary>

@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Secrets;
+using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Account;
 
 namespace PrivateGateway.Client.Application.Account;
@@ -20,6 +21,13 @@ namespace PrivateGateway.Client.Application.Account;
 /// <see cref="AccessLost"/> с <see cref="AccountMessage.Revoked"/>. Сеть, срок ожидания и 5xx — не отзыв: окно может
 /// быть без сети из-за блока при обрыве, и до <see cref="ExpiresAt"/> действует последний подтвержденный срок.
 /// Срок прошел без подтверждения — выход так же, с <see cref="AccountMessage.Expired"/>.
+/// </para>
+/// <para>
+/// Без доступа защиты нет (решение 634): выход, отзыв и истечение выключают ее вместе с блоком при обрыве и строгим
+/// режимом (<see cref="IGatewayClient.DropProtectionAsync"/>) — иначе вход не дошел бы до сайта. Защиту, которую
+/// установленная служба держит без окна (защита при загрузке после обновления, токен не прочитан, выход без связи со
+/// службой), окно выключает так же: после <see cref="Start"/> — при каждом новом состоянии службы и на каждом тике
+/// таймера, но одно и то же состояние — один раз.
 /// </para>
 /// <para>
 /// Подключение без доступа не начинается (<see cref="MayConnect"/>, код PGC-ACC-001 ставит клиент службы).
@@ -53,6 +61,9 @@ public sealed partial class AccountService : IDisposable
     private string? _token;
     private SavedAccount? _saved;
     private DateTimeOffset? _attempted;
+
+    // Состояние службы, которое уже просили выключить: не просить снова, пока служба его не сменила.
+    private (ConnectionState State, DateTimeOffset Since)? _dropped;
 
     public AccountService(IAccountApi api, IAccountStore store, IDeviceIdentity device, ISecretStore secrets, IGatewayClient gateway,
         TimeProvider time, ILogger<AccountService>? logger = null, AccountOptions? options = null)
@@ -119,10 +130,15 @@ public sealed partial class AccountService : IDisposable
         }
 
         _context = SynchronizationContext.Current;
-        _timer = _time.CreateTimer(_ => Post(), null, TimeSpan.Zero, Tick);
+        _gateway.StatusChanged += OnGatewayStatus;
+        _timer = _time.CreateTimer(_ => Post(RunAsync), null, TimeSpan.Zero, Tick);
     }
 
-    public void Dispose() => _timer?.Dispose();
+    public void Dispose()
+    {
+        _gateway.StatusChanged -= OnGatewayStatus;
+        _timer?.Dispose();
+    }
 
     /// <summary>
     /// Войти: почта, пароль и ровно одно из кода 2FA и резервного кода. Хранилище секретов ОС недоступно — отказ
@@ -166,6 +182,14 @@ public sealed partial class AccountService : IDisposable
             LogSignInFailed(_logger, e.Failure, e.StatusCode);
             return LoginOutcome.Failed(e.Failure, e.RetryAfter);
         }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Клиент сайта переводит сбои в причины; что-то другое — не ронять окно, а сказать «нет связи» или «сбой».
+            var failure = e is IOException ? AccountFailure.Network : AccountFailure.Server;
+            LogSignInFailed(_logger, failure, null);
+            LogUnexpected(_logger, e.GetType().Name);
+            return LoginOutcome.Failed(failure);
+        }
 
         var now = _time.GetUtcNow();
         var saved = new SavedAccount(login.Status.ExpiresAt, login.Status.User.Email, login.Status.User.DisplayName, login.Status.Device.Name, now);
@@ -182,15 +206,17 @@ public sealed partial class AccountService : IDisposable
             return LoginOutcome.Failed(AccountFailure.Store);
         }
 
-        (_token, _saved, _attempted, LastMessage) = (login.Token, saved, now, AccountMessage.None);
+        (_token, _saved, _attempted, _dropped, LastMessage) = (login.Token, saved, now, null, AccountMessage.None);
         LogSignedIn(_logger);
+        // Отказ PGC-ACC-001, показанный до входа, больше не правда — снять его до того, как окно уйдет на главную.
+        _gateway.AccessGranted();
         Changed?.Invoke(this, EventArgs.Empty);
         return LoginOutcome.Success;
     }
 
     /// <summary>
-    /// Выйти: выключить защиту, забыть вход (токен и сведения; uid устройства остается) и сказать сайту
-    /// (<c>logout</c>; сеть недоступна — не важно, токен здесь уже стерт).
+    /// Выйти: выключить защиту вместе с блоком (и строгого режима), забыть вход (токен и сведения; uid устройства
+    /// остается) и сказать сайту (<c>logout</c>; сеть недоступна — не важно, токен здесь уже стерт).
     /// </summary>
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
@@ -200,7 +226,7 @@ public sealed partial class AccountService : IDisposable
         }
 
         var token = _token;
-        await DisconnectAsync().ConfigureAwait(true);
+        await DropAsync().ConfigureAwait(true);
         Forget();
         LastMessage = AccountMessage.None;
         LogSignedOut(_logger);
@@ -248,6 +274,11 @@ public sealed partial class AccountService : IDisposable
         {
             // Нет связи или сайт сбоит — не отзыв: действует последний подтвержденный срок.
             LogCheckFailed(_logger, e.Failure, e.StatusCode);
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Непредвиденный сбой клиента сайта — тоже не отзыв; срок истечения проверяется ниже как обычно.
+            LogUnexpected(_logger, e.GetType().Name);
         }
         finally
         {
@@ -349,14 +380,28 @@ public sealed partial class AccountService : IDisposable
         }
     }
 
-    // Доступ потерян: забыть вход, показать экран входа с причиной и выключить защиту.
+    // Доступ потерян: забыть вход, показать экран входа с причиной и выключить защиту вместе с блоком.
     private async Task LoseAsync(AccountMessage message)
     {
         Forget();
         LastMessage = message;
         Changed?.Invoke(this, EventArgs.Empty);
         AccessLost?.Invoke(this, message);
-        await DisconnectAsync().ConfigureAwait(true);
+        await DropAsync().ConfigureAwait(true);
+    }
+
+    // Доступа нет, а служба держит защиту или блок: выключить и открыть сеть. Одно состояние службы — одна просьба:
+    // служба не ответила — просить снова, когда она пришлет новое состояние, а не на каждом тике.
+    private async Task HoldOffAsync()
+    {
+        var status = _gateway.Status;
+        if (HasAccess || ConnectionController.NetworkIsOpen(status) || _dropped == (status.State, status.Since))
+        {
+            return;
+        }
+
+        LogProtectionWithoutAccess(_logger, status.State);
+        await DropAsync().ConfigureAwait(true);
     }
 
     private void Forget()
@@ -386,12 +431,15 @@ public sealed partial class AccountService : IDisposable
         }
     }
 
-    // Выключить защиту при любом пути службы: установленная могла держать ее без окна.
-    private async Task DisconnectAsync()
+    // Выключить защиту и открыть сеть при любом пути службы: установленная могла держать ее без окна, а строгий режим
+    // оставил бы сеть закрытой, и вход не дошел бы до сайта.
+    private async Task DropAsync()
     {
+        var status = _gateway.Status;
+        _dropped = (status.State, status.Since);
         try
         {
-            await _gateway.DisconnectAsync().ConfigureAwait(true);
+            await _gateway.DropProtectionAsync().ConfigureAwait(true);
         }
         catch (Exception e) when (e is InvalidOperationException or IOException or TimeoutException)
         {
@@ -399,15 +447,24 @@ public sealed partial class AccountService : IDisposable
         }
     }
 
-    private void Post()
+    private void Post(Func<Task> work)
     {
         if (_context is { } context)
         {
-            context.Post(_ => _ = RunAsync(), null);
+            context.Post(_ => _ = work(), null);
         }
         else
         {
-            _ = RunAsync();
+            _ = work();
+        }
+    }
+
+    // Новое состояние службы — из любого потока; решать в контексте окна, как и все остальное.
+    private void OnGatewayStatus(object? sender, ConnectionStatus status)
+    {
+        if (!HasAccess)
+        {
+            Post(HoldOffAsync);
         }
     }
 
@@ -418,6 +475,8 @@ public sealed partial class AccountService : IDisposable
         {
             await CheckAsync().ConfigureAwait(true);
         }
+
+        await HoldOffAsync().ConfigureAwait(true);
     }
 
     private static string? Blank(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
@@ -452,4 +511,10 @@ public sealed partial class AccountService : IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Аккаунт: защиту выключить не удалось: {Reason}")]
     private static partial void LogDisconnectFailed(ILogger logger, string reason);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Аккаунт: доступа нет, а служба держит защиту ({State}) — защита выключается, сеть открывается")]
+    private static partial void LogProtectionWithoutAccess(ILogger logger, ConnectionState state);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Аккаунт: непредвиденный сбой клиента сайта: {Reason}")]
+    private static partial void LogUnexpected(ILogger logger, string reason);
 }

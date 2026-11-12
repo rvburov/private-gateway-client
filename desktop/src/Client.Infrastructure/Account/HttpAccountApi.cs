@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Headers;
+using System.Net.Sockets;
+using System.Security.Authentication;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -115,6 +117,12 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         catch (HttpRequestException e)
         {
             // Текст исключения HTTP наружу не идет: только причина.
+            throw new AccountApiException(AccountFailure.Network, innerException: e);
+        }
+        catch (Exception e) when (e is IOException or AuthenticationException or SocketException)
+        {
+            // Связь оборвалась после заголовков, пока читалось тело (HttpIOException — это IOException, а не
+            // HttpRequestException): та же причина «нет связи», исключение из входа не выходит.
             throw new AccountApiException(AccountFailure.Network, innerException: e);
         }
     }

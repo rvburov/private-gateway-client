@@ -118,6 +118,18 @@ public interface IGatewayClient
     Task DisconnectAsync(CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Выключить защиту и открыть сеть — и в строгом режиме, где <see cref="DisconnectAsync"/> оставляет блок без туннеля.
+    /// Так защиту выключает потеря доступа к аккаунту сайта и выход из него (решение 634): без доступа защиты быть не может,
+    /// а закрытая сеть не пустила бы войти снова. Где строгого режима нет, — то же, что <see cref="DisconnectAsync"/>.
+    /// </summary>
+    Task DropProtectionAsync(CancellationToken cancellationToken = default) => DisconnectAsync(cancellationToken);
+
+    /// <summary>Доступ к аккаунту сайта появился (вход): снять с экрана прежний отказ PGC-ACC-001; отказа нет — ничего.</summary>
+    void AccessGranted()
+    {
+    }
+
+    /// <summary>
     /// Пауза для входа в Wi-Fi отеля или кафе: на <paramref name="duration"/> трафик идет мимо
     /// туннеля, чтобы открылась страница авторизации сети; потом защита возвращается сама. Только по
     /// явному действию пользователя. Защита выключена — паузе нечего снимать, ничего не происходит.

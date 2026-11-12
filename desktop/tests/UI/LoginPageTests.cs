@@ -6,9 +6,12 @@ using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Account;
+using PrivateGateway.Client.Core.Settings;
+using PrivateGateway.Client.Infrastructure.Service;
 using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI;
 using PrivateGateway.Client.UI.Localization;
@@ -386,6 +389,97 @@ public sealed class LoginPageTests : WindowHarness
         shell.CurrentPage.ShouldBeSameAs(page);
         (page.Email, page.Password, page.Code, page.HasError).ShouldBe(("", "", "", false), "после выхода форма пустая");
         Find<Border>(window, "LoginNotice").IsVisible.ShouldBeFalse("выход сам — без причины");
+    }
+
+    [AvaloniaTheory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task In_strict_mode_sign_out_and_revocation_open_the_network_for_the_next_sign_in(bool revoked)
+    {
+        var (_, shell) = Open(account: true, signedIn: true);
+        Service<SettingsService>().Update(s => s with
+        {
+            Mode = ConnectionMode.Vpn,
+            KillSwitch = true,
+            Protection = s.Protection with { StrictMode = true },
+        });
+        await Connect(shell);
+
+        if (revoked)
+        {
+            AccountApi.StatusFailure = AccountFailure.InvalidCredentials;
+            await Service<AccountService>().CheckAsync();
+        }
+        else
+        {
+            await Service<AccountService>().SignOutAsync();
+        }
+
+        WaitFor(() => shell.CurrentKey == Pages.Login);
+        (shell.Protection.Status.State, shell.Protection.Status.StrictBlock).ShouldBe((ConnectionState.Off, false),
+            "без доступа защиты нет, а закрытая строгим режимом сеть не пустила бы вход до сайта");
+    }
+
+    public static TheoryData<string> UnexpectedFailures => new() { "io", "canceled", "other" };
+
+    [AvaloniaTheory]
+    [MemberData(nameof(UnexpectedFailures))]
+    public void Unexpected_failure_while_signing_in_is_a_line_under_the_form_not_a_crash(string kind)
+    {
+        AccountApi.LoginException = kind switch
+        {
+            "io" => new IOException("обрыв посреди ответа"),
+            "canceled" => new OperationCanceledException(),
+            _ => new InvalidDataException("непредвиденное"),
+        };
+        var (window, shell, page) = OpenLogin();
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => !page.IsBusy);
+
+        shell.CurrentKey.ShouldBe(Pages.Login);
+        Text(window, "LoginError").ShouldBe(kind == "other" ? "Сайт ответил ошибкой. Повторите позже." : "Нет связи с сайтом. Проверьте подключение к интернету и повторите.");
+        (page.Password, page.Code).ShouldBe(("", ""));
+    }
+
+    [AvaloniaFact]
+    public void Refusal_from_the_tray_before_sign_in_is_cleared_by_the_sign_in()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(account: true, gateway: sp => new GatewayHost(
+            new ServiceLocator([new ServiceAddress("installed", System: true)], _ => true, new NoLauncher(), Time),
+            _ => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed),
+            () => sp.GetRequiredService<SettingsService>().Current, Time,
+            mayConnect: () => sp.GetRequiredService<AccountService>().MayConnect));
+        var tray = Service<TrayViewModel>();
+        var off = (tray.Mark, tray.ToolTip);
+
+        var store = Service<SqliteServerCatalog>();
+        store.Add([LinkParser.Parse("trojan://fake@192.0.2.10:443#Проверка").Server!], null);
+        store.Choose(store.Servers.Single().Id);
+        Dispatcher.UIThread.RunJobs();
+
+        Item(tray.Menu, "Включить защиту").Command!.Execute(null);
+        WaitFor(() => shell.Protection.Status.ErrorCode == ErrorCodes.AccessRequired);
+        service.ShouldNotBeNull().Status.State.ShouldBe(ConnectionState.Off, "служба просьбы не получила");
+        (shell.Protection.Status.State, tray.Mark).ShouldBe((ConnectionState.Error, "Icon.Mark.Alert"));
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+
+        (shell.Protection.Status.State, shell.Protection.Status.ErrorCode).ShouldBe((ConnectionState.Off, null),
+            "вошли — «Нет доступа» на главной больше не правда");
+        (tray.Mark, tray.ToolTip).ShouldBe(off, "и в трее");
+    }
+
+    private static NativeMenuItem Item(NativeMenu menu, string header) =>
+        menu.Items.OfType<NativeMenuItem>().Single(i => i.Header == header);
+
+    private sealed class NoLauncher : IUserServiceLauncher
+    {
+        public bool Start() => false;
     }
 
     private (MainWindow Window, ShellViewModel Shell, LoginPageViewModel Page) OpenLogin(bool firstLaunch = false)

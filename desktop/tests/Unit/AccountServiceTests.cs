@@ -113,7 +113,7 @@ public sealed class AccountServiceTests : IDisposable
         (account.HasAccess, account.IsSignedIn, account.LastMessage, account.Email).ShouldBe((false, false, AccountMessage.Revoked, null));
         _secrets.Values.ShouldBeEmpty();
         _store.Saved.ShouldBeNull();
-        _gateway.Calls.ShouldBe(["disconnect"]);
+        _gateway.Calls.ShouldBe(["drop"], "защита выключается вместе с блоком: иначе в строгом режиме вход не дошел бы до сайта");
         _api.StatusTokens.ShouldBe([Token]);
         Service().HasAccess.ShouldBeFalse("и после перезапуска входа нет");
     }
@@ -140,7 +140,7 @@ public sealed class AccountServiceTests : IDisposable
         lost.ShouldBe([AccountMessage.Expired]);
         (account.HasAccess, account.LastMessage).ShouldBe((false, AccountMessage.Expired));
         _secrets.Values.ShouldBeEmpty();
-        _gateway.Calls.ShouldBe(["disconnect"], "срок прошел без подтверждения — защита выключается");
+        _gateway.Calls.ShouldBe(["drop"], "срок прошел без подтверждения — защита выключается, сеть открывается");
     }
 
     [Fact]
@@ -177,7 +177,7 @@ public sealed class AccountServiceTests : IDisposable
 
         await account.SignOutAsync(Ct);
 
-        _gateway.Calls.ShouldBe(["disconnect"]);
+        _gateway.Calls.ShouldBe(["drop"]);
         _api.LogoutTokens.ShouldBe([Token]);
         (_secrets.Values.Count, _store.Saved, account.HasAccess, account.LastMessage).ShouldBe((0, null, false, AccountMessage.None));
         _device.Uid.ShouldBe(uid);
@@ -196,6 +196,93 @@ public sealed class AccountServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Protection_held_by_the_service_without_a_sign_in_is_turned_off_once()
+    {
+        // Обновление с 0.1: установленная служба подняла защиту при загрузке, а входа еще нет.
+        var account = Service();
+        account.Start();
+        await WaitUntil(() => _gateway.Calls.Count > 0);
+
+        _gateway.Calls.ShouldBe(["drop"], "без доступа защиты нет — и блок снимается, чтобы вход дошел до сайта");
+
+        _gateway.Announce();
+        _time.Advance(TimeSpan.FromMinutes(5));
+        await Task.Delay(50, Ct);
+        _gateway.Calls.ShouldBe(["drop"], "служба не ответила — то же состояние не просить снова на каждом тике");
+
+        // Служба подняла защиту снова (новое состояние) — снова выключить.
+        _gateway.Status = _gateway.Status.MoveTo(ConnectionState.Reconnecting, _time.GetUtcNow());
+        _gateway.Announce();
+        await WaitUntil(() => _gateway.Calls.Count > 1);
+        _gateway.Calls.ShouldBe(["drop", "drop"]);
+    }
+
+    [Theory]
+    [InlineData(ConnectionState.Connected)]
+    [InlineData(ConnectionState.Blocked)]
+    public async Task Without_a_sign_in_the_first_state_of_the_service_holding_protection_turns_it_off(ConnectionState held)
+    {
+        var gateway = new ConnectionControllerTests.FakeGateway(ConnectionState.Off) { DropsToOff = true };
+        using var account = new AccountService(_api, _store, _device, _secrets, gateway, _time);
+        account.Start();
+        await Task.Delay(50, Ct);
+        gateway.Calls.ShouldBeEmpty("служба еще ничего не прислала — выключать нечего");
+
+        gateway.Status = gateway.Status.MoveTo(ConnectionState.Connecting, _time.GetUtcNow()).MoveTo(held, _time.GetUtcNow());
+        gateway.Announce();
+        await WaitUntil(() => gateway.Calls.Count > 0);
+        gateway.Calls.ShouldBe(["drop"], "сразу по состоянию службы, не дожидаясь тика таймера");
+        _time.Advance(TimeSpan.FromMinutes(3));
+        await Task.Delay(50, Ct);
+
+        gateway.Calls.ShouldBe(["drop"], "первое состояние службы с защитой — одно выключение, «Выключено» больше не трогается");
+        gateway.Status.State.ShouldBe(ConnectionState.Off);
+    }
+
+    [Fact]
+    public async Task With_valid_access_protection_of_the_service_is_left_alone()
+    {
+        await SignedIn();
+        var account = Service();
+        account.Start();
+        _gateway.Announce();
+        _time.Advance(TimeSpan.FromMinutes(3));
+        await Task.Delay(50, Ct);
+
+        account.HasAccess.ShouldBeTrue();
+        _gateway.Calls.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task Sign_in_clears_the_old_refusal_of_the_window()
+    {
+        var account = Service();
+        _gateway.Grants.ShouldBe(0);
+
+        await account.SignInAsync("user@example.com", "pw", "123456", null, Ct);
+
+        _gateway.Grants.ShouldBe(1, "отказ PGC-ACC-001 до входа больше не правда");
+    }
+
+    [Fact]
+    public async Task Unexpected_failure_of_the_site_client_is_an_answer_not_an_exception()
+    {
+        _api.Login = _ => throw new IOException("обрыв");
+        var account = Service();
+
+        (await account.SignInAsync("user@example.com", "pw", "123456", null, Ct)).Failure.ShouldBe(AccountFailure.Network);
+        _api.Login = _ => throw new InvalidDataException("что-то другое");
+        (await account.SignInAsync("user@example.com", "pw", "123456", null, Ct)).Failure.ShouldBe(AccountFailure.Server);
+        account.HasAccess.ShouldBeFalse();
+
+        _api.Login = null;
+        await account.SignInAsync("user@example.com", "pw", "123456", null, Ct);
+        _api.Status = _ => throw new IOException("обрыв");
+        await account.CheckAsync(Ct);
+        (account.HasAccess, account.IsChecking).ShouldBe((true, false), "сбой проверки — не отзыв");
+    }
+
+    [Fact]
     public void Saved_details_without_a_token_are_no_sign_in()
     {
         _store.Saved = new SavedAccount(Term, "user@example.com", null, "WORKSTATION", Start);
@@ -210,6 +297,9 @@ public sealed class AccountServiceTests : IDisposable
     {
         var account = Service(new AccountOptions(Required: false));
         account.Start();
+        _gateway.Announce();
+        await Task.Delay(50, Ct);
+        _gateway.Calls.ShouldBeEmpty("в демо-режиме защиту без входа не выключают");
 
         (account.IsRequired, account.HasAccess, account.MayConnect).ShouldBe((false, true, true));
         (await account.SignInAsync("user@example.com", "pw", "123456", null, Ct)).Succeeded.ShouldBeTrue();

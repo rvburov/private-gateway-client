@@ -610,6 +610,9 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Для 429 — <c>Retry-After</c>.</summary>
         public TimeSpan? RetryAfter { get; set; }
 
+        /// <summary>Сбой, который клиент сайта не перевел в причину (как обрыв посреди тела ответа); null — нет.</summary>
+        public Exception? LoginException { get; set; }
+
         /// <summary>Ответ на вход, который еще не пришел: тест завершает его сам.</summary>
         public TaskCompletionSource? PendingLogin { get; set; }
 
@@ -627,6 +630,11 @@ public abstract class WindowHarness : IDisposable
             if (LoginFailure is { } failure)
             {
                 throw new AccountApiException(failure, Code(failure), RetryAfter);
+            }
+
+            if (LoginException is { } error)
+            {
+                throw error;
             }
 
             return new AccountLogin(IssuedToken, new AccountStatus(Expires, new AccountUser(request.Email, DisplayName), new AccountDevice(DeviceName)));

@@ -366,7 +366,12 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
         Raise();
     }
 
-    public Task DisconnectAsync(CancellationToken cancellationToken = default)
+    public Task DisconnectAsync(CancellationToken cancellationToken = default) => Disconnect(keepBlock: true);
+
+    /// <summary>Как у службы: и в строгом режиме сеть открывается.</summary>
+    public Task DropProtectionAsync(CancellationToken cancellationToken = default) => Disconnect(keepBlock: false);
+
+    private Task Disconnect(bool keepBlock)
     {
         lock (_gate)
         {
@@ -377,7 +382,7 @@ public sealed class SimulatedGatewayClient(TimeProvider time, SettingsService? s
             }
 
             // Строгий режим: защита выключена, сеть закрыта — как у службы.
-            if (settings?.Current is { } current && ConnectionController.KeepsBlock(current))
+            if (keepBlock && settings?.Current is { } current && ConnectionController.KeepsBlock(current))
             {
                 if (_status is { StrictBlock: true, IsPaused: false })
                 {

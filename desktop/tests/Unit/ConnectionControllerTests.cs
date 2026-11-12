@@ -290,6 +290,26 @@ public class ConnectionControllerTests
             return Task.CompletedTask;
         }
 
+        /// <summary>Выключить защиту и открыть сеть; <see cref="DropsToOff"/> — служба отвечает «Выключено».</summary>
+        public Task DropProtectionAsync(CancellationToken cancellationToken = default)
+        {
+            Calls.Add("drop");
+            if (DropsToOff && Status.State != ConnectionState.Off)
+            {
+                Status = Status.MoveTo(ConnectionState.Off, Status.Since);
+                StatusChanged?.Invoke(this, Status);
+            }
+
+            return Task.CompletedTask;
+        }
+
+        public bool DropsToOff { get; set; }
+
+        /// <summary>Сколько раз окно сказало, что доступ к аккаунту появился.</summary>
+        public int Grants { get; private set; }
+
+        public void AccessGranted() => Grants++;
+
         public Task<bool> PauseForCaptivePortalAsync(TimeSpan duration, CancellationToken cancellationToken = default)
         {
             Calls.Add("pause:" + duration.TotalMinutes);
