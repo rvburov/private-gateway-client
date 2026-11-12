@@ -1,0 +1,113 @@
+name: Выпуск на сайт
+
+# После «Выпуска на GitHub» (тег v<SemVer>) отправляет установщики на сайт Private Gateway Web
+# (репозиторий rvburov/private-gateway-web, deploy/README.md, раздел 5): Windows — .msi, macOS — .dmg,
+# Linux — .deb, Android — .apk. Каждый файл сверяется с SHA256SUMS выпуска (APK — с его .sha256) и уходит
+# на сервер по SSH ключом, который может только принять выпуск (import-release.sh). Репозиторий закрытый:
+# участники скачивают файл с сайта после входа, ссылки GitHub им не нужны. Бета (версия с «-») не публикуется.
+# Секреты: WEBSITE_HOST, WEBSITE_USER, WEBSITE_KNOWN_HOSTS (как DEPLOY_* сайта), WEBSITE_SSH_KEY — секретная часть
+# ключа выпусков. Пока секретов нет, workflow пишет «сайт не настроен» и завершается успешно.
+# Запуск по workflow_run, а не по событию release: выпуск создает GITHUB_TOKEN, его события workflow не запускают.
+on:
+  workflow_run:
+    workflows: ["Выпуск на GitHub"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Тег выпуска, например v1.2.3
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: website-release
+  cancel-in-progress: false
+
+jobs:
+  website:
+    name: Сайт
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Проверить настройку сайта
+        id: config
+        env:
+          WEBSITE_HOST: ${{ secrets.WEBSITE_HOST }}
+          WEBSITE_USER: ${{ secrets.WEBSITE_USER }}
+          WEBSITE_SSH_KEY: ${{ secrets.WEBSITE_SSH_KEY }}
+          WEBSITE_KNOWN_HOSTS: ${{ secrets.WEBSITE_KNOWN_HOSTS }}
+        run: |
+          if [ -z "$WEBSITE_HOST" ] || [ -z "$WEBSITE_USER" ] || [ -z "$WEBSITE_SSH_KEY" ] || [ -z "$WEBSITE_KNOWN_HOSTS" ]; then
+            echo "Сайт не настроен: нет секретов WEBSITE_*. Отправка пропущена." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Файлы выпуска и проверка сумм
+        id: files
+        if: steps.config.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег «$TAG» — не v<SemVer>" >&2; exit 1; }
+          version="${TAG#v}"
+          if [[ "$version" == *-* ]]; then
+            echo "Бета $TAG на сайт не публикуется." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          dir="$RUNNER_TEMP/release"
+          mkdir -p "$dir"
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
+            --pattern SHA256SUMS --pattern "PrivateGateway-$version-win-x64.msi" \
+            --pattern "PrivateGateway-$version-osx-arm64.dmg" --pattern "*_${version}_amd64.deb" \
+            --pattern "PrivateGateway-$version-android.apk" --pattern "PrivateGateway-$version-android.apk.sha256"
+          : > "$RUNNER_TEMP/upload.txt"
+          for pair in "windows:PrivateGateway-$version-win-x64.msi" "macos:PrivateGateway-$version-osx-arm64.dmg" \
+            "linux:*_${version}_amd64.deb" "android:PrivateGateway-$version-android.apk"; do
+            platform="${pair%%:*}"
+            file="$(cd "$dir" && { compgen -G "${pair#*:}" || true; } | head -n 1)"
+            if [ -z "$file" ]; then
+              echo "Нет файла для $platform (${pair#*:}): на сайте останется прежний." | tee -a "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+            sum="$(sha256sum "$dir/$file" | cut -d' ' -f1)"
+            expected="$(awk -v n="$file" '{f=$2; sub(/^\*/, "", f)} f == n {print $1}' "$dir/SHA256SUMS" 2> /dev/null || true)"
+            [ -n "$expected" ] || expected="$(cut -d' ' -f1 "$dir/$file.sha256" 2> /dev/null || true)"
+            [ -n "$expected" ] || { echo "Для $file нет суммы ни в SHA256SUMS, ни в $file.sha256" >&2; exit 1; }
+            [ "$sum" = "$expected" ] || { echo "SHA-256 $file не совпал с выпуском" >&2; exit 1; }
+            printf '%s %s %s %s\n' "$platform" "$version" "$file" "$sum" >> "$RUNNER_TEMP/upload.txt"
+          done
+          [ -s "$RUNNER_TEMP/upload.txt" ] || { echo "В выпуске $TAG нет ни одного установщика для сайта" >&2; exit 1; }
+          echo "dir=$dir" >> "$GITHUB_OUTPUT"
+
+      - name: Отправить на сайт
+        if: steps.config.outputs.ready == 'true' && steps.files.outputs.skip != 'true'
+        env:
+          WEBSITE_HOST: ${{ secrets.WEBSITE_HOST }}
+          WEBSITE_USER: ${{ secrets.WEBSITE_USER }}
+          WEBSITE_SSH_KEY: ${{ secrets.WEBSITE_SSH_KEY }}
+          WEBSITE_KNOWN_HOSTS: ${{ secrets.WEBSITE_KNOWN_HOSTS }}
+          DIR: ${{ steps.files.outputs.dir }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$WEBSITE_SSH_KEY" > ~/.ssh/website_key
+          chmod 600 ~/.ssh/website_key
+          printf '%s\n' "$WEBSITE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          while read -r platform version file sum; do
+            ssh -i ~/.ssh/website_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
+              -o ConnectTimeout=20 -o ServerAliveInterval=30 \
+              "$WEBSITE_USER@$WEBSITE_HOST" "import $platform $version $file $sum" < "$DIR/$file"
+            echo "На сайте: $platform $version ($file)" >> "$GITHUB_STEP_SUMMARY"
+          done < "$RUNNER_TEMP/upload.txt"
+
+      - name: Удалить ключ
+        if: always()
+        run: rm -f ~/.ssh/website_key

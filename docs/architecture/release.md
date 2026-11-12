@@ -279,6 +279,16 @@ Actions закреплены полными SHA; соответствия upstre
 При обновлении сверяют новый коммит через GitHub API, обновляют SHA и поясняющий тег вместе. Gradle Wrapper проверяет
 `distributionSha256Sum` ZIP из `services.gradle.org` (9.8.2); проверка Maven-зависимостей Android остается отложенной.
 
+### Выпуск на сайт (2026-11-12)
+
+После успешного «Выпуска на GitHub» workflow `website.yml` («Выпуск на сайт») отправляет установщики на сайт
+Private Gateway Web (`rvburov/private-gateway-web`, его `deploy/README.md`, раздел 5): Windows — `.msi`, macOS —
+`.dmg`, Linux — `.deb`, Android — `.apk`. Каждый файл сверяется с `SHA256SUMS` выпуска (APK — с `.apk.sha256`) и
+передается по SSH ключом, который на сервере может только принять выпуск (`import-release.sh`: размер, SHA-256,
+внесение в каталог). Бета не публикуется. Репозиторий закрытый — участники скачивают файл с сайта после входа.
+Секреты `WEBSITE_HOST`, `WEBSITE_USER`, `WEBSITE_KNOWN_HOSTS`, `WEBSITE_SSH_KEY`; пока их нет, отправка
+пропускается. Повтор для любого выпуска — Actions → «Выпуск на сайт» → Run workflow с тегом.
+
 ## Подпись обновлений
 
 Обновление ставит служба — от SYSTEM или root, поэтому выпуск проверяется не только HTTPS GitHub, но и своей подписью:
