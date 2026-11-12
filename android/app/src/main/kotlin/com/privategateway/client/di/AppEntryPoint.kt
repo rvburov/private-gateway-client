@@ -1,5 +1,6 @@
 package com.privategateway.client.di
 
+import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.notify.ProtectionNotifier
@@ -30,4 +31,6 @@ interface AppEntryPoint {
     fun background(): SubscriptionBackground
 
     fun access(): NetworkAccess
+
+    fun account(): AccountRepository
 }

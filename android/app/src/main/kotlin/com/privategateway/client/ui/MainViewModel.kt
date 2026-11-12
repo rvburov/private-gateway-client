@@ -6,6 +6,7 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.privategateway.client.R
+import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.core.inspect.PhoneNetworkKind
 import com.privategateway.client.core.inspect.PublicAddress
 import com.privategateway.client.core.links.ImportBatch
@@ -233,6 +234,7 @@ class MainViewModel @Inject constructor(
     private val counters: ByteCounters,
     private val files: ImportFiles,
     private val hints: PhoneHintSource,
+    private val account: AccountRepository,
 ) : ViewModel() {
     private val webIp = MutableStateFlow(WebIp())
 
@@ -306,8 +308,11 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    /** Окно на экране: не пора ли обновить подписки (как при открытии окна у десктопа). */
-    fun windowShown() = updater.checkNow()
+    /** Окно на экране: не пора ли обновить подписки (как при открытии окна у десктопа) и спросить сайт о доступе. */
+    fun windowShown() {
+        updater.checkNow()
+        account.checkNow()
+    }
 
     private val importState = MutableStateFlow(ImportUi())
     val importing: StateFlow<ImportUi> = importState.asStateFlow()
@@ -361,10 +366,10 @@ class MainViewModel @Inject constructor(
      * «Подключаться при запуске» (доска 4): пора ли подключить, когда окно открыли заново. Да — настройка включена, защита
      * выключена и выбран сервер, к которому телефон подключается (Hysteria2 и TUIC ядру телефона не по силам). Сервер
      * выбирает только пользователь: без выбранного не подключаемся ни к какому. Подключает окно — разрешение на VPN
-     * спрашивает оно.
+     * спрашивает оно. Без входа в аккаунт сайта — нет: сначала экран входа (решение 619).
      */
     suspend fun connectOnLaunch(): Boolean {
-        if (!settings.connectOnLaunch.first()) {
+        if (!settings.connectOnLaunch.first() || !account.allowed()) {
             return false
         }
 

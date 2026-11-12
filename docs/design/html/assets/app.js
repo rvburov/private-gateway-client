@@ -14,7 +14,7 @@
     { file: "07-diagnostics.html", n: 7, title: "Проверка и логи", group: "Основные экраны" },
     { file: "08-tray.html", n: 8, title: "Меню в трее + подменю", group: "Основные экраны" },
     { file: "09-states.html", n: 9, title: "Состояния главного экрана", group: "Основные экраны" },
-    { file: "10-onboarding.html", n: 10, title: "Первый запуск", group: "Дополнительные экраны и сценарии" },
+    { file: "10-onboarding.html", n: 10, title: "Вход и первый запуск", group: "Дополнительные экраны и сценарии" },
     { file: "11-server-card.html", n: 11, title: "Карточка сервера", group: "Дополнительные экраны и сценарии" },
     { file: "12-subscriptions.html", n: 12, title: "Профили и списки серверов", group: "Дополнительные экраны и сценарии" },
     { file: "13-routing.html", n: 13, title: "Маршрутизация", group: "Дополнительные экраны и сценарии" },
@@ -108,7 +108,11 @@
     dnsBlock: "Запросы мимо туннеля отбрасываются, и LLMNR, NetBIOS: устройства сети — по адресу или .local.",
     dnsFake: "Быстрее, но может ломать некоторые программы.",
   };
+  // Имя устройства в карточке «Аккаунт» (доски 4, 18): десктоп — имя компьютера (Environment.MachineName),
+  // Android — Build.MANUFACTURER + " " + Build.MODEL; на iOS входа пока нет (mobile-parity.md).
+  var DEVICE_NAME = { windows: "DESKTOP-7K2Q4MA", macos: "MacBook-Air", linux: "work-laptop", android: "Google Pixel 8", ios: "iPhone" };
   Object.keys(OS).forEach(function (id) {
+    OS[id].device = DEVICE_NAME[id];
     Object.assign(OS[id], OS_GROUPS.desktop.indexOf(id) >= 0 ? DNS_DESKTOP : DNS_PHONE);
     // Заголовок сбоя: на телефоне службы нет — «Ошибка защиты» (DECISIONS.md, п. 21.5).
     OS[id].errorTitle = OS_GROUPS.desktop.indexOf(id) >= 0 ? "Ошибка службы" : "Ошибка защиты";
@@ -317,6 +321,7 @@
     wrap.appendChild(frame);
     applyOs(app, dev);
     app.querySelectorAll("[data-external-proxy]").forEach(function (form) { updateExternalProxy(form, false); });
+    app.querySelectorAll("[data-login]").forEach(updateLogin);
     app.querySelectorAll(".pg-island").forEach(function (island) { buildIsland(island, dev); });
     applyState(app, screen.dataset.state || "connected");
     updateExternalProxyPower(app);
@@ -453,6 +458,15 @@
       label.textContent = missing ? form.dataset.powerLabel : (STATE[app.dataset.state] || STATE.off).label;
       if (missing) { label.dataset.uiText = "externalProxy.power.label"; } else { delete label.dataset.uiText; }
     });
+  }
+
+  // Форма входа (доска 10): «Войти» доступна, когда заполнены почта, пароль и код — 6 цифр (pattern) или резервный
+  // код, как CanSignIn десктопа и LoginUi.ready Android. Введенное остается в полях страницы: макет его не отправляет и не хранит.
+  function updateLogin(form) {
+    var ready = Array.prototype.every.call(form.querySelectorAll("input[data-login-field]"), function (input) {
+      return input.pattern ? new RegExp("^(?:" + input.pattern + ")$").test(input.value) : input.value.trim().length > 0;
+    });
+    form.querySelectorAll("[data-login-submit]").forEach(function (submit) { submit.disabled = !ready; });
   }
 
   function saveExternalProxy(form) {
@@ -642,11 +656,14 @@
       scope.querySelectorAll("[data-ip-country]").forEach(function (flag) {
         flag.hidden = shown || !measured;
       });
-      // Значок — состояние, как MaskIcon программы: IP скрыт — глаз зачеркнут
+      // Пароль входа: поле показывает введенное или точки (тип поля), как «глаз» у пароля в программе
+      scope.querySelectorAll("input[data-reveal-input]").forEach(function (input) { input.type = shown ? "password" : "text"; });
+      // Значок — состояние, как MaskIcon программы: IP скрыт — глаз зачеркнут. У пароля — действие (data-icon-hidden/-shown)
       el.innerHTML = "";
-      el.appendChild(icon(shown ? "EyeOff" : "Eye", null, "2"));
-      el.firstChild.style.width = el.firstChild.style.height = "18px";
-      el.setAttribute("aria-label", shown ? "Показать IP" : "Скрыть IP");
+      el.appendChild(icon(shown ? (el.dataset.iconHidden || "EyeOff") : (el.dataset.iconShown || "Eye"), null, "2"));
+      el.firstChild.style.width = el.firstChild.style.height = (el.dataset.revealSize || "18") + "px";
+      if (el.hasAttribute("aria-pressed")) { el.setAttribute("aria-pressed", shown ? "false" : "true"); }
+      else { el.setAttribute("aria-label", shown ? "Показать IP" : "Скрыть IP"); }
     }
     if (el.matches("[data-remove]") && !el.matches("[data-confirm-yes]")) { remove(app, el.dataset.remove); }
     if (el.matches("[data-toast]")) { toast(app, el.dataset.toast); }
@@ -706,9 +723,15 @@
     document.addEventListener("input", function (e) {
       var form = e.target.closest && e.target.closest("[data-external-proxy]");
       if (form) { updateExternalProxy(form, true); }
+      var login = e.target.closest && e.target.closest("[data-login]");
+      if (login) { updateLogin(login); }
     });
     document.addEventListener("keydown", function (e) {
       if (e.key === "Escape" && lastApp) { lastApp._pending = null; closeAll(lastApp); }
+      // Enter в поле формы входа — «Войти», если она доступна
+      var login = e.key === "Enter" && e.target.matches && e.target.matches("input") && e.target.closest("[data-login]");
+      var submit = login && login.querySelector("[data-login-submit]");
+      if (submit && !submit.disabled) { e.preventDefault(); submit.click(); }
     });
   }
 

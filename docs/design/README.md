@@ -47,7 +47,7 @@ shared/specifications/
 
 | № | Экран | Исходник |
 |---|---|---|
-| 10 | [Первый запуск](screens/10-onboarding.png) | [`Onboarding.dc.html`](mockup/Onboarding.dc.html) |
+| 10 | [Первый запуск](screens/10-onboarding.png); в v1.1 — «Вход и первый запуск»: [вход в аккаунт сайта](html/boards/10-onboarding.html) до приветствия | [`Onboarding.dc.html`](mockup/Onboarding.dc.html) |
 | 11 | [Карточка сервера](screens/11-server-card.png) | [`ServerCard.dc.html`](mockup/ServerCard.dc.html) |
 | 12 | [Профили и подписки](screens/12-subscriptions.png) | [`Subscriptions.dc.html`](mockup/Subscriptions.dc.html) |
 | 13 | [Маршрутизация](screens/13-routing.png) | [`Routing.dc.html`](mockup/Routing.dc.html) |
@@ -89,6 +89,9 @@ shared/specifications/
 - Шрифты: десктоп — Inter и JetBrains Mono (встроены), телефоны — системные (Roboto / Roboto Mono, SF Pro / SF Mono). Размеры одинаковые.
 - Телефоны: тот же главный экран, ширина 360–440, поля 16, островок над полоской жестов. Остальные мобильные экраны устроены так же и отдельно не рисуются.
 - Уведомления системные; по умолчанию «Только важные».
+- Вход в аккаунт сайта Private Gateway Web (v1.1, 2026-11-12) — на десктопе и Android до любого экрана, и до приветствия
+  (доска 10); «Аккаунт» с «Выйти» — первая карточка «Настроек» (доска 4), вопрос перед выходом — доска 18, код PGC-ACC-001 —
+  доска 16. На iOS входа пока нет ([mobile-parity.md](mobile-parity.md)).
 - Кнопка обновления списка называется «Обновить серверы».
 
 ## Правила для новых блоков

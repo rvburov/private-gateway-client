@@ -14,7 +14,9 @@ namespace PrivateGateway.Client.Infrastructure.Service;
 /// PGC-SVC-001 (экран «Служба не запущена»), запись в журнале, проверок и пинга нет. Служба пропала
 /// (та же ошибка от нее самой) — следующее подключение ищет заново: могла появиться другая. Остался
 /// снимок системного прокси после сбоя службы пользователя — окно сразу поднимает ее, чтобы она
-/// вернула настройки: иначе браузеры остались бы направлены на неработающий прокси.
+/// вернула настройки: иначе браузеры остались бы направлены на неработающий прокси. Без действующего входа в
+/// аккаунт сайта подключение не начинается ни одним путем (кнопка, трей, уведомление, «Подключаться при запуске»):
+/// «Ошибка» с PGC-ACC-001, служба не вызывается и не запускается.
 /// </summary>
 public sealed class GatewayHost : IGatewayClient, IDisposable
 {
@@ -27,9 +29,15 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     private readonly SemaphoreSlim _finding = new(1, 1);
     private readonly IUserProxySettings? _userProxy;
     private readonly Func<ServerProfile?>? _selectedTarget;
+    private readonly Func<bool>? _mayConnect;
     private long _connectIntent;
     private IGatewayClient? _service;
     private ConnectionStatus _status;
+
+    // Отказ без доступа поверх состояния службы: служба его не знает, а показать его надо. Снимается, когда служба
+    // сменила состояние, при отключении и при разрешенном подключении.
+    private ConnectionStatus? _refused;
+    private ConnectionState _refusedFrom;
 
     /// <param name="locator">Где искать службу и как запустить службу пользователя.</param>
     /// <param name="attach">Клиент службы по найденному адресу.</param>
@@ -38,8 +46,10 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// <param name="staleProxy">Остался ли снимок системного прокси после сбоя службы пользователя.</param>
     /// <param name="userProxy">Системный прокси пользователя — для проверки «Другие VPN и прокси»; null — не смотреть.</param>
     /// <param name="selectedTarget">Текущая цель режима: не подключать старую цель после ожидания запуска службы.</param>
+    /// <param name="mayConnect">Есть ли действующий вход в аккаунт сайта; null — вход не нужен.</param>
     public GatewayHost(ServiceLocator locator, Func<ServiceAddress, IGatewayClient> attach, Func<AppSettings> settings, TimeProvider time,
-        Func<bool>? staleProxy = null, IUserProxySettings? userProxy = null, Func<ServerProfile?>? selectedTarget = null)
+        Func<bool>? staleProxy = null, IUserProxySettings? userProxy = null, Func<ServerProfile?>? selectedTarget = null,
+        Func<bool>? mayConnect = null)
     {
         _locator = locator;
         _attach = attach;
@@ -47,6 +57,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         _time = time;
         _userProxy = userProxy;
         _selectedTarget = selectedTarget;
+        _mayConnect = mayConnect;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
         if (locator.Find() is { } address)
         {
@@ -64,7 +75,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         {
             lock (_gate)
             {
-                return _service?.Status ?? _status;
+                return _refused ?? _service?.Status ?? _status;
             }
         }
     }
@@ -113,6 +124,13 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         ArgumentNullException.ThrowIfNull(server);
         var settings = _settings();
         var intent = Interlocked.Increment(ref _connectIntent);
+        if (_mayConnect?.Invoke() == false)
+        {
+            Refuse(server.Id, settings.Mode);
+            return;
+        }
+
+        ClearRefusal();
         var service = await EnsureAsync(launch: true, cancellationToken).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (intent != Volatile.Read(ref _connectIntent) || ProtectionSync.Affects(settings, _settings())
@@ -141,6 +159,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     public async Task DisconnectAsync(CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref _connectIntent);
+        ClearRefusal();
         if (Current is { } service)
         {
             await service.DisconnectAsync(cancellationToken).ConfigureAwait(false);
@@ -385,6 +404,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         {
             previous = _service;
             _service = service;
+            _refused = null;
         }
 
         if (previous is not null)
@@ -425,6 +445,66 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         StatusChanged?.Invoke(this, status);
     }
 
+    /// <summary>
+    /// Входа нет — «Ошибка» с PGC-ACC-001, служба не вызывается. Защита, которую служба держит сейчас (подключена,
+    /// подключается), не трогается и не перекрывается ошибкой: ее выключает сервис аккаунта при отзыве доступа.
+    /// Из «Выключено» — через «Подключение», как <see cref="Missing"/>; из «Блокировки» и «Ошибки» блок остается, каким был.
+    /// </summary>
+    private void Refuse(string serverId, ConnectionMode mode)
+    {
+        Log(JournalLevel.Warning, "Подключение не начато: нет действующего входа в аккаунт сайта (PGC-ACC-001)");
+        ConnectionStatus status;
+        lock (_gate)
+        {
+            var now = _time.GetUtcNow();
+            var current = (_service?.Status ?? _status) with { Mode = mode, ServerId = serverId };
+            switch (current.State)
+            {
+                case ConnectionState.Off:
+                    var connecting = current.MoveTo(ConnectionState.Connecting, now) with { ErrorCode = ErrorCodes.AccessRequired };
+                    status = connecting.MoveTo(ConnectionState.Error, now) with { Protection = ProtectionChecks.For(ConnectionState.Off) };
+                    break;
+                case ConnectionState.Blocked:
+                    status = (current with { ErrorCode = ErrorCodes.AccessRequired }).MoveTo(ConnectionState.Error, now);
+                    break;
+                case ConnectionState.Error:
+                    status = current with { ErrorCode = ErrorCodes.AccessRequired, Since = now };
+                    break;
+                default:
+                    return;
+            }
+
+            if (_service is null)
+            {
+                _status = status;
+            }
+            else
+            {
+                (_refused, _refusedFrom) = (status, _service.Status.State);
+            }
+        }
+
+        StatusChanged?.Invoke(this, status);
+    }
+
+    private void ClearRefusal()
+    {
+        ConnectionStatus? status = null;
+        lock (_gate)
+        {
+            if (_refused is not null)
+            {
+                _refused = null;
+                status = _service?.Status;
+            }
+        }
+
+        if (status is not null)
+        {
+            StatusChanged?.Invoke(this, status);
+        }
+    }
+
     /// <summary>Своя запись окна; та же, что последняя, не повторяется — проверки ищут службу при каждом открытии экрана.</summary>
     public void ReportSubscriptionAttempt(DownloadFailure? failure, int? statusCode, int attempt, TimeSpan elapsed, bool throughCore) =>
         Log(failure is null ? JournalLevel.Info : JournalLevel.Warning,
@@ -450,10 +530,28 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     // Прежняя служба отписана при смене, но событие, начатое ею в этот же момент в другом потоке, окну не нужно.
     private void OnStatusChanged(object? sender, ConnectionStatus status)
     {
-        if (ReferenceEquals(sender, Current))
+        if (!ReferenceEquals(sender, Current))
         {
-            StatusChanged?.Invoke(this, status);
+            return;
         }
+
+        lock (_gate)
+        {
+            if (_refused is { } refused)
+            {
+                // То же состояние службы — отказ остается на экране; служба сменила состояние сама — показать ее.
+                if (status.State == _refusedFrom)
+                {
+                    status = refused;
+                }
+                else
+                {
+                    _refused = null;
+                }
+            }
+        }
+
+        StatusChanged?.Invoke(this, status);
     }
 
     private void OnJournalAdded(object? sender, JournalEntry entry)

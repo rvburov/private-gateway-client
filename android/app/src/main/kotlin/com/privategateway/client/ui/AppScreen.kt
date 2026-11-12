@@ -18,14 +18,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.R
+import com.privategateway.client.account.AccountInfo
+import com.privategateway.client.account.AccountState
 import com.privategateway.client.inspect.CheckViewModel
 import com.privategateway.client.inspect.InspectorViewModel
+import com.privategateway.client.ui.account.AccountViewModel
+import com.privategateway.client.ui.account.LoginActions
+import com.privategateway.client.ui.account.LoginScreen
 import com.privategateway.client.ui.check.CheckActions
 import com.privategateway.client.ui.check.CheckReport
 import com.privategateway.client.ui.check.CheckScreen
@@ -62,6 +68,7 @@ import com.privategateway.client.ui.theme.PgTone
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.merge
+import java.time.Instant
 
 /** Разделы островка-меню: Главная · Серверы · [кнопка-щит] · Проверка · Настройки. */
 enum class Tab {
@@ -99,8 +106,13 @@ fun AppScreen(
     inspector: InspectorViewModel,
     checks: CheckViewModel,
     backups: BackupViewModel? = null,
+    account: AccountViewModel? = null,
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
+    // Вход в аккаунт сайта (решение 621): без [account] (тесты экранов) — вход есть; пока вход не прочитан (null) — пустой
+    // фон, чтобы экран входа не мелькал у тех, кто вошел.
+    val signedInState: AccountState? = if (account != null) account.state.collectAsStateWithLifecycle().value else SIGNED_IN
+    val signedIn = signedInState?.signedIn
     val importing by viewModel.importing.collectAsStateWithLifecycle()
     val core by viewModel.core.collectAsStateWithLifecycle()
     val query by servers.query.collectAsStateWithLifecycle()
@@ -178,9 +190,28 @@ fun AppScreen(
         }
     }
 
+    val links = LocalUriHandler.current
+
     CompositionLocalProvider(LocalPgToast provides toast) {
         PgBackground {
-            if (adding) {
+            if (signedIn == null) {
+                // Вход еще не прочитан: только фон.
+            } else if (!signedIn && account != null) {
+                val form by account.ui.collectAsStateWithLifecycle()
+                LoginScreen(
+                    form,
+                    signedInState?.notice,
+                    LoginActions(
+                        email = account::email,
+                        password = account::password,
+                        code = account::code,
+                        toggleRecovery = account::toggleRecovery,
+                        submit = account::login,
+                        site = { runCatching { links.openUri(it) } },
+                    ),
+                    actions.language,
+                )
+            } else if (adding) {
                 BackHandler(onBack = closeImport)
                 // Системный выбор картинки: приложению — только выбранная, без доступа ко всем фото.
                 val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { image ->
@@ -394,6 +425,9 @@ fun AppScreen(
                                     BackupPage(backups, back)
                                 }
                             },
+                            // Без модели входа (тесты экранов) карточки «Аккаунт» нет.
+                            account = if (account != null) signedInState?.info else null,
+                            onSignOut = { account?.logout() },
                         ) { back ->
                             val state by subscriptions.ui.collectAsStateWithLifecycle()
                             SubscriptionsScreen(
@@ -453,9 +487,12 @@ fun AppScreen(
             }
 
             // Пока открыта карточка сервера, подсказку показывает ее лист: окно листа закрывает собой это окно.
-            if (adding || welcome || tab != Tab.Servers || card == null) {
+            if (signedIn != true || adding || welcome || tab != Tab.Servers || card == null) {
                 PgToast(toast, Modifier.align(Alignment.TopCenter))
             }
         }
     }
 }
+
+/** Без модели входа (тесты экранов) окно считает, что вход есть. */
+private val SIGNED_IN = AccountState(AccountInfo("", "", "", Instant.MAX, null))

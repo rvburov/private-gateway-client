@@ -5,6 +5,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.privategateway.client.account.AccountStore
+import com.privategateway.client.account.DeviceAccountSource
+import com.privategateway.client.core.account.AccountSource
 import com.privategateway.client.core.inspect.ProbeRunner
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.KeystoreSecretBox
@@ -66,6 +69,16 @@ object AppModule {
     @Singleton
     fun settings(@ApplicationContext context: Context): DataStore<Preferences> =
         PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("settings") }
+
+    /**
+     * Вход в аккаунт сайта и uid устройства — свой файл мимо настроек: резервная копия настроек его не берет, а бэкап и перенос
+     * Android выключены (решение 617).
+     */
+    @Provides
+    @Singleton
+    @AccountStore
+    fun accountStore(@ApplicationContext context: Context): DataStore<Preferences> =
+        PreferenceDataStoreFactory.create { context.preferencesDataStoreFile("account") }
 }
 
 @Module
@@ -119,4 +132,7 @@ abstract class BindingsModule {
 
     @Binds
     abstract fun reportFiles(files: DeviceReportFiles): ReportFiles
+
+    @Binds
+    abstract fun accountSource(source: DeviceAccountSource): AccountSource
 }

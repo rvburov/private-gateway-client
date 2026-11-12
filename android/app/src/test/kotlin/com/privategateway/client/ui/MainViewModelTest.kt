@@ -20,6 +20,16 @@ import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.R
+import com.privategateway.client.account.AccountRepository
+import com.privategateway.client.core.account.AccountDevice
+import com.privategateway.client.core.account.AccountSession
+import com.privategateway.client.core.account.AccountSource
+import com.privategateway.client.core.account.AccountUser
+import com.privategateway.client.core.account.DeviceInfo
+import com.privategateway.client.core.account.LoginResult
+import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.account.AccountError
+import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.inspect.PhoneHints
 import com.privategateway.client.inspect.PhoneNetworkSource
@@ -174,6 +184,18 @@ class MainViewModelTest {
         }
     }
 
+    /** Сайт аккаунта без сети: вход засеян, сайт не спрашивается. */
+    private object NoSite : AccountSource {
+        override suspend fun login(email: String, password: String, code: String?, recovery: String?, device: DeviceInfo): LoginResult =
+            LoginResult.Failed(AccountError.Network)
+
+        override suspend fun status(token: String): StatusResult = StatusResult.Unreachable
+
+        override suspend fun logout(token: String) = Unit
+    }
+
+    private lateinit var account: AccountRepository
+
     private class FakeEngine : CoreEngine {
         override fun start(configJson: String, protect: (Int) -> Boolean, dns: String): String? = null
 
@@ -190,6 +212,20 @@ class MainViewModelTest {
     fun create() {
         Dispatchers.setMain(UnconfinedTestDispatcher())
         settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
+        // Вход в аккаунт сайта есть (засеян, как в проверках на устройстве): без него подключение не начинается (решение 619).
+        account = AccountRepository(
+            PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("account.preferences_pb") },
+            FakeBox(),
+            NoSite,
+            control,
+            monitor,
+            TunnelJournal(),
+        )
+        runBlocking {
+            account.seedForTests(
+                AccountSession("tok", java.time.Instant.now().plusSeconds(86_400), AccountUser("user@example.com", ""), AccountDevice(1, "Pixel")),
+            )
+        }
         model = MainViewModel(
             monitor,
             servers,
@@ -205,6 +241,7 @@ class MainViewModelTest {
             counters,
             files,
             { PhoneHints(otherVpn = otherVpn) },
+            account,
         )
     }
 
@@ -215,6 +252,7 @@ class MainViewModelTest {
         // хранилище и база. cancel() только начинает отмену DataStore: его IO-акторы еще могут закрывать файл и будить
         // продолжения. Дожидаемся их до закрытия Room, сброса Main и удаления TemporaryFolder следующим правилом JUnit.
         runBlocking { model.viewModelScope.coroutineContext.job.cancelAndJoin() }
+        account.close()
         runBlocking { scope.coroutineContext.job.cancelAndJoin() }
         database.close()
         Dispatchers.resetMain()
@@ -579,6 +617,12 @@ class MainViewModelTest {
         wait { settings.select(null) }
         assertFalse(wait { model.connectOnLaunch() }, "сервер выбирает только пользователь")
         assertEquals(0, control.connects, "подключает окно, а не модель")
+
+        // Без входа в аккаунт сайта — сначала экран входа, подключения при запуске нет (решение 619).
+        wait { settings.select(phone) }
+        assertTrue(wait { model.connectOnLaunch() })
+        wait { account.logout() }
+        assertFalse(wait { model.connectOnLaunch() }, "без входа в аккаунт не подключается")
     }
 
     @Test

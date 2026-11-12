@@ -498,6 +498,41 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
 .log { font-family: var(--font-mono); font-size: var(--pg-type-caption-size); line-height: 1.5; padding: 10px 12px; border-radius: var(--pg-radius-input);
   background: var(--pg-color-surface-inset); white-space: pre-wrap; overflow-wrap: anywhere; }
 
+/* ---------- Вход в аккаунт сайта (доска 10): до любого экрана, без островка (LoginPage программы) ---------- */
+/* Язык сверху справа; знак 72 в белой плашке, как на приветствии; заголовок и пояснение по центру; подпись над полем;
+   «глаз» внутри поля пароля; ссылка смены кода; ошибка строкой; «Войти» во всю ширину; шаг между блоками — 12 */
+.pg-page.login { display: flex; flex-direction: column; padding: 20px calc(var(--side) + 4px) 24px; }
+.pg-frame.is-phone .pg-page.login { padding-bottom: 42px; }
+.login-lang { align-self: flex-end; display: grid; grid-template-columns: 1fr 1fr; flex: none; }
+.login-lang .segment { min-width: 48px; }
+.login-logo { width: 72px; height: 72px; flex: none; align-self: center; margin-top: var(--pg-space-s); display: grid; place-items: center;
+  border-radius: var(--pg-radius-panel); background: var(--pg-color-surface-solid); border: 1px solid var(--pg-color-line-border);
+  box-shadow: var(--pg-shadow-card); color: var(--pg-color-accent-base); }
+.login-title { margin-top: var(--pg-space-card); text-align: center; }
+.login-text { align-self: center; max-width: 360px; margin: var(--pg-space-l) 0 0; text-align: center; line-height: 20px;
+  color: var(--pg-color-text-secondary); }
+.login-notice { margin-top: var(--pg-space-card); padding: var(--pg-space-m) var(--pg-space-l); align-items: flex-start;
+  border-radius: var(--pg-radius-input); font-size: var(--pg-type-small-size); line-height: 18px; }
+.login-notice .pg-icon { color: var(--pg-color-status-warning-text); }
+.login-field { display: flex; flex-direction: column; gap: var(--pg-space-xs); margin-top: var(--pg-space-l); min-width: 0; }
+.login-field.first { margin-top: 20px; }
+.login-label { font-weight: var(--pg-type-body-strong-weight); }
+/* Пароль: поле с «глазом» справа внутри рамки (InnerRightContent), рамка фокуса — у всего поля */
+.login-secret { padding: 0 var(--pg-space-xxs) 0 var(--pg-space-l); gap: var(--pg-space-xxs); }
+.login-secret input { flex: 1; min-width: 0; height: 42px; border: 0; padding: 0; background: transparent; outline: none; }
+.login-secret .btn-icon { width: 36px; height: 36px; color: var(--pg-color-text-muted); }
+.login-hint { margin-top: var(--pg-space-xs); }
+.login-toggle { align-self: flex-start; margin-top: var(--pg-space-xs); min-height: var(--pg-layout-touch-target); text-align: left; }
+.login-error { margin: var(--pg-space-l) 0 0; color: var(--pg-color-status-danger-text); font-size: var(--pg-type-small-size); }
+.login-submit { width: 100%; height: 50px; margin-top: var(--pg-space-l); flex: none; }
+.login-site { width: 100%; height: 46px; margin-top: var(--pg-space-l); flex: none; }
+
+/* Карточка «Аккаунт» в «Настройках» (доски 4, 18): строка настройки — имя, почта, это устройство; справа «Выйти» с вопросом */
+.account-card { margin: 0 var(--side) 18px; padding: 4px var(--pg-space-card); min-width: 0; }
+.account-card > .setting { padding: 13px 0; gap: 16px; }
+.account-card > .setting .setting-text { gap: 3px; }
+.account-card .account-signout { flex: none; }
+
 /* Индикатор ожидания (крутится) */
 .spinner { width: 18px; height: 18px; border-radius: 50%; border: 2.5px solid var(--pg-color-accent-tint); border-top-color: var(--pg-color-accent-base);
   animation: pg-spin .9s linear infinite; flex: none; }

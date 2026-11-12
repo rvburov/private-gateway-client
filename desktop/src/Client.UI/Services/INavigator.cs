@@ -11,6 +11,12 @@ public static class Pages
     public const string Settings = "settings";
     public const string Add = "add";
 
+    /// <summary>
+    /// Вход в аккаунт сайта (доска 10, перед приветствием) — без островка: без действующего входа другие экраны не
+    /// открываются (решение 621).
+    /// </summary>
+    public const string Login = "login";
+
     /// <summary>Первый запуск (доска 10) — без островка.</summary>
     public const string Welcome = "welcome";
 

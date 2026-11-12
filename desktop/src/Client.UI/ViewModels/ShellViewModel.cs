@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
@@ -14,6 +15,11 @@ namespace PrivateGateway.Client.UI.ViewModels;
 /// Окно: текущая страница, островок навигации с кнопкой-щитом и всплывающая подсказка. Новая ошибка
 /// «Служба не запущена» или «Нужны права администратора» открывает экран ошибки (доска 16). О пропавшем или
 /// изменившемся выбранном сервере говорит центр уведомлений: всплывашкой в окне или уведомлением ОС.
+/// <para>
+/// Ворота входа (решение 621): без действующего входа в аккаунт сайта (<see cref="AccountService"/>) — только экран входа,
+/// до приветствия первого запуска и любого другого экрана; переход на другую страницу ведет на него же. Вошли — дальше
+/// приветствие или главная; доступ потерян (отозван, срок истек) или выход в «Настройках» — снова вход с пустой формой.
+/// </para>
 /// </summary>
 public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisposable
 {
@@ -21,6 +27,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     private readonly Dictionary<string, object> _created = [];
     private readonly IGatewayClient _gateway;
     private readonly SettingsService _settings;
+    private readonly AccountService _account;
     private bool _disposed;
 
     public ShellViewModel(
@@ -47,18 +54,22 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
         Func<INavigator, RoutingPageViewModel> routingPage,
         Func<INavigator, BackupPageViewModel> backupPage,
         Func<INavigator, AboutPageViewModel> aboutPage,
+        Func<INavigator, LoginPageViewModel> loginPage,
         Func<INavigator, WelcomePageViewModel> welcomePage,
         Func<INavigator, ProblemPageViewModel> problemPage,
         IGatewayClient gateway,
-        SettingsService settings)
+        SettingsService settings,
+        AccountService account)
     {
         ArgumentNullException.ThrowIfNull(gateway);
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(account);
         ArgumentNullException.ThrowIfNull(mainPage);
         ArgumentNullException.ThrowIfNull(serversPage);
         ArgumentNullException.ThrowIfNull(settingsPage);
         _gateway = gateway;
         _settings = settings;
+        _account = account;
         Protection = protection;
         Toast = toast;
         Overlay = overlay;
@@ -84,14 +95,16 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
             [Pages.Profiles] = () => subscriptionsPage(this),
             [Pages.Backup] = () => backupPage(this),
             [Pages.About] = () => aboutPage(this),
+            [Pages.Login] = () => loginPage(this),
             [Pages.Welcome] = () => welcomePage(this),
             [Pages.Problem] = () => problemPage(this),
         };
 
-        // Первый запуск — приветствие (доска 10), дальше — сразу главная.
-        Navigate(settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome);
+        // Без входа — экран входа; первый запуск — приветствие (доска 10), дальше — сразу главная.
+        Navigate(NeedsLogin ? Pages.Login : StartPage);
 
         gateway.StatusChanged += OnStatusChanged;
+        account.Changed += OnAccountChanged;
         protection.ConfigureTargetRequested += OnConfigureTarget;
     }
 
@@ -104,6 +117,7 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
 
         _disposed = true;
         _gateway.StatusChanged -= OnStatusChanged;
+        _account.Changed -= OnAccountChanged;
         Protection.ConfigureTargetRequested -= OnConfigureTarget;
         // Страницы созданы фабриками ActivatorUtilities, поэтому контейнер ими не владеет: завершает их окно.
         foreach (var page in _created.Values.OfType<IDisposable>().Distinct())
@@ -123,6 +137,49 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
         }
     });
 
+    // Вошли, вышли, доступ потерян: сервис зовет из потока окна, но таймер проверки — из своего контекста.
+    private void OnAccountChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+    {
+        if (!_disposed)
+        {
+            ApplyAccess();
+        }
+    });
+
+    /// <summary>
+    /// Входа нет, а окно не на входе — на вход: диалог (он о защите, а ее уже нет) закрывается безопасным ответом, форма
+    /// пустая. Вход есть, а окно на входе — дальше, и ошибку службы, которую закрывал вход, показать теперь.
+    /// </summary>
+    private void ApplyAccess()
+    {
+        if (NeedsLogin)
+        {
+            if (CurrentKey != Pages.Login)
+            {
+                if (Overlay.HasDialog)
+                {
+                    Overlay.DismissCommand.Execute(null);
+                }
+
+                Navigate(Pages.Login);
+            }
+
+            return;
+        }
+
+        if (CurrentKey == Pages.Login)
+        {
+            Navigate(StartPage);
+            ShowProblem(_gateway.Status);
+        }
+    }
+
+    /// <summary>Вход нужен, а действующего нет (в демо-режиме вход не нужен).</summary>
+    private bool NeedsLogin => _account.IsRequired && !_account.HasAccess;
+
+    /// <summary>Куда после входа: первый запуск — приветствие, дальше — главная.</summary>
+    private string StartPage => _settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome;
+
     private void OnConfigureTarget(object? sender, EventArgs e) => Navigate(
         _settings.Current.Mode == ConnectionMode.Proxy ? Pages.Settings : Pages.Add);
 
@@ -137,8 +194,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     [NotifyPropertyChangedFor(nameof(IsHome), nameof(IsServers), nameof(IsCheck), nameof(IsSettings), nameof(IsIslandVisible))]
     public partial string CurrentKey { get; private set; } = Pages.Home;
 
-    /// <summary>Островок скрыт на экранах-шагах: «Добавить профиль» (доска 3) и первый запуск (доска 10).</summary>
-    public bool IsIslandVisible => CurrentKey is not (Pages.Add or Pages.Welcome);
+    /// <summary>Островок скрыт на экранах-шагах: «Добавить профиль» (доска 3), вход и первый запуск (доска 10).</summary>
+    public bool IsIslandVisible => CurrentKey is not (Pages.Add or Pages.Login or Pages.Welcome);
 
     private string _previousKey = Pages.Home;
 
@@ -154,6 +211,10 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     /// <summary>Подстраницы настроек подсвечивают в островке «Настройки».</summary>
     public bool IsSettings => CurrentKey is Pages.Settings or Pages.Protection or Pages.Core or Pages.Routing or Pages.Profiles or Pages.Backup or Pages.About;
 
+    /// <summary>
+    /// Открыть страницу. Экран входа — только пока действующего входа нет: без него любая страница — вход (трей,
+    /// уведомления, «Подключить»), с ним вход — сразу дальше (приветствие или главная), в том числе по «Назад».
+    /// </summary>
     [RelayCommand]
     public void Navigate(string page)
     {
@@ -161,6 +222,12 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
         if (!_pages.TryGetValue(page, out var factory))
         {
             throw new ArgumentOutOfRangeException(nameof(page), page, "Нет такой страницы");
+        }
+
+        if (NeedsLogin != (page == Pages.Login))
+        {
+            page = NeedsLogin ? Pages.Login : StartPage;
+            factory = _pages[page];
         }
 
         if (!_created.TryGetValue(page, out var viewModel))
@@ -171,6 +238,11 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
         else if (viewModel is ProblemPageViewModel problem)
         {
             _ = problem.RefreshServiceAccessAsync();
+        }
+        else if (viewModel is LoginPageViewModel login && CurrentKey != Pages.Login)
+        {
+            // Снова на вход после выхода или потери доступа — с пустой формой.
+            login.Reset();
         }
 
         Overlay.CloseSheet();
@@ -189,11 +261,17 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     private DateTimeOffset? _problemSince;
 
     /// <summary>
-    /// Новая ошибка службы — экран ошибки, на каком бы экране ни был. «Работает другой VPN» — и в «Блокировке»: в
-    /// строгом режиме и при загрузке отказ сеть не открывает.
+    /// Новая ошибка службы — экран ошибки, на каком бы экране ни был, кроме входа. «Работает другой VPN» — и в
+    /// «Блокировке»: в строгом режиме и при загрузке отказ сеть не открывает.
     /// </summary>
     private void ShowProblem(ConnectionStatus status)
     {
+        // Вход не уводится на экран ошибки: ошибку покажет вход, когда пропустит дальше (ApplyAccess).
+        if (CurrentKey == Pages.Login)
+        {
+            return;
+        }
+
         // Подтвержденный ответ установленной службы снимает старый экран ошибки. Начальный Off окна не считается ответом.
         if (CurrentPage is ProblemPageViewModel { Code: ErrorCodes.ServiceNotRunning or ErrorCodes.AdminRequired }
             && _gateway.Service == ServiceKind.Installed && _gateway.HasReceivedStatus && status.ErrorCode is null)

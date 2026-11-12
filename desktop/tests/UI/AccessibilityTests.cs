@@ -42,6 +42,42 @@ public sealed class AccessibilityTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Login_controls_have_names()
+    {
+        var (window, shell) = Open(firstLaunch: true, account: true);
+        var login = shell.CurrentPage.ShouldBeOfType<LoginPageViewModel>();
+
+        Unnamed(window).ShouldBeEmpty("экран входа");
+        Find<TextBox>(window, "LoginCode").GetValue(AutomationProperties.NameProperty).ShouldBe("Код 2FA");
+
+        // Резервный код и ошибка с кнопкой сайта — свои элементы.
+        AccountApi.LoginFailure = Core.Account.AccountFailure.DeviceLimit;
+        login.ToggleRecoveryCommand.Execute(null);
+        (login.Email, login.Password, login.Code) = ("anna@example.com", "pw", "abcd-efgh");
+        login.SignInCommand.Execute(null);
+        WaitFor(() => login.CanOpenDevices);
+
+        Find<TextBox>(window, "LoginCode").GetValue(AutomationProperties.NameProperty).ShouldBe("Резервный код");
+        Unnamed(window).ShouldBeEmpty("экран входа с ошибкой");
+    }
+
+    [AvaloniaFact]
+    public void Account_card_and_sign_out_dialog_have_names()
+    {
+        var (window, shell) = Open(account: true, signedIn: true);
+        shell.NavigateCommand.Execute(Pages.Settings);
+        Dispatcher.UIThread.RunJobs();
+        Unnamed(window).ShouldBeEmpty("«Настройки» с карточкой «Аккаунт»");
+
+        ((SettingsPageViewModel)shell.CurrentPage!).SignOutCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+        shell.Overlay.HasDialog.ShouldBeTrue();
+        Unnamed(window).ShouldBeEmpty("вопрос о выходе");
+        shell.Overlay.DismissCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    [AvaloniaFact]
     public void Sheets_and_dialogs_have_names_too()
     {
         var (window, shell) = Open();

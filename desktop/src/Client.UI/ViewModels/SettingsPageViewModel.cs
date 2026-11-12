@@ -1,6 +1,7 @@
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -11,8 +12,8 @@ using PrivateGateway.Client.UI.Services;
 namespace PrivateGateway.Client.UI.ViewModels;
 
 /// <summary>
-/// «Настройки» по макету (доска 4): раздел «Основные» сохраняется сразу при каждом изменении,
-/// «Для опытных» — ссылки на подробные экраны.
+/// «Настройки» по макету (доска 4): карточка «Аккаунт» с выходом, раздел «Основные» сохраняется сразу при каждом
+/// изменении, «Для опытных» — ссылки на подробные экраны.
 /// </summary>
 public sealed partial class SettingsPageViewModel : ObservableObject, IDisposable
 {
@@ -20,17 +21,21 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
     private readonly INavigator _navigator;
     private readonly IGatewayClient _gateway;
     private readonly OverlayViewModel _overlay;
+    private readonly AccountService _account;
 
     public SettingsPageViewModel(SettingsService settings, INavigator navigator, IGatewayClient gateway, OverlayViewModel overlay,
-        IExternalProxyStore externalProxy)
+        IExternalProxyStore externalProxy, AccountService account)
     {
         ArgumentNullException.ThrowIfNull(settings);
+        ArgumentNullException.ThrowIfNull(account);
         _settings = settings;
         _navigator = navigator;
         _gateway = gateway;
         _overlay = overlay;
+        _account = account;
         ExternalProxy = new ExternalProxyEditorViewModel(settings, externalProxy);
         settings.Changed += OnSettingsChanged;
+        account.Changed += OnAccountChanged;
         Loc.Instance.LanguageChanged += OnLanguageChanged;
         Advanced =
         [
@@ -45,6 +50,37 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
     }
 
     private AppSettings S => _settings.Current;
+
+    // ── Аккаунт ──────────────────────────────────────────────────────────────
+
+    /// <summary>Карточка «Аккаунт»: вход нужен и сохранен; в демо-режиме входа нет.</summary>
+    public bool HasAccount => _account.IsRequired && _account.Email is not null;
+
+    /// <summary>Имя участника на сайте, без имени — почта.</summary>
+    public string? AccountName => string.IsNullOrWhiteSpace(_account.DisplayName) ? _account.Email : _account.DisplayName;
+
+    /// <summary>Почта под именем; если имени нет, почта уже в первой строке.</summary>
+    public string? AccountEmail => AccountName == _account.Email ? null : _account.Email;
+
+    public bool HasAccountEmail => AccountEmail is not null;
+
+    /// <summary>«Это устройство: …» — имя устройства на сайте.</summary>
+    public string? AccountDevice => string.IsNullOrEmpty(_account.DeviceName) ? null : Loc.Instance.Format("settings.account.device", _account.DeviceName);
+
+    public bool HasAccountDevice => AccountDevice is not null;
+
+    /// <summary>
+    /// «Выйти» — после подтверждения: защита выключается, вход стирается, сайт забывает устройство; окно открывает вход с
+    /// пустой формой.
+    /// </summary>
+    [RelayCommand]
+    private async Task SignOutAsync()
+    {
+        if (await SafetyDialogs.ConfirmSignOutAsync(_overlay).ConfigureAwait(true))
+        {
+            await _account.SignOutAsync().ConfigureAwait(true);
+        }
+    }
 
     // ── Режим ────────────────────────────────────────────────────────────────
 
@@ -188,9 +224,12 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 
     private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(string.Empty);
 
+    private void OnAccountChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => OnPropertyChanged(string.Empty));
+
     public void Dispose()
     {
         _settings.Changed -= OnSettingsChanged;
+        _account.Changed -= OnAccountChanged;
         Loc.Instance.LanguageChanged -= OnLanguageChanged;
         ExternalProxy.Dispose();
         GC.SuppressFinalize(this);

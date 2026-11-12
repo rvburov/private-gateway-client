@@ -14,8 +14,8 @@ class TunnelStatusTest {
 
     @Test
     fun `codes are the desktop ones and have texts in both languages`() {
-        val codes = listOf(TunnelErrors.CORE_FAILED, TunnelErrors.NO_SERVER, TunnelErrors.UNSUPPORTED, TunnelErrors.SERVER_NOT_RESPONDING, TunnelErrors.OTHER_VPN)
-        assertEquals(listOf("PGC-SVC-002", "PGC-SVC-003", "PGC-SVC-005", "PGC-NET-001", "PGC-NET-010"), codes)
+        val codes = listOf(TunnelErrors.CORE_FAILED, TunnelErrors.NO_SERVER, TunnelErrors.UNSUPPORTED, TunnelErrors.SERVER_NOT_RESPONDING, TunnelErrors.OTHER_VPN, TunnelErrors.NO_ACCESS)
+        assertEquals(listOf("PGC-SVC-002", "PGC-SVC-003", "PGC-SVC-005", "PGC-NET-001", "PGC-NET-010", "PGC-ACC-001"), codes)
         val localization = File(System.getProperty("testdata") ?: error("Нет пути к shared/testdata")).resolve("../specifications/localization")
         for (language in listOf("ru", "en")) {
             val texts = Json.parseToJsonElement(localization.resolve("$language.json").readText()).jsonObject

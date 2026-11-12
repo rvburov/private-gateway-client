@@ -16,7 +16,7 @@ public class ErrorCodesTests
         var described = Regex.Matches(catalog, @"^\| `(PGC-[A-Z]+-\d{3})` \|", RegexOptions.Multiline).Select(m => m.Groups[1].Value).ToList();
 
         codes.ShouldBeUnique("номер кода не переиспользуется");
-        codes.ShouldAllBe(code => Regex.IsMatch(code, @"^PGC-(SVC|NET)-\d{3}$"));
+        codes.ShouldAllBe(code => Regex.IsMatch(code, @"^PGC-(SVC|NET|ACC)-\d{3}$"));
         described.ShouldBe(codes, ignoreOrder: true, "каждая константа — строка каталога, и каждая строка — константа");
     }
 

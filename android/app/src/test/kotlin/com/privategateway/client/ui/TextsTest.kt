@@ -5,11 +5,13 @@ import android.os.LocaleList
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.R
+import com.privategateway.client.core.account.AccountError
 import com.privategateway.client.core.servers.ProxyProtocol
 import com.privategateway.client.core.servers.ServerItem
 import com.privategateway.client.core.servers.TransportKind
 import com.privategateway.client.core.servers.TransportSecurity
 import com.privategateway.client.core.subscriptions.FailureReason
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import org.junit.Test
@@ -56,5 +58,29 @@ class TextsTest {
         assertTrue(text.contains("Основная") && text.contains("403"), text)
         assertTrue(!text.contains("%") && !text.contains("{"), "подстановки заполнены: $text")
         assertEquals(context.getString(R.string.subs_blocked_off), Message(R.string.subs_blocked_off).render(context))
+    }
+
+    @Test
+    fun `every sign-in error has its own text`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val texts = AccountError.entries.map { Texts.account(it) }
+        assertEquals(AccountError.entries.size, texts.toSet().size, "у каждой причины свой текст")
+        assertEquals(R.string.account_error_invalid, Texts.account(AccountError.Invalid))
+        assertEquals(R.string.account_error_code, Texts.account(AccountError.Code))
+        assertEquals(R.string.account_error_setupRequired, Texts.account(AccountError.SetupRequired))
+        assertEquals(R.string.account_error_deviceLimit, Texts.account(AccountError.DeviceLimit))
+        assertEquals(R.string.account_error_rateLimited, Texts.account(AccountError.RateLimited))
+        assertEquals(R.string.account_error_validation, Texts.account(AccountError.Validation))
+        assertEquals(R.string.account_error_network, Texts.account(AccountError.Network))
+        assertEquals(R.string.account_error_server, Texts.account(AccountError.Server))
+        assertEquals(R.string.account_error_store, Texts.account(AccountError.Store))
+        val minutes = context.getString(Texts.account(AccountError.RateLimited), "3")
+        assertTrue("3" in minutes && "{" !in minutes && "%" !in minutes, minutes)
+    }
+
+    @Test
+    fun `no access has its own error text`() {
+        assertEquals(R.string.error_PGC_ACC_001, Texts.error(TunnelErrors.NO_ACCESS))
+        assertEquals(R.string.error_PGC_ACC_001, Texts.error("PGC-ACC-001"))
     }
 }

@@ -137,6 +137,10 @@
   экран — живой: тумблеры и «Открыть» задают свои вопросы. Остальные показывают каждый вопрос открытым поверх своей страницы
   (страницы целиком, как на досках 2, 4, 5, 6, 12, 14); после ответа страница видна, и вопрос задается снова тем же нажатием.
   «Удалить» убирает сервер из списка и группу из списков серверов, «Снять защиту» выключает защиту.</p>
+<p class="pg-board-note">«Выйти из аккаунта?» (карточка «Аккаунт» в «Настройках», десктоп и Android, решение 627): значок — красное
+  предупреждение, безопасный выбор «Остаться» — основная кнопка (на нее Esc и щелчок мимо), «Выйти» — белая с красной рамкой. Выход
+  выключает защиту, сообщает сайту о выходе (нет сети — не важно), стирает токен и сведения входа (uid устройства остается) и открывает
+  вход с пустыми полями (доска 10). На iOS входа пока нет (решение 624) — экрана нет.</p>
 
 <div class="pg-screens">
   <!-- ===================== Защита и утечки · нажмите, чтобы спросить ===================== -->
@@ -436,6 +440,84 @@
           </div>
         </div>
     <div class="dialog" id="prx-ks" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
+          <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+          <div class="t-status t-wrap">Выключить блок при обрыве?</div>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>
+          <div class="dialog-actions stack">
+            <button class="btn-primary" data-close>Оставить включенным</button>
+            <button class="btn-secondary danger" data-confirm-yes>Выключить</button>
+          </div>
+        </div>
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+  <!-- ===================== Настройки · «Выйти» из аккаунта ===================== -->
+  <!-- Выход выключает защиту и удаляет устройство из аккаунта сайта: безопасное «Остаться» — основная кнопка, «Выйти» ведет
+       ко входу с пустыми полями (доска 10). На iOS входа пока нет (решение 624) — экрана нет. -->
+  <section class="pg-screen" data-os="desktop android" data-state="connected" data-caption="Настройки · «Выйти» из аккаунта">
+    <div class="pg-page">
+      <div class="t-h1" style="margin: 18px var(--side) 12px">Настройки</div>
+      <span class="t-overline dl-label first" data-ui-text="settings.account.title">Аккаунт</span>
+      <div class="card account-card">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title pg-ellipsis">Анна</span>
+            <span class="setting-caption pg-ellipsis">anna@example.org</span>
+            <span class="setting-caption t-wrap" data-ui-text="settings.account.device">Это устройство: <span data-os-word="device">DESKTOP-7K2Q4MA</span></span>
+          </div>
+          <button class="btn-secondary danger account-signout" data-open="signout-dlg" data-ui-text="settings.account.signOut">Выйти</button>
+        </div>
+      </div>
+      <span class="t-overline dl-label first">Основные</span>
+      <div class="card dl-card dl-set" style="padding: 4px 16px">
+        <div class="setting stacked">
+          <span class="t-strong">Режим</span>
+          <div class="segments" role="radiogroup" aria-label="Режим">
+            <button class="segment on" data-mode="vpn" role="radio" aria-checked="true">VPN · вся система</button>
+            <button class="segment" data-mode="proxy" data-confirm="signout-prx" role="radio" aria-checked="false">Только прокси</button>
+          </div>
+          <span class="t-caption t-wrap" data-when="vpn">Весь трафик <span data-os-word="name">Windows</span> идет через туннель: браузеры, терминал, Git, фоновые службы. Системный прокси можно отдельно включить в «Подключении и ядре».</span>
+          <span class="t-caption t-wrap" data-when="proxy">Прокси не покрывает весь трафик: часть программ пойдет напрямую. Блок при обрыве недоступен.</span>
+        </div>
+        <div class="setting" data-ks-row><div class="setting-text"><span class="setting-title" id="signout-ks-title"><span data-os="desktop" data-ui-text="desktop.settings.ks.title">Блокировать интернет при обрыве VPN</span><span data-os="phone">Блок при обрыве (Kill Switch)</span></span><span class="setting-caption"><span data-os="desktop" data-ui-text="desktop.settings.ks.text">Если связь с VPN пропадет, интернет остановится до восстановления защиты.</span><span data-os="phone">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span></span></div><button class="switch on" role="switch" aria-checked="true" aria-labelledby="signout-ks-title" data-confirm-off="signout-ks"></button></div>
+        <div class="setting" data-os="desktop"><div class="setting-text"><span class="setting-title" id="signout-autostart-title" data-ui-text="settings.autostart.title">Запускать вместе с <span data-os-word="name">Windows</span></span><span class="setting-caption" data-ui-text="settings.autostart.text">Клиент автоматически запустится в фоне при входе в <span data-os-word="name">Windows</span>.</span></div><button class="switch on" role="switch" aria-checked="true" aria-labelledby="signout-autostart-title"></button></div>
+        <div class="setting"><div class="setting-text"><span class="setting-title" data-ui-text="settings.connectOnLaunch.title">Подключаться при запуске</span><span class="setting-caption"><span data-os="desktop" data-ui-text="desktop.settings.connectOnLaunch.text">Автоматически подключаться к выбранному серверу.</span><span data-os="phone">Только к выбранному вами серверу</span></span></div><button class="switch" role="switch" aria-checked="false" aria-label="Подключаться при запуске"></button></div>
+        <div class="setting" data-os="desktop"><div class="setting-text"><span class="setting-title" data-ui-text="settings.tray.title">Фоновый режим</span><span class="setting-caption" data-ui-text="settings.tray.text">При закрытии окна прокси-клиент продолжит работать.</span></div><button class="switch on" role="switch" aria-checked="true" aria-label="Фоновый режим"></button></div>
+        <div class="setting stacked" style="padding: 13px 0"><div class="setting-text"><span class="setting-title">Уведомления</span><span class="setting-caption t-wrap" data-when="notify-all">Важные и обычные: подключение, серверы, обновления</span><span class="setting-caption t-wrap" data-when="notify-important">Обрыв, блокировка интернета, вход в Wi-Fi, сбой службы</span><span class="setting-caption t-wrap" data-when="notify-off">Только значок в трее меняет цвет. Окно и трей покажут все</span></div><div class="segments" role="radiogroup" aria-label="Уведомления"><button class="segment" data-notify="all" role="radio" aria-checked="false">Все</button><button class="segment on" data-notify="important" role="radio" aria-checked="true">Только важные</button><button class="segment" data-notify="off" role="radio" aria-checked="false">Выключены</button></div></div>
+        <div class="setting"><span class="setting-title pg-grow">Язык</span><div class="segments" style="width: 190px" role="radiogroup" aria-label="Язык"><button class="segment on" role="radio" aria-checked="true">Русский</button><button class="segment" role="radio" aria-checked="false">English</button></div></div>
+      </div>
+      <span class="t-overline dl-label" style="margin-top: 18px">Для опытных</span>
+      <div class="card dl-card" style="padding: 4px 16px">
+        <button class="link-row" data-nav="05-protection.html"><span class="row-icon"><i data-icon="Adv.Protection" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Защита и утечки</span><span class="t-caption pg-ellipsis">Kill Switch, DNS, IPv6, локальная сеть</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="06-advanced.html"><span class="row-icon"><i data-icon="Adv.Core" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Подключение и ядро</span><span class="t-caption pg-ellipsis">Ядро, TUN, MTU, Mux, фрагментация, uTLS</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="13-routing.html"><span class="row-icon"><i data-icon="Adv.Routing" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Маршрутизация</span><span class="t-caption pg-ellipsis">Правила, раздельное туннелирование</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="12-subscriptions.html"><span class="row-icon"><i data-icon="Adv.Profiles" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Профили и списки серверов</span><span class="t-caption pg-ellipsis">Серверы из ссылок и списков серверов</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="07-diagnostics.html"><span class="row-icon"><i data-icon="Adv.Check" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Проверка и логи</span><span class="t-caption pg-ellipsis">Проверка утечек, журнал, отчет</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="14-backup.html"><span class="row-icon"><i data-icon="Adv.Backup" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">Резервная копия</span><span class="t-caption pg-ellipsis">Экспорт и импорт настроек</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+        <button class="link-row" data-nav="15-about.html"><span class="row-icon"><i data-icon="Adv.About" data-stroke="1.9"></i></span><span class="pg-stack pg-gap-2 pg-grow"><span class="t-strong">О программе</span><span class="t-caption pg-ellipsis">Версии, обновление, лицензии</span></span><i data-icon="ChevronRight" class="chevron"></i></button>
+      </div>
+      <div class="t-caption pg-center" style="margin: 14px var(--side) 0">Private Gateway Client 0.1.2 · служба: работает · ядро: Xray-core</div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="scrim is-open" data-close style="z-index: 65"></div>
+    <div class="dialog is-open" id="signout-dlg" role="dialog" aria-modal="true" aria-label="Выйти из аккаунта?">
+          <div class="dialog-icon danger"><i data-icon="Warning" data-stroke="1.9" data-size="26"></i></div>
+          <div class="t-status t-wrap" data-ui-text="dialog.signOut.title">Выйти из аккаунта?</div>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.signOut.text">Защита выключится, а это устройство будет удалено из аккаунта. Чтобы снова пользоваться Private Gateway, войдите.</p>
+          <div class="dialog-actions stack">
+            <button class="btn-primary" data-close data-ui-text="dialog.signOut.keep">Остаться</button>
+            <button class="btn-secondary danger" data-nav="10-onboarding.html" data-ui-text="dialog.signOut.confirm">Выйти</button>
+          </div>
+        </div>
+    <div class="dialog" id="signout-prx" role="dialog" aria-modal="true" aria-label="Перейти в режим прокси?">
+          <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
+          <div class="t-status t-wrap">Перейти в режим прокси?</div>
+          <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)"><span data-os="phone">Через сервер пойдут только браузеры и программы, которые берут системный прокси. Остальной трафик — терминал, Git, фоновые службы — пойдет напрямую, блок при обрыве работать не будет. Если защита включена, подключение сразу перезапустится в режиме прокси.</span><span data-os="desktop" data-ui-text="externalProxy.dialog.text">После перехода блок при обрыве работать не будет. Прокси охватывает только использующие его приложения. Текущее подключение сменится на внешний прокси; если он еще не настроен, подключение завершится. VPN-сервер и его настройки сохранятся.</span></p>
+          <div class="dialog-actions stack">
+            <button class="btn-primary" data-close>Оставить VPN</button>
+            <button class="btn-secondary danger" data-confirm-yes>Перейти на прокси</button>
+          </div>
+        </div>
+    <div class="dialog" id="signout-ks" role="dialog" aria-modal="true" aria-label="Выключить блок при обрыве?">
           <div class="dialog-icon warning"><i data-icon="Shield" data-detail="Mark.Alert" data-stroke="1.9" data-size="26"></i></div>
           <div class="t-status t-wrap">Выключить блок при обрыве?</div>
           <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)">Если VPN оборвется, трафик пойдет напрямую через провайдера — сайты увидят ваш реальный IP.</p>

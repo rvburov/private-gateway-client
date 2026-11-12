@@ -36,6 +36,7 @@ import com.privategateway.client.ui.AppScreen
 import com.privategateway.client.ui.MainViewModel
 import com.privategateway.client.ui.NotificationsAsk
 import com.privategateway.client.ui.Tab
+import com.privategateway.client.ui.account.AccountViewModel
 import com.privategateway.client.ui.servers.ServersViewModel
 import com.privategateway.client.ui.settings.BackupViewModel
 import com.privategateway.client.ui.settings.SettingsPage
@@ -62,6 +63,7 @@ class MainActivity : ComponentActivity() {
     private val inspector: InspectorViewModel by viewModels()
     private val backups: BackupViewModel by viewModels()
     private val checks: CheckViewModel by viewModels()
+    private val account: AccountViewModel by viewModels()
 
     @Inject lateinit var appWindow: AppWindow
 
@@ -102,7 +104,7 @@ class MainActivity : ComponentActivity() {
         )
         setContent {
             PgTheme {
-                AppScreen(viewModel, settings, servers, subscriptions, actions, inspector, checks, backups)
+                AppScreen(viewModel, settings, servers, subscriptions, actions, inspector, checks, backups, account)
                 if (askingNotifications) {
                     NotificationsAsk(
                         onAllow = {

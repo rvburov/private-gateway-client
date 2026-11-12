@@ -98,6 +98,9 @@
     <DataTemplate DataType="vm:RestoreBackupViewModel">
       <views:RestoreBackupView />
     </DataTemplate>
+    <DataTemplate DataType="vm:LoginPageViewModel">
+      <views:LoginPage />
+    </DataTemplate>
     <DataTemplate DataType="vm:WelcomePageViewModel">
       <views:WelcomePage />
     </DataTemplate>

@@ -28,6 +28,7 @@ import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -534,7 +535,8 @@ fun PgLinkRow(
 /**
  * Поле ввода (.input, TextBox.input): белое, рамка line.strong, в фокусе — 1,5 accent.base; пустое — [placeholder] серым.
  * Строка ([singleLine]) — по центру высоты 44, в несколько строк — поля 10, как textarea макета; высоту больше задает
- * [modifier]. [label] — подпись для доступности, тег поля — [tag]. [keyboard] — какая клавиатура нужна полю (числа, адрес).
+ * [modifier]. [label] — подпись для доступности, тег поля — [tag]. [keyboard] — какая клавиатура нужна полю (числа, адрес);
+ * [actions] — что делает кнопка действия клавиатуры (Enter): например, отправить форму входа.
  */
 @Composable
 fun PgInput(
@@ -548,6 +550,7 @@ fun PgInput(
     singleLine: Boolean = true,
     keyboard: KeyboardOptions = KeyboardOptions.Default,
     visual: VisualTransformation = VisualTransformation.None,
+    actions: KeyboardActions = KeyboardActions.Default,
 ) {
     val shape = RoundedCornerShape(PgRadius.Input)
     val interaction = remember { MutableInteractionSource() }
@@ -557,6 +560,7 @@ fun PgInput(
         onValueChange = onChange,
         singleLine = singleLine,
         keyboardOptions = keyboard,
+        keyboardActions = actions,
         visualTransformation = visual,
         textStyle = style.copy(color = PgColor.Text.Primary),
         cursorBrush = SolidColor(PgColor.Accent.Base),

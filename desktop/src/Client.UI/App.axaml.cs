@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
@@ -67,12 +68,15 @@ public partial class App : Avalonia.Application
                     _ = settings.Current;
                     _ = Services.GetRequiredService<IGatewayClient>();
                     _ = Services.GetRequiredService<IServerCatalog>().Servers;
+                    // Сохраненный вход читается из хранилища секретов ОС: оно может ответить не сразу.
+                    _ = Services.GetRequiredService<AccountService>();
                 }, cancellationToken);
                 cancellationToken.ThrowIfCancellationRequested();
                 Loc.Instance.SetLanguage(settings.Current.Language);
                 window.DataContext = Services.GetRequiredService<ShellViewModel>();
                 _ = new DesktopHost(this, desktop, window, Services.GetRequiredService<TrayViewModel>(), settings, startup.Instance,
-                    startup.Minimized, Services.GetRequiredService<NoticeWindow>(), Services.GetRequiredService<UpdateWatcher>());
+                    startup.Minimized, Services.GetRequiredService<NoticeWindow>(), Services.GetRequiredService<UpdateWatcher>(),
+                    Services.GetRequiredService<AccountService>());
                 desktop.Exit += (_, _) => Services.GetRequiredService<IUserProxyController>().Shutdown();
                 ready();
                 StartupTiming.Mark("ready");
@@ -82,7 +86,7 @@ public partial class App : Avalonia.Application
                 }
                 else
                 {
-                    StartBackground(startup.Paths);
+                    StartBackground(startup.Paths, window);
                 }
             }, show: !startup.Minimized, cancellationToken);
         }
@@ -97,8 +101,13 @@ public partial class App : Avalonia.Application
         }
     }
 
-    private void StartBackground(AppPaths paths)
+    private void StartBackground(AppPaths paths, MainWindow window)
     {
+        // Доступ к аккаунту сайта: проверка сразу, раз в 30 минут и при показе окна (не чаще раза в минуту, решение 618).
+        // До подключения при запуске: без действующего входа LaunchConnect ждет входа.
+        var account = Services.GetRequiredService<AccountService>();
+        account.Start();
+        window.Activated += (_, _) => _ = account.RefreshAsync();
         NotifyIcon.Write(paths);
         Services.GetRequiredService<NoticeActions>().Start();
         // Подписки и подписчики состояния запускаются в потоке окна после его подготовки.
@@ -147,6 +156,7 @@ public partial class App : Avalonia.Application
         services.AddSingleton<Func<INavigator, RoutingPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<RoutingPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, BackupPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<BackupPageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, AboutPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<AboutPageViewModel>(sp, navigator));
+        services.AddSingleton<Func<INavigator, LoginPageViewModel>>(sp => _ => ActivatorUtilities.CreateInstance<LoginPageViewModel>(sp));
         services.AddSingleton<Func<INavigator, WelcomePageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<WelcomePageViewModel>(sp, navigator));
         services.AddSingleton<Func<INavigator, ProblemPageViewModel>>(sp => navigator => ActivatorUtilities.CreateInstance<ProblemPageViewModel>(sp, navigator));
         services.AddSingleton<ShellViewModel>();

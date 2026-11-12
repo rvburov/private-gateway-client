@@ -1,4 +1,5 @@
 using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Notifications;
 using PrivateGateway.Client.Application.Servers;
@@ -9,7 +10,7 @@ using PrivateGateway.Client.Application.Updates;
 namespace PrivateGateway.Client.Application;
 
 /// <summary>
-/// Регистрация сценариев программы: подключение, смена сервера, импорт, обновление серверов.
+/// Регистрация сценариев программы: подключение, смена сервера, импорт, обновление серверов, вход в аккаунт сайта.
 /// Сценарии не знают ни об Avalonia, ни о сети — только о моделях ядра и контракте службы.
 /// </summary>
 public static class ApplicationModule
@@ -28,6 +29,7 @@ public static class ApplicationModule
         services.AddSingleton<LaunchConnect>();
         services.AddSingleton<NotificationCenter>();
         services.AddSingleton<UpdateWatcher>();
+        services.AddSingleton<AccountService>();
         return services;
     }
 }

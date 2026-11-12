@@ -1,0 +1,404 @@
+using Avalonia.Controls;
+using Avalonia.Headless;
+using Avalonia.Headless.XUnit;
+using Avalonia.Input;
+using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Account;
+using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Account;
+using PrivateGateway.Client.Infrastructure.Storage;
+using PrivateGateway.Client.UI;
+using PrivateGateway.Client.UI.Localization;
+using PrivateGateway.Client.UI.Services;
+using PrivateGateway.Client.UI.ViewModels;
+using PrivateGateway.Client.UI.Views;
+
+namespace PrivateGateway.Client.Tests.UI;
+
+/// <summary>
+/// Вход в аккаунт сайта (доска 10, перед приветствием; решения 621, 626): ворота до любого экрана, форма, ошибки сайта,
+/// потеря доступа и выход в «Настройках». Сервис входа настоящий, сайт — подделка без сети.
+/// </summary>
+public sealed class LoginPageTests : WindowHarness
+{
+    [AvaloniaFact]
+    public void Without_sign_in_the_window_opens_on_login_before_the_welcome_and_nothing_else_opens()
+    {
+        var (window, shell, page) = OpenLogin(firstLaunch: true);
+
+        (shell.CurrentKey, shell.IsIslandVisible).ShouldBe((Pages.Login, false));
+        Text(window, "LoginTitle").ShouldBe("Вход в Private Gateway");
+        Find<Border>(window, "LoginNotice").IsVisible.ShouldBeFalse("первый вход — без причины");
+        Find<TextBlock>(window, "LoginError").IsVisible.ShouldBeFalse();
+        Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("поля пустые");
+        Snapshot(window, "login");
+
+        foreach (var other in new[] { Pages.Home, Pages.Welcome, Pages.Settings, Pages.Add, Pages.Problem })
+        {
+            shell.Navigate(other);
+            Dispatcher.UIThread.RunJobs();
+            shell.CurrentKey.ShouldBe(Pages.Login, $"без входа «{other}» не открывается");
+        }
+
+        shell.CurrentPage.ShouldBeSameAs(page);
+        Service<SettingsService>().Current.OnboardingDone.ShouldBeFalse("приветствие еще впереди");
+    }
+
+    [AvaloniaFact]
+    public void Language_is_chosen_on_the_login_screen()
+    {
+        var (window, _, page) = OpenLogin(firstLaunch: true);
+
+        Find<RadioButton>(window, "LoginEn").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+
+        (Loc.Instance.Language, Service<SettingsService>().Current.Language).ShouldBe(("en", "en"));
+        Text(window, "LoginTitle").ShouldBe("Sign in to Private Gateway");
+        Text(window, "LoginCodeLabel").ShouldBe("2FA code");
+        page.IsRussian.ShouldBeFalse();
+        Snapshot(window, "login-en");
+    }
+
+    [AvaloniaFact]
+    public void Sign_in_keeps_the_token_in_the_os_store_and_goes_on_to_the_welcome()
+    {
+        var (window, shell, page) = OpenLogin(firstLaunch: true);
+
+        Fill(window, " anna@example.com ", "secret pass", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Welcome);
+
+        shell.IsIslandVisible.ShouldBeFalse("дальше — приветствие первого запуска");
+        var request = AccountApi.Logins.ShouldHaveSingleItem();
+        (request.Email, request.Password, request.Code, request.RecoveryCode).ShouldBe(("anna@example.com", "secret pass", "123456", null));
+        Secrets.Values[AccountService.TokenKey].ShouldBe(FakeAccountApi.IssuedToken);
+        (page.Email, page.Password, page.Code).ShouldBe((" anna@example.com ", "", ""), "пароль и код не остаются в памяти");
+    }
+
+    [AvaloniaFact]
+    public void Sign_in_after_the_first_launch_goes_home_with_the_island()
+    {
+        var (window, shell, _) = OpenLogin();
+
+        Fill(window, FakeAccountApi.Email, "pw", "654321");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+
+        shell.IsIslandVisible.ShouldBeTrue();
+        shell.Navigate(Pages.Login);
+        Dispatcher.UIThread.RunJobs();
+        shell.CurrentKey.ShouldBe(Pages.Home, "с действующим входом экран входа не открывается");
+    }
+
+    public static TheoryData<AccountFailure, string> Refusals => new()
+    {
+        { AccountFailure.InvalidCredentials, "Неверная почта или пароль." },
+        { AccountFailure.InvalidCode, "Код неверный или уже использован. Введите новый." },
+        { AccountFailure.SetupRequired, "Двухфакторная защита еще не настроена. Войдите один раз на сайт, настройте ее и вернитесь." },
+        { AccountFailure.DeviceLimit, "Аккаунт уже используется на наибольшем числе устройств. Удалите старое устройство на сайте, чтобы освободить место." },
+        { AccountFailure.RateLimited, "Слишком много попыток. Повторите через 2 мин." },
+        { AccountFailure.Validation, "Проверьте почту и код: код 2FA — 6 цифр." },
+        { AccountFailure.Network, "Нет связи с сайтом. Проверьте подключение к интернету и повторите." },
+        { AccountFailure.Server, "Сайт ответил ошибкой. Повторите позже." },
+    };
+
+    [AvaloniaTheory]
+    [MemberData(nameof(Refusals))]
+    public void Each_refusal_of_the_site_has_its_own_text_and_keeps_the_email(AccountFailure failure, string text)
+    {
+        AccountApi.LoginFailure = failure;
+        AccountApi.RetryAfter = TimeSpan.FromSeconds(61);
+        var (window, shell, page) = OpenLogin();
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => !page.IsBusy);
+
+        shell.CurrentKey.ShouldBe(Pages.Login);
+        Find<TextBlock>(window, "LoginError").IsVisible.ShouldBeTrue();
+        Text(window, "LoginError").ShouldBe(text);
+        Find<Button>(window, "LoginOpenSite").IsVisible.ShouldBe(failure == AccountFailure.SetupRequired, "«Открыть сайт» — только у 403");
+        Find<Button>(window, "LoginOpenDevices").IsVisible.ShouldBe(failure == AccountFailure.DeviceLimit, "«Устройства на сайте» — только у 409");
+        Secrets.Values.ShouldNotContainKey(AccountService.TokenKey);
+        (page.Email, page.Password, page.Code).ShouldBe((FakeAccountApi.Email, "", ""));
+        Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("пароль и код нужно ввести заново");
+    }
+
+    [AvaloniaFact]
+    public void Error_text_follows_the_language()
+    {
+        AccountApi.LoginFailure = AccountFailure.RateLimited;
+        AccountApi.RetryAfter = TimeSpan.FromMinutes(5);
+        var (window, _, page) = OpenLogin();
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => page.HasError);
+
+        Find<RadioButton>(window, "LoginEn").IsChecked = true;
+        Dispatcher.UIThread.RunJobs();
+
+        Text(window, "LoginError").ShouldBe("Too many attempts. Try again in 5 min.");
+    }
+
+    [AvaloniaFact]
+    public void Without_the_os_key_store_sign_in_is_refused_before_asking_the_site()
+    {
+        Secrets.Available = false;
+        var (window, _, page) = OpenLogin();
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => page.HasError);
+
+        Text(window, "LoginError").ShouldBe("Хранилище ключей системы недоступно, поэтому вход не сохранить на этом устройстве.");
+        AccountApi.Logins.ShouldBeEmpty("токен без защищенного хранилища не держим");
+    }
+
+    [AvaloniaFact]
+    public void Setup_required_opens_the_login_page_of_the_site_and_device_limit_the_devices_page()
+    {
+        AccountApi.LoginFailure = AccountFailure.SetupRequired;
+        var (window, _, page) = OpenLogin();
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => page.CanOpenSite);
+        Press(window, "LoginOpenSite");
+
+        AccountApi.LoginFailure = AccountFailure.DeviceLimit;
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => page.CanOpenDevices);
+        Find<Button>(window, "LoginOpenSite").IsVisible.ShouldBeFalse();
+        Snapshot(window, "login-error");
+        Press(window, "LoginOpenDevices");
+
+        Urls.Opened.ShouldBe([AccountSite.LoginPage, AccountSite.DevicesPage]);
+        Urls.Opened.ShouldAllBe(url => url.Scheme == Uri.UriSchemeHttps);
+    }
+
+    [AvaloniaFact]
+    public void Enter_in_the_form_signs_in_once_the_fields_are_filled()
+    {
+        var (window, shell, _) = OpenLogin();
+        var code = Find<TextBox>(window, "LoginCode");
+
+        Fill(window, FakeAccountApi.Email, "pw", "12345");
+        code.Focus();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        AccountApi.Logins.ShouldBeEmpty("в коде 2FA пять цифр — форма не готова");
+
+        code.Text = "123456";
+        Dispatcher.UIThread.RunJobs();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        AccountApi.Logins.ShouldHaveSingleItem().Code.ShouldBe("123456");
+    }
+
+    [AvaloniaFact]
+    public void While_the_site_answers_the_button_says_signing_in_and_is_disabled()
+    {
+        AccountApi.PendingLogin = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var (window, shell, page) = OpenLogin();
+        var button = Find<Button>(window, "SignInButton");
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        button.IsEffectivelyEnabled.ShouldBeTrue();
+        Press(window, "SignInButton");
+
+        page.IsBusy.ShouldBeTrue();
+        (button.Content, button.IsEffectivelyEnabled).ShouldBe(("Вход…", false));
+        Find<TextBox>(window, "LoginCode").Focus();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        AccountApi.Logins.Count.ShouldBe(1, "второй запрос не уходит, пока идет первый");
+
+        AccountApi.PendingLogin.SetResult();
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        (page.IsBusy, page.SignInText).ShouldBe((false, "Войти"));
+    }
+
+    [AvaloniaFact]
+    public void Code_field_takes_six_digits_and_switches_to_a_recovery_code()
+    {
+        var (window, shell, page) = OpenLogin();
+        var code = Find<TextBox>(window, "LoginCode");
+
+        code.Text = "12 34-5678";
+        Dispatcher.UIThread.RunJobs();
+        page.Code.ShouldBe("123456", "только цифры, не больше шести");
+
+        Press(window, "LoginToggleCode");
+        (page.IsRecovery, page.Code).ShouldBe((true, ""));
+        Text(window, "LoginCodeLabel").ShouldBe("Резервный код");
+        Text(window, "LoginCodeHint").ShouldBe("Один из кодов, сохраненных при настройке 2FA");
+        Find<Button>(window, "LoginToggleCode").Content.ShouldBe("Войти по коду 2FA");
+        Snapshot(window, "login-recovery");
+
+        Fill(window, FakeAccountApi.Email, "pw", " abcd-efgh ");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        var request = AccountApi.Logins.ShouldHaveSingleItem();
+        (request.Code, request.RecoveryCode).ShouldBe((null, "abcd-efgh"));
+    }
+
+    [AvaloniaFact]
+    public void Eye_shows_the_password()
+    {
+        var (window, _, page) = OpenLogin();
+        var password = Find<TextBox>(window, "LoginPassword");
+
+        password.RevealPassword.ShouldBeFalse();
+        Press(window, "LoginShowPassword");
+        (page.IsPasswordVisible, password.RevealPassword).ShouldBe((true, true));
+    }
+
+    [AvaloniaFact]
+    public async Task Revoked_access_turns_protection_off_and_returns_to_login_with_the_reason()
+    {
+        var (window, shell) = Open(account: true, signedIn: true);
+        shell.CurrentKey.ShouldBe(Pages.Home, "вход сохранен с прошлого запуска");
+        await Connect(shell);
+        var overlay = Service<OverlayViewModel>();
+        shell.Navigate(Pages.Settings);
+        Dispatcher.UIThread.RunJobs();
+        var signOut = ((SettingsPageViewModel)shell.CurrentPage!).SignOutCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+        overlay.HasDialog.ShouldBeTrue();
+
+        AccountApi.StatusFailure = AccountFailure.InvalidCredentials;
+        await Service<AccountService>().CheckAsync();
+        WaitFor(() => shell.CurrentKey == Pages.Login);
+        WaitFor(() => !overlay.HasDialog);
+        await signOut.WaitAsync(TimeSpan.FromSeconds(5));
+
+        AccountApi.Logouts.ShouldBeEmpty("вопрос о выходе снят безопасным ответом: доступа уже нет");
+        shell.IsIslandVisible.ShouldBeFalse();
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Off, "отзыв выключает защиту");
+        Secrets.Values.ShouldNotContainKey(AccountService.TokenKey);
+        Find<Border>(window, "LoginNotice").IsVisible.ShouldBeTrue();
+        Text(window, "LoginNoticeText").ShouldBe("Доступ отозван на сайте, защита выключена. Войдите снова или обратитесь к администратору.");
+        Snapshot(window, "login-revoked");
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+    }
+
+    [AvaloniaFact]
+    public async Task Without_the_site_access_lasts_until_the_confirmed_date_then_the_sign_in_expires()
+    {
+        var (window, shell) = Open(account: true, signedIn: true);
+        AccountApi.StatusFailure = AccountFailure.Network;
+
+        await Service<AccountService>().CheckAsync();
+        Dispatcher.UIThread.RunJobs();
+        shell.CurrentKey.ShouldBe(Pages.Home, "нет связи — не отзыв");
+
+        Time.SetUtcNow(FakeAccountApi.Expires);
+        await Service<AccountService>().CheckAsync();
+        WaitFor(() => shell.CurrentKey == Pages.Login);
+
+        Text(window, "LoginNoticeText").ShouldBe("Срок входа истек. Войдите снова.");
+    }
+
+    [AvaloniaFact]
+    public void Demo_mode_skips_the_sign_in_and_the_working_mode_requires_it()
+    {
+        // Состав программы: в демо-режиме (--demo) вход не нужен, в рабочем — нужен.
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "pg-ui-" + Guid.NewGuid().ToString("N")));
+        using (var demo = App.BuildServices(paths, demo: true))
+        {
+            demo.GetRequiredService<AccountOptions>().Required.ShouldBeFalse();
+        }
+
+        using (var working = App.BuildServices(paths, demo: false))
+        {
+            working.GetRequiredService<AccountOptions>().Required.ShouldBeTrue();
+        }
+
+        Directory.Exists(paths.DataDirectory).ShouldBeFalse();
+        var (window, shell) = Open(firstLaunch: true);
+
+        Service<AccountService>().IsRequired.ShouldBeFalse();
+        shell.CurrentKey.ShouldBe(Pages.Welcome);
+        shell.Navigate(Pages.Login);
+        Dispatcher.UIThread.RunJobs();
+        shell.CurrentKey.ShouldNotBe(Pages.Login);
+        shell.Navigate(Pages.Settings);
+        Dispatcher.UIThread.RunJobs();
+        Find<StackPanel>(window, "AccountSection").IsVisible.ShouldBeFalse("в демо-режиме аккаунта нет");
+    }
+
+    [AvaloniaFact]
+    public void Service_problem_does_not_leave_login_and_shows_after_sign_in()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(account: true,
+            gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        shell.CurrentKey.ShouldBe(Pages.Login);
+
+        service.ShouldNotBeNull().Push(s => s with { State = ConnectionState.Error, ErrorCode = ErrorCodes.ServiceNotRunning });
+        Dispatcher.UIThread.RunJobs();
+        shell.CurrentKey.ShouldBe(Pages.Login, "ошибка службы не уводит со входа");
+
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Problem);
+        Text(window, "ProblemTitle").ShouldBe("Служба не запущена");
+    }
+
+    [AvaloniaFact]
+    public async Task Sign_out_in_settings_asks_first_then_turns_protection_off_and_opens_an_empty_login()
+    {
+        var (window, shell, page) = OpenLogin();
+        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        await Connect(shell);
+
+        shell.Navigate(Pages.Settings);
+        Dispatcher.UIThread.RunJobs();
+        Find<StackPanel>(window, "AccountSection").IsVisible.ShouldBeTrue();
+        Text(window, "AccountName").ShouldBe(FakeAccountApi.DisplayName);
+        Text(window, "AccountEmail").ShouldBe(FakeAccountApi.Email);
+        Text(window, "AccountDevice").ShouldBe("Это устройство: Ноутбук Анны");
+        Snapshot(window, "settings-account");
+
+        Press(window, "SignOut");
+        shell.Overlay.Dialog.ShouldNotBeNull().Title.ShouldBe("Выйти из аккаунта?");
+        Find<Button>(window, "DialogSecondary").Classes.ShouldContain("danger");
+        Snapshot(window, "dialog-sign-out");
+        shell.Overlay.Dialog!.PrimaryCommand.Execute(null);
+        WaitFor(() => !shell.Overlay.HasDialog);
+        (shell.CurrentKey, Secrets.Values.ContainsKey(AccountService.TokenKey)).ShouldBe((Pages.Settings, true), "«Остаться» ничего не меняет");
+
+        Press(window, "SignOut");
+        shell.Overlay.Dialog.ShouldNotBeNull().SecondaryCommand.Execute(null);
+        WaitFor(() => shell.CurrentKey == Pages.Login);
+
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Off);
+        Secrets.Values.ShouldNotContainKey(AccountService.TokenKey);
+        AccountApi.Logouts.ShouldBe([FakeAccountApi.IssuedToken]);
+        shell.CurrentPage.ShouldBeSameAs(page);
+        (page.Email, page.Password, page.Code, page.HasError).ShouldBe(("", "", "", false), "после выхода форма пустая");
+        Find<Border>(window, "LoginNotice").IsVisible.ShouldBeFalse("выход сам — без причины");
+    }
+
+    private (MainWindow Window, ShellViewModel Shell, LoginPageViewModel Page) OpenLogin(bool firstLaunch = false)
+    {
+        var (window, shell) = Open(firstLaunch, account: true);
+        return (window, shell, shell.CurrentPage.ShouldBeOfType<LoginPageViewModel>());
+    }
+
+    private static void Fill(MainWindow window, string email, string password, string code)
+    {
+        Find<TextBox>(window, "LoginEmail").Text = email;
+        Find<TextBox>(window, "LoginPassword").Text = password;
+        Find<TextBox>(window, "LoginCode").Text = code;
+        Dispatcher.UIThread.RunJobs();
+    }
+}

@@ -13,6 +13,7 @@ import android.os.PowerManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.privategateway.client.core.links.LinkParser
+import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.settings.DnsChoice
@@ -79,6 +80,24 @@ class TunnelOnDeviceTest {
         assertEquals("", https.text)
         disconnectAndWait(offOnly = true)
         assertFailsWith<IOException> { app.subscriptionTransport().download(URI("https://cp.cloudflare.com/generate_204"), onlyViaVpn = true) }
+    }
+
+    @Test
+    fun without_an_account_sign_in_the_service_refuses_to_connect() = networkTest {
+        prepare()
+        app.account().signOutForTests()
+        val server = assertNotNull(LinkParser.parse(LINK).server, "ссылка проверки не разобралась")
+        app.servers().add(listOf(server))
+        app.settings().select(app.servers().servers.first().first { it.port == PORT }.id)
+
+        GatewayVpnService.connect(context)
+        val status = withTimeout(30_000) {
+            app.monitor().status.first { it.state == TunnelState.Connected || it.state == TunnelState.Error }
+        }
+        assertEquals(TunnelState.Error, status.state, "без входа туннель поднялся")
+        assertEquals(TunnelErrors.NO_ACCESS, status.error)
+        assertFailsWith<IOException>("без входа трафик через сервер не идет") { fetch() }
+        TestAccount.seed(app)
     }
 
     @Test
@@ -174,7 +193,9 @@ class TunnelOnDeviceTest {
      * Согласие на VPN и разрешение на уведомления (Android 13+) за пользователя: системные окна в проверке не нажать, а без
      * разрешения уведомление туннеля не показывается вовсе.
      */
-    private fun prepare() {
+    private suspend fun prepare() {
+        // Вход в аккаунт сайта засеян: без него служба отказывает с PGC-ACC-001 (решения 619 и 623).
+        TestAccount.seed(app)
         val ready = reachable(HOST, PORT)
         val message = "нет сервера проверки туннеля на машине (scripts/android-test-server.sh)"
         if (InstrumentationRegistry.getArguments().getString("requireTunnelServer").toBoolean()) assertTrue(ready, message)

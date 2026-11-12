@@ -11,6 +11,24 @@
     <StackPanel Margin="20,0">
       <TextBlock Classes="h1" Text="{l:L page.settings.title}" Margin="0,18,0,12" />
 
+      <!-- Аккаунт сайта: кто вошел, это устройство и «Выйти» с подтверждением; в демо-режиме входа нет -->
+      <StackPanel x:Name="AccountSection" IsVisible="{Binding HasAccount}">
+        <TextBlock Classes="overline" Text="{l:L settings.account.title, Upper=True}" Margin="6,0,6,8" />
+        <Border x:Name="AccountCard" Classes="card" Padding="16,4" Margin="0,0,0,18">
+          <Grid ColumnDefinitions="*,Auto" Margin="0,13">
+            <StackPanel Spacing="3" Margin="0,0,16,0" VerticalAlignment="Center">
+              <TextBlock x:Name="AccountName" Classes="strong" Text="{Binding AccountName}" TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="AccountEmail" Classes="caption" Text="{Binding AccountEmail}" IsVisible="{Binding HasAccountEmail}"
+                         TextTrimming="CharacterEllipsis" />
+              <TextBlock x:Name="AccountDevice" Classes="caption" Text="{Binding AccountDevice}" IsVisible="{Binding HasAccountDevice}"
+                         TextWrapping="Wrap" />
+            </StackPanel>
+            <Button x:Name="SignOut" Grid.Column="1" Classes="secondary danger" Height="40" VerticalAlignment="Center"
+                    Command="{Binding SignOutCommand}" Content="{l:L settings.account.signOut}" />
+          </Grid>
+        </Border>
+      </StackPanel>
+
       <TextBlock Classes="overline" Text="{l:L settings.section.basic, Upper=True}" Margin="6,0,6,8" />
       <Border Classes="card" Padding="16,4">
         <StackPanel>

@@ -27,6 +27,7 @@ import androidx.core.content.ContextCompat
 import com.privategateway.client.MainActivity
 import com.privategateway.client.PrivateGatewayApp
 import com.privategateway.client.R
+import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.core.servers.ServerFacts
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.text.SecretMasker
@@ -91,6 +92,8 @@ class GatewayVpnService : VpnService() {
     @Inject lateinit var journal: TunnelJournal
 
     @Inject lateinit var hints: PhoneHintSource
+
+    @Inject lateinit var account: AccountRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lock = Mutex()
@@ -216,7 +219,9 @@ class GatewayVpnService : VpnService() {
         stopGuard()
         work = scope.launch {
             val connected = lock.withLock {
-                val error = attempt(0) ?: verify()
+                // Без действующего входа в аккаунт сайта защита не поднимается ни одним путем: окно, плитка, уведомление,
+                // «Постоянная VPN» и перезапуск системой приходят сюда (решение 619).
+                val error = if (!account.allowed()) refused() else attempt(0) ?: verify()
                 if (destroyed) {
                     stopCore()
                     monitor.set(if (error != null) TunnelStatus(state = TunnelState.Error, error = error) else TunnelStatus())
@@ -234,6 +239,12 @@ class GatewayVpnService : VpnService() {
                 startGuard()
             }
         }
+    }
+
+    /** Подключение без входа в аккаунт: ядро не запускается, «Ошибка» с кодом «Нет доступа». */
+    private fun refused(): String {
+        journal.error("connect refused  no account access")
+        return TunnelErrors.NO_ACCESS
     }
 
     /** Подключение (0) или попытка переподключения [number] под замком: удалось — null, иначе код ошибки. */

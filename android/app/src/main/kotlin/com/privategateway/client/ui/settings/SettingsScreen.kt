@@ -31,6 +31,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
+import com.privategateway.client.account.AccountInfo
 import com.privategateway.client.core.notify.NotificationLevel
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.vpn.ReconnectPolicy
@@ -68,7 +69,8 @@ enum class SettingsPage {
  * только пользователь в настройках Android), поэтому вместо переключателя — что сообщил Android и переход в его настройки.
  * [onCheck] — «Проверка и логи»: вкладка «Проверка» островка. [language] — выбрать язык приложения (Android 13+); null —
  * язык как в системе. [requested] — открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
- * [installedApps] — программы телефона для «Программы мимо VPN» («Маршрутизация»).
+ * [installedApps] — программы телефона для «Программы мимо VPN» («Маршрутизация»). [account] — вход в аккаунт сайта для
+ * карточки «Аккаунт» (null — карточки нет), [onSignOut] — «Выйти» после подтверждения.
  */
 @Composable
 fun SettingsScreen(
@@ -89,6 +91,8 @@ fun SettingsScreen(
     updates: UpdatesView = UpdatesView(),
     onCheckUpdates: () -> Unit = {},
     backup: @Composable (onBack: () -> Unit) -> Unit = {},
+    account: AccountInfo? = null,
+    onSignOut: () -> Unit = {},
     subscriptions: @Composable (onBack: () -> Unit) -> Unit = {},
 ) {
     var page by rememberSaveable { mutableStateOf(SettingsPage.Main) }
@@ -152,7 +156,9 @@ fun SettingsScreen(
             }
         }
 
-        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language) { page = it }
+        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language, account, onSignOut) {
+            page = it
+        }
     }
 }
 
@@ -185,6 +191,8 @@ private fun MainSettings(
     onBehavior: (Behavior) -> Unit,
     onCheck: () -> Unit,
     language: ((String) -> Unit)?,
+    account: AccountInfo?,
+    onSignOut: () -> Unit,
     onPage: (SettingsPage) -> Unit,
 ) {
     LaunchedEffect(Unit) { loadCore() }
@@ -199,7 +207,12 @@ private fun MainSettings(
     ) {
         Text(stringResource(R.string.nav_settings), Modifier.padding(top = 18.dp, bottom = PgSpace.L), style = PgType.H1)
 
-        GroupTitle(stringResource(R.string.settings_section_basic), top = 0.dp)
+        // Аккаунт сайта — первым: без входа защитой не пользоваться (решение 621).
+        if (account != null) {
+            AccountCard(account, onSignOut)
+        }
+
+        GroupTitle(stringResource(R.string.settings_section_basic), top = if (account != null) 18.dp else 0.dp)
         PgCard(Modifier.fillMaxWidth(), contentPadding = CardPadding) {
             Basic(openVpnSettings, system, behavior, onBehavior, language)
         }

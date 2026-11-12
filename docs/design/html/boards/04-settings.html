@@ -67,12 +67,29 @@
   диалог. Подпись под
   уведомлениями меняется по выбору. Строки «Для опытных» открывают свои экраны: 5, 6, 13, 12, 7, 14, 15. Справа — тот же экран в режиме
   «Только прокси»: отдельная внешняя цель, не выбранный VPN-сервер. Протокол и авторизация меняют поля и пояснения; Кнопка сохранения проверяет только форму, не сетевое подключение. В макете учетные данные остаются в памяти страницы и не отправляются.</p>
+<p class="pg-board-note">Первая карточка — «Аккаунт» (десктоп и Android, решение 627): имя и почта участника сайта (имени нет — только почта),
+  «Это устройство: …» — имя компьютера или телефона, под которым устройство записано на сайте, и «Выйти». Выход — только после вопроса
+  «Выйти из аккаунта?» (доска 18): защита выключается, устройство удаляется из аккаунта, окно открывает вход с пустыми полями (доска 10).
+  На iOS входа пока нет (решение 624) — карточки нет.</p>
 
 <div class="pg-screens">
   <!-- ===================== Режим VPN ===================== -->
   <section class="pg-screen" data-state="connected" data-caption="Режим «VPN · вся система»">
     <div class="pg-page">
       <div class="t-h1" style="margin: 18px var(--side) 12px">Настройки</div>
+
+      <!-- Аккаунт сайта — первым (решение 627): без входа программой не пользоваться; на iOS входа пока нет -->
+      <span class="t-overline" data-os="desktop android" style="display: block; margin: 0 calc(var(--side) + 6px) 8px" data-ui-text="settings.account.title">Аккаунт</span>
+      <div class="card account-card" data-os="desktop android">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title pg-ellipsis">Анна</span>
+            <span class="setting-caption pg-ellipsis">anna@example.org</span>
+            <span class="setting-caption t-wrap" data-ui-text="settings.account.device">Это устройство: <span data-os-word="device">DESKTOP-7K2Q4MA</span></span>
+          </div>
+          <button class="btn-secondary danger account-signout" data-open="dlg-signout-1" data-ui-text="settings.account.signOut">Выйти</button>
+        </div>
+      </div>
 
       <span class="t-overline" style="display: block; margin: 0 calc(var(--side) + 6px) 8px">Основные</span>
       <div class="card" style="margin: 0 var(--side); padding: 4px 16px">
@@ -262,6 +279,17 @@
     </div>
 
 
+    <!-- «Выйти» из аккаунта — только после вопроса: безопасный выбор «Остаться» — основная кнопка -->
+    <div class="dialog" id="dlg-signout-1" data-os="desktop android" role="dialog" aria-modal="true" aria-label="Выйти из аккаунта?">
+      <div class="dialog-icon danger"><i data-icon="Warning" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.signOut.title">Выйти из аккаунта?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.signOut.text">Защита выключится, а это устройство будет удалено из аккаунта. Чтобы снова пользоваться Private Gateway, войдите.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.signOut.keep">Остаться</button>
+        <button class="btn-secondary danger" data-nav="10-onboarding.html" data-ui-text="dialog.signOut.confirm">Выйти</button>
+      </div>
+    </div>
+
     <!-- Меню формы внешнего прокси живут в рамке, вне прокручиваемого списка. -->
     <div class="popup menu" id="external-editor-1-protocol" data-os="desktop" data-proxy-form="external-editor-1" data-proxy-field="protocol" role="menu">
       <button class="btn-option current" data-value="SOCKS5" data-proxy-choice="socks5">SOCKS5</button>
@@ -279,6 +307,19 @@
   <section class="pg-screen" data-state="proxy" data-caption="Режим «Только прокси»: блок при обрыве недоступен">
     <div class="pg-page">
       <div class="t-h1" style="margin: 18px var(--side) 12px">Настройки</div>
+
+      <!-- Аккаунт сайта — первым (решение 627): без входа программой не пользоваться; на iOS входа пока нет -->
+      <span class="t-overline" data-os="desktop android" style="display: block; margin: 0 calc(var(--side) + 6px) 8px" data-ui-text="settings.account.title">Аккаунт</span>
+      <div class="card account-card" data-os="desktop android">
+        <div class="setting">
+          <div class="setting-text">
+            <span class="setting-title pg-ellipsis">Анна</span>
+            <span class="setting-caption pg-ellipsis">anna@example.org</span>
+            <span class="setting-caption t-wrap" data-ui-text="settings.account.device">Это устройство: <span data-os-word="device">DESKTOP-7K2Q4MA</span></span>
+          </div>
+          <button class="btn-secondary danger account-signout" data-open="dlg-signout-2" data-ui-text="settings.account.signOut">Выйти</button>
+        </div>
+      </div>
 
       <span class="t-overline" style="display: block; margin: 0 calc(var(--side) + 6px) 8px">Основные</span>
       <div class="card" style="margin: 0 var(--side); padding: 4px 16px">
@@ -462,6 +503,17 @@
       </div>
     </div>
 
+
+    <!-- «Выйти» из аккаунта — только после вопроса: безопасный выбор «Остаться» — основная кнопка -->
+    <div class="dialog" id="dlg-signout-2" data-os="desktop android" role="dialog" aria-modal="true" aria-label="Выйти из аккаунта?">
+      <div class="dialog-icon danger"><i data-icon="Warning" data-stroke="1.9" data-size="26"></i></div>
+      <div class="t-status t-wrap" data-ui-text="dialog.signOut.title">Выйти из аккаунта?</div>
+      <p class="t-small t-wrap" style="margin: 12px 0 0; line-height: var(--pg-type-body-line-height)" data-ui-text="dialog.signOut.text">Защита выключится, а это устройство будет удалено из аккаунта. Чтобы снова пользоваться Private Gateway, войдите.</p>
+      <div class="dialog-actions stack">
+        <button class="btn-primary" data-close data-ui-text="dialog.signOut.keep">Остаться</button>
+        <button class="btn-secondary danger" data-nav="10-onboarding.html" data-ui-text="dialog.signOut.confirm">Выйти</button>
+      </div>
+    </div>
 
     <!-- Меню формы внешнего прокси живут в рамке, вне прокручиваемого списка. -->
     <div class="popup menu" id="external-editor-2-protocol" data-os="desktop" data-proxy-form="external-editor-2" data-proxy-field="protocol" role="menu">

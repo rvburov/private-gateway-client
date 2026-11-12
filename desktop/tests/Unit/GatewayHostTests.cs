@@ -293,6 +293,70 @@ public sealed class GatewayHostTests
     private ConnectionStatus Lost(ConnectionStatus status) =>
         (status.MoveTo(ConnectionState.Connecting, _time.GetUtcNow()) with { ErrorCode = ErrorCodes.ServiceNotRunning }).MoveTo(ConnectionState.Error, _time.GetUtcNow());
 
+    [Fact]
+    public async Task Without_account_access_connect_is_refused_and_no_service_is_started()
+    {
+        _settings = _settings with { Mode = ConnectionMode.Proxy };
+        var access = false;
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => access);
+        var seen = new List<(ConnectionState, string?)>();
+        host.StatusChanged += (_, s) => seen.Add((s.State, s.ErrorCode));
+
+        await host.ConnectAsync(Server, Ct);
+        await host.ConnectDespiteOtherVpnAsync(Server, Ct);
+
+        (host.Status.State, host.Status.ErrorCode, host.Status.ServerId).ShouldBe((ConnectionState.Error, ErrorCodes.AccessRequired, "srv-1"));
+        host.Status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off), "защиты нет: трафик идет напрямую");
+        seen.ShouldBe([(ConnectionState.Error, ErrorCodes.AccessRequired), (ConnectionState.Error, ErrorCodes.AccessRequired)]);
+        _launcher.Started.ShouldBe(0, "без доступа служба пользователя ради подключения не запускается");
+        host.Journal.ShouldContain(e => e.Message.Contains("PGC-ACC-001", StringComparison.Ordinal));
+
+        access = true;
+        await host.ConnectAsync(Server, Ct);
+
+        _services[User].Connected.ShouldBe(["srv-1"], "вошли — подключение идет как обычно");
+    }
+
+    [Fact]
+    public async Task Refusal_is_shown_over_the_service_state_until_the_service_or_the_user_changes_it()
+    {
+        _answering.Add(Installed);
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => false);
+        var service = _services[Installed];
+
+        await host.ConnectAsync(Server, Ct);
+
+        service.Connected.ShouldBeEmpty("служба не получает просьбу подключиться");
+        (host.Status.State, host.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.AccessRequired));
+
+        service.Raise(service.Status with { Traffic = service.Status.Traffic });
+        host.Status.ErrorCode.ShouldBe(ErrorCodes.AccessRequired, "то же состояние службы — отказ остается на экране");
+
+        await host.DisconnectAsync(Ct);
+
+        (host.Status.State, host.Status.ErrorCode).ShouldBe((ConnectionState.Off, null));
+        service.Disconnects.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Protection_held_by_the_service_is_not_covered_by_the_refusal()
+    {
+        _answering.Add(Installed);
+        using var host = new GatewayHost(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time,
+            mayConnect: () => false);
+        var service = _services[Installed];
+        var now = _time.GetUtcNow();
+        service.Raise(service.Status.MoveTo(ConnectionState.Connecting, now).MoveTo(ConnectionState.Connected, now));
+
+        await host.ConnectAsync(Server, Ct);
+
+        service.Connected.ShouldBeEmpty();
+        (host.Status.State, host.Status.ErrorCode).ShouldBe((ConnectionState.Connected, null),
+            "защиту, поднятую службой при загрузке, выключает сервис аккаунта, а не ошибка на экране");
+    }
+
     private GatewayHost Host() => new(new ServiceLocator([Installed, User], _answering.Contains, _launcher, _time), Attach, () => _settings, _time);
 
     private FakeService Attach(ServiceAddress address) => _services[address] = new FakeService(_time, address.System ? ServiceKind.Installed : ServiceKind.User);

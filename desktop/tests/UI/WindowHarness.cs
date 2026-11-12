@@ -5,6 +5,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Notifications;
@@ -13,6 +14,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Account;
 using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
@@ -77,6 +79,9 @@ public abstract class WindowHarness : IDisposable
 
     protected FakeRelauncher Relauncher { get; } = new();
 
+    /// <summary>API входа сайта без сети — для окна с входом (<see cref="Open"/> с <c>account: true</c>).</summary>
+    protected FakeAccountApi AccountApi { get; } = new();
+
     public void Dispose()
     {
         Loc.Instance.SetLanguage("ru");
@@ -92,8 +97,14 @@ public abstract class WindowHarness : IDisposable
 
     /// <param name="firstLaunch">true — как при первом запуске: с приветствием (доска 10).</param>
     /// <param name="gateway">Своя служба для окна; null — имитация.</param>
+    /// <param name="account">
+    /// true — вход в аккаунт сайта нужен, как в рабочем режиме: настоящий <see cref="AccountService"/> на
+    /// <see cref="AccountApi"/>; false — вход не нужен, как в демо-режиме, даже с <paramref name="demo"/> = false.
+    /// </param>
+    /// <param name="signedIn">С <paramref name="account"/>: вход уже сохранен (токен и сведения), как после прошлого запуска.</param>
     /// <remarks>Окно — в демо-режиме, на имитации службы, даже если на машине запущена настоящая служба.</remarks>
-    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false, Func<IServiceProvider, IGatewayClient>? gateway = null, bool demo = true)
+    protected (MainWindow Window, ShellViewModel Shell) Open(bool firstLaunch = false, Func<IServiceProvider, IGatewayClient>? gateway = null, bool demo = true,
+        bool account = false, bool signedIn = false)
     {
         _services = App.BuildServices(_paths, s =>
         {
@@ -115,10 +126,21 @@ public abstract class WindowHarness : IDisposable
             {
                 s.AddSingleton<IGatewayClient>(gateway);
             }
+
+            // Без account вход не нужен и вне демо-режима: тесты других экранов не упираются в ворота входа.
+            s.AddSingleton(new AccountOptions(Required: account));
+            s.AddSingleton<IAccountApi>(AccountApi);
         }, demo: demo);
         if (!firstLaunch)
         {
             _services.GetRequiredService<SettingsService>().Update(s => s with { OnboardingDone = true });
+        }
+
+        if (account && signedIn)
+        {
+            Secrets.Values[AccountService.TokenKey] = FakeAccountApi.SavedToken;
+            _services.GetRequiredService<IAccountStore>().Save(new SavedAccount(FakeAccountApi.Expires, FakeAccountApi.Email,
+                FakeAccountApi.DisplayName, FakeAccountApi.DeviceName, Time.GetUtcNow()));
         }
 
         var shell = _services.GetRequiredService<ShellViewModel>();
@@ -555,6 +577,86 @@ public abstract class WindowHarness : IDisposable
         public List<int> Pids { get; } = [];
 
         public void RelaunchAfter(int installerPid) => Pids.Add(installerPid);
+    }
+
+    /// <summary>
+    /// Сайт без сети: вход проходит или отказывает заданной причиной (<see cref="LoginFailure"/>), может ждать ответа
+    /// (<see cref="PendingLogin"/>); проверка доступа отвечает сроком или отказом; выходы запоминаются.
+    /// </summary>
+    protected sealed class FakeAccountApi : IAccountApi
+    {
+        public const string Email = "anna@example.com";
+        public const string DisplayName = "Анна";
+        public const string DeviceName = "Ноутбук Анны";
+
+        /// <summary>Токен входа, сохраненного до запуска окна (<c>signedIn</c>).</summary>
+        public const string SavedToken = "token-saved";
+
+        /// <summary>Токен, который сайт выдает на вход.</summary>
+        public const string IssuedToken = "token-issued";
+
+        /// <summary>Срок, который подтверждает сайт: 30 дней от часов окна.</summary>
+        public static readonly DateTimeOffset Expires = new(2026, 11, 23, 15, 42, 0, TimeSpan.Zero);
+
+        public List<LoginRequest> Logins { get; } = [];
+
+        public List<string> Checks { get; } = [];
+
+        public List<string> Logouts { get; } = [];
+
+        /// <summary>Почему сайт не пускает; null — пускает.</summary>
+        public AccountFailure? LoginFailure { get; set; }
+
+        /// <summary>Для 429 — <c>Retry-After</c>.</summary>
+        public TimeSpan? RetryAfter { get; set; }
+
+        /// <summary>Ответ на вход, который еще не пришел: тест завершает его сам.</summary>
+        public TaskCompletionSource? PendingLogin { get; set; }
+
+        /// <summary>Что сайт ответит на проверку доступа; null — доступ действует (401 — <see cref="AccountFailure.InvalidCredentials"/>).</summary>
+        public AccountFailure? StatusFailure { get; set; }
+
+        public async Task<AccountLogin> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
+        {
+            Logins.Add(request);
+            if (PendingLogin is { } pending)
+            {
+                await pending.Task.ConfigureAwait(true);
+            }
+
+            if (LoginFailure is { } failure)
+            {
+                throw new AccountApiException(failure, Code(failure), RetryAfter);
+            }
+
+            return new AccountLogin(IssuedToken, new AccountStatus(Expires, new AccountUser(request.Email, DisplayName), new AccountDevice(DeviceName)));
+        }
+
+        public Task<AccountStatus> StatusAsync(string token, CancellationToken cancellationToken = default)
+        {
+            Checks.Add(token);
+            return StatusFailure is { } failure
+                ? Task.FromException<AccountStatus>(new AccountApiException(failure, Code(failure)))
+                : Task.FromResult(new AccountStatus(Expires, new AccountUser(Email, DisplayName), new AccountDevice(DeviceName)));
+        }
+
+        public Task LogoutAsync(string token, CancellationToken cancellationToken = default)
+        {
+            Logouts.Add(token);
+            return Task.CompletedTask;
+        }
+
+        private static int? Code(AccountFailure failure) => failure switch
+        {
+            AccountFailure.InvalidCredentials => 401,
+            AccountFailure.InvalidCode => 400,
+            AccountFailure.SetupRequired => 403,
+            AccountFailure.DeviceLimit => 409,
+            AccountFailure.RateLimited => 429,
+            AccountFailure.Validation => 422,
+            AccountFailure.Server => 500,
+            _ => null,
+        };
     }
 
     protected sealed class FakeUrlLauncher : IUrlLauncher

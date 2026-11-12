@@ -87,6 +87,22 @@ internal static class SafetyDialogs
             Loc.Instance["dialog.strict.on"],
             Loc.Instance["dialog.cancel"])).ConfigureAwait(true) == DialogChoice.Primary;
 
+    /// <summary>
+    /// Выход из аккаунта сайта: защита выключится, устройство удалится из аккаунта, и без нового входа программой не
+    /// пользоваться. Безопасный ответ — «Остаться», основная кнопка.
+    /// </summary>
+    /// <returns>true — пользователь выбрал «Выйти».</returns>
+    public static async Task<bool> ConfirmSignOutAsync(OverlayViewModel overlay) =>
+        await overlay.AskAsync(new DialogViewModel(
+            DialogKind.Warning,
+            "Icon.Shield",
+            "Icon.Mark.Alert",
+            Loc.Instance["dialog.signOut.title"],
+            Loc.Instance["dialog.signOut.text"],
+            Loc.Instance["dialog.signOut.keep"],
+            Loc.Instance["dialog.signOut.confirm"])
+        { IsSecondaryDanger = true }).ConfigureAwait(true) == DialogChoice.Secondary;
+
     /// <summary>Прокси для локальной сети: чужие устройства пойдут в интернет через сервер пользователя.</summary>
     /// <returns>true — пользователь выбрал «Открыть».</returns>
     public static async Task<bool> ConfirmLanProxyAsync(OverlayViewModel overlay) =>

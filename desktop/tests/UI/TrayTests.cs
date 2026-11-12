@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Headless.XUnit;
 using Avalonia.Media.Imaging;
 using Avalonia.Threading;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
@@ -189,6 +190,31 @@ public sealed class TrayTests : WindowHarness
         Host(window, minimized: true).MainWindow.ShouldBe(window, "первый запуск — приветствие и при --minimized");
     }
 
+    [AvaloniaFact]
+    public void Autostart_shows_the_window_when_sign_in_is_needed()
+    {
+        var (window, _) = Open(account: true);
+        window.Hide();
+
+        Host(window, minimized: true).MainWindow.ShouldBe(window, "без входа программа не защищает — вход и при --minimized");
+        window.IsVisible.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
+    public async Task Lost_access_brings_the_hidden_window_with_the_login()
+    {
+        var (window, shell) = Open(account: true, signedIn: true);
+        window.Hide();
+        var autostart = Host(window, minimized: true);
+        (autostart.MainWindow, window.IsVisible).ShouldBe((null, false), "вход сохранен — ждем в трее");
+
+        AccountApi.StatusFailure = Client.Core.Account.AccountFailure.InvalidCredentials;
+        await Service<AccountService>().CheckAsync();
+        WaitFor(() => window.IsVisible);
+
+        (autostart.MainWindow, shell.CurrentKey).ShouldBe((window, Pages.Login), "доступ отозван — окно показывает вход и из трея");
+    }
+
     [AvaloniaTheory]
     [InlineData(WindowCloseReason.WindowClosing, true)]
     [InlineData(WindowCloseReason.ApplicationShutdown, false)]
@@ -220,7 +246,7 @@ public sealed class TrayTests : WindowHarness
     {
         var lifetime = new ClassicDesktopStyleApplicationLifetime();
         _ = new DesktopHost(Avalonia.Application.Current!, lifetime, window, Service<TrayViewModel>(), Service<SettingsService>(), null, minimized,
-            Service<NoticeWindow>(), Service<UpdateWatcher>());
+            Service<NoticeWindow>(), Service<UpdateWatcher>(), Service<AccountService>());
         return lifetime;
     }
 

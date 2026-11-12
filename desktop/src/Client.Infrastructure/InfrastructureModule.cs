@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
@@ -9,6 +10,7 @@ using PrivateGateway.Client.Application.Startup;
 using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core.Platform;
+using PrivateGateway.Client.Infrastructure.Account;
 using PrivateGateway.Client.Infrastructure.Backup;
 using PrivateGateway.Client.Infrastructure.Demo;
 using PrivateGateway.Client.Infrastructure.Import;
@@ -24,8 +26,9 @@ namespace PrivateGateway.Client.Infrastructure;
 
 /// <summary>
 /// Реализации для процесса интерфейса: хранилище профилей (SQLite), секреты в хранилище ОС,
-/// журнал, клиент службы по IPC, загрузка списков серверов. Единственный слой интерфейсного
-/// процесса, которому разрешена сеть, — и то только для загрузки списков серверов.
+/// журнал, клиент службы по IPC, загрузка списков серверов, API входа сайта. Единственный слой интерфейсного
+/// процесса, которому разрешена сеть, — и то только для загрузки списков серверов и API входа в аккаунт сайта
+/// (<see cref="HttpAccountApi"/>: только https, адрес — константа, решение 615).
 /// </summary>
 public static class InfrastructureModule
 {
@@ -33,7 +36,8 @@ public static class InfrastructureModule
     /// Подключение — через службу по IPC (<see cref="GatewayHost"/>): найденную при запуске или позже, в
     /// режиме прокси — службу пользователя, которую окно запускает само. Демо-режим (<paramref name="demo"/>,
     /// <c>--demo</c>) — имитация <see cref="SimulatedGatewayClient"/> и, пока своих серверов нет, демо-серверы
-    /// (<see cref="UserOrDemoCatalog"/>).
+    /// (<see cref="UserOrDemoCatalog"/>); вход в аккаунт сайта в демо не нужен (<see cref="AccountOptions"/>), подключение
+    /// им не ограничено. В рабочем режиме подключение без действующего входа <see cref="GatewayHost"/> не начинает.
     /// </summary>
     public static IServiceCollection AddClientInfrastructure(this IServiceCollection services, AppPaths paths, bool demo = false)
     {
@@ -65,7 +69,8 @@ public static class InfrastructureModule
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))
                     || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>(),
-                selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected));
+                selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected,
+                mayConnect: () => sp.GetRequiredService<AccountService>().MayConnect));
         services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
             sp.GetRequiredService<IGatewayClient>(), userProxy.Value,
             new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
@@ -75,6 +80,14 @@ public static class InfrastructureModule
             : ServiceInstaller.ForThisWindow(sp.GetRequiredService<TimeProvider>()));
         services.AddSingleton<IAppRelauncher>(_ => demo ? new AppRelauncher(null) : AppRelauncher.ForThisWindow());
         services.AddSingleton(sp => SecretStores.ForCurrentOs(sp.GetRequiredService<SqliteDatabase>()));
+        services.AddSingleton(new AccountOptions(Required: !demo));
+        services.AddSingleton<SqliteAccountStore>();
+        services.AddSingleton<IAccountStore>(sp => sp.GetRequiredService<SqliteAccountStore>());
+        services.AddSingleton<IDeviceIdentity>(sp => sp.GetRequiredService<SqliteAccountStore>());
+        services.AddSingleton<IAccountApi>(sp => new HttpAccountApi(HttpAccountApi.CreateClient(), sp.GetRequiredService<TimeProvider>(),
+            direct: HttpAccountApi.CreateDirectClient(),
+            mayBypass: url => HttpSubscriptionDownloader.IsForeignProxy(HttpClient.DefaultProxy, url,
+                sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());
         services.AddSingleton<DemoServerCatalog>();

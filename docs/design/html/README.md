@@ -69,6 +69,12 @@ docs/design/html/
   не пишет в хранилище браузера и не журналирует учетные данные.
   На доске 10 настольная ссылка «Открыть настройки» доступна до добавления VPN-сервера: она открывает общий экран
   настроек, не меняя режим; отдельного выбора режима в первом запуске нет.
+- Вход в аккаунт сайта (2026-11-12, решение 627): доска 10 «Вход и первый запуск» начинается со входа — до приветствия,
+  без островка (`.pg-page.login` в `app.css`): форма, резервный код, ошибки 401, 403 с «Открыть сайт», 409 с «Устройства на
+  сайте», нет связи, доступ отозван. Карточка «Аккаунт» с «Выйти» — первой на доске 4 (`.account-card`), вопрос «Выйти из
+  аккаунта?» — на доске 18, код PGC-ACC-001 — на доске 16. Все это — `data-os="desktop android"`: на iOS входа пока нет
+  ([расхождения](../mobile-parity.md)). Адрес сайта в макете — example.org; введенные почта, пароль и коды остаются в полях
+  страницы и никуда не уходят.
 
 ## Интерактивность (атрибуты, без своего JS на доске)
 
@@ -85,13 +91,14 @@ docs/design/html/
 | `.btn-chip[data-info]` + `[data-chip-info]` | плитка проверки: выбор и пояснение под плитками |
 | `data-toast="Текст"` | всплывающая подсказка сверху |
 | `data-spin` | значок кнопки крутится 1,5 с («Обновить серверы» — кнопка не сжимается: `.btn-icon.steady`) |
-| `data-reveal` + `[data-masked][data-plain]` в `[data-reveal-scope]` | глаз: скрыто — звездочками, как в программе |
+| `data-reveal` + `[data-masked][data-plain]` в `[data-reveal-scope]` | глаз: скрыто — звездочками, как в программе; `input[data-reveal-input]` — пароль показывается или прячется точками, значок кнопки — `data-icon-hidden` / `data-icon-shown`, у кнопки с `aria-pressed` подпись не меняется |
+| `[data-login]` + `input[data-login-field]` + `[data-login-submit]` | форма входа: кнопка доступна, когда все поля заполнены (`pattern` — код 2FA из 6 цифр), Enter в поле нажимает ее |
 | `data-set-state="off"` | перевести экран в состояние защиты (`connected` — через «Подключение», 1,4 с) |
 | `data-power-target="04-settings.html"` + `data-power-label` | неготовая цель: щит открывает настройки вместо имитации подключения; используется в настольном примере внешнего прокси |
 | `data-remove="селектор"` | спрятать строки экрана («Удалить» подписку или сервер) |
 | `data-goto="step2"` + `[data-page="step2"]` | шаги внутри экрана (страницы `.pg-page` с `data-page`, лишние — `hidden`) |
 | `.fav` | звезда избранного |
-| `data-os-word="name"` (`firewall`, `engine`, `store`, `build`) | слово ОС по рамке, как подставляет программа: «Windows» → «macOS», «брандмауэром Windows» → «правилами nftables», «Windows DPAPI» → «Связка ключей iOS» |
+| `data-os-word="name"` (`firewall`, `engine`, `store`, `build`, `device`) | слово ОС по рамке, как подставляет программа: «Windows» → «macOS», «брандмауэром Windows» → «правилами nftables», «Windows DPAPI» → «Связка ключей iOS», имя компьютера → «Google Pixel 8» |
 | `data-os-info="dnsInfoOk"`, `data-os-value="dnsDefault"` | пояснение плитки и значение пункта меню по выбранной ОС; DNS десктопа обновлен отдельно от мобильных подписей, значение выбранного пункта совпадает с его видимым текстом |
 | `data-os="windows"`, `data-os="desktop"`, `data-os="phone"` | строка или отдельный `.pg-screen` есть только на этих ОС, как в программе: Hyper-V — только Windows, фоновый режим и «Запускать вместе с …» — только десктоп |
 
@@ -114,7 +121,10 @@ docs/design/html/
   (`.tone-success|warning|danger|caution`), `.btn-select`, `.btn-small` (`.soft`), `.btn-option` (`.current` — синим
   полужирным, без заливки), `.btn-primary`, `.btn-secondary` (`.danger`), `.btn-tile`, `.btn-chip` + `.tone-*`.
 - Управление: `.switch` (`.on`), `.segments > .segment` (`.on`), `.check` (`.on`, внутри `.check-box` с `Chip.Ok`), `.input`,
-  `.search`, строка настройки `.setting` (`.setting-text > .setting-title + .setting-caption`, справа элемент),
+  `.search`, форма входа `.pg-page.login` (`.login-lang`, `.login-logo`, `.login-field` с `.login-label`, поле пароля с
+  «глазом» `.input.login-secret`, `.login-hint`, `.login-toggle`, `.login-error`, `.login-submit`, `.login-site`, плашка
+  `.banner.warning.login-notice`), карточка `.account-card` (строка `.setting`, кнопка `.account-signout`),
+  строка настройки `.setting` (`.setting-text > .setting-title + .setting-caption`, справа элемент),
   строка-ссылка `.link-row` (`.row-icon`, `.chevron`), вкладки `.tabs > .tab`, строка сервера `.server-row` (`.current`),
   задержка `.latency.good|mid|bad|none`, журнал `.log`, `.spinner`.
 - Слои: `.sheet` (с `.grabber`), `.dialog` (`.dialog-icon.danger|warning|caution|accent`, `.dialog-actions`), `.popup`, `.toast`.

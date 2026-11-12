@@ -65,6 +65,8 @@ class FirstLaunchOnDeviceTest {
         }
         assertNotNull(VpnService.prepare(context), "разрешение на VPN уже есть — первый запуск не воспроизведен")
 
+        // Вход в аккаунт сайта засеян: иначе окно открылось бы на экране входа (решение 623).
+        TestAccount.seed(app)
         val server = assertNotNull(LinkParser.parse(LINK).server, "ссылка проверки не разобралась")
         app.servers().add(listOf(server))
         app.settings().select(app.servers().servers.first().first { it.port == PORT }.id)

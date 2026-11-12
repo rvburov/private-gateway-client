@@ -1,3 +1,4 @@
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -10,10 +11,11 @@ namespace PrivateGateway.Client.Application.Connection;
 /// от нее потоком, поэтому сначала дождаться его, чтобы не переподключать работающую защиту. «Блокировка»
 /// и «Ошибка» — тоже повод подключиться: служба перезапустилась после сбоя с блоком при обрыве, и
 /// подключение возвращает защиту с теми же настройками. До конца первого запуска — ничего; на паузе для входа в
-/// Wi-Fi — тоже: пользователь входит в сеть, и перезапуск окна паузу не обрывает.
+/// Wi-Fi — тоже: пользователь входит в сеть, и перезапуск окна паузу не обрывает. Без действующего входа в аккаунт
+/// сайта (<paramref name="account"/>) — ждать входа: подключение без доступа не начинается (PGC-ACC-001).
 /// </summary>
 public sealed class LaunchConnect(SettingsService settings, IGatewayClient gateway, IServerCatalog catalog, TimeProvider time,
-    ConnectionTarget? target = null)
+    ConnectionTarget? target = null, AccountService? account = null)
 {
     /// <summary>Сколько ждать первого состояния от службы.</summary>
     public static readonly TimeSpan Wait = TimeSpan.FromSeconds(3);
@@ -26,6 +28,11 @@ public sealed class LaunchConnect(SettingsService settings, IGatewayClient gatew
             return;
         }
 
+        if (account is not null)
+        {
+            await account.WaitForAccessAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         if (gateway.Service != ServiceKind.None)
         {
             await FirstStatusAsync(cancellationToken).ConfigureAwait(false);
@@ -33,7 +40,7 @@ public sealed class LaunchConnect(SettingsService settings, IGatewayClient gatew
 
         // Пока ждали службу, режим или редакция прокси могли измениться: брать цель только теперь.
         var server = target is null ? catalog.Selected : target.Selected;
-        if (settings.Current is { ConnectOnLaunch: true, OnboardingDone: true } && server is not null
+        if (settings.Current is { ConnectOnLaunch: true, OnboardingDone: true } && server is not null && (account?.MayConnect ?? true)
             && gateway.Status is { IsPaused: false, State: ConnectionState.Off or ConnectionState.Blocked or ConnectionState.Error })
         {
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);

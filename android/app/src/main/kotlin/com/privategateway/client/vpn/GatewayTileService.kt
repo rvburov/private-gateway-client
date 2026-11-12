@@ -11,6 +11,7 @@ import android.service.quicksettings.TileService
 import androidx.annotation.StringRes
 import com.privategateway.client.MainActivity
 import com.privategateway.client.R
+import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.data.SettingsRepository
 import dagger.hilt.android.AndroidEntryPoint
@@ -38,15 +39,17 @@ data class TileLook(val active: Boolean, @param:StringRes val subtitle: Int) {
 }
 
 /**
- * Плитка в шторке (доска 26): включает и выключает VPN, не открывая приложение. Сервер — только выбранный; не выбран
- * или Android еще не дал разрешения на VPN — открывается окно. На заблокированном экране — только после разблокировки:
- * выключить защиту с экрана блокировки не должен посторонний.
+ * Плитка в шторке (доска 26): включает и выключает VPN, не открывая приложение. Сервер — только выбранный; не выбран,
+ * нет входа в аккаунт сайта или Android еще не дал разрешения на VPN — открывается окно. На заблокированном экране — только
+ * после разблокировки: выключить защиту с экрана блокировки не должен посторонний.
  */
 @AndroidEntryPoint
 class GatewayTileService : TileService() {
     @Inject lateinit var monitor: TunnelMonitor
 
     @Inject lateinit var settings: SettingsRepository
+
+    @Inject lateinit var account: AccountRepository
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var listening: Job? = null
@@ -89,8 +92,9 @@ class GatewayTileService : TileService() {
         when (monitor.status.value.state) {
             TunnelState.Connected, TunnelState.Connecting, TunnelState.Reconnecting -> GatewayVpnService.disconnect(this)
             TunnelState.Stopping -> Unit
+            // Без входа в аккаунт сайта — окно с экраном входа, а не отказ службы (решение 619).
             TunnelState.Off, TunnelState.Error ->
-                if (hasServer && VpnService.prepare(this) == null) GatewayVpnService.connect(this) else openApp()
+                if (account.allowedNow() && hasServer && VpnService.prepare(this) == null) GatewayVpnService.connect(this) else openApp()
         }
     }
 

@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Threading;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Infrastructure.Storage;
@@ -12,7 +13,9 @@ namespace PrivateGateway.Client.UI.Services;
 /// <summary>
 /// Окно и значок в трее на компьютере: закрыть окно — спрятать в трей (настройка «Сворачивать в трей»),
 /// «Закрыть» в меню — выйти, вторая копия программы — показать окно этой. При автозапуске (<c>--minimized</c>) окно не
-/// показывается: программа ждет в трее, — но только после первого запуска: приветствие показывается всегда.
+/// показывается: программа ждет в трее, — но только после первого запуска и с действующим входом в аккаунт сайта:
+/// приветствие и вход показываются всегда. Доступ потерян (отозван на сайте, срок истек) — окно показывает вход и из трея:
+/// защита выключена, и пользователь должен это увидеть.
 /// </summary>
 public sealed class DesktopHost
 {
@@ -31,7 +34,8 @@ public sealed class DesktopHost
         SingleInstance? instance,
         bool minimized,
         NoticeWindow notices,
-        UpdateWatcher updates)
+        UpdateWatcher updates,
+        AccountService? account = null)
     {
         _desktop = desktop;
         _window = window;
@@ -73,7 +77,12 @@ public sealed class DesktopHost
             instance.ActivationRequested += (_, _) => Dispatcher.UIThread.Post(Show);
         }
 
-        if (!minimized || !settings.Current.OnboardingDone)
+        if (account is not null)
+        {
+            account.AccessLost += (_, _) => Dispatcher.UIThread.Post(Show);
+        }
+
+        if (!minimized || !settings.Current.OnboardingDone || account is { IsRequired: true, HasAccess: false })
         {
             desktop.MainWindow = window;
             window.Show();

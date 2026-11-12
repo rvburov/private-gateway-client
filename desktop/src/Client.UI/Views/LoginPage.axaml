@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:PrivateGateway.Client.UI.ViewModels"
+             xmlns:c="using:PrivateGateway.Client.UI.Controls"
+             xmlns:l="using:PrivateGateway.Client.UI.Localization"
+             x:Class="PrivateGateway.Client.UI.Views.LoginPage"
+             x:DataType="vm:LoginPageViewModel">
+  <!-- Вход в аккаунт сайта — docs/design, доска 10, перед приветствием (решение 621). Островка нет. -->
+  <UserControl.Styles>
+    <!-- Почему вход нужен снова: доступ отозван или срок истек — плашка предупреждения, как в «Резервной копии» -->
+    <Style Selector="Border.notice">
+      <Setter Property="CornerRadius" Value="{StaticResource PgRadius.Input}" />
+      <Setter Property="Padding" Value="12,10" />
+      <Setter Property="BorderThickness" Value="1" />
+      <Setter Property="Background" Value="{StaticResource PgBrush.Status.Warning.Tint}" />
+      <Setter Property="BorderBrush" Value="{StaticResource PgBrush.Status.Warning.Line}" />
+    </Style>
+    <Style Selector="TextBlock.field">
+      <Setter Property="FontSize" Value="{StaticResource PgFontSize.Small}" />
+      <Setter Property="FontWeight" Value="SemiBold" />
+      <Setter Property="Foreground" Value="{StaticResource PgBrush.Text.Secondary}" />
+    </Style>
+  </UserControl.Styles>
+
+  <Grid RowDefinitions="Auto,*">
+    <Border Classes="segments" HorizontalAlignment="Right" Margin="0,20,24,0">
+      <UniformGrid Columns="2">
+        <RadioButton x:Name="LoginRu" Classes="segment" GroupName="loginLang" IsChecked="{Binding IsRussian}"
+                     Content="{l:L welcome.lang.ru}" MinWidth="48" />
+        <RadioButton x:Name="LoginEn" Classes="segment" GroupName="loginLang" IsChecked="{Binding IsEnglish}"
+                     Content="{l:L welcome.lang.en}" MinWidth="48" />
+      </UniformGrid>
+    </Border>
+
+    <ScrollViewer Grid.Row="1" Classes="page">
+      <StackPanel Margin="24,16,24,24" Spacing="12">
+        <Border Width="72" Height="72" CornerRadius="{StaticResource PgRadius.Panel}" HorizontalAlignment="Center"
+                Background="{StaticResource PgBrush.Surface.Solid}" BorderBrush="{StaticResource PgBrush.Line.Border}"
+                BorderThickness="1" BoxShadow="{StaticResource PgShadow.Card}">
+          <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}" Width="36" Height="36"
+                  StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Base}" />
+        </Border>
+        <TextBlock x:Name="LoginTitle" Classes="h1" Text="{l:L account.title}" HorizontalAlignment="Center"
+                   TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
+        <TextBlock Text="{l:L account.text}" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
+                   MaxWidth="360" LineHeight="20" Foreground="{StaticResource PgBrush.Text.Secondary}" />
+
+        <Border x:Name="LoginNotice" Classes="notice" IsVisible="{Binding HasNotice}" Margin="0,4,0,0">
+          <Grid ColumnDefinitions="Auto,*">
+            <c:Icon Data="{StaticResource Icon.Warning}" Width="18" Height="18" StrokeThickness="2" VerticalAlignment="Top"
+                    Foreground="{StaticResource PgBrush.Status.Warning.Text}" />
+            <TextBlock x:Name="LoginNoticeText" Grid.Column="1" Margin="10,0,0,0" Text="{Binding Notice}" TextWrapping="Wrap"
+                       FontSize="{StaticResource PgFontSize.Small}" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+          </Grid>
+        </Border>
+
+        <StackPanel Spacing="6" Margin="0,8,0,0">
+          <TextBlock Classes="field" Text="{l:L account.email}" />
+          <TextBox x:Name="LoginEmail" Classes="input" Text="{Binding Email}" MaxLength="{x:Static vm:LoginPageViewModel.EmailMaxLength}"
+                   TextInputOptions.ContentType="Email" AutomationProperties.Name="{l:L account.email}">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock Classes="field" Text="{l:L account.password}" />
+          <TextBox x:Name="LoginPassword" Classes="input" Text="{Binding Password}" PasswordChar="*"
+                   MaxLength="{x:Static vm:LoginPageViewModel.PasswordMaxLength}"
+                   RevealPassword="{Binding IsPasswordVisible}" TextInputOptions.ContentType="Password"
+                   AutomationProperties.Name="{l:L account.password}">
+            <TextBox.InnerRightContent>
+              <Button x:Name="LoginShowPassword" Classes="icon" Width="36" Height="36" Command="{Binding TogglePasswordCommand}"
+                      Foreground="{StaticResource PgBrush.Text.Muted}"
+                      ToolTip.Tip="{l:L account.password.show}" AutomationProperties.Name="{l:L account.password.show}">
+                <Panel>
+                  <c:Icon Data="{StaticResource Icon.Eye}" Width="18" Height="18" StrokeThickness="1.9"
+                          IsVisible="{Binding !IsPasswordVisible}" />
+                  <c:Icon Data="{StaticResource Icon.EyeOff}" Width="18" Height="18" StrokeThickness="1.9"
+                          IsVisible="{Binding IsPasswordVisible}" />
+                </Panel>
+              </Button>
+            </TextBox.InnerRightContent>
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+        </StackPanel>
+
+        <StackPanel Spacing="6">
+          <TextBlock x:Name="LoginCodeLabel" Classes="field" Text="{Binding CodeLabel}" />
+          <TextBox x:Name="LoginCode" Classes="input" Text="{Binding Code}" MaxLength="{x:Static vm:LoginPageViewModel.RecoveryMaxLength}"
+                   AutomationProperties.Name="{Binding CodeLabel}">
+            <TextBox.KeyBindings>
+              <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+            </TextBox.KeyBindings>
+          </TextBox>
+          <TextBlock x:Name="LoginCodeHint" Classes="caption" Text="{Binding CodeHint}" TextWrapping="Wrap" />
+          <Button x:Name="LoginToggleCode" Classes="link" HorizontalAlignment="Left" MinHeight="{StaticResource PgLayout.TouchTarget}"
+                  Command="{Binding ToggleRecoveryCommand}" Content="{Binding CodeToggleText}" />
+        </StackPanel>
+
+        <TextBlock x:Name="LoginError" Text="{Binding Error}" IsVisible="{Binding HasError}" TextWrapping="Wrap"
+                   FontSize="{StaticResource PgFontSize.Small}" Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
+        <Button x:Name="SignInButton" Classes="primary" Height="50" HorizontalAlignment="Stretch"
+                Command="{Binding SignInCommand}" Content="{Binding SignInText}" />
+        <!-- 403 — 2FA настраивается на сайте; 409 — лишнее устройство удаляется на странице устройств сайта (решение 626) -->
+        <Button x:Name="LoginOpenSite" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding CanOpenSite}"
+                Command="{Binding OpenSiteCommand}" Content="{l:L account.site}" />
+        <Button x:Name="LoginOpenDevices" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding CanOpenDevices}"
+                Command="{Binding OpenDevicesCommand}" Content="{l:L account.devices}" />
+      </StackPanel>
+    </ScrollViewer>
+  </Grid>
+</UserControl>

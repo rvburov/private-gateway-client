@@ -18,6 +18,7 @@ Private Gateway Client не собирает телеметрию, не отпр
 | `stat.ripe.net` | только по кнопке «Кто провайдер» | провайдер и регион внешнего адреса | как у вас сейчас |
 | `api.github.com/repos/rvburov/private-gateway-client/releases` и загрузки выпусков | после запуска и раз в 12 часов, если включено «Проверять сами» (по умолчанию), и по кнопке «Проверить» | обновления: список выпусков, подписанный манифест, файл установки | как у вас сейчас |
 | DNS из настроек («Cloudflare DoH» — `1.1.1.1`, «Quad9 DoH» — `9.9.9.9`, или ваш) | все время работы туннеля | имена сайтов | через сервер |
+| `private-gateway.duckdns.org/api/app/*` (сайт Private Gateway Web) | вход в аккаунт; проверка доступа — при запуске, при показе окна и раз в 30 минут; выход | можно ли пользоваться программой: почта, пароль и код 2FA при входе, затем только токен устройства; устройство — случайный идентификатор установки, имя компьютера, ОС и версия программы | как у вас сейчас (только https) |
 | `www.msftconnecttest.com`, `captive.apple.com`, `nmcheck.gnome.org` | только на паузе для входа в Wi-Fi («Открыть на 5 минут») | страница входа гостиничной или публичной сети — ее открывает ваш браузер | напрямую, на время паузы |
 
 Android — то же для своих функций: задержка (`cp.cloudflare.com`), внешний IP и «Кто провайдер» на «Проверке» — только
@@ -32,6 +33,9 @@ Android — то же для своих функций: задержка (`cp.cl
 
 - Ключи серверов и адреса подписок — только в хранилище ОС (Windows — DPAPI, macOS — Связка ключей, Linux — Secret
   Service, Android — Keystore); в базе программы — запечатанными.
+- Вход в аккаунт сайта: токен устройства — только в хранилище ОС; без хранилища вход не выполняется. Пароль и коды 2FA
+  не сохраняются. Срок входа, почта и имя — в базе программы. Идентификатор устройства — случайный, один на установку;
+  ни он, ни вход не попадают в резервную копию программы и на другой компьютер не переносятся.
 - Журналы — только на этом компьютере (телефоне), без ключей, UUID, ссылок и адресов подписок; адреса в подробном журнале
   ядра скрыты.
 - Отчет проверки («Проверка» → «Экспорт отчета») обезличен: публичные адреса — метками, без ключей, UUID, ссылок, адресов
@@ -45,7 +49,8 @@ Android — то же для своих функций: задержка (`cp.cl
 
 No telemetry, no analytics, no ads. The app contacts only your servers and subscription URLs (subscriptions through the
 VPN by default), plus the check endpoints listed above: Cloudflare (`cp.cloudflare.com`, `1.1.1.1`, `stun.cloudflare.com`)
-for latency, external IP, WebRTC and DNS-leak checks, RIPEstat only when you press "Who is the provider", GitHub for update
+for latency, external IP, WebRTC and DNS-leak checks, the Private Gateway Web site (`private-gateway.duckdns.org`) to sign
+in and to check the access of this device (at start, when the window is shown and every 30 minutes), RIPEstat only when you press "Who is the provider", GitHub for update
 checks (can be turned off in About) and captive-portal pages only when you ask to log in to a Wi-Fi network. Keys and
 subscription URLs stay in the OS secure storage; logs and the anonymized check report stay on your device unless you send
 them yourself.

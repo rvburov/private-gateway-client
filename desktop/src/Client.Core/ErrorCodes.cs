@@ -50,4 +50,7 @@ public static class ErrorCodes
 
     /// <summary>Работает другой VPN или системный прокси.</summary>
     public const string OtherVpn = "PGC-NET-010";
+
+    /// <summary>Нет действующего входа в аккаунт сайта: подключение не начинается (код ставит само окно).</summary>
+    public const string AccessRequired = "PGC-ACC-001";
 }

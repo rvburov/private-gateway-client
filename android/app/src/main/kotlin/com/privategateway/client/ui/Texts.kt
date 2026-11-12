@@ -3,6 +3,7 @@ package com.privategateway.client.ui
 import android.os.LocaleList
 import androidx.annotation.StringRes
 import com.privategateway.client.R
+import com.privategateway.client.core.account.AccountError
 import com.privategateway.client.core.links.ImportErrors
 import com.privategateway.client.core.links.ImportParser
 import com.privategateway.client.core.subscriptions.FailureReason
@@ -22,7 +23,22 @@ object Texts {
         TunnelErrors.UNSUPPORTED -> R.string.error_PGC_SVC_005
         TunnelErrors.SERVER_NOT_RESPONDING -> R.string.error_PGC_NET_001
         TunnelErrors.OTHER_VPN -> R.string.error_PGC_NET_010
+        TunnelErrors.NO_ACCESS -> R.string.error_PGC_ACC_001
         else -> R.string.error_PGC_SVC_002
+    }
+
+    /** account.error.<причина> — почему вход не выполнен; у [AccountError.RateLimited] в тексте минуты ({0}). */
+    @StringRes
+    fun account(error: AccountError): Int = when (error) {
+        AccountError.Invalid -> R.string.account_error_invalid
+        AccountError.Code -> R.string.account_error_code
+        AccountError.SetupRequired -> R.string.account_error_setupRequired
+        AccountError.DeviceLimit -> R.string.account_error_deviceLimit
+        AccountError.RateLimited -> R.string.account_error_rateLimited
+        AccountError.Validation -> R.string.account_error_validation
+        AccountError.Network -> R.string.account_error_network
+        AccountError.Server -> R.string.account_error_server
+        AccountError.Store -> R.string.account_error_store
     }
 
     /** import.error.<код> — почему строка импорта пропущена. */
