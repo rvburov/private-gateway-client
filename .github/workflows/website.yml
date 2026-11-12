@@ -101,6 +101,13 @@ jobs:
           printf '%s\n' "$WEBSITE_SSH_KEY" > ~/.ssh/website_key
           chmod 600 ~/.ssh/website_key
           printf '%s\n' "$WEBSITE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          # Отпечаток ключа из секрета (не секрет): сверить с ssh-keygen -lf pgweb-releases и с authorized_keys сервера
+          if ! ssh-keygen -y -f ~/.ssh/website_key > "$RUNNER_TEMP/website_key.pub" 2> /dev/null \
+            || ! ssh-keygen -lf "$RUNNER_TEMP/website_key.pub" > "$RUNNER_TEMP/fp.txt"; then
+            echo "WEBSITE_SSH_KEY — не секретный ключ OpenSSH: вставьте файл pgweb-releases целиком, от BEGIN до END" >&2
+            exit 1
+          fi
+          echo "Ключ выпусков: $(cut -d' ' -f2 "$RUNNER_TEMP/fp.txt")" | tee -a "$GITHUB_STEP_SUMMARY"
           while read -r platform version file sum; do
             ssh -i ~/.ssh/website_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=20 -o ServerAliveInterval=30 \
