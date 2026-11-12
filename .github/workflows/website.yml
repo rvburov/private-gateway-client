@@ -98,9 +98,10 @@ jobs:
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
-          printf '%s\n' "$WEBSITE_SSH_KEY" > ~/.ssh/website_key
+          # Ключ, скопированный в Windows, приходит с переводами строк CRLF — OpenSSH такой файл не читает
+          printf '%s\n' "$WEBSITE_SSH_KEY" | tr -d '\r' > ~/.ssh/website_key
           chmod 600 ~/.ssh/website_key
-          printf '%s\n' "$WEBSITE_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          printf '%s\n' "$WEBSITE_KNOWN_HOSTS" | tr -d '\r' > ~/.ssh/known_hosts
           # Отпечаток ключа из секрета (не секрет): сверить с ssh-keygen -lf pgweb-releases и с authorized_keys сервера
           if ! ssh-keygen -y -f ~/.ssh/website_key > "$RUNNER_TEMP/website_key.pub" 2> /dev/null \
             || ! ssh-keygen -lf "$RUNNER_TEMP/website_key.pub" > "$RUNNER_TEMP/fp.txt"; then
