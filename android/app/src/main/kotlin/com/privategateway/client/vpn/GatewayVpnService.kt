@@ -47,6 +47,8 @@ import com.privategateway.client.core.xray.XrayConfig
 import com.privategateway.client.core.xray.SubscriptionProxy
 import java.net.ServerSocket
 import java.net.InetAddress
+import java.net.URL
+import java.net.URLConnection
 import java.util.UUID
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.data.SettingsRepository
@@ -282,10 +284,24 @@ class GatewayVpnService : VpnService() {
      * Профиль должен ответить через туннель до «Защищено» (решение 556, `StartCheck`): иначе неверный ключ или неработающий
      * сервер подписки выглядели бы защитой, а потом бесконечным «Переподключением», пока «Блокировать подключения без VPN»
      * держит интернет закрытым. Не ответил — код «Сервер не отвечает»: «Ошибка» и уведомление с «Повторить» и «Выбрать сервер».
+     * Пробы — до конца «Таймаута подключения», каждая — строкой в журнал «Проверки» (номер, вид отказа, мс).
      */
     private suspend fun verify(): String? {
-        val timeout = settings.tunnel.first().connection.probeTimeoutMs.toInt()
-        if (StartCheck.answers { withContext(Dispatchers.IO) { TunnelProbe.answers(StartCheck.TARGET, timeout) } }) {
+        val timeout = settings.tunnel.first().connection.probeTimeoutMs
+        val started = SystemClock.elapsedRealtime()
+        // Проба — через нашу сеть VPN: сразу после establish() сеть приложения по умолчанию бывает еще прежней, и проба
+        // ушла бы мимо туннеля или в отказ «Блокировать подключения без VPN». Сети нет за 3 с — сеть по умолчанию, как
+        // раньше.
+        val network = subscriptionNetwork.await(StartCheck.NETWORK_WAIT_MS)
+        journal.info("start check  network=" + if (network != null) "vpn" else "default")
+        val open: (URL) -> URLConnection = { url -> network?.openConnection(url) ?: url.openConnection() }
+        val answered = StartCheck.answers(
+            budgetMs = timeout - (SystemClock.elapsedRealtime() - started),
+            probeTimeoutMs = timeout,
+            clock = SystemClock::elapsedRealtime,
+            report = { probe -> if (probe.answered) journal.info(probe.line()) else journal.warning(probe.line()) },
+        ) { TunnelProbe.probe(StartCheck.TARGET, timeout.toInt(), open) }
+        if (answered) {
             return null
         }
 

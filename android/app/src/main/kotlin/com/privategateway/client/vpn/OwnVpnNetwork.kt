@@ -116,6 +116,12 @@ class OwnVpnNetwork @Inject constructor(@param:ApplicationContext private val co
 
     class Captured(val proxy: SubscriptionProxy, val sockets: SocketFactory, val valid: () -> Unit)
 
+    /**
+     * Наша сеть VPN этого запуска — для пробы до «Защищено» (`StartCheck`); ждать ее не дольше [timeoutMs]. null —
+     * Android ее еще не показал: проба идет сетью приложения по умолчанию, как раньше.
+     */
+    suspend fun await(timeoutMs: Long): Network? = withTimeoutOrNull(timeoutMs) { current.filterNotNull().first() }
+
     /** Дождаться регистрации нашей карты. Ни чужая, ни прежняя неизвестная VPN запасным путем не становятся. */
     suspend fun capture(request: SubscriptionRequest): Captured {
         val expectedGeneration = synchronized(lock) {
