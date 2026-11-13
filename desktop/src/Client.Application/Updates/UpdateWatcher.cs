@@ -12,6 +12,25 @@ public interface IAppRelauncher
     void RelaunchAfter(int installerPid);
 }
 
+/// <summary>
+/// Лента обновлений сайта (<c>GET /api/app/updates</c>): ее берет окно своим входом в аккаунт и передает службе — у
+/// службы токена нет. Реализация — <see cref="Account.AccountService"/>.
+/// </summary>
+public interface IUpdateFeedSource
+{
+    /// <summary>Нужен ли вход; false — демо-режим: службу спрашивают без ленты.</summary>
+    bool IsRequired { get; }
+
+    /// <summary>Вход сохранен — ленту есть чем спросить.</summary>
+    bool IsSignedIn { get; }
+
+    /// <summary>Вошли, вышли, доступ потерян. В контексте окна.</summary>
+    event EventHandler? Changed;
+
+    /// <summary>Байты ленты канала <paramref name="channel"/> как есть; входа нет, сайт не ответил или отказал — null.</summary>
+    Task<byte[]?> UpdatesFeedAsync(UpdateChannel channel, CancellationToken cancellationToken = default);
+}
+
 /// <summary>Что с найденным обновлением в окне: «Обновить сейчас» → загрузка → готово → «Перезапустить клиент».</summary>
 public enum UpdateStep
 {
@@ -32,15 +51,17 @@ public enum UpdateStep
 }
 
 /// <summary>
-/// Обновление программы для окна. Ищет его служба (<see cref="IGatewayClient.CheckForUpdateAsync"/>), а здесь — когда
-/// спросить: через две минуты после запуска и потом раз в 12 часов, если включено «Проверять сами»
-/// (<see cref="AppSettings.CheckUpdates"/>); при смене канала — сразу; кнопка «Проверить» — сразу и мимо памяти службы.
-/// Выключено — окно само в сеть за обновлениями не ходит, только по кнопке. Последний ответ — <see cref="Offer"/>.
-/// Найденное служба ставит сама, если может (<see cref="UpdateOffer.Installable"/>): <see cref="DownloadAsync"/> —
-/// загрузка с ходом (<see cref="Step"/>, <see cref="Received"/> из <see cref="Total"/>), <see cref="InstallAsync"/> —
-/// установщик ОС, перезапуск окна после него (<see cref="IAppRelauncher"/>) и <see cref="RestartRequested"/>: окно закрывается.
-/// Откат на прежнюю версию (<see cref="UpdateOffer.Rollback"/>) — тем же путем: <see cref="RollBackAsync"/>, потом
-/// <see cref="InstallAsync"/>; что качается и ставится — <see cref="Target"/>.
+/// Обновление программы для окна. Ищет его служба (<see cref="IGatewayClient.CheckForUpdateAsync"/>) по ленте сайта, которую
+/// окно берет своим входом в аккаунт (<see cref="IUpdateFeedSource"/>), а здесь — когда спросить: через две минуты после
+/// запуска и потом раз в 12 часов, если включено «Проверять сами» (<see cref="AppSettings.CheckUpdates"/>); при смене канала
+/// и после входа (если до него ленты не было) — сразу; кнопка «Проверить» — сразу. Выключено — окно само в сеть за
+/// обновлениями не ходит, только по кнопке. Входа нет — ни сайт, ни службу не спрашивает: ответ <see cref="UpdateState.NoFeed"/>;
+/// сайт не ответил — <see cref="UpdateState.Failed"/>, служба тоже не спрашивается. Последний ответ — <see cref="Offer"/>.
+/// Найденное служба ставит сама, если может (<see cref="UpdateOffer.Installable"/>): <see cref="DownloadAsync"/> — свежая
+/// лента (билеты на файлы живут 30 минут) и загрузка с ходом (<see cref="Step"/>, <see cref="Received"/> из
+/// <see cref="Total"/>), <see cref="InstallAsync"/> — установщик ОС, перезапуск окна после него (<see cref="IAppRelauncher"/>)
+/// и <see cref="RestartRequested"/>: окно закрывается. Откат на прежнюю версию (<see cref="UpdateOffer.Rollback"/>) — тем же
+/// путем: <see cref="RollBackAsync"/>, потом <see cref="InstallAsync"/>; что качается и ставится — <see cref="Target"/>.
 /// </summary>
 public sealed class UpdateWatcher : IDisposable
 {
@@ -57,6 +78,7 @@ public sealed class UpdateWatcher : IDisposable
     private readonly SettingsService _settings;
     private readonly TimeProvider _time;
     private readonly IAppRelauncher _relauncher;
+    private readonly IUpdateFeedSource _feeds;
     private SynchronizationContext? _context;
     private ITimer? _timer;
     private UpdateChannel _channel;
@@ -64,12 +86,13 @@ public sealed class UpdateWatcher : IDisposable
     // Версия, о которой окно уже знает (видели в «О программе» или сказали уведомлением): о ней второй раз не говорят.
     private string? _known;
 
-    public UpdateWatcher(IGatewayClient gateway, SettingsService settings, TimeProvider time, IAppRelauncher relauncher)
+    public UpdateWatcher(IGatewayClient gateway, SettingsService settings, TimeProvider time, IAppRelauncher relauncher, IUpdateFeedSource feeds)
     {
         _gateway = gateway;
         _settings = settings;
         _time = time;
         _relauncher = relauncher;
+        _feeds = feeds;
         _channel = settings.Current.UpdateChannel;
     }
 
@@ -125,20 +148,22 @@ public sealed class UpdateWatcher : IDisposable
         }
 
         _context = SynchronizationContext.Current;
-        _timer = _time.CreateTimer(_ => Post(due: true), null, FirstCheck, Tick);
+        _timer = _time.CreateTimer(_ => Post(() => IsDue), null, FirstCheck, Tick);
         _settings.Changed += OnSettingsChanged;
+        _feeds.Changed += OnAccountChanged;
     }
 
     public void Dispose()
     {
         _timer?.Dispose();
         _settings.Changed -= OnSettingsChanged;
+        _feeds.Changed -= OnAccountChanged;
     }
 
     /// <summary>Пора ли проверить самим: включено «Проверять сами» и с прошлой попытки прошло <see cref="Period"/>.</summary>
     public bool IsDue => _settings.Current.CheckUpdates && (Attempted is not { } last || _time.GetUtcNow() - last >= Period);
 
-    /// <summary>Спросить службу сейчас; уже спрашиваем — ничего.</summary>
+    /// <summary>Спросить службу сейчас (с лентой сайта); уже спрашиваем — ничего.</summary>
     public Task CheckAsync(bool force, CancellationToken cancellationToken = default) => CheckAsync(force, announce: false, cancellationToken);
 
     private async Task CheckAsync(bool force, bool announce, CancellationToken cancellationToken = default)
@@ -153,7 +178,11 @@ public sealed class UpdateWatcher : IDisposable
         try
         {
             Attempted = _time.GetUtcNow();
-            var offer = await _gateway.CheckForUpdateAsync(_settings.Current.UpdateChannel, force, cancellationToken).ConfigureAwait(true);
+            var channel = _settings.Current.UpdateChannel;
+            var (feed, missing) = await FeedAsync(channel, cancellationToken).ConfigureAwait(true);
+            var offer = missing is { } state
+                ? new UpdateOffer(state, _time.GetUtcNow())
+                : await _gateway.CheckForUpdateAsync(channel, force, feed, cancellationToken).ConfigureAwait(true);
             if (Target is not null && Target != offer?.Version && Target != offer?.Rollback && Step is not (UpdateStep.Downloading or UpdateStep.Installing))
             {
                 // Служба больше не предлагает то, что качали, — загрузка ни к чему.
@@ -195,7 +224,17 @@ public sealed class UpdateWatcher : IDisposable
 
         (Step, Received, Total, Target) = (UpdateStep.Downloading, 0, 0, version);
         Changed?.Invoke(this, EventArgs.Empty);
-        await foreach (var progress in _gateway.DownloadUpdateAsync(version, cancellationToken).ConfigureAwait(true))
+
+        // Билеты на файлы живут 30 минут — перед загрузкой лента берется заново. Не получили — и качать не по чему.
+        var (feed, missing) = await FeedAsync(_settings.Current.UpdateChannel, cancellationToken).ConfigureAwait(true);
+        if (missing is not null)
+        {
+            Step = UpdateStep.DownloadFailed;
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
+        await foreach (var progress in _gateway.DownloadUpdateAsync(version, feed, cancellationToken).ConfigureAwait(true))
         {
             (Received, Total) = (progress.Received, progress.Total);
             Step = progress.Ready ? UpdateStep.Ready : progress.Failed ? UpdateStep.DownloadFailed : UpdateStep.Downloading;
@@ -233,7 +272,39 @@ public sealed class UpdateWatcher : IDisposable
         RestartRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    // Новый канал — другой список выпусков: спросить сразу (служба помнит ответ по каналу, лишнего запроса к GitHub нет).
+    /// <summary>
+    /// Лента сайта для службы. Вход не нужен (демо) — без ленты; входа нет — <see cref="UpdateState.NoFeed"/> без запроса;
+    /// сайт не ответил — <see cref="UpdateState.Failed"/>, а отозвал доступ (401) — снова <see cref="UpdateState.NoFeed"/>.
+    /// </summary>
+    private async Task<(byte[]? Feed, UpdateState? Missing)> FeedAsync(UpdateChannel channel, CancellationToken cancellationToken)
+    {
+        if (!_feeds.IsRequired)
+        {
+            return (null, null);
+        }
+
+        if (!_feeds.IsSignedIn)
+        {
+            return (null, UpdateState.NoFeed);
+        }
+
+        var feed = await _feeds.UpdatesFeedAsync(channel, cancellationToken).ConfigureAwait(true);
+        return feed is not null ? (feed, null) : (null, _feeds.IsSignedIn ? UpdateState.Failed : UpdateState.NoFeed);
+    }
+
+    // Вошли, а ленты до этого не было («Войдите в аккаунт…») — спросить сразу, как после смены канала. Событий входа бывает
+    // несколько подряд, поэтому условие проверяется еще раз, когда до вопроса дошла очередь: проверка — одна.
+    private void OnAccountChanged(object? sender, EventArgs e)
+    {
+        if (WaitsForSignIn)
+        {
+            Post(() => WaitsForSignIn);
+        }
+    }
+
+    private bool WaitsForSignIn => _feeds.IsSignedIn && Offer?.State == UpdateState.NoFeed && !IsChecking;
+
+    // Новый канал — другая лента: спросить сразу.
     private void OnSettingsChanged(object? sender, AppSettings settings)
     {
         if (settings.UpdateChannel != _channel)
@@ -241,26 +312,27 @@ public sealed class UpdateWatcher : IDisposable
             _channel = settings.UpdateChannel;
             if (settings.CheckUpdates || Attempted is not null)
             {
-                Post(due: false);
+                Post(() => true);
             }
         }
     }
 
-    private void Post(bool due)
+    // Проверка по расписанию, смене канала или входу — в контексте окна; when — пора ли, когда до нее дошла очередь.
+    private void Post(Func<bool> when)
     {
         if (_context is { } context)
         {
-            context.Post(_ => _ = RunAsync(due), null);
+            context.Post(_ => _ = RunAsync(when), null);
         }
         else
         {
-            _ = RunAsync(due);
+            _ = RunAsync(when);
         }
     }
 
-    private async Task RunAsync(bool due)
+    private async Task RunAsync(Func<bool> when)
     {
-        if (!due || IsDue)
+        if (when())
         {
             await CheckAsync(force: false, announce: true).ConfigureAwait(true);
         }

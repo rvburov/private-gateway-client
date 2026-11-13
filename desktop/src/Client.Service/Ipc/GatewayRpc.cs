@@ -78,8 +78,11 @@ public sealed class GatewayRpc(
     public override Task<V1.MeasureLatencyReply> MeasureLatency(V1.MeasureLatencyRequest request, ServerCallContext context) =>
         gateway.MeasureLatencyAsync(request, context?.CancellationToken ?? default);
 
-    /// <summary>Канал не задан — ошибка окна: служба не угадывает, какие выпуски ему нужны.</summary>
-    public override async Task<V1.UpdateOffer> CheckForUpdate(V1.CheckForUpdateRequest request, ServerCallContext context)
+    /// <summary>
+    /// Лента сайта — данные окна, которые служба проверяет сама (подписи манифестов, адрес файлов). Канал не задан —
+    /// ошибка окна: служба не угадывает, какие выпуски ему нужны.
+    /// </summary>
+    public override Task<V1.UpdateOffer> CheckForUpdate(V1.CheckForUpdateRequest request, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(request);
         if (request.Channel == V1.UpdateChannel.Unspecified)
@@ -87,11 +90,15 @@ public sealed class GatewayRpc(
             throw new RpcException(new Status(StatusCode.InvalidArgument, "Канал обновлений не задан"));
         }
 
-        var offer = await updates.CheckAsync(request.Channel.ToCore(), request.Force, context?.CancellationToken ?? default).ConfigureAwait(false);
-        return (offer with { Installable = offer.State == Core.Updates.UpdateState.Available && installer.Kind is not null }).ToContract();
+        // Ставит установленная служба программы из установщика — и только выпуск, на файл которого сайт дал ссылку.
+        var offer = updates.Check(request.Channel.ToCore(), request.SiteFeed.Span);
+        return Task.FromResult((offer with { Installable = offer.Installable && installer.Kind is not null }).ToContract());
     }
 
-    /// <summary>Скачать то, что служба сама нашла последней проверкой (обновление или откат); другая версия — отказ.</summary>
+    /// <summary>
+    /// Скачать то, что служба сама нашла последней проверкой (обновление или откат); другая версия — отказ. Ссылка на файл —
+    /// из свежей ленты окна, сверка — с найденным манифестом.
+    /// </summary>
     public override async Task DownloadUpdate(V1.DownloadUpdateRequest request, IServerStreamWriter<V1.UpdateDownload> responseStream, ServerCallContext context)
     {
         ArgumentNullException.ThrowIfNull(request);
@@ -104,7 +111,8 @@ public sealed class GatewayRpc(
             return;
         }
 
-        await foreach (var progress in installer.DownloadAsync(manifest, cancellation).ConfigureAwait(false))
+        var url = installer.Kind is { } kind ? updates.Link(manifest.Version, kind.Asset, request.SiteFeed.Span) : null;
+        await foreach (var progress in installer.DownloadAsync(manifest, url, cancellation).ConfigureAwait(false))
         {
             await responseStream.WriteAsync(progress.ToContract(), cancellation).ConfigureAwait(false);
         }

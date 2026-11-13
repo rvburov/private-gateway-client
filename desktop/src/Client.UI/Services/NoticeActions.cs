@@ -67,7 +67,7 @@ public sealed class NoticeActions(
                 shell.Navigate(Pages.Check);
                 break;
 
-            // Карточка «О программе» покажет загрузку и «Перезапустить клиент»; служба не ставит — там же «Открыть выпуск».
+            // Карточка «О программе» покажет загрузку и «Перезапустить клиент»; служба не ставит — там же «Скачать на сайте».
             case NoticeAction.Update:
                 updates.Postpone(null);
                 shell.Navigate(Pages.About);

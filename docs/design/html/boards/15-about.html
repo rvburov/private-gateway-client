@@ -106,7 +106,12 @@
   → «Обновить сейчас» → загрузка (VPN работает) сама становится «Готово» (зеленая рамка) → «Перезапустить клиент»; «Позже»
   сворачивает предложение. «Откатить на 0.1.2» — прежняя версия, служба вернет ее сама. «Канал обновлений» — меню, выбранный
   пункт синим полужирным. Ссылки разделены полосами: лицензии и политика открываются листом, «Сообщить о проблеме» ведет на
-  «Проверку» (там отчет).</p>
+  «Проверку» (там отчет).<br>
+  Обновления — с сайта Private Gateway Web (0.3.0): ленту окно берет своим входом в аккаунт и передает службе, подпись
+  манифеста и файл проверяет служба. Без входа — «Войдите в аккаунт, чтобы проверять обновления.» (экран «Без входа»). На
+  macOS служба обновление не ставит: «Скачать на сайте» открывает страницу «Скачать клиент». Android проверяет сам при показе
+  окна (не чаще раза в 12 часов): «Скачать и установить» — загрузка с полосой, сверка с подписанным манифестом и окно
+  установки Android.</p>
 
 <div class="pg-screens">
   <!-- ===================== Последняя версия · весь путь обновления ===================== -->
@@ -127,23 +132,39 @@
           </div>
         </div>
 
-        <!-- Android (DECISIONS.md, п. 8): только кнопка «Проверить» по подписанному update.json выпуска — фоновой проверки и
-             уведомления нет; есть новее — «Открыть выпуск», APK ставят со страницы выпуска. iPhone обновляет App Store — карточки нет. -->
+        <!-- Android (0.3.0): проверяет само при показе окна, не чаще раза в 12 часов, и кнопкой «Проверить» — по ленте сайта
+             своим входом в аккаунт, подпись — встроенным ключом. Есть новее — «Скачать и установить»: загрузка по билету с
+             полосой, сверка SHA-256 и размера с подписанным манифестом, окно установки Android. Нет разрешения на установку —
+             «Разрешите Private Gateway устанавливать обновления…» и переход в настройку Android; файл не прошел проверку или
+             Android не поставил — так и сказано, рядом «Скачать на сайте». iPhone обновляет App Store — карточки нет. -->
         <div class="card up-card" data-os="android">
-          <div class="up-state idle" data-page="a-idle">
-            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Сама программа обновления не проверяет — только кнопкой «Проверить».</span>
-            <button class="btn-secondary up-left" data-goto="a-offer">Проверить</button>
-          </div>
-          <div class="up-state idle" data-page="a-offer" hidden>
-            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
-            <span class="t-caption t-wrap">Доступна версия 0.2.0</span>
-            <div class="up-actions"><button class="btn-primary">Открыть выпуск</button><button class="btn-secondary" data-goto="a-latest">Проверить</button></div>
-          </div>
-          <div class="up-state idle" data-page="a-latest" hidden>
+          <div class="up-state idle" data-page="a-latest">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
             <span class="t-caption t-wrap">Установлена последняя версия · проверено в 15:42</span>
-            <button class="btn-secondary up-left" data-goto="a-idle">Проверить</button>
+            <button class="btn-secondary up-left" data-goto="a-offer">Проверить</button>
+          </div>
+          <div class="up-state offer" data-page="a-offer" hidden>
+            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+            <span class="t-caption t-wrap" data-ui-text="about.update.available">Доступно обновление 0.2.0</span>
+            <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
+            <div class="up-actions"><button class="btn-primary" data-goto="a-loading" data-ui-text="android.update.install">Скачать и установить</button><button class="btn-secondary" data-goto="a-latest">Проверить</button></div>
+          </div>
+          <div class="up-state offer auto" data-page="a-loading" hidden>
+            <div class="up-phase load">
+              <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+              <span class="t-caption t-wrap" data-ui-text="android.update.downloading">Загружаем обновление 0.2.0…</span>
+              <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
+              <div class="up-track"><div class="up-fill run"></div></div>
+              <span class="t-caption t-wrap">18,4 из 28,7 МБ · VPN продолжает работать</span>
+              <div class="up-actions"><button class="btn-primary" disabled>Загружаем…</button><button class="btn-secondary" disabled>Проверить</button></div>
+            </div>
+            <div class="up-phase done">
+              <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+              <span class="t-caption t-wrap">Обновление готово</span>
+              <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
+              <div class="up-track"><div class="up-fill done"></div></div>
+              <div class="up-actions"><button class="btn-primary" data-toast="Android спрашивает: установить обновление Private Gateway?">Скачать и установить</button><button class="btn-secondary" data-goto="a-latest">Проверить</button></div>
+            </div>
           </div>
         </div>
 
@@ -157,8 +178,8 @@
           <div class="up-state offer" data-page="offer" hidden>
             <div class="up-head"><span class="t-title pg-grow t-wrap">Доступно обновление 0.2.0</span><span class="up-badge">Новое</span></div>
             <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
-            <span class="up-signed t-success"><i data-icon="Mark.Ok" data-stroke="2.6" data-size="14"></i><span class="t-small t-success">Подпись проверена · можно откатить на 0.1.2</span></span>
-            <div class="up-actions"><button class="btn-primary" data-goto="loading">Обновить сейчас</button><button class="btn-secondary" data-goto="later">Позже</button></div>
+            <span class="up-signed t-success"><i data-icon="Mark.Ok" data-stroke="2.6" data-size="14"></i><span class="t-small t-success">Подпись проверена<span data-os="windows linux"> · можно откатить на 0.1.2</span></span></span>
+            <div class="up-actions"><button class="btn-primary" data-goto="loading" data-os="windows linux">Обновить сейчас</button><button class="btn-primary" data-os="macos" data-ui-text="about.update.open" data-toast="В браузере откроется https://example.org/downloads — «Скачать клиент»: файл .dmg для macOS">Скачать на сайте</button><button class="btn-secondary" data-goto="later">Позже</button></div>
           </div>
           <div class="up-state idle" data-page="later" hidden>
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
@@ -231,7 +252,7 @@
           <button class="link-row" data-open="sheet-licenses-a"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-a"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -323,8 +344,8 @@
           <div class="up-state offer" data-page="offer">
             <div class="up-head"><span class="t-title pg-grow t-wrap">Доступно обновление 0.2.0</span><span class="up-badge">Новое</span></div>
             <div class="up-bullets"><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Быстрее переподключение после сна</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Новые правила маршрутизации по сайтам</span></span><span class="up-bullet"><span class="up-dot">•</span><span class="t-wrap">Исправления в проверке утечек DNS</span></span></div>
-            <span class="up-signed t-success"><i data-icon="Mark.Ok" data-stroke="2.6" data-size="14"></i><span class="t-small t-success">Подпись проверена · можно откатить на 0.1.2</span></span>
-            <div class="up-actions"><button class="btn-primary" data-goto="loading">Обновить сейчас</button><button class="btn-secondary" data-goto="later">Позже</button></div>
+            <span class="up-signed t-success"><i data-icon="Mark.Ok" data-stroke="2.6" data-size="14"></i><span class="t-small t-success">Подпись проверена<span data-os="windows linux"> · можно откатить на 0.1.2</span></span></span>
+            <div class="up-actions"><button class="btn-primary" data-goto="loading" data-os="windows linux">Обновить сейчас</button><button class="btn-primary" data-os="macos" data-ui-text="about.update.open" data-toast="В браузере откроется https://example.org/downloads — «Скачать клиент»: файл .dmg для macOS">Скачать на сайте</button><button class="btn-secondary" data-goto="later">Позже</button></div>
           </div>
           <div class="up-state idle" data-page="later" hidden>
             <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
@@ -397,7 +418,7 @@
           <button class="link-row" data-open="sheet-licenses-b"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-b"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -467,7 +488,7 @@
   </section>
 
   <!-- ===================== Загрузка ===================== -->
-  <section class="pg-screen" data-state="connected" data-caption="Загрузка: VPN продолжает работать">
+  <section class="pg-screen" data-os="windows linux" data-state="connected" data-caption="Загрузка: VPN продолжает работать">
     <div class="pg-page-header">
       <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
       <span class="t-h1 pg-ellipsis">О программе</span>
@@ -536,7 +557,7 @@
           <button class="link-row" data-open="sheet-licenses-c"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-c"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -606,7 +627,7 @@
   </section>
 
   <!-- ===================== Готово ===================== -->
-  <section class="pg-screen" data-state="connected" data-caption="Обновление готово: установится при перезапуске">
+  <section class="pg-screen" data-os="windows linux" data-state="connected" data-caption="Обновление готово: установится при перезапуске">
     <div class="pg-page-header">
       <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
       <span class="t-h1 pg-ellipsis">О программе</span>
@@ -682,7 +703,7 @@
           <button class="link-row" data-open="sheet-licenses-d"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-d"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -752,7 +773,7 @@
   </section>
 
   <!-- ===================== Откат ===================== -->
-  <section class="pg-screen" data-state="connected" data-caption="После обновления: можно откатить на 0.1.2">
+  <section class="pg-screen" data-os="windows linux" data-state="connected" data-caption="После обновления: можно откатить на 0.1.2">
     <div class="pg-page-header">
       <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
       <span class="t-h1 pg-ellipsis">О программе</span>
@@ -840,7 +861,7 @@
           <button class="link-row" data-open="sheet-licenses-e"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-e"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -904,6 +925,57 @@
             <p class="ab-sheet-text">Ключи серверов и адреса списков серверов хранятся в хранилище ОС, журналы — на этом <span data-os-word="place">компьютере</span>, без секретов. Отчет для поддержки обезличен, и отправляете его вы сами.</p>
         </div>
       </div>
+    </div>
+
+    <div class="pg-island" data-active="settings"></div>
+  </section>
+
+  <!-- ===================== Без входа ===================== -->
+  <section class="pg-screen" data-os="desktop" data-state="off" data-caption="Без входа в аккаунт: обновления не проверяются">
+    <div class="pg-page-header">
+      <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+      <span class="t-h1 pg-ellipsis">О программе</span>
+    </div>
+
+    <div class="pg-page">
+      <div class="ab-body">
+        <!-- Программа -->
+        <div class="card ab-app">
+          <span class="ab-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="30"></i></span>
+          <div class="pg-stack pg-grow" style="gap: 3px; margin-left: 16px">
+            <span class="ab-name">Private Gateway Client</span>
+            <span class="t-small t-wrap">Версия 0.3.0 · <span data-os-word="build">Windows 11 · x64</span></span>
+          </div>
+        </div>
+
+        <!-- Ленту обновлений программа берет с сайта своим входом в аккаунт. Входа нет (вышли, доступ отозван) — ни сайт,
+             ни служба не спрашиваются; войти — и проверка сразу. На десктопе кнопки «Проверить» нет: проверять нечем.
+             Без входа программу закрывает экран входа (доска 10), так что это состояние видно, только пока вход не
+             вернулся: после входа проверка идет сама. -->
+        <div class="card up-card" data-os="desktop">
+          <div class="up-state idle">
+            <div class="up-head"><span class="t-title pg-grow t-wrap">Обновления</span></div>
+            <span class="t-caption t-wrap" data-ui-text="about.updates.signIn">Войдите в аккаунт, чтобы проверять обновления.</span>
+          </div>
+          <div class="divider" style="margin-top: 4px"></div>
+          <div class="up-row" style="margin: 4px 0">
+            <div class="pg-stack pg-grow" style="gap: 3px"><span class="t-strong">Проверять сами</span><span class="t-caption t-wrap">После запуска и раз в 12 часов. Выключено — только кнопкой.</span></div>
+            <button class="switch on" role="switch" aria-checked="true" aria-label="Проверять сами"></button>
+          </div>
+          <div class="divider"></div>
+          <div class="up-row" style="margin: 4px 0 8px">
+            <span class="t-strong pg-grow">Канал обновлений</span>
+            <button class="btn-select" data-open="menu-channel-s" aria-label="Канал обновлений"><span data-select-label>Стабильный</span><i data-icon="ChevronDown" data-stroke="2.6"></i></button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+
+    <!-- Канал обновлений: выбранный пункт — синим полужирным -->
+    <div class="popup" id="menu-channel-s" style="min-width: 170px">
+      <button class="btn-option current" data-value="Стабильный">Стабильный</button>
+      <button class="btn-option" data-value="Бета">Бета</button>
     </div>
 
     <div class="pg-island" data-active="settings"></div>
@@ -981,7 +1053,7 @@
           <button class="link-row" data-open="sheet-licenses-f"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-f"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>
@@ -1118,7 +1190,7 @@
           <button class="link-row" data-open="sheet-licenses-g"><span class="pg-grow">Лицензии открытых компонентов</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-open="sheet-privacy-g"><span class="pg-grow">Политика конфиденциальности</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
           <button class="link-row" data-nav="07-diagnostics.html"><span class="pg-grow">Сообщить о проблеме</span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
-          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block">Файлы APK — на странице выпусков GitHub</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
+          <button class="link-row" data-os="android"><span class="pg-grow">Новые версии<span class="t-caption" style="display:block" data-ui-text="android.about.releases.text">Файлы APK — на сайте Private Gateway Web в разделе «Скачать клиент»</span></span><i data-icon="ChevronRight" data-stroke="2.2" class="chevron"></i></button>
         </div>
       </div>
       <div class="pg-page-end"></div>

@@ -87,7 +87,7 @@ public static class IpcServer
         builder.Services.AddSingleton(info);
         // Проверки обновлений нет (тесты) — служба без ключей подписи: «нет подписанных выпусков», в сеть не ходит.
         builder.Services.AddSingleton(updates ?? UpdateChecker.WithoutKeys(journal));
-        builder.Services.AddSingleton(installer ?? new UpdateInstaller(new HttpClient(), GitHubReleaseFeed.DefaultDownloads, Path.GetTempPath(), null, journal));
+        builder.Services.AddSingleton(installer ?? new UpdateInstaller(new HttpClient(), Path.GetTempPath(), null, journal));
         var app = builder.Build();
         app.MapGrpcService<GatewayRpc>();
         if (!pipe)

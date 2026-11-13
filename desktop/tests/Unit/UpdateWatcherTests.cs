@@ -9,16 +9,20 @@ using PrivateGateway.Client.Core.Updates;
 
 namespace PrivateGateway.Client.Tests.Unit;
 
-/// <summary>Когда окно спрашивает службу об обновлении (<see cref="UpdateWatcher"/>): по расписанию, при смене канала, по кнопке.</summary>
+/// <summary>
+/// Когда окно спрашивает службу об обновлении (<see cref="UpdateWatcher"/>): по расписанию, при смене канала, по кнопке, —
+/// и с какой лентой сайта: ее окно берет своим входом в аккаунт (<see cref="IUpdateFeedSource"/>).
+/// </summary>
 public sealed class UpdateWatcherTests : IDisposable
 {
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero));
     private readonly FakeGateway _gateway = new();
     private readonly SettingsService _settings = new(new MemorySettings());
     private readonly FakeRelauncher _relauncher = new();
+    private readonly FakeFeeds _feeds = new();
     private readonly UpdateWatcher _watcher;
 
-    public UpdateWatcherTests() => _watcher = new UpdateWatcher(_gateway, _settings, _time, _relauncher);
+    public UpdateWatcherTests() => _watcher = new UpdateWatcher(_gateway, _settings, _time, _relauncher, _feeds);
 
     public void Dispose() => _watcher.Dispose();
 
@@ -227,6 +231,170 @@ public sealed class UpdateWatcherTests : IDisposable
         _watcher.Step.ShouldBe(UpdateStep.None, "скачанное 0.3.0 для 0.4.0 не годится");
     }
 
+    [Fact]
+    public async Task Service_gets_the_site_feed_of_the_channel_as_it_came()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _settings.Update(s => s with { UpdateChannel = UpdateChannel.Beta });
+
+        await _watcher.CheckAsync(force: true, ct);
+
+        _feeds.Asked.ShouldBe([UpdateChannel.Beta], "лента — того канала, что выбран");
+        _gateway.Feeds.ShouldHaveSingleItem().ShouldBeSameAs(_feeds.Feed, "окно в ленту не заглядывает — передает как есть");
+        _watcher.Offer!.State.ShouldBe(UpdateState.UpToDate);
+    }
+
+    [Fact]
+    public async Task Without_sign_in_neither_the_site_nor_the_service_is_asked_and_sign_in_asks_at_once()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _feeds.SignedIn = false;
+        _watcher.Start();
+
+        await _watcher.CheckAsync(force: true, ct);
+
+        (_feeds.Asked.Count, _gateway.Checks.Count).ShouldBe((0, 0), "входа нет — ни сайта, ни службы");
+        _watcher.Offer!.State.ShouldBe(UpdateState.NoFeed, "окно просит войти");
+        _watcher.Attempted.ShouldBe(_time.GetUtcNow());
+
+        _feeds.SignedIn = true;
+        _feeds.Raise();
+        _gateway.Checks.ShouldBe([(UpdateChannel.Stable, false)], "вошли — проверка сразу");
+        _watcher.Offer!.State.ShouldBe(UpdateState.UpToDate);
+
+        _feeds.Raise();
+        _gateway.Checks.Count.ShouldBe(1, "другие события входа — не повод, лента уже есть");
+    }
+
+    [Fact]
+    public void Several_account_events_in_a_row_make_one_check_after_sign_in()
+    {
+        // Вход, начало и конец проверки доступа — события подряд, а до вопроса службе очередь окна доходит позже.
+        var window = new QueueContext();
+        var before = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(window);
+        try
+        {
+            _feeds.SignedIn = false;
+            _watcher.Start();
+            _ = _watcher.CheckAsync(force: true, TestContext.Current.CancellationToken);
+            _watcher.Offer!.State.ShouldBe(UpdateState.NoFeed);
+
+            _feeds.SignedIn = true;
+            _feeds.Raise();
+            _feeds.Raise();
+            _feeds.Raise();
+            window.RunAll();
+
+            _gateway.Checks.Count.ShouldBe(1, "одна проверка после входа, а не по проверке на событие");
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(before);
+        }
+    }
+
+    [Fact]
+    public async Task Feed_the_site_did_not_give_is_a_failure_without_asking_the_service()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _feeds.Feed = null;
+
+        await _watcher.CheckAsync(force: true, ct);
+
+        _gateway.Checks.ShouldBeEmpty("без ленты службе проверять нечего");
+        _watcher.Offer!.State.ShouldBe(UpdateState.Failed);
+
+        _feeds.RevokeOnAsk = true;
+        await _watcher.CheckAsync(force: true, ct);
+        _watcher.Offer!.State.ShouldBe(UpdateState.NoFeed, "сайт отозвал доступ (401) — входа больше нет");
+    }
+
+    [Fact]
+    public async Task Demo_mode_asks_the_service_without_a_feed()
+    {
+        _feeds.Required = false;
+
+        await _watcher.CheckAsync(force: false, TestContext.Current.CancellationToken);
+
+        _feeds.Asked.ShouldBeEmpty("вход не нужен — и сайт не нужен");
+        _gateway.Feeds.ShouldBe([null]);
+    }
+
+    [Fact]
+    public async Task Download_takes_a_fresh_feed_because_tickets_expire()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };
+        _gateway.Progress = [new UpdateProgress(300, 300, Ready: true)];
+        await _watcher.CheckAsync(force: false, ct);
+        var fresh = new byte[] { 7, 7, 7 };
+        _feeds.Feed = fresh;
+
+        await _watcher.DownloadAsync(ct);
+
+        _feeds.Asked.Count.ShouldBe(2, "перед загрузкой — лента заново");
+        _gateway.DownloadFeeds.ShouldHaveSingleItem().ShouldBeSameAs(fresh);
+        _watcher.Step.ShouldBe(UpdateStep.Ready);
+
+        _feeds.Feed = null;
+        await _watcher.DownloadAsync(ct);
+        _watcher.Step.ShouldBe(UpdateStep.DownloadFailed, "ленты нет — качать не по чему");
+        _gateway.Downloads.Count.ShouldBe(1, "служба без ссылки не спрашивается");
+    }
+
+    /// <summary>Очередь окна: работа ждет, пока тест ее не выполнит.</summary>
+    private sealed class QueueContext : SynchronizationContext
+    {
+        private readonly Queue<(SendOrPostCallback Work, object? State)> _queue = new();
+
+        public override void Post(SendOrPostCallback d, object? state) => _queue.Enqueue((d, state));
+
+        public void RunAll()
+        {
+            while (_queue.TryDequeue(out var item))
+            {
+                item.Work(item.State);
+            }
+        }
+    }
+
+    private sealed class FakeFeeds : IUpdateFeedSource
+    {
+        public bool Required { get; set; } = true;
+
+        public bool SignedIn { get; set; } = true;
+
+        /// <summary>Что ответит сайт; null — не ответил.</summary>
+        public byte[]? Feed { get; set; } = [1, 2, 3];
+
+        /// <summary>Сайт ответит 401: вход стирается.</summary>
+        public bool RevokeOnAsk { get; set; }
+
+        public List<UpdateChannel> Asked { get; } = [];
+
+        public bool IsRequired => Required;
+
+        public bool IsSignedIn => SignedIn;
+
+        public event EventHandler? Changed;
+
+        public void Raise() => Changed?.Invoke(this, EventArgs.Empty);
+
+        public Task<byte[]?> UpdatesFeedAsync(UpdateChannel channel, CancellationToken cancellationToken = default)
+        {
+            Asked.Add(channel);
+            if (RevokeOnAsk)
+            {
+                SignedIn = false;
+                Raise();
+                return Task.FromResult<byte[]?>(null);
+            }
+
+            return Task.FromResult(Feed);
+        }
+    }
+
     private sealed class FakeRelauncher : IAppRelauncher
     {
         public List<int> Pids { get; } = [];
@@ -249,6 +417,11 @@ public sealed class UpdateWatcherTests : IDisposable
 
         public List<(UpdateChannel Channel, bool Force)> Checks { get; } = [];
 
+        /// <summary>Ленты, с которыми окно спрашивало и качало.</summary>
+        public List<byte[]?> Feeds { get; } = [];
+
+        public List<byte[]?> DownloadFeeds { get; } = [];
+
         public ConnectionStatus Status => ConnectionStatus.Initial(DateTimeOffset.UnixEpoch);
 
         public ServiceKind Service => ServiceKind.Installed;
@@ -267,9 +440,10 @@ public sealed class UpdateWatcherTests : IDisposable
             remove { }
         }
 
-        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, byte[]? siteFeed, CancellationToken cancellationToken = default)
         {
             Checks.Add((channel, force));
+            Feeds.Add(siteFeed);
             return Task.FromResult(Offer);
         }
 
@@ -281,9 +455,11 @@ public sealed class UpdateWatcherTests : IDisposable
 
         public int? InstallerPid { get; set; } = 4242;
 
-        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, byte[]? siteFeed,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             Downloads.Add(version);
+            DownloadFeeds.Add(siteFeed);
             foreach (var step in Progress)
             {
                 await Task.Yield();

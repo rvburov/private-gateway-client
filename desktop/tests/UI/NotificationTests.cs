@@ -160,7 +160,8 @@ public sealed class NotificationTests : WindowHarness
         WaitFor(() => Notifier.Shown.Count > 0);
 
         var notice = Notifier.Shown.ShouldHaveSingleItem();
-        (notice.Title, notice.Body).ShouldBe(("Доступно обновление 0.2.0", "Загрузится в фоне, VPN продолжает работать; установится при перезапуске клиента."));
+        (notice.Title, notice.Body).ShouldBe(("Доступно обновление 0.2.0",
+            "Нажмите «Обновить» — загрузка пойдет в фоне, VPN продолжит работать; установится при перезапуске клиента."));
         notice.Buttons.Select(b => b.Label).ShouldBe(["Обновить", "Позже"]);
 
         Notifier.Press(new NoticeReply(Notice.UpdateTag, NoticeAction.Later));

@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.Json;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Updates;
 
@@ -13,13 +14,13 @@ namespace PrivateGateway.Client.Service.Updates;
 public sealed record UpdateKind(string Asset, Func<string, string, int> Launch);
 
 /// <summary>
-/// Обновление программы службой: файл своей ОС из подписанного манифеста скачивается в папку состояния службы
-/// (<c>updates</c>, пишет туда только служба) и сверяется с манифестом — размер и SHA-256; потом установщик ОС
-/// запускается отдельно от службы — он заменит и ее (MSI и пакеты Linux ставят службу атомарно, ServiceSetup).
-/// Ставит только установленная служба программы, поставленной установщиком: у архива и службы пользователя
-/// <see cref="Kind"/> — null, окно ведет на страницу выпуска.
+/// Обновление программы службой: файл своей ОС из подписанного манифеста — по ссылке-билету с адреса файлов сайта
+/// (<see cref="UpdateChecker.Link"/>) — скачивается в папку состояния службы (<c>updates</c>, пишет туда только служба)
+/// и сверяется с манифестом — размер и SHA-256; потом установщик ОС запускается отдельно от службы — он заменит и ее
+/// (MSI и пакеты Linux ставят службу атомарно, ServiceSetup). Ставит только установленная служба программы,
+/// поставленной установщиком: у архива, службы пользователя и macOS <see cref="Kind"/> — null, окно ведет на сайт.
 /// </summary>
-public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folder, UpdateKind? kind, ServiceJournal journal, TimeProvider? time = null)
+public sealed class UpdateInstaller(HttpClient http, string folder, UpdateKind? kind, ServiceJournal journal, TimeProvider? time = null)
 {
     private static readonly TimeSpan ReportEvery = TimeSpan.FromMilliseconds(250);
 
@@ -27,6 +28,20 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
     public static readonly TimeSpan TransferTimeout = TimeSpan.FromMinutes(10);
 
     public UpdateKind? Kind => kind;
+
+    /// <summary>
+    /// HTTP для файлов обновления: без переадресаций — файл только с адреса файлов сайта, куда указывает билет; подключение
+    /// не дольше 15 секунд, заголовки ответа — не дольше минуты; имя программы.
+    /// </summary>
+    public static HttpClient CreateHttp()
+    {
+        var http = new HttpClient(new SocketsHttpHandler { AllowAutoRedirect = false, ConnectTimeout = TimeSpan.FromSeconds(15) })
+        {
+            Timeout = TimeSpan.FromSeconds(60),
+        };
+        http.DefaultRequestHeaders.UserAgent.ParseAdd("PrivateGateway-Updates");
+        return http;
+    }
 
     /// <summary>
     /// Как поставлена программа на этой машине: Windows — MSI (ключ реестра его ярлыка), Linux — пакет .deb (dpkg его
@@ -65,8 +80,11 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
             : null;
     }
 
-    /// <summary>Скачать файл выпуска своей ОС и сверить с манифестом; поток — ход загрузки, последнее — готово или отказ.</summary>
-    public async IAsyncEnumerable<UpdateProgress> DownloadAsync(UpdateManifest manifest, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Скачать файл выпуска своей ОС по ссылке <paramref name="url"/> и сверить с манифестом; поток — ход загрузки,
+    /// последнее — готово или отказ. Уже скачанное и сверенное — готово без сети; ссылки нет — отказ.
+    /// </summary>
+    public async IAsyncEnumerable<UpdateProgress> DownloadAsync(UpdateManifest manifest, Uri? url, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(manifest);
         if (kind is null || !manifest.Assets.TryGetValue(kind.Asset, out var asset))
@@ -83,12 +101,17 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
             yield break;
         }
 
+        if (url is null)
+        {
+            yield return new UpdateProgress(0, asset.Size, Error: "нет ссылки на файл в ленте сайта — проверьте обновления еще раз");
+            yield break;
+        }
+
         foreach (var stale in Directory.GetFiles(folder))
         {
             File.Delete(stale);
         }
 
-        var url = new Uri(downloads, $"v{manifest.Version}/{asset.File}");
         var part = target + ".part";
         var channel = System.Threading.Channels.Channel.CreateUnbounded<UpdateProgress>();
         var download = Task.Run(async () =>
@@ -151,7 +174,12 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
         using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
         cancellationToken = linked.Token;
         using var response = await http.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        response.EnsureSuccessStatusCode();
+        if (!response.IsSuccessStatusCode)
+        {
+            // Билет истек или не принят, доступ устройства закрыт, файла нет — отказ без повтора: окно возьмет ленту заново.
+            throw new HttpRequestException(await RefusalAsync(response, cancellationToken).ConfigureAwait(false), null, response.StatusCode);
+        }
+
         if (response.Content.Headers.ContentLength is { } length && length != asset.Size)
         {
             throw new InvalidDataException($"{asset.File}: {length} байт, а в манифесте {asset.Size}");
@@ -192,6 +220,44 @@ public sealed class UpdateInstaller(HttpClient http, Uri downloads, string folde
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Почему сайт не отдал файл — словами для журнала: код из тела <c>{"error":{"code":"…"}}</c> (не больше 4 КБ) или код
+    /// ответа. Ссылка-билет в текст не попадает.
+    /// </summary>
+    private static async Task<string> RefusalAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        var status = (int)response.StatusCode;
+        string? code = null;
+        try
+        {
+            var buffer = new byte[4096];
+            var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+            await using (stream.ConfigureAwait(false))
+            {
+                var length = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, cancellationToken).ConfigureAwait(false);
+                using var json = JsonDocument.Parse(buffer.AsMemory(0, length));
+                code = json.RootElement.ValueKind == JsonValueKind.Object && json.RootElement.TryGetProperty("error", out var error)
+                    && error.ValueKind == JsonValueKind.Object && error.TryGetProperty("code", out var value) && value.ValueKind == JsonValueKind.String
+                    ? value.GetString()
+                    : null;
+            }
+        }
+        catch (Exception e) when (e is JsonException or IOException or HttpRequestException)
+        {
+            // Тела нет или оно не JSON — причина по коду ответа.
+        }
+
+        return $"сайт не отдал файл ({status}): " + code switch
+        {
+            "ticket_expired" => "ссылка на файл устарела — проверьте обновления еще раз",
+            "invalid_ticket" => "сайт не принял ссылку на файл",
+            "forbidden" => "сайт закрыл этому устройству доступ",
+            _ when status == 404 => "файла нет на сайте",
+            _ when status is >= 300 and < 400 => "переадресация — файл берется только по ссылке сайта",
+            _ => "ошибка сайта",
+        };
     }
 
     private static bool Matches(string file, UpdateAsset asset)

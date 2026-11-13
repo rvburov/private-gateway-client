@@ -2,6 +2,7 @@ using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Account;
 using PrivateGateway.Client.Core.Servers;
@@ -299,6 +300,66 @@ public sealed class AccountServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Updates_feed_is_asked_with_the_token_for_this_os_and_comes_as_it_is()
+    {
+        var account = Service();
+        (await account.UpdatesFeedAsync(UpdateChannel.Stable, Ct)).ShouldBeNull("входа нет — и ленты нет");
+        _api.Updates.ShouldBeEmpty("без входа сайт не спрашивается");
+
+        await account.SignInAsync("user@example.com", "pw", "123456", null, Ct);
+        _api.Feed = [9, 8, 7];
+
+        (await account.UpdatesFeedAsync(UpdateChannel.Beta, Ct)).ShouldBe([9, 8, 7]);
+        _api.Updates.ShouldBe([(Token, DevicePlatform.Current, UpdateChannel.Beta)]);
+        ((IUpdateFeedSource)account).IsSignedIn.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Updates_feed_401_is_a_revocation_like_the_check_of_access()
+    {
+        var account = await SignedIn();
+        var lost = new List<AccountMessage>();
+        account.AccessLost += (_, message) => lost.Add(message);
+        _api.UpdatesFailure = AccountFailure.InvalidCredentials;
+
+        (await account.UpdatesFeedAsync(UpdateChannel.Stable, Ct)).ShouldBeNull();
+
+        lost.ShouldBe([AccountMessage.Revoked]);
+        (account.IsSignedIn, account.LastMessage).ShouldBe((false, AccountMessage.Revoked));
+        _secrets.Values.ShouldBeEmpty();
+        _gateway.Calls.ShouldBe(["drop"], "без доступа защиты нет — как при отзыве проверкой");
+    }
+
+    [Theory]
+    [InlineData(AccountFailure.Network)]
+    [InlineData(AccountFailure.Server)]
+    [InlineData(AccountFailure.Validation)]
+    public async Task Updates_feed_the_site_did_not_give_keeps_the_sign_in(AccountFailure failure)
+    {
+        var account = await SignedIn();
+        _api.UpdatesFailure = failure;
+
+        (await account.UpdatesFeedAsync(UpdateChannel.Stable, Ct)).ShouldBeNull();
+
+        (account.IsSignedIn, account.HasAccess).ShouldBe((true, true), "сеть и сбой сайта — не отзыв");
+        _gateway.Calls.ShouldBeEmpty();
+        _api.UpdatesFailure = null;
+        _api.UpdatesException = new IOException("обрыв");
+        (await account.UpdatesFeedAsync(UpdateChannel.Stable, Ct)).ShouldBeNull("непредвиденный сбой клиента сайта — ответ, а не исключение");
+        account.IsSignedIn.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Demo_has_no_updates_feed_and_does_not_ask_the_site()
+    {
+        var account = Service(new AccountOptions(Required: false));
+
+        (await account.UpdatesFeedAsync(UpdateChannel.Stable, Ct)).ShouldBeNull();
+
+        _api.Updates.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Saved_details_without_a_token_are_no_sign_in()
     {
         _store.Saved = new SavedAccount(Term, "user@example.com", null, "WORKSTATION", Start);
@@ -402,6 +463,25 @@ public sealed class AccountServiceTests : IDisposable
             LogoutTokens.Add(token);
             Logout?.Invoke(token);
             return Task.CompletedTask;
+        }
+
+        /// <summary>Запросы ленты: токен, ОС, канал.</summary>
+        public List<(string Token, string Platform, UpdateChannel Channel)> Updates { get; } = [];
+
+        public byte[] Feed { get; set; } = [1];
+
+        /// <summary>Почему сайт не отдал ленту; null — отдал.</summary>
+        public AccountFailure? UpdatesFailure { get; set; }
+
+        /// <summary>Сбой, который клиент сайта не перевел в причину; null — нет.</summary>
+        public Exception? UpdatesException { get; set; }
+
+        public Task<byte[]> UpdatesAsync(string token, string platform, UpdateChannel channel, CancellationToken cancellationToken = default)
+        {
+            Updates.Add((token, platform, channel));
+            return UpdatesException is { } error ? Task.FromException<byte[]>(error)
+                : UpdatesFailure is { } failure ? Task.FromException<byte[]>(new AccountApiException(failure, failure == AccountFailure.InvalidCredentials ? 401 : null))
+                : Task.FromResult(Feed);
         }
     }
 

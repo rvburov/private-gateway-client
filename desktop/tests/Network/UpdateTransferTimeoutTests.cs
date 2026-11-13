@@ -8,25 +8,12 @@ using PrivateGateway.Client.Service.Updates;
 
 namespace PrivateGateway.Client.Tests.Network;
 
-/// <summary>Сервер уже отдал заголовки, но остановил тело: общий срок по-прежнему действует.</summary>
+/// <summary>
+/// Сервер уже отдал заголовки, но остановил тело: общий срок загрузки по-прежнему действует. Ленту служба не качает —
+/// ее передает окно (срок ее запроса — у API сайта окна, AccountApiTests).
+/// </summary>
 public sealed class UpdateTransferTimeoutTests
 {
-    [Fact]
-    public async Task Metadata_deadline_cancels_a_body_that_stopped_after_headers()
-    {
-        var time = new FakeTimeProvider();
-        using var body = new StalledBody();
-        using var http = new HttpClient(new ResponseHandler(body));
-        var url = new Uri("https://example.com/releases");
-        var feed = new GitHubReleaseFeed(http, url, url, time);
-
-        var pending = feed.DownloadAsync(url, 1024, TestContext.Current.CancellationToken);
-        await body.Reading.Task.WaitAsync(TestContext.Current.CancellationToken);
-        time.Advance(GitHubReleaseFeed.TransferTimeout);
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken));
-    }
-
     [Fact]
     public async Task Package_deadline_reports_failure_and_removes_the_partial_file()
     {
@@ -39,11 +26,11 @@ public sealed class UpdateTransferTimeoutTests
             var asset = new UpdateAsset("package.msi", Convert.ToHexStringLower(SHA256.HashData([1])), 1);
             var manifest = new UpdateManifest("0.2.0", UpdateChannel.Stable, 100, time.GetUtcNow(), new Uri("https://example.com/notes"), [],
                 new Dictionary<string, UpdateAsset> { ["win-x64-msi"] = asset });
-            var installer = new UpdateInstaller(http, new Uri("https://example.com/download/"), folder,
+            var installer = new UpdateInstaller(http, folder,
                 new UpdateKind("win-x64-msi", (_, _) => throw new InvalidOperationException("установка не должна запускаться")),
                 new ServiceJournal(time), time);
 
-            var pending = CollectAsync(installer.DownloadAsync(manifest, TestContext.Current.CancellationToken));
+            var pending = CollectAsync(installer.DownloadAsync(manifest, new Uri("https://example.com/api/app/updates/files/t1"), TestContext.Current.CancellationToken));
             await body.Reading.Task.WaitAsync(TestContext.Current.CancellationToken);
             time.Advance(UpdateInstaller.TransferTimeout);
             var progress = await pending.WaitAsync(TimeSpan.FromSeconds(5), TestContext.Current.CancellationToken);
@@ -57,22 +44,6 @@ public sealed class UpdateTransferTimeoutTests
         {
             Directory.Delete(folder, recursive: true);
         }
-    }
-
-    [Fact]
-    public async Task Caller_cancellation_is_observed_while_reading_metadata()
-    {
-        using var cancel = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
-        using var body = new StalledBody();
-        using var http = new HttpClient(new ResponseHandler(body));
-        var url = new Uri("https://example.com/releases");
-        var feed = new GitHubReleaseFeed(http, url, url);
-        var pending = feed.DownloadAsync(url, 1024, cancel.Token);
-        await body.Reading.Task.WaitAsync(TestContext.Current.CancellationToken);
-
-        cancel.Cancel();
-
-        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => pending);
     }
 
     private static async Task<List<UpdateProgress>> CollectAsync(IAsyncEnumerable<UpdateProgress> source)

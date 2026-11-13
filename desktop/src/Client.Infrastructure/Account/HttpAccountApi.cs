@@ -7,15 +7,16 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Core.Account;
+using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.Infrastructure.Account;
 
 /// <summary>
-/// API входа сайта по https (<see cref="AccountSite.Address"/>): вход устройства, проверка доступа, выход. Каждый
-/// запрос — не дольше <see cref="Timeout"/> по часам программы, ответ — не больше <see cref="MaxBytes"/>. Токен — только
-/// в заголовке Authorization; ни токен, ни пароль, ни коды, ни почта, ни тело ответа в ошибки не попадают. Из тела ошибки
-/// входа читается только код сайта (<c>{"error":{"code":"…"}}</c>) у 401 и 409 — по нему различаются
-/// <see cref="AccountFailure.CodeRequired"/> и <see cref="AccountFailure.DeviceChangeLimit"/>.
+/// API сайта по https (<see cref="AccountSite.Address"/>): вход устройства, проверка доступа, выход, лента обновлений.
+/// Каждый запрос — не дольше <see cref="Timeout"/> по часам программы, ответ — не больше <see cref="MaxBytes"/> (лента —
+/// <see cref="MaxFeedBytes"/>). Токен — только в заголовке Authorization; ни токен, ни пароль, ни коды, ни почта, ни тело
+/// ответа в ошибки не попадают. Из тела ошибки входа читается только код сайта (<c>{"error":{"code":"…"}}</c>) у 401 и
+/// 409 — по нему различаются <see cref="AccountFailure.CodeRequired"/> и <see cref="AccountFailure.DeviceChangeLimit"/>.
 /// Как и загрузка подписки: сначала через системный прокси, а если до него не дойти и он чужой
 /// (<paramref name="mayBypass"/>) — еще раз напрямую (<paramref name="direct"/>): прокси часто оставляет другой
 /// VPN-клиент, который сейчас выключен.
@@ -34,6 +35,12 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
 
     /// <summary>Больше этого ответ сайта не читается: там несколько полей.</summary>
     public const int MaxBytes = 64 * 1024;
+
+    /// <summary>
+    /// Больше этого лента обновлений не читается: до пяти выпусков с манифестами — десятки килобайт (служба держит тот же
+    /// предел).
+    /// </summary>
+    public const int MaxFeedBytes = 1024 * 1024;
 
     /// <summary>Предел имени устройства и версии — как у сайта.</summary>
     public const int MaxDeviceName = 100;
@@ -94,9 +101,23 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         }
     }
 
-    private async Task<T?> SendAsync<T>(HttpMethod method, string path, string? token, object? body, CancellationToken cancellationToken,
+    /// <summary>Лента обновлений — байты ответа как есть: разбирает и проверяет ее служба, окно в нее не заглядывает.</summary>
+    public Task<byte[]> UpdatesAsync(string token, string platform, UpdateChannel channel, CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(token);
+        ArgumentException.ThrowIfNullOrEmpty(platform);
+        var path = "api/app/updates?platform=" + Uri.EscapeDataString(platform) + "&channel=" + (channel == UpdateChannel.Beta ? "beta" : "stable");
+        return ExchangeAsync(HttpMethod.Get, path, token, null, login: false, (response, ct) => ReadAsync(response, MaxFeedBytes, ct), cancellationToken);
+    }
+
+    private Task<T?> SendAsync<T>(HttpMethod method, string path, string? token, object? body, CancellationToken cancellationToken,
         bool login = false)
-        where T : class
+        where T : class =>
+        ExchangeAsync(method, path, token, body, login, JsonAsync<T>, cancellationToken);
+
+    // Запрос с общим сроком, второй попыткой мимо чужого прокси и причинами вместо исключений HTTP; тело читает read.
+    private async Task<TResult> ExchangeAsync<TResult>(HttpMethod method, string path, string? token, object? body, bool login,
+        Func<HttpResponseMessage, CancellationToken, Task<TResult>> read, CancellationToken cancellationToken)
     {
         var url = new Uri(_site, path);
         using var timeout = new CancellationTokenSource(Timeout, time);
@@ -105,12 +126,12 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         {
             try
             {
-                return await FetchAsync<T>(http, method, url, token, body, login, linked.Token).ConfigureAwait(false);
+                return await FetchAsync(http, method, url, token, body, login, read, linked.Token).ConfigureAwait(false);
             }
             catch (HttpRequestException e) when (direct is not null && e.HttpRequestError is HttpRequestError.ProxyTunnelError or HttpRequestError.ConnectionError
                 && (mayBypass?.Invoke(url) ?? true))
             {
-                return await FetchAsync<T>(direct, method, url, token, body, login, linked.Token).ConfigureAwait(false);
+                return await FetchAsync(direct, method, url, token, body, login, read, linked.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException e) when (!cancellationToken.IsCancellationRequested)
@@ -130,9 +151,8 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         }
     }
 
-    private async Task<T?> FetchAsync<T>(HttpClient client, HttpMethod method, Uri url, string? token, object? body, bool login,
-        CancellationToken cancellationToken)
-        where T : class
+    private async Task<TResult> FetchAsync<TResult>(HttpClient client, HttpMethod method, Uri url, string? token, object? body, bool login,
+        Func<HttpResponseMessage, CancellationToken, Task<TResult>> read, CancellationToken cancellationToken)
     {
         using var request = new HttpRequestMessage(method, url);
         request.Headers.UserAgent.ParseAdd("PrivateGateway/0.1");
@@ -151,24 +171,30 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         var status = (int)response.StatusCode;
         if (!response.IsSuccessStatusCode)
         {
-            // Код сайта нужен только входу: у проверки и выхода любой 401 — отзыв, тело не читается.
+            // Код сайта нужен только входу: у проверки, выхода и ленты любой 401 — отзыв, тело не читается.
             var code = login && (status is 401 or 409) ? await ErrorCodeAsync(response, cancellationToken).ConfigureAwait(false) : null;
             throw Failure(response, status, code);
         }
 
+        return await read(response, cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<T?> JsonAsync<T>(HttpResponseMessage response, CancellationToken cancellationToken)
+        where T : class
+    {
         if (typeof(T) == typeof(object) || response.StatusCode == HttpStatusCode.NoContent)
         {
             return null;
         }
 
-        var bytes = await ReadAsync(response, cancellationToken).ConfigureAwait(false);
+        var bytes = await ReadAsync(response, MaxBytes, cancellationToken).ConfigureAwait(false);
         try
         {
             return JsonSerializer.Deserialize<T>(bytes, Json);
         }
         catch (JsonException e)
         {
-            throw new AccountApiException(AccountFailure.Server, status, innerException: e);
+            throw new AccountApiException(AccountFailure.Server, (int)response.StatusCode, innerException: e);
         }
     }
 
@@ -194,7 +220,7 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
     {
         try
         {
-            using var json = JsonDocument.Parse(await ReadAsync(response, cancellationToken).ConfigureAwait(false));
+            using var json = JsonDocument.Parse(await ReadAsync(response, MaxBytes, cancellationToken).ConfigureAwait(false));
             return json.RootElement.ValueKind == JsonValueKind.Object
                 && json.RootElement.TryGetProperty("error", out var error) && error.ValueKind == JsonValueKind.Object
                 && error.TryGetProperty("code", out var code) && code.ValueKind == JsonValueKind.String
@@ -208,9 +234,9 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         }
     }
 
-    private static async Task<byte[]> ReadAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    private static async Task<byte[]> ReadAsync(HttpResponseMessage response, int maxBytes, CancellationToken cancellationToken)
     {
-        if (response.Content.Headers.ContentLength > MaxBytes)
+        if (response.Content.Headers.ContentLength > maxBytes)
         {
             throw new AccountApiException(AccountFailure.Server, (int)response.StatusCode);
         }
@@ -221,7 +247,7 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
         int read;
         while ((read = await stream.ReadAsync(chunk, cancellationToken).ConfigureAwait(false)) > 0)
         {
-            if (buffer.Length + read > MaxBytes)
+            if (buffer.Length + read > maxBytes)
             {
                 throw new AccountApiException(AccountFailure.Server, (int)response.StatusCode);
             }

@@ -30,6 +30,7 @@ public static class ApplicationModule
         services.AddSingleton<NotificationCenter>();
         services.AddSingleton<UpdateWatcher>();
         services.AddSingleton<AccountService>();
+        services.AddSingleton<IUpdateFeedSource>(sp => sp.GetRequiredService<AccountService>());
         return services;
     }
 }

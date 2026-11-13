@@ -270,20 +270,24 @@ public sealed class GatewayHostTests
     {
         using var host = Host();
         (await host.GetDetailsAsync(Ct)).ShouldBeNull("службы нет — и сведений нет");
-        (await host.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct)).ShouldBeNull();
+        (await host.CheckForUpdateAsync(UpdateChannel.Stable, force: false, [1], Ct)).ShouldBeNull();
         (await host.InstallUpdateAsync("0.3.0", Ct)).ShouldBeNull();
         _launcher.Started.ShouldBe(0, "ради сведений и обновлений служба пользователя не запускается");
         _answering.Add(Installed);
 
         (await host.GetDetailsAsync(Ct))!.Version.ShouldBe("0.2.0");
-        (await host.CheckForUpdateAsync(UpdateChannel.Beta, force: true, Ct))!.Version.ShouldBe("0.3.0");
+        byte[] feed = [1, 2, 3];
+        (await host.CheckForUpdateAsync(UpdateChannel.Beta, force: true, feed, Ct))!.Version.ShouldBe("0.3.0");
         _services[Installed].UpdateChecks.ShouldBe([(UpdateChannel.Beta, true)]);
+        _services[Installed].Feeds.ShouldBe([feed], "лента сайта — службе как есть");
         var progress = new List<UpdateProgress>();
-        await foreach (var step in host.DownloadUpdateAsync("0.3.0", Ct))
+        byte[] fresh = [4, 5];
+        await foreach (var step in host.DownloadUpdateAsync("0.3.0", fresh, Ct))
         {
             progress.Add(step);
         }
 
+        _services[Installed].Feeds.Last().ShouldBe(fresh, "и свежая — для загрузки");
         progress.Select(p => p.Received).ShouldBe([1, 2]);
         progress[^1].Ready.ShouldBeTrue();
         (await host.InstallUpdateAsync("0.3.0", Ct)).ShouldBe(4242);
@@ -522,17 +526,23 @@ public sealed class GatewayHostTests
 
         public List<(UpdateChannel Channel, bool Force)> UpdateChecks { get; } = [];
 
+        /// <summary>Ленты сайта, которые пришли службе: проверка и загрузка.</summary>
+        public List<byte[]?> Feeds { get; } = [];
+
         public Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) =>
             Task.FromResult<ServiceDetails?>(new ServiceDetails("0.2.0", "1", []));
 
-        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, byte[]? siteFeed, CancellationToken cancellationToken = default)
         {
             UpdateChecks.Add((channel, force));
+            Feeds.Add(siteFeed);
             return Task.FromResult<UpdateOffer?>(new UpdateOffer(UpdateState.Available, time.GetUtcNow(), "0.3.0"));
         }
 
-        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, byte[]? siteFeed,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
+            Feeds.Add(siteFeed);
             await Task.Yield();
             yield return new UpdateProgress(1, 2);
             yield return new UpdateProgress(2, 2, Ready: true);

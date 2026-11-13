@@ -14,6 +14,15 @@ public static class AccountSite
 
     /// <summary>Страница «Устройства»: там освобождают место (ответ 409 <c>device_limit</c> и <c>device_change_limit</c>).</summary>
     public static readonly Uri DevicesPage = new(Address, "devices");
+
+    /// <summary>Страница «Скачать клиент»: новая версия для копии, которую служба сама не ставит (macOS, архив).</summary>
+    public static readonly Uri DownloadsPage = new(Address, "downloads");
+
+    /// <summary>
+    /// Адрес файлов обновлений: ссылка-билет на файл выпуска — <c>/api/app/updates/files/&lt;билет&gt;</c> из ленты
+    /// <c>GET /api/app/updates</c>, живет 30 минут. Служба качает файлы обновления только отсюда.
+    /// </summary>
+    public static readonly Uri UpdateFiles = new(Address, "api/app/updates/files/");
 }
 
 /// <summary>Почему сайт не пустил или не ответил. Текст для пользователя — в интерфейсе (<c>account.error.*</c>).</summary>

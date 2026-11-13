@@ -244,9 +244,9 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             : SubscriptionDownload.Failed(DownloadFailure.Connection);
 
     /// <summary>Обновление ищет найденная служба; службу пользователя ради проверки не запускает.</summary>
-    public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default) =>
+    public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, byte[]? siteFeed, CancellationToken cancellationToken = default) =>
         await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false) is { } service
-            ? await service.CheckForUpdateAsync(channel, force, cancellationToken).ConfigureAwait(false)
+            ? await service.CheckForUpdateAsync(channel, force, siteFeed, cancellationToken).ConfigureAwait(false)
             : null;
 
     /// <summary>Сеть машины читает служба; в режиме прокси ради инспектора запускается служба пользователя.</summary>
@@ -325,8 +325,8 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     }
 
     /// <summary>Скачивает и ставит обновление только найденная служба — та, что его нашла.</summary>
-    public IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, CancellationToken cancellationToken = default) =>
-        Current?.DownloadUpdateAsync(version, cancellationToken) ?? AsyncEnumerable.Empty<UpdateProgress>();
+    public IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, byte[]? siteFeed, CancellationToken cancellationToken = default) =>
+        Current?.DownloadUpdateAsync(version, siteFeed, cancellationToken) ?? AsyncEnumerable.Empty<UpdateProgress>();
 
     public Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default) =>
         Current?.InstallUpdateAsync(version, cancellationToken) ?? Task.FromResult<int?>(null);

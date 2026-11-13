@@ -4,10 +4,13 @@ using Avalonia.Controls.Primitives;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
+using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Settings;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Account;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.UI.Services;
@@ -41,23 +44,25 @@ public sealed class AboutPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public void Signed_update_shows_its_highlights_opens_the_release_and_waits_for_later()
+    public void Signed_update_the_service_cannot_install_is_downloaded_from_the_site_and_waits_for_later()
     {
-        var notes = new Uri("https://github.com/rvburov/private-gateway-client/releases/tag/v0.2.0");
+        // macOS и архив: служба не ставит — «Скачать на сайте» ведет на страницу загрузок сайта, а не на заметки манифеста.
         var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0",
-            ["Быстрее переподключение после сна", "Новые правила маршрутизации по сайтам", "Исправления в проверке утечек DNS"], notes));
+            ["Быстрее переподключение после сна", "Новые правила маршрутизации по сайтам", "Исправления в проверке утечек DNS"],
+            new Uri("https://example.org/notes/0.2.0")));
 
-        service.UpdateChecks.ShouldBe([(UpdateChannel.Stable, false)], "открыли «О программе» — спросили службу, ее память не обходя");
+        service.UpdateChecks.ShouldBe([(UpdateChannel.Stable, false)], "открыли «О программе» — спросили службу");
         Text(window, "UpdatesTitle").ShouldBe("Доступно обновление 0.2.0");
         page.UpdateHighlights.Count.ShouldBe(3);
         Find<TextBlock>(window, "UpdateSigned").IsEffectivelyVisible.ShouldBeTrue("подпись манифеста проверила служба");
         Find<TextBlock>(window, "UpdatesText").IsEffectivelyVisible.ShouldBeFalse();
         Snapshot(window, "about-update");
 
-        Find<Button>(window, "UpdateNow").Content.ShouldBe("Открыть выпуск", "служба сама его не поставит — программа не из установщика");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Скачать на сайте", "служба сама его не поставит — программа не из установщика");
         Press(window, "UpdateNow");
         Dispatcher.UIThread.RunJobs();
-        Urls.Opened.ShouldBe([notes]);
+        Urls.Opened.ShouldBe([new Uri("https://private-gateway.duckdns.org/downloads")]);
+        service.Downloads.ShouldBeEmpty("качает пользователь на сайте, не служба");
 
         Press(window, "PostponeUpdate");
         Dispatcher.UIThread.RunJobs();
@@ -73,7 +78,7 @@ public sealed class AboutPageTests : WindowHarness
     {
         var gate = new TaskCompletionSource();
         var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0", ["Быстрее переподключение после сна"],
-            new Uri("https://github.com/rvburov/private-gateway-client/releases/tag/v0.2.0"))
+            new Uri("https://private-gateway.duckdns.org/downloads"))
         { Installable = true });
         service.Download = [new UpdateProgress(0, 30_093_312), new UpdateProgress(19_293_798, 30_093_312), new UpdateProgress(30_093_312, 30_093_312, Ready: true)];
         service.DownloadGate = gate.Task;
@@ -122,7 +127,7 @@ public sealed class AboutPageTests : WindowHarness
         Text(window, "UpdateProgress").ShouldStartWith("Установится при перезапуске клиента");
         Find<TextBlock>(window, "UpdatesText").IsEffectivelyVisible.ShouldBeFalse();
         Find<Button>(window, "RollBack").IsEffectivelyVisible.ShouldBeFalse("откат уже идет");
-        Find<Button>(window, "UpdateNow").Content.ShouldBe("Перезапустить клиент", "служба откатывает сама — не «Открыть выпуск»");
+        Find<Button>(window, "UpdateNow").Content.ShouldBe("Перезапустить клиент", "служба откатывает сама — не «Скачать на сайте»");
 
         Press(window, "UpdateNow");
         WaitFor(() => Relauncher.Pids.Count > 0);
@@ -193,6 +198,76 @@ public sealed class AboutPageTests : WindowHarness
         page.CheckUpdatesNowCommand.Execute(null);
         Dispatcher.UIThread.RunJobs();
         Text(window, "UpdatesText").ShouldStartWith("Проверить обновления не удалось", customMessage: "служба без CheckForUpdate (старая) — тоже неудача");
+    }
+
+    [AvaloniaFact]
+    public void Signed_in_window_gives_the_service_the_site_feed_and_a_fresh_one_for_the_download()
+    {
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true }, account: true);
+        service.Download = [new UpdateProgress(100, 100, Ready: true)];
+
+        AccountApi.Updates.ShouldBe([(FakeAccountApi.SavedToken, DevicePlatform.Current, UpdateChannel.Stable)], "ленту окно берет своим входом");
+        service.UpdateFeeds.ShouldHaveSingleItem().ShouldBe(AccountApi.Feed, "и передает службе как есть");
+        Text(window, "UpdatesTitle").ShouldBe("Доступно обновление 0.2.0");
+
+        AccountApi.Feed = "{\"releases\":[{\"version\":\"0.2.0\"}]}"u8.ToArray();
+        Press(window, "UpdateNow");
+        WaitFor(() => page.IsUpdateReady);
+
+        AccountApi.Updates.Count.ShouldBe(2, "билеты на файлы живут 30 минут — перед загрузкой лента заново");
+        service.DownloadFeeds.ShouldHaveSingleItem().ShouldBe(AccountApi.Feed);
+    }
+
+    [AvaloniaFact]
+    public void Site_that_gives_no_feed_is_a_failed_check_and_the_service_is_not_asked()
+    {
+        AccountApi.UpdatesFailure = AccountFailure.Server;
+        var (window, _, service) = OpenAboutWith(new UpdateOffer(UpdateState.UpToDate, Time.GetUtcNow()), account: true);
+
+        service.UpdateChecks.ShouldBeEmpty("без ленты службе проверять нечего");
+        Text(window, "UpdatesText").ShouldStartWith("Проверить обновления не удалось");
+        Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeTrue();
+
+        AccountApi.UpdatesFailure = null;
+        Press(window, "CheckUpdatesNow");
+        WaitFor(() => service.UpdateChecks.Count == 1);
+        Text(window, "UpdatesText").ShouldBe("Установлена последняя версия · проверено в 15:42");
+    }
+
+    [AvaloniaFact]
+    public void Without_sign_in_updates_are_not_checked_and_signing_in_checks_them_at_once()
+    {
+        ScriptedService? service = null;
+        var (_, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
+        {
+            Update = new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true },
+        }, account: true);
+        var updates = Service<UpdateWatcher>();
+        updates.Start();
+        shell.CurrentKey.ShouldBe(Pages.Login);
+
+        _ = updates.CheckAsync(force: true);
+        Dispatcher.UIThread.RunJobs();
+
+        (AccountApi.Updates.Count, service!.UpdateChecks.Count).ShouldBe((0, 0), "входа нет — ни сайт, ни служба не спрашиваются");
+        updates.Offer!.State.ShouldBe(UpdateState.NoFeed);
+
+        _ = Service<AccountService>().SignInAsync(FakeAccountApi.Email, "pw", null, null);
+        WaitFor(() => service.UpdateChecks.Count == 1);
+        service.UpdateFeeds.ShouldHaveSingleItem().ShouldBe(AccountApi.Feed, "вошли — проверка сразу, с лентой этого входа");
+        AccountApi.Updates.ShouldHaveSingleItem().Token.ShouldBe(FakeAccountApi.IssuedToken);
+        updates.Offer!.Version.ShouldBe("0.2.0");
+    }
+
+    [AvaloniaFact]
+    public void Service_without_a_feed_asks_to_sign_in()
+    {
+        var (window, _, _) = OpenAboutWith(new UpdateOffer(UpdateState.NoFeed, Time.GetUtcNow()));
+
+        Text(window, "UpdatesText").ShouldBe("Войдите в аккаунт, чтобы проверять обновления.");
+        Find<Button>(window, "CheckUpdatesNow").IsEffectivelyVisible.ShouldBeFalse("без входа проверять нечем");
+        Find<Button>(window, "UpdateNow").IsEffectivelyVisible.ShouldBeFalse();
+        Snapshot(window, "about-sign-in");
     }
 
     [AvaloniaFact]
@@ -492,14 +567,17 @@ public sealed class AboutPageTests : WindowHarness
     private static bool Matches(string pattern, string path) =>
         pattern.EndsWith('*') ? path.StartsWith(pattern[..^1], StringComparison.Ordinal) : path == pattern;
 
-    /// <summary>«О программе» с установленной службой, которая на вопрос об обновлении отвечает <paramref name="offer"/>.</summary>
-    private (MainWindow Window, AboutPageViewModel Page, ScriptedService Service) OpenAboutWith(UpdateOffer? offer)
+    /// <summary>
+    /// «О программе» с установленной службой, которая на вопрос об обновлении отвечает <paramref name="offer"/>;
+    /// <paramref name="account"/> — с сохраненным входом в аккаунт (лента обновлений — от <see cref="WindowHarness.AccountApi"/>).
+    /// </summary>
+    private (MainWindow Window, AboutPageViewModel Page, ScriptedService Service) OpenAboutWith(UpdateOffer? offer, bool account = false)
     {
         ScriptedService? service = null;
         var (window, shell) = Open(gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed)
         {
             Update = offer,
-        });
+        }, account: account, signedIn: account);
         shell.NavigateCommand.Execute(Pages.About);
         Dispatcher.UIThread.RunJobs();
         return (window, shell.CurrentPage.ShouldBeOfType<AboutPageViewModel>(), service!);

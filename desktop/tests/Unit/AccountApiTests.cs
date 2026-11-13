@@ -4,11 +4,12 @@ using System.Text.Json.Nodes;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Account;
 using PrivateGateway.Client.Core.Account;
+using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Infrastructure.Account;
 
 namespace PrivateGateway.Client.Tests.Unit;
 
-/// <summary>API входа сайта без сети: ответы подставляет обработчик HTTP, адрес сайта — выдуманный.</summary>
+/// <summary>API сайта без сети (вход, проверка, выход, лента обновлений): ответы подставляет обработчик HTTP, адрес сайта — выдуманный.</summary>
 public sealed class AccountApiTests
 {
     private const string Password = "pw-secret-marker";
@@ -353,6 +354,69 @@ public sealed class AccountApiTests
         direct.ShouldBe(directTries);
     }
 
+    [Fact]
+    public async Task Updates_feed_is_asked_with_the_token_and_comes_back_byte_for_byte()
+    {
+        // Окно в ленту не заглядывает: байты — службе как есть, подписи манифестов проверяет она.
+        byte[] feed = [.. Encoding.UTF8.GetBytes("""{"releases":[{"version":"0.3.0","manifest":"eyJ2ZXJzaW9uIjoiMC4zLjAifQ=="}]}  """), 0xEF, 0xBB];
+        var api = Api(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new ByteArrayContent(feed) });
+
+        var bytes = await api.UpdatesAsync(Token, "linux", UpdateChannel.Beta, Ct);
+
+        bytes.ShouldBe(feed);
+        var sent = _sent.ShouldHaveSingleItem();
+        (sent.Method, sent.Url, sent.Authorization, sent.Body).ShouldBe(("GET", "https://site.example.com/api/app/updates?platform=linux&channel=beta",
+            "Bearer " + Token, null));
+        await api.UpdatesAsync(Token, "windows", UpdateChannel.Stable, Ct);
+        _sent[^1].Url.ShouldBe("https://site.example.com/api/app/updates?platform=windows&channel=stable");
+    }
+
+    [Theory]
+    [InlineData(401, AccountFailure.InvalidCredentials)]
+    [InlineData(422, AccountFailure.Validation)]
+    [InlineData(503, AccountFailure.Server)]
+    [InlineData(404, AccountFailure.Server)]
+    public async Task Updates_refusals_have_the_same_reasons_and_401_is_a_revocation(int status, AccountFailure failure)
+    {
+        var api = Api(_ => Json((HttpStatusCode)status, """{"error":{"code":"code_required"}}"""));
+
+        var error = await Should.ThrowAsync<AccountApiException>(() => api.UpdatesAsync(Token, "macos", UpdateChannel.Stable, Ct));
+
+        (error.Failure, error.StatusCode).ShouldBe((failure, status));
+        error.Message.ShouldNotContain(Token);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Updates_feed_up_to_a_megabyte_is_read_and_a_longer_one_is_not(bool length)
+    {
+        HttpContent Body(int size) => length
+            ? new ByteArrayContent(new byte[size])
+            : new StreamContent(new MemoryStream(new byte[size]));
+        var api = Api(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = Body(HttpAccountApi.MaxFeedBytes) });
+        (await api.UpdatesAsync(Token, "linux", UpdateChannel.Stable, Ct)).Length.ShouldBe(HttpAccountApi.MaxFeedBytes, "лента больше ответа входа, но в пределе");
+
+        var longer = Api(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = Body(HttpAccountApi.MaxFeedBytes + 1) });
+        (await Should.ThrowAsync<AccountApiException>(() => longer.UpdatesAsync(Token, "linux", UpdateChannel.Stable, Ct))).Failure
+            .ShouldBe(AccountFailure.Server, length ? "длина в заголовке больше предела" : "без длины — отказ на первом лишнем байте");
+        HttpAccountApi.MaxFeedBytes.ShouldBeGreaterThan(HttpAccountApi.MaxBytes);
+    }
+
+    [Fact]
+    public async Task Silent_site_with_the_feed_is_a_network_failure_after_the_same_timeout()
+    {
+        var api = new HttpAccountApi(new HttpClient(new HangingHandler()), _time, Site);
+
+        var feed = api.UpdatesAsync(Token, "windows", UpdateChannel.Stable, Ct);
+        _time.Advance(HttpAccountApi.Timeout - TimeSpan.FromSeconds(1));
+        await Task.Delay(50, Ct);
+        feed.IsCompleted.ShouldBeFalse();
+        _time.Advance(TimeSpan.FromSeconds(1));
+
+        (await Should.ThrowAsync<AccountApiException>(() => feed.WaitAsync(TimeSpan.FromSeconds(5), Ct))).Failure.ShouldBe(AccountFailure.Network);
+    }
+
     [Theory]
     [InlineData("http://site.example.com/")]
     [InlineData("ftp://site.example.com/")]
@@ -374,6 +438,8 @@ public sealed class AccountApiTests
         AccountSite.Address.Scheme.ShouldBe("https");
         AccountSite.DevicesPage.AbsoluteUri.ShouldBe("https://private-gateway.duckdns.org/devices");
         AccountSite.LoginPage.AbsoluteUri.ShouldBe("https://private-gateway.duckdns.org/login");
+        AccountSite.DownloadsPage.AbsoluteUri.ShouldBe("https://private-gateway.duckdns.org/downloads");
+        AccountSite.UpdateFiles.AbsoluteUri.ShouldBe("https://private-gateway.duckdns.org/api/app/updates/files/");
     }
 
     private HttpAccountApi Api(Func<HttpRequestMessage, HttpResponseMessage> respond) =>

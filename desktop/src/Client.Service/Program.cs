@@ -187,15 +187,14 @@ await using var gateway = await ServiceStartupReady.CreateGatewayAsync(
         OtherClientsWatch: TimeSpan.FromSeconds(5)),
     time, journal, OperatingSystem.IsLinux() && !user ? Environment.GetEnvironmentVariable("NOTIFY_SOCKET") : null,
     PrivateGateway.Client.Platform.Linux.SystemdService.NotifyReady, systemProxy).ConfigureAwait(false);
-// Обновления: выпуски на GitHub, подпись манифеста — ключами, встроенными в службу; номер раскатки и прежняя версия (для
-// отката) — в папке состояния. Ставит обновление только установленная служба (у нее есть --service-name) программы из
-// установщика.
+// Обновления: лента сайта — от окна (токен входа у окна), подпись манифеста — ключами, встроенными в службу; файлы — только
+// с адреса файлов сайта; номер раскатки и прежняя версия (для отката) — в папке состояния. Ставит обновление только
+// установленная служба (у нее есть --service-name) программы из установщика.
 var updateKind = UpdateInstaller.ForThisMachine(installedService: !user && Option("--service-name") is not null, ownerSid);
-using var updateHttp = GitHubReleaseFeed.CreateHttp();
-using var updates = new UpdateChecker(new GitHubReleaseFeed(updateHttp, GitHubReleaseFeed.DefaultReleases, GitHubReleaseFeed.DefaultDownloads),
-    UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal, VersionHistory.Record(state, ServiceVersion.Current),
-    updateKind?.Asset);
-var installer = new UpdateInstaller(updateHttp, GitHubReleaseFeed.DefaultDownloads, Path.Combine(state, "updates"), updateKind, journal);
+using var updateHttp = UpdateInstaller.CreateHttp();
+var updates = new UpdateChecker(UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal,
+    VersionHistory.Record(state, ServiceVersion.Current), updateKind?.Asset);
+var installer = new UpdateInstaller(updateHttp, Path.Combine(state, "updates"), updateKind, journal);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox), updates,
     installer);
 journal.Add(JournalLevel.Info, "service", $"Служба {ServiceVersion.Current} слушает IPC" + (user ? " (пользователь, только прокси)" : string.Empty));

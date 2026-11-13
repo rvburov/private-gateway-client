@@ -2,11 +2,14 @@ namespace PrivateGateway.Client.Core.Updates;
 
 /// <summary>
 /// Что служба ответила окну об обновлении: состояние, а если есть новее — версия, главное из заметок и страница
-/// выпуска; когда проверяла.
+/// заметок из манифеста; когда проверяла.
 /// </summary>
 public sealed record UpdateOffer(UpdateState State, DateTimeOffset Checked, string? Version = null, IReadOnlyList<string>? Highlights = null, Uri? Notes = null)
 {
-    /// <summary>Служба поставит его сама (MSI, .deb, .rpm установленной программы); нет — только страница выпуска.</summary>
+    /// <summary>
+    /// Служба поставит его сама: MSI, .deb, .rpm установленной программы, и сайт дал ссылку на этот файл; нет — скачать на
+    /// сайте.
+    /// </summary>
     public bool Installable { get; init; }
 
     /// <summary>

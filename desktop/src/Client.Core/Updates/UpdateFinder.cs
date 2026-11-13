@@ -1,60 +1,119 @@
-using System.Text;
 using System.Text.Json;
 using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.Core.Updates;
 
-/// <summary>Выпуск из списка на GitHub: версия из тега, предварительный ли, ссылки на манифест и его подпись (нет — null).</summary>
-public sealed record ReleaseEntry(string Version, bool Prerelease, Uri? Manifest, Uri? Signature)
+/// <summary>
+/// Выпуск в ленте обновлений сайта: версия и канал — как их назвал сайт (сверяются с подписанным манифестом), точные
+/// байты манифеста <c>update.json</c> и его подпись (нет — null: выпуск пропускается с причиной), ссылки-билеты на файлы
+/// ОС по виду файла манифеста (<c>win-x64-msi</c>, <c>linux-x64-deb</c>…).
+/// </summary>
+public sealed record ReleaseEntry(string Version, UpdateChannel Channel, byte[]? Manifest, string? Signature, IReadOnlyDictionary<string, Uri> Files)
 {
+    /// <summary>Больше лента не бывает: пять выпусков с манифестами — десятки килобайт; длиннее — не она, и не читается.</summary>
+    public const int MaxFeedBytes = 1024 * 1024;
+
+    /// <summary>Подпись — DER ECDSA P-256 в base64, около сотни знаков; длиннее — не она.</summary>
+    public const int MaxSignature = 1024;
+
     /// <summary>
-    /// Список выпусков из ответа GitHub (<c>GET /repos/{репозиторий}/releases</c>): черновики и теги не вида
-    /// <c>v&lt;SemVer&gt;</c> пропускаются; ссылки на <c>update.json</c> и <c>update.json.sig</c> — только загрузки
-    /// выпусков этого репозитория (<paramref name="downloads"/>, <c>https://github.com/{репозиторий}/releases/download/</c>)
-    /// с тегом этого выпуска, другие не берутся.
+    /// Лента сайта (<c>GET /api/app/updates</c>):
+    /// <c>{"releases":[{"version","channel","manifest","signature","files":{вид:{"url","expires_at"}}}]}</c>. Сайт — не
+    /// источник доверия: выпуск с версией не по SemVer или незнакомым каналом пропускается, манифест — base64 точных байт
+    /// (не base64 — манифеста нет), подпись — не длиннее <see cref="MaxSignature"/>. Ссылка на файл берется, только если
+    /// это билет на адрес файлов <paramref name="files"/>: тот же адрес и после него один сегмент пути, без запроса и якоря;
+    /// другие ссылки не берутся. Срок билета (<c>expires_at</c>) службе не нужен: истекший билет сайт не примет.
     /// </summary>
-    /// <exception cref="FormatException">Ответ — не список выпусков.</exception>
-    public static IReadOnlyList<ReleaseEntry> ParseGitHub(ReadOnlySpan<byte> json, Uri downloads)
+    /// <param name="json">Ответ сайта как есть.</param>
+    /// <param name="files">Адрес файлов обновлений (<see cref="Account.AccountSite.UpdateFiles"/>, в тестах — свой).</param>
+    /// <exception cref="FormatException">Ответ — не лента или длиннее <see cref="MaxFeedBytes"/>.</exception>
+    public static IReadOnlyList<ReleaseEntry> ParseSite(ReadOnlySpan<byte> json, Uri files)
     {
-        ArgumentNullException.ThrowIfNull(downloads);
-        var prefix = downloads.AbsoluteUri.TrimEnd('/') + "/";
+        ArgumentNullException.ThrowIfNull(files);
+        if (json.Length > MaxFeedBytes)
+        {
+            throw new FormatException("Лента обновлений сайта больше " + MaxFeedBytes / 1024 + " КБ");
+        }
+
+        var prefix = files.AbsoluteUri.EndsWith('/') ? files.AbsoluteUri : files.AbsoluteUri + "/";
         try
         {
             using var document = JsonDocument.Parse(json.ToArray());
             var releases = new List<ReleaseEntry>();
-            foreach (var release in document.RootElement.EnumerateArray())
+            foreach (var release in document.RootElement.GetProperty("releases").EnumerateArray())
             {
-                var tag = release.GetProperty("tag_name").GetString() ?? string.Empty;
-                if (release.GetProperty("draft").GetBoolean() || !tag.StartsWith('v') || !SemVer.IsValid(tag[1..]))
+                var version = Text(release, "version");
+                UpdateChannel? channel = Text(release, "channel") switch
+                {
+                    "stable" => UpdateChannel.Stable,
+                    "beta" => UpdateChannel.Beta,
+                    _ => null,
+                };
+                if (!SemVer.IsValid(version) || channel is not { } known)
                 {
                     continue;
                 }
 
-                Uri? Asset(string name) => release.GetProperty("assets").EnumerateArray()
-                    .Where(a => a.GetProperty("name").GetString() == name)
-                    .Select(a => a.GetProperty("browser_download_url").GetString())
-                    .Where(url => url is not null && url.StartsWith(prefix + tag + "/", StringComparison.Ordinal))
-                    .Select(url => new Uri(url!))
-                    .FirstOrDefault();
-                releases.Add(new ReleaseEntry(tag[1..], release.GetProperty("prerelease").GetBoolean(), Asset("update.json"), Asset("update.json.sig")));
+                var signature = Text(release, "signature");
+                releases.Add(new ReleaseEntry(version!, known, Base64(Text(release, "manifest")),
+                    signature is { Length: <= MaxSignature } ? signature : null, Links(release, prefix)));
             }
 
             return releases;
         }
-        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or UriFormatException)
+        catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            throw new FormatException("Ответ GitHub — не список выпусков: " + e.Message, e);
+            throw new FormatException("Ответ сайта — не лента обновлений: " + e.Message, e);
         }
     }
-}
 
-/// <summary>Откуда берутся выпуски: список и загрузка файла (служба — GitHub по HTTPS, тесты — свое).</summary>
-public interface IReleaseFeed
-{
-    Task<IReadOnlyList<ReleaseEntry>> ListAsync(CancellationToken cancellationToken);
+    // Ссылка-билет на файл: адрес файлов сайта и один непустой сегмент пути после него (билет), без запроса и якоря.
+    // Сверяется уже разобранный адрес: «..», другой порт, имя пользователя или хост длиннее не пройдут.
+    private static bool IsTicket(Uri url, string prefix)
+    {
+        var address = url.AbsoluteUri;
+        return address.Length > prefix.Length && address.StartsWith(prefix, StringComparison.Ordinal)
+            && address.AsSpan(prefix.Length).IndexOfAny('/', '?', '#') < 0;
+    }
 
-    /// <summary>Файл целиком, не длиннее <paramref name="maxBytes"/> (длиннее — <see cref="InvalidDataException"/>).</summary>
-    Task<byte[]> DownloadAsync(Uri url, int maxBytes, CancellationToken cancellationToken);
+    private static Dictionary<string, Uri> Links(JsonElement release, string prefix)
+    {
+        var links = new Dictionary<string, Uri>(StringComparer.Ordinal);
+        if (release.TryGetProperty("files", out var files) && files.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var file in files.EnumerateObject())
+            {
+                if (Text(file.Value, "url") is { } text && Uri.TryCreate(text, UriKind.Absolute, out var url) && IsTicket(url, prefix))
+                {
+                    links[file.Name] = url;
+                }
+            }
+        }
+
+        return links;
+    }
+
+    private static string? Text(JsonElement element, string name) =>
+        element.ValueKind == JsonValueKind.Object && element.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString()
+            : null;
+
+    private static byte[]? Base64(string? text)
+    {
+        if (text is null)
+        {
+            return null;
+        }
+
+        try
+        {
+            return Convert.FromBase64String(text);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
 }
 
 /// <summary>Что с обновлением.</summary>
@@ -69,29 +128,37 @@ public enum UpdateState
     /// <summary>Есть новее, подпись сходится.</summary>
     Available,
 
-    /// <summary>Проверить не удалось: нет сети, GitHub не ответил.</summary>
+    /// <summary>Проверить не удалось: лента сайта не получена или не читается.</summary>
     Failed,
+
+    /// <summary>
+    /// Ленты сайта нет: ее берет окно своим входом в аккаунт, а входа нет (или окно старее службы и ленту не передает).
+    /// Проверять нечего, в сеть никто не ходит; окно просит войти.
+    /// </summary>
+    NoFeed,
 }
 
-/// <summary>Итог поиска: состояние, манифест найденного выпуска и что пропущено по дороге (для журнала).</summary>
-public sealed record UpdateSearch(UpdateState State, UpdateManifest? Manifest, IReadOnlyList<string> Skipped);
+/// <summary>
+/// Итог поиска: состояние, манифест найденного выпуска и что пропущено по дороге (для журнала); найденный выпуск в ленте —
+/// <see cref="Release"/> (его ссылки на файлы).
+/// </summary>
+public sealed record UpdateSearch(UpdateState State, UpdateManifest? Manifest, IReadOnlyList<string> Skipped, ReleaseEntry? Release = null);
 
 /// <summary>
-/// Поиск обновления. Выпуски — от новых к старым, своего канала (стабильный — без предварительных); первый не новее
+/// Поиск обновления в ленте сайта. Выпуски — от новых к старым, своего канала (стабильный — без бет); первый не новее
 /// установленной версии — конец поиска. Выпуск подходит, только если у него есть подпись, она сходится с ключом
-/// программы, версия в манифесте — та же, что в теге, и номер этой установки (0–99) меньше доли раскатки. Иначе — к
-/// следующему, более старому: пока новейший раскатывается, установка может получить предыдущий. Версия, с которой
-/// пользователь откатился, не предлагается — только более новая.
+/// программы над точными байтами манифеста, версия в манифесте — та же, что у выпуска в ленте, и номер этой установки
+/// (0–99) меньше доли раскатки. Иначе — к следующему, более старому: пока новейший раскатывается, установка может
+/// получить предыдущий. Версия, с которой пользователь откатился, не предлагается — только более новая. Сайт подделать
+/// выпуск не может: закрытого ключа у него нет.
 /// </summary>
 public static class UpdateFinder
 {
     /// <summary>Найти обновление; <paramref name="skip"/> — версия, с которой откатились (null — нет такой).</summary>
-    /// <exception cref="HttpRequestException">И другие ошибки <paramref name="feed"/> — проверка не удалась.</exception>
-    public static async Task<UpdateSearch> FindAsync(
-        IReleaseFeed feed, IReadOnlyList<string> publicKeys, string current, UpdateChannel channel, int bucket, string? skip = null,
-        CancellationToken cancellationToken = default)
+    public static UpdateSearch Find(
+        IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys, string current, UpdateChannel channel, int bucket, string? skip = null)
     {
-        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(releases);
         ArgumentNullException.ThrowIfNull(publicKeys);
         ArgumentOutOfRangeException.ThrowIfNegative(bucket);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(bucket, 99);
@@ -101,10 +168,8 @@ public static class UpdateFinder
         }
 
         var skipped = new List<string>();
-        var releases = (await feed.ListAsync(cancellationToken).ConfigureAwait(false))
-            .Where(r => channel == UpdateChannel.Beta || !r.Prerelease)
-            .OrderByDescending(r => r.Version, Comparer<string>.Create(SemVer.Compare));
-        foreach (var release in releases)
+        foreach (var release in releases.Where(r => channel == UpdateChannel.Beta || r.Channel == UpdateChannel.Stable)
+            .OrderByDescending(r => r.Version, Comparer<string>.Create(SemVer.Compare)))
         {
             if (SemVer.Compare(release.Version, current) <= 0)
             {
@@ -117,7 +182,7 @@ public static class UpdateFinder
                 continue;
             }
 
-            var (parsed, problem) = await VerifyAsync(feed, publicKeys, release, cancellationToken).ConfigureAwait(false);
+            var (parsed, problem) = Verify(publicKeys, release);
             if (parsed is null)
             {
                 skipped.Add($"{release.Version}: {problem}");
@@ -142,44 +207,45 @@ public static class UpdateFinder
                 continue;
             }
 
-            return new UpdateSearch(UpdateState.Available, parsed, skipped);
+            return new UpdateSearch(UpdateState.Available, parsed, skipped, release);
         }
 
         return new UpdateSearch(UpdateState.UpToDate, null, skipped);
     }
 
     /// <summary>
-    /// Подписанный выпуск ровно этой версии (для отката на прежнюю или чтобы обещать откат на нынешнюю): тег, подпись
-    /// ключом программы, версия в манифесте. Канал и раскатка не важны — версию ставили на этой машине.
+    /// Подписанный выпуск ровно этой версии (для отката на прежнюю или чтобы обещать откат на нынешнюю): подпись ключом
+    /// программы, версия в манифесте. Канал и раскатка не важны — версию ставили на этой машине.
     /// </summary>
     /// <returns>Манифест или null и почему.</returns>
-    /// <exception cref="HttpRequestException">И другие ошибки <paramref name="feed"/>.</exception>
-    public static async Task<(UpdateManifest? Manifest, string? Problem)> ReleaseAsync(
-        IReleaseFeed feed, IReadOnlyList<string> publicKeys, string version, CancellationToken cancellationToken = default)
+    public static (UpdateManifest? Manifest, string? Problem) Release(IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys, string version)
     {
-        ArgumentNullException.ThrowIfNull(feed);
+        ArgumentNullException.ThrowIfNull(releases);
         ArgumentNullException.ThrowIfNull(publicKeys);
         if (publicKeys.Count == 0)
         {
             return (null, "в программе нет ключей подписи");
         }
 
-        var release = (await feed.ListAsync(cancellationToken).ConfigureAwait(false)).FirstOrDefault(r => r.Version == version);
-        return release is null ? (null, "выпуска нет на GitHub") : await VerifyAsync(feed, publicKeys, release, cancellationToken).ConfigureAwait(false);
+        var release = releases.FirstOrDefault(r => r.Version == version);
+        return release is null ? (null, "выпуска нет в ленте сайта") : Verify(publicKeys, release);
     }
 
-    // Манифест выпуска и его подпись: подпись сходится с ключом программы, манифест разбирается, версия в нем — из тега.
-    private static async Task<(UpdateManifest? Manifest, string? Problem)> VerifyAsync(
-        IReleaseFeed feed, IReadOnlyList<string> publicKeys, ReleaseEntry release, CancellationToken cancellationToken)
+    // Манифест выпуска и его подпись: подпись сходится с ключом программы над точными байтами, манифест разбирается,
+    // версия в нем — та же, что у выпуска в ленте.
+    private static (UpdateManifest? Manifest, string? Problem) Verify(IReadOnlyList<string> publicKeys, ReleaseEntry release)
     {
         if (release.Manifest is null || release.Signature is null)
         {
             return (null, "выпуск без подписанного манифеста");
         }
 
-        var manifest = await feed.DownloadAsync(release.Manifest, UpdateManifest.MaxBytes, cancellationToken).ConfigureAwait(false);
-        var signature = await feed.DownloadAsync(release.Signature, 1024, cancellationToken).ConfigureAwait(false);
-        if (!UpdateSignature.Verify(manifest, Encoding.ASCII.GetString(signature), publicKeys))
+        if (release.Manifest.Length > UpdateManifest.MaxBytes)
+        {
+            return (null, $"манифест больше {UpdateManifest.MaxBytes / 1024} КБ");
+        }
+
+        if (!UpdateSignature.Verify(release.Manifest, release.Signature, publicKeys))
         {
             return (null, "подпись манифеста не сходится с ключом программы");
         }
@@ -187,7 +253,7 @@ public static class UpdateFinder
         UpdateManifest parsed;
         try
         {
-            parsed = UpdateManifest.Parse(manifest);
+            parsed = UpdateManifest.Parse(release.Manifest);
         }
         catch (FormatException e)
         {

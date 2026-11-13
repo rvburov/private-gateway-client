@@ -3,6 +3,7 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Grpc.Core;
 using Microsoft.Extensions.Time.Testing;
 using PrivateGateway.Client.Application.Connection;
@@ -17,21 +18,25 @@ using V1 = PrivateGateway.Client.Contracts.V1;
 namespace PrivateGateway.Client.Tests.Network;
 
 /// <summary>
-/// Проверка обновлений в службе (<see cref="UpdateChecker"/>, <see cref="GitHubReleaseFeed"/>) по настоящему HTTP на
-/// 127.0.0.1 — как у GitHub: список выпусков, загрузки с переадресацией в хранилище — и вызов CheckForUpdate через IPC.
+/// Обновления в службе по ленте сайта (<see cref="UpdateChecker"/>, <see cref="UpdateInstaller"/>): ленту окно передает
+/// байтами (здесь ее собирает тест, подписывая манифесты своим ключом), файлы служба качает по билетам с «сайта» на
+/// 127.0.0.1 — настоящий HTTP, как <c>/api/app/updates/files/&lt;билет&gt;</c>, — и вызовы окна через IPC.
 /// </summary>
 public sealed class UpdateCheckerTests : IDisposable
 {
     private readonly ECDsa _key = ECDsa.Create(ECCurve.NamedCurves.nistP256);
     private readonly FakeTimeProvider _time = new(new DateTimeOffset(2026, 10, 26, 9, 0, 0, TimeSpan.Zero));
     private readonly ServiceJournal _journal;
-    private readonly ReleaseSite _site = new();
-    private readonly HttpClient _http = GitHubReleaseFeed.CreateHttp();
+    private readonly UpdateSite _site = new();
+    private readonly HttpClient _http = UpdateInstaller.CreateHttp();
     private readonly string _state = Directory.CreateTempSubdirectory("pg-update-").FullName;
 
     public UpdateCheckerTests() => _journal = new ServiceJournal(_time);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    // Адрес файлов «сайта»: ссылки служба берет только отсюда.
+    private Uri Files => new(_site.Url, "api/app/updates/files/");
 
     public void Dispose()
     {
@@ -42,67 +47,44 @@ public sealed class UpdateCheckerTests : IDisposable
     }
 
     [Fact]
-    public async Task Signed_release_is_found_through_redirects_and_remembered_for_an_hour()
+    public void Signed_release_in_the_feed_is_found_without_the_network()
     {
-        _site.Release("0.3.0", Manifest("0.3.0"), Sign(Manifest("0.3.0")));
-        using var checker = Checker("0.2.0");
+        var checker = Checker("0.2.0");
+        var feed = Feed(Release("0.3.0", Manifest("0.3.0")));
 
-        var offer = await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+        var offer = checker.Check(UpdateChannel.Stable, feed);
 
         offer.State.ShouldBe(UpdateState.Available);
         (offer.Version, offer.Checked).ShouldBe(("0.3.0", _time.GetUtcNow()));
+        offer.Highlights.ShouldBe(["Новое"]);
         checker.Found!.Assets["win-x64-msi"].File.ShouldBe("PrivateGateway-0.3.0-win-x64.msi");
-        _site.Redirects.ShouldBe(2, "манифест и подпись — через переадресацию, как у GitHub");
-        _journal.Tail(10).Count(e => e.Message.Contains("Доступно обновление 0.3.0", StringComparison.Ordinal)).ShouldBe(1);
-
-        var requests = _site.Requests;
-        (await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct)).ShouldBe(offer);
-        _site.Requests.ShouldBe(requests, "час служба отвечает по памяти");
-        (await checker.CheckAsync(UpdateChannel.Beta, force: false, Ct)).State.ShouldBe(UpdateState.Available);
-        _site.Requests.ShouldBeGreaterThan(requests, "другой канал — другой список");
-
-        requests = _site.Requests;
-        await checker.CheckAsync(UpdateChannel.Beta, force: true, Ct);
-        _site.Requests.ShouldBeGreaterThan(requests, "«Проверить» — мимо памяти");
-        requests = _site.Requests;
-        _time.Advance(TimeSpan.FromMinutes(61));
-        await checker.CheckAsync(UpdateChannel.Beta, force: false, Ct);
-        _site.Requests.ShouldBeGreaterThan(requests, "через час — заново");
-        _journal.Tail(20).Count(e => e.Message.Contains("Доступно обновление", StringComparison.Ordinal)).ShouldBe(1, "одна и та же версия в журнал — один раз");
+        _site.Requests.ShouldBe(0, "проверка — по ленте окна, служба в сеть не ходит");
+        checker.Check(UpdateChannel.Beta, feed).Version.ShouldBe("0.3.0", "бета-канал видит и стабильные выпуски");
+        _journal.Tail(10).Count(e => e.Message.Contains("Доступно обновление 0.3.0", StringComparison.Ordinal)).ShouldBe(1, "одна и та же версия в журнал — один раз");
     }
 
     [Fact]
-    public async Task Failure_goes_to_the_journal_and_is_not_remembered()
+    public void Unreadable_or_oversized_feed_is_a_failure_in_the_journal_and_is_not_remembered()
     {
-        _site.ListStatus = HttpStatusCode.Forbidden;
-        using var checker = Checker("0.2.0");
+        var checker = Checker("0.2.0");
+        checker.Check(UpdateChannel.Stable, Feed(Release("0.3.0", Manifest("0.3.0")))).State.ShouldBe(UpdateState.Available);
 
-        (await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct)).State.ShouldBe(UpdateState.Failed);
+        checker.Check(UpdateChannel.Stable, "<html>captive portal</html>"u8).State.ShouldBe(UpdateState.Failed);
         _journal.Tail(5).ShouldContain(e => e.Level == JournalLevel.Warning && e.Message.StartsWith("Проверить обновления не удалось", StringComparison.Ordinal));
+        checker.Check(UpdateChannel.Stable, new byte[ReleaseEntry.MaxFeedBytes + 1]).State.ShouldBe(UpdateState.Failed);
+        _journal.Tail(5).ShouldContain(e => e.Message.Contains("больше", StringComparison.Ordinal), "ленту больше 1 МБ служба не читает");
+        checker.Found!.Version.ShouldBe("0.3.0", "неудача найденного прежде не стирает");
 
-        _site.ListStatus = HttpStatusCode.OK;
-        _site.Release("0.3.0", Manifest("0.3.0"), Sign(Manifest("0.3.0")));
-        (await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct)).State.ShouldBe(UpdateState.Available, "неудача не запоминается");
+        checker.Check(UpdateChannel.Stable, Feed(Release("0.3.1", Manifest("0.3.1")))).Version.ShouldBe("0.3.1", "неудача не запоминается");
     }
 
     [Fact]
-    public async Task Oversized_manifest_is_not_read_to_the_end()
+    public void Skipped_releases_are_named_in_the_journal()
     {
-        var huge = new byte[UpdateManifest.MaxBytes + 1];
-        _site.Release("0.3.0", huge, "c2lnbmF0dXJl\n", chunked: true);
-        using var checker = Checker("0.2.0");
+        var checker = Checker("0.2.0");
 
-        (await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct)).State.ShouldBe(UpdateState.Failed);
-        _journal.Tail(5).ShouldContain(e => e.Message.Contains("больше", StringComparison.Ordinal), "даже без длины в заголовках");
-    }
+        checker.Check(UpdateChannel.Stable, Feed(Release("0.3.0", Manifest("0.3.0"), signature: Sign(Manifest("0.2.9"))))).State.ShouldBe(UpdateState.UpToDate);
 
-    [Fact]
-    public async Task Skipped_releases_are_named_in_the_journal()
-    {
-        _site.Release("0.3.0", Manifest("0.3.0"), Sign(Manifest("0.2.9")));
-        using var checker = Checker("0.2.0");
-
-        (await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct)).State.ShouldBe(UpdateState.UpToDate);
         _journal.Tail(5).ShouldContain(e => e.Message == "Выпуск пропущен: 0.3.0: подпись манифеста не сходится с ключом программы");
     }
 
@@ -119,41 +101,53 @@ public sealed class UpdateCheckerTests : IDisposable
     }
 
     [Fact]
-    public async Task Window_asks_through_ipc_with_its_channel()
+    public void Files_of_updates_are_only_on_https_or_this_computer()
     {
-        _site.Release("0.4.0-beta.1", Manifest("0.4.0-beta.1", "beta"), Sign(Manifest("0.4.0-beta.1", "beta")), prerelease: true);
-        _site.Release("0.3.0", Manifest("0.3.0"), Sign(Manifest("0.3.0")));
-        await using var service = await RunningService.StartAsync(updates: journal =>
-            new UpdateChecker(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], "0.2.0", 0, _time, journal));
-        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
+        Should.Throw<ArgumentException>(() => new UpdateChecker([], "0.2.0", 0, _time, _journal, files: new Uri("http://example.com/api/app/updates/files/")));
+        _ = new UpdateChecker([], "0.2.0", 0, _time, _journal, files: new Uri("https://example.com/api/app/updates/files/"));
+    }
 
-        var stable = await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct);
+    [Fact]
+    public async Task Window_asks_through_ipc_with_its_channel_and_the_site_feed()
+    {
+        var feed = Feed(Release("0.4.0-beta.1", Manifest("0.4.0-beta.1", "beta"), channel: "beta"), Release("0.3.0", Manifest("0.3.0")));
+        await using var service = await RunningService.StartAsync(updates: journal => Checker("0.2.0", journal: journal));
+        using var client = Client(service);
+
+        var stable = await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, feed, Ct);
         stable!.Version.ShouldBe("0.3.0");
-        stable.Installable.ShouldBeFalse("служба без установщика не ставит — окно ведет на страницу выпуска");
-        var beta = await client.CheckForUpdateAsync(UpdateChannel.Beta, force: false, Ct);
-        beta!.Version.ShouldBe("0.4.0-beta.1");
-        beta.Notes.ShouldBe(new Uri("https://github.com/rvburov/private-gateway-client/releases/tag/v0.4.0-beta.1"));
+        stable.Installable.ShouldBeFalse("служба без установщика не ставит — окно ведет на сайт");
+        stable.Notes.ShouldBe(new Uri("https://private-gateway.duckdns.org/downloads"));
+        (await client.CheckForUpdateAsync(UpdateChannel.Beta, force: false, feed, Ct))!.Version.ShouldBe("0.4.0-beta.1");
+
+        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: true, null, Ct))!.State.ShouldBe(UpdateState.NoFeed, "окно без ленты — службе проверять нечего");
+        _site.Requests.ShouldBe(0, "и без ленты в сеть не ходит");
+        service.Journal.Tail(5).ShouldContain(e => e.Message.StartsWith("Окно не передало ленту обновлений сайта", StringComparison.Ordinal));
         var refused = await Should.ThrowAsync<RpcException>(async () =>
             await service.Client.CheckForUpdateAsync(new V1.CheckForUpdateRequest(), cancellationToken: Ct));
         refused.StatusCode.ShouldBe(StatusCode.InvalidArgument, "канал не задан — служба не угадывает");
     }
 
     [Fact]
-    public async Task Service_without_keys_says_so_without_the_network()
+    public async Task Service_without_keys_says_so_and_does_not_read_the_feed()
     {
         await using var service = await RunningService.StartAsync();
 
-        var offer = await service.Client.CheckForUpdateAsync(new V1.CheckForUpdateRequest { Channel = V1.UpdateChannel.Stable }, cancellationToken: Ct);
+        var offer = await service.Client.CheckForUpdateAsync(new V1.CheckForUpdateRequest
+        {
+            Channel = V1.UpdateChannel.Stable,
+            SiteFeed = Google.Protobuf.ByteString.CopyFromUtf8("не лента"),
+        }, cancellationToken: Ct);
 
         offer.State.ShouldBe(V1.UpdateState.NotSigned);
     }
 
     [Fact]
-    public async Task Update_file_is_downloaded_with_progress_checked_against_the_manifest_and_handed_to_the_installer()
+    public async Task Update_file_is_downloaded_by_its_ticket_with_progress_checked_against_the_manifest_and_handed_to_the_installer()
     {
         var package = RandomNumberGenerator.GetBytes(300_000);
         var manifest = UpdateManifest.Parse(ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package));
-        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", package);
+        var ticket = _site.Ticket(package);
         var launched = new List<(string File, string Log)>();
         var installer = Installer(new UpdateKind("linux-x64-deb", (file, log) =>
         {
@@ -163,14 +157,16 @@ public sealed class UpdateCheckerTests : IDisposable
         Directory.CreateDirectory(Path.Combine(_state, "updates"));
         File.WriteAllText(Path.Combine(_state, "updates", "private-gateway_0.2.0_amd64.deb"), "прежняя загрузка");
 
-        var progress = await Collect(installer.DownloadAsync(manifest, Ct));
+        var progress = await Collect(installer.DownloadAsync(manifest, ticket, Ct));
 
         progress[^1].ShouldBe(new UpdateProgress(package.Length, package.Length, Ready: true));
         progress.ShouldAllBe(p => p.Total == package.Length && p.Error == null);
         File.ReadAllBytes(Path.Combine(_state, "updates", "private-gateway_0.3.0_amd64.deb")).ShouldBe(package);
         Directory.GetFiles(Path.Combine(_state, "updates")).Select(Path.GetFileName).ShouldBe(["private-gateway_0.3.0_amd64.deb"], "прежние загрузки убраны");
-        (await Collect(installer.DownloadAsync(manifest, Ct))).ShouldBe([new UpdateProgress(package.Length, package.Length, Ready: true)],
-            "уже скачанное и сверенное не качается заново");
+        var requests = _site.Requests;
+        (await Collect(installer.DownloadAsync(manifest, null, Ct))).ShouldBe([new UpdateProgress(package.Length, package.Length, Ready: true)],
+            "уже скачанное и сверенное не качается заново — и ссылка не нужна");
+        _site.Requests.ShouldBe(requests);
 
         installer.Install(manifest).ShouldBe(4242);
         launched.ShouldBe([(Path.Combine(_state, "updates", "private-gateway_0.3.0_amd64.deb"), Path.Combine(_state, "updates", "install.log"))]);
@@ -184,26 +180,24 @@ public sealed class UpdateCheckerTests : IDisposable
         var manifest = UpdateManifest.Parse(ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package));
         var tampered = package.ToArray();
         tampered[500] ^= 1;
-        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", tampered);
         var installer = Installer(new UpdateKind("linux-x64-deb", (_, _) => throw new InvalidOperationException("не должен запускаться")));
 
-        var progress = await Collect(installer.DownloadAsync(manifest, Ct));
+        var progress = await Collect(installer.DownloadAsync(manifest, _site.Ticket(tampered), Ct));
 
         progress[^1].Error!.ShouldContain("SHA-256");
         Directory.GetFiles(Path.Combine(_state, "updates")).ShouldBeEmpty("подмененный файл не остается ни целым, ни частью");
         Should.Throw<IOException>(() => installer.Install(manifest));
 
-        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", [.. package, 1]);
-        (await Collect(installer.DownloadAsync(manifest, Ct)))[^1].Error!.ShouldContain("байт", customMessage: "длиннее манифеста — отказ");
-        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", [.. package, 1], chunked: true);
-        (await Collect(installer.DownloadAsync(manifest, Ct)))[^1].Error!.ShouldContain("больше", customMessage: "без длины в заголовке — отказ на первом лишнем байте");
+        (await Collect(installer.DownloadAsync(manifest, _site.Ticket([.. package, 1]), Ct)))[^1].Error!.ShouldContain("байт", customMessage: "длиннее манифеста — отказ");
+        (await Collect(installer.DownloadAsync(manifest, _site.Ticket([.. package, 1], chunked: true), Ct)))[^1].Error!
+            .ShouldContain("больше", customMessage: "без длины в заголовке — отказ на первом лишнем байте");
+        (await Collect(installer.DownloadAsync(manifest, null, Ct)))[^1].Error!.ShouldContain("нет ссылки", customMessage: "не скачано и ссылки нет — отказ");
 
-        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", package);
-        (await Collect(installer.DownloadAsync(manifest, Ct)))[^1].Ready.ShouldBeTrue();
+        (await Collect(installer.DownloadAsync(manifest, _site.Ticket(package), Ct)))[^1].Ready.ShouldBeTrue();
         var file = Path.Combine(_state, "updates", "private-gateway_0.3.0_amd64.deb");
         File.WriteAllBytes(file, tampered);
         Should.Throw<IOException>(() => installer.Install(manifest), "файл подменили после загрузки — перед установкой сверяется заново");
-        (await Collect(Installer(null).DownloadAsync(manifest, Ct)))[^1].Error.ShouldBe("в выпуске нет файла для этой установки");
+        (await Collect(Installer(null).DownloadAsync(manifest, _site.Ticket(package), Ct)))[^1].Error.ShouldBe("в выпуске нет файла для этой установки");
     }
 
     [Fact]
@@ -211,21 +205,87 @@ public sealed class UpdateCheckerTests : IDisposable
     {
         var package = RandomNumberGenerator.GetBytes(50_000);
         var manifest = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package);
-        _site.Release("0.3.0", manifest, Sign(manifest));
-        _site.Asset("0.3.0", "private-gateway_0.3.0_amd64.deb", package);
-        await using var service = await RunningService.StartAsync(
-            updates: journal => new UpdateChecker(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], "0.2.0", 0, _time, journal),
-            installer: journal => new UpdateInstaller(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"),
-                new UpdateKind("linux-x64-deb", (_, _) => 4242), journal));
-        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
+        await using var service = await StartAsync("0.2.0", launch: (_, _) => 4242);
+        using var client = Client(service);
+        var feed = Feed(Release("0.3.0", manifest, files: [("linux-x64-deb", _site.Ticket(package))]));
 
-        (await Collect(client.DownloadUpdateAsync("0.3.0", Ct)))[^1].Error.ShouldNotBeNull("служба еще не находила 0.3.0 — качать нечего");
+        (await Collect(client.DownloadUpdateAsync("0.3.0", feed, Ct)))[^1].Error.ShouldNotBeNull("служба еще не находила 0.3.0 — качать нечего");
         (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBeNull();
+        _site.Requests.ShouldBe(0);
 
-        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct))!.Installable.ShouldBeTrue();
-        (await Collect(client.DownloadUpdateAsync("0.2.9", Ct)))[^1].Error.ShouldNotBeNull("другую версию служба не качает");
-        (await Collect(client.DownloadUpdateAsync("0.3.0", Ct)))[^1].Ready.ShouldBeTrue();
+        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, feed, Ct))!.Installable.ShouldBeTrue();
+        (await Collect(client.DownloadUpdateAsync("0.2.9", feed, Ct)))[^1].Error.ShouldNotBeNull("другую версию служба не качает");
+        (await Collect(client.DownloadUpdateAsync("0.3.0", feed, Ct)))[^1].Ready.ShouldBeTrue();
         (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBe(4242);
+    }
+
+    [Fact]
+    public async Task Expired_ticket_is_a_failure_not_a_crash_and_a_fresh_feed_downloads()
+    {
+        // Билеты живут 30 минут: окно проверило, а скачать попросило позже со старой лентой — сайт отвечает 403.
+        var package = RandomNumberGenerator.GetBytes(80_000);
+        var manifest = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package);
+        await using var service = await StartAsync("0.2.0", launch: (_, _) => 4242);
+        using var client = Client(service);
+        var old = Feed(Release("0.3.0", manifest, files: [("linux-x64-deb", _site.Ticket(package, expired: true))]));
+        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, old, Ct))!.Version.ShouldBe("0.3.0");
+
+        var failed = await Collect(client.DownloadUpdateAsync("0.3.0", old, Ct));
+
+        failed[^1].Error.ShouldBe("сайт не отдал файл (403): ссылка на файл устарела — проверьте обновления еще раз");
+        failed.ShouldNotContain(p => p.Ready);
+        service.Journal.Tail(5).ShouldContain(e => e.Message.StartsWith("Обновление 0.3.0 не скачалось: сайт не отдал файл (403)", StringComparison.Ordinal));
+        service.Journal.Tail(20).ShouldNotContain(e => e.Message.Contains("/api/app/updates/files/", StringComparison.Ordinal), "билет в журнал не попадает");
+        Directory.GetFiles(Path.Combine(_state, "updates")).ShouldBeEmpty("от неудачной загрузки ничего не остается");
+        (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBeNull("нескачанное не ставится");
+
+        var fresh = Feed(Release("0.3.0", manifest, files: [("linux-x64-deb", _site.Ticket(package))]));
+        (await Collect(client.DownloadUpdateAsync("0.3.0", fresh, Ct)))[^1].Ready.ShouldBeTrue("служба жива, свежий билет — файл скачан");
+        (await client.InstallUpdateAsync("0.3.0", Ct)).ShouldBe(4242);
+        _site.Expired.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Link_off_the_site_files_address_or_a_redirect_is_never_followed()
+    {
+        var package = RandomNumberGenerator.GetBytes(20_000);
+        var manifest = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package);
+        using var other = new UpdateSite();
+        await using var service = await StartAsync("0.2.0", launch: (_, _) => 4242);
+        using var client = Client(service);
+        var elsewhere = Feed(Release("0.3.0", manifest, files: [("linux-x64-deb", other.Ticket(package))]));
+        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, elsewhere, Ct))!.Installable
+            .ShouldBeFalse("ссылка не на адрес файлов сайта не в счет — ставить не по чему");
+
+        (await Collect(client.DownloadUpdateAsync("0.3.0", elsewhere, Ct)))[^1].Error!.ShouldContain("нет ссылки");
+        other.Requests.ShouldBe(0, "ссылка не на адрес файлов сайта — служба туда не ходит");
+        service.Journal.Tail(5).ShouldContain(e => e.Message == "Обновление 0.3.0 не скачать: в ленте сайта нет ссылки на файл linux-x64-deb");
+
+        var redirect = Feed(Release("0.3.0", manifest, files: [("linux-x64-deb", _site.Redirect(other.Ticket(package)))]));
+        (await Collect(client.DownloadUpdateAsync("0.3.0", redirect, Ct)))[^1].Error.ShouldBe("сайт не отдал файл (302): переадресация — файл берется только по ссылке сайта");
+        other.Requests.ShouldBe(0, "переадресацию с билета служба не выполняет");
+        (await Collect(client.DownloadUpdateAsync("0.3.0", null, Ct)))[^1].Error!.ShouldContain("нет ссылки", customMessage: "без ленты — не по чему");
+    }
+
+    [Theory]
+    [InlineData("ticket_expired", "сайт не отдал файл (403): ссылка на файл устарела — проверьте обновления еще раз")]
+    [InlineData("invalid_ticket", "сайт не отдал файл (403): сайт не принял ссылку на файл")]
+    [InlineData("forbidden", "сайт не отдал файл (403): сайт закрыл этому устройству доступ")]
+    [InlineData("что-то новое", "сайт не отдал файл (403): ошибка сайта")]
+    [InlineData(null, "сайт не отдал файл (404): файла нет на сайте")]
+    public async Task Refused_ticket_is_a_clean_failure_with_the_reason(string? code, string error)
+    {
+        var package = RandomNumberGenerator.GetBytes(10_000);
+        var manifest = UpdateManifest.Parse(ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package));
+        var installer = Installer(new UpdateKind("linux-x64-deb", (_, _) => throw new InvalidOperationException("не должен запускаться")));
+        var url = code is null ? new Uri(Files, "t-unknown") : _site.Refused(code);
+
+        var progress = await Collect(installer.DownloadAsync(manifest, url, Ct));
+
+        progress[^1].Error.ShouldBe(error);
+        progress.ShouldNotContain(p => p.Ready);
+        Directory.GetFiles(Path.Combine(_state, "updates")).ShouldBeEmpty();
+        (await Collect(installer.DownloadAsync(manifest, _site.Ticket(package), Ct)))[^1].Ready.ShouldBeTrue("отказ не ломает следующую загрузку");
     }
 
     [Fact]
@@ -243,39 +303,41 @@ public sealed class UpdateCheckerTests : IDisposable
     }
 
     [Fact]
-    public async Task Previous_version_is_offered_for_rollback_only_with_a_signed_release_for_this_install()
+    public void Previous_version_is_offered_for_rollback_only_with_a_signed_release_for_this_install()
     {
         var deb = RandomNumberGenerator.GetBytes(1000);
-        foreach (var version in new[] { "0.1.0", "0.2.0", "0.3.0" })
-        {
-            var manifest = ManifestWith(version, "linux-x64-deb", $"private-gateway_{version}_amd64.deb", deb);
-            _site.Release(version, manifest, Sign(manifest));
-        }
+        string Deb(string version, bool onSite = true) => Release(version, ManifestWith(version, "linux-x64-deb", $"private-gateway_{version}_amd64.deb", deb),
+            files: onSite ? [("linux-x64-deb", _site.Ticket(deb))] : []);
+        var feed = Feed(Deb("0.3.0"), Deb("0.2.0"), Deb("0.1.0"));
 
-        using var checker = Checker("0.2.0", new VersionHistory("0.1.0", null), "linux-x64-deb");
-        var offer = await checker.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+        var checker = Checker("0.2.0", new VersionHistory("0.1.0", null), "linux-x64-deb");
+        var offer = checker.Check(UpdateChannel.Stable, feed);
 
-        (offer.Version, offer.Rollback, offer.ReturnTo).ShouldBe(("0.3.0", "0.1.0", "0.2.0"), "можно откатиться на 0.1.0, а после обновления — на 0.2.0");
+        (offer.Version, offer.Installable, offer.Rollback, offer.ReturnTo).ShouldBe(("0.3.0", true, "0.1.0", "0.2.0"),
+            "можно откатиться на 0.1.0, а после обновления — на 0.2.0");
         checker.Rollback!.Assets.ShouldContainKey("linux-x64-deb");
-        _site.Lists.ShouldBe(1, "список выпусков — один раз на проверку");
 
-        using var msi = Checker("0.2.0", new VersionHistory("0.1.0", null), "win-x64-msi");
-        var other = await msi.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+        // Сайт отдает выпуск и без файлов ОС (пустой files): подписан — но ставить и откатывать не по чему.
+        var notOnSite = Checker("0.2.0", new VersionHistory("0.1.0", null), "linux-x64-deb").Check(UpdateChannel.Stable,
+            Feed(Deb("0.3.0", onSite: false), Deb("0.2.0", onSite: false), Deb("0.1.0", onSite: false)));
+        (notOnSite.State, notOnSite.Version, notOnSite.Installable, notOnSite.Rollback, notOnSite.ReturnTo)
+            .ShouldBe((UpdateState.Available, "0.3.0", false, null, null), "выпуск есть, а файла на сайте нет — «скачать на сайте», не ошибка");
+        _journal.Tail(5).ShouldContain(e => e.Message == "Откатиться на 0.1.0 нельзя: файла для этой установки нет на сайте");
+        _journal.Tail(5).ShouldContain(e => e.Message == "Доступно обновление 0.3.0 (подпись проверена); файла linux-x64-deb на сайте нет — служба его не поставит");
+
+        var other = Checker("0.2.0", new VersionHistory("0.1.0", null), "win-x64-msi").Check(UpdateChannel.Stable, feed);
         (other.Rollback, other.ReturnTo).ShouldBe((null, null), "в выпусках нет файла этой установки — обещать нечего");
         _journal.Tail(5).ShouldContain(e => e.Message == "Откатиться на 0.1.0 нельзя: в выпуске нет файла для этой установки");
 
-        using var archive = Checker("0.2.0", new VersionHistory("0.1.0", null), asset: null);
-        (await archive.CheckAsync(UpdateChannel.Stable, force: false, Ct)).Rollback.ShouldBeNull("служба не ставит — и не откатывает");
+        Checker("0.2.0", new VersionHistory("0.1.0", null), asset: null).Check(UpdateChannel.Stable, feed).Rollback.ShouldBeNull("служба не ставит — и не откатывает");
 
-        using var unsigned = Checker("0.2.0", new VersionHistory("0.0.9", null), "linux-x64-deb");
-        (await unsigned.CheckAsync(UpdateChannel.Stable, force: false, Ct)).Rollback.ShouldBeNull();
-        _journal.Tail(5).ShouldContain(e => e.Message == "Откатиться на 0.0.9 нельзя: выпуска нет на GitHub");
+        Checker("0.2.0", new VersionHistory("0.0.9", null), "linux-x64-deb").Check(UpdateChannel.Stable, feed).Rollback.ShouldBeNull();
+        _journal.Tail(5).ShouldContain(e => e.Message == "Откатиться на 0.0.9 нельзя: выпуска нет в ленте сайта");
 
-        using var newer = Checker("0.2.0", new VersionHistory("0.3.0", null), "linux-x64-deb");
-        (await newer.CheckAsync(UpdateChannel.Stable, force: false, Ct)).Rollback.ShouldBeNull("«прежняя» новее нынешней — это не откат");
+        Checker("0.2.0", new VersionHistory("0.3.0", null), "linux-x64-deb").Check(UpdateChannel.Stable, feed).Rollback
+            .ShouldBeNull("«прежняя» новее нынешней — это не откат");
 
-        using var left = Checker("0.2.0", new VersionHistory(null, "0.3.0"), "linux-x64-deb");
-        var after = await left.CheckAsync(UpdateChannel.Stable, force: false, Ct);
+        var after = Checker("0.2.0", new VersionHistory(null, "0.3.0"), "linux-x64-deb").Check(UpdateChannel.Stable, feed);
         (after.State, after.Rollback, after.ReturnTo).ShouldBe((UpdateState.UpToDate, null, null), "с 0.3.0 откатились — она не предлагается");
     }
 
@@ -284,28 +346,37 @@ public sealed class UpdateCheckerTests : IDisposable
     {
         var package = RandomNumberGenerator.GetBytes(40_000);
         var old = ManifestWith("0.1.0", "linux-x64-deb", "private-gateway_0.1.0_amd64.deb", package);
-        _site.Release("0.1.0", old, Sign(old));
-        _site.Asset("0.1.0", "private-gateway_0.1.0_amd64.deb", package);
         var launched = new List<string?>();
-        await using var service = await RunningService.StartAsync(
-            updates: journal => new UpdateChecker(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], "0.2.0", 0, _time, journal, new VersionHistory("0.1.0", null), "linux-x64-deb"),
-            installer: journal => new UpdateInstaller(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"),
-                new UpdateKind("linux-x64-deb", (file, _) =>
-                {
-                    launched.Add(Path.GetFileName(file));
-                    return 4242;
-                }), journal));
-        using var client = new ServiceGatewayClient(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
+        await using var service = await StartAsync("0.2.0", new VersionHistory("0.1.0", null), (file, _) =>
+        {
+            launched.Add(Path.GetFileName(file));
+            return 4242;
+        });
+        using var client = Client(service);
+        var feed = Feed(Release("0.1.0", old, files: [("linux-x64-deb", _site.Ticket(package))]));
 
-        (await Collect(client.DownloadUpdateAsync("0.1.0", Ct)))[^1].Error.ShouldNotBeNull("служба еще не проверяла — откатывать не на что");
-        var offer = await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, Ct);
+        (await Collect(client.DownloadUpdateAsync("0.1.0", feed, Ct)))[^1].Error.ShouldNotBeNull("служба еще не проверяла — откатывать не на что");
+        var offer = await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, feed, Ct);
         (offer!.State, offer.Rollback).ShouldBe((UpdateState.UpToDate, "0.1.0"));
-        (await Collect(client.DownloadUpdateAsync("0.1.0", Ct)))[^1].Ready.ShouldBeTrue();
+        (await Collect(client.DownloadUpdateAsync("0.1.0", feed, Ct)))[^1].Ready.ShouldBeTrue();
         (await client.InstallUpdateAsync("0.1.0", Ct)).ShouldBe(4242);
         launched.ShouldBe(["private-gateway_0.1.0_amd64.deb"]);
     }
 
-    private UpdateInstaller Installer(UpdateKind? kind) => new(_http, new Uri(_site.Url, "download/"), Path.Combine(_state, "updates"), kind, _journal);
+    private static ServiceGatewayClient Client(RunningService service) =>
+        new(IpcChannel.Create(service.Endpoint, system: false), ServiceKind.User, _ => null, () => AppSettings.Default, TimeProvider.System);
+
+    // Служба со своей проверкой (лента с ключом теста, файлы — на «сайте») и установщиком .deb.
+    private Task<RunningService> StartAsync(string current, VersionHistory? history = null, Func<string, string, int>? launch = null) =>
+        RunningService.StartAsync(
+            updates: journal => Checker(current, history, "linux-x64-deb", journal),
+            installer: journal => new UpdateInstaller(_http, Path.Combine(_state, "updates"),
+                new UpdateKind("linux-x64-deb", launch ?? ((_, _) => throw new InvalidOperationException("установка не просилась"))), journal));
+
+    private UpdateInstaller Installer(UpdateKind? kind) => new(_http, Path.Combine(_state, "updates"), kind, _journal);
+
+    private UpdateChecker Checker(string current, VersionHistory? history = null, string? asset = null, ServiceJournal? journal = null) =>
+        new([_key.ExportSubjectPublicKeyInfoPem()], current, 0, _time, journal ?? _journal, history, asset, Files);
 
     private static async Task<List<UpdateProgress>> Collect(IAsyncEnumerable<UpdateProgress> progress)
     {
@@ -320,39 +391,46 @@ public sealed class UpdateCheckerTests : IDisposable
 
     private static byte[] ManifestWith(string version, string kind, string file, byte[] content) => Encoding.UTF8.GetBytes($$"""
         {"version":"{{version}}","channel":"stable","rollout":100,"published":"2026-10-26T08:00:00Z",
-         "notes":"https://github.com/rvburov/private-gateway-client/releases/tag/v{{version}}",
+         "notes":"https://private-gateway.duckdns.org/downloads",
          "assets":{"{{kind}}":{"file":"{{file}}","sha256":"{{Convert.ToHexStringLower(SHA256.HashData(content))}}","size":{{content.Length}}} } }
         """);
 
-    private UpdateChecker Checker(string current, VersionHistory? history = null, string? asset = null) =>
-        new(Feed(), [_key.ExportSubjectPublicKeyInfoPem()], current, 0, _time, _journal, history, asset);
-
-    private GitHubReleaseFeed Feed() => new(_http, new Uri(_site.Url, "repos/releases"), new Uri(_site.Url, "download/"));
-
     private static byte[] Manifest(string version, string channel = "stable") => Encoding.UTF8.GetBytes($$"""
         {"version":"{{version}}","channel":"{{channel}}","rollout":100,"published":"2026-10-26T08:00:00Z",
-         "notes":"https://github.com/rvburov/private-gateway-client/releases/tag/v{{version}}","highlights":["Новое"],
+         "notes":"https://private-gateway.duckdns.org/downloads","highlights":["Новое"],
          "assets":{"win-x64-msi":{"file":"PrivateGateway-{{version}}-win-x64.msi","sha256":"{{new string('a', 64)}}","size":10} } }
         """);
 
     private string Sign(byte[] manifest) =>
         Convert.ToBase64String(_key.SignData(manifest, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence)) + "\n";
 
+    /// <summary>Выпуск в ленте сайта: манифест base64 байт в байт, подпись (по умолчанию — ключом теста) и ссылки на файлы.</summary>
+    private string Release(string version, byte[] manifest, string? signature = null, string channel = "stable", (string Kind, Uri Url)[]? files = null) =>
+        JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["version"] = version,
+            ["channel"] = channel,
+            ["manifest"] = Convert.ToBase64String(manifest),
+            ["signature"] = signature ?? Sign(manifest),
+            ["files"] = (files ?? []).ToDictionary(f => f.Kind, f => new Dictionary<string, string> { ["url"] = f.Url.AbsoluteUri, ["expires_at"] = "2026-10-26T09:30:00Z" }),
+        });
+
+    private static byte[] Feed(params string[] releases) => Encoding.UTF8.GetBytes($$"""{"releases":[{{string.Join(',', releases)}}]}""");
+
     /// <summary>
-    /// «GitHub» на 127.0.0.1: /repos/releases — список выпусков (ответ API), /download/v…/файл — переадресация 302 на
-    /// /storage/v…/файл, как загрузки выпусков; chunked — без длины в заголовках.
+    /// «Сайт» на 127.0.0.1: /api/app/updates/files/&lt;билет&gt; — файл по билету, истекший билет — 403, билет-переадресация —
+    /// 302; остальное — 404. chunked — без длины в заголовках.
     /// </summary>
-    private sealed class ReleaseSite : IDisposable
+    private sealed class UpdateSite : IDisposable
     {
+        private const string FilesPath = "/api/app/updates/files/";
         private readonly TcpListener _listener = new(IPAddress.Loopback, 0);
         private readonly CancellationTokenSource _stop = new();
-        private readonly List<(string Version, bool Prerelease)> _releases = [];
-        private readonly Dictionary<string, (byte[] Body, bool Chunked)> _files = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, (byte[]? Body, bool Chunked, bool Expired, Uri? Location, string? Code)> _tickets = new(StringComparer.Ordinal);
         private int _requests;
-        private int _redirects;
-        private int _lists;
+        private int _expired;
 
-        public ReleaseSite()
+        public UpdateSite()
         {
             _listener.Start();
             _ = Task.Run(ServeAsync);
@@ -360,39 +438,36 @@ public sealed class UpdateCheckerTests : IDisposable
 
         public Uri Url => new($"http://{(IPEndPoint)_listener.LocalEndpoint}/");
 
-        public HttpStatusCode ListStatus { get; set; } = HttpStatusCode.OK;
-
         public int Requests => Volatile.Read(ref _requests);
 
-        public int Redirects => Volatile.Read(ref _redirects);
+        /// <summary>Сколько раз пришли с истекшим билетом.</summary>
+        public int Expired => Volatile.Read(ref _expired);
 
-        /// <summary>Сколько раз спросили список выпусков.</summary>
-        public int Lists => Volatile.Read(ref _lists);
+        /// <summary>Билет на файл: ссылка, как в ленте сайта.</summary>
+        public Uri Ticket(byte[] content, bool chunked = false, bool expired = false) => Add((content, chunked, expired, null, null));
 
-        public void Release(string version, byte[] manifest, string signature, bool prerelease = false, bool chunked = false)
-        {
-            lock (_files)
-            {
-                _releases.Add((version, prerelease));
-                _files[$"/storage/v{version}/update.json"] = (manifest, chunked);
-                _files[$"/storage/v{version}/update.json.sig"] = (Encoding.ASCII.GetBytes(signature), false);
-            }
-        }
+        /// <summary>Билет, с которого сайт переадресует на <paramref name="location"/>.</summary>
+        public Uri Redirect(Uri location) => Add((null, false, false, location, null));
 
-        /// <summary>Файл выпуска: /download/v…/файл → переадресация → /storage/v…/файл.</summary>
-        public void Asset(string version, string file, byte[] content, bool chunked = false)
-        {
-            lock (_files)
-            {
-                _files[$"/storage/v{version}/{file}"] = (content, chunked);
-            }
-        }
+        /// <summary>Билет, на который сайт отвечает 403 с кодом <paramref name="code"/>.</summary>
+        public Uri Refused(string code) => Add((null, false, false, null, code));
 
         public void Dispose()
         {
             _stop.Cancel();
             _listener.Stop();
             _stop.Dispose();
+        }
+
+        private Uri Add((byte[]? Body, bool Chunked, bool Expired, Uri? Location, string? Code) ticket)
+        {
+            var name = "t" + Guid.NewGuid().ToString("N") + ".sig";
+            lock (_tickets)
+            {
+                _tickets[name] = ticket;
+            }
+
+            return new Uri(Url, FilesPath.TrimStart('/') + name);
         }
 
         private async Task ServeAsync()
@@ -441,36 +516,32 @@ public sealed class UpdateCheckerTests : IDisposable
 
         private byte[] Respond(string path)
         {
-            lock (_files)
+            lock (_tickets)
             {
-                if (path.StartsWith("/repos/releases", StringComparison.Ordinal))
+                if (!path.StartsWith(FilesPath, StringComparison.Ordinal) || !_tickets.TryGetValue(path[FilesPath.Length..], out var ticket))
                 {
-                    Interlocked.Increment(ref _lists);
-                    if (ListStatus != HttpStatusCode.OK)
-                    {
-                        return Response($"{(int)ListStatus} Error", "{\"message\":\"API rate limit exceeded\"}"u8.ToArray());
-                    }
-
-                    var list = string.Join(',', _releases.Select(r => $$"""
-                        {"tag_name":"v{{r.Version}}","draft":false,"prerelease":{{(r.Prerelease ? "true" : "false")}},"assets":[
-                          {"name":"update.json","browser_download_url":"{{Url}}download/v{{r.Version}}/update.json"},
-                          {"name":"update.json.sig","browser_download_url":"{{Url}}download/v{{r.Version}}/update.json.sig"}]}
-                        """));
-                    return Response("200 OK", Encoding.UTF8.GetBytes($"[{list}]"));
+                    return Response("404 Not Found", []);
                 }
 
-                if (path.StartsWith("/download/", StringComparison.Ordinal))
+                if (ticket.Expired)
                 {
-                    Interlocked.Increment(ref _redirects);
-                    return Encoding.ASCII.GetBytes($"HTTP/1.1 302 Found\r\nLocation: /storage/{path["/download/".Length..]}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+                    Interlocked.Increment(ref _expired);
+                    return Response("403 Forbidden", "{\"error\":{\"code\":\"ticket_expired\"}}"u8.ToArray());
                 }
 
-                return _files.TryGetValue(path, out var file) ? Response("200 OK", file.Body, file.Chunked) : Response("404 Not Found", []);
+                if (ticket.Code is { } code)
+                {
+                    return Response("403 Forbidden", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { error = new { code } })));
+                }
+
+                return ticket.Location is { } location
+                    ? Encoding.ASCII.GetBytes($"HTTP/1.1 302 Found\r\nLocation: {location.AbsoluteUri}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+                    : Response("200 OK", ticket.Body!, ticket.Chunked);
             }
         }
 
         private static byte[] Response(string status, byte[] body, bool chunked = false) => chunked
             ? [.. Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{body.Length:x}\r\n"), .. body, .. "\r\n0\r\n\r\n"u8]
-            : [.. Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\nContent-Length: {body.Length}\r\nConnection: close\r\n\r\n"), .. body];
+            : [.. Encoding.ASCII.GetBytes($"HTTP/1.1 {status}\r\nContent-Length: {body.Length}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"), .. body];
     }
 }

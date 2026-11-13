@@ -296,12 +296,15 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    /// <summary>Служба без CheckForUpdate (старая) или без связи — null: окно скажет, что проверить не удалось.</summary>
-    public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+    /// <summary>
+    /// Лента сайта уходит службе как есть — проверяет ее служба. Служба без CheckForUpdate (старая) или без связи — null:
+    /// окно скажет, что проверить не удалось.
+    /// </summary>
+    public async Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, byte[]? siteFeed, CancellationToken cancellationToken = default)
     {
         try
         {
-            var reply = await _client.CheckForUpdateAsync(new V1.CheckForUpdateRequest { Channel = channel.ToContract(), Force = force },
+            var reply = await _client.CheckForUpdateAsync(new V1.CheckForUpdateRequest { Channel = channel.ToContract(), Force = force, SiteFeed = Feed(siteFeed) },
                 cancellationToken: cancellationToken).ConfigureAwait(false);
             return reply.ToCore();
         }
@@ -506,9 +509,10 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, byte[]? siteFeed,
+        [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        using var call = _client.DownloadUpdate(new V1.DownloadUpdateRequest { Version = version }, cancellationToken: cancellationToken);
+        using var call = _client.DownloadUpdate(new V1.DownloadUpdateRequest { Version = version, SiteFeed = Feed(siteFeed) }, cancellationToken: cancellationToken);
         var stream = call.ResponseStream;
         while (true)
         {
@@ -534,6 +538,10 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             }
         }
     }
+
+    // Ленты нет — пустое поле: служба ответит «ленты нет».
+    private static Google.Protobuf.ByteString Feed(byte[]? siteFeed) =>
+        siteFeed is null ? Google.Protobuf.ByteString.Empty : Google.Protobuf.ByteString.CopyFrom(siteFeed);
 
     public async Task<int?> InstallUpdateAsync(string version, CancellationToken cancellationToken = default)
     {

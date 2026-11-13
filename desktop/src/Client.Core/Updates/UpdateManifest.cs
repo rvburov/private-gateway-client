@@ -8,9 +8,9 @@ namespace PrivateGateway.Client.Core.Updates;
 public sealed record UpdateAsset(string File, string Sha256, long Size);
 
 /// <summary>
-/// Манифест обновления <c>update.json</c> выпуска на GitHub (пишет scripts/release.cs): версия, канал, доля раскатки,
-/// главное из заметок и файлы ОС с суммами. Читается только после проверки подписи (<see cref="UpdateSignature"/>) —
-/// и все равно строго: лишнее или неверное — отказ, а не догадка.
+/// Манифест обновления <c>update.json</c> выпуска (пишет scripts/release.cs, сайт хранит его байт в байт и отдает в
+/// ленте обновлений): версия, канал, доля раскатки, главное из заметок и файлы ОС с суммами. Читается только после
+/// проверки подписи (<see cref="UpdateSignature"/>) — и все равно строго: лишнее или неверное — отказ, а не догадка.
 /// </summary>
 public sealed record UpdateManifest(
     string Version, UpdateChannel Channel, int Rollout, DateTimeOffset Published, Uri Notes, IReadOnlyList<string> Highlights,

@@ -6,8 +6,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Secrets;
+using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Account;
+using PrivateGateway.Client.Core.Settings;
 
 namespace PrivateGateway.Client.Application.Account;
 
@@ -34,8 +36,12 @@ namespace PrivateGateway.Client.Application.Account;
 /// В демо-режиме (<see cref="AccountOptions.Required"/> = false) вход не нужен и доступ есть всегда.
 /// События — в контексте того, кто вызвал (окно); таймер работает в контексте вызова <see cref="Start"/>.
 /// </para>
+/// <para>
+/// Ленту обновлений сайта (<see cref="UpdatesFeedAsync"/>) берет окно этим же входом и передает службе: у службы токена
+/// нет. 401 на ленту — тоже отзыв доступа.
+/// </para>
 /// </summary>
-public sealed partial class AccountService : IDisposable
+public sealed partial class AccountService : IDisposable, IUpdateFeedSource
 {
     /// <summary>Ключ токена в хранилище секретов ОС.</summary>
     public const string TokenKey = "account:token";
@@ -298,6 +304,44 @@ public sealed partial class AccountService : IDisposable
         await ExpireIfPassedAsync().ConfigureAwait(true);
     }
 
+    /// <summary>
+    /// Лента обновлений сайта канала <paramref name="channel"/> для этой ОС — байты ответа как есть: подписи манифестов
+    /// проверяет служба. Вход не нужен (демо) или его нет — null без запроса к сайту. 401 — доступ отозван, как у
+    /// проверки доступа: вход стирается, защита выключается. Нет связи или сайт сбоит — null, вход остается.
+    /// </summary>
+    public async Task<byte[]?> UpdatesFeedAsync(UpdateChannel channel, CancellationToken cancellationToken = default)
+    {
+        if (!IsRequired || _token is not { } token)
+        {
+            return null;
+        }
+
+        try
+        {
+            return await _api.UpdatesAsync(token, DevicePlatform.Current, channel, cancellationToken).ConfigureAwait(true);
+        }
+        catch (AccountApiException e) when (e.Failure == AccountFailure.InvalidCredentials)
+        {
+            if (_token == token)
+            {
+                LogRevoked(_logger);
+                await LoseAsync(AccountMessage.Revoked).ConfigureAwait(true);
+            }
+
+            return null;
+        }
+        catch (AccountApiException e)
+        {
+            LogUpdatesFailed(_logger, e.Failure, e.StatusCode);
+            return null;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            LogUnexpected(_logger, e.GetType().Name);
+            return null;
+        }
+    }
+
     /// <summary>Показ окна: спросить сайт, если с прошлой попытки прошло не меньше <see cref="RefreshPause"/>.</summary>
     public Task RefreshAsync(CancellationToken cancellationToken = default) =>
         _attempted is { } last && _time.GetUtcNow() - last < RefreshPause ? ExpireIfPassedAsync() : CheckAsync(cancellationToken);
@@ -498,6 +542,9 @@ public sealed partial class AccountService : IDisposable
 
     [LoggerMessage(Level = LogLevel.Warning, Message = "Аккаунт: проверка не прошла, действует прежний срок: {Failure} {StatusCode}")]
     private static partial void LogCheckFailed(ILogger logger, AccountFailure failure, int? statusCode);
+
+    [LoggerMessage(Level = LogLevel.Warning, Message = "Аккаунт: лента обновлений сайта не получена: {Failure} {StatusCode}")]
+    private static partial void LogUpdatesFailed(ILogger logger, AccountFailure failure, int? statusCode);
 
     [LoggerMessage(Level = LogLevel.Information, Message = "Аккаунт: сайт не принял выход: {Failure} {StatusCode}; вход здесь стерт")]
     private static partial void LogLogoutFailed(ILogger logger, AccountFailure failure, int? statusCode);

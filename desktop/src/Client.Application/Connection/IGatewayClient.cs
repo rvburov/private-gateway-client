@@ -42,17 +42,19 @@ public interface IGatewayClient
     Task<ServiceDetails?> GetDetailsAsync(CancellationToken cancellationToken = default) => Task.FromResult<ServiceDetails?>(null);
 
     /// <summary>
-    /// Есть ли обновление программы в канале <paramref name="channel"/> — ищет служба (выпуски на GitHub, подпись,
-    /// раскатка); <paramref name="force"/> — мимо ее памяти. Службы нет, она старая или не ответила — null.
+    /// Есть ли обновление программы в канале <paramref name="channel"/> — ищет служба по ленте сайта
+    /// <paramref name="siteFeed"/> (ее берет окно своим входом в аккаунт; подпись, раскатка проверяет служба); null — ленты
+    /// нет. <paramref name="force"/> — кнопка «Проверить». Службы нет, она старая или не ответила — null.
     /// </summary>
-    Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default) =>
+    Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, byte[]? siteFeed, CancellationToken cancellationToken = default) =>
         Task.FromResult<UpdateOffer?>(null);
 
     /// <summary>
-    /// Скачать обновление <paramref name="version"/>, найденное службой: ход загрузки, последнее — готово (файл сверен с
+    /// Скачать обновление <paramref name="version"/>, найденное службой, по ссылке из свежей ленты сайта
+    /// <paramref name="siteFeed"/> (билеты на файлы живут 30 минут): ход загрузки, последнее — готово (файл сверен с
     /// подписанным манифестом) или отказ. Службы нет или она старая — пусто.
     /// </summary>
-    IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, CancellationToken cancellationToken = default) =>
+    IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, byte[]? siteFeed, CancellationToken cancellationToken = default) =>
         AsyncEnumerable.Empty<UpdateProgress>();
 
     /// <summary>

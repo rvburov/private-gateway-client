@@ -104,6 +104,7 @@ public static partial class ContractMapping
         CoreUpdateState.UpToDate => V1.UpdateState.UpToDate,
         CoreUpdateState.Available => V1.UpdateState.Available,
         CoreUpdateState.Failed => V1.UpdateState.Failed,
+        CoreUpdateState.NoFeed => V1.UpdateState.NoFeed,
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, null),
     };
 
@@ -113,6 +114,7 @@ public static partial class ContractMapping
         V1.UpdateState.UpToDate => CoreUpdateState.UpToDate,
         V1.UpdateState.Available => CoreUpdateState.Available,
         V1.UpdateState.Failed => CoreUpdateState.Failed,
+        V1.UpdateState.NoFeed => CoreUpdateState.NoFeed,
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "Состояние обновления не задано"),
     };
 

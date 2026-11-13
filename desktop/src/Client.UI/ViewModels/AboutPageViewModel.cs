@@ -6,6 +6,7 @@ using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Application.Updates;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Account;
 using PrivateGateway.Client.Core.Settings;
 using PrivateGateway.Client.Core.Updates;
 using PrivateGateway.Client.UI.Localization;
@@ -75,6 +76,9 @@ public enum UpdateView
     NoService,
 
     Failed,
+
+    /// <summary>Входа в аккаунт нет: ленту обновлений окно берет с сайта своим входом — «Войдите в аккаунт…».</summary>
+    SignIn,
 }
 
 /// <summary>
@@ -123,7 +127,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         _time = time;
         _ = LoadDetailsAsync();
 
-        // Открыли «О программе», а давно не спрашивали — спросить сейчас (служба помнит ответ час, GitHub не дергается).
+        // Открыли «О программе», а давно не спрашивали — спросить сейчас (не чаще раза в час: лента — запрос к сайту).
         if (settings.Current.CheckUpdates && gateway.Service != ServiceKind.Simulated
             && (updates.Attempted is not { } attempted || time.GetUtcNow() - attempted >= TimeSpan.FromHours(1)))
         {
@@ -179,6 +183,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
                 UpdateState.UpToDate => UpdateView.UpToDate,
                 UpdateState.Available => _updates.Postponed == _updates.Offer.Version ? UpdateView.Postponed : UpdateView.Available,
                 UpdateState.Failed => UpdateView.Failed,
+                UpdateState.NoFeed => UpdateView.SignIn,
                 _ when _updates.Attempted is null => _settings.Current.CheckUpdates ? UpdateView.Checking : UpdateView.Manual,
                 _ => _gateway.Service == ServiceKind.None ? UpdateView.NoService : UpdateView.Failed,
             };
@@ -229,7 +234,10 @@ public sealed partial class AboutPageViewModel : ObservableObject
         ? Loc.Instance[_settings.Current.KillSwitch ? "about.update.ready.text" : "about.update.ready.unprotected"]
         : Loc.Instance.Format("about.update.progress", Tenths(_updates.Received), Loc.Instance.Format("about.update.mb", Tenths(_updates.Total)));
 
-    /// <summary>Главная кнопка карточки: служба ставит сама (или откатывает) — «Обновить сейчас» и дальше по шагам; нет — «Открыть выпуск».</summary>
+    /// <summary>
+    /// Главная кнопка карточки: служба ставит сама (или откатывает) — «Обновить сейчас» и дальше по шагам; нет (macOS,
+    /// архив) — «Скачать на сайте».
+    /// </summary>
     public string UpdateAction => !IsRollingBack && _updates.Offer?.Installable != true ? Loc.Instance["about.update.open"] : _updates.Step switch
     {
         UpdateStep.Downloading => Loc.Instance["about.update.loading.button"],
@@ -277,6 +285,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
         UpdateView.Postponed => Loc.Instance.Format("about.updates.later", _updates.Offer!.Version),
         UpdateView.NoService => Loc.Instance["about.updates.noService"],
         UpdateView.Failed => Loc.Instance["about.updates.failed"],
+        UpdateView.SignIn => Loc.Instance["about.updates.signIn"],
         _ => string.Empty,
     };
 
@@ -410,8 +419,8 @@ public sealed partial class AboutPageViewModel : ObservableObject
     private Task CheckUpdatesNowAsync() => _updates.CheckAsync(force: true);
 
     /// <summary>
-    /// Главная кнопка карточки: служба ставит сама — скачать, а скачанное — поставить и перезапустить окно; не ставит —
-    /// страница выпуска на GitHub (заметки и файлы).
+    /// Главная кнопка карточки: служба ставит сама — скачать, а скачанное — поставить и перезапустить окно; не ставит
+    /// (macOS, архив) — страница «Скачать клиент» сайта: там файл для этой ОС после входа.
     /// </summary>
     [RelayCommand]
     private async Task UpdateNowAsync()
@@ -424,11 +433,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
 
         if (_updates.Offer?.Installable != true)
         {
-            if (_updates.Offer?.Notes is { } notes)
-            {
-                await _launcher.OpenAsync(notes).ConfigureAwait(true);
-            }
-
+            await _launcher.OpenAsync(AccountSite.DownloadsPage).ConfigureAwait(true);
             return;
         }
 

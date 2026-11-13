@@ -215,12 +215,18 @@ public abstract class WindowHarness : IDisposable
         /// <summary>Что служба ответит на CheckForUpdate; null — не ответила.</summary>
         public UpdateOffer? Update { get; set; }
 
-        /// <summary>Вопросы об обновлении: канал и «мимо памяти службы».</summary>
+        /// <summary>Вопросы об обновлении: канал и «Проверить» кнопкой.</summary>
         public List<(UpdateChannel Channel, bool Force)> UpdateChecks { get; } = [];
 
-        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, CancellationToken cancellationToken = default)
+        /// <summary>Ленты сайта, с которыми окно спрашивало (null — без ленты) и качало.</summary>
+        public List<byte[]?> UpdateFeeds { get; } = [];
+
+        public List<byte[]?> DownloadFeeds { get; } = [];
+
+        public Task<UpdateOffer?> CheckForUpdateAsync(UpdateChannel channel, bool force, byte[]? siteFeed, CancellationToken cancellationToken = default)
         {
             UpdateChecks.Add((channel, force));
+            UpdateFeeds.Add(siteFeed);
             return Task.FromResult(Update);
         }
 
@@ -238,9 +244,11 @@ public abstract class WindowHarness : IDisposable
 
         public List<string> Installs { get; } = [];
 
-        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
+        public async IAsyncEnumerable<UpdateProgress> DownloadUpdateAsync(string version, byte[]? siteFeed,
+            [System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken cancellationToken = default)
         {
             Downloads.Add(version);
+            DownloadFeeds.Add(siteFeed);
             for (var i = 0; i < Download.Count; i++)
             {
                 if (i == Download.Count - 1 && DownloadGate is { } gate)
@@ -660,6 +668,23 @@ public abstract class WindowHarness : IDisposable
         {
             Logouts.Add(token);
             return Task.CompletedTask;
+        }
+
+        /// <summary>Лента обновлений, которую отдает сайт: окно передает ее службе как есть.</summary>
+        public byte[] Feed { get; set; } = "{\"releases\":[]}"u8.ToArray();
+
+        /// <summary>Почему сайт не отдает ленту; null — отдает (401 — <see cref="AccountFailure.InvalidCredentials"/>).</summary>
+        public AccountFailure? UpdatesFailure { get; set; }
+
+        /// <summary>Запросы ленты: токен, ОС, канал.</summary>
+        public List<(string Token, string Platform, UpdateChannel Channel)> Updates { get; } = [];
+
+        public Task<byte[]> UpdatesAsync(string token, string platform, UpdateChannel channel, CancellationToken cancellationToken = default)
+        {
+            Updates.Add((token, platform, channel));
+            return UpdatesFailure is { } failure
+                ? Task.FromException<byte[]>(new AccountApiException(failure, Code(failure)))
+                : Task.FromResult(Feed);
         }
 
         private static int? Code(AccountFailure failure) => failure switch
