@@ -267,10 +267,53 @@ public sealed class UpdateCheckerTests : IDisposable
         (await Collect(client.DownloadUpdateAsync("0.3.0", null, Ct)))[^1].Error!.ShouldContain("нет ссылки", customMessage: "без ленты — не по чему");
     }
 
+    [Fact]
+    public async Task Update_stopped_after_the_check_is_not_downloaded_with_a_fresh_feed()
+    {
+        // Стоп-кран (доля 0) действует и между проверкой и загрузкой: служба смотрит подписанный манифест свежей ленты.
+        var package = RandomNumberGenerator.GetBytes(30_000);
+        var running = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package);
+        var stopped = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package, rollout: 0);
+        await using var service = await StartAsync("0.2.0", launch: (_, _) => 4242);
+        using var client = Client(service);
+        var found = Feed(Release("0.3.0", running, files: [("linux-x64-deb", _site.Ticket(package))]));
+        (await client.CheckForUpdateAsync(UpdateChannel.Stable, force: false, found, Ct))!.Version.ShouldBe("0.3.0");
+        var requests = _site.Requests;
+
+        var stop = Feed(Release("0.3.0", stopped, files: [("linux-x64-deb", _site.Ticket(package))]));
+        (await Collect(client.DownloadUpdateAsync("0.3.0", stop, Ct)))[^1].Error.ShouldNotBeNull();
+        service.Journal.Tail(5).ShouldContain(e => e.Message == "Обновление 0.3.0 не скачать: выпуск остановлен (раскатка 0 %)");
+
+        var forged = Feed(Release("0.3.0", running, signature: Sign(Manifest("0.2.9")), files: [("linux-x64-deb", _site.Ticket(package))]));
+        (await Collect(client.DownloadUpdateAsync("0.3.0", forged, Ct)))[^1].Error.ShouldNotBeNull();
+        service.Journal.Tail(5).ShouldContain(e => e.Message.StartsWith("Обновление 0.3.0 не скачать: в свежей ленте сайта выпуск не проверяется", StringComparison.Ordinal));
+        _site.Requests.ShouldBe(requests, "остановленный или непроверенный выпуск служба не качает");
+        Directory.GetFiles(Path.Combine(_state, "updates")).ShouldBeEmpty();
+
+        var resumed = Feed(Release("0.3.0", running, files: [("linux-x64-deb", _site.Ticket(package))]));
+        (await Collect(client.DownloadUpdateAsync("0.3.0", resumed, Ct)))[^1].Ready.ShouldBeTrue("доля снова больше 0 — качается");
+    }
+
+    [Fact]
+    public async Task Unreadable_refusal_body_is_a_clean_failure()
+    {
+        // Сайт или посредник прислал код ошибки с неверной строкой UTF-16: причина — по коду ответа, служба жива.
+        var package = RandomNumberGenerator.GetBytes(10_000);
+        var manifest = UpdateManifest.Parse(ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package));
+        var installer = Installer(new UpdateKind("linux-x64-deb", (_, _) => throw new InvalidOperationException("не должен запускаться")));
+
+        // Сериализатор заменил бы одинокий суррогат на U+FFFD, поэтому тело — как есть: GetString() на нем бросает.
+        var progress = await Collect(installer.DownloadAsync(manifest, _site.RefusedRaw("""{"error":{"code":"\ud800"}}"""), Ct));
+
+        progress[^1].Error!.ShouldStartWith("сайт не отдал файл (403)");
+        (await Collect(installer.DownloadAsync(manifest, _site.Ticket(package), Ct)))[^1].Ready.ShouldBeTrue("отказ не ломает следующую загрузку");
+    }
+
     [Theory]
     [InlineData("ticket_expired", "сайт не отдал файл (403): ссылка на файл устарела — проверьте обновления еще раз")]
     [InlineData("invalid_ticket", "сайт не отдал файл (403): сайт не принял ссылку на файл")]
     [InlineData("forbidden", "сайт не отдал файл (403): сайт закрыл этому устройству доступ")]
+    [InlineData("rollout_stopped", "сайт не отдал файл (403): выпуск остановлен (раскатка 0 %)")]
     [InlineData("что-то новое", "сайт не отдал файл (403): ошибка сайта")]
     [InlineData(null, "сайт не отдал файл (404): файла нет на сайте")]
     public async Task Refused_ticket_is_a_clean_failure_with_the_reason(string? code, string error)
@@ -389,8 +432,8 @@ public sealed class UpdateCheckerTests : IDisposable
         return list;
     }
 
-    private static byte[] ManifestWith(string version, string kind, string file, byte[] content) => Encoding.UTF8.GetBytes($$"""
-        {"version":"{{version}}","channel":"stable","rollout":100,"published":"2026-10-26T08:00:00Z",
+    private static byte[] ManifestWith(string version, string kind, string file, byte[] content, int rollout = 100) => Encoding.UTF8.GetBytes($$"""
+        {"version":"{{version}}","channel":"stable","rollout":{{rollout}},"published":"2026-10-26T08:00:00Z",
          "notes":"https://private-gateway.duckdns.org/downloads",
          "assets":{"{{kind}}":{"file":"{{file}}","sha256":"{{Convert.ToHexStringLower(SHA256.HashData(content))}}","size":{{content.Length}}} } }
         """);
@@ -451,6 +494,9 @@ public sealed class UpdateCheckerTests : IDisposable
 
         /// <summary>Билет, на который сайт отвечает 403 с кодом <paramref name="code"/>.</summary>
         public Uri Refused(string code) => Add((null, false, false, null, code));
+
+        /// <summary>Билет, на который сайт отвечает 403 телом <paramref name="body"/> как есть (без сериализатора).</summary>
+        public Uri RefusedRaw(string body) => Add((Encoding.ASCII.GetBytes(body), false, false, null, string.Empty));
 
         public void Dispose()
         {
@@ -531,7 +577,7 @@ public sealed class UpdateCheckerTests : IDisposable
 
                 if (ticket.Code is { } code)
                 {
-                    return Response("403 Forbidden", Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { error = new { code } })));
+                    return Response("403 Forbidden", ticket.Body ?? Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new { error = new { code } })));
                 }
 
                 return ticket.Location is { } location

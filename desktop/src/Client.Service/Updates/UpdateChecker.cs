@@ -154,7 +154,8 @@ public sealed class UpdateChecker(
     /// Ссылка-билет на файл <paramref name="kind"/> (<see cref="UpdateKind.Asset"/>) версии <paramref name="version"/> из
     /// свежей ленты <paramref name="feed"/> (перед загрузкой окно берет ленту заново: билеты живут 30 минут). Только билет
     /// на адрес файлов сайта; нет его — null, почему — в журнал. Сам файл сверяется с манифестом, найденным проверкой, а
-    /// не с этой лентой.
+    /// не с этой лентой. Обновление (версия новее этой службы) берется, только если и в свежей ленте его подписанный
+    /// манифест не остановлен: стоп-кран (доля 0) действует и между проверкой и загрузкой.
     /// </summary>
     public Uri? Link(string version, string kind, ReadOnlySpan<byte> feed)
     {
@@ -169,12 +170,19 @@ public sealed class UpdateChecker(
         {
             try
             {
-                if (ReleaseEntry.ParseSite(feed, _files).FirstOrDefault(r => r.Version == version)?.Files.GetValueOrDefault(kind) is { } url)
+                var releases = ReleaseEntry.ParseSite(feed, _files);
+                if (Stopped(releases, version) is { } stop)
+                {
+                    problem = stop;
+                }
+                else if (releases.FirstOrDefault(r => r.Version == version)?.Files.GetValueOrDefault(kind) is { } url)
                 {
                     return url;
                 }
-
-                problem = $"в ленте сайта нет ссылки на файл {kind}";
+                else
+                {
+                    problem = $"в ленте сайта нет ссылки на файл {kind}";
+                }
             }
             catch (FormatException e)
             {
@@ -184,6 +192,21 @@ public sealed class UpdateChecker(
 
         journal.Add(JournalLevel.Warning, "update", $"Обновление {version} не скачать: {problem}");
         return null;
+    }
+
+    // Обновление остановлено, если в свежей ленте его подписанный манифест не проверяется или его доля раскатки — 0
+    // (стоп-кран). Откат на прежнюю версию стоп-кран не задерживает: ее уже ставили на этой машине.
+    private string? Stopped(IReadOnlyList<ReleaseEntry> releases, string version)
+    {
+        if (SemVer.Compare(version, current) <= 0)
+        {
+            return null;
+        }
+
+        var (manifest, problem) = UpdateFinder.Release(releases, keys, version);
+        return problem is not null ? $"в свежей ленте сайта выпуск не проверяется: {problem}"
+            : manifest!.Rollout == 0 ? "выпуск остановлен (раскатка 0 %)"
+            : null;
     }
 
     // Адрес файлов — только https; http — только к своему компьютеру (тесты).

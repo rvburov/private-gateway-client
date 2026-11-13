@@ -244,9 +244,9 @@ public sealed class UpdateInstaller(HttpClient http, string folder, UpdateKind? 
                     : null;
             }
         }
-        catch (Exception e) when (e is JsonException or IOException or HttpRequestException)
+        catch (Exception e) when (e is JsonException or IOException or HttpRequestException or InvalidOperationException)
         {
-            // Тела нет или оно не JSON — причина по коду ответа.
+            // Тела нет, оно не JSON или строка в нем не читается (неверный UTF-16) — причина по коду ответа.
         }
 
         return $"сайт не отдал файл ({status}): " + code switch
@@ -254,6 +254,7 @@ public sealed class UpdateInstaller(HttpClient http, string folder, UpdateKind? 
             "ticket_expired" => "ссылка на файл устарела — проверьте обновления еще раз",
             "invalid_ticket" => "сайт не принял ссылку на файл",
             "forbidden" => "сайт закрыл этому устройству доступ",
+            "rollout_stopped" => "выпуск остановлен (раскатка 0 %)",
             _ when status == 404 => "файла нет на сайте",
             _ when status is >= 300 and < 400 => "переадресация — файл берется только по ссылке сайта",
             _ => "ошибка сайта",
