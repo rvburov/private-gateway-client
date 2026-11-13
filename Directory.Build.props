@@ -22,7 +22,7 @@
     <InvariantGlobalization>false</InvariantGlobalization>
     <Company>Private Gateway</Company>
     <Product>Private Gateway Client</Product>
-    <Version>0.2.0</Version>
+    <Version>0.2.1</Version>
   </PropertyGroup>
 
   <!-- Имена сборок и пространств имен: Client.Core → PrivateGateway.Client.Core. -->
