@@ -1,9 +1,9 @@
 #!/bin/bash
 #
 # Тесты выпуска по образцу SmartBase (Scripts/github-release/release-test.sh): scripts/release.sh, check-version.sh,
-# release-notes.sh, триггеры .github/workflows/release.yml и кнопка «Выпустить версию» (release-button.yml). Чистый bash и
-# git: .NET, сеть и gh не нужны. Запускается в
-# CI (задание «Стиль и формат») и вручную:
+# release-notes.sh, триггеры .github/workflows/release.yml, кнопка «Выпустить версию» (release-button.yml) и отправка на
+# сайт (шаги website.yml на поддельных gh и ssh, вызов из release-rollout.yml). Чистый bash и git (для сайта еще jq):
+# .NET, сеть и gh не нужны. Запускается в CI (задание «Стиль и формат») и вручную:
 #
 #   scripts/tests/release-test.sh
 #
@@ -284,8 +284,8 @@ if [ -n "$wf_problems" ]; then
   bad "8. Проблемы в $WF" "$wf_problems"
 elif command -v actionlint >/dev/null 2>&1; then
   out="$(actionlint "$WF" .github/workflows/soak.yml .github/workflows/release-button.yml .github/workflows/ci.yml \
-    .github/workflows/website.yml .github/workflows/publish.yml 2>&1)"
-  [ $? -eq 0 ] && ok "8. actionlint: workflow выпуска, кнопки, проверки и сайта без замечаний" || bad "8. actionlint нашел проблемы" "$out"
+    .github/workflows/website.yml .github/workflows/publish.yml .github/workflows/release-rollout.yml 2>&1)"
+  [ $? -eq 0 ] && ok "8. actionlint: workflow выпуска, кнопки, проверки, сайта и раскатки без замечаний" || bad "8. actionlint нашел проблемы" "$out"
 else
   ok "8. Workflow выпуска: только по тегу, версия и текст из скриптов, долгий прогон коммита тега, повтор обновляет выпуск"
   skip "8а. actionlint не установлен — синтаксис workflow проверит GitHub"
@@ -336,6 +336,184 @@ if [ ${#prob[@]} -eq 0 ]; then
   ok "8б. Кнопка: только с master, release.sh --yes, автор — владелец, без подписи; запускает проверку master и выпуск тега, сайт — один раз"
 else
   bad "8б. Кнопка «Выпустить версию»" "${prob[@]}"
+fi
+
+# ── 8в. Выпуск на сайт: порядок команд, только манифест ──────────────────────
+# Программа берет обновления с сайта: манифест (update) уходит последним, после подписи (update-sig) и всех файлов ленты
+# (import, asset), иначе сайт откажет или отдаст манифест без файлов. Шаги «Файлы выпуска и проверка сумм» и «Отправить
+# на сайт» из website.yml идут здесь как есть, с поддельными gh (файлы выпуска — из папки стенда) и ssh (пишет команду и
+# SHA-256 принятого файла; ssh-keygen — заглушка: ключ здесь не проверяется). Раскатка шлет только подпись и манифест;
+# выпуск без подписи — без ленты; бета, порча, чужой манифест — без отправки. Нужен jq (он же в шаге).
+SITE_WF=".github/workflows/website.yml"
+SITE="$FIXTURE/site"
+# step_script <имя шага>: текст run этого шага website.yml без отступа.
+step_script() {
+  awk -v name="      - name: $1" '
+    $0 == name { inside = 1; next }
+    inside && !body && /^        run: \|$/ { body = 1; next }
+    body && NF && !/^          / { exit }
+    body { sub(/^          /, ""); print }
+  ' "$SITE_WF"
+}
+# make_release <папка> <версия>: выпуск, как его собирает release.yml — APK, update.json и подпись в SHA256SUMS.
+make_release() {
+  local d="$1" v="$2" assets='{}' pair f
+  rm -rf "$d" && mkdir -p "$d" || return 1
+  echo msi > "$d/PrivateGateway-$v-win-x64.msi"
+  echo dmg > "$d/PrivateGateway-$v-osx-arm64.dmg"
+  echo deb > "$d/private-gateway_${v}_amd64.deb"
+  echo rpm > "$d/private-gateway-$v-1.x86_64.rpm"
+  echo tar > "$d/PrivateGateway-$v-linux-x64.tar.gz"
+  echo apk > "$d/PrivateGateway-$v-android.apk"
+  (cd "$d" && sha256sum "PrivateGateway-$v-android.apk" > "PrivateGateway-$v-android.apk.sha256")
+  for pair in "win-x64-msi:PrivateGateway-$v-win-x64.msi" "osx-arm64-dmg:PrivateGateway-$v-osx-arm64.dmg" \
+              "linux-x64-deb:private-gateway_${v}_amd64.deb" "linux-x64-rpm:private-gateway-$v-1.x86_64.rpm" \
+              "linux-x64-tar:PrivateGateway-$v-linux-x64.tar.gz" "android-apk:PrivateGateway-$v-android.apk"; do
+    f="${pair#*:}"
+    assets="$(jq --arg k "${pair%%:*}" --arg f "$f" --arg s "$(sha256sum "$d/$f" | cut -d' ' -f1)" \
+      --argjson n "$(wc -c < "$d/$f")" '.[$k] = {file: $f, sha256: $s, size: $n}' <<< "$assets")" || return 1
+  done
+  jq -n --arg v "$v" --argjson a "$assets" '{version: $v, channel: "stable", rollout: 100,
+    published: "2026-11-13T00:00:00Z", notes: "https://private-gateway.duckdns.org/downloads", highlights: ["Новое."],
+    assets: $a}' > "$d/update.json" || return 1
+  echo 'MEUCIQDsaXRlLXRlc3Q=' > "$d/update.json.sig"
+  resum "$d"
+}
+# resum <папка>: SHA256SUMS заново — все файлы, кроме .apk.sha256 (как assemble).
+resum() {
+  local f names=()
+  for f in "$1"/*; do
+    case "${f##*/}" in SHA256SUMS | *.apk.sha256) ;; *) names+=("${f##*/}") ;; esac
+  done
+  (cd "$1" && sha256sum "${names[@]}" > SHA256SUMS)
+}
+# site_run <тег> [true]: два шага website.yml на выпуске из $SITE/rel; команды сайта — в $SITE/ssh.log.
+site_run() {
+  local work="$SITE/run"
+  rm -rf "$work" && mkdir -p "$work/tmp" "$work/home" && : > "$work/output" && : > "$work/summary" \
+    && : > "$SITE/ssh.log" && : > "$SITE/gh.log" || return 1
+  (
+    export PATH="$SITE/bin:$PATH" HOME="$work/home" RUNNER_TEMP="$work/tmp" GITHUB_OUTPUT="$work/output" \
+      GITHUB_STEP_SUMMARY="$work/summary" GITHUB_REPOSITORY=rvburov/private-gateway-client GH_TOKEN=test \
+      SITE_LOG="$SITE" FAKE_RELEASE="$SITE/rel" TAG="$1" MANIFEST_ONLY="${2:-}"
+    bash -c "$files_step" > "$work/files.log" 2>&1 || exit 1
+    ! grep -qx 'skip=true' "$work/output" || exit 0
+    DIR="$(sed -n 's/^dir=//p' "$work/output")" WEBSITE_HOST=example.org WEBSITE_USER=releases \
+      WEBSITE_SSH_KEY=site-test WEBSITE_KNOWN_HOSTS='example.org ssh-ed25519 AAAA' \
+      bash -c "$send_step" > "$work/send.log" 2>&1
+  )
+}
+# sent: команды сайта по порядку, без суммы; matched: у каждой команды сумма — SHA-256 переданного файла.
+sent() { sed -E 's/ [0-9a-f]{64} \| [0-9a-f]{64}$//' "$SITE/ssh.log"; }
+matched() { awk '{ if ($(NF - 2) != $NF) bad = 1 } END { exit bad }' "$SITE/ssh.log"; }
+prob=()
+ran=""
+if ! command -v jq > /dev/null 2>&1; then
+  skip "8в. Нет jq — шаги website.yml не прогнаны (их проверит запуск на GitHub)"
+else
+  ran=1
+  mkdir -p "$SITE/bin"
+  files_step="$(step_script 'Файлы выпуска и проверка сумм')"
+  send_step="$(step_script 'Отправить на сайт')"
+  [ -n "$files_step" ] && [ -n "$send_step" ] || prob+=("в $SITE_WF не найдены шаги «Файлы выпуска и проверка сумм» и «Отправить на сайт»")
+  cat > "$SITE/bin/gh" <<'GH'
+#!/bin/bash
+# gh release download <тег> --repo … --dir <папка> --pattern <шаблон>…: файлы «выпуска» из $FAKE_RELEASE.
+[ "$1 $2" = "release download" ] || exit 2
+tag="$3"; shift 3; dir=""; patterns=()
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --dir) dir="$2"; shift 2 ;;
+    --repo) shift 2 ;;
+    --pattern) patterns+=("$2"); shift 2 ;;
+    *) exit 2 ;;
+  esac
+done
+echo "$tag ${patterns[*]}" >> "$SITE_LOG/gh.log"
+n=0
+for f in "$FAKE_RELEASE"/*; do
+  for p in "${patterns[@]}"; do
+    # shellcheck disable=SC2053 # шаблон, как у gh
+    if [[ "${f##*/}" == $p ]]; then cp "$f" "$dir/" && n=$((n + 1)); break; fi
+  done
+done
+[ "$n" -gt 0 ] || { echo "no assets match the file pattern" >&2; exit 1; }
+GH
+  cat > "$SITE/bin/ssh" <<'SSH'
+#!/bin/bash
+# ssh … <пользователь@сервер> <команда> < файл: команда сайта и SHA-256 того, что ушло в stdin.
+printf '%s | %s\n' "${*: -1}" "$(sha256sum | cut -d' ' -f1)" >> "$SITE_LOG/ssh.log"
+SSH
+  cat > "$SITE/bin/ssh-keygen" <<'KEYGEN'
+#!/bin/bash
+# ssh-keygen -y -f <ключ> и -lf <открытый>: ключ стенда принимается без проверки.
+case "$1" in
+  -y) echo 'ssh-ed25519 AAAAsitetest site-test' ;;
+  -lf) echo '256 SHA256:site-test site-test (ED25519)' ;;
+  *) exit 2 ;;
+esac
+KEYGEN
+  chmod +x "$SITE/bin/gh" "$SITE/bin/ssh" "$SITE/bin/ssh-keygen"
+  rel="$SITE/rel"
+  order='import windows 2.0.0 PrivateGateway-2.0.0-win-x64.msi
+import macos 2.0.0 PrivateGateway-2.0.0-osx-arm64.dmg
+import linux 2.0.0 private-gateway_2.0.0_amd64.deb
+import android 2.0.0 PrivateGateway-2.0.0-android.apk
+asset 2.0.0 private-gateway-2.0.0-1.x86_64.rpm
+update-sig 2.0.0 update.json.sig
+update 2.0.0 update.json'
+
+  make_release "$rel" 2.0.0 || prob+=("стенд выпуска не собрался")
+  if ! site_run v2.0.0; then
+    prob+=("выпуск не ушел на сайт: $(cat "$SITE/run/files.log" "$SITE/run/send.log" 2> /dev/null | tail -n 3)")
+  else
+    [ "$(sent)" = "$order" ] || prob+=("порядок не «установщики → rpm → подпись → манифест»: $(sent | tr '\n' ';')")
+    matched || prob+=("сумма в команде не совпала с переданным файлом")
+  fi
+  if ! site_run v2.0.0 true; then
+    prob+=("только манифест не ушел: $(tail -n 3 "$SITE/run/files.log")")
+  else
+    [ "$(sent)" = "$(printf '%s\n' "$order" | tail -n 2)" ] || prob+=("только манифест: не подпись и манифест: $(sent | tr '\n' ';')")
+    matched || prob+=("только манифест: сумма не та")
+    grep -qE 'msi|apk' "$SITE/gh.log" && prob+=("только манифест качает установщики")
+  fi
+
+  rm "$rel/update.json.sig" && resum "$rel"
+  site_run v2.0.0 && [ "$(sent)" = "$(printf '%s\n' "$order" | head -n 5)" ] && grep -q 'без подписи' "$SITE/run/summary" \
+    || prob+=("выпуск без подписи: не установщики без ленты")
+  site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] && grep -qx 'skip=true' "$SITE/run/output" \
+    || prob+=("выпуск без подписи, только манифест: не пропуск без отправки")
+
+  make_release "$rel" 2.0.0 && rm "$rel/update.json.sig"
+  ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("подпись есть в SHA256SUMS, а файла нет — не остановка")
+  make_release "$rel" 2.0.0 && echo порча >> "$rel/PrivateGateway-2.0.0-win-x64.msi"
+  ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("порченый установщик не остановил отправку")
+  make_release "$rel" 2.0.0 && jq '.version = "1.9.9"' "$rel/update.json" > "$SITE/m.json" && mv "$SITE/m.json" "$rel/update.json" \
+    && resum "$rel"
+  ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("манифест другой версии не остановил отправку")
+  make_release "$rel" 2.0.0 && jq --arg s "$(printf '0%.0s' {1..64})" '.assets["android-apk"].sha256 = $s' "$rel/update.json" \
+    > "$SITE/m.json" && mv "$SITE/m.json" "$rel/update.json" && resum "$rel"
+  ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("файл ленты в манифесте не тот, что в SHA256SUMS, — не остановка")
+  make_release "$rel" 2.0.0 && rm "$rel/PrivateGateway-2.0.0-osx-arm64.dmg"
+  ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("файла ленты нет в выпуске — манифест ушел бы без него")
+  make_release "$rel" 2.0.0-beta.1
+  site_run v2.0.0-beta.1 && [ ! -s "$SITE/ssh.log" ] && grep -qx 'skip=true' "$SITE/run/output" \
+    || prob+=("бета ушла на сайт")
+fi
+RO=".github/workflows/release-rollout.yml"
+grep -qE '^  workflow_call:' "$SITE_WF" || prob+=("website.yml не вызывается из других workflow (workflow_call)")
+grep -qF 'uses: ./.github/workflows/website.yml' "$RO" && grep -qE '^      manifest-only: true$' "$RO" \
+  || prob+=("раскатка не отдает сайту новую долю (website.yml с manifest-only)")
+[ "$(grep -n 'artifacts/builds/release-Android' "$WF" | head -n 1 | cut -d: -f1)" -lt \
+  "$(grep -n 'release.cs assemble' "$WF" | head -n 1 | cut -d: -f1)" ] 2> /dev/null \
+  || prob+=("APK не попадает к сборкам до release.cs assemble — в манифесте не будет android-apk")
+grep -qE 'release\.cs assemble .* 100$' "$WF" || prob+=("выпуск выходит не на 100 % (решение владельца 2026-11-13)")
+if [ ${#prob[@]} -eq 0 ] && [ -n "$ran" ]; then
+  ok "8в. Сайт: установщики → rpm → подпись → манифест последним; раскатка — только подпись и манифест; без подписи — без ленты; бета, порча и чужой манифест не уходят; APK — в манифест, выпуск на 100 %"
+elif [ ${#prob[@]} -eq 0 ]; then
+  ok "8в. Сайт (по тексту): website.yml вызывается раскаткой с manifest-only, APK — в манифест, выпуск на 100 %"
+else
+  bad "8в. Выпуск на сайт" "${prob[@]}"
 fi
 
 # ── 9. Повтор выпуска и тег перед подписью ──────────────────────────────────

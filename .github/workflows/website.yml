@@ -1,15 +1,27 @@
 name: Выпуск на сайт
 
-# После «Выпуска на GitHub» (тег v<SemVer>) отправляет установщики на сайт Private Gateway Web
-# (репозиторий rvburov/private-gateway-web, deploy/README.md, раздел 5): Windows — .msi, macOS — .dmg,
-# Linux — .deb, Android — .apk. Каждый файл сверяется с SHA256SUMS выпуска (APK — с его .sha256) и уходит
-# на сервер по SSH ключом, который может только принять выпуск (import-release.sh). Репозиторий закрытый:
-# участники скачивают файл с сайта после входа, ссылки GitHub им не нужны. Бета (версия с «-») не публикуется.
+# После «Выпуска на GitHub» (тег v<SemVer>) отправляет выпуск на сайт Private Gateway Web (репозиторий
+# rvburov/private-gateway-web, deploy/README.md, раздел 5) по SSH ключом, который может только принять выпуск
+# (import-release.sh сверяет размер и SHA-256 каждого файла). Команды — по порядку:
+#   import — установщики для «Скачать клиент»: Windows — .msi, macOS — .dmg, Linux — .deb, Android — .apk;
+#   asset — .rpm: только в хранилище сайта по SHA-256, без строки каталога (его ставит служба на Fedora и openSUSE);
+#   update-sig, затем update — update.json.sig и update.json байт в байт: лента обновлений программы. update —
+#     последним: сайт принимает манифест, только когда файлы ленты из него (msi, deb, rpm, dmg, apk) уже лежат у него
+#     с теми же SHA-256 и размером. Принятая подпись ждет один следующий update той же версии не дольше часа — поэтому
+#     они идут подряд. Подпись сайт не проверяет (только base64 до 1 КБ): ее проверяет программа.
+# Каждый файл сверяется с SHA256SUMS выпуска (APK выпусков до 0.3.0 — с его .sha256), а файлы ленты в манифесте — с
+# SHA256SUMS. Подписывает манифест выпуск (секрет UPDATE_SIGNING_KEY); сайт подделать обновление не может: подпись и
+# SHA-256 проверяет программа. Выпуск без update.json.sig (собран до ключа подписи) в ленту не идет. Файлы — с выпуска
+# на GitHub через gh и GITHUB_TOKEN (contents: read): так и при закрытом репозитории. Участники скачивают с сайта по
+# аккаунту. Бета (версия с «-») не публикуется.
+# manifest-only — только update-sig и update: так раскатка (release-rollout.yml) отдает сайту новую долю, в том числе
+# стоп-кран 0 %.
 # Секреты: WEBSITE_HOST, WEBSITE_USER, WEBSITE_KNOWN_HOSTS (как DEPLOY_* сайта), WEBSITE_SSH_KEY — секретная часть
 # ключа выпусков. Пока секретов нет, workflow пишет «сайт не настроен» и завершается успешно.
 # Запуск по workflow_run, а не по событию release: выпуск создает GITHUB_TOKEN, его события workflow не запускают.
 # workflow_run — только от выпуска отправкой тега (push). Выпуск кнопкой «Выпустить версию» (workflow_dispatch) запускает
-# сайт сам, в своем последнем задании: так отправка одна, придет ли для него еще и workflow_run или нет.
+# сайт сам, в своем последнем задании: так отправка одна, придет ли для него еще и workflow_run или нет. Раскатка
+# вызывает этот workflow напрямую (workflow_call) с manifest-only.
 on:
   workflow_run:
     workflows: ["Выпуск на GitHub"]
@@ -19,10 +31,34 @@ on:
       tag:
         description: Тег выпуска, например v1.2.3
         required: true
+      manifest-only:
+        description: Только манифест обновления и подпись (новая доля раскатки), без установщиков
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      tag:
+        description: Тег выпуска, например v1.2.3
+        type: string
+        required: true
+      manifest-only:
+        description: Только манифест обновления и подпись (новая доля раскатки), без установщиков
+        type: boolean
+        default: false
+    secrets:
+      WEBSITE_HOST:
+        required: false
+      WEBSITE_USER:
+        required: false
+      WEBSITE_SSH_KEY:
+        required: false
+      WEBSITE_KNOWN_HOSTS:
+        required: false
 
 permissions:
   contents: read
 
+# Отправки на сайт идут по одной: пара update-sig и update одного запуска не перемешивается с парой другого.
 concurrency:
   group: website-release
   cancel-in-progress: false
@@ -30,8 +66,9 @@ concurrency:
 jobs:
   website:
     name: Сайт
+    # workflow_run — только от выпуска отправкой тега; кнопка, вызов из раскатки и ручной запуск идут всегда.
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'workflow_run' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -51,12 +88,14 @@ jobs:
             echo "ready=true" >> "$GITHUB_OUTPUT"
           fi
 
+      # Список отправки upload.txt: строка «<файл> <команда сайта>», по порядку отправки.
       - name: Файлы выпуска и проверка сумм
         id: files
         if: steps.config.outputs.ready == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.event.workflow_run.head_branch }}
+          MANIFEST_ONLY: ${{ inputs.manifest-only }}
         run: |
           set -euo pipefail
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег «$TAG» — не v<SemVer>" >&2; exit 1; }
@@ -67,28 +106,80 @@ jobs:
             exit 0
           fi
           dir="$RUNNER_TEMP/release"
+          upload="$RUNNER_TEMP/upload.txt"
           mkdir -p "$dir"
-          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$dir" \
-            --pattern SHA256SUMS --pattern "PrivateGateway-$version-win-x64.msi" \
-            --pattern "PrivateGateway-$version-osx-arm64.dmg" --pattern "*_${version}_amd64.deb" \
-            --pattern "PrivateGateway-$version-android.apk" --pattern "PrivateGateway-$version-android.apk.sha256"
-          : > "$RUNNER_TEMP/upload.txt"
-          for pair in "windows:PrivateGateway-$version-win-x64.msi" "macos:PrivateGateway-$version-osx-arm64.dmg" \
-            "linux:*_${version}_amd64.deb" "android:PrivateGateway-$version-android.apk"; do
-            platform="${pair%%:*}"
-            file="$(cd "$dir" && { compgen -G "${pair#*:}" || true; } | head -n 1)"
-            if [ -z "$file" ]; then
-              echo "Нет файла для $platform (${pair#*:}): на сайте останется прежний." | tee -a "$GITHUB_STEP_SUMMARY"
-              continue
-            fi
-            sum="$(sha256sum "$dir/$file" | cut -d' ' -f1)"
-            expected="$(awk -v n="$file" '{f=$2; sub(/^\*/, "", f)} f == n {print $1}' "$dir/SHA256SUMS" 2> /dev/null || true)"
-            [ -n "$expected" ] || expected="$(cut -d' ' -f1 "$dir/$file.sha256" 2> /dev/null || true)"
-            [ -n "$expected" ] || { echo "Для $file нет суммы ни в SHA256SUMS, ни в $file.sha256" >&2; exit 1; }
-            [ "$sum" = "$expected" ] || { echo "SHA-256 $file не совпал с выпуском" >&2; exit 1; }
-            printf '%s %s %s %s\n' "$platform" "$version" "$file" "$sum" >> "$RUNNER_TEMP/upload.txt"
-          done
-          [ -s "$RUNNER_TEMP/upload.txt" ] || { echo "В выпуске $TAG нет ни одного установщика для сайта" >&2; exit 1; }
+          patterns=(--pattern SHA256SUMS --pattern update.json --pattern update.json.sig)
+          if [ "$MANIFEST_ONLY" != true ]; then
+            patterns+=(--pattern "PrivateGateway-$version-win-x64.msi" --pattern "PrivateGateway-$version-osx-arm64.dmg" \
+              --pattern "*_${version}_amd64.deb" --pattern "*.x86_64.rpm" \
+              --pattern "PrivateGateway-$version-android.apk" --pattern "PrivateGateway-$version-android.apk.sha256")
+          fi
+          gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir "$dir" "${patterns[@]}"
+          [ -f "$dir/SHA256SUMS" ] || { echo "В выпуске $TAG нет SHA256SUMS: сверять файлы не с чем" >&2; exit 1; }
+
+          # listed <файл>: его сумма из SHA256SUMS выпуска (пусто — файла там нет).
+          listed() { awk -v n="$1" '{f=$2; sub(/^\*/, "", f)} f == n {print $1}' "$dir/SHA256SUMS"; }
+          # verified <файл>: файл совпал с выпуском — его SHA-256 в $sum; иначе остановка.
+          verified() {
+            local expected
+            [[ "$1" =~ ^[A-Za-z0-9][A-Za-z0-9._~-]*$ ]] || { echo "Недопустимое имя файла «$1»" >&2; exit 1; }
+            expected="$(listed "$1")"
+            [ -n "$expected" ] || expected="$(cut -d' ' -f1 "$dir/$1.sha256" 2> /dev/null || true)"
+            [ -n "$expected" ] || { echo "Для $1 нет суммы ни в SHA256SUMS, ни в $1.sha256" >&2; exit 1; }
+            sum="$(sha256sum "$dir/$1" | cut -d' ' -f1)"
+            [ "$sum" = "$expected" ] || { echo "SHA-256 $1 не совпал с выпуском" >&2; exit 1; }
+          }
+
+          : > "$upload"
+          if [ "$MANIFEST_ONLY" != true ]; then
+            for pair in "windows:PrivateGateway-$version-win-x64.msi" "macos:PrivateGateway-$version-osx-arm64.dmg" \
+              "linux:*_${version}_amd64.deb" "android:PrivateGateway-$version-android.apk" "asset:*.x86_64.rpm"; do
+              platform="${pair%%:*}"
+              file="$(cd "$dir" && { compgen -G "${pair#*:}" || true; } | head -n 1)"
+              if [ -z "$file" ]; then
+                echo "Нет файла для $platform (${pair#*:}): на сайте останется прежний." | tee -a "$GITHUB_STEP_SUMMARY"
+                continue
+              fi
+              verified "$file"
+              if [ "$platform" = asset ]; then
+                printf '%s asset %s %s %s\n' "$file" "$version" "$file" "$sum" >> "$upload"
+              else
+                printf '%s import %s %s %s %s\n' "$file" "$platform" "$version" "$file" "$sum" >> "$upload"
+              fi
+            done
+            grep -q ' import ' "$upload" || { echo "В выпуске $TAG нет ни одного установщика для сайта" >&2; exit 1; }
+          fi
+
+          # Лента обновлений. Подписанный выпуск (update.json.sig в его SHA256SUMS) без файла подписи — ошибка, а не
+          # пропуск: иначе стоп-кран раскатки молча не дошел бы до программ.
+          if [ ! -e "$dir/update.json.sig" ]; then
+            [ -z "$(listed update.json.sig)" ] || { echo "update.json.sig есть в SHA256SUMS, а в выпуске $TAG его нет" >&2; exit 1; }
+            echo "Выпуск $TAG без подписи update.json.sig: в ленту обновлений сайта не идет — программа его не примет." \
+              | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            [ -e "$dir/update.json" ] || { echo "В выпуске $TAG есть update.json.sig, но нет update.json" >&2; exit 1; }
+            verified update.json.sig
+            sig_sum="$sum"
+            verified update.json
+            jq -e --arg v "$version" '.version == $v and .channel == "stable"' "$dir/update.json" > /dev/null \
+              || { echo "update.json не этого выпуска: версия не $version или канал не stable" >&2; exit 1; }
+            # Файлы ленты из манифеста — те же, что в выпуске, и уже отправлены (иначе сайт откажет в приеме манифеста).
+            jq -r '.assets | to_entries[]
+              | select(.key | IN("win-x64-msi", "linux-x64-deb", "linux-x64-rpm", "osx-arm64-dmg", "android-apk"))
+              | "\(.key) \(.value.file) \(.value.sha256)"' "$dir/update.json" > "$RUNNER_TEMP/feed.txt"
+            while read -r kind file sha; do
+              [ "$(listed "$file")" = "$sha" ] || { echo "$kind: $file с суммой из манифеста нет в SHA256SUMS выпуска" >&2; exit 1; }
+              [ "$MANIFEST_ONLY" = true ] || awk -v f="$file" '$1 == f {found = 1} END {exit !found}' "$upload" \
+                || { echo "$kind: $file из манифеста не отправляется — сайт не примет манифест" >&2; exit 1; }
+            done < "$RUNNER_TEMP/feed.txt"
+            printf 'update.json.sig update-sig %s update.json.sig %s\n' "$version" "$sig_sum" >> "$upload"
+            printf 'update.json update %s update.json %s\n' "$version" "$sum" >> "$upload"
+          fi
+
+          if [ ! -s "$upload" ]; then
+            echo "Отправлять на сайт нечего." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       - name: Отправить на сайт
@@ -113,11 +204,13 @@ jobs:
             exit 1
           fi
           echo "Ключ выпусков: $(cut -d' ' -f2 "$RUNNER_TEMP/fp.txt")" | tee -a "$GITHUB_STEP_SUMMARY"
-          while read -r platform version file sum; do
+          # Порядок — как в списке: установщики, rpm, подпись, манифест. Отказ сайта останавливает отправку: манифест
+          # без своих файлов на сайт не попадает.
+          while read -r file request; do
             ssh -i ~/.ssh/website_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=20 -o ServerAliveInterval=30 \
-              "$WEBSITE_USER@$WEBSITE_HOST" "import $platform $version $file $sum" < "$DIR/$file"
-            echo "На сайте: $platform $version ($file)" >> "$GITHUB_STEP_SUMMARY"
+              "$WEBSITE_USER@$WEBSITE_HOST" "$request" < "$DIR/$file"
+            echo "На сайте: ${request% *}" >> "$GITHUB_STEP_SUMMARY"
           done < "$RUNNER_TEMP/upload.txt"
 
       - name: Удалить ключ

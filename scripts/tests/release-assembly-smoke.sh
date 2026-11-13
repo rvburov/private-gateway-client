@@ -1,8 +1,10 @@
 #!/bin/bash
 #
-# Проверка scripts/release.cs на собранных здесь «сборках» трех ОС: выпуск собирается с общим SHA256SUMS и манифестом
-# обновления (канал, доля раскатки, главное из секции версии в CHANGELOG.md, файлы ОС с суммами); бета-версия — канал
-# beta; версия без секции в истории, порченый файл, сборка без одной ОС и доля вне 1–100 — ошибка; rollout меняет долю и сумму манифеста, 0 — останавливает раскатку.
+# Проверка scripts/release.cs на собранных здесь «сборках» трех ОС и APK: выпуск собирается с общим SHA256SUMS и
+# манифестом обновления (канал, доля раскатки — без доли 100 %, страница скачивания сайта в notes, главное из секции
+# версии в CHANGELOG.md, файлы ОС с суммами; APK — android-apk, если он есть, без него выпуск тоже собирается);
+# бета-версия — канал beta; версия без секции в истории, порченый файл (и APK), сборка без одной ОС, notes не https и
+# доля вне 1–100 — ошибка; rollout меняет долю и сумму манифеста, 0 — останавливает раскатку.
 # Подпись — на ключе, созданном здесь же (keygen): openssl проверяет ее открытым ключом, rollout подписывает заново, ключ
 # не из папки ключей, ключи без секрета и rollout подписанного без ключа — ошибка. Запускается в CI (задание «Стиль и формат») и вручную:
 #
@@ -19,18 +21,30 @@ check() {
   if eval "$2"; then echo "ок: $1"; else echo "НЕ ТАК: $1"; fails=$((fails + 1)); fi
 }
 
-# builds <папка> <версия> [без ОС]: сборки трех ОС, как их кладет publish.yml.
+# builds <папка> <версия> [без ОС]: сборки трех ОС, как их кладет publish.yml, и APK, как его кладет release.yml (папка
+# release-Android, ее SHA256SUMS — .apk.sha256 задания «Android (APK)»).
 builds() {
   local dir="$TMP/$1" v="$2" deb=${2//-/\~}
-  mkdir -p "$dir/release-Linux" "$dir/release-Windows" "$dir/release-macOS"
+  mkdir -p "$dir/release-Linux" "$dir/release-Windows" "$dir/release-macOS" "$dir/release-Android"
   echo deb > "$dir/release-Linux/private-gateway_${deb}_amd64.deb"
   echo rpm > "$dir/release-Linux/private-gateway-${deb}-1.x86_64.rpm"
   echo tar > "$dir/release-Linux/PrivateGateway-$v-linux-x64.tar.gz"
   echo msi > "$dir/release-Windows/PrivateGateway-$v-win-x64.msi"
   echo mac > "$dir/release-macOS/PrivateGateway-$v-osx-arm64.tar.gz"
   echo dmg > "$dir/release-macOS/PrivateGateway-$v-osx-arm64.dmg"
+  echo apk > "$dir/release-Android/PrivateGateway-$v-android.apk"
   [ -z "${3:-}" ] || rm -rf "$dir/release-$3"
   for os in "$dir"/release-*; do (cd "$os" && sha256sum * > SHA256SUMS); done
+}
+
+# asset <update.json> <вид> <файл>: в манифесте у вида — имя, SHA-256 и размер этого файла.
+asset() {
+  python3 -c 'import hashlib,json,os,sys; a=json.load(open(sys.argv[1]))["assets"].get(sys.argv[2]); f=sys.argv[3]; sys.exit(a != {"file": os.path.basename(f), "sha256": hashlib.sha256(open(f,"rb").read()).hexdigest(), "size": os.path.getsize(f)})' "$@"
+}
+
+# notes <update.json> <адрес>: ссылка «Скачать на сайте» в манифесте — ровно этот адрес.
+notes() {
+  python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1]))["notes"] != sys.argv[2])' "$@"
 }
 
 run() { dotnet run scripts/release.cs "$@" > "$TMP/out.txt" 2>&1; }
@@ -78,7 +92,8 @@ cat > "$TMP/CHANGELOG.md" <<'CHANGES'
 - Старое, в 0.3.0 не попадает.
 CHANGES
 export RELEASE_CHANGELOG="$TMP/CHANGELOG.md"
-unset UPDATE_SIGNING_KEY
+# Страница в notes — по умолчанию сайт; своя страница из окружения разработчика проверку не меняет.
+unset UPDATE_SIGNING_KEY UPDATE_NOTES_URL
 
 builds stable 0.3.0
 check "выпуск собирается" "run assemble 0.3.0 '$TMP/stable' '$TMP/stable-out' 20"
@@ -87,6 +102,15 @@ check "канал stable и доля 20" "grep -q '\"channel\": \"stable\"' '$TM
 check "в манифесте главное из заметок" "grep -q '\"highlights\": \\[' '$TMP/stable-out/update.json'"
 check "без ключей — без подписи" "[ ! -e '$TMP/stable-out/update.json.sig' ]"
 check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-dmg '$TMP/stable-out/update.json'"
+check "notes — страница скачивания сайта, а не GitHub" "notes '$TMP/stable-out/update.json' https://private-gateway.duckdns.org/downloads"
+check "APK в манифесте — android-apk: имя, SHA-256 и размер" "asset '$TMP/stable-out/update.json' android-apk '$TMP/stable/release-Android/PrivateGateway-0.3.0-android.apk'"
+check "rpm в манифесте — linux-x64-rpm" "asset '$TMP/stable-out/update.json' linux-x64-rpm '$TMP/stable/release-Linux/private-gateway-0.3.0-1.x86_64.rpm'"
+check "APK — в общем SHA256SUMS" "grep -q '  PrivateGateway-0.3.0-android.apk\$' '$TMP/stable-out/SHA256SUMS'"
+check "без доли — 100 %: выпуск всем сразу" "run assemble 0.3.0 '$TMP/stable' '$TMP/full-out' && grep -q '\"rollout\": 100' '$TMP/full-out/update.json'"
+builds noapk 0.3.0 Android
+check "без APK выпуск собирается, android-apk в манифесте нет" "run assemble 0.3.0 '$TMP/noapk' '$TMP/noapk-out' 20 && ! grep -q android-apk '$TMP/noapk-out/update.json' && grep -q win-x64-msi '$TMP/noapk-out/update.json'"
+check "UPDATE_NOTES_URL — своя страница в notes" "UPDATE_NOTES_URL=https://example.org/downloads run assemble 0.3.0 '$TMP/stable' '$TMP/notes-out' 20 && notes '$TMP/notes-out/update.json' https://example.org/downloads"
+check "UPDATE_NOTES_URL не https — ошибка: такой манифест программа не примет" "! UPDATE_NOTES_URL=http://example.org/downloads run assemble 0.3.0 '$TMP/stable' '$TMP/http-out' 20 && grep -q 'UPDATE_NOTES_URL' '$TMP/out.txt' && [ ! -e '$TMP/http-out/update.json' ]"
 check "главное манифеста — из той же секции, первое предложение" "python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))[\"highlights\"]; sys.exit(h != [\"Окно подтверждения перед раздельным режимом.\", \"Строка реального IP не пропадает.\"])' '$TMP/stable-out/update.json'"
 builds nosection 0.2.9
 check "версия без секции в истории — ошибка, коммиты не подставляются" "! run assemble 0.2.9 '$TMP/nosection' '$TMP/nosection-out' && grep -q 'нет секции' '$TMP/out.txt'"
@@ -96,10 +120,15 @@ check "доля 101 — ошибка" "! run rollout '$TMP/stable-out' 101"
 
 builds beta 0.4.0-beta.1
 check "бета — канал beta" "run assemble 0.4.0-beta.1 '$TMP/beta' '$TMP/beta-out' && grep -q '\"channel\": \"beta\"' '$TMP/beta-out/update.json'"
+check "бета — APK своей версии в манифесте" "asset '$TMP/beta-out/update.json' android-apk '$TMP/beta/release-Android/PrivateGateway-0.4.0-beta.1-android.apk'"
 
 builds broken 0.3.0
 echo corrupt >> "$TMP/broken/release-macOS/PrivateGateway-0.3.0-osx-arm64.tar.gz"
 check "порченый файл — ошибка" "! run assemble 0.3.0 '$TMP/broken' '$TMP/broken-out' && grep -q 'сумма не та' '$TMP/out.txt'"
+
+builds broken-apk 0.3.0
+echo corrupt >> "$TMP/broken-apk/release-Android/PrivateGateway-0.3.0-android.apk"
+check "APK, испорченный между заданиями, — ошибка" "! run assemble 0.3.0 '$TMP/broken-apk' '$TMP/broken-apk-out' && grep -q 'android.apk: файла нет или сумма не та' '$TMP/out.txt'"
 
 builds partial 0.3.0 Windows
 check "без сборки Windows — ошибка" "! run assemble 0.3.0 '$TMP/partial' '$TMP/partial-out' && grep -q 'win-x64-msi' '$TMP/out.txt'"

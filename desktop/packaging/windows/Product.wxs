@@ -36,7 +36,8 @@
 
     <Icon Id="AppIcon" SourceFile="$(Icon)" />
     <Property Id="ARPPRODUCTICON" Value="AppIcon" />
-    <Property Id="ARPURLINFOABOUT" Value="https://github.com/rvburov/private-gateway-client" />
+    <!-- «О программе» в «Установке и удалении программ»: сайт, а не GitHub — репозиторий закрытый. -->
+    <Property Id="ARPURLINFOABOUT" Value="https://private-gateway.duckdns.org" />
 
     <!-- Папка, выбранная в мастере, — и для обновлений: тихое обновление из окна (без мастера) ставит туда же, а не в
          Program Files по умолчанию. -->

@@ -1,23 +1,26 @@
-// Выпуск на GitHub из сборок трех ОС (workflow release.yml) и поэтапная раскатка:
+// Выпуск на GitHub из сборок трех ОС и APK (workflow release.yml) и доля раскатки:
 //
 //   dotnet run scripts/release.cs assemble <версия> <папка сборок> <папка выпуска> [доля %]
 //   dotnet run scripts/release.cs rollout <папка выпуска> <доля %>
 //   dotnet run scripts/release.cs keygen <файл закрытого ключа вне репозитория>
 //
-// assemble: в папке сборок — по папке на ОС (артефакты release-<ОС> из publish.yml), у каждой свой SHA256SUMS. Каждый
-// файл сверяется со своей суммой (порча при передаче между заданиями — ошибка), все файлы кладутся в папку выпуска с
-// общим SHA256SUMS, рядом:
+// assemble: в папке сборок — по папке на ОС (артефакты release-<ОС> из publish.yml; APK Android — папка
+// release-Android, ее SHA256SUMS — это .apk.sha256 задания «Android (APK)»), у каждой свой SHA256SUMS. Каждый файл
+// сверяется со своей суммой (порча при передаче между заданиями — ошибка), все файлы кладутся в папку выпуска с общим
+// SHA256SUMS, рядом:
 //   update.json — манифест обновления: версия, канал (beta — у версии с «-», иначе stable), доля раскатки в процентах
-//     (поэтапное обновление: клиент берет выпуск, только если его номер из 0–99 меньше доли), главное из заметок, файлы
-//     для каждой ОС с SHA-256 и размером;
+//     (клиент берет выпуск, только если его номер из 0–99 меньше доли; без доли — 100 %), страница скачивания на
+//     сайте (notes; UPDATE_NOTES_URL — другая), главное из заметок, файлы для каждой ОС с SHA-256 и размером (APK —
+//     android-apk, если он есть в сборках: без него выпуск собирается);
 //   update.json.sig — подпись манифеста (ECDSA P-256, SHA-256, DER в base64) ключом из переменной UPDATE_SIGNING_KEY
 //     (секрет GitHub, PEM PKCS#8). Подпись сразу сверяется с открытыми ключами shared/update/keys/*.pem — с ними
 //     служба проверяет обновление. Ключа нет: пока открытых ключей в репозитории нет — выпуск без подписи (обновление
 //     из него служба не поставит), а если они уже есть — ошибка: такой выпуск не примет ни один клиент;
 //   highlights манифеста — главное из секции версии в CHANGELOG.md (нет секции — ошибка); текст страницы выпуска
 //     собирает из той же секции scripts/release-notes.sh.
-// rollout: меняет долю раскатки в update.json уже опубликованного выпуска, подписывает его заново (подписанный без ключа
-// не меняется) и обновляет строки в SHA256SUMS (workflow release-rollout.yml).
+// rollout: меняет долю раскатки в update.json уже опубликованного выпуска (0 — стоп-кран), подписывает его заново
+// (подписанный без ключа не меняется) и обновляет строки в SHA256SUMS (workflow release-rollout.yml, он же отдает новую
+// долю сайту).
 // keygen: новый ключ подписи обновлений — закрытый в указанный файл (только вне репозитория, права 600), открытый — в
 // shared/update/keys/<год-месяц>.pem; что делать дальше, печатает сам (docs/architecture/release.md).
 
@@ -97,13 +100,14 @@ foreach (var folder in Directory.GetDirectories(builds).Order(StringComparer.Ord
     }
 }
 
-// Что из выпуска для какой ОС: имя файла → ключ манифеста.
+// Что из выпуска для какой ОС: имя файла → ключ манифеста. android-apk приложение Android качает с сайта по ленте
+// обновлений и сверяет с манифестом, как служба десктопа — свой установщик.
 var kinds = new (string Key, string Suffix)[]
 {
     ("win-x64-msi", $"-{version}-win-x64.msi"), ("win-x64-zip", $"-{version}-win-x64.zip"),
     ("linux-x64-deb", $"_{version.Replace('-', '~')}_amd64.deb"), ("linux-x64-rpm", ".x86_64.rpm"),
     ("linux-x64-tar", $"-{version}-linux-x64.tar.gz"), ("osx-arm64-tar", $"-{version}-osx-arm64.tar.gz"),
-    ("osx-arm64-dmg", $"-{version}-osx-arm64.dmg"),
+    ("osx-arm64-dmg", $"-{version}-osx-arm64.dmg"), ("android-apk", $"-{version}-android.apk"),
 };
 var assets = new JsonObject();
 foreach (var (key, suffix) in kinds)
@@ -122,7 +126,6 @@ foreach (var required in new[] { "win-x64-msi", "linux-x64-deb", "osx-arm64-dmg"
     }
 }
 
-var repository = Environment.GetEnvironmentVariable("GITHUB_REPOSITORY") ?? "rvburov/private-gateway-client";
 var news = News(version);
 var update = new JsonObject
 {
@@ -130,7 +133,7 @@ var update = new JsonObject
     ["channel"] = beta ? "beta" : "stable",
     ["rollout"] = rollout,
     ["published"] = Timestamp().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
-    ["notes"] = $"https://github.com/{repository}/releases/tag/v{version}",
+    ["notes"] = NotesPage(),
     ["highlights"] = new JsonArray([.. Highlights(news).Select(h => JsonValue.Create(h))]),
     ["assets"] = assets,
 };
@@ -202,6 +205,17 @@ static List<(string Title, List<string> Items)> News(string version)
 // без разметки Markdown.
 static List<string> Highlights(List<(string Title, List<string> Items)> news) =>
     [.. news.SelectMany(g => g.Items).Take(3).Select(i => Regex.Replace(i.Split(". ")[0].TrimEnd('.'), @"[`*]", string.Empty) + ".")];
+
+// Ссылка «Скачать на сайте» карточки обновления (notes) — страница скачивания сайта, а не выпуск GitHub: репозиторий
+// закрытый, участникам его страницы не открываются (решение владельца 2026-11-13). UPDATE_NOTES_URL — другая страница;
+// не https — ошибка: манифест с такой ссылкой программа отвергает целиком.
+static string NotesPage()
+{
+    var page = Environment.GetEnvironmentVariable("UPDATE_NOTES_URL") is { Length: > 0 } custom ? custom : "https://private-gateway.duckdns.org/downloads";
+    return Uri.TryCreate(page, UriKind.Absolute, out var uri) && uri.Scheme == Uri.UriSchemeHttps
+        ? page
+        : throw new InvalidOperationException($"UPDATE_NOTES_URL — адрес https://…, а не «{page}»: манифест с такой ссылкой программа не примет");
+}
 
 static string Git(params string[] arguments)
 {

@@ -1,8 +1,12 @@
 name: Раскатка выпуска
 
-# Поэтапное обновление: новая доля раскатки опубликованного выпуска (update.json, его новая подпись — ключ из секрета
-# UPDATE_SIGNING_KEY — и их строки в SHA256SUMS). Клиент берет выпуск, только если его номер из 0–99 меньше доли.
-# Обычный путь стабильного выпуска: 20 % → 50 % → 100 %.
+# Доля раскатки опубликованного выпуска (update.json, его новая подпись — ключ из секрета UPDATE_SIGNING_KEY — и их
+# строки в SHA256SUMS). Клиент берет выпуск, только если его номер из 0–99 меньше доли. Выпуск выходит сразу на 100 %
+# (решение владельца 2026-11-13), поэтому кнопка — прежде всего стоп-кран: 0 % — выпуск больше никому не предлагается;
+# вернуть 100 % или дать долю меньше — так же.
+# Программа берет обновления с сайта, поэтому новая доля сразу уходит и туда: задание «Сайт — новая доля» вызывает
+# website.yml только с манифестом (update.json.sig и update.json этого выпуска на GitHub). Оно красное — у программ
+# прежняя доля: Re-run failed jobs. Две раскатки идут по очереди: доля на GitHub и на сайте — от последней.
 on:
   workflow_dispatch:
     inputs:
@@ -16,6 +20,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: release-rollout
+  cancel-in-progress: false
 
 jobs:
   rollout:
@@ -50,3 +58,19 @@ jobs:
           gh release download "$TAG" --pattern 'update.json*' --pattern SHA256SUMS --dir artifacts/published
           dotnet run scripts/release.cs rollout artifacts/published "$ROLLOUT"
           gh release upload "$TAG" artifacts/published/* --clobber
+
+  # Новая доля — на сайт: оттуда ленту берут программы. Бету и выпуск без подписи website.yml пропускает сам.
+  website:
+    name: Сайт — новая доля
+    needs: rollout
+    permissions:
+      contents: read
+    uses: ./.github/workflows/website.yml
+    with:
+      tag: ${{ inputs.tag }}
+      manifest-only: true
+    secrets:
+      WEBSITE_HOST: ${{ secrets.WEBSITE_HOST }}
+      WEBSITE_USER: ${{ secrets.WEBSITE_USER }}
+      WEBSITE_SSH_KEY: ${{ secrets.WEBSITE_SSH_KEY }}
+      WEBSITE_KNOWN_HOSTS: ${{ secrets.WEBSITE_KNOWN_HOSTS }}

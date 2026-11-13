@@ -5,9 +5,11 @@ name: Выпуск на GitHub
 # (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
 # секрет UPDATE_SIGNING_KEY); текст страницы — scripts/release-notes.sh из секции версии в CHANGELOG.md, без списка
 # коммитов. Выпуск уже есть (повтор запуска) — текст и файлы заменяются. Версия с «-» — бета: выпуск помечен prerelease,
-# канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
+# канал beta. Раскатка — 100 % и у беты, и у стабильного (решение владельца 2026-11-13: участников мало, доля 20 % почти
+# никому не показала бы обновление); release-rollout.yml — стоп-кран (0 %) и любая другая доля потом.
 # К выпуску прикладывается приложение Android (APK, подписанный ключом выпуска из секретов; ставится вручную, «из
-# неизвестных источников»). Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
+# неизвестных источников», или из самого приложения по ленте обновлений сайта): он же в манифесте обновления
+# (android-apk) и в общем SHA256SUMS. Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
 #
 # Два запуска: отправка тега с компьютера (push) и кнопка «Выпустить версию» (release-button.yml). Тег кнопки отправлен
 # токеном GITHUB_TOKEN, а такая отправка workflow не запускает — кнопка запускает этот workflow сама (workflow_dispatch с
@@ -177,16 +179,28 @@ jobs:
           git fetch origin master "+refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
           python3 scripts/release-gate.py "$GITHUB_REPOSITORY" "$RELEASE_TAG" "$RELEASE_SHA"
 
+      # APK — в манифест обновления (android-apk) и в общий SHA256SUMS: assemble берет файлы только из сборок и сверяет
+      # каждый с SHA256SUMS его папки, а у APK сумма своя — .apk.sha256 задания «Android (APK)». Она и становится
+      # SHA256SUMS папки release-Android: APK, испорченный между заданиями, останавливает выпуск, как файл любой ОС.
+      - name: APK — к сборкам ОС
+        run: |
+          apk=(artifacts/android/*.apk)
+          [ "${#apk[@]}" -eq 1 ] && [ -f "${apk[0]}" ] && [ -f "${apk[0]}.sha256" ] \
+            || { echo "В артефакте android-apk нужны один APK и его .apk.sha256" >&2; exit 1; }
+          mkdir artifacts/builds/release-Android
+          cp "${apk[0]}" artifacts/builds/release-Android/
+          cp "${apk[0]}.sha256" artifacts/builds/release-Android/SHA256SUMS
+
       - name: Файлы, суммы, манифест, подпись и заметки
         env:
           UPDATE_SIGNING_KEY: ${{ secrets.UPDATE_SIGNING_KEY }}
         run: |
           version=${GITHUB_REF_NAME#v}
           [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег $GITHUB_REF_NAME — не v<SemVer>" >&2; exit 1; }
-          rollout=20
-          [[ "$version" != *-* ]] || rollout=100
-          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) dotnet run scripts/release.cs assemble "$version" artifacts/builds artifacts/release "$rollout"
-          cp artifacts/android/* artifacts/release/
+          # Доля раскатки — 100 % сразу, и у беты, и у стабильного; меньше — потом кнопкой release-rollout.yml.
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct) dotnet run scripts/release.cs assemble "$version" artifacts/builds artifacts/release 100
+          # APK уже в выпуске (assemble); рядом — его .apk.sha256, как раньше: сверить один APK без SHA256SUMS.
+          cp artifacts/android/*.apk.sha256 artifacts/release/
           scripts/release-notes.sh "$version" artifacts/release > artifacts/notes.md
 
       # Как в SmartBase: выпуск уже есть (повтор запуска после сбоя на этом шаге) — заменить текст и файлы, а не падать.
