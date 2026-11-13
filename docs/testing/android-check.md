@@ -43,6 +43,10 @@ CI уже проверяет без вас на эмуляторе Android 14: �
    - «server silent on tcp» — эта сеть не пускает к серверу (оператор или провайдер режет путь, или сервер выключен);
    - «server answers on tcp» — сервер принимает соединение, но связи через него нет: профиль не принят или сервер не
      выпускает в интернет.
+4. С версии 0.2.1 перед «no answer through the tunnel» в журнале — строка на каждую пробу `start probe try=N … ms=…`:
+   быстрые отказы (`ConnectException`, `SSLHandshakeException` за десятки мс) — ядро не вышло к серверу; `TimedOut` или
+   `SocketTimeoutException` за весь срок — сервер молчит; `start check network=default` — Android не показал сеть VPN
+   за 3 с.
 
 Итог: таблица «сервер × сеть (мобильная / Wi-Fi) — подключился да/нет» и отчеты отказов.
 
@@ -110,8 +114,3 @@ CI уже проверяет без вас на эмуляторе Android 14: �
 ## Что прислать
 
 Номера разделов и «да/нет» по шагам, модель телефона и версию Android, тексты ошибок с экрана (без адресов и ссылок).
-7. В журнале перед "no answer through the tunnel" — строки `start probe  try=N … ms=…`: быстрые отказы
-   (`ConnectException`, `SSLHandshakeException` за десятки мс) — ядро не вышло к серверу; `TimedOut` или
-   `SocketTimeoutException` за весь срок — сервер молчит; `start check  network=default` — Android не показал сеть VPN
-   за 3 с.
-
