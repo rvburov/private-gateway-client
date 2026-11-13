@@ -146,8 +146,8 @@ IPC. Упавшая служба замок не держит — его отп�
    `Disconnect` — ядро останавливается, `Off`.
 5. `WatchStatus` присылает текущее состояние и каждое новое; `WatchLog` — последние записи журнала
    и новые; `MeasureLatency` — задержка через ядро (`LatencyProbe`), цель без сервера — «не
-   поддерживается»; `CheckForUpdate` — подписанный выпуск на GitHub своего канала и доли раскатки
-   (`UpdateChecker`, docs/architecture/release.md, «Проверка обновлений»); `DownloadUpdate` и `InstallUpdate` —
+   поддерживается»; `CheckForUpdate` — подписанный выпуск своего канала и доли раскатки из ленты
+   сайта, которую передало окно (`site_feed`; `UpdateChecker`, docs/architecture/release.md, «Проверка обновлений»); `DownloadUpdate` и `InstallUpdate` —
    файл найденного выпуска со сверкой по манифесту и установщик ОС отдельно от службы (`UpdateInstaller`, release.md,
    «Установка обновления»). Служба останавливается — потоки
    закрываются сразу, остановка не ждет окон.
