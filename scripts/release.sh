@@ -215,8 +215,20 @@ step "push origin master"
 git push --quiet origin master || die "отправку master отклонили. Тег $TAG создан локально; после
     git pull --rebase повторите: git push origin master && git push origin $TAG"
 
+# Отправка тега — второе соединение подряд, и GitHub иногда обрывает его по пути («Connection closed by … port 22»,
+# выпуск 0.2.0). master уже отправлен, тег стоит локально, повтор безопасен: тот же тег уже на месте — git ответит
+# «up to date». Паузы 2, 4, 8, 16 с; PG_RELEASE_PUSH_DELAYS заменяет их (тест — без ожидания).
 step "push origin $TAG"
-git push --quiet origin "$TAG" || die "отправку тега отклонили — отправьте вручную: git push origin $TAG"
+pushed=0
+for delay in ${PG_RELEASE_PUSH_DELAYS-2 4 8 16} done; do
+  if git push --quiet origin "$TAG"; then pushed=1; break; fi
+  [ "$delay" = done ] && break
+  info "отправка тега не прошла — повтор через $delay с"
+  sleep "$delay"
+done
+[ "$pushed" = 1 ] || die "тег $TAG не отправлен (master уже на GitHub, тег создан локально). Проверьте, что тег на коммите
+    выпуска: git rev-parse --short \"$TAG^{}\" — и отправьте его: git push origin $TAG
+    (порядок — docs/operations/checklist.md, «Если отправка тега оборвалась»)"
 
 echo
 echo "✓ $TAG отправлен. Выпуск собирает GitHub (около полутора-двух часов: проверка, долгий прогон, сборки):"

@@ -316,6 +316,47 @@ else
   bad "9. Повтор выпуска и тег перед подписью" "${prob[@]}"
 fi
 
+# ── 9а. Обрыв при отправке тега ─────────────────────────────────────────────
+# Выпуск 0.2.0: master ушел, а соединение для тега GitHub оборвал. Хук origin стенда отклоняет первую отправку тега —
+# release.sh повторяет сам; если отказ не проходит, говорит, как отправить тег руками, и master при этом уже на месте.
+prob=()
+hook="$FIXTURE/origin.git/hooks/pre-receive"
+cat > "$hook" <<HOOK
+#!/bin/bash
+while read -r _ new ref; do
+  # Удаление тега (новый SHA из нулей) стенд пропускает: отказывает только отправке
+  [ "\${new//0/}" = "" ] && continue
+  case "\$ref" in refs/tags/*)
+    [ -e "$FIXTURE/always-reject" ] && { echo "Connection closed (стенд)" >&2; exit 1; }
+    [ -e "$FIXTURE/rejected-once" ] || { touch "$FIXTURE/rejected-once"; echo "Connection closed (стенд)" >&2; exit 1; } ;;
+  esac
+done
+HOOK
+chmod +x "$hook"
+fixture_git push -q origin :refs/tags/v1.4.2 2>/dev/null && fixture_git tag -d v1.4.2 > /dev/null
+out="$(echo y | PG_RELEASE_PUSH_DELAYS="0 0" bash "$SRC/scripts/release.sh" 1.4.2 --skip-tests 2>&1)" \
+  || prob+=("выпуск с одним обрывом упал: $out")
+[ -e "$FIXTURE/rejected-once" ] || prob+=("хук стенда не отклонил первую отправку — проверка ничего не доказывает")
+printf '%s\n' "$out" | grep -qF 'повтор через 0 с' || prob+=("нет сообщения о повторе: $out")
+git -C "$FIXTURE/origin.git" rev-parse -q --verify refs/tags/v1.4.2 > /dev/null || prob+=("после повтора тега нет на origin")
+# Отказ на каждой попытке: понятная подсказка, master на origin, тег только локально.
+fixture_git push -q origin :refs/tags/v1.4.2 2>/dev/null && fixture_git tag -d v1.4.2 > /dev/null
+touch "$FIXTURE/always-reject"
+out="$(echo y | PG_RELEASE_PUSH_DELAYS="0 0" bash "$SRC/scripts/release.sh" 1.4.2 --skip-tests 2>&1)" \
+  && prob+=("выпуск без отправки тега завершился успехом")
+printf '%s\n' "$out" | grep -qF 'git push origin v1.4.2' || prob+=("нет команды для ручной отправки: $out")
+printf '%s\n' "$out" | grep -qF 'Если отправка тега оборвалась' || prob+=("нет ссылки на порядок в чеклисте: $out")
+[ "$(printf '%s\n' "$out" | grep -c 'повтор через')" = 2 ] || prob+=("попыток не три (первая и два повтора): $out")
+[ "$(git -C "$FIXTURE/origin.git" rev-parse master)" = "$(fixture_git rev-parse HEAD)" ] || prob+=("master не на origin")
+fixture_git rev-parse -q --verify refs/tags/v1.4.2 > /dev/null || prob+=("тег не остался локально")
+grep -qF 'Если отправка тега оборвалась' docs/operations/checklist.md || prob+=("в чеклисте нет раздела, на который ссылается подсказка")
+rm -f "$hook" "$FIXTURE/always-reject"
+if [ ${#prob[@]} -eq 0 ]; then
+  ok "9а. Обрыв при отправке тега: release.sh повторяет сам; не прошло — подсказка с командой, master уже на месте"
+else
+  bad "9а. Обрыв при отправке тега" "${prob[@]}"
+fi
+
 # ── 10. Репозиторий не тронут ──────────────────────────────────────────────────
 [ "$(git status --porcelain)" = "$STATUS_BEFORE" ] && ok "10. Прогон тестов ничего не изменил в репозитории" \
   || bad "10. Прогон тестов изменил рабочее дерево"
