@@ -246,6 +246,23 @@ class AccountRepositoryTest {
     }
 
     @Test
+    fun `administrator without a code is asked for one and nothing is saved`() {
+        // 0.2.1: первый шаг — без кода; «нужен код» — входа еще нет, в журнале — только итог, без почты и пароля.
+        val repository = repository()
+        source.login = LoginResult.CodeRequired
+        assertEquals(LoginResult.CodeRequired, wait { repository.login("admin@example.com", "pw-secret", null, null) })
+        assertFalse(state(repository).signedIn)
+        assertFalse(wait { repository.allowed() })
+        val messages = journal.entries.value.map { it.message }
+        assertTrue(messages.any { "code required" in it }, messages.toString())
+        assertFalse(messages.any { "admin@example.com" in it || "pw-secret" in it }, messages.toString())
+
+        source.login = LoginResult.Ok(session())
+        assertEquals(LoginResult.Ok(session()), wait { repository.login("admin@example.com", "pw-secret", "123456", null) })
+        assertTrue(wait { repository.allowed() })
+    }
+
+    @Test
     fun `without a working key store the sign-in is not attempted`() {
         val repository = repository(BrokenBox())
         source.login = LoginResult.Ok(session())

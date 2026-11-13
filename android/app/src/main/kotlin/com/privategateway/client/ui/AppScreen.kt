@@ -208,6 +208,7 @@ fun AppScreen(
                         toggleRecovery = account::toggleRecovery,
                         submit = account::login,
                         site = { runCatching { links.openUri(it) } },
+                        back = account::back,
                     ),
                     actions.language,
                 )

@@ -11,11 +11,14 @@ namespace PrivateGateway.Client.UI.ViewModels;
 
 /// <summary>
 /// Вход в аккаунт сайта (доска 10, решение 621): до любого другого экрана, и до приветствия первого запуска; островка нет.
-/// Сверху — язык RU/EN, как на приветствии: язык выбирают до него. Почта, пароль с «глазом», код 2FA или резервный код и
-/// «Войти» («Вход…» и недоступна, пока идет запрос). Enter в любом поле отправляет форму. После ответа пароль и код
-/// стираются, почта остается. Ошибка — строкой под формой; у 403 и 409 — кнопка на страницу сайта (решение 626). Почему
-/// вход нужен снова (доступ отозван, срок истек) — плашкой над формой. Уйти с экрана после входа решает окно
-/// (<see cref="ShellViewModel"/>): оно же держит ворота.
+/// Сверху — язык RU/EN, как на приветствии: язык выбирают до него. Два шага (0.2.1, 2FA — только у администраторов):
+/// сначала почта, пароль с «глазом» и «Войти»; если сайт ответил «нужен код» (<see cref="AccountFailure.CodeRequired"/>),
+/// второй шаг — код 2FA или резервный код, «Войти» и «Войти другим аккаунтом» (<see cref="IsCodeStep"/>). Почта и пароль
+/// первого шага на втором остаются только в памяти модели — для повторного входа с кодом. «Войти» — «Вход…» и недоступна,
+/// пока идет запрос; Enter в поле отправляет форму. После ответа код стирается всегда, пароль — на первом шаге и когда
+/// второй шаг кончился (вошли, неверный пароль, «Войти другим аккаунтом»); почта остается. Ошибка — строкой под формой;
+/// у 403 и 409 — кнопка на страницу сайта (решение 626). Почему вход нужен снова (доступ отозван, срок истек) — плашкой
+/// над формой. Уйти с экрана после входа решает окно (<see cref="ShellViewModel"/>): оно же держит ворота.
 /// </summary>
 public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
 {
@@ -48,6 +51,7 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     }
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Text))]
     [NotifyCanExecuteChangedFor(nameof(SignInCommand))]
     public partial string Email { get; set; } = string.Empty;
 
@@ -63,6 +67,14 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     [NotifyCanExecuteChangedFor(nameof(SignInCommand))]
     public partial string Code { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Второй шаг: сайт принял почту и пароль и ждет код администратора. Поля почты и пароля скрыты, видно поле кода.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(Title), nameof(Text))]
+    [NotifyCanExecuteChangedFor(nameof(SignInCommand))]
+    public partial bool IsCodeStep { get; private set; }
+
     /// <summary>Вход по резервному коду вместо кода 2FA.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CodeLabel), nameof(CodeHint), nameof(CodeToggleText))]
@@ -72,7 +84,7 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     /// <summary>Идет запрос: «Вход…», кнопка недоступна.</summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SignInText))]
-    [NotifyCanExecuteChangedFor(nameof(SignInCommand))]
+    [NotifyCanExecuteChangedFor(nameof(SignInCommand), nameof(BackCommand))]
     public partial bool IsBusy { get; private set; }
 
     /// <summary>Почему последняя попытка не вышла; null — ошибки нет.</summary>
@@ -84,6 +96,12 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(Error))]
     public partial int RetryMinutes { get; private set; }
+
+    /// <summary>«Вход в Private Gateway» или на втором шаге «Код подтверждения администратора».</summary>
+    public string Title => Loc.Instance[IsCodeStep ? "account.code.title" : "account.title"];
+
+    /// <summary>Пояснение под заголовком; на втором шаге — чей это аккаунт.</summary>
+    public string Text => IsCodeStep ? Loc.Instance.Format("account.code.text", Email.Trim()) : Loc.Instance["account.text"];
 
     public string CodeLabel => Loc.Instance[IsRecovery ? "account.recovery" : "account.code"];
 
@@ -102,6 +120,7 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         AccountFailure.InvalidCode => Loc.Instance["account.error.code"],
         AccountFailure.SetupRequired => Loc.Instance["account.error.setupRequired"],
         AccountFailure.DeviceLimit => Loc.Instance["account.error.deviceLimit"],
+        AccountFailure.DeviceChangeLimit => Loc.Instance["account.error.deviceChanges"],
         AccountFailure.RateLimited => Loc.Instance.Format("account.error.rateLimited", Math.Max(1, RetryMinutes)),
         AccountFailure.Validation => Loc.Instance["account.error.validation"],
         AccountFailure.Network => Loc.Instance["account.error.network"],
@@ -114,8 +133,8 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     /// <summary>403: 2FA настраивается на сайте — «Открыть сайт».</summary>
     public bool CanOpenSite => Failure == AccountFailure.SetupRequired;
 
-    /// <summary>409: место освобождают на странице устройств сайта — «Устройства на сайте».</summary>
-    public bool CanOpenDevices => Failure == AccountFailure.DeviceLimit;
+    /// <summary>409: устройства — на странице устройств сайта, «Устройства на сайте».</summary>
+    public bool CanOpenDevices => Failure is AccountFailure.DeviceLimit or AccountFailure.DeviceChangeLimit;
 
     /// <summary>Почему вход нужен снова: доступ отозван на сайте или срок истек; null — первый вход или выход.</summary>
     public string? Notice => _account.LastMessage switch
@@ -139,17 +158,19 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         set => SetLanguage(value, "en");
     }
 
-    /// <summary>«Войти» и Enter: поля заполнены, запрос не идет.</summary>
+    /// <summary>«Войти» и Enter: поля шага заполнены, запрос не идет. Первый шаг — без кода, второй — с кодом.</summary>
     [RelayCommand(CanExecute = nameof(CanSignIn))]
     private async Task SignInAsync()
     {
+        var codeStep = IsCodeStep;
+        var code = codeStep ? Code : null;
         Failure = null;
         RetryMinutes = 0;
         IsBusy = true;
         LoginOutcome outcome;
         try
         {
-            outcome = await _account.SignInAsync(Email, Password, IsRecovery ? null : Code, IsRecovery ? Code : null).ConfigureAwait(true);
+            outcome = await _account.SignInAsync(Email, Password, IsRecovery ? null : code, IsRecovery ? code : null).ConfigureAwait(true);
         }
         catch (Exception e)
         {
@@ -158,18 +179,52 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         }
         finally
         {
-            // Пароль и код не держим дольше запроса, почта остается для следующей попытки.
+            // Код не держим дольше запроса, почта остается для следующей попытки.
             IsBusy = false;
-            Password = string.Empty;
             Code = string.Empty;
         }
 
         RetryMinutes = outcome.RetryAfterMinutes;
-        Failure = outcome.Failure;
+        switch (outcome.Failure)
+        {
+            case AccountFailure.CodeRequired:
+                // Пароль верный, аккаунт администратора: второй шаг. Почта и пароль остаются в памяти для входа с кодом.
+                IsRecovery = false;
+                IsCodeStep = true;
+                break;
+            case AccountFailure.InvalidCredentials when codeStep:
+                // Пароль сменили, пока вводили код: снова первый шаг, с ошибкой.
+                ToStepOne();
+                Failure = outcome.Failure;
+                break;
+            case null:
+                ToStepOne();
+                break;
+            default:
+                // На первом шаге пароль не держим дольше запроса; на втором он нужен для следующего кода.
+                if (!codeStep)
+                {
+                    Password = string.Empty;
+                }
+
+                Failure = outcome.Failure;
+                break;
+        }
     }
 
     private bool CanSignIn() => !IsBusy && !string.IsNullOrWhiteSpace(Email) && Password.Length > 0
-        && (IsRecovery ? !string.IsNullOrWhiteSpace(Code) : Code.Length == CodeLength);
+        && (!IsCodeStep || (IsRecovery ? !string.IsNullOrWhiteSpace(Code) : Code.Length == CodeLength));
+
+    /// <summary>«Войти другим аккаунтом» на втором шаге: снова почта и пароль; почта остается, пароль и код стерты.</summary>
+    [RelayCommand(CanExecute = nameof(CanGoBack))]
+    private void Back()
+    {
+        ToStepOne();
+        Failure = null;
+        RetryMinutes = 0;
+    }
+
+    private bool CanGoBack() => !IsBusy;
 
     [RelayCommand]
     private void TogglePassword() => IsPasswordVisible = !IsPasswordVisible;
@@ -189,13 +244,11 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private async Task OpenDevicesAsync() => await _launcher.OpenAsync(AccountSite.DevicesPage).ConfigureAwait(true);
 
-    /// <summary>Пустая форма: после выхода и потери доступа экран входа открывается с чистыми полями.</summary>
+    /// <summary>Пустая форма: после выхода и потери доступа экран входа открывается с чистыми полями, на первом шаге.</summary>
     public void Reset()
     {
         Email = string.Empty;
-        Password = string.Empty;
-        Code = string.Empty;
-        IsRecovery = false;
+        ToStepOne();
         IsPasswordVisible = false;
         Failure = null;
         RetryMinutes = 0;
@@ -220,6 +273,15 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         {
             Code = digits;
         }
+    }
+
+    // Первый шаг: пароль и код стерты, поле кода — снова для кода 2FA.
+    private void ToStepOne()
+    {
+        IsCodeStep = false;
+        IsRecovery = false;
+        Password = string.Empty;
+        Code = string.Empty;
     }
 
     private void OnAccountChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>

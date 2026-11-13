@@ -76,19 +76,26 @@
   программа подставляет свое. В v1.0 на этом шаге был тумблер «Показывать название Wi-Fi» и островок на «Добавьте первый сервер» — в
   программе их нет. На телефоне (решение 555) шага службы нет: «Начать» ведет сразу к «Добавьте первый сервер», где есть еще «Позже»;
   выбор языка — только на Android 13+, на iOS язык приложения выбирается в Настройках iOS. На десктопе ссылка «Открыть настройки» на шаге добавления сервера открывает общий экран настроек: выбор режима остается в существующих «Основных», ссылка сама его не меняет.</p>
-<p class="pg-board-note">Вход в аккаунт сайта Private Gateway Web (решения 621, 626, 627) — на десктопе и Android до любого другого экрана, и до
-  приветствия: островка нет, язык RU/EN — тот же выбор, что на приветствии (Android 13+). Почта, пароль с «глазом», код 2FA (6 цифр)
-  или резервный код — «Войти по резервному коду» и обратно «Войти по коду 2FA» меняют поле и очищают его. «Войти» доступна, когда
-  все поля заполнены (код — 6 цифр); Enter в поле — тоже «Войти». Пока идет запрос — «Вход…», кнопка недоступна; после ответа
-  пароль и код стерты, почта остается. Ошибка — красной строкой под полем кода: 401 — «Неверная почта или пароль.», 400 — «Код
-  неверный или уже использован. Введите новый.», 403 — с кнопкой «Открыть сайт» (страница входа сайта /login, настроить 2FA),
-  409 — с кнопкой «Устройства на сайте» (/devices), 429 — «Слишком много попыток. Повторите через 3 мин.» (минуты из
-  Retry-After, вверх, не меньше 1), 422 — «Проверьте почту и код: код 2FA — 6 цифр.», сеть, TLS и DNS — «Нет связи с сайтом…»,
-  ошибка сайта — «Сайт ответил ошибкой. Повторите позже.», нет хранилища ключей ОС — «Хранилище ключей системы недоступно…»
-  (вход не выполняется). Если сайт отозвал доступ (проверка получила 401), защита выключается и над формой — оранжевая плашка
-  «Доступ отозван на сайте…»; срок входа прошел без подтверждения — та же плашка с «Срок входа истек. Войдите снова.». Сайт в
-  макете — example.org. После входа — приветствие первого запуска (следующий экран) или главная. В демо-режиме десктопа
-  входа нет. На iOS входа пока нет (решение 624, mobile-parity.md): экраны входа на рамке iOS не показываются.</p>
+<p class="pg-board-note">Вход в аккаунт сайта Private Gateway Web (решения 621, 626, 627; 0.2.1 — 2FA только у администраторов) — на
+  десктопе и Android до любого другого экрана, и до приветствия: островка нет, язык RU/EN — тот же выбор, что на приветствии
+  (Android 13+). Первый шаг — почта, пароль с «глазом» и «Войти»: доступна, когда оба поля заполнены; Enter в поле — тоже «Войти».
+  Участнику этого хватает. Если сайт ответил «нужен код» (401 code_required — аккаунт администратора, пароль верный), форма
+  переходит ко второму шагу «Код подтверждения администратора»: почта в пояснении, поле кода 2FA (6 цифр, фокус сразу в нем) или
+  резервного кода — «Войти по резервному коду» и обратно «Войти по коду 2FA» меняют поле и очищают его; «Войти» доступна с 6 цифрами
+  или непустым резервным кодом; «Войти другим аккаунтом» возвращает к почте и паролю (почта остается, пароль стерт). Почта и пароль
+  первого шага на втором — только в памяти окна, для входа с кодом. Пока идет запрос — «Вход…», кнопка и «Войти другим аккаунтом»
+  недоступны. После ответа код стерт всегда, пароль — на первом шаге и когда второй кончился; почта остается. Ошибка — красной строкой
+  над «Войти»: 401 — «Неверная почта или пароль.» (и на втором шаге — назад к первому), 400 — «Код неверный или уже использован.
+  Введите новый.» (второй шаг остается), 403 — только у администратора без 2FA, с кнопкой «Открыть сайт» (страница входа сайта
+  /login), 409 device_limit — с кнопкой «Устройства на сайте» (/devices), 409 device_change_limit (больше трех новых устройств за 30
+  дней) — «За 30 дней к аккаунту добавлено слишком много новых устройств…» с той же кнопкой, 429 — «Слишком много попыток.
+  Повторите через 3 мин.» (минуты из Retry-After, вверх, не меньше 1), 422 — «Проверьте почту. Код 2FA — ровно 6 цифр.», сеть, TLS
+  и DNS — «Нет связи с сайтом…», ошибка сайта — «Сайт ответил ошибкой. Повторите позже.», нет хранилища ключей ОС — «Хранилище
+  ключей системы недоступно…» (вход не выполняется). Незнакомый код ошибки сайта у 401 — как неверный пароль, у 409 — как лимит
+  устройств. Если сайт отозвал доступ (проверка получила 401), защита выключается и над формой — оранжевая плашка «Доступ отозван
+  на сайте…»; срок входа прошел без подтверждения — та же плашка с «Срок входа истек. Войдите снова.». Сайт в макете — example.org.
+  После входа — приветствие первого запуска (следующий экран) или главная. В демо-режиме десктопа входа нет. На iOS входа пока нет
+  (решение 624, mobile-parity.md): экраны входа на рамке iOS не показываются.</p>
 
 <div class="pg-screens">
   <section class="pg-screen startup-shell" data-os="desktop" data-caption="0 · Окно до загрузки настроек и поиска службы">
@@ -101,199 +108,86 @@
     <button class="btn-primary" data-ui-text="card.close">Закрыть</button>
   </section>
   <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="0 · Вход в аккаунт сайта — до приветствия">
-    <!-- Вход: поля пустые, «Войти» доступна, когда заполнены почта, пароль и 6 цифр кода; Enter — «Войти» -->
-    <div class="pg-page login" data-page="la-code" data-login>
+    <!-- Первый шаг: почта и пароль, «Войти» доступна, когда оба поля заполнены; Enter — «Войти». Кода здесь нет: 2FA — только у администраторов -->
+    <div class="pg-page login" data-page="la" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="la-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="la-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="la-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="la-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="la-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="la-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-primary login-submit" data-login-submit data-goto="la-busy" data-ui-text="account.signIn">Войти</button>
     </div>
-    <div class="pg-page login" data-page="la-rec" data-login hidden>
+    <div class="pg-page login" data-page="la-busy" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="la-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="la-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-goto="la-code" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="la-busy-rec" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="la-busy-code" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="la-busy-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="la-busy-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="la-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
+          <input id="la-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
-    </div>
-    <div class="pg-page login" data-page="la-busy-rec" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="la-busy-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="la-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Вход по резервному коду">
-    <!-- Резервный код вместо кода 2FA: «Войти по коду 2FA» возвращает поле кода -->
-    <div class="pg-page login" data-page="lb-rec" data-login>
+  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Администратор: код подтверждения (второй шаг)">
+    <!-- Сайт ответил code_required: почта и пароль верны, аккаунт администратора. Почта и пароль — в памяти окна, фокус — в поле кода; «Войти другим аккаунтом» — снова первый шаг -->
+    <div class="pg-page login" data-page="lb-code" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lb-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lb-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-goto="lb-code" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="lb-busy-rec" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="lb-code" data-login hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lb-code-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lb-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
         <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
       <button class="btn-link login-toggle" data-goto="lb-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <button class="btn-primary login-submit" data-login-submit data-goto="lb-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-link login-back" data-goto="lb-back" data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
-    <div class="pg-page login" data-page="lb-busy-rec" aria-busy="true" hidden>
+    <div class="pg-page login" data-page="lb-rec" data-login hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lb-busy-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lb-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
+        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
+      <button class="btn-link login-toggle" data-goto="lb-code" data-ui-text="account.code.use">Войти по коду 2FA</button>
+      <button class="btn-primary login-submit" data-login-submit data-goto="lb-busy-rec" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-link login-back" data-goto="lb-back" data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
     <div class="pg-page login" data-page="lb-busy-code" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -301,58 +195,76 @@
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lb-busy-code-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lb-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
         <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
       <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
+      <button class="btn-link login-back" disabled data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
-  </section>
-
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Неверная почта или пароль (401)">
-    <!-- Ответ получен: пароль и код стерты, почта осталась, ошибка под формой -->
-    <div class="pg-page login" data-page="lc-code" data-login>
+    <div class="pg-page login" data-page="lb-busy-rec" aria-busy="true" hidden>
+      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
+        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
+        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
+      </div>
+      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
+      <label class="login-field first">
+        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
+        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
+      </label>
+      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
+      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
+      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
+      <button class="btn-link login-back" disabled data-ui-text="account.code.back">Войти другим аккаунтом</button>
+    </div>
+    <div class="pg-page login" data-page="lb-back" data-login hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lc-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="lb-back-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="lc-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="lb-back-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
+      <button class="btn-primary login-submit" data-login-submit data-goto="lb-code" data-ui-text="account.signIn">Войти</button>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Неверный код администратора (400)">
+    <!-- Ответ получен: код стерт, второй шаг остается, пароль ждет следующего кода -->
+    <div class="pg-page login" data-page="lc-code" data-login>
+      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
+        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
+        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
+      </div>
+      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
+      <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
         <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
       <button class="btn-link login-toggle" data-goto="lc-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <p class="login-error t-wrap" role="alert" data-ui-text="account.error.invalid">Неверная почта или пароль.</p>
+      <p class="login-error t-wrap" role="alert" data-ui-text="account.error.code">Код неверный или уже использован. Введите новый.</p>
       <button class="btn-primary login-submit" data-login-submit data-goto="lc-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-link login-back" data-goto="lc-back" data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
     <div class="pg-page login" data-page="lc-rec" data-login hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -360,26 +272,16 @@
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lc-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lc-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
         <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
       <button class="btn-link login-toggle" data-goto="lc-code-clean" data-ui-text="account.code.use">Войти по коду 2FA</button>
       <button class="btn-primary login-submit" data-login-submit data-goto="lc-busy-rec" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-link login-back" data-goto="lc-back" data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
     <div class="pg-page login" data-page="lc-code-clean" data-login hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -387,26 +289,16 @@
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lc-code-clean-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lc-code-clean-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
         <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
       <button class="btn-link login-toggle" data-goto="lc-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <button class="btn-primary login-submit" data-login-submit data-goto="lc-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-link login-back" data-goto="lc-back" data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
     <div class="pg-page login" data-page="lc-busy-code" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -414,26 +306,16 @@
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lc-busy-code-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lc-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
         <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
       <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
+      <button class="btn-link login-back" disabled data-ui-text="account.code.back">Войти другим аккаунтом</button>
     </div>
     <div class="pg-page login" data-page="lc-busy-rec" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
@@ -441,563 +323,322 @@
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.code.title">Код подтверждения администратора</span>
+      <p class="login-text" data-ui-text="account.code.text">anna@example.org — аккаунт администратора: введите код двухфакторной защиты.</p>
       <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lc-busy-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lc-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
         <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
         <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
       </label>
       <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
       <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
+      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
+      <button class="btn-link login-back" disabled data-ui-text="account.code.back">Войти другим аккаунтом</button>
+    </div>
+    <div class="pg-page login" data-page="lc-back" data-login hidden>
+      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
+        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
+        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
+      </div>
+      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
+      <label class="login-field first">
+        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
+        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
+      </label>
+      <div class="login-field" data-reveal-scope>
+        <label class="t-small login-label" for="lc-back-password" data-ui-text="account.password">Пароль</label>
+        <div class="input login-secret">
+          <input id="lc-back-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+        </div>
+      </div>
+      <button class="btn-primary login-submit" data-login-submit data-goto="lc-code" data-ui-text="account.signIn">Войти</button>
+    </div>
+  </section>
+
+  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Неверная почта или пароль (401)">
+    <!-- Ответ получен: пароль стерт, почта осталась, ошибка под формой -->
+    <div class="pg-page login" data-page="ld" data-login>
+      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
+        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
+        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
+      </div>
+      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
+      <label class="login-field first">
+        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
+        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
+      </label>
+      <div class="login-field" data-reveal-scope>
+        <label class="t-small login-label" for="ld-password" data-ui-text="account.password">Пароль</label>
+        <div class="input login-secret">
+          <input id="ld-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+        </div>
+      </div>
+      <p class="login-error t-wrap" role="alert" data-ui-text="account.error.invalid">Неверная почта или пароль.</p>
+      <button class="btn-primary login-submit" data-login-submit data-goto="ld-busy" data-ui-text="account.signIn">Войти</button>
+    </div>
+    <div class="pg-page login" data-page="ld-busy" aria-busy="true" hidden>
+      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
+        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
+        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
+      </div>
+      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
+      <label class="login-field first">
+        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
+        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
+      </label>
+      <div class="login-field" data-reveal-scope>
+        <label class="t-small login-label" for="ld-busy-password" data-ui-text="account.password">Пароль</label>
+        <div class="input login-secret">
+          <input id="ld-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
+          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+        </div>
+      </div>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
   </section>
 
-  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="2FA не настроена на сайте (403): «Открыть сайт»">
-    <!-- 403 setup_required: кнопка открывает /login сайта в браузере -->
-    <div class="pg-page login" data-page="ld-code" data-login>
+  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="2FA администратора не настроена (403): «Открыть сайт»">
+    <!-- 403 setup_required — только у администратора без 2FA: кнопка открывает /login сайта в браузере -->
+    <div class="pg-page login" data-page="le" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="ld-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="le-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="ld-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="le-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="ld-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <p class="login-error t-wrap" role="alert" data-ui-text="account.error.setupRequired">Двухфакторная защита еще не настроена. Войдите один раз на сайт, настройте ее и вернитесь.</p>
-      <button class="btn-primary login-submit" data-login-submit data-goto="ld-busy-code" data-ui-text="account.signIn">Войти</button>
+      <p class="login-error t-wrap" role="alert" data-ui-text="account.error.setupRequired">Для аккаунта администратора нужна двухфакторная защита, а она еще не настроена. Войдите на сайт, настройте ее и вернитесь.</p>
+      <button class="btn-primary login-submit" data-login-submit data-goto="le-busy" data-ui-text="account.signIn">Войти</button>
       <button class="btn-secondary login-site" data-toast="В браузере откроется https://example.org/login: настройте 2FA и вернитесь" data-ui-text="account.site">Открыть сайт</button>
     </div>
-    <div class="pg-page login" data-page="ld-rec" data-login hidden>
+    <div class="pg-page login" data-page="le-busy" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="ld-rec-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="le-busy-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="ld-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="le-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-goto="ld-code-clean" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="ld-busy-rec" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="ld-code-clean" data-login hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="ld-code-clean-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="ld-code-clean-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="ld-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="ld-busy-code" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="ld-busy-code" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="ld-busy-code-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="ld-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
-    </div>
-    <div class="pg-page login" data-page="ld-busy-rec" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="ld-busy-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="ld-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
   </section>
 
   <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Лимит устройств (409): «Устройства на сайте»">
     <!-- 409 device_limit: кнопка открывает /devices сайта в браузере -->
-    <div class="pg-page login" data-page="le-code" data-login>
+    <div class="pg-page login" data-page="lf" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="le-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="lf-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="le-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="lf-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="le-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <p class="login-error t-wrap" role="alert" data-ui-text="account.error.deviceLimit">Аккаунт уже используется на наибольшем числе устройств. Удалите старое устройство на сайте, чтобы освободить место.</p>
-      <button class="btn-primary login-submit" data-login-submit data-goto="le-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-primary login-submit" data-login-submit data-goto="lf-busy" data-ui-text="account.signIn">Войти</button>
       <button class="btn-secondary login-site" data-toast="В браузере откроется https://example.org/devices: удалите старое устройство" data-ui-text="account.devices">Устройства на сайте</button>
     </div>
-    <div class="pg-page login" data-page="le-rec" data-login hidden>
+    <div class="pg-page login" data-page="lf-busy" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="le-rec-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="lf-busy-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="le-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="lf-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-goto="le-code-clean" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="le-busy-rec" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="le-code-clean" data-login hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="le-code-clean-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="le-code-clean-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="le-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="le-busy-code" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="le-busy-code" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="le-busy-code-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="le-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
-    <div class="pg-page login" data-page="le-busy-rec" aria-busy="true" hidden>
+  </section>
+
+  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Много новых устройств за 30 дней (409): «Устройства на сайте»">
+    <!-- 409 device_change_limit — больше трех новых устройств за 30 дней: та же кнопка на /devices сайта -->
+    <div class="pg-page login" data-page="lg" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="le-busy-rec-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="lg-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="le-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
+          <input id="lg-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
+      <p class="login-error t-wrap" role="alert" data-ui-text="account.error.deviceChanges">За 30 дней к аккаунту добавлено слишком много новых устройств. Проверьте устройства на сайте или обратитесь к администратору.</p>
+      <button class="btn-primary login-submit" data-login-submit data-goto="lg-busy" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-secondary login-site" data-toast="В браузере откроется https://example.org/devices: проверьте устройства" data-ui-text="account.devices">Устройства на сайте</button>
+    </div>
+    <div class="pg-page login" data-page="lg-busy" aria-busy="true" hidden>
+      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
+        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
+        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
+      </div>
+      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
+      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
+      <label class="login-field first">
+        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
+        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
+      <div class="login-field" data-reveal-scope>
+        <label class="t-small login-label" for="lg-busy-password" data-ui-text="account.password">Пароль</label>
+        <div class="input login-secret">
+          <input id="lg-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
+          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
+        </div>
+      </div>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
   </section>
 
   <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Нет связи с сайтом">
     <!-- Сеть, срок ожидания, TLS или DNS: вход не выполнен, повторить можно сразу -->
-    <div class="pg-page login" data-page="lf-code" data-login>
+    <div class="pg-page login" data-page="lh" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lf-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="lh-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="lf-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="lh-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="lf-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
       <p class="login-error t-wrap" role="alert" data-ui-text="account.error.network">Нет связи с сайтом. Проверьте подключение к интернету и повторите.</p>
-      <button class="btn-primary login-submit" data-login-submit data-goto="lf-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-primary login-submit" data-login-submit data-goto="lh-busy" data-ui-text="account.signIn">Войти</button>
     </div>
-    <div class="pg-page login" data-page="lf-rec" data-login hidden>
+    <div class="pg-page login" data-page="lh-busy" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lf-rec-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="lh-busy-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="lf-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="lh-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-goto="lf-code-clean" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="lf-busy-rec" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="lf-code-clean" data-login hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lf-code-clean-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lf-code-clean-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="lf-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="lf-busy-code" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="lf-busy-code" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lf-busy-code-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lf-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
-    </div>
-    <div class="pg-page login" data-page="lf-busy-rec" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lf-busy-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lf-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
   </section>
 
   <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Доступ отозван на сайте — защита выключена">
     <!-- Проверка получила 401: токен стерт, защита выключена, окно вернулось ко входу с пояснением -->
-    <div class="pg-page login" data-page="lg-code" data-login>
+    <div class="pg-page login" data-page="li" data-login>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <div class="banner warning login-notice" role="status"><i data-icon="Warning" data-stroke="2" data-size="18"></i><span class="t-wrap" data-ui-text="account.revoked">Доступ отозван на сайте, защита выключена. Войдите снова или обратитесь к администратору.</span></div>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lg-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="li-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="lg-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
+          <input id="li-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-goto="lg-rec" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="lg-busy-code" data-ui-text="account.signIn">Войти</button>
+      <button class="btn-primary login-submit" data-login-submit data-goto="li-busy" data-ui-text="account.signIn">Войти</button>
     </div>
-    <div class="pg-page login" data-page="lg-rec" data-login hidden>
+    <div class="pg-page login" data-page="li-busy" aria-busy="true" hidden>
       <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
         <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
         <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
       </div>
       <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
       <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <div class="banner warning login-notice" role="status"><i data-icon="Warning" data-stroke="2" data-size="18"></i><span class="t-wrap" data-ui-text="account.revoked">Доступ отозван на сайте, защита выключена. Войдите снова или обратитесь к администратору.</span></div>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lg-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lg-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-goto="lg-code" data-ui-text="account.code.use">Войти по коду 2FA</button>
-      <button class="btn-primary login-submit" data-login-submit data-goto="lg-busy-rec" data-ui-text="account.signIn">Войти</button>
-    </div>
-    <div class="pg-page login" data-page="lg-busy-code" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
+      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.</p>
       <div class="banner warning login-notice" role="status"><i data-icon="Warning" data-stroke="2" data-size="18"></i><span class="t-wrap" data-ui-text="account.revoked">Доступ отозван на сайте, защита выключена. Войдите снова или обратитесь к администратору.</span></div>
       <label class="login-field first">
         <span class="t-small login-label" data-ui-text="account.email">Почта</span>
         <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
       </label>
       <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lg-busy-code-password" data-ui-text="account.password">Пароль</label>
+        <label class="t-small login-label" for="li-busy-password" data-ui-text="account.password">Пароль</label>
         <div class="input login-secret">
-          <input id="lg-busy-code-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
+          <input id="li-busy-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
           <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
         </div>
       </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.code">Код 2FA</span>
-        <input class="input" data-login-field inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" value="123456">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.code.hint">6 цифр из приложения-аутентификатора</span>
-      <button class="btn-link login-toggle" data-ui-text="account.recovery.use">Войти по резервному коду</button>
-      <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
-    </div>
-    <div class="pg-page login" data-page="lg-busy-rec" aria-busy="true" hidden>
-      <div class="segments login-lang" data-os="desktop android" role="radiogroup" aria-label="Язык">
-        <button class="segment on" role="radio" aria-checked="true" data-ui-text="welcome.lang.ru">RU</button>
-        <button class="segment" role="radio" aria-checked="false" data-ui-text="welcome.lang.en">EN</button>
-      </div>
-      <span class="login-logo"><i data-icon="Shield" data-detail="Mark.Ok" data-stroke="1.9" data-size="36"></i></span>
-      <span class="t-h1 t-wrap login-title" data-ui-text="account.title">Вход в Private Gateway</span>
-      <p class="login-text" data-ui-text="account.text">Войдите аккаунтом сайта Private Gateway Web: те же почта, пароль и код 2FA, что и на сайте.</p>
-      <div class="banner warning login-notice" role="status"><i data-icon="Warning" data-stroke="2" data-size="18"></i><span class="t-wrap" data-ui-text="account.revoked">Доступ отозван на сайте, защита выключена. Войдите снова или обратитесь к администратору.</span></div>
-      <label class="login-field first">
-        <span class="t-small login-label" data-ui-text="account.email">Почта</span>
-        <input class="input" type="email" data-login-field autocomplete="username" spellcheck="false" value="anna@example.org">
-      </label>
-      <div class="login-field" data-reveal-scope>
-        <label class="t-small login-label" for="lg-busy-rec-password" data-ui-text="account.password">Пароль</label>
-        <div class="input login-secret">
-          <input id="lg-busy-rec-password" type="password" data-login-field data-reveal-input autocomplete="current-password" value="example-password">
-          <button class="btn-icon" data-reveal data-icon-hidden="Eye" data-icon-shown="EyeOff" data-reveal-size="18" aria-pressed="false" aria-label="Показать пароль" data-ui-text="account.password.show"><i data-icon="Eye" data-stroke="1.9" data-size="18"></i></button>
-        </div>
-      </div>
-      <label class="login-field">
-        <span class="t-small login-label" data-ui-text="account.recovery">Резервный код</span>
-        <input class="input" data-login-field autocomplete="off" spellcheck="false" maxlength="64" value="abcd-efgh-2345">
-      </label>
-      <span class="t-caption login-hint" data-ui-text="account.recovery.hint">Один из кодов, сохраненных при настройке 2FA</span>
-      <button class="btn-link login-toggle" data-ui-text="account.code.use">Войти по коду 2FA</button>
       <button class="btn-primary login-submit" disabled data-ui-text="account.signingIn">Вход…</button>
     </div>
   </section>

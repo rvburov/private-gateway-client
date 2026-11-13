@@ -35,6 +35,8 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
@@ -66,7 +68,10 @@ import com.privategateway.client.ui.theme.PgSegments
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 
-/** Действия экрана входа: поля, переключатель кода, «Войти» и страница сайта ([site] — полный адрес https). */
+/**
+ * Действия экрана входа: поля, переключатель кода, «Войти», страница сайта ([site] — полный адрес https) и «Войти другим
+ * аккаунтом» на втором шаге ([back]).
+ */
 class LoginActions(
     val email: (String) -> Unit,
     val password: (String) -> Unit,
@@ -74,26 +79,37 @@ class LoginActions(
     val toggleRecovery: () -> Unit,
     val submit: () -> Unit,
     val site: (String) -> Unit,
+    val back: () -> Unit,
 )
 
 /**
  * Вход в аккаунт сайта (решение 621): до любого другого экрана, и до приветствия первого запуска; островка нет. Сверху — язык
  * RU/EN (Android 13+, как на приветствии), знак, заголовок и пояснение; почему вход нужен снова ([notice]: доступ отозван или
- * срок истек); почта, пароль с «глазом», код 2FA или резервный код и «Войти» («Вход…» и недоступна, пока идет запрос). Enter в
- * поле кода отправляет форму. Ошибка — текстом под формой; у 403 и 409 — кнопка на страницу сайта (решение 626).
+ * срок истек). Два шага (0.2.1, 2FA — только у администраторов): почта, пароль с «глазом» и «Войти»; если сайт ответил «нужен
+ * код» ([LoginUi.codeStep]) — «Код подтверждения администратора»: код 2FA или резервный код, «Войти» и «Войти другим
+ * аккаунтом». «Войти» — «Вход…» и недоступна, пока идет запрос; Enter в последнем поле шага отправляет форму. Ошибка — текстом
+ * под формой; у 403 и 409 — кнопка на страницу сайта (решение 626).
  */
 @Composable
 fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, language: ((String) -> Unit)?) {
     val scroll = rememberScrollState()
     // Окно во весь экран (edge-to-edge): клавиатуру форма учитывает сама, как ImportScreen. Отступы — до прокрутки: область
     // прокрутки уменьшается на высоту клавиатуры, и поле в фокусе прокручивается в видимую часть.
-    var codeFocused by remember { mutableStateOf(false) }
+    var lastFocused by remember { mutableStateOf(false) }
     val keyboard = WindowInsets.ime.getBottom(LocalDensity.current) > 0
-    LaunchedEffect(codeFocused, keyboard) {
-        // Поле кода — последнее: с ним на экране должны быть и «Войти», и ошибка под формой, а не только само поле. Конец
-        // формы сдвигается, пока выезжает клавиатура и появляется ошибка, — прокрутка идет за ним.
-        if (codeFocused && keyboard) {
+    LaunchedEffect(lastFocused, keyboard) {
+        // Последнее поле шага (пароль или код): с ним на экране должны быть и «Войти», и ошибка под формой, а не только само
+        // поле. Конец формы сдвигается, пока выезжает клавиатура и появляется ошибка, — прокрутка идет за ним.
+        if (lastFocused && keyboard) {
             snapshotFlow { scroll.maxValue }.collect { scroll.scrollTo(it) }
+        }
+    }
+
+    // Второй шаг открылся — код вводят сразу.
+    val codeFocus = remember { FocusRequester() }
+    LaunchedEffect(ui.codeStep) {
+        if (ui.codeStep) {
+            codeFocus.requestFocus()
         }
     }
 
@@ -130,16 +146,16 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
 
         Spacer(Modifier.size(PgSpace.L))
         Text(
-            stringResource(R.string.account_title),
-            Modifier.fillMaxWidth(),
+            stringResource(if (ui.codeStep) R.string.account_code_title else R.string.account_title),
+            Modifier.fillMaxWidth().testTag("login.title"),
             color = PgColor.Text.Primary,
             style = PgType.H1,
             textAlign = TextAlign.Center,
         )
         Spacer(Modifier.size(PgSpace.S))
         Text(
-            stringResource(R.string.account_text),
-            Modifier.fillMaxWidth(),
+            if (ui.codeStep) stringResource(R.string.account_code_text, ui.email.trim()) else stringResource(R.string.account_text),
+            Modifier.fillMaxWidth().testTag("login.text"),
             color = PgColor.Text.Secondary,
             style = PgType.Body,
             textAlign = TextAlign.Center,
@@ -152,52 +168,53 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
 
         Spacer(Modifier.size(24.dp))
         val submit = { if (ui.ready && !ui.busy) actions.submit() }
-        Field(stringResource(R.string.account_email))
-        PgInput(
-            ui.email,
-            actions.email,
-            stringResource(R.string.account_email),
-            "login.email",
-            keyboard = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = ImeAction.Next),
-        )
+        if (!ui.codeStep) {
+            Field(stringResource(R.string.account_email))
+            PgInput(
+                ui.email,
+                actions.email,
+                stringResource(R.string.account_email),
+                "login.email",
+                keyboard = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+            )
 
-        Spacer(Modifier.size(PgSpace.L))
-        Field(stringResource(R.string.account_password))
-        Password(ui.password, actions.password)
-
-        Spacer(Modifier.size(PgSpace.L))
-        val codeLabel = stringResource(if (ui.recovery) R.string.account_recovery else R.string.account_code)
-        Field(codeLabel)
-        PgInput(
-            ui.code,
-            actions.code,
-            codeLabel,
-            "login.code",
-            Modifier.onFocusChanged { codeFocused = it.isFocused },
-            keyboard = KeyboardOptions(
-                keyboardType = if (ui.recovery) KeyboardType.Text else KeyboardType.NumberPassword,
-                autoCorrectEnabled = false,
-                imeAction = ImeAction.Done,
-            ),
-            actions = KeyboardActions(onDone = { submit() }),
-        )
-        Spacer(Modifier.size(PgSpace.Xs))
-        Text(
-            stringResource(if (ui.recovery) R.string.account_recovery_hint else R.string.account_code_hint),
-            Modifier.testTag("login.code.hint"),
-            color = PgColor.Text.Muted,
-            style = PgType.Caption,
-        )
-        Text(
-            stringResource(if (ui.recovery) R.string.account_code_use else R.string.account_recovery_use),
-            Modifier
-                .heightIn(min = PgLayout.TouchTarget)
-                .clickable(role = Role.Button, onClick = actions.toggleRecovery)
-                .padding(vertical = PgSpace.M)
-                .testTag("login.recovery.toggle"),
-            color = PgColor.Accent.Base,
-            style = PgType.Small,
-        )
+            Spacer(Modifier.size(PgSpace.L))
+            Field(stringResource(R.string.account_password))
+            Password(ui.password, actions.password, submit) { lastFocused = it }
+        } else {
+            val codeLabel = stringResource(if (ui.recovery) R.string.account_recovery else R.string.account_code)
+            Field(codeLabel)
+            PgInput(
+                ui.code,
+                actions.code,
+                codeLabel,
+                "login.code",
+                Modifier.focusRequester(codeFocus).onFocusChanged { lastFocused = it.isFocused },
+                keyboard = KeyboardOptions(
+                    keyboardType = if (ui.recovery) KeyboardType.Text else KeyboardType.NumberPassword,
+                    autoCorrectEnabled = false,
+                    imeAction = ImeAction.Done,
+                ),
+                actions = KeyboardActions(onDone = { submit() }),
+            )
+            Spacer(Modifier.size(PgSpace.Xs))
+            Text(
+                stringResource(if (ui.recovery) R.string.account_recovery_hint else R.string.account_code_hint),
+                Modifier.testTag("login.code.hint"),
+                color = PgColor.Text.Muted,
+                style = PgType.Caption,
+            )
+            Text(
+                stringResource(if (ui.recovery) R.string.account_code_use else R.string.account_recovery_use),
+                Modifier
+                    .heightIn(min = PgLayout.TouchTarget)
+                    .clickable(role = Role.Button, onClick = actions.toggleRecovery)
+                    .padding(vertical = PgSpace.M)
+                    .testTag("login.recovery.toggle"),
+                color = PgColor.Accent.Base,
+                style = PgType.Small,
+            )
+        }
 
         val error = ui.error
         if (error != null) {
@@ -224,10 +241,10 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
             height = 50.dp,
         )
 
-        // 403 — 2FA настраивается на сайте; 409 — лишнее устройство удаляется на странице устройств сайта.
+        // 403 — 2FA администратора настраивается на сайте; 409 — устройства на странице устройств сайта.
         val page = when (error) {
             AccountError.SetupRequired -> R.string.account_site to AccountApi.LOGIN_PAGE
-            AccountError.DeviceLimit -> R.string.account_devices to AccountApi.DEVICES_PAGE
+            AccountError.DeviceLimit, AccountError.DeviceChangeLimit -> R.string.account_devices to AccountApi.DEVICES_PAGE
             else -> null
         }
         if (page != null) {
@@ -240,6 +257,21 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
                 height = 46.dp,
             )
         }
+
+        if (ui.codeStep) {
+            // Второй шаг: вернуться к почте и паролю (пока идет запрос — нельзя).
+            Text(
+                stringResource(R.string.account_code_back),
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .heightIn(min = PgLayout.TouchTarget)
+                    .clickable(enabled = !ui.busy, role = Role.Button, onClick = actions.back)
+                    .padding(vertical = PgSpace.M, horizontal = PgSpace.S)
+                    .testTag("login.back"),
+                color = if (ui.busy) PgColor.Text.Muted else PgColor.Accent.Base,
+                style = PgType.Small,
+            )
+        }
     }
 }
 
@@ -249,9 +281,9 @@ private fun Field(text: String) {
     Text(text, Modifier.padding(bottom = PgSpace.Xs), color = PgColor.Text.Primary, style = PgType.BodyStrong)
 }
 
-/** Пароль и «глаз» рядом с полем: показать или скрыть введенное. */
+/** Пароль и «глаз» рядом с полем: показать или скрыть введенное. Пароль — последнее поле первого шага: Enter — «Войти». */
 @Composable
-private fun Password(value: String, onChange: (String) -> Unit) {
+private fun Password(value: String, onChange: (String) -> Unit, submit: () -> Unit, focused: (Boolean) -> Unit) {
     var shown by rememberSaveable { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically) {
         PgInput(
@@ -259,9 +291,10 @@ private fun Password(value: String, onChange: (String) -> Unit) {
             onChange,
             stringResource(R.string.account_password),
             "login.password",
-            Modifier.weight(1f),
-            keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+            Modifier.weight(1f).onFocusChanged { focused(it.isFocused) },
+            keyboard = KeyboardOptions(keyboardType = KeyboardType.Password, autoCorrectEnabled = false, imeAction = ImeAction.Done),
             visual = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
+            actions = KeyboardActions(onDone = { submit() }),
         )
         Spacer(Modifier.width(PgSpace.S))
         val label = stringResource(R.string.account_password_show)

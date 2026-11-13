@@ -63,6 +63,22 @@ public sealed class AccountServiceTests : IDisposable
     }
 
     [Fact]
+    public async Task Administrator_is_asked_for_a_code_and_nothing_is_saved_until_it_comes()
+    {
+        // 0.2.1: первый шаг — без кода; сайт ответил «нужен код» — входа еще нет, повтор — с кодом.
+        _api.Login = _ => throw new AccountApiException(AccountFailure.CodeRequired, 401);
+        var account = Service();
+
+        (await account.SignInAsync("admin@example.com", "pw", null, " ", Ct)).ShouldBe(new LoginOutcome(AccountFailure.CodeRequired));
+
+        (_secrets.Values.Count, _store.Saved, account.HasAccess, _gateway.Grants).ShouldBe((0, null, false, 0));
+        _api.Login = null;
+        (await account.SignInAsync("admin@example.com", "pw", "654321", null, Ct)).ShouldBe(LoginOutcome.Success);
+        _api.Logins.Select(r => (r.Password, r.Code, r.RecoveryCode)).ShouldBe([("pw", null, null), ("pw", "654321", null)]);
+        account.HasAccess.ShouldBeTrue();
+    }
+
+    [Fact]
     public async Task Without_the_os_store_there_is_no_sign_in_and_no_request()
     {
         _secrets.Available = false;

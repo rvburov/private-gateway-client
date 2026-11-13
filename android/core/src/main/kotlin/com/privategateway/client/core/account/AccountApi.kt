@@ -4,6 +4,7 @@ import com.privategateway.client.core.links.JsonText
 import com.privategateway.client.core.links.JsonTree
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.io.InputStream
 import java.net.HttpRetryException
 import java.net.HttpURLConnection
 import java.net.URI
@@ -15,7 +16,10 @@ import java.time.format.DateTimeParseException
 
 /** Что приложение спрашивает у сайта: вход, проверка доступа и выход — шов над [AccountApi], в тестах подделка. */
 interface AccountSource {
-    /** Вход по почте, паролю и коду 2FA ([code]) или резервному коду ([recovery]) — ровно одно из двух. */
+    /**
+     * Вход по почте и паролю; на втором шаге — еще код 2FA ([code]) или резервный код ([recovery]), не больше одного. Первый
+     * шаг — без кода: участнику его хватает, администратору сайт ответит [LoginResult.CodeRequired].
+     */
     suspend fun login(email: String, password: String, code: String?, recovery: String?, device: DeviceInfo): LoginResult
 
     suspend fun status(token: String): StatusResult
@@ -28,8 +32,9 @@ interface AccountSource {
  * API приложения на сайте Private Gateway Web (/api/app/…): только HTTPS на постоянный адрес [SITE]; в тестах — http на
  * 127.0.0.1. Перенаправлениям не следует (токен не уходит на другой адрес), ответ — не больше [maxBytes], [timeoutMs] на
  * соединение и чтение. Решение о доступе принимает сайт; клиент только раскладывает ответ. Тела ошибок и тексты исключений
- * наружу не идут: итог — причина ([AccountError]) или вид ответа ([StatusResult]). Токен, пароль, коды и почта никуда, кроме
- * тела запроса и заголовка Authorization, не пишутся. Сеть — блокирующая: вызывать не в главном потоке.
+ * наружу не идут: итог — причина ([AccountError]) или вид ответа ([StatusResult]); из тела ошибки входа читается только код
+ * сайта у 401 и 409 ({"error":{"code":"…"}}): им различаются «нужен код» и «частая смена устройств». Токен, пароль, коды и
+ * почта никуда, кроме тела запроса и заголовка Authorization, не пишутся. Сеть — блокирующая: вызывать не в главном потоке.
  */
 class AccountApi(
     private val base: URI = SITE,
@@ -42,13 +47,16 @@ class AccountApi(
         require(secure(base)) { "Адрес сайта — только https (http — только 127.0.0.1 для тестов)" }
     }
 
+    /** Вход: без кода — первый шаг; с кодом 2FA ([code]) или резервным ([recovery]) — второй, не больше одного из двух. */
     fun login(email: String, password: String, code: String?, recovery: String?, device: DeviceInfo): LoginResult {
-        require((code == null) != (recovery == null)) { "Нужен ровно один из кодов: 2FA или резервный" }
+        require(code == null || recovery == null) { "Не больше одного кода: 2FA или резервный" }
         val fields = linkedMapOf<String, Any?>("email" to email.trim(), "password" to password)
         if (code != null) {
             fields["code"] = code.trim()
-        } else {
-            fields["recovery_code"] = recovery?.trim()
+        }
+
+        if (recovery != null) {
+            fields["recovery_code"] = recovery.trim()
         }
 
         fields["device"] = linkedMapOf(
@@ -57,15 +65,16 @@ class AccountApi(
             "platform" to device.platform,
             "app_version" to device.appVersion,
         )
-        val answer = send("POST", "/api/app/login", null, JsonText.value(fields))
+        val answer = send("POST", "/api/app/login", null, JsonText.value(fields), errorCodes = true)
         return when (answer) {
             is Answer.Failed -> LoginResult.Failed(AccountError.Network)
             is Answer.Status -> when (answer.code) {
                 200 -> answer.body?.let { parseSession(it) }?.let { LoginResult.Ok(it) } ?: LoginResult.Failed(AccountError.Server)
-                401 -> LoginResult.Failed(AccountError.Invalid)
+                // Незнакомый код сайта — безопасный запасной вариант: 401 — «неверная почта или пароль», 409 — «лимит устройств».
+                401 -> if (answer.error == "code_required") LoginResult.CodeRequired else LoginResult.Failed(AccountError.Invalid)
                 400 -> LoginResult.Failed(AccountError.Code)
                 403 -> LoginResult.Failed(AccountError.SetupRequired)
-                409 -> LoginResult.Failed(AccountError.DeviceLimit)
+                409 -> LoginResult.Failed(if (answer.error == "device_change_limit") AccountError.DeviceChangeLimit else AccountError.DeviceLimit)
                 429 -> LoginResult.Failed(AccountError.RateLimited, retryMinutes(answer.retryAfter))
                 422 -> LoginResult.Failed(AccountError.Validation)
                 else -> LoginResult.Failed(AccountError.Server)
@@ -87,14 +96,15 @@ class AccountApi(
     fun logout(token: String): Boolean = (send("POST", "/api/app/logout", token, "") as? Answer.Status)?.code in 200..299
 
     private sealed interface Answer {
-        /** Сайт ответил: код, тело (только у 200) и Retry-After (секунды, только у 429). */
-        class Status(val code: Int, val body: String?, val retryAfter: String?) : Answer
+        /** Сайт ответил: код, тело (только у 200), Retry-After (секунды, у 429) и код ошибки сайта (у 401 и 409 входа). */
+        class Status(val code: Int, val body: String?, val retryAfter: String?, val error: String? = null) : Answer
 
         /** Ответа нет: сеть, DNS, TLS, таймаут, слишком большой ответ. */
         data object Failed : Answer
     }
 
-    private fun send(method: String, path: String, token: String?, body: String?): Answer {
+    /** Запрос к сайту; [errorCodes] — прочитать код ошибки сайта у 401 и 409 (только вход: у проверки любой 401 — отзыв). */
+    private fun send(method: String, path: String, token: String?, body: String?, errorCodes: Boolean = false): Answer {
         val connection = try {
             openConnection(base.resolve(path))
         } catch (_: IOException) {
@@ -133,8 +143,9 @@ class AccountApi(
                 return Answer.Failed
             }
 
-            val text = if (code == 200) read(connection) ?: return Answer.Failed else null
-            return Answer.Status(code, text, connection.getHeaderField("Retry-After"))
+            val text = if (code == 200) read(connection.inputStream, connection.contentLengthLong) ?: return Answer.Failed else null
+            val error = if (errorCodes && (code == 401 || code == 409)) errorCode(connection) else null
+            return Answer.Status(code, text, connection.getHeaderField("Retry-After"), error)
         } catch (_: IOException) {
             return Answer.Failed
         } catch (_: SecurityException) {
@@ -144,14 +155,28 @@ class AccountApi(
         }
     }
 
+    /**
+     * Код ошибки сайта из тела {"error":{"code":"…"}}. Остальное тело не разбирается и никуда не попадает; тела нет, оно больше
+     * [maxBytes], не JSON или оборвалось — null: причина остается по коду ответа.
+     */
+    private fun errorCode(connection: HttpURLConnection): String? {
+        val text = try {
+            connection.errorStream?.let { read(it, connection.contentLengthLong) }
+        } catch (_: IOException) {
+            null
+        }
+
+        return string(text?.let { tree(it) }?.get("error") as? Map<*, *>, "code")
+    }
+
     /** Тело ответа не больше [maxBytes]; больше — как нет ответа (null). */
-    private fun read(connection: HttpURLConnection): String? {
-        if (connection.contentLengthLong > maxBytes) {
+    private fun read(stream: InputStream, length: Long): String? {
+        if (length > maxBytes) {
             return null
         }
 
         val out = ByteArrayOutputStream()
-        connection.inputStream.use { input ->
+        stream.use { input ->
             val chunk = ByteArray(8 * 1024)
             while (true) {
                 val read = input.read(chunk)

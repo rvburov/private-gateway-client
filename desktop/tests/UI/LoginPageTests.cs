@@ -22,8 +22,9 @@ using PrivateGateway.Client.UI.Views;
 namespace PrivateGateway.Client.Tests.UI;
 
 /// <summary>
-/// Вход в аккаунт сайта (доска 10, перед приветствием; решения 621, 626): ворота до любого экрана, форма, ошибки сайта,
-/// потеря доступа и выход в «Настройках». Сервис входа настоящий, сайт — подделка без сети.
+/// Вход в аккаунт сайта (доска 10, перед приветствием; решения 621, 626): ворота до любого экрана, форма в два шага
+/// (почта и пароль, а администратору — код 2FA), ошибки сайта, потеря доступа и выход в «Настройках». Сервис входа
+/// настоящий, сайт — подделка без сети.
 /// </summary>
 public sealed class LoginPageTests : WindowHarness
 {
@@ -37,6 +38,9 @@ public sealed class LoginPageTests : WindowHarness
         Find<Border>(window, "LoginNotice").IsVisible.ShouldBeFalse("первый вход — без причины");
         Find<TextBlock>(window, "LoginError").IsVisible.ShouldBeFalse();
         Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("поля пустые");
+        Text(window, "LoginText").ShouldBe("Войдите аккаунтом сайта Private Gateway Web: те же почта и пароль, что и на сайте.");
+        (Find<StackPanel>(window, "LoginCredentials").IsVisible, Find<StackPanel>(window, "LoginCodeStep").IsVisible,
+            Find<Button>(window, "LoginBack").IsVisible).ShouldBe((true, false, false), "кода на первом шаге нет: 2FA — только у администраторов");
         Snapshot(window, "login");
 
         foreach (var other in new[] { Pages.Home, Pages.Welcome, Pages.Settings, Pages.Add, Pages.Problem })
@@ -60,7 +64,7 @@ public sealed class LoginPageTests : WindowHarness
 
         (Loc.Instance.Language, Service<SettingsService>().Current.Language).ShouldBe(("en", "en"));
         Text(window, "LoginTitle").ShouldBe("Sign in to Private Gateway");
-        Text(window, "LoginCodeLabel").ShouldBe("2FA code");
+        Text(window, "LoginText").ShouldBe("Use your Private Gateway Web account: the same email and password as on the site.");
         page.IsRussian.ShouldBeFalse();
         Snapshot(window, "login-en");
     }
@@ -70,13 +74,14 @@ public sealed class LoginPageTests : WindowHarness
     {
         var (window, shell, page) = OpenLogin(firstLaunch: true);
 
-        Fill(window, " anna@example.com ", "secret pass", "123456");
+        Fill(window, " anna@example.com ", "secret pass");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Welcome);
 
         shell.IsIslandVisible.ShouldBeFalse("дальше — приветствие первого запуска");
         var request = AccountApi.Logins.ShouldHaveSingleItem();
-        (request.Email, request.Password, request.Code, request.RecoveryCode).ShouldBe(("anna@example.com", "secret pass", "123456", null));
+        (request.Email, request.Password, request.Code, request.RecoveryCode).ShouldBe(("anna@example.com", "secret pass", null, null),
+            "участник входит почтой и паролем, без кода");
         Secrets.Values[AccountService.TokenKey].ShouldBe(FakeAccountApi.IssuedToken);
         (page.Email, page.Password, page.Code).ShouldBe((" anna@example.com ", "", ""), "пароль и код не остаются в памяти");
     }
@@ -86,7 +91,7 @@ public sealed class LoginPageTests : WindowHarness
     {
         var (window, shell, _) = OpenLogin();
 
-        Fill(window, FakeAccountApi.Email, "pw", "654321");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Home);
 
@@ -100,10 +105,11 @@ public sealed class LoginPageTests : WindowHarness
     {
         { AccountFailure.InvalidCredentials, "Неверная почта или пароль." },
         { AccountFailure.InvalidCode, "Код неверный или уже использован. Введите новый." },
-        { AccountFailure.SetupRequired, "Двухфакторная защита еще не настроена. Войдите один раз на сайт, настройте ее и вернитесь." },
+        { AccountFailure.SetupRequired, "Для аккаунта администратора нужна двухфакторная защита, а она еще не настроена. Войдите на сайт, настройте ее и вернитесь." },
         { AccountFailure.DeviceLimit, "Аккаунт уже используется на наибольшем числе устройств. Удалите старое устройство на сайте, чтобы освободить место." },
+        { AccountFailure.DeviceChangeLimit, "За 30 дней к аккаунту добавлено слишком много новых устройств. Проверьте устройства на сайте или обратитесь к администратору." },
         { AccountFailure.RateLimited, "Слишком много попыток. Повторите через 2 мин." },
-        { AccountFailure.Validation, "Проверьте почту и код: код 2FA — 6 цифр." },
+        { AccountFailure.Validation, "Проверьте почту. Код 2FA — ровно 6 цифр." },
         { AccountFailure.Network, "Нет связи с сайтом. Проверьте подключение к интернету и повторите." },
         { AccountFailure.Server, "Сайт ответил ошибкой. Повторите позже." },
     };
@@ -116,18 +122,20 @@ public sealed class LoginPageTests : WindowHarness
         AccountApi.RetryAfter = TimeSpan.FromSeconds(61);
         var (window, shell, page) = OpenLogin();
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => !page.IsBusy);
 
         shell.CurrentKey.ShouldBe(Pages.Login);
+        page.IsCodeStep.ShouldBeFalse();
         Find<TextBlock>(window, "LoginError").IsVisible.ShouldBeTrue();
         Text(window, "LoginError").ShouldBe(text);
         Find<Button>(window, "LoginOpenSite").IsVisible.ShouldBe(failure == AccountFailure.SetupRequired, "«Открыть сайт» — только у 403");
-        Find<Button>(window, "LoginOpenDevices").IsVisible.ShouldBe(failure == AccountFailure.DeviceLimit, "«Устройства на сайте» — только у 409");
+        Find<Button>(window, "LoginOpenDevices").IsVisible.ShouldBe(failure is AccountFailure.DeviceLimit or AccountFailure.DeviceChangeLimit,
+            "«Устройства на сайте» — только у 409");
         Secrets.Values.ShouldNotContainKey(AccountService.TokenKey);
         (page.Email, page.Password, page.Code).ShouldBe((FakeAccountApi.Email, "", ""));
-        Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("пароль и код нужно ввести заново");
+        Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("пароль нужно ввести заново");
     }
 
     [AvaloniaFact]
@@ -136,7 +144,7 @@ public sealed class LoginPageTests : WindowHarness
         AccountApi.LoginFailure = AccountFailure.RateLimited;
         AccountApi.RetryAfter = TimeSpan.FromMinutes(5);
         var (window, _, page) = OpenLogin();
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => page.HasError);
 
@@ -152,7 +160,7 @@ public sealed class LoginPageTests : WindowHarness
         Secrets.Available = false;
         var (window, _, page) = OpenLogin();
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => page.HasError);
 
@@ -165,20 +173,28 @@ public sealed class LoginPageTests : WindowHarness
     {
         AccountApi.LoginFailure = AccountFailure.SetupRequired;
         var (window, _, page) = OpenLogin();
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => page.CanOpenSite);
         Press(window, "LoginOpenSite");
 
         AccountApi.LoginFailure = AccountFailure.DeviceLimit;
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => page.CanOpenDevices);
         Find<Button>(window, "LoginOpenSite").IsVisible.ShouldBeFalse();
         Snapshot(window, "login-error");
         Press(window, "LoginOpenDevices");
 
-        Urls.Opened.ShouldBe([AccountSite.LoginPage, AccountSite.DevicesPage]);
+        AccountApi.LoginFailure = AccountFailure.DeviceChangeLimit;
+        Fill(window, FakeAccountApi.Email, "pw");
+        Press(window, "SignInButton");
+        WaitFor(() => page.Failure == AccountFailure.DeviceChangeLimit);
+        page.CanOpenDevices.ShouldBeTrue("частая смена устройств — та же кнопка «Устройства на сайте»");
+        Snapshot(window, "login-device-changes");
+        Press(window, "LoginOpenDevices");
+
+        Urls.Opened.ShouldBe([AccountSite.LoginPage, AccountSite.DevicesPage, AccountSite.DevicesPage]);
         Urls.Opened.ShouldAllBe(url => url.Scheme == Uri.UriSchemeHttps);
     }
 
@@ -186,19 +202,137 @@ public sealed class LoginPageTests : WindowHarness
     public void Enter_in_the_form_signs_in_once_the_fields_are_filled()
     {
         var (window, shell, _) = OpenLogin();
-        var code = Find<TextBox>(window, "LoginCode");
+        var password = Find<TextBox>(window, "LoginPassword");
 
-        Fill(window, FakeAccountApi.Email, "pw", "12345");
-        code.Focus();
+        Fill(window, FakeAccountApi.Email, "");
+        password.Focus();
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatcher.UIThread.RunJobs();
-        AccountApi.Logins.ShouldBeEmpty("в коде 2FA пять цифр — форма не готова");
+        AccountApi.Logins.ShouldBeEmpty("пароль пустой — форма не готова");
+
+        password.Text = "pw";
+        Dispatcher.UIThread.RunJobs();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        AccountApi.Logins.ShouldHaveSingleItem().Code.ShouldBeNull();
+    }
+
+    [AvaloniaFact]
+    public void Enter_in_the_code_field_signs_in_once_there_are_six_digits()
+    {
+        AccountApi.RequiresCode = true;
+        var (window, shell, page) = ToCodeStep();
+        var code = Find<TextBox>(window, "LoginCode");
+
+        code.Text = "12345";
+        Dispatcher.UIThread.RunJobs();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatcher.UIThread.RunJobs();
+        AccountApi.Logins.Count.ShouldBe(1, "в коде 2FA пять цифр — второй шаг не готов");
 
         code.Text = "123456";
         Dispatcher.UIThread.RunJobs();
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         WaitFor(() => shell.CurrentKey == Pages.Home);
-        AccountApi.Logins.ShouldHaveSingleItem().Code.ShouldBe("123456");
+        AccountApi.Logins.Select(r => r.Code).ShouldBe([null, "123456"]);
+        (page.IsCodeStep, page.Password).ShouldBe((false, ""));
+    }
+
+    [AvaloniaFact]
+    public void Administrator_enters_the_code_on_a_second_step_and_the_password_waits_in_memory()
+    {
+        AccountApi.RequiresCode = true;
+        var (window, shell, page) = OpenLogin();
+
+        Fill(window, FakeAccountApi.Email, "secret pass");
+        Press(window, "SignInButton");
+        WaitFor(() => page.IsCodeStep);
+
+        (Find<StackPanel>(window, "LoginCredentials").IsVisible, Find<StackPanel>(window, "LoginCodeStep").IsVisible,
+            Find<Button>(window, "LoginBack").IsVisible).ShouldBe((false, true, true));
+        Text(window, "LoginTitle").ShouldBe("Код подтверждения администратора");
+        Text(window, "LoginText").ShouldBe("anna@example.com — аккаунт администратора: введите код двухфакторной защиты.");
+        Text(window, "LoginCodeLabel").ShouldBe("Код 2FA");
+        Find<TextBlock>(window, "LoginError").IsVisible.ShouldBeFalse("«нужен код» — не ошибка, а следующий шаг");
+        Find<TextBox>(window, "LoginCode").IsFocused.ShouldBeTrue("код вводят сразу");
+        (page.Email, page.Password, page.Code).ShouldBe((FakeAccountApi.Email, "secret pass", ""), "пароль ждет кода в памяти");
+        Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("кода еще нет");
+        Secrets.Values.ShouldNotContainKey(AccountService.TokenKey);
+        Snapshot(window, "login-code");
+
+        AccountApi.PendingLogin = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        Find<TextBox>(window, "LoginCode").Text = "654321";
+        Dispatcher.UIThread.RunJobs();
+        Press(window, "SignInButton");
+        (Find<Button>(window, "SignInButton").Content, Find<Button>(window, "SignInButton").IsEffectivelyEnabled,
+            Find<Button>(window, "LoginBack").IsEffectivelyEnabled).ShouldBe(("Вход…", false, false));
+
+        AccountApi.PendingLogin.SetResult();
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        AccountApi.Logins.Select(r => (r.Email, r.Password, r.Code, r.RecoveryCode))
+            .ShouldBe([(FakeAccountApi.Email, "secret pass", null, null), (FakeAccountApi.Email, "secret pass", "654321", null)]);
+        (page.IsCodeStep, page.Password, page.Code).ShouldBe((false, "", ""), "вошли — пароль больше не нужен");
+    }
+
+    [AvaloniaFact]
+    public void Wrong_code_keeps_the_second_step_and_the_password_for_the_next_code()
+    {
+        AccountApi.RequiresCode = true;
+        AccountApi.LoginFailure = AccountFailure.InvalidCode;
+        var (window, shell, page) = ToCodeStep();
+
+        EnterCode(window, "111111");
+        Press(window, "SignInButton");
+        WaitFor(() => page.HasError);
+
+        page.IsCodeStep.ShouldBeTrue();
+        Text(window, "LoginError").ShouldBe("Код неверный или уже использован. Введите новый.");
+        (page.Password, page.Code).ShouldBe(("pw", ""), "код стерт, пароль ждет следующего кода");
+        Snapshot(window, "login-code-error");
+
+        AccountApi.LoginFailure = null;
+        EnterCode(window, "222222");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        AccountApi.Logins.Select(r => r.Code).ShouldBe([null, "111111", "222222"]);
+    }
+
+    [AvaloniaFact]
+    public void Another_account_returns_to_the_email_and_the_password()
+    {
+        AccountApi.RequiresCode = true;
+        AccountApi.LoginFailure = AccountFailure.InvalidCode;
+        var (window, _, page) = ToCodeStep();
+        EnterCode(window, "111111");
+        Press(window, "SignInButton");
+        WaitFor(() => page.HasError);
+        Press(window, "LoginToggleCode");
+
+        Press(window, "LoginBack");
+        Dispatcher.UIThread.RunJobs();
+
+        (page.IsCodeStep, page.IsRecovery, page.HasError).ShouldBe((false, false, false));
+        (page.Email, page.Password, page.Code).ShouldBe((FakeAccountApi.Email, "", ""), "почта остается, пароль и код стерты");
+        Find<StackPanel>(window, "LoginCredentials").IsVisible.ShouldBeTrue();
+        Find<TextBox>(window, "LoginEmail").IsFocused.ShouldBeTrue("другой аккаунт — с почты");
+        Text(window, "LoginTitle").ShouldBe("Вход в Private Gateway");
+        Find<Button>(window, "SignInButton").IsEffectivelyEnabled.ShouldBeFalse("пароль нужно ввести");
+    }
+
+    [AvaloniaFact]
+    public void Password_changed_while_the_code_was_typed_returns_to_the_first_step_with_the_error()
+    {
+        AccountApi.RequiresCode = true;
+        var (window, _, page) = ToCodeStep();
+        AccountApi.LoginFailure = AccountFailure.InvalidCredentials;
+
+        EnterCode(window, "123456");
+        Press(window, "SignInButton");
+        WaitFor(() => page.HasError);
+
+        page.IsCodeStep.ShouldBeFalse();
+        Text(window, "LoginError").ShouldBe("Неверная почта или пароль.");
+        (page.Email, page.Password, page.Code).ShouldBe((FakeAccountApi.Email, "", ""));
     }
 
     [AvaloniaFact]
@@ -208,13 +342,13 @@ public sealed class LoginPageTests : WindowHarness
         var (window, shell, page) = OpenLogin();
         var button = Find<Button>(window, "SignInButton");
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         button.IsEffectivelyEnabled.ShouldBeTrue();
         Press(window, "SignInButton");
 
         page.IsBusy.ShouldBeTrue();
         (button.Content, button.IsEffectivelyEnabled).ShouldBe(("Вход…", false));
-        Find<TextBox>(window, "LoginCode").Focus();
+        Find<TextBox>(window, "LoginPassword").Focus();
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatcher.UIThread.RunJobs();
         AccountApi.Logins.Count.ShouldBe(1, "второй запрос не уходит, пока идет первый");
@@ -227,7 +361,8 @@ public sealed class LoginPageTests : WindowHarness
     [AvaloniaFact]
     public void Code_field_takes_six_digits_and_switches_to_a_recovery_code()
     {
-        var (window, shell, page) = OpenLogin();
+        AccountApi.RequiresCode = true;
+        var (window, shell, page) = ToCodeStep();
         var code = Find<TextBox>(window, "LoginCode");
 
         code.Text = "12 34-5678";
@@ -241,11 +376,11 @@ public sealed class LoginPageTests : WindowHarness
         Find<Button>(window, "LoginToggleCode").Content.ShouldBe("Войти по коду 2FA");
         Snapshot(window, "login-recovery");
 
-        Fill(window, FakeAccountApi.Email, "pw", " abcd-efgh ");
+        EnterCode(window, " abcd-efgh ");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Home);
-        var request = AccountApi.Logins.ShouldHaveSingleItem();
-        (request.Code, request.RecoveryCode).ShouldBe((null, "abcd-efgh"));
+        var request = AccountApi.Logins[^1];
+        (request.Password, request.Code, request.RecoveryCode).ShouldBe(("pw", null, "abcd-efgh"));
     }
 
     [AvaloniaFact]
@@ -286,7 +421,7 @@ public sealed class LoginPageTests : WindowHarness
         Text(window, "LoginNoticeText").ShouldBe("Доступ отозван на сайте, защита выключена. Войдите снова или обратитесь к администратору.");
         Snapshot(window, "login-revoked");
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Home);
     }
@@ -348,7 +483,7 @@ public sealed class LoginPageTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         shell.CurrentKey.ShouldBe(Pages.Login, "ошибка службы не уводит со входа");
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Problem);
         Text(window, "ProblemTitle").ShouldBe("Служба не запущена");
@@ -358,7 +493,7 @@ public sealed class LoginPageTests : WindowHarness
     public async Task Sign_out_in_settings_asks_first_then_turns_protection_off_and_opens_an_empty_login()
     {
         var (window, shell, page) = OpenLogin();
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Home);
         await Connect(shell);
@@ -434,7 +569,7 @@ public sealed class LoginPageTests : WindowHarness
         };
         var (window, shell, page) = OpenLogin();
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => !page.IsBusy);
 
@@ -465,7 +600,7 @@ public sealed class LoginPageTests : WindowHarness
         service.ShouldNotBeNull().Status.State.ShouldBe(ConnectionState.Off, "служба просьбы не получила");
         (shell.Protection.Status.State, tray.Mark).ShouldBe((ConnectionState.Error, "Icon.Mark.Alert"));
 
-        Fill(window, FakeAccountApi.Email, "pw", "123456");
+        Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
         WaitFor(() => shell.CurrentKey == Pages.Home);
 
@@ -488,10 +623,27 @@ public sealed class LoginPageTests : WindowHarness
         return (window, shell, shell.CurrentPage.ShouldBeOfType<LoginPageViewModel>());
     }
 
-    private static void Fill(MainWindow window, string email, string password, string code)
+    /// <summary>Аккаунт администратора (<see cref="FakeAccountApi.RequiresCode"/>): почта и пароль приняты, ждем код.</summary>
+    private (MainWindow Window, ShellViewModel Shell, LoginPageViewModel Page) ToCodeStep()
+    {
+        var (window, shell, page) = OpenLogin();
+        Fill(window, FakeAccountApi.Email, "pw");
+        Press(window, "SignInButton");
+        WaitFor(() => page.IsCodeStep);
+        return (window, shell, page);
+    }
+
+    /// <summary>Первый шаг: почта и пароль.</summary>
+    private static void Fill(MainWindow window, string email, string password)
     {
         Find<TextBox>(window, "LoginEmail").Text = email;
         Find<TextBox>(window, "LoginPassword").Text = password;
+        Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>Второй шаг: код 2FA или резервный код.</summary>
+    private static void EnterCode(MainWindow window, string code)
+    {
         Find<TextBox>(window, "LoginCode").Text = code;
         Dispatcher.UIThread.RunJobs();
     }

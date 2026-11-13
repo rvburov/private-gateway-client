@@ -9,27 +9,36 @@ public static class AccountSite
     /// <summary>Адрес сайта; API входа — <c>/api/app/*</c>.</summary>
     public static readonly Uri Address = new("https://private-gateway.duckdns.org/");
 
-    /// <summary>Страница входа сайта: там настраивается 2FA (ответ 403 <c>setup_required</c>).</summary>
+    /// <summary>Страница входа сайта: там администратор настраивает 2FA (ответ 403 <c>setup_required</c>).</summary>
     public static readonly Uri LoginPage = new(Address, "login");
 
-    /// <summary>Страница «Устройства»: там освобождают место (ответ 409 <c>device_limit</c>).</summary>
+    /// <summary>Страница «Устройства»: там освобождают место (ответ 409 <c>device_limit</c> и <c>device_change_limit</c>).</summary>
     public static readonly Uri DevicesPage = new(Address, "devices");
 }
 
 /// <summary>Почему сайт не пустил или не ответил. Текст для пользователя — в интерфейсе (<c>account.error.*</c>).</summary>
 public enum AccountFailure
 {
-    /// <summary>401: при входе — неверные почта или пароль; при проверке — доступ отозван.</summary>
+    /// <summary>401: при входе — неверные почта или пароль (и любой другой код ошибки 401); при проверке — доступ отозван.</summary>
     InvalidCredentials,
+
+    /// <summary>
+    /// 401 <c>code_required</c> при входе: почта и пароль верны, но аккаунт администратора — нужен код 2FA или резервный
+    /// код. Не ошибка для пользователя: экран входа переходит ко второму шагу.
+    /// </summary>
+    CodeRequired,
 
     /// <summary>400: неверный код 2FA или резервный код.</summary>
     InvalidCode,
 
-    /// <summary>403: 2FA на сайте не настроена — настроить на сайте.</summary>
+    /// <summary>403: у администратора 2FA на сайте не настроена — настроить на сайте.</summary>
     SetupRequired,
 
-    /// <summary>409: у участника занято все место для устройств — освободить на сайте.</summary>
+    /// <summary>409: у участника занято все место для устройств (и любой другой код ошибки 409) — освободить на сайте.</summary>
     DeviceLimit,
+
+    /// <summary>409 <c>device_change_limit</c>: за 30 дней добавлено больше трех новых устройств.</summary>
+    DeviceChangeLimit,
 
     /// <summary>429: слишком много попыток; ждать — <c>Retry-After</c>.</summary>
     RateLimited,
@@ -78,7 +87,8 @@ public sealed record AccountLogin(string Token, AccountStatus Status)
 public sealed record DeviceInfo(string Uid, string Name, string Platform, string AppVersion);
 
 /// <summary>
-/// Запрос входа: почта, пароль и ровно одно из кода 2FA и резервного кода. Пароль и коды — секреты, в строку
+/// Запрос входа: почта, пароль и не больше одного из кода 2FA и резервного кода. Без кода — первый шаг: участнику его
+/// хватает, администратору сайт ответит <see cref="AccountFailure.CodeRequired"/>. Пароль и коды — секреты, в строку
 /// не попадают.
 /// </summary>
 public sealed record LoginRequest(string Email, string Password, string? Code, string? RecoveryCode, DeviceInfo Device)

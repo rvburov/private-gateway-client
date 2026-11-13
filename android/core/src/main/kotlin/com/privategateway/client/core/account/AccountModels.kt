@@ -55,17 +55,20 @@ data class DeviceInfo(val uid: String, val name: String, val appVersion: String,
 
 /** Почему вход не выполнен — текст account.error.<…> (ветки — в Texts приложения). */
 enum class AccountError {
-    /** 401: неверная почта или пароль. */
+    /** 401: неверная почта или пароль; так же — 401 с незнакомым кодом сайта. */
     Invalid,
 
     /** 400: код 2FA или резервный код неверный или уже использован. */
     Code,
 
-    /** 403: двухфакторная защита на сайте еще не настроена — предложить открыть сайт. */
+    /** 403: у администратора двухфакторная защита на сайте еще не настроена — предложить открыть сайт. */
     SetupRequired,
 
-    /** 409: устройств у участника уже столько, сколько разрешает сайт, — предложить страницу устройств. */
+    /** 409: устройств у участника уже столько, сколько разрешает сайт (и 409 с незнакомым кодом), — страница устройств. */
     DeviceLimit,
+
+    /** 409 device_change_limit: за 30 дней добавлено больше трех новых устройств — страница устройств. */
+    DeviceChangeLimit,
 
     /** 429: слишком много попыток; минуты — в [LoginResult.Failed.retryMinutes]. */
     RateLimited,
@@ -86,6 +89,12 @@ enum class AccountError {
 /** Итог входа. */
 sealed interface LoginResult {
     data class Ok(val session: AccountSession) : LoginResult
+
+    /**
+     * 401 code_required: почта и пароль верны, но аккаунт администратора — нужен код 2FA или резервный код. Не ошибка: экран
+     * входа переходит ко второму шагу и повторяет вход с кодом.
+     */
+    data object CodeRequired : LoginResult
 
     /** Вход не выполнен; [retryMinutes] — только у [AccountError.RateLimited], через сколько минут повторить (не меньше 1). */
     data class Failed(val error: AccountError, val retryMinutes: Int = 0) : LoginResult

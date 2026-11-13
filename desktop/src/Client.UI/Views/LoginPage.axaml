@@ -5,7 +5,8 @@
              xmlns:l="using:PrivateGateway.Client.UI.Localization"
              x:Class="PrivateGateway.Client.UI.Views.LoginPage"
              x:DataType="vm:LoginPageViewModel">
-  <!-- Вход в аккаунт сайта — docs/design, доска 10, перед приветствием (решение 621). Островка нет. -->
+  <!-- Вход в аккаунт сайта — docs/design, доска 10, перед приветствием (решение 621). Островка нет. Два шага: почта и
+       пароль, а администратору — еще код 2FA (сайт ответил code_required). -->
   <UserControl.Styles>
     <!-- Почему вход нужен снова: доступ отозван или срок истек — плашка предупреждения, как в «Резервной копии» -->
     <Style Selector="Border.notice">
@@ -40,9 +41,9 @@
           <c:Icon Data="{StaticResource Icon.Shield}" Detail="{StaticResource Icon.Mark.Ok}" Width="36" Height="36"
                   StrokeThickness="1.9" Foreground="{StaticResource PgBrush.Accent.Base}" />
         </Border>
-        <TextBlock x:Name="LoginTitle" Classes="h1" Text="{l:L account.title}" HorizontalAlignment="Center"
+        <TextBlock x:Name="LoginTitle" Classes="h1" Text="{Binding Title}" HorizontalAlignment="Center"
                    TextAlignment="Center" TextWrapping="Wrap" Margin="0,4,0,0" />
-        <TextBlock Text="{l:L account.text}" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
+        <TextBlock x:Name="LoginText" Text="{Binding Text}" TextAlignment="Center" TextWrapping="Wrap" HorizontalAlignment="Center"
                    MaxWidth="360" LineHeight="20" Foreground="{StaticResource PgBrush.Text.Secondary}" />
 
         <Border x:Name="LoginNotice" Classes="notice" IsVisible="{Binding HasNotice}" Margin="0,4,0,0">
@@ -54,41 +55,45 @@
           </Grid>
         </Border>
 
-        <StackPanel Spacing="6" Margin="0,8,0,0">
-          <TextBlock Classes="field" Text="{l:L account.email}" />
-          <TextBox x:Name="LoginEmail" Classes="input" Text="{Binding Email}" MaxLength="{x:Static vm:LoginPageViewModel.EmailMaxLength}"
-                   TextInputOptions.ContentType="Email" AutomationProperties.Name="{l:L account.email}">
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
+        <!-- Шаг 1: почта и пароль -->
+        <StackPanel x:Name="LoginCredentials" Spacing="12" Margin="0,8,0,0" IsVisible="{Binding !IsCodeStep}">
+          <StackPanel Spacing="6">
+            <TextBlock Classes="field" Text="{l:L account.email}" />
+            <TextBox x:Name="LoginEmail" Classes="input" Text="{Binding Email}" MaxLength="{x:Static vm:LoginPageViewModel.EmailMaxLength}"
+                     TextInputOptions.ContentType="Email" AutomationProperties.Name="{l:L account.email}">
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </StackPanel>
+
+          <StackPanel Spacing="6">
+            <TextBlock Classes="field" Text="{l:L account.password}" />
+            <TextBox x:Name="LoginPassword" Classes="input" Text="{Binding Password}" PasswordChar="*"
+                     MaxLength="{x:Static vm:LoginPageViewModel.PasswordMaxLength}"
+                     RevealPassword="{Binding IsPasswordVisible}" TextInputOptions.ContentType="Password"
+                     AutomationProperties.Name="{l:L account.password}">
+              <TextBox.InnerRightContent>
+                <Button x:Name="LoginShowPassword" Classes="icon" Width="36" Height="36" Command="{Binding TogglePasswordCommand}"
+                        Foreground="{StaticResource PgBrush.Text.Muted}"
+                        ToolTip.Tip="{l:L account.password.show}" AutomationProperties.Name="{l:L account.password.show}">
+                  <Panel>
+                    <c:Icon Data="{StaticResource Icon.Eye}" Width="18" Height="18" StrokeThickness="1.9"
+                            IsVisible="{Binding !IsPasswordVisible}" />
+                    <c:Icon Data="{StaticResource Icon.EyeOff}" Width="18" Height="18" StrokeThickness="1.9"
+                            IsVisible="{Binding IsPasswordVisible}" />
+                  </Panel>
+                </Button>
+              </TextBox.InnerRightContent>
+              <TextBox.KeyBindings>
+                <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
+              </TextBox.KeyBindings>
+            </TextBox>
+          </StackPanel>
         </StackPanel>
 
-        <StackPanel Spacing="6">
-          <TextBlock Classes="field" Text="{l:L account.password}" />
-          <TextBox x:Name="LoginPassword" Classes="input" Text="{Binding Password}" PasswordChar="*"
-                   MaxLength="{x:Static vm:LoginPageViewModel.PasswordMaxLength}"
-                   RevealPassword="{Binding IsPasswordVisible}" TextInputOptions.ContentType="Password"
-                   AutomationProperties.Name="{l:L account.password}">
-            <TextBox.InnerRightContent>
-              <Button x:Name="LoginShowPassword" Classes="icon" Width="36" Height="36" Command="{Binding TogglePasswordCommand}"
-                      Foreground="{StaticResource PgBrush.Text.Muted}"
-                      ToolTip.Tip="{l:L account.password.show}" AutomationProperties.Name="{l:L account.password.show}">
-                <Panel>
-                  <c:Icon Data="{StaticResource Icon.Eye}" Width="18" Height="18" StrokeThickness="1.9"
-                          IsVisible="{Binding !IsPasswordVisible}" />
-                  <c:Icon Data="{StaticResource Icon.EyeOff}" Width="18" Height="18" StrokeThickness="1.9"
-                          IsVisible="{Binding IsPasswordVisible}" />
-                </Panel>
-              </Button>
-            </TextBox.InnerRightContent>
-            <TextBox.KeyBindings>
-              <KeyBinding Gesture="Enter" Command="{Binding SignInCommand}" />
-            </TextBox.KeyBindings>
-          </TextBox>
-        </StackPanel>
-
-        <StackPanel Spacing="6">
+        <!-- Шаг 2, только у администратора: код 2FA или резервный код -->
+        <StackPanel x:Name="LoginCodeStep" Spacing="6" Margin="0,8,0,0" IsVisible="{Binding IsCodeStep}">
           <TextBlock x:Name="LoginCodeLabel" Classes="field" Text="{Binding CodeLabel}" />
           <TextBox x:Name="LoginCode" Classes="input" Text="{Binding Code}" MaxLength="{x:Static vm:LoginPageViewModel.RecoveryMaxLength}"
                    AutomationProperties.Name="{Binding CodeLabel}">
@@ -105,11 +110,14 @@
                    FontSize="{StaticResource PgFontSize.Small}" Foreground="{StaticResource PgBrush.Status.Danger.Text}" />
         <Button x:Name="SignInButton" Classes="primary" Height="50" HorizontalAlignment="Stretch"
                 Command="{Binding SignInCommand}" Content="{Binding SignInText}" />
-        <!-- 403 — 2FA настраивается на сайте; 409 — лишнее устройство удаляется на странице устройств сайта (решение 626) -->
+        <!-- 403 — 2FA администратора настраивается на сайте; 409 — устройства на странице устройств сайта (решение 626) -->
         <Button x:Name="LoginOpenSite" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding CanOpenSite}"
                 Command="{Binding OpenSiteCommand}" Content="{l:L account.site}" />
         <Button x:Name="LoginOpenDevices" Classes="secondary" Height="46" HorizontalAlignment="Stretch" IsVisible="{Binding CanOpenDevices}"
                 Command="{Binding OpenDevicesCommand}" Content="{l:L account.devices}" />
+        <!-- Второй шаг: вернуться к почте и паролю -->
+        <Button x:Name="LoginBack" Classes="link" HorizontalAlignment="Center" MinHeight="{StaticResource PgLayout.TouchTarget}"
+                IsVisible="{Binding IsCodeStep}" Command="{Binding BackCommand}" Content="{l:L account.code.back}" />
       </StackPanel>
     </ScrollViewer>
   </Grid>

@@ -604,8 +604,11 @@ public abstract class WindowHarness : IDisposable
 
         public List<string> Logouts { get; } = [];
 
-        /// <summary>Почему сайт не пускает; null — пускает.</summary>
+        /// <summary>Почему сайт не пускает; null — пускает. Аккаунт администратора без кода — сначала <see cref="RequiresCode"/>.</summary>
         public AccountFailure? LoginFailure { get; set; }
+
+        /// <summary>Аккаунт администратора: вход без кода 2FA и резервного кода — 401 <c>code_required</c>.</summary>
+        public bool RequiresCode { get; set; }
 
         /// <summary>Для 429 — <c>Retry-After</c>.</summary>
         public TimeSpan? RetryAfter { get; set; }
@@ -625,6 +628,11 @@ public abstract class WindowHarness : IDisposable
             if (PendingLogin is { } pending)
             {
                 await pending.Task.ConfigureAwait(true);
+            }
+
+            if (RequiresCode && request.Code is null && request.RecoveryCode is null)
+            {
+                throw new AccountApiException(AccountFailure.CodeRequired, 401);
             }
 
             if (LoginFailure is { } failure)
@@ -656,10 +664,10 @@ public abstract class WindowHarness : IDisposable
 
         private static int? Code(AccountFailure failure) => failure switch
         {
-            AccountFailure.InvalidCredentials => 401,
+            AccountFailure.InvalidCredentials or AccountFailure.CodeRequired => 401,
             AccountFailure.InvalidCode => 400,
             AccountFailure.SetupRequired => 403,
-            AccountFailure.DeviceLimit => 409,
+            AccountFailure.DeviceLimit or AccountFailure.DeviceChangeLimit => 409,
             AccountFailure.RateLimited => 429,
             AccountFailure.Validation => 422,
             AccountFailure.Server => 500,

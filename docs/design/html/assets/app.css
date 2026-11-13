@@ -500,7 +500,8 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
 
 /* ---------- Вход в аккаунт сайта (доска 10): до любого экрана, без островка (LoginPage программы) ---------- */
 /* Язык сверху справа; знак 72 в белой плашке, как на приветствии; заголовок и пояснение по центру; подпись над полем;
-   «глаз» внутри поля пароля; ссылка смены кода; ошибка строкой; «Войти» во всю ширину; шаг между блоками — 12 */
+   «глаз» внутри поля пароля; ссылка смены кода; ошибка строкой; «Войти» во всю ширину; шаг между блоками — 12.
+   Два шага: почта и пароль, а администратору — код 2FA и под «Войти» ссылка «Войти другим аккаунтом» по центру */
 .pg-page.login { display: flex; flex-direction: column; padding: 20px calc(var(--side) + 4px) 24px; }
 .pg-frame.is-phone .pg-page.login { padding-bottom: 42px; }
 .login-lang { align-self: flex-end; display: grid; grid-template-columns: 1fr 1fr; flex: none; }
@@ -526,6 +527,7 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
 .login-error { margin: var(--pg-space-l) 0 0; color: var(--pg-color-status-danger-text); font-size: var(--pg-type-small-size); }
 .login-submit { width: 100%; height: 50px; margin-top: var(--pg-space-l); flex: none; }
 .login-site { width: 100%; height: 46px; margin-top: var(--pg-space-l); flex: none; }
+.login-back { align-self: center; margin-top: var(--pg-space-xs); min-height: var(--pg-layout-touch-target); flex: none; }
 
 /* Карточка «Аккаунт» в «Настройках» (доски 4, 18): строка настройки — имя, почта, это устройство; справа «Выйти» с вопросом */
 .account-card { margin: 0 var(--side) 18px; padding: 4px var(--pg-space-card); min-width: 0; }

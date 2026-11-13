@@ -15,8 +15,10 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
- * Форма входа: почта, пароль, код 2FA или резервный код ([recovery]), идет ли запрос и почему вход не выполнен ([error],
- * у «Слишком много попыток» — минуты [retryMinutes]). Пароль и код живут только здесь, в памяти окна.
+ * Форма входа в два шага (0.2.1, 2FA — только у администраторов): почта и пароль, а если сайт ответил «нужен код»
+ * ([LoginResult.CodeRequired]) — второй шаг [codeStep] с кодом 2FA или резервным кодом ([recovery]). Еще — идет ли запрос
+ * и почему вход не выполнен ([error], у «Слишком много попыток» — минуты [retryMinutes]). Пароль и код живут только здесь, в
+ * памяти окна: пароль первого шага на втором ждет кода.
  */
 data class LoginUi(
     val email: String = "",
@@ -26,10 +28,12 @@ data class LoginUi(
     val busy: Boolean = false,
     val error: AccountError? = null,
     val retryMinutes: Int = 0,
+    val codeStep: Boolean = false,
 ) {
-    /** Поля заполнены: код 2FA — ровно [CODE_LENGTH] цифр, резервный — не пустой. */
+    /** Поля шага заполнены: почта и пароль; на втором шаге еще код 2FA — ровно [CODE_LENGTH] цифр, резервный — не пустой. */
     val ready: Boolean
-        get() = email.isNotBlank() && password.isNotEmpty() && (if (recovery) code.isNotBlank() else code.length == CODE_LENGTH)
+        get() = email.isNotBlank() && password.isNotEmpty() &&
+            (!codeStep || (if (recovery) code.isNotBlank() else code.length == CODE_LENGTH))
 
     companion object {
         const val CODE_LENGTH = 6
@@ -39,7 +43,7 @@ data class LoginUi(
     }
 }
 
-/** Вход и выход (доска входа, «Настройки» → «Аккаунт»): состояние входа — из [AccountRepository], форма — своя. */
+/** Вход и выход (доска 10, «Настройки» → «Аккаунт»): состояние входа — из [AccountRepository], форма — своя. */
 @HiltViewModel
 class AccountViewModel @Inject constructor(private val account: AccountRepository) : ViewModel() {
     /** Вход; null — еще не прочитан: окно ничего не показывает, чтобы экран входа не мелькал. */
@@ -63,7 +67,7 @@ class AccountViewModel @Inject constructor(private val account: AccountRepositor
     /** «Войти по резервному коду» ↔ «Войти по коду 2FA»: поле кода очищается. */
     fun toggleRecovery() = form.update { it.copy(recovery = !it.recovery, code = "", error = null) }
 
-    /** «Войти» и Enter в последнем поле; запрос уже идет или поля не заполнены — ничего. */
+    /** «Войти» и Enter в последнем поле; запрос уже идет или поля не заполнены — ничего. Первый шаг — без кода. */
     fun login() {
         val current = form.value
         if (current.busy || !current.ready) {
@@ -72,19 +76,19 @@ class AccountViewModel @Inject constructor(private val account: AccountRepositor
 
         form.update { it.copy(busy = true, error = null) }
         viewModelScope.launch {
+            val code = current.code.takeIf { current.codeStep }
             val result = account.login(
                 current.email,
                 current.password,
-                current.code.takeIf { !current.recovery },
-                current.code.takeIf { current.recovery },
+                code.takeIf { !current.recovery },
+                code.takeIf { current.recovery },
             )
-            val failed = result as? LoginResult.Failed
-            // После ответа пароль и код стираются, почта остается.
-            form.update {
-                it.copy(busy = false, password = "", code = "", error = failed?.error, retryMinutes = failed?.retryMinutes ?: 0)
-            }
+            form.update { answered(it, current.codeStep, result) }
         }
     }
+
+    /** «Войти другим аккаунтом» на втором шаге: снова почта и пароль; почта остается, пароль и код стерты. */
+    fun back() = form.update { if (it.busy) it else LoginUi(email = it.email) }
 
     /**
      * «Выйти» в «Настройках»: экран входа — сразу и с пустыми полями. Сам выход идет в области репозитория: окно, закрытое
@@ -98,5 +102,23 @@ class AccountViewModel @Inject constructor(private val account: AccountRepositor
     private companion object {
         const val EMAIL_MAX = 320
         const val PASSWORD_MAX = 4096
+
+        /**
+         * Форма после ответа сайта: код стирается всегда, почта остается. Пароль — на первом шаге и когда второй кончился
+         * (вошли, пароль сменили, пока вводили код); на втором шаге он ждет следующего кода. «Нужен код» — второй шаг, без ошибки.
+         */
+        fun answered(form: LoginUi, codeStep: Boolean, result: LoginResult): LoginUi {
+            val done = form.copy(busy = false, code = "", retryMinutes = 0)
+            return when (result) {
+                is LoginResult.Ok -> done.copy(password = "", codeStep = false, recovery = false)
+                LoginResult.CodeRequired -> done.copy(codeStep = true, recovery = false, error = null)
+                is LoginResult.Failed -> when {
+                    codeStep && result.error == AccountError.Invalid ->
+                        done.copy(password = "", codeStep = false, recovery = false, error = result.error)
+                    codeStep -> done.copy(error = result.error, retryMinutes = result.retryMinutes)
+                    else -> done.copy(password = "", error = result.error, retryMinutes = result.retryMinutes)
+                }
+            }
+        }
     }
 }

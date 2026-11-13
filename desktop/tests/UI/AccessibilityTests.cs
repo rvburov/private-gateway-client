@@ -48,12 +48,19 @@ public sealed class AccessibilityTests : WindowHarness
         var login = shell.CurrentPage.ShouldBeOfType<LoginPageViewModel>();
 
         Unnamed(window).ShouldBeEmpty("экран входа");
-        Find<TextBox>(window, "LoginCode").GetValue(AutomationProperties.NameProperty).ShouldBe("Код 2FA");
 
-        // Резервный код и ошибка с кнопкой сайта — свои элементы.
+        // Второй шаг администратора: поле кода, «Войти по резервному коду» и «Войти другим аккаунтом» — свои элементы.
+        AccountApi.RequiresCode = true;
+        (login.Email, login.Password) = ("anna@example.com", "pw");
+        login.SignInCommand.Execute(null);
+        WaitFor(() => login.IsCodeStep);
+        Find<TextBox>(window, "LoginCode").GetValue(AutomationProperties.NameProperty).ShouldBe("Код 2FA");
+        Unnamed(window).ShouldBeEmpty("шаг кода");
+
+        // Резервный код и ошибка с кнопкой сайта.
         AccountApi.LoginFailure = Core.Account.AccountFailure.DeviceLimit;
         login.ToggleRecoveryCommand.Execute(null);
-        (login.Email, login.Password, login.Code) = ("anna@example.com", "pw", "abcd-efgh");
+        login.Code = "abcd-efgh";
         login.SignInCommand.Execute(null);
         WaitFor(() => login.CanOpenDevices);
 

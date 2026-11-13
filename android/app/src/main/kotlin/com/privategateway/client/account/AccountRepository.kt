@@ -210,7 +210,10 @@ class AccountRepository @Inject constructor(
         return uid
     }
 
-    /** Вход: ровно один из [code] (2FA) и [recovery] (резервный код). Хранилище ключей или файл не работают — [AccountError.Store]. */
+    /**
+     * Вход: без кода — первый шаг (участнику его хватает, администратору сайт ответит [LoginResult.CodeRequired]); на втором —
+     * не больше одного из [code] (2FA) и [recovery] (резервный код). Хранилище ключей или файл не работают — [AccountError.Store].
+     */
     suspend fun login(email: String, password: String, code: String?, recovery: String?): LoginResult = lock.withLock {
         withContext(Dispatchers.IO) {
             if (!boxWorks()) {
@@ -227,19 +230,27 @@ class AccountRepository @Inject constructor(
 
             val device = DeviceInfo(uid, DeviceInfo.phoneName(Build.MANUFACTURER, Build.MODEL), BuildConfig.VERSION_NAME)
             val result = source.login(email, password, code, recovery, device)
-            if (result !is LoginResult.Ok) {
-                journal.info("account sign-in  " + ((result as LoginResult.Failed).error.name))
-                return@withContext result
+            val session = when (result) {
+                is LoginResult.Ok -> result.session
+                LoginResult.CodeRequired -> {
+                    // Пароль верный, аккаунт администратора: экран входа спросит код. Входа еще нет.
+                    journal.info("account sign-in  code required")
+                    return@withContext result
+                }
+                is LoginResult.Failed -> {
+                    journal.info("account sign-in  " + result.error.name)
+                    return@withContext result
+                }
             }
 
             try {
-                save(result.session)
+                save(session)
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
                 // Токен не запечатать или не записать — без защищенного хранения его не держим: устройство на сайте снимаем.
                 journal.warning("account sign-in  token not stored")
-                source.logout(result.session.token)
+                source.logout(session.token)
                 return@withContext LoginResult.Failed(AccountError.Store)
             }
 

@@ -57,6 +57,18 @@ public sealed class AccountApiTests
     }
 
     [Fact]
+    public async Task First_step_sends_only_the_email_and_the_password()
+    {
+        // 0.2.1: 2FA — только у администраторов; участник входит почтой и паролем, кода в запросе нет вовсе.
+        var api = Api(_ => Json(HttpStatusCode.OK, LoginReply));
+
+        (await api.LoginAsync(new LoginRequest(Email, Password, null, null, Device), Ct)).Token.ShouldBe(Token);
+
+        var body = JsonNode.Parse(_sent.Single().Body!)!.AsObject();
+        body.Select(p => p.Key).Order().ShouldBe(["device", "email", "password"]);
+    }
+
+    [Fact]
     public async Task Recovery_code_goes_instead_of_the_code_and_long_names_are_cut()
     {
         var api = Api(_ => Json(HttpStatusCode.OK, LoginReply));
@@ -73,9 +85,15 @@ public sealed class AccountApiTests
 
     [Theory]
     [InlineData(401, "invalid_credentials", AccountFailure.InvalidCredentials)]
+    [InlineData(401, "code_required", AccountFailure.CodeRequired)]
+    [InlineData(401, "some_new_reason", AccountFailure.InvalidCredentials)]
     [InlineData(400, "invalid_code", AccountFailure.InvalidCode)]
     [InlineData(403, "setup_required", AccountFailure.SetupRequired)]
     [InlineData(409, "device_limit", AccountFailure.DeviceLimit)]
+    [InlineData(409, "device_change_limit", AccountFailure.DeviceChangeLimit)]
+    [InlineData(409, "some_new_limit", AccountFailure.DeviceLimit)]
+    [InlineData(400, "code_required", AccountFailure.InvalidCode)]
+    [InlineData(403, "device_change_limit", AccountFailure.SetupRequired)]
     [InlineData(422, "validation_error", AccountFailure.Validation)]
     [InlineData(429, "rate_limited", AccountFailure.RateLimited)]
     [InlineData(500, "internal", AccountFailure.Server)]
@@ -92,6 +110,47 @@ public sealed class AccountApiTests
         {
             error.Message.ShouldNotContain(secret, Case.Sensitive, "в тексте ошибки — только причина и код ответа");
         }
+    }
+
+    public static TheoryData<int, string, AccountFailure> UnreadableErrorBodies => new()
+    {
+        { 401, "", AccountFailure.InvalidCredentials },
+        { 401, "<html>code_required</html>", AccountFailure.InvalidCredentials },
+        { 401, """{"code":"code_required"}""", AccountFailure.InvalidCredentials },
+        { 401, """{"error":"code_required"}""", AccountFailure.InvalidCredentials },
+        { 401, """{"error":{"code":7}}""", AccountFailure.InvalidCredentials },
+        { 401, """["code_required"]""", AccountFailure.InvalidCredentials },
+        { 401, "{\"error\":{\"code\":\"code_required\",\"pad\":\"" + new string('x', HttpAccountApi.MaxBytes) + "\"}}", AccountFailure.InvalidCredentials },
+        { 409, "", AccountFailure.DeviceLimit },
+        { 409, """{"error":{"code":null}}""", AccountFailure.DeviceLimit },
+        { 409, """{"error":{"code":"DEVICE_CHANGE_LIMIT"}}""", AccountFailure.DeviceLimit },
+    };
+
+    [Theory]
+    [MemberData(nameof(UnreadableErrorBodies))]
+    public async Task Unreadable_error_body_falls_back_to_the_safe_reason_of_the_status(int status, string body, AccountFailure failure)
+    {
+        // Незнакомый или нечитаемый ответ не открывает второй шаг и не меняет текст: 401 — «неверная почта или пароль»,
+        // 409 — «лимит устройств».
+        var api = Api(_ => Json((HttpStatusCode)status, body));
+
+        var error = await Should.ThrowAsync<AccountApiException>(() => api.LoginAsync(new LoginRequest(Email, Password, null, null, Device), Ct));
+
+        (error.Failure, error.StatusCode).ShouldBe((failure, status));
+    }
+
+    [Fact]
+    public async Task Error_body_dropped_halfway_falls_back_to_the_reason_of_the_status()
+    {
+        var api = Api(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
+        {
+            Content = new StreamContent(new BrokenStream("""{"error":{"co""", new IOException("reset " + Token))),
+        });
+
+        var error = await Should.ThrowAsync<AccountApiException>(() => api.LoginAsync(new LoginRequest(Email, Password, null, null, Device), Ct));
+
+        (error.Failure, error.StatusCode).ShouldBe((AccountFailure.InvalidCredentials, 401));
+        error.Message.ShouldNotContain(Token);
     }
 
     [Theory]
@@ -130,15 +189,28 @@ public sealed class AccountApiTests
         (sent.Method, sent.Url, sent.Authorization, sent.Body).ShouldBe(("GET", "https://site.example.com/api/app/status", "Bearer " + Token, null));
     }
 
-    [Fact]
-    public async Task Status_401_means_access_is_revoked()
+    [Theory]
+    [InlineData("unauthorized")]
+    [InlineData("code_required")]
+    public async Task Status_401_means_access_is_revoked_whatever_the_code(string code)
     {
-        var api = Api(_ => Json(HttpStatusCode.Unauthorized, """{"error":{"code":"unauthorized"}}"""));
+        // Код сайта читается только при входе: у проверки любой 401 — отзыв, а не второй шаг входа.
+        var api = Api(_ => Json(HttpStatusCode.Unauthorized, $$$"""{"error":{"code":"{{{code}}}"}}"""));
 
         var error = await Should.ThrowAsync<AccountApiException>(() => api.StatusAsync(Token, Ct));
 
         error.Failure.ShouldBe(AccountFailure.InvalidCredentials);
         error.Message.ShouldNotContain(Token);
+    }
+
+    [Fact]
+    public async Task Logout_with_an_already_dead_token_is_fine_whatever_the_code()
+    {
+        var api = Api(_ => Json(HttpStatusCode.Unauthorized, """{"error":{"code":"code_required"}}"""));
+
+        await api.LogoutAsync(Token, Ct);
+
+        _sent.ShouldHaveSingleItem();
     }
 
     [Theory]

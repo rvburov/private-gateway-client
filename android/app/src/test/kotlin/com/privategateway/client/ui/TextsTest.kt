@@ -69,6 +69,7 @@ class TextsTest {
         assertEquals(R.string.account_error_code, Texts.account(AccountError.Code))
         assertEquals(R.string.account_error_setupRequired, Texts.account(AccountError.SetupRequired))
         assertEquals(R.string.account_error_deviceLimit, Texts.account(AccountError.DeviceLimit))
+        assertEquals(R.string.account_error_deviceChanges, Texts.account(AccountError.DeviceChangeLimit))
         assertEquals(R.string.account_error_rateLimited, Texts.account(AccountError.RateLimited))
         assertEquals(R.string.account_error_validation, Texts.account(AccountError.Validation))
         assertEquals(R.string.account_error_network, Texts.account(AccountError.Network))

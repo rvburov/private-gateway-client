@@ -110,3 +110,8 @@ CI уже проверяет без вас на эмуляторе Android 14: �
 ## Что прислать
 
 Номера разделов и «да/нет» по шагам, модель телефона и версию Android, тексты ошибок с экрана (без адресов и ссылок).
+7. В журнале перед "no answer through the tunnel" — строки `start probe  try=N … ms=…`: быстрые отказы
+   (`ConnectException`, `SSLHandshakeException` за десятки мс) — ядро не вышло к серверу; `TimedOut` или
+   `SocketTimeoutException` за весь срок — сервер молчит; `start check  network=default` — Android не показал сеть VPN
+   за 3 с.
+

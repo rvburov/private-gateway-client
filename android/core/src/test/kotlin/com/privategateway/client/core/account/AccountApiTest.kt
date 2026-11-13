@@ -9,6 +9,8 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.CsvSource
+import org.junit.jupiter.params.provider.Arguments
+import org.junit.jupiter.params.provider.MethodSource
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -96,15 +98,33 @@ class AccountApiTest {
         assertEquals("abcd-efgh", sent["recovery_code"]?.jsonPrimitive?.content)
         assertFalse("code" in sent)
         assertFailsWith<IllegalArgumentException> { api.login("user@example.com", "pw", "123456", "abcd", device) }
-        assertFailsWith<IllegalArgumentException> { api.login("user@example.com", "pw", null, null, device) }
+    }
+
+    @Test
+    fun `first step sends only the email and the password`() {
+        // 0.2.1: 2FA — только у администраторов; участник входит почтой и паролем, кода в запросе нет вовсе.
+        serve("/api/app/login", 200, loginOk)
+        assertTrue(api.login("user@example.com", "pw", null, null, device) is LoginResult.Ok)
+        assertEquals(setOf("email", "password", "device"), body(requests.single()).keys)
+    }
+
+    @Test
+    fun `code_required asks for the second step`() {
+        serve("/api/app/login", 401, """{"error":{"code":"code_required"}}""")
+        assertEquals(LoginResult.CodeRequired, api.login("admin@example.com", "pw", null, null, device))
     }
 
     @ParameterizedTest
     @CsvSource(
         "401, invalid_credentials, Invalid",
+        "401, some_new_reason, Invalid",
         "400, invalid_code, Code",
+        "400, code_required, Code",
         "403, setup_required, SetupRequired",
+        "403, device_change_limit, SetupRequired",
         "409, device_limit, DeviceLimit",
+        "409, device_change_limit, DeviceChangeLimit",
+        "409, some_new_limit, DeviceLimit",
         "422, validation_error, Validation",
         "500, internal, Server",
         "502, bad_gateway, Server",
@@ -114,6 +134,14 @@ class AccountApiTest {
     fun `login errors map to their reasons`(status: Int, code: String, error: AccountError) {
         serve("/api/app/login", status, """{"error":{"code":"$code"}}""")
         assertEquals(LoginResult.Failed(error), api.login("user@example.com", "pw", "123456", null, device))
+    }
+
+    @ParameterizedTest
+    @MethodSource("unreadableErrors")
+    fun `unreadable error body falls back to the safe reason of the status`(status: Int, body: String, error: AccountError) {
+        // Незнакомый или нечитаемый ответ не открывает второй шаг: 401 — «неверная почта или пароль», 409 — «лимит устройств».
+        serve("/api/app/login", status, body)
+        assertEquals(LoginResult.Failed(error), api.login("user@example.com", "pw", null, null, device))
     }
 
     @ParameterizedTest
@@ -160,9 +188,11 @@ class AccountApiTest {
         assertEquals("Bearer tok-secret-1", request.authorization)
     }
 
-    @Test
-    fun `only 401 revokes access`() {
-        serve("/api/app/status", 401, """{"error":{"code":"unauthorized"}}""")
+    @ParameterizedTest
+    @CsvSource("unauthorized", "code_required")
+    fun `only 401 revokes access whatever the code`(code: String) {
+        // Код сайта читается только при входе: у проверки любой 401 — отзыв, а не второй шаг входа.
+        serve("/api/app/status", 401, """{"error":{"code":"$code"}}""")
         assertEquals(StatusResult.Revoked, api.status("tok"))
     }
 
@@ -231,6 +261,22 @@ class AccountApiTest {
         assertEquals(Instant.parse("2026-12-12T07:00:00Z"), AccountApi.instant("2026-12-12T10:00:00+03:00"))
         assertEquals(Instant.parse("2026-12-12T10:00:00.5Z"), AccountApi.instant("2026-12-12T10:00:00.500000"))
         assertNull(AccountApi.instant("12.12.2026"))
+    }
+
+    companion object {
+        @JvmStatic
+        fun unreadableErrors(): List<Arguments> = listOf(
+            Arguments.of(401, "", AccountError.Invalid),
+            Arguments.of(401, "<html>code_required</html>", AccountError.Invalid),
+            Arguments.of(401, """{"code":"code_required"}""", AccountError.Invalid),
+            Arguments.of(401, """{"error":"code_required"}""", AccountError.Invalid),
+            Arguments.of(401, """{"error":{"code":7}}""", AccountError.Invalid),
+            Arguments.of(401, """["code_required"]""", AccountError.Invalid),
+            Arguments.of(401, """{"error":{"code":"code_required","pad":"${"x".repeat(AccountApi.MAX_BYTES)}"}}""", AccountError.Invalid),
+            Arguments.of(409, "", AccountError.DeviceLimit),
+            Arguments.of(409, """{"error":{"code":null}}""", AccountError.DeviceLimit),
+            Arguments.of(409, """{"error":{"code":"DEVICE_CHANGE_LIMIT"}}""", AccountError.DeviceLimit),
+        )
     }
 
     @Test

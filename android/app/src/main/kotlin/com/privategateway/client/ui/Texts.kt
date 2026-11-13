@@ -34,6 +34,7 @@ object Texts {
         AccountError.Code -> R.string.account_error_code
         AccountError.SetupRequired -> R.string.account_error_setupRequired
         AccountError.DeviceLimit -> R.string.account_error_deviceLimit
+        AccountError.DeviceChangeLimit -> R.string.account_error_deviceChanges
         AccountError.RateLimited -> R.string.account_error_rateLimited
         AccountError.Validation -> R.string.account_error_validation
         AccountError.Network -> R.string.account_error_network

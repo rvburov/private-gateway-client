@@ -141,8 +141,10 @@ public sealed partial class AccountService : IDisposable
     }
 
     /// <summary>
-    /// Войти: почта, пароль и ровно одно из кода 2FA и резервного кода. Хранилище секретов ОС недоступно — отказ
-    /// <see cref="AccountFailure.Store"/> без запроса к сайту: токен без защищенного хранилища не держим.
+    /// Войти: почта, пароль и не больше одного из кода 2FA и резервного кода. Первый шаг — без кода: участнику его
+    /// хватает, а администратору сайт ответит <see cref="AccountFailure.CodeRequired"/>, и экран входа спросит код и
+    /// повторит вход с ним. Хранилище секретов ОС недоступно — отказ <see cref="AccountFailure.Store"/> без запроса к
+    /// сайту: токен без защищенного хранилища не держим.
     /// </summary>
     public async Task<LoginOutcome> SignInAsync(string email, string password, string? code, string? recoveryCode,
         CancellationToken cancellationToken = default)
