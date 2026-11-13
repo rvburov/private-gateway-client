@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Проверка выбора доказательств выпуска: чужой SHA, ветка, упавший повтор и пропуск не подходят."""
+"""Проверка выбора доказательств выпуска: чужой SHA, ветка, событие, упавший повтор и пропуск не подходят."""
 
 import importlib.util
 import json
@@ -29,6 +29,15 @@ class ReleaseGateTest(unittest.TestCase):
                              ("status", "in_progress"), ("path", ".github/workflows/publish.yml")):
             with self.subTest(field=field), self.assertRaises(ValueError):
                 gate.successful_run([good | {field: value}], "a" * 40, "ci.yml")
+
+    def test_dispatched_check_counts_but_pull_request_does_not(self):
+        # Коммит кнопки «Выпустить версию» отправлен токеном GITHUB_TOKEN: push его не проверяет, и кнопка запускает
+        # проверку master сама (workflow_dispatch). Запуск pull_request проверяет слияние, а не этот коммит.
+        good = self.run_data() | {"event": "workflow_dispatch"}
+        self.assertEqual(gate.successful_run([good], "a" * 40, "ci.yml"), good)
+        for event in ("pull_request", "workflow_run"):
+            with self.subTest(event=event), self.assertRaises(ValueError):
+                gate.successful_run([good | {"event": event}], "a" * 40, "ci.yml")
 
     def test_old_success_does_not_hide_failed_or_pending_rerun(self):
         good = self.run_data()

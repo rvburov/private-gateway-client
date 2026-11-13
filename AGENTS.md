@@ -121,7 +121,9 @@ VPN-клиент меняет состояние всей машины, поэт
     пакетом ОС, а Xray собирает из исходников (`scripts/get-xray.sh --build`, нужен go, модули идут
     через proxy.golang.org); sing-box так не собрать — без выпусков его тесты пропускаются;
   - отправки тегов: прокси среды пускает на GitHub ветки, а тег отклоняет (403). Выпуск из облака — секция версии в
-    `CHANGELOG.md` и все остальное в `master`, а `scripts/release.sh X.Y.Z` запускает пользователь у себя.
+    `CHANGELOG.md` и все остальное в `master`, затем кнопка «Выпустить версию» через API (`gh workflow run
+    release-button.yml --ref master -f version=X.Y.Z`; тег ставит машина GitHub) или `scripts/release.sh X.Y.Z` у
+    пользователя.
 
 ## Проект
 
@@ -172,6 +174,7 @@ scripts/publish.sh [версия]                            # выпуск дл
 scripts/package-linux.sh <версия>                      # .deb и .rpm из сборки выпуска (нужен nfpm)
 scripts/package-windows.sh <версия>                    # MSI из сборки выпуска (Git Bash, нужен wix 5.0.2)
 scripts/release.sh 1.2.3                               # выпуск на GitHub: проверки, дата, тег, отправка (как в SmartBase)
+gh workflow run release-button.yml --ref master -f version=1.2.3   # то же кнопкой на GitHub (Actions → «Выпустить версию»)
 dotnet run scripts/release.cs keygen <файл вне репозитория> # ключ подписи обновлений (делает пользователь, release.md)
 dotnet run scripts/gen-icons.cs                        # значок программы (SVG, ICO) из Icons.axaml и токенов
 dotnet run scripts/gen-design-html.cs                  # токены CSS и значки HTML-макета docs/design/html

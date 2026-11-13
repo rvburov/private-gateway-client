@@ -8,19 +8,38 @@ name: Выпуск на GitHub
 # канал beta, раскатка 100 %. Стабильный выпуск раскатывается поэтапно: сначала 20 %, дальше — release-rollout.yml.
 # К выпуску прикладывается приложение Android (APK, подписанный ключом выпуска из секретов; ставится вручную, «из
 # неизвестных источников»). Apple (iOS) — «в разработке»: сборки нет до аккаунта Apple Developer.
+#
+# Два запуска: отправка тега с компьютера (push) и кнопка «Выпустить версию» (release-button.yml). Тег кнопки отправлен
+# токеном GITHUB_TOKEN, а такая отправка workflow не запускает — кнопка запускает этот workflow сама (workflow_dispatch с
+# ref = тег): github.ref, github.ref_name и github.sha те же, что у push тега, и шаги ниже не различают путь. Run workflow
+# с ветки отказывает — выпуск только на теге.
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
 
 permissions:
   contents: read
   actions: read
+
+# Два запуска одного тега (например, Run workflow на теге, пока идет запуск отправкой) идут по очереди, а не наперегонки к
+# «gh release create».
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   gate:
     name: Условия выпуска
     runs-on: ubuntu-latest
     steps:
+      - name: Запуск на теге
+        run: |
+          [ "$GITHUB_REF_TYPE" = tag ] || {
+            echo "«Выпуск на GitHub» идет только на теге v<SemVer>, а запущен на «$GITHUB_REF_NAME»: Use workflow from → Tags" >&2
+            exit 1
+          }
+
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           fetch-depth: 0
@@ -189,3 +208,19 @@ jobs:
               --notes-file artifacts/notes.md "${flags[@]}"
           fi
           gh release view "$GITHUB_REF_NAME" --json url --jq .url
+
+  # Выпуск по тегу с компьютера (push) сайт получает через workflow_run, как раньше. Придет ли workflow_run после запуска,
+  # созданного токеном GITHUB_TOKEN (кнопка), документация GitHub прямо не обещает, поэтому такой выпуск запускает сайт
+  # сам, а сайт берет workflow_run только от push: отправка на сайт — ровно одна на обоих путях.
+  website:
+    name: Сайт — запуск после кнопки
+    needs: release
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Запуск «Выпуска на сайт»
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run website.yml --repo "$GITHUB_REPOSITORY" --ref master -f tag="$GITHUB_REF_NAME"

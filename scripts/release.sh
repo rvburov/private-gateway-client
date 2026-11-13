@@ -6,12 +6,15 @@
 #   scripts/release.sh 0.1.5 --dry-run       # только проверки, ничего не менять
 #   scripts/release.sh 0.1.5 --skip-tests    # без прогона desktop/tests/Unit
 #   scripts/release.sh 0.1.5 --allow-dirty   # разрешить незакоммиченные правки
+#   scripts/release.sh 0.1.5 --yes           # без вопроса «Выпустить?» — так его запускает кнопка «Выпустить версию»
+#                                            # (.github/workflows/release-button.yml) на машине GitHub
 #
 # Что делает: проверяет предусловия → ставит версию в Directory.Build.props (если она там другая) → проставляет дату в
 # секции CHANGELOG.md и ссылки внизу → коммитит «release: v0.1.5» → ставит аннотированный тег v0.1.5 → отправляет master и
 # тег. Собирает и публикует уже GitHub — .github/workflows/release.yml ловит тег: дожидается зеленой проверки этого
 # коммита, гоняет долгий прогон, собирает три ОС и Android и выкладывает выпуск с текстом из scripts/release-notes.sh.
-# Обычный git push выпуск не запускает.
+# Обычный git push выпуск не запускает. На машине GitHub отправка идет токеном GITHUB_TOKEN, а она workflow не запускает:
+# проверку master и выпуск тега там запускает сама кнопка.
 #
 # Сам скрипт ничего не собирает и не требует gh — только git (и dotnet для быстрых тестов).
 # Порядок выпуска целиком — docs/architecture/release.md и docs/operations/checklist.md.
@@ -27,13 +30,15 @@ VERSION=""
 DRY_RUN=0
 SKIP_TESTS=0
 ALLOW_DIRTY=0
+ASSUME_YES=0
 
 for arg in "$@"; do
   case "$arg" in
     --dry-run)     DRY_RUN=1 ;;
     --skip-tests)  SKIP_TESTS=1 ;;
     --allow-dirty) ALLOW_DIRTY=1 ;;
-    -h|--help)     sed -n '2,18p' "$0"; exit 0 ;;
+    --yes)         ASSUME_YES=1 ;;
+    -h|--help)     sed -n '2,21p' "$0"; exit 0 ;;
     -*)            echo "Неизвестный ключ: $arg" >&2; exit 1 ;;
     *)             [ -z "$VERSION" ] && VERSION="$arg" || { echo "Лишний аргумент: $arg" >&2; exit 1; } ;;
   esac
@@ -142,8 +147,14 @@ fi
 # ── 7. Быстрый гейт: модульные тесты ──────────────────────────────────────────
 if [ $SKIP_TESTS -eq 0 ]; then
   step "dotnet test --project desktop/tests/Unit"
-  dotnet test --project desktop/tests/Unit > /dev/null \
-    || die "модульные тесты не прошли — выпуск отменен (подробно: dotnet test --project desktop/tests/Unit)"
+  # Вывод — в файл, а при отказе его конец на экран: у кнопки на GitHub другой консоли, где повторить тесты, нет.
+  test_log="$(mktemp)"
+  if ! dotnet test --project desktop/tests/Unit > "$test_log" 2>&1; then
+    tail -n 40 "$test_log" >&2
+    rm -f "$test_log"
+    die "модульные тесты не прошли — выпуск отменен (подробно: dotnet test --project desktop/tests/Unit)"
+  fi
+  rm -f "$test_log"
 else
   echo "⚠ модульные тесты пропущены (--skip-tests)"
 fi
@@ -165,11 +176,20 @@ if [ $DRY_RUN -eq 1 ]; then
   exit 0
 fi
 
-read -r -p "Выпустить $TAG? [y/N] " answer
-case "$answer" in
-  [yYдД]) ;;
-  *) echo "Отменено."; exit 0 ;;
-esac
+if [ $ASSUME_YES -eq 1 ]; then
+  echo "Выпустить $TAG? — да (--yes)"
+else
+  # Закрытый ввод (запуск без терминала, например в Actions) — не ответ «нет», а ошибка запуска: зеленый итог без
+  # выпуска хуже понятного отказа.
+  answer=""
+  if ! read -r -p "Выпустить $TAG? [y/N] " answer && [ -z "$answer" ]; then
+    die "нет ответа на «Выпустить $TAG?»: ввод закрыт. Запуск без вопроса — с ключом --yes"
+  fi
+  case "$answer" in
+    [yYдД]) ;;
+    *) echo "Отменено."; exit 0 ;;
+  esac
+fi
 
 # ── 9. Версия и дата ──────────────────────────────────────────────────────────
 # Через временный файл — одинаково с GNU и BSD sed (без sed -i).

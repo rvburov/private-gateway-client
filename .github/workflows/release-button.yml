@@ -1,0 +1,135 @@
+name: Выпустить версию
+
+# Кнопка выпуска (решение пользователя 2026-11-13): то же, что scripts/release.sh X.Y.Z на компьютере, но на машине GitHub —
+# с телефона (GitHub Mobile или браузер) или агентом через API (workflow_dispatch). Работает сам release.sh с --yes: те же
+# проверки (X.Y.Z, master, чистое дерево, совпадение с GitHub, тег свободен, версия, секция в CHANGELOG.md, модульные
+# тесты), версия, дата и ссылки истории, коммит «release: vX.Y.Z», аннотированный тег, отправка master, затем тега.
+#
+# Отправки токеном GITHUB_TOKEN других workflow не запускают (кроме workflow_dispatch и repository_dispatch), поэтому
+# дальше кнопка запускает сама: «Проверку» (ci.yml) на master — ее ждет «Условия выпуска» — и «Выпуск на GitHub»
+# (release.yml) на теге: github.ref и github.sha у него те же, что у запуска отправкой тега. Сайт такой выпуск запускает в
+# конце сам (release.yml, задание «Сайт — запуск после кнопки»). Новых секретов не нужно. Порядок —
+# docs/architecture/release.md.
+run-name: Выпустить ${{ inputs.version }}${{ inputs.dry_run && ' — только проверки' || '' }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Версия X.Y.Z, например 0.2.2
+        required: true
+        type: string
+      dry_run:
+        description: Только проверки, ничего не менять
+        type: boolean
+        default: false
+
+permissions:
+  contents: write   # коммит выпуска и тег
+  actions: write    # запуск «Проверки» и «Выпуска на GitHub»
+
+# Два выпуска сразу не идут: второй ждет первого и упирается в занятый тег или в ушедший вперед master.
+concurrency:
+  group: release-button
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Выпуск ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    steps:
+      # Use workflow from — только master: с другой ветки или тега кнопка не выпускает.
+      - name: Запуск с master
+        run: |
+          [ "$GITHUB_REF" = refs/heads/master ] || {
+            echo "Кнопка запущена на «$GITHUB_REF_NAME», выпуск — только с master: Run workflow → Use workflow from → master" >&2
+            exit 1
+          }
+
+      # Вся история и теги: release.sh сверяет прошлый выпуск, а тег встает на коммит master.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          fetch-depth: 0
+
+      # Автор и коммитер — владелец, без подписи (AGENTS.md, раздел «Git»); у тега тоже.
+      - name: Автор коммита и тега
+        run: |
+          git config user.name "Roman Burov"
+          git config user.email "romanburov89@gmail.com"
+          git config commit.gpgsign false
+          git config tag.gpgsign false
+
+      # Как в проверке: свежий выпуск SDK бывает объявлен раньше, чем готовы файлы, — тогда предыдущий.
+      - id: dotnet
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.402
+
+      # Дата секции в CHANGELOG.md — по UTC (часы машины GitHub).
+      - name: Проверки, коммит и тег (scripts/release.sh)
+        env:
+          VERSION: ${{ inputs.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          flags=(--yes)
+          [ "$DRY_RUN" != true ] || flags+=(--dry-run)
+          scripts/release.sh "$VERSION" "${flags[@]}"
+          if [ "$DRY_RUN" = true ]; then
+            echo "Проверки выпуска $VERSION пройдены, ничего не изменено (только проверки)." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # Коммит и тег отправлены токеном GITHUB_TOKEN: сами они ничего не запускают.
+      - name: Запуск проверки master и выпуска тега
+        if: ${{ !inputs.dry_run }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          tag="v$VERSION"
+          sha="$(git rev-parse "$tag^{commit}")"
+          # Повтор кнопки после этого места откажет на занятом теге — поэтому при сбое запуска подсказка, как руками.
+          by_hand() {
+            echo "$1 Тег $tag уже на GitHub — кнопку не повторять, а запустить руками: Actions →" >&2
+            echo "«Проверка» → Run workflow (master), если ее нет у ${sha:0:12}; «Выпуск на GitHub» → Run workflow → Use workflow from → Tags → $tag" >&2
+            exit 1
+          }
+
+          # «Проверка» по кнопке идет на вершине master, поэтому master должен стоять на коммите тега. Ушел вперед —
+          # проверки коммита тега не будет, и «Условия выпуска» ждали бы ее зря.
+          master="$(git ls-remote origin refs/heads/master | cut -f1)"
+          if [ "$master" != "$sha" ]; then
+            echo "master на GitHub ушел с коммита $tag (${sha:0:12} → ${master:0:12}): выпуск не запущен." >&2
+            echo "Удалите тег (git push origin :refs/tags/$tag) и запустите кнопку еще раз — тег встанет на новый master." >&2
+            exit 1
+          fi
+
+          # Повтор выпуска без нового коммита (тег на прежний master): этот коммит уже проверен после отправки с компьютера,
+          # второй раз не гоняем. У нового коммита выпуска проверки еще нет.
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$sha&branch=master&per_page=100" \
+            --jq '[.workflow_runs[] | select(.event == "push" or .event == "workflow_dispatch" or .event == "schedule")] | length')" \
+            || by_hand "Не удалось узнать, есть ли «Проверка» у коммита выпуска."
+          if [ "$runs" = 0 ]; then
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref master || by_hand "Не удалось запустить «Проверку»."
+            echo "Запущена «Проверка» master на ${sha:0:12}." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "«Проверка» коммита ${sha:0:12} уже есть — вторая не нужна." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$tag" || by_hand "Не удалось запустить «Выпуск на GitHub»."
+          {
+            echo "Тег $tag на ${sha:0:12}; запущен «Выпуск на GitHub» — около полутора-двух часов: проверка, долгий прогон, сборки."
+            echo ""
+            echo "- Выпуск: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/workflows/release.yml"
+            echo "- Страница выпуска (после сборки): $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$tag"
+          } >> "$GITHUB_STEP_SUMMARY"

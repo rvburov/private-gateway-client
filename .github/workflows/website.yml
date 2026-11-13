@@ -8,6 +8,8 @@ name: Выпуск на сайт
 # Секреты: WEBSITE_HOST, WEBSITE_USER, WEBSITE_KNOWN_HOSTS (как DEPLOY_* сайта), WEBSITE_SSH_KEY — секретная часть
 # ключа выпусков. Пока секретов нет, workflow пишет «сайт не настроен» и завершается успешно.
 # Запуск по workflow_run, а не по событию release: выпуск создает GITHUB_TOKEN, его события workflow не запускают.
+# workflow_run — только от выпуска отправкой тега (push). Выпуск кнопкой «Выпустить версию» (workflow_dispatch) запускает
+# сайт сам, в своем последнем задании: так отправка одна, придет ли для него еще и workflow_run или нет.
 on:
   workflow_run:
     workflows: ["Выпуск на GitHub"]
@@ -28,7 +30,9 @@ concurrency:
 jobs:
   website:
     name: Сайт
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:

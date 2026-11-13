@@ -1,7 +1,8 @@
 #!/bin/bash
 #
 # Тесты выпуска по образцу SmartBase (Scripts/github-release/release-test.sh): scripts/release.sh, check-version.sh,
-# release-notes.sh и триггеры .github/workflows/release.yml. Чистый bash и git: .NET, сеть и gh не нужны. Запускается в
+# release-notes.sh, триггеры .github/workflows/release.yml и кнопка «Выпустить версию» (release-button.yml). Чистый bash и
+# git: .NET, сеть и gh не нужны. Запускается в
 # CI (задание «Стиль и формат») и вручную:
 #
 #   scripts/tests/release-test.sh
@@ -282,11 +283,59 @@ fi
 if [ -n "$wf_problems" ]; then
   bad "8. Проблемы в $WF" "$wf_problems"
 elif command -v actionlint >/dev/null 2>&1; then
-  out="$(actionlint "$WF" .github/workflows/soak.yml 2>&1)"
-  [ $? -eq 0 ] && ok "8. actionlint: workflow выпуска без замечаний" || bad "8. actionlint нашел проблемы" "$out"
+  out="$(actionlint "$WF" .github/workflows/soak.yml .github/workflows/release-button.yml .github/workflows/ci.yml \
+    .github/workflows/website.yml .github/workflows/publish.yml 2>&1)"
+  [ $? -eq 0 ] && ok "8. actionlint: workflow выпуска, кнопки, проверки и сайта без замечаний" || bad "8. actionlint нашел проблемы" "$out"
 else
   ok "8. Workflow выпуска: только по тегу, версия и текст из скриптов, долгий прогон коммита тега, повтор обновляет выпуск"
   skip "8а. actionlint не установлен — синтаксис workflow проверит GitHub"
+fi
+
+# ── 8б. Кнопка «Выпустить версию» ─────────────────────────────────────────────
+# Отправки токеном GITHUB_TOKEN workflow не запускают (кроме workflow_dispatch): кнопка сама запускает проверку master и
+# выпуск на теге, выпуск по кнопке сам запускает сайт, а workflow_run сайта такой выпуск пропускает — иначе сайт получил
+# бы его дважды. Проверки и отправку делает тот же release.sh, а не копия в YAML.
+BTN=".github/workflows/release-button.yml"
+prob=()
+if [ ! -f "$BTN" ]; then
+  prob+=("нет $BTN")
+else
+  grep -qxF 'name: Выпустить версию' "$BTN" || prob+=("кнопка называется не «Выпустить версию»")
+  grep -qE '^  workflow_dispatch:' "$BTN" || prob+=("кнопка запускается не через workflow_dispatch")
+  grep -qE '^  (push|pull_request|schedule|workflow_run):' "$BTN" && prob+=("у кнопки лишний триггер — выпуск только по нажатию")
+  grep -qE '^      version:' "$BTN" || prob+=("нет поля version")
+  grep -A3 -E '^      dry_run:' "$BTN" | grep -qF 'type: boolean' || prob+=("нет флажка dry_run")
+  grep -qF '[ "$GITHUB_REF" = refs/heads/master ]' "$BTN" || prob+=("нет отказа вне master")
+  grep -qF 'fetch-depth: 0' "$BTN" || prob+=("checkout без всей истории и тегов")
+  for line in 'git config user.name "Roman Burov"' 'git config user.email "romanburov89@gmail.com"' \
+              'git config commit.gpgsign false' 'git config tag.gpgsign false'; do
+    grep -qF "$line" "$BTN" || prob+=("нет «$line»")
+  done
+  grep -qE '^  contents: write' "$BTN" || prob+=("нет contents: write")
+  grep -qE '^  actions: write' "$BTN" || prob+=("нет actions: write")
+  grep -qE '^concurrency:' "$BTN" || prob+=("два выпуска могут идти сразу — нет concurrency")
+  grep -qF 'scripts/release.sh "$VERSION"' "$BTN" || prob+=("выпуск не через scripts/release.sh")
+  grep -qF 'flags=(--yes)' "$BTN" || prob+=("release.sh без --yes")
+  grep -qE -- '--(skip-tests|allow-dirty)' "$BTN" && prob+=("кнопка обходит проверки release.sh")
+  grep -qF 'gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref master' "$BTN" || prob+=("кнопка не запускает проверку master")
+  grep -qF 'gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "$tag"' "$BTN" || prob+=("кнопка не запускает выпуск на теге")
+  # Значения полей — только через env и в заголовках: ${{ inputs.* }} внутри скрипта — подстановка текста в shell.
+  inj="$(grep -nE '\$\{\{[^}]*inputs\.' "$BTN" | grep -vE '^[0-9]+:[[:space:]]*(run-name|name|if|[A-Z_]+):')"
+  [ -z "$inj" ] && grep -qF '${{ inputs.version }}' "$BTN" || prob+=("значение поля подставлено прямо в скрипт: $inj")
+fi
+grep -qE '^  workflow_dispatch:' "$WF" || prob+=("release.yml не запускается кнопкой (workflow_dispatch)")
+grep -qF '[ "$GITHUB_REF_TYPE" = tag ]' "$WF" || prob+=("release.yml по кнопке не проверяет, что запущен на теге")
+grep -qE '^concurrency:' "$WF" || prob+=("два запуска одного тега идут наперегонки — нет concurrency в release.yml")
+grep -qF "if: github.event_name == 'workflow_dispatch'" "$WF" && grep -qF 'gh workflow run website.yml' "$WF" \
+  || prob+=("выпуск по кнопке не запускает сайт")
+grep -qF "github.event.workflow_run.event == 'push'" .github/workflows/website.yml \
+  || prob+=("сайт берет workflow_run и от выпуска по кнопке — отправка задвоится")
+grep -qE '^  workflow_dispatch:' .github/workflows/ci.yml || prob+=("ci.yml не запускается кнопкой")
+grep -qF '"workflow_dispatch"' scripts/release-gate.py || prob+=("release-gate.py не принимает проверку, запущенную кнопкой")
+if [ ${#prob[@]} -eq 0 ]; then
+  ok "8б. Кнопка: только с master, release.sh --yes, автор — владелец, без подписи; запускает проверку master и выпуск тега, сайт — один раз"
+else
+  bad "8б. Кнопка «Выпустить версию»" "${prob[@]}"
 fi
 
 # ── 9. Повтор выпуска и тег перед подписью ──────────────────────────────────
@@ -355,6 +404,45 @@ if [ ${#prob[@]} -eq 0 ]; then
   ok "9а. Обрыв при отправке тега: release.sh повторяет сам; не прошло — подсказка с командой, master уже на месте"
 else
   bad "9а. Обрыв при отправке тега" "${prob[@]}"
+fi
+
+# ── 9б. Без вопроса: --yes ────────────────────────────────────────────────────
+# Кнопка на GitHub работает без терминала. Без --yes закрытый ввод — отказ с подсказкой, а не «Отменено» с кодом 0
+# (зеленый запуск без выпуска); с --yes — тот же выпуск, что после «y», и ввод не читается: «n» на входе его не отменяет.
+prob=()
+# После 9а тег v1.4.2 остался только на стенде (его отправку отклоняли) — сначала он уходит на origin, как руками по
+# подсказке.
+fixture_git push -q origin v1.4.2 2>/dev/null || prob+=("тег v1.4.2 не отправлен на origin стенда")
+awk '{ print } /^## \[Не выпущено\]/ { print ""; print "## [1.4.3]"; print ""; print "### Исправлено"; print ""; print "- Выпуск кнопкой." }' \
+  "$SRC/CHANGELOG.md" > "$FIXTURE/history" && mv "$FIXTURE/history" "$SRC/CHANGELOG.md"
+fixture_git add CHANGELOG.md && fixture_commit 'Описание 1.4.3' && fixture_git push -q origin master \
+  || prob+=("не удалось подготовить 1.4.3 на стенде")
+before="$(fixture_state)"
+out="$(bash "$SRC/scripts/release.sh" 1.4.3 --skip-tests < /dev/null 2>&1)" && prob+=("закрытый ввод без --yes — успех: $out")
+printf '%s\n' "$out" | grep -qF -- 'с ключом --yes' || prob+=("закрытый ввод без подсказки про --yes: $out")
+out="$(echo n | bash "$SRC/scripts/release.sh" 1.4.3 --dry-run --yes --skip-tests 2>&1)" || prob+=("--dry-run --yes упал: $out")
+[ "$(fixture_state)" = "$before" ] || prob+=("отказ или --dry-run --yes изменили стенд")
+out="$(echo n | bash "$SRC/scripts/release.sh" 1.4.3 --yes --skip-tests 2>&1)" || prob+=("--yes упал: $out")
+printf '%s\n' "$out" | grep -qF 'Выпустить v1.4.3? — да (--yes)' || prob+=("нет строки о согласии по --yes: $out")
+printf '%s\n' "$out" | grep -qF 'Отменено' && prob+=("«n» на входе отменило выпуск с --yes")
+[ "$(fixture_git log -1 --format=%s)" = "release: v1.4.3" ] || prob+=("последний коммит — не «release: v1.4.3»")
+[ "$(fixture_git log -1 --format='%an <%ae> %cn <%ce>')" = 'Roman Burov <romanburov89@gmail.com> Roman Burov <romanburov89@gmail.com>' ] \
+  || prob+=("автор или коммитер коммита выпуска — не владелец")
+[ "$(fixture_git cat-file -t v1.4.3 2>/dev/null)" = tag ] || prob+=("тег v1.4.3 не аннотированный или его нет")
+[ "$(fixture_git rev-parse 'v1.4.3^{commit}' 2>/dev/null)" = "$(fixture_git rev-parse HEAD)" ] || prob+=("тег не на коммите выпуска")
+[ "$(git -C "$FIXTURE/origin.git" rev-parse master 2>/dev/null)" = "$(fixture_git rev-parse HEAD)" ] || prob+=("master не отправлен")
+git -C "$FIXTURE/origin.git" rev-parse -q --verify refs/tags/v1.4.3 >/dev/null || prob+=("тег не отправлен")
+grep -qF '<Version>1.4.3</Version>' "$SRC/Directory.Build.props" || prob+=("версия в Directory.Build.props не 1.4.3")
+grep -qE "^## \[1\.4\.3\] — [0-9]{4}-[0-9]{2}-[0-9]{2}$" "$SRC/CHANGELOG.md" || prob+=("у секции 1.4.3 нет даты")
+grep -qxF '[1.4.3]: https://github.com/rvburov/private-gateway-client/compare/v1.4.2...v1.4.3' "$SRC/CHANGELOG.md" \
+  || prob+=("нет ссылки сравнения 1.4.2...1.4.3")
+grep -qxF '[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v1.4.3...HEAD' "$SRC/CHANGELOG.md" \
+  || prob+=("ссылка «Не выпущено» не сдвинута")
+[ -z "$(fixture_git status --porcelain)" ] || prob+=("после выпуска остались незакоммиченные файлы")
+if [ ${#prob[@]} -eq 0 ]; then
+  ok "9б. --yes: без вопроса тот же выпуск, что после «y»; без --yes закрытый ввод — отказ с подсказкой, стенд не тронут"
+else
+  bad "9б. Выпуск без вопроса (--yes)" "${prob[@]}"
 fi
 
 # ── 10. Репозиторий не тронут ──────────────────────────────────────────────────

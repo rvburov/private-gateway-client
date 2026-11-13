@@ -6,6 +6,8 @@ on:
   push:
     branches: ['**']
   pull_request:
+  # Еще и кнопка «Выпустить версию» (release-button.yml): ее коммит выпуска отправлен токеном GITHUB_TOKEN, push его не
+  # проверяет, и кнопка запускает проверку master сама; «Условия выпуска» (release-gate.py) принимают такой запуск.
   workflow_dispatch:
 
 permissions:
