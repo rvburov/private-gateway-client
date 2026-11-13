@@ -13,6 +13,7 @@ import com.privategateway.client.core.account.AccountUser
 import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.account.UpdatesFeed
 import com.privategateway.client.ui.account.AccountViewModel
 import com.privategateway.client.ui.account.LoginUi
 import com.privategateway.client.vpn.TunnelControl
@@ -67,6 +68,8 @@ class AccountViewModelTest {
         override suspend fun status(token: String): StatusResult = StatusResult.Unreachable
 
         override suspend fun logout(token: String) = Unit
+
+        override suspend fun updates(token: String, channel: String): UpdatesFeed = UpdatesFeed.Unreachable
     }
 
     private object NoControl : TunnelControl {

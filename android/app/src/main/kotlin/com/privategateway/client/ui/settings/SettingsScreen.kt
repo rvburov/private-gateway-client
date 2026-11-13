@@ -51,6 +51,7 @@ import com.privategateway.client.ui.theme.PgSettingSwitch
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 import com.privategateway.client.ui.theme.pgTopDivider
+import com.privategateway.client.updates.UpdatesView
 
 /** Страницы «Настроек»: список разделов и вложенные страницы (на телефоне — по одной на экран, доска 25). */
 enum class SettingsPage {
@@ -70,7 +71,8 @@ enum class SettingsPage {
  * [onCheck] — «Проверка и логи»: вкладка «Проверка» островка. [language] — выбрать язык приложения (Android 13+); null —
  * язык как в системе. [requested] — открыть страницу сразу (кнопка уведомления «Открыть» у подписки); открыта — [onRequested].
  * [installedApps] — программы телефона для «Программы мимо VPN» («Маршрутизация»). [account] — вход в аккаунт сайта для
- * карточки «Аккаунт» (null — карточки нет), [onSignOut] — «Выйти» после подтверждения.
+ * карточки «Аккаунт» (null — карточки нет), [onSignOut] — «Выйти» после подтверждения. [updates] — карточка «Обновления» в
+ * «О программе»: [onCheckUpdates] — «Проверить», [onInstallUpdate] — «Скачать и установить», [onAboutShown] — страница открыта.
  */
 @Composable
 fun SettingsScreen(
@@ -90,6 +92,8 @@ fun SettingsScreen(
     onCaptive: () -> Unit = {},
     updates: UpdatesView = UpdatesView(),
     onCheckUpdates: () -> Unit = {},
+    onInstallUpdate: () -> Unit = {},
+    onAboutShown: () -> Unit = {},
     backup: @Composable (onBack: () -> Unit) -> Unit = {},
     account: AccountInfo? = null,
     onSignOut: () -> Unit = {},
@@ -146,7 +150,16 @@ fun SettingsScreen(
         SettingsPage.About -> {
             BackHandler { page = SettingsPage.Main }
             var licenses by rememberSaveable { mutableStateOf(false) }
-            AboutScreen(core, loadCore, onLicenses = { licenses = true }, onReport = onCheck, updates = updates, onCheckUpdates = onCheckUpdates) {
+            AboutScreen(
+                core,
+                loadCore,
+                onLicenses = { licenses = true },
+                onReport = onCheck,
+                updates = updates,
+                onCheckUpdates = onCheckUpdates,
+                onInstallUpdate = onInstallUpdate,
+                onShown = onAboutShown,
+            ) {
                 page = SettingsPage.Main
             }
             if (licenses) {

@@ -5,6 +5,7 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import com.privategateway.client.core.backup.BackupSettings
 import com.privategateway.client.core.notify.NotificationLevel
@@ -20,6 +21,13 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.random.Random
+
+/**
+ * Последняя удачная проверка обновления: когда сайт ответил (мс эпохи; null — ни разу) и что нашлось ([found] — версия; null —
+ * новее нет). По ней окно после перезапуска показывает итог, а проверка при показе окна ждет 12 часов.
+ */
+data class UpdateMemo(val checkedAt: Long? = null, val found: String? = null)
 
 /**
  * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя), настройки туннеля — DNS,
@@ -159,6 +167,30 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         }
     }
 
+    /** Последняя удачная проверка обновления — состояние телефона, а не настройка: в резервную копию не идет. */
+    val updateMemo: Flow<UpdateMemo> = store.data.map { UpdateMemo(it[UPDATE_CHECKED], it[UPDATE_FOUND]) }
+
+    /** Сайт ответил в [at] (мс эпохи): нашлась версия [found] или (null) новее нет. */
+    suspend fun setUpdateMemo(at: Long, found: String?) {
+        store.edit { preferences ->
+            preferences[UPDATE_CHECKED] = at
+            if (found == null) {
+                preferences.remove(UPDATE_FOUND)
+            } else {
+                preferences[UPDATE_FOUND] = found
+            }
+        }
+    }
+
+    /** Номер этой установки 0–99 для частичной раскатки обновлений (как у службы десктопа): создается один раз. */
+    suspend fun updateBucket(): Int {
+        var bucket = 0
+        store.edit { preferences ->
+            bucket = preferences[UPDATE_BUCKET]?.takeIf { it in 0..99 } ?: Random.nextInt(100).also { preferences[UPDATE_BUCKET] = it }
+        }
+        return bucket
+    }
+
     /**
      * Настройки для резервной копии (решение 559): значения ключей строками, имена — как у iOS. Без выбранного сервера (он
      * сменится вместе со списком), без того, что Android сообщил о системе, и без флага первого запуска.
@@ -211,6 +243,9 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val SYSTEM_ALWAYS_ON = booleanPreferencesKey("system_always_on")
         val SYSTEM_LOCKDOWN = booleanPreferencesKey("system_lockdown")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val UPDATE_CHECKED = longPreferencesKey("update_checked_at")
+        val UPDATE_FOUND = stringPreferencesKey("update_found")
+        val UPDATE_BUCKET = intPreferencesKey("update_bucket")
 
         private val BOOLEANS: Set<Preferences.Key<*>> = setOf(SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH)
         private val INTS: Set<Preferences.Key<*>> = setOf(MTU, CONNECT_TIMEOUT)

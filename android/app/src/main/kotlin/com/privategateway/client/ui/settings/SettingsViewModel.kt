@@ -9,7 +9,8 @@ import com.privategateway.client.core.vpn.SystemVpnView
 import com.privategateway.client.data.PhoneApp
 import com.privategateway.client.data.PhoneApps
 import com.privategateway.client.data.SettingsRepository
-import com.privategateway.client.updates.UpdateSource
+import com.privategateway.client.updates.AppUpdates
+import com.privategateway.client.updates.UpdatesView
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,24 +28,27 @@ class SettingsViewModel @Inject constructor(
     private val settings: SettingsRepository,
     monitor: TunnelMonitor,
     private val phoneApps: PhoneApps,
-    private val updateSource: UpdateSource,
+    private val appUpdates: AppUpdates,
 ) : ViewModel() {
-    private val updateState = MutableStateFlow(UpdatesView())
-
-    /** «Обновления» в «О программе» (DECISIONS.md, п. 8): идет ли проверка, ее итог и когда он получен. */
-    val updates: StateFlow<UpdatesView> = updateState.asStateFlow()
+    /**
+     * «Обновления» в «О программе»: проверка, итог, загрузка и установка. Ведет их [AppUpdates] приложения, а не модель окна:
+     * закрытое окно загрузку не обрывает, а итог установки от Android приходит туда же.
+     */
+    val updates: StateFlow<UpdatesView> = appUpdates.state
 
     /** «Проверить»: одна проверка за раз; итог остается до следующей. */
     fun checkUpdates() {
-        if (updateState.value.checking) {
-            return
-        }
+        appUpdates.check()
+    }
 
-        updateState.value = updateState.value.copy(checking = true)
-        viewModelScope.launch {
-            val result = updateSource.check()
-            updateState.value = UpdatesView(checking = false, result = result, checkedAt = System.currentTimeMillis())
-        }
+    /** «Скачать и установить» найденное обновление. */
+    fun installUpdate() {
+        appUpdates.install()
+    }
+
+    /** Открыта «О программе»: проверить, если пора (как при показе окна). */
+    fun aboutShown() {
+        appUpdates.windowShown()
     }
 
     val tunnel: StateFlow<TunnelSettings> = settings.tunnel.stateIn(viewModelScope, SharingStarted.Eagerly, TunnelSettings())

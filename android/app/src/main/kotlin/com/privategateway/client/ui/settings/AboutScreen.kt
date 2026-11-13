@@ -39,6 +39,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.BuildConfig
 import com.privategateway.client.R
+import com.privategateway.client.core.account.AccountApi
 import com.privategateway.client.ui.theme.PgCard
 import com.privategateway.client.ui.theme.PgColor
 import com.privategateway.client.ui.theme.PgIcon
@@ -49,20 +50,20 @@ import com.privategateway.client.ui.theme.PgSheet
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 import com.privategateway.client.ui.theme.pgTopDivider
+import com.privategateway.client.updates.UpdatesView
 
-/** Страница выпусков: APK для Android выкладывается туда (решение 554); магазина у приложения пока нет. */
-internal const val RELEASES_URL = "https://github.com/rvburov/private-gateway-client/releases"
+/** Страница «Скачать клиент» сайта Private Gateway Web: там APK каждой версии (магазина у приложения нет). */
+internal val DOWNLOADS_URL: String = AccountApi.page(AccountApi.DOWNLOADS_PAGE).toString()
 
 /** Поля карточек строк (.card с padding 4px 16px): строки сами без боковых полей, полосы — внутри полей карточки. */
 private val RowsPadding = PaddingValues(horizontal = PgSpace.Card, vertical = PgSpace.Xxs)
 
 /**
- * «О программе» (доска 15, решение 555): карточка программы (знак, название, версия · Android · архитектура), «Компоненты»
- * (клиент, Xray-core, TUN-драйвер Android), «Приватность» тремя строками, ссылки — лицензии, политика конфиденциальности
- * листом, «Сообщить о проблеме» (вкладка «Проверка» с отчетом) и «Новые версии» (страница выпусков GitHub). Карточка
- * «Обновления» — только кнопка «Проверить» по подписанному update.json выпуска (DECISIONS.md, п. 8): APK не обновляет себя
- * сам, ставит его пользователь со страницы выпуска; строки «Служба» и «Hysteria2, TUIC» — только у десктопа (службы и второго
- * ядра на телефоне нет).
+ * «О программе» (доска 15, решение 555): карточка программы (знак, название, версия · Android · архитектура), «Обновления»
+ * (UpdatesCard: проверка по ленте сайта, «Скачать и установить»), «Компоненты» (клиент, Xray-core, TUN-драйвер Android),
+ * «Приватность» тремя строками, ссылки — лицензии, политика конфиденциальности листом, «Сообщить о проблеме» (вкладка
+ * «Проверка» с отчетом) и «Новые версии» (страница скачивания сайта). Строки «Служба» и «Hysteria2, TUIC» — только у десктопа
+ * (службы и второго ядра на телефоне нет). Открыта страница — [onShown]: проверка обновления, если пора.
  */
 @Composable
 fun AboutScreen(
@@ -72,9 +73,14 @@ fun AboutScreen(
     onReport: () -> Unit,
     updates: UpdatesView = UpdatesView(),
     onCheckUpdates: () -> Unit = {},
+    onInstallUpdate: () -> Unit = {},
+    onShown: () -> Unit = {},
     onBack: () -> Unit,
 ) {
-    LaunchedEffect(Unit) { loadCore() }
+    LaunchedEffect(Unit) {
+        loadCore()
+        onShown()
+    }
     var privacy by rememberSaveable { mutableStateOf(false) }
     val links = LocalUriHandler.current
     Column(
@@ -90,7 +96,7 @@ fun AboutScreen(
         Spacer(Modifier.size(PgSpace.L))
         AppCard()
         Spacer(Modifier.size(PgSpace.M))
-        UpdatesCard(updates, onCheckUpdates)
+        UpdatesCard(updates, onCheckUpdates, onInstallUpdate)
 
         GroupTitle(stringResource(R.string.about_components), top = 18.dp)
         PgCard(Modifier.fillMaxWidth(), contentPadding = RowsPadding) {
@@ -117,7 +123,7 @@ fun AboutScreen(
                 "about.releases",
                 divider = true,
             ) {
-                runCatching { links.openUri(RELEASES_URL) }
+                runCatching { links.openUri(DOWNLOADS_URL) }
             }
         }
     }

@@ -111,3 +111,23 @@ sealed interface StatusResult {
     /** Сайт не ответил понятно: сеть, таймаут, 5xx, мусор. Это не отзыв — действует последний подтвержденный срок. */
     data object Unreachable : StatusResult
 }
+
+/**
+ * Итог запроса ленты обновлений приложения (GET /api/app/updates). Ленту разбирает и проверяет UpdateCheck: подпись манифеста
+ * сайт подделать не может. В [Ok.toString] ленты нет: в ней ссылки-билеты на файлы, им не место в журнале.
+ */
+sealed interface UpdatesFeed {
+    /** Лента как прислал сайт: JSON не длиннее предела [AccountApi.FEED_MAX_BYTES]. */
+    class Ok(val json: String) : UpdatesFeed {
+        override fun toString(): String = "Ok(${json.length} chars)"
+    }
+
+    /** 401 — и только он: доступ отозван, как у проверки доступа. */
+    data object Revoked : UpdatesFeed
+
+    /** Сайт не ответил понятно: сеть, таймаут, 422, 5xx, ответ длиннее предела. Это не отзыв. */
+    data object Unreachable : UpdatesFeed
+
+    /** Входа нет: сайт не спрашивали — ленту он дает только по токену устройства. */
+    data object SignedOut : UpdatesFeed
+}

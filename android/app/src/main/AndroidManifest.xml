@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- Обновление из «О программе»: APK с сайта ставит установщик Android с подтверждением пользователя; само разрешение
+         «Установка неизвестных приложений» для Private Gateway включает только пользователь. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- «Программы мимо VPN» (доска 13): с Android 11 чужие программы видны только по запросу — те, что со значком запуска. -->
     <queries>
@@ -83,6 +86,11 @@
         <!-- Кнопка уведомления «Позже» (доска 22): убрать уведомление. Только для своих уведомлений. -->
         <receiver
             android:name=".notify.NoticeReceiver"
+            android:exported="false" />
+
+        <!-- Итог установки обновления от Android (сессия PackageInstaller): только для своего PendingIntent. -->
+        <receiver
+            android:name=".updates.UpdateInstallReceiver"
             android:exported="false" />
     </application>
 </manifest>

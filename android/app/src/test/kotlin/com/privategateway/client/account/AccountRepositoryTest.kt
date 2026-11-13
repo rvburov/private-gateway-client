@@ -12,6 +12,7 @@ import com.privategateway.client.core.account.AccountUser
 import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.account.UpdatesFeed
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
@@ -86,6 +87,8 @@ class AccountRepositoryTest {
     private class FakeSource : AccountSource {
         var login: LoginResult = LoginResult.Failed(AccountError.Network)
         var status: StatusResult = StatusResult.Unreachable
+        var feed: UpdatesFeed = UpdatesFeed.Unreachable
+        val channels = CopyOnWriteArrayList<String>()
         val calls = CopyOnWriteArrayList<String>()
         val devices = CopyOnWriteArrayList<DeviceInfo>()
         val tokens = CopyOnWriteArrayList<String>()
@@ -111,6 +114,13 @@ class AccountRepositoryTest {
             if (logoutHangs) {
                 awaitCancellation()
             }
+        }
+
+        override suspend fun updates(token: String, channel: String): UpdatesFeed {
+            calls += "updates"
+            tokens += token
+            channels += channel
+            return feed
         }
     }
 
@@ -539,5 +549,75 @@ class AccountRepositoryTest {
                 delay(10)
             }
         }
+    }
+
+    @Test
+    fun `update feed goes out with the stored token and comes back as is`() {
+        val repository = repository()
+        assertEquals(UpdatesFeed.SignedOut, wait { repository.updates("stable") }, "без входа — без запроса")
+        assertEquals(emptyList(), source.calls)
+
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        val feed = UpdatesFeed.Ok("""{"releases":[]}""")
+        source.feed = feed
+        assertEquals(feed, wait { repository.updates("beta") })
+        assertEquals(listOf("login", "updates"), source.calls)
+        assertEquals(listOf("tok-secret-1"), source.tokens, "токен открыт из хранилища и ушел только сайту")
+        assertEquals(listOf("beta"), source.channels)
+        assertTrue(wait { repository.allowed() }, "лента не трогает вход")
+        assertFalse(journal.entries.value.any { "tok-secret-1" in it.message })
+    }
+
+    @Test
+    fun `401 on the update feed revokes access like the access check`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        var allowedAtStop: Boolean? = null
+        control.onDisconnect = { allowedAtStop = runBlocking { repository.allowed() } }
+
+        source.feed = UpdatesFeed.Revoked
+        assertEquals(UpdatesFeed.Revoked, wait { repository.updates("stable") })
+
+        val after = wait { repository.state.first { it?.signedIn == false } }!!
+        assertEquals(AccountNotice.Revoked, after.notice)
+        assertEquals(1, control.disconnects, "защита выключена")
+        assertEquals(false, allowedAtStop, "вход стерт раньше, чем выключена защита")
+        assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains("token"), "токен стерт")
+        assertTrue(journal.entries.value.any { "account updates  access revoked" in it.message })
+    }
+
+    @Test
+    fun `other feed answers keep the sign-in`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        source.feed = UpdatesFeed.Unreachable
+        assertEquals(UpdatesFeed.Unreachable, wait { repository.updates("stable") })
+        assertTrue(wait { repository.allowed() })
+        assertEquals(0, control.disconnects)
+    }
+
+    @Test
+    fun `update feed is not asked with a seeded sign-in`() {
+        val seeded = repository()
+        wait { seeded.seedForTests(session()) }
+        assertEquals(UpdatesFeed.Unreachable, wait { seeded.updates("stable") }, "поддельный токен сайт отозвал бы")
+        assertEquals(emptyList(), source.calls)
+        assertTrue(wait { seeded.allowed() })
+    }
+
+    @Test
+    fun `update feed is not asked while the key store does not answer`() {
+        val flaky = FlakyBox()
+        val repository = repository(flaky)
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", "123456", null) }
+        flaky.failure = ProviderException("keystore busy")
+        assertEquals(UpdatesFeed.Unreachable, wait { repository.updates("stable") })
+        assertEquals(listOf("login"), source.calls, "токен не открыть — сайт не спрашиваем")
+        assertTrue(wait { repository.allowed() }, "временный сбой хранилища ключей вход не стирает")
     }
 }

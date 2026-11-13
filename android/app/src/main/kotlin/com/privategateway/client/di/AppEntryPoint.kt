@@ -7,6 +7,7 @@ import com.privategateway.client.notify.ProtectionNotifier
 import com.privategateway.client.subscriptions.SubscriptionBackground
 import com.privategateway.client.subscriptions.SubscriptionUpdater
 import com.privategateway.client.subscriptions.SubscriptionTransport
+import com.privategateway.client.updates.AppUpdates
 import com.privategateway.client.vpn.NetworkAccess
 import com.privategateway.client.vpn.TunnelMonitor
 import dagger.hilt.EntryPoint
@@ -33,4 +34,7 @@ interface AppEntryPoint {
     fun access(): NetworkAccess
 
     fun account(): AccountRepository
+
+    /** Обновление приложения: итог установки от Android приходит в приемник (UpdateInstallReceiver). */
+    fun updates(): AppUpdates
 }

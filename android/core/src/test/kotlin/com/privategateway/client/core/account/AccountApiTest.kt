@@ -30,8 +30,15 @@ class AccountApiTest {
     private val api = AccountApi(base)
     private val device = DeviceInfo("11111111-2222-3333-4444-555555555555", "Google Pixel 8", "0.2.0")
 
-    /** Что пришло на сервер: метод, путь, заголовок Authorization и тело. */
-    private class Request(val method: String, val path: String, val authorization: String?, val contentType: String?, val body: String)
+    /** Что пришло на сервер: метод, путь, заголовок Authorization и тело; [query] — строка запроса как есть. */
+    private class Request(
+        val method: String,
+        val path: String,
+        val authorization: String?,
+        val contentType: String?,
+        val body: String,
+        val query: String? = null,
+    )
 
     private val requests = CopyOnWriteArrayList<Request>()
 
@@ -46,6 +53,7 @@ class AccountApiTest {
                 exchange.requestHeaders.getFirst("Authorization"),
                 exchange.requestHeaders.getFirst("Content-Type"),
                 exchange.requestBody.readBytes().toString(Charsets.UTF_8),
+                exchange.requestURI.rawQuery,
             )
             headers.forEach { (name, value) -> exchange.responseHeaders.add(name, value) }
             exchange.responseHeaders.add("Content-Type", "application/json")
@@ -176,6 +184,52 @@ class AccountApiTest {
         assertEquals(LoginResult.Failed(AccountError.Network), closed.login("user@example.com", "pw", "123456", null, device))
         assertEquals(StatusResult.Unreachable, closed.status("tok"))
         assertFalse(closed.logout("tok"))
+        assertEquals(UpdatesFeed.Unreachable, closed.updates("tok", channel = "stable"))
+    }
+
+    @Test
+    fun `update feed sends the token, the platform and the channel and returns the body as is`() {
+        val feed = """{"releases":[{"version":"0.3.0","channel":"stable","manifest":"e30=","signature":"c2ln","files":{}}]}"""
+        serve("/api/app/updates", 200, feed)
+        val result = api.updates("tok-secret-1", channel = "stable")
+
+        assertEquals(feed, (result as UpdatesFeed.Ok).json)
+        assertFalse("releases" in result.toString(), "ленты со ссылками-билетами нет в toString")
+        val request = requests.single()
+        assertEquals("GET", request.method)
+        assertEquals("/api/app/updates", request.path)
+        assertEquals("platform=android&channel=stable", request.query)
+        assertEquals("Bearer tok-secret-1", request.authorization)
+
+        requests.clear()
+        api.updates("tok", "windows", "beta")
+        assertEquals("platform=windows&channel=beta", requests.single().query)
+    }
+
+    @ParameterizedTest
+    @CsvSource("401, Revoked", "403, Unreachable", "404, Unreachable", "422, Unreachable", "429, Unreachable", "500, Unreachable", "503, Unreachable")
+    fun `only 401 on the update feed is a revocation`(status: Int, kind: String) {
+        serve("/api/app/updates", status, """{"error":{"code":"x"}}""")
+        val result = api.updates("tok", channel = "stable")
+        assertEquals(kind, result.javaClass.simpleName)
+    }
+
+    @Test
+    fun `update feed has its own size limit`() {
+        // Лента длиннее ответов входа (до пяти манифестов base64): 64 КБ ей мало, а больше своего предела — не она.
+        val long = """{"releases":[],"pad":"${"a".repeat(AccountApi.MAX_BYTES + 1000)}"}"""
+        serve("/api/app/updates", 200, long)
+        assertEquals(long, (api.updates("tok", channel = "stable") as UpdatesFeed.Ok).json)
+        assertEquals(UpdatesFeed.Unreachable, AccountApi(base, feedMaxBytes = 4096).updates("tok", channel = "stable"))
+    }
+
+    @Test
+    fun `update feed asks only for known platforms and channels`() {
+        serve("/api/app/updates", 200, """{"releases":[]}""")
+        assertFailsWith<IllegalArgumentException> { api.updates("tok", "android&channel=beta", "stable") }
+        assertFailsWith<IllegalArgumentException> { api.updates("tok", channel = "nightly") }
+        assertEquals(emptyList(), requests.toList(), "неверные параметры на сайт не уходят")
+        assertEquals("https://private-gateway.duckdns.org/downloads", AccountApi.page(AccountApi.DOWNLOADS_PAGE).toString())
     }
 
     @Test

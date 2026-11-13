@@ -112,10 +112,13 @@ fun Modifier.pgShadow(layers: List<PgShadowLayer>, shape: Shape): Modifier {
     return shadow(elevation = deepest.blur / 3, shape = shape, clip = false, ambientColor = color, spotColor = color)
 }
 
-/** Карточка: оттенок surface.card на bg.window, рамка line.border, скругление radius.card, тень shadow.card. */
+/**
+ * Карточка: оттенок surface.card на bg.window, рамка line.border, скругление radius.card, тень shadow.card. [edge] — цвет
+ * рамки, если карточка выделена (как .up-card.offer макета — accent.base).
+ */
 @Composable
-fun PgCard(modifier: Modifier = Modifier, padding: Dp = PgSpace.Card, content: @Composable ColumnScope.() -> Unit) {
-    PgCard(modifier, PaddingValues(padding), content)
+fun PgCard(modifier: Modifier = Modifier, padding: Dp = PgSpace.Card, edge: Color = PgColor.Line.Border, content: @Composable ColumnScope.() -> Unit) {
+    PgCard(modifier, PaddingValues(padding), edge, content)
 }
 
 /**
@@ -124,7 +127,12 @@ fun PgCard(modifier: Modifier = Modifier, padding: Dp = PgSpace.Card, content: @
  * исходных токенов, без отдельного графического буфера на всю высоту длинного текста лицензии или списка правил.
  */
 @Composable
-fun PgCard(modifier: Modifier = Modifier, contentPadding: PaddingValues, content: @Composable ColumnScope.() -> Unit) {
+fun PgCard(
+    modifier: Modifier = Modifier,
+    contentPadding: PaddingValues,
+    edge: Color = PgColor.Line.Border,
+    content: @Composable ColumnScope.() -> Unit,
+) {
     val shape = RoundedCornerShape(PgRadius.Card)
     val background = PgColor.Surface.Card.compositeOver(PgColor.Bg.Window)
     Column(
@@ -132,7 +140,7 @@ fun PgCard(modifier: Modifier = Modifier, contentPadding: PaddingValues, content
             .pgShadow(PgShadow.Card, shape)
             .clip(shape)
             .background(background)
-            .border(1.dp, PgColor.Line.Border, shape)
+            .border(1.dp, edge, shape)
             .padding(contentPadding),
         content = content,
     )

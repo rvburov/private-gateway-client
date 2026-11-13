@@ -421,6 +421,8 @@ fun AppScreen(
                             installedApps = { settings.installedApps() },
                             updates = updates,
                             onCheckUpdates = settings::checkUpdates,
+                            onInstallUpdate = settings::installUpdate,
+                            onAboutShown = settings::aboutShown,
                             backup = { back ->
                                 if (backups != null) {
                                     BackupPage(backups, back)

@@ -14,7 +14,7 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeParseException
 
-/** Что приложение спрашивает у сайта: вход, проверка доступа и выход — шов над [AccountApi], в тестах подделка. */
+/** Что приложение спрашивает у сайта: вход, проверка доступа, выход и лента обновлений — шов над [AccountApi], в тестах подделка. */
 interface AccountSource {
     /**
      * Вход по почте и паролю; на втором шаге — еще код 2FA ([code]) или резервный код ([recovery]), не больше одного. Первый
@@ -26,6 +26,9 @@ interface AccountSource {
 
     /** Выйти на сайте; ошибка сети не мешает выйти в приложении — итога нет. */
     suspend fun logout(token: String)
+
+    /** Лента обновлений приложения по токену устройства; [channel] — stable или beta. */
+    suspend fun updates(token: String, channel: String): UpdatesFeed
 }
 
 /**
@@ -35,6 +38,7 @@ interface AccountSource {
  * наружу не идут: итог — причина ([AccountError]) или вид ответа ([StatusResult]); из тела ошибки входа читается только код
  * сайта у 401 и 409 ({"error":{"code":"…"}}): им различаются «нужен код» и «частая смена устройств». Токен, пароль, коды и
  * почта никуда, кроме тела запроса и заголовка Authorization, не пишутся. Сеть — блокирующая: вызывать не в главном потоке.
+ * Лента обновлений длиннее остальных ответов — у нее свой предел [feedMaxBytes].
  */
 class AccountApi(
     private val base: URI = SITE,
@@ -42,6 +46,7 @@ class AccountApi(
     private val timeoutMs: Int = TIMEOUT_MS,
     private val maxBytes: Int = MAX_BYTES,
     private val userAgent: String = USER_AGENT,
+    private val feedMaxBytes: Int = FEED_MAX_BYTES,
 ) {
     init {
         require(secure(base)) { "Адрес сайта — только https (http — только 127.0.0.1 для тестов)" }
@@ -95,6 +100,24 @@ class AccountApi(
     /** Выйти на сайте: true — сайт принял (204); сеть и ошибки — false, выход в приложении идет все равно. */
     fun logout(token: String): Boolean = (send("POST", "/api/app/logout", token, "") as? Answer.Status)?.code in 200..299
 
+    /**
+     * Лента обновлений (GET /api/app/updates) для [platform] и [channel] по токену устройства: тело как есть, не длиннее
+     * [feedMaxBytes]; проверяет его UpdateCheck. Как у проверки доступа: 401 — отзыв, остальное (422, 5xx, сеть) — сайт
+     * недоступен.
+     */
+    fun updates(token: String, platform: String = DeviceInfo.PLATFORM, channel: String): UpdatesFeed {
+        require(platform in PLATFORMS) { "Платформа ленты — одна из $PLATFORMS" }
+        require(channel in CHANNELS) { "Канал ленты — один из $CHANNELS" }
+        return when (val answer = send("GET", "$UPDATES_PATH?platform=$platform&channel=$channel", token, null, limit = feedMaxBytes)) {
+            is Answer.Failed -> UpdatesFeed.Unreachable
+            is Answer.Status -> when (answer.code) {
+                200 -> answer.body?.let { UpdatesFeed.Ok(it) } ?: UpdatesFeed.Unreachable
+                401 -> UpdatesFeed.Revoked
+                else -> UpdatesFeed.Unreachable
+            }
+        }
+    }
+
     private sealed interface Answer {
         /** Сайт ответил: код, тело (только у 200), Retry-After (секунды, у 429) и код ошибки сайта (у 401 и 409 входа). */
         class Status(val code: Int, val body: String?, val retryAfter: String?, val error: String? = null) : Answer
@@ -103,8 +126,11 @@ class AccountApi(
         data object Failed : Answer
     }
 
-    /** Запрос к сайту; [errorCodes] — прочитать код ошибки сайта у 401 и 409 (только вход: у проверки любой 401 — отзыв). */
-    private fun send(method: String, path: String, token: String?, body: String?, errorCodes: Boolean = false): Answer {
+    /**
+     * Запрос к сайту; [errorCodes] — прочитать код ошибки сайта у 401 и 409 (только вход: у проверки любой 401 — отзыв);
+     * [limit] — предел тела ответа 200.
+     */
+    private fun send(method: String, path: String, token: String?, body: String?, errorCodes: Boolean = false, limit: Int = maxBytes): Answer {
         val connection = try {
             openConnection(base.resolve(path))
         } catch (_: IOException) {
@@ -143,7 +169,7 @@ class AccountApi(
                 return Answer.Failed
             }
 
-            val text = if (code == 200) read(connection.inputStream, connection.contentLengthLong) ?: return Answer.Failed else null
+            val text = if (code == 200) read(connection.inputStream, connection.contentLengthLong, limit) ?: return Answer.Failed else null
             val error = if (errorCodes && (code == 401 || code == 409)) errorCode(connection) else null
             return Answer.Status(code, text, connection.getHeaderField("Retry-After"), error)
         } catch (_: IOException) {
@@ -169,9 +195,9 @@ class AccountApi(
         return string(text?.let { tree(it) }?.get("error") as? Map<*, *>, "code")
     }
 
-    /** Тело ответа не больше [maxBytes]; больше — как нет ответа (null). */
-    private fun read(stream: InputStream, length: Long): String? {
-        if (length > maxBytes) {
+    /** Тело ответа не больше [limit]; больше — как нет ответа (null). */
+    private fun read(stream: InputStream, length: Long, limit: Int = maxBytes): String? {
+        if (length > limit) {
             return null
         }
 
@@ -184,7 +210,7 @@ class AccountApi(
                     break
                 }
 
-                if (out.size() + read > maxBytes) {
+                if (out.size() + read > limit) {
                     return null
                 }
 
@@ -204,11 +230,25 @@ class AccountApi(
         /** Ответ API — несколько сотен байт; 64 КБ хватает с запасом. */
         const val MAX_BYTES = 64 * 1024
 
+        /** Лента обновлений — до пяти манифестов (каждый до 64 КБ) base64 со ссылками: предел как у службы десктопа. */
+        const val FEED_MAX_BYTES = 1024 * 1024
+
         const val USER_AGENT = "PrivateGateway/0.1"
 
         /** Страницы сайта для кнопок ошибок входа: настроить 2FA (403) и освободить место (409). */
         const val LOGIN_PAGE = "/login"
         const val DEVICES_PAGE = "/devices"
+
+        /** Страница «Скачать клиент» сайта: новые версии APK и запасной путь, если обновление не встало. */
+        const val DOWNLOADS_PAGE = "/downloads"
+
+        /** Лента обновлений и ссылки-билеты на ее файлы (их сайт отдает без токена: билет сам — право на файл). */
+        const val UPDATES_PATH = "/api/app/updates"
+        const val UPDATE_FILES_PATH = "/api/app/updates/files/"
+
+        /** Платформы и каналы ленты — как у сайта; другое сайт отклонит (422), поэтому не уходит вовсе. */
+        val PLATFORMS = setOf("windows", "macos", "linux", "android")
+        val CHANNELS = setOf("stable", "beta")
 
         /** Адрес страницы сайта для кнопки под ошибкой. */
         fun page(path: String, base: URI = SITE): URI = base.resolve(path)

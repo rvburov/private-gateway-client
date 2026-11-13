@@ -28,6 +28,7 @@ import com.privategateway.client.core.account.AccountUser
 import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.account.UpdatesFeed
 import com.privategateway.client.core.account.AccountError
 import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.data.SettingsRepository
@@ -192,6 +193,8 @@ class MainViewModelTest {
         override suspend fun status(token: String): StatusResult = StatusResult.Unreachable
 
         override suspend fun logout(token: String) = Unit
+
+        override suspend fun updates(token: String, channel: String): UpdatesFeed = UpdatesFeed.Unreachable
     }
 
     private lateinit var account: AccountRepository

@@ -43,16 +43,19 @@ import com.privategateway.client.ui.settings.SettingsPage
 import com.privategateway.client.ui.settings.SettingsViewModel
 import com.privategateway.client.ui.subscriptions.SubscriptionsViewModel
 import com.privategateway.client.ui.theme.PgTheme
+import com.privategateway.client.updates.AppUpdates
 import com.privategateway.client.vpn.GatewayVpnService
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /**
  * Окно приложения. Здесь — то, что требует Activity: разрешение Android на VPN (системное окно «Запрос на подключение»,
- * доска 26) и на уведомления, системные настройки VPN, буфер обмена. Остальное — Compose (AppScreen).
+ * доска 26) и на уведомления, системные настройки VPN, буфер обмена, экраны Android для обновления (настройка «Установка
+ * неизвестных приложений» и подтверждение установки). Остальное — Compose (AppScreen).
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
@@ -66,6 +69,8 @@ class MainActivity : ComponentActivity() {
     private val account: AccountViewModel by viewModels()
 
     @Inject lateinit var appWindow: AppWindow
+
+    @Inject lateinit var updates: AppUpdates
 
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -117,6 +122,14 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // Обновление: экран Android (разрешение на установку или подтверждение) открывается, только пока окно на экране —
+        // из фона Android его не покажет, а запрос дождется следующего показа окна.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                updates.prompts.filterNotNull().collect { openSystemScreen(it) }
+            }
+        }
+
         // Первое «Защищено» — тогда и вопрос об уведомлениях: понятно, что они сообщат об обрыве.
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -143,6 +156,8 @@ class MainActivity : ComponentActivity() {
         super.onStart()
         appWindow.set(true)
         viewModel.windowShown()
+        // Обновление приложения — не чаще раза в 12 часов (итог — в «О программе»).
+        updates.windowShown()
     }
 
     override fun onStop() {
@@ -207,6 +222,16 @@ class MainActivity : ComponentActivity() {
     private fun setLanguage(tag: String) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             getSystemService(LocaleManager::class.java)?.applicationLocales = LocaleList.forLanguageTags(tag)
+        }
+    }
+
+    /** Экран Android для обновления; его нет (редкая прошивка) — поставить отсюда нельзя, запасной путь — сайт. */
+    private fun openSystemScreen(screen: Intent) {
+        updates.prompted(screen)
+        try {
+            startActivity(screen)
+        } catch (_: ActivityNotFoundException) {
+            updates.promptFailed()
         }
     }
 

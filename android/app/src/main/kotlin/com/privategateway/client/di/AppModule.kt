@@ -5,8 +5,10 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.preferencesDataStoreFile
+import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.account.AccountStore
 import com.privategateway.client.account.DeviceAccountSource
+import com.privategateway.client.account.UpdatesFeedSource
 import com.privategateway.client.account.accountDataStore
 import com.privategateway.client.core.account.AccountSource
 import com.privategateway.client.core.inspect.ProbeRunner
@@ -39,8 +41,8 @@ import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelDelay
 import com.privategateway.client.subscriptions.DeviceSubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionTransport
-import com.privategateway.client.updates.AppUpdates
-import com.privategateway.client.updates.UpdateSource
+import com.privategateway.client.updates.ApkInstaller
+import com.privategateway.client.updates.PackageApkInstaller
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -128,8 +130,12 @@ abstract class BindingsModule {
     @Binds
     abstract fun phoneHints(hints: DevicePhoneHints): PhoneHintSource
 
+    /** Лента обновлений сайта — токеном входа, который держит AccountRepository. */
     @Binds
-    abstract fun updates(updates: AppUpdates): UpdateSource
+    abstract fun updatesFeed(account: AccountRepository): UpdatesFeedSource
+
+    @Binds
+    abstract fun apkInstaller(installer: PackageApkInstaller): ApkInstaller
 
     @Binds
     abstract fun tunnelDelay(delay: DeviceTunnelDelay): TunnelDelay

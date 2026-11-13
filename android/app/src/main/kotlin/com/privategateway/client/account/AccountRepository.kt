@@ -21,6 +21,7 @@ import com.privategateway.client.core.account.AccountSource
 import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
+import com.privategateway.client.core.account.UpdatesFeed
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
@@ -105,6 +106,15 @@ class DeviceAccountSource @Inject constructor() : AccountSource {
     override suspend fun logout(token: String) {
         withContext(Dispatchers.IO) { api.logout(token) }
     }
+
+    override suspend fun updates(token: String, channel: String): UpdatesFeed =
+        withContext(Dispatchers.IO) { api.updates(token, channel = channel) }
+}
+
+/** Лента обновлений сайта токеном входа — шов для обновлений приложения (в приложении — [AccountRepository], в тестах подделка). */
+fun interface UpdatesFeedSource {
+    /** Лента для [channel] (stable или beta). */
+    suspend fun updates(channel: String): UpdatesFeed
 }
 
 /**
@@ -129,7 +139,7 @@ class AccountRepository @Inject constructor(
     private val control: TunnelControl,
     private val monitor: TunnelMonitor,
     private val journal: TunnelJournal,
-) {
+) : UpdatesFeedSource {
     // Ошибка, которую не поймали ниже, — в журнал, а не в обработчик потока: тот завершил бы процесс вместе со службой VPN.
     private val scope = CoroutineScope(
         SupervisorJob() + Dispatchers.Default + CoroutineExceptionHandler { _, failure ->
@@ -318,6 +328,52 @@ class AccountRepository @Inject constructor(
         } catch (e: Exception) {
             journal.warning("account check  failed " + e.javaClass.simpleName)
         }
+    }
+
+    /**
+     * Лента обновлений сайта (GET /api/app/updates) токеном этого входа: токен из репозитория не выходит, разбирает ленту
+     * UpdateCheck. Входа нет — [UpdatesFeed.SignedOut] без запроса; засеянный для проверок на устройстве вход — без запроса
+     * (настоящий сайт отозвал бы поддельный токен). 401 — отзыв, как у проверки доступа: вход стирается, если он все тот же,
+     * защита выключается, окно — вход с «Доступ отозван». Хранилище или ключ не читаются — как «сайт не ответил».
+     */
+    override suspend fun updates(channel: String): UpdatesFeed {
+        if (seeded) {
+            return UpdatesFeed.Unreachable
+        }
+
+        val sealed = try {
+            lock.withLock {
+                val stored = read() ?: return UpdatesFeed.Unreachable
+                stored[TOKEN] ?: return UpdatesFeed.SignedOut
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            journal.warning("account updates  failed " + e.javaClass.simpleName)
+            return UpdatesFeed.Unreachable
+        }
+
+        val token = when (val opened = withContext(Dispatchers.IO) { open(sealed) }) {
+            is Opened.Token -> opened.value
+            else -> {
+                journal.warning("account updates  sign-in unreadable now")
+                return UpdatesFeed.Unreachable
+            }
+        }
+
+        val feed = source.updates(token, channel)
+        if (feed == UpdatesFeed.Revoked) {
+            journal.warning("account updates  access revoked")
+            try {
+                finish(sealed, AccountNotice.Revoked)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                journal.warning("account updates  failed " + e.javaClass.simpleName)
+            }
+        }
+
+        return feed
     }
 
     /** Окно открылось: проверить, если давно не спрашивали сайт. */

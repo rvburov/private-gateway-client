@@ -30,6 +30,7 @@ import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class SettingsRepositoryTest {
     @get:Rule
@@ -160,6 +161,21 @@ class SettingsRepositoryTest {
 
         store.edit { it[stringPreferencesKey("subs_refresh")] = "Every48Hours" }
         assertEquals(RefreshInterval.Every12Hours, settings.subscriptions.first().refresh, "значение из будущей версии — по умолчанию")
+    }
+
+    @Test
+    fun `update check memo and install number are phone state, not a backed up setting`() = runBlocking<Unit> {
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
+        assertEquals(UpdateMemo(), settings.updateMemo.first(), "еще не проверяли")
+        settings.setUpdateMemo(1_000, "0.3.0")
+        assertEquals(UpdateMemo(1_000, "0.3.0"), settings.updateMemo.first())
+        settings.setUpdateMemo(2_000, null)
+        assertEquals(UpdateMemo(2_000, null), settings.updateMemo.first(), "новее нет — найденная версия стерта")
+
+        val bucket = settings.updateBucket()
+        assertTrue(bucket in 0..99, "номер установки $bucket")
+        assertEquals(bucket, settings.updateBucket(), "номер установки создается один раз")
+        assertEquals(emptyMap<String, String>(), settings.export().filterKeys { it.startsWith("update") }, "в резервную копию не идет")
     }
 
     @Test
