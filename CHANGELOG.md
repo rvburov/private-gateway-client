@@ -21,7 +21,7 @@
 
 ## [Не выпущено]
 
-## [0.2.0]
+## [0.2.0] — 2026-11-13
 
 Вход по аккаунту сайта Private Gateway Web: пользоваться программой могут только участники с действующим доступом.
 
@@ -76,5 +76,6 @@
 - Программа пока не подписана сертификатом разработчика: при первом запуске Windows и macOS попросят подтверждение —
   что нажать, написано на странице выпуска.
 
-[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.1.5...HEAD
+[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/rvburov/private-gateway-client/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/rvburov/private-gateway-client/releases/tag/v0.1.5
