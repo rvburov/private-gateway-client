@@ -94,6 +94,14 @@ jobs:
         with:
           dotnet-version: 10.0.402
 
+      # Нативная сборка sing-box вызывается уже из dotnet build при подготовке службы разработки.
+      - name: Go для ядра macOS
+        if: runner.os == 'macOS'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+          cache: false
+
       - name: Иконка macOS — системный декодер, все размеры
         if: runner.os == 'macOS'
         run: bash scripts/tests/macos-icon-smoke.sh
@@ -177,8 +185,8 @@ jobs:
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
         run: dotnet run scripts/test-report.cs artifacts/test-results
 
-  # Linux на ARM и Mac с Intel: выпуска для них нет, а сборка из исходников (docs/user/guide.md) — есть. Здесь — сборка, оба
-  # ядра по закрепленным суммам этих машин и тесты, которые гоняют настоящие ядра: прокси через Xray, конфиги эталонов,
+  # Linux на ARM и Mac с Intel: дополнительная проверка процессоров; Intel также получает DMG. Здесь — сборка,
+  # закрепленные ядра (sing-box macOS из исходников) и тесты, которые гоняют настоящие ядра: прокси через Xray, конфиги эталонов,
   # ретранслятор sing-box, замер задержки (решение 479); на Linux ARM еще хранилище секретов и туннель ретранслятора от
   # root. Остальное с правами root (блок при обрыве, служба) — в основном задании на тех же ОС.
   other-cpu:
@@ -205,6 +213,14 @@ jobs:
         uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
         with:
           dotnet-version: 10.0.402
+
+      # Нативная сборка sing-box вызывается уже из dotnet build при подготовке службы разработки.
+      - name: Go для ядра macOS
+        if: runner.os == 'macOS'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+          cache: false
 
       - name: Иконка macOS — системный декодер, все размеры
         if: runner.os == 'macOS'

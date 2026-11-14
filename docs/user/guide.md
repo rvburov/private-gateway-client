@@ -20,7 +20,8 @@ Windows, macOS, Linux, Android и iOS — [«Как работает сеть в
   сертификатом: если Windows покажет «Система Windows защитила ваш компьютер» — «Подробнее» → «Выполнить в любом случае».
 - **Linux** — `.deb` (Debian, Ubuntu): `sudo apt install ./private-gateway_<версия>_amd64.deb`; `.rpm` (Fedora,
   openSUSE): `sudo dnf install ./private-gateway-<версия>.x86_64.rpm`.
-- **macOS** (Apple Silicon) — `PrivateGateway-<версия>-osx-arm64.dmg`. Программа пока не подписана сертификатом Apple, и
+- **macOS 13 и новее** — `PrivateGateway-<версия>-osx-arm64.dmg` для Apple Silicon серии M или
+  `PrivateGateway-<версия>-osx-x64.dmg` для Intel. Выберите файл по процессору в «Об этом Mac». Программа пока не подписана сертификатом Apple, и
   при первом запуске macOS ее не откроет. Те же шаги нарисованы в окне образа (по-русски и строкой по-английски):
   1. Откройте образ и перетащите **Private Gateway** в **«Программы»**.
   2. Откройте программу из «Программ» — в окне о проверке нажмите **«Готово»**.
