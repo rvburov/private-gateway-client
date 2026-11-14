@@ -200,7 +200,10 @@ public abstract class WindowHarness : IDisposable
     protected static void Snapshot(Window window, string name)
     {
         Dispatcher.UIThread.RunJobs();
-        window.CaptureRenderedFrame()?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+        // Skia кодирует снимок по указателю на буфер bitmap: владелец должен жить до конца Save.
+        using var frame = window.CaptureRenderedFrame();
+        frame?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+        GC.KeepAlive(frame);
     }
 
     /// <summary>

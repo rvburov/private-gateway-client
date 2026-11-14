@@ -183,7 +183,9 @@ public sealed class SettingsPageTests : IDisposable
     private static void Snapshot(Window window, string name)
     {
         Dispatcher.UIThread.RunJobs();
-        window.CaptureRenderedFrame()?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+        using var frame = window.CaptureRenderedFrame();
+        frame?.Save(Path.Combine(Repo.Snapshots, name + ".png"), PngBitmapEncoderOptions.Default);
+        GC.KeepAlive(frame);
     }
 
     /// <summary>Нажатие мышью, как у пользователя: сегмент — в видимой части страницы.</summary>

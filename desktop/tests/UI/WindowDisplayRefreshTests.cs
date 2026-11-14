@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Media.Imaging;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using PrivateGateway.Client.Core;
@@ -156,6 +157,43 @@ public sealed class WindowDisplayRefreshTests : WindowHarness
         Dispatcher.UIThread.RunJobs();
         shell.CurrentPage.ShouldBeOfType<SettingsPageViewModel>();
         Snapshot(window, "display-retina-restored");
+    }
+
+    [AvaloniaFact]
+    public async Task Retina_snapshots_keep_the_pixel_buffer_alive_during_png_encoding_and_collection()
+    {
+        var (window, _) = Open();
+        window.SetRenderScaling(2);
+        using var collect = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var started = new ManualResetEventSlim();
+        var collections = 0;
+        var collector = Task.Run(() =>
+        {
+            started.Set();
+            while (!collect.IsCancellationRequested)
+            {
+                GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+                Interlocked.Increment(ref collections);
+                collect.Token.WaitHandle.WaitOne(1);
+            }
+        });
+        try
+        {
+            started.Wait();
+            for (var i = 0; i < 3; i++)
+            {
+                var name = $"display-retina-gc-{i}";
+                Snapshot(window, name);
+                using var decoded = new Bitmap(Path.Combine(Repo.Snapshots, name + ".png"));
+                decoded.PixelSize.ShouldBe(PixelSize.FromSize(window.ClientSize, window.RenderScaling));
+            }
+        }
+        finally
+        {
+            collect.Cancel();
+            await collector;
+        }
+        collections.ShouldBeGreaterThan(0, "GC работал одновременно с нативным PNG-кодировщиком");
     }
 
     [AvaloniaFact]

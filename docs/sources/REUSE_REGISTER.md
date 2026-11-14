@@ -201,3 +201,15 @@
   Нет остановки по первому отсутствующему ключу или по 32 пропускам; правила других программ не меняются.
 - Проверки: отбор чужих и своих записей на нескольких страницах, ошибка следующей страницы и ошибки удаления; существующая
   нативная проверка Windows дополнена удалением первого фильтра и первых 40 ключей перед полным снятием.
+
+## 14.11.2026 — время жизни PNG-снимка Headless
+
+- Изучена Avalonia 12.1.4, коммит `2d79ba55fae1b1e71c69f93a668080c9029e6a31`, MIT (лицензия проверена выше):
+  [WriteableBitmapImpl.cs](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Skia/Avalonia.Skia/WriteableBitmapImpl.cs),
+  [ImageSavingHelper.cs](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Skia/Avalonia.Skia/Helpers/ImageSavingHelper.cs),
+  [HeadlessWindowImpl.cs](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Headless/Avalonia.Headless/HeadlessWindowImpl.cs).
+- `WriteableBitmapImpl.GetSnapshot` передает указатель `_bitmap.GetPixels()` в `SKImage.FromPixels`; сохранение PNG
+  кодирует эти пиксели. Временный результат `CaptureRenderedFrame()?.Save(...)` не задает время жизни владельца буфера.
+  В Windows CI стек `0xC0000005` заканчивался в `sk_pngencoder_encode` при снимке DPI 2.
+- Код не перенесен. Только тестовые помощники явно удерживают bitmap через `using` и `GC.KeepAlive` до завершения Save,
+  затем освобождают его. Проверка сохраняет настоящие PNG при параллельном GC и декодирует их; снимок и DPI-проверки не убраны.

@@ -108,7 +108,8 @@ public sealed class XrayProxyTests
         // macOS Intel CI 2026-11-06: порт сервера теста к запуску ядра оказался занят («bind: address already in use»), а кем —
         // не видно. Теперь сообщение теста называет процесс; здесь порт держит сам тест.
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
-        using var holder = new TcpListener(IPAddress.Loopback, XrayKit.FreePort());
+        // ОС выбирает и занимает порт одним действием: между поиском и Start другой тест его не перехватит.
+        using var holder = new TcpListener(IPAddress.Loopback, 0);
         holder.Start();
         var port = ((IPEndPoint)holder.LocalEndpoint).Port;
         var (_, serverConfig) = XrayKit.Pair("vless", port);
