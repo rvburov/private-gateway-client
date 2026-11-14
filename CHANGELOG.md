@@ -21,7 +21,7 @@
 
 ## [Не выпущено]
 
-## [0.3.0]
+## [0.3.0] — 2026-11-14
 
 Обновления программы приходят с сайта Private Gateway Web по входу в аккаунт и ставятся из самой программы. Эту
 версию один раз нужно поставить с сайта вручную: прежние версии обновляться сами не умеют.
@@ -117,7 +117,8 @@
 - Программа пока не подписана сертификатом разработчика: при первом запуске Windows и macOS попросят подтверждение —
   что нажать, написано на странице выпуска.
 
-[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.2.1...HEAD
+[Не выпущено]: https://github.com/rvburov/private-gateway-client/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/rvburov/private-gateway-client/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/rvburov/private-gateway-client/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/rvburov/private-gateway-client/compare/v0.1.5...v0.2.0
 [0.1.5]: https://github.com/rvburov/private-gateway-client/releases/tag/v0.1.5
