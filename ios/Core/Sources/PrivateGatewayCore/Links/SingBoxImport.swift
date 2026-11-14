@@ -146,5 +146,6 @@ enum SingBoxImport {
         ConfigTree.put(&query, "path", ConfigTree.text(transport, "path"))
         ConfigTree.put(&query, "host", ConfigTree.header(ConfigTree.object(transport, "headers"), "Host") ?? ConfigTree.text(transport, "host"))
         ConfigTree.put(&query, "serviceName", ConfigTree.text(transport, "service_name"))
+        ConfigTree.put(&query, "mode", ConfigTree.text(transport, "mode"))
     }
 }

@@ -51,6 +51,9 @@ jobs:
       - name: Сборка выпуска на собранных сборках
         run: scripts/tests/release-assembly-smoke.sh
 
+      - name: Архитектуры и минимальная macOS встроенных компонентов
+        run: python3 scripts/tests/macos-binaries-test.py
+
       - name: Выпуск — release.sh, версия и текст страницы выпуска
         run: scripts/tests/release-test.sh
 

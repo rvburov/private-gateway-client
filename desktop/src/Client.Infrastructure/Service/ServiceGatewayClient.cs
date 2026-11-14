@@ -418,13 +418,17 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         {
             return (await _client.CompareNetworkAsync(new V1.CompareNetworkRequest(), cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
         }
-        catch (RpcException)
+        catch (RpcException error)
         {
+            cancellationToken.ThrowIfCancellationRequested();
+            NoteDiagnosticFailure("CompareNetwork", error);
             return null;
         }
-        catch (ArgumentException)
+        catch (ArgumentException error)
         {
             // Ответ не по контракту.
+            cancellationToken.ThrowIfCancellationRequested();
+            NoteDiagnosticFailure("CompareNetwork", error);
             return null;
         }
     }
@@ -659,6 +663,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         catch (RpcException error)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            NoteDiagnosticFailure("RunChecks", error);
             var reason = error.StatusCode switch
             {
                 StatusCode.Unimplemented => "unsupported",
@@ -667,10 +672,40 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                 StatusCode.Unauthenticated or StatusCode.PermissionDenied => "access_denied",
                 _ => "check_failed",
             };
-            return new DiagnosticReport([.. System.Enum.GetValues<DiagnosticCheck>()
-                .Where(check => check != DiagnosticCheck.VirtualMachines || OperatingSystem.IsWindows())
-                .Select(check => new DiagnosticResult(check, CheckState.Warning, reason))], _time.GetUtcNow());
+            return FailedChecks(reason);
         }
+        catch (ArgumentException error)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            NoteDiagnosticFailure("RunChecks", error);
+            return FailedChecks("check_failed");
+        }
+    }
+
+    private DiagnosticReport FailedChecks(string reason) => new([.. System.Enum.GetValues<DiagnosticCheck>()
+        .Where(check => check != DiagnosticCheck.VirtualMachines || OperatingSystem.IsWindows())
+        .Select(check => new DiagnosticResult(check, CheckState.Warning, reason))], _time.GetUtcNow());
+
+    // Содержимое исключения RPC может включать адреса или ключи. В экспорт попадают только операция и код/тип.
+    private void NoteDiagnosticFailure(string operation, Exception error)
+    {
+        var detail = error is RpcException rpc ? $"RPC {rpc.StatusCode}"
+            : $"{error.GetType().Name}, HResult=0x{error.HResult:X8}";
+        var message = $"Проверка {operation}: {detail}";
+        JournalEntry entry;
+        lock (_gate)
+        {
+            if (_journal.Count > 0 && _journal[^1].Message == message)
+            {
+                return;
+            }
+
+            entry = new JournalEntry(_time.GetUtcNow(), JournalLevel.Warning, "window", message);
+            _journal.Add(entry);
+            TrimJournal();
+        }
+
+        JournalAdded?.Invoke(this, entry);
     }
 
     public async Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default)

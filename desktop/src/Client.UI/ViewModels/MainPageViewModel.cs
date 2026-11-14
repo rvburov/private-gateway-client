@@ -588,8 +588,8 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
         IsRefreshing = true;
         try
         {
-            await _catalog.RefreshAsync().ConfigureAwait(true);
-            _toast.Show(Loc.Instance["server.refreshed"]);
+            var measured = await _catalog.RefreshAsync().ConfigureAwait(true);
+            _toast.Show(Loc.Instance[measured ? "server.refreshed" : "server.refreshed.noPing"]);
         }
         finally
         {

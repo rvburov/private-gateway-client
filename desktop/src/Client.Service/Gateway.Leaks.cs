@@ -25,9 +25,6 @@ public sealed partial class Gateway
     /// </summary>
     private static readonly TimeSpan DirectTimeout = TimeSpan.FromSeconds(2);
 
-    /// <summary>Пауза перед второй попыткой проверки после подключения.</summary>
-    private static readonly TimeSpan RetryPause = TimeSpan.FromSeconds(3);
-
     /// <summary>Сколько ждать ответа сервера по IPv6 при подключении: без IPv6 у сервера он обычно отказывает сразу.</summary>
     private static readonly TimeSpan Ipv6Timeout = TimeSpan.FromSeconds(4);
 
@@ -112,7 +109,8 @@ public sealed partial class Gateway
     /// <param name="cancellationToken">Окно прекратило проверку или сменило подключение.</param>
     public async Task<(CheckState State, string? Reason)> CheckExitAsync(bool reportSilence = true, CancellationToken cancellationToken = default)
     {
-        var status = Status;
+        var snapshot = CaptureDiagnosticSnapshot();
+        var status = snapshot.Status;
         if (status.IsPaused || status.State == ConnectionState.Off)
         {
             return (CheckState.Off, null);
@@ -123,29 +121,44 @@ public sealed partial class Gateway
             return (status.State is ConnectionState.Connecting or ConnectionState.Reconnecting ? CheckState.Waiting : status.Protection.AllTraffic, null);
         }
 
-        var session = Volatile.Read(ref _session);
         var vpn = status.Mode == ConnectionMode.Vpn;
         var link = _probe;
         string? ip = null;
+        var direct = _directIp;
         if (_options.Trace is { } trace && (vpn || link is not null))
         {
             // В режиме прокси прямой путь открыт всегда — реальный IP мерить заново: сеть могла смениться. Подключение его
             // не ждет — время, как у пробы.
             if (!vpn)
             {
-                _directIp = await DirectIpAsync(Timing.ProbeTimeout, cancellationToken).ConfigureAwait(false) ?? _directIp;
+                direct = await DirectIpAsync(Timing.ProbeTimeout, cancellationToken).ConfigureAwait(false) ?? direct;
             }
 
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsDiagnosticSnapshotCurrent(snapshot))
+            {
+                return (CheckState.Warning, "session_changed");
+            }
             ip = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(vpn
                 ? new ServerProbe(0, null, trace, Timing.ProbeTimeout)
                 : new ServerProbe(link!.Port, new NetworkCredential(link.User, link.Password), trace, Timing.ProbeTimeout), cancellationToken)
                 .ConfigureAwait(false);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-        var direct = _directIp;
-        Update(s => session == _session && s.State == ConnectionState.Connected
-            ? Honest(s with
+        lock (_gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsDiagnosticSnapshotCurrent(snapshot))
+            {
+                return (CheckState.Warning, "session_changed");
+            }
+
+            if (!vpn)
+            {
+                _directIp = direct;
+            }
+
+            Update(s => Honest(s with
             {
                 Exit = ip is null ? s.Exit : ExitInfo.Unknown with { Ip = ip, DirectIp = direct ?? s.Exit.DirectIp },
                 Protection = s.Protection with
@@ -158,8 +171,12 @@ public sealed partial class Gateway
                     // Время подтверждения есть только у полученного ответа; молчание не выглядит свежим успехом.
                     CheckedAt = ip is null ? null : _time.GetUtcNow(),
                 },
-            })
-            : s);
+            }));
+            if (ip is not null)
+            {
+                _exitIpMeasurementVersion++;
+            }
+        }
         if (ip is null)
         {
             if (_options.Trace is not null && reportSilence)
@@ -213,7 +230,8 @@ public sealed partial class Gateway
     /// </summary>
     public async Task<(CheckState State, string? Reason)> CheckIpv6Async(CancellationToken cancellationToken = default)
     {
-        var status = Status;
+        var snapshot = CaptureDiagnosticSnapshot();
+        var status = snapshot.Status;
         if (status is not { Mode: ConnectionMode.Vpn, State: ConnectionState.Connected, IsPaused: false } || _options.Trace6 is not { } trace6)
         {
             return Ipv6Row(status);
@@ -222,17 +240,23 @@ public sealed partial class Gateway
         // IPv6 по настройкам и туннелю, без вывода замера.
         ConnectionStatus Policy(ConnectionStatus s) => Honest(s with { Protection = s.Protection with { Ipv6 = ProtectionChecks.For(s.State, s.Mode).Ipv6 } });
 
-        var session = Volatile.Read(ref _session);
         var seen = await (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(new ServerProbe(0, null, trace6, Timing.ProbeTimeout), cancellationToken)
             .ConfigureAwait(false);
-        cancellationToken.ThrowIfCancellationRequested();
-        var leaks = Ipv6Leaks(_directIp6, seen, Policy(status).Protection.Ipv6Tunnel) == true;
+        bool leaks;
+        (CheckState State, string? Reason) policy;
+        lock (_gate)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!IsDiagnosticSnapshotCurrent(snapshot))
+            {
+                return (CheckState.Warning, "session_changed");
+            }
 
-        // Утечка — в состоянии, пока подключение то же; ее нет — IPv6 снова по состоянию (прошлый замер мог ее показать).
-        Update(s => session != _session || s.State != ConnectionState.Connected ? s
-            : leaks ? s with { Protection = s.Protection with { Ipv6 = CheckState.Warning, Ipv6Tunnel = false } }
-            : Policy(s));
-        var policy = Ipv6Row(Policy(Status));
+            leaks = Ipv6Leaks(_directIp6, seen, Policy(status).Protection.Ipv6Tunnel) == true;
+            // Только ответ той же сети может изменить найденную утечку; поздний ответ не очищает новый снимок.
+            Update(s => leaks ? s with { Protection = s.Protection with { Ipv6 = CheckState.Warning, Ipv6Tunnel = false } } : Policy(s));
+            policy = Ipv6Row(Policy(Status));
+        }
         if (!leaks)
         {
             return policy;
@@ -335,6 +359,7 @@ public sealed partial class Gateway
         StartWatch(session);
         if (_request is { Protection.CheckLeaksAfterConnect: true } && _options.Trace is not null)
         {
+            _ = StartExitIpRefreshAsync(session);
             _ = LeakCheckAsync();
         }
     }
@@ -343,16 +368,20 @@ public sealed partial class Gateway
     {
         try
         {
-            // Первый запрос через только что поднятый туннель на занятой машине бывает долгим: не ответил — еще раз.
-            var session = Volatile.Read(ref _session);
-            if ((await CheckExitAsync(reportSilence: false).ConfigureAwait(false)).Reason == "no_answer" && session == Volatile.Read(ref _session))
-            {
-                await Task.Delay(RetryPause, _time).ConfigureAwait(false);
-                await CheckExitAsync().ConfigureAwait(false);
-            }
+            Task<(CheckState State, string? Reason)> Probe(string operation, Func<Task<(CheckState State, string? Reason)>> run) =>
+                DiagnosticFailure.RunAsync(_journal, "after_connect." + operation, run,
+                    error => (CheckState.Warning, (string?)DiagnosticFailure.Reason(error)), CancellationToken.None);
 
-            await CheckIpv6Async().ConfigureAwait(false);
-            await CheckDnsAsync().ConfigureAwait(false);
+            // IP измеряется независимо с ограниченным backoff. Его временный отказ не задерживает IPv6 и DNS.
+            var snapshot = CaptureDiagnosticSnapshot();
+            if (IsDiagnosticSnapshotCurrent(snapshot))
+            {
+                await Probe("ipv6", () => CheckIpv6Async()).ConfigureAwait(false);
+            }
+            if (IsDiagnosticSnapshotCurrent(snapshot))
+            {
+                await Probe("dns", () => CheckDnsAsync()).ConfigureAwait(false);
+            }
         }
         catch (ObjectDisposedException)
         {

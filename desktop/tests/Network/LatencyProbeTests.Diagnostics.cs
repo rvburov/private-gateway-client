@@ -1,12 +1,88 @@
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Service.Cores;
 
 namespace PrivateGateway.Client.Tests.Network;
 
 public sealed partial class LatencyProbeTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_successful_retry_does_not_report_the_profile_as_failed(bool firstTimesOut)
+    {
+        using var proxy = new ProbeSocks();
+        var serving = ServeAsync();
+        var failures = new List<IReadOnlyList<ProbeReachability>>();
+
+        var result = await LatencyProbe.RequestAsync(proxy.Port, new Uri("http://probe.example.com/private-path"),
+            TimeSpan.FromSeconds(1), TimeProvider.System, TestContext.Current.CancellationToken, reportFailure: failures.Add);
+        await serving;
+
+        result.Failure.ShouldBeNull();
+        result.Milliseconds.ShouldNotBeNull();
+        failures.ShouldBeEmpty("неудачная первая проба не отменяет успешный повтор");
+
+        async Task ServeAsync()
+        {
+            if (firstTimesOut)
+            {
+                await proxy.ServeAsync(null);
+            }
+
+            await proxy.ServeAsync("HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_failed_profile_reports_both_attempts_once_and_keeps_the_old_result_category(bool firstHasProtocolError)
+    {
+        using var proxy = new ProbeSocks();
+        var serving = ServeAsync();
+        var failures = new List<IReadOnlyList<ProbeReachability>>();
+
+        var result = await LatencyProbe.RequestAsync(proxy.Port, new Uri("http://probe.example.com/private-path"),
+            TimeSpan.FromSeconds(1), TimeProvider.System, TestContext.Current.CancellationToken, reportFailure: failures.Add);
+        await serving;
+
+        result.Failure.ShouldBe(LatencyFailure.NoResponse);
+        result.Diagnostic.ShouldBe(nameof(ProbeFailure.Timeout), "категория в IPC и сохраненных карточках не меняется");
+        var attempts = failures.ShouldHaveSingleItem();
+        attempts.Count.ShouldBe(2);
+        attempts[0].Failure.ShouldBe(firstHasProtocolError ? ProbeFailure.Protocol : ProbeFailure.Timeout);
+        attempts[1].Failure.ShouldBe(ProbeFailure.Timeout);
+        string.Join("; ", attempts.Select(attempt => attempt.Description)).ShouldNotContain("private-path");
+        string.Join("; ", attempts.Select(attempt => attempt.Description)).ShouldNotContain("probe.example.com");
+
+        async Task ServeAsync()
+        {
+            await proxy.ServeAsync(firstHasProtocolError ? "HTTP/1.1 invalid-status\r\n\r\n" : null);
+            await proxy.ServeAsync(null);
+        }
+    }
+
+    [Fact]
+    public async Task Cancelling_the_measurement_does_not_publish_a_failed_profile()
+    {
+        using var proxy = new ProbeSocks();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(TestContext.Current.CancellationToken);
+        var serving = proxy.ServeAsync(null);
+        var failures = new List<IReadOnlyList<ProbeReachability>>();
+        var request = LatencyProbe.RequestAsync(proxy.Port, new Uri("http://probe.example.com/private-path"),
+            TimeSpan.FromSeconds(30), TimeProvider.System, stop.Token, reportFailure: failures.Add);
+        await proxy.RequestRead.Task.WaitAsync(TimeSpan.FromSeconds(10), TestContext.Current.CancellationToken);
+
+        await stop.CancelAsync();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => request);
+        await serving;
+        failures.ShouldBeEmpty();
+    }
+
     [Theory]
     [InlineData(HttpRequestError.NameResolutionError, ProbeFailure.NameResolution)]
     [InlineData(HttpRequestError.SecureConnectionError, ProbeFailure.Tls)]

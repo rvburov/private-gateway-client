@@ -133,7 +133,7 @@ public sealed partial class ComparePageViewModel : ObservableObject
         // Реальные адреса — снятые до VPN: и IPv4, и адрес, который видел STUN.
         var real = new[] { before?.Ipv4, before?.Webrtc?.Address.ToString(), directIp }.OfType<string>().ToHashSet(StringComparer.Ordinal);
 
-        CompareVerdict Address(string? beforeValue, string? nowValue, bool closedIsGood)
+        CompareVerdict Address(string? beforeValue, string? nowValue)
         {
             if (!protectedNow)
             {
@@ -142,7 +142,8 @@ public sealed partial class ComparePageViewModel : ObservableObject
 
             if (nowValue is null)
             {
-                return closedIsGood && beforeValue is not null ? CompareVerdict.Changed : CompareVerdict.Unknown;
+                // Молчание или ошибка IPv6-пробы не доказывают, что IPv6 закрыт защитой.
+                return CompareVerdict.Unknown;
             }
 
             return beforeValue is null && real.Count == 0 ? CompareVerdict.Unknown
@@ -150,11 +151,11 @@ public sealed partial class ComparePageViewModel : ObservableObject
                 : CompareVerdict.Changed;
         }
 
-        yield return new CompareRowViewModel("ip", Value(before?.Ipv4), Value(now.Ipv4), Address(before?.Ipv4, now.Ipv4, closedIsGood: false));
+        yield return new CompareRowViewModel("ip", Value(before?.Ipv4), Value(now.Ipv4), Address(before?.Ipv4, now.Ipv4));
         yield return new CompareRowViewModel("ipv6", before is null ? Value(null) : Answer(before.Ipv6), Answer(now.Ipv6),
-            Address(before?.Ipv6, now.Ipv6, closedIsGood: true));
+            Address(before?.Ipv6, now.Ipv6));
         yield return new CompareRowViewModel("webrtc", Value(before?.Webrtc?.Address.ToString()), Answer(now.Webrtc?.Address.ToString()),
-            Address(before?.Webrtc?.Address.ToString(), now.Webrtc?.Address.ToString(), closedIsGood: false));
+            Address(before?.Webrtc?.Address.ToString(), now.Webrtc?.Address.ToString()));
         string? Route(NetworkFacts? facts) => facts?.Route is { } route
             ? facts.Gateway is { } gateway ? loc.Format("compare.route.via", route, gateway) : route
             : null;

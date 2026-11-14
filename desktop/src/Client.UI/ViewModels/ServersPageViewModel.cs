@@ -340,7 +340,7 @@ public sealed partial class ServersPageViewModel : ObservableObject
             _ => LatencyKind.Good,
         },
         ChooseCommand,
-        OpenCardCommand, ServerLatencyText.Reason(server));
+        OpenCardCommand, ServerLatencyText.Reason(server), server.LatencyCheckedAt);
 }
 
 /// <summary>Как окрашен пинг в строке: быстрый — зеленым, медленный — серым, нет ответа — оранжевым.</summary>
@@ -369,7 +369,8 @@ public sealed record ServerRowViewModel(
     LatencyKind Latency,
     IAsyncRelayCommand<string> ChooseCommand,
     IRelayCommand<string> OpenCommand,
-    string? FailureHint = null)
+    string? FailureHint = null,
+    DateTimeOffset? LatencyCheckedAt = null)
 {
     public string DisplayName => ServerNameDisplay.Format(Name);
 
@@ -379,8 +380,9 @@ public sealed record ServerRowViewModel(
 
     public bool IsDown => Latency == LatencyKind.None;
 
-    /// <summary>Подсказка к «нет»: пинг показан словом и цветом, причина — в подсказке.</summary>
-    public string LatencyHint => FailureHint ?? Loc.Instance["latency.method"];
+    /// <summary>Причина отказа и время сохраненного результата: прежнее измерение не выглядит только что выполненным.</summary>
+    public string LatencyHint => (FailureHint ?? Loc.Instance["latency.method"])
+        + (LatencyCheckedAt is { } at ? "\n" + Loc.Instance.Format("latency.checkedAt", at.ToLocalTime().ToString("g", Loc.Instance.Culture)) : string.Empty);
 
     public string MoreName => Loc.Instance.Format("servers.more.name", DisplayName);
 }

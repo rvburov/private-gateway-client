@@ -24,7 +24,7 @@ public sealed class ComparePageTests : WindowHarness
         "Wi-Fi", IPAddress.Parse("192.0.2.1"), [IPAddress.Parse("192.0.2.1")]);
 
     [AvaloniaFact]
-    public async Task Before_and_after_the_connect_every_row_changes_and_says_so()
+    public async Task Before_and_after_connect_show_measured_changes_and_keep_unmeasured_ipv6_unknown()
     {
         var (window, shell) = Open();
         shell.NavigateCommand.Execute(Pages.Check);
@@ -42,12 +42,13 @@ public sealed class ComparePageTests : WindowHarness
         page.BeforeText.ShouldStartWith("До — снято при включении защиты");
         page.Rows.Select(r => (r.Label, r.Before, r.Now, r.VerdictText)).ShouldBe([
             ("IP для сайтов", "198.51.100.7", "203.0.113.24", "сменился"),
-            ("IPv6 для сайтов", "2001:db8:1::7", "нет ответа", "сменился"),
+            ("IPv6 для сайтов", "2001:db8:1::7", "нет ответа", "не с чем сравнить"),
             ("WebRTC (UDP)", "198.51.100.7", "203.0.113.24", "сменился"),
             ("Выход в интернет", "Wi-Fi через 192.0.2.1", "Private Gateway", "сменился"),
             ("DNS", "192.0.2.1", "172.19.0.2", "сменился"),
         ]);
-        page.Rows.ShouldAllBe(r => r.IsGood);
+        page.Rows.Where(r => r.Key != "ipv6").ShouldAllBe(r => r.IsGood);
+        page.Rows.Single(r => r.Key == "ipv6").IsGood.ShouldBeFalse();
         page.Methods.Select(m => m.Label).ShouldBe(["IP для сайтов", "IPv6 для сайтов", "WebRTC (UDP)", "Выход в интернет", "DNS"]);
         page.Methods.Single(m => m.Label == "WebRTC (UDP)").Value.ShouldContain("в режиме прокси шлет UDP WebRTC мимо прокси");
         Snapshot(window, "compare");
@@ -74,6 +75,23 @@ public sealed class ComparePageTests : WindowHarness
         rows["dns"].Verdict.ShouldBe(CompareVerdict.Same);
         rows["ip"].VerdictText.ShouldBe("сменился");
         rows["webrtc"].VerdictText.ShouldBe("виден реальный");
+    }
+
+    [AvaloniaTheory]
+    [InlineData("2001:db8:1::7")]
+    [InlineData(null)]
+    public void An_unmeasured_ipv6_address_never_claims_successful_protection(string? beforeIpv6)
+    {
+        var before = Real with { Ipv6 = beforeIpv6 };
+        var now = Real with { Ipv4 = "203.0.113.24", Ipv6 = null };
+
+        var row = ComparePageViewModel.Compare(new NetworkComparison(before, now), protectedNow: true)
+            .Single(r => r.Key == "ipv6");
+
+        row.Verdict.ShouldBe(CompareVerdict.Unknown, "пустое поле означает отсутствие результата, в том числе при ошибке IPv6-пробы");
+        row.IsGood.ShouldBeFalse();
+        row.IsLeak.ShouldBeFalse();
+        row.Now.ShouldBe("нет ответа");
     }
 
     [AvaloniaFact]

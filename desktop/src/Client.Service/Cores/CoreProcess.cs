@@ -141,15 +141,32 @@ public sealed class CoreProcess : IDisposable
             }
         }
 
-        if (!_process.HasExited)
-        {
-            _process.Kill(entireProcessTree: true);
-        }
+        KillForStop(() => _process.HasExited, () => _process.Kill(entireProcessTree: true));
 
         await _process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
         if (Volatile.Read(ref _companion) is { } companion)
         {
             await companion.StopAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Выход между HasExited и Kill — успех только после подтверждения, что процесс завершился.</summary>
+    private static void KillForStop(Func<bool> hasExited, Action kill)
+    {
+        if (hasExited())
+        {
+            return;
+        }
+        try
+        {
+            kill();
+        }
+        catch (Exception error) when (error is InvalidOperationException or System.ComponentModel.Win32Exception)
+        {
+            if (!hasExited())
+            {
+                throw;
+            }
         }
     }
 

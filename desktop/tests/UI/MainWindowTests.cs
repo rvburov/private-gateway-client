@@ -716,6 +716,22 @@ public sealed class MainWindowTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public async Task A_failed_main_screen_refresh_does_not_claim_the_saved_ping_was_checked()
+    {
+        var (window, shell) = Open(demo: false,
+            gateway: _ => new ScriptedService(Time, () => AppSettings.Default, ServiceKind.Installed));
+        Service<IServerStore>().Add([LinkParser.Parse("trojan://fake-secret@192.0.2.10:443#Проверка").Server!], null);
+        var main = shell.CurrentPage.ShouldBeOfType<MainPageViewModel>();
+
+        await main.RefreshServersCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        main.IsRefreshing.ShouldBeFalse();
+        shell.Toast.Text.ShouldBe(Loc.Instance["server.refreshed.noPing"]);
+        window.IsVisible.ShouldBeTrue();
+    }
+
+    [AvaloniaFact]
     public async Task Check_button_comes_back_only_when_the_check_request_is_over_and_never_gray()
     {
         // Просьба пользователя 2026-11-01: результат проверки приходит в состоянии раньше ответа вызова, и «Проверить»

@@ -8,10 +8,13 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using Microsoft.Extensions.DependencyInjection;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
+using PrivateGateway.Client.Core.Servers;
 using PrivateGateway.Client.Infrastructure.Demo;
+using PrivateGateway.Client.Infrastructure.Storage;
 using PrivateGateway.Client.UI.Controls;
 using PrivateGateway.Client.UI.Localization;
 using PrivateGateway.Client.UI.Services;
@@ -23,6 +26,36 @@ namespace PrivateGateway.Client.Tests.UI;
 /// <summary>Экран «Серверы» на демо-каталоге; снимки — для сверки с docs/design/screens/02-servers.png.</summary>
 public sealed class ServersPageTests : WindowHarness
 {
+    [AvaloniaTheory]
+    [InlineData("Timeout", "тайм-аут", "latency.timeout")]
+    [InlineData("Tls", "TLS", "latency.tls")]
+    [InlineData("NameResolution", "DNS", "latency.dns")]
+    public void Saved_failed_probe_shows_its_reason_and_time_then_updates_when_measured(
+        string diagnostic, string label, string detailKey)
+    {
+        var (_, shell) = Open();
+        var store = Service<SqliteServerCatalog>();
+        store.Add([LinkParser.Parse("trojan://fake@192.0.2.10:443#Проверка").Server!], null);
+        var id = store.Servers.Single().Id;
+        store.SetLatency(new Dictionary<string, LatencyResult> { [id] = new(null, LatencyFailure.NoResponse, diagnostic) });
+        shell.NavigateCommand.Execute(Pages.Servers);
+        Dispatcher.UIThread.RunJobs();
+        var page = shell.CurrentPage.ShouldBeOfType<ServersPageViewModel>();
+        var row = page.Groups.SelectMany(g => g.Rows).Single(r => r.Id == id);
+        row.LatencyText.ShouldBe(label);
+        row.LatencyHint.ShouldContain(Loc.Instance[detailKey]);
+        var checkedAt = store.Servers.Single().LatencyCheckedAt.ShouldNotBeNull();
+        row.LatencyHint.ShouldContain(Loc.Instance.Format("latency.checkedAt", checkedAt.ToLocalTime().ToString("g", Loc.Instance.Culture)));
+
+        store.SetLatency(new Dictionary<string, LatencyResult> { [id] = new(84, null) });
+        Dispatcher.UIThread.RunJobs();
+        row = page.Groups.SelectMany(g => g.Rows).Single(r => r.Id == id);
+        row.LatencyText.ShouldBe("84 мс");
+        row.IsDown.ShouldBeFalse();
+        row.LatencyHint.ShouldContain(Loc.Instance["latency.method"]);
+        row.LatencyHint.ShouldNotContain(Loc.Instance[detailKey]);
+    }
+
     [AvaloniaFact]
     public async Task List_matches_mockup_when_protected()
     {

@@ -112,7 +112,7 @@
   их строки приглушены и не выбираются, «⋯» открывает карточку, в быстрой смене на главной их нет.
   На десктопе возвращены прежние квадратные флаги 28×28 с тонкой рамкой; неизвестная страна обозначена Землей.
   Эмодзи в названии отделены от соседнего слова и другого эмодзи пробелом; ZWJ и флаг не разделяются. В редакторе остается исходное имя.
-  При отказе в доступе к хранилищу карточки остаются на месте; после разрешения операцию можно повторить.</p>
+  При отказе в доступе к хранилищу карточки остаются на месте; после разрешения операцию можно повторить. На десктопе подпись замера различает «тайм-аут», «DNS», «TLS», «нет связи», «сбой», «блок», «нет замера»; подсказка показывает причину и время последней попытки. Отказ замера не доказывает постоянную недоступность сервера; время группы относится к обновлению подписки.</p>
 
 <div class="pg-screens">
   <!-- 1. Список, защита включена -->
@@ -420,6 +420,23 @@
               <button class="segment"><span class="country-glyph"><img src="../assets/countries/DE.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">⚡ 🇩🇪 Germany-1 DIRECT (TCP)</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · REALITY</span></span><span class="latency sv-ping">—</span></button>
               <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия"><i data-icon="More" data-size="18"></i></button>
             </div>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Замеры: причина и время последней попытки">
+    <div class="pg-page sv-page">
+      <div class="pg-header"><span class="t-h1 pg-grow">Серверы</span><button class="btn-icon steady" data-spin data-toast="Замер недоступен — проверьте службу" aria-label="Обновить серверы"><i data-icon="Refresh" data-size="20"></i></button><button class="btn-icon" data-nav="03-import.html" aria-label="Добавить сервер"><i data-icon="Plus" data-size="22"></i></button></div>
+      <div class="pg-stack pg-gap-12">
+        <div class="sv-group">
+          <div class="sv-group-head"><span class="t-overline pg-grow">Основной список · 3</span><span class="t-caption">обновлено 07:23</span></div>
+          <div class="sv-list segments">
+            <div class="sv-row"><button class="segment on"><span class="country-glyph"><img src="../assets/countries/NL.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">Нидерланды 01</span><span class="sv-addr pg-ellipsis">203.0.113.24 · VLESS · REALITY</span></span><span class="sv-tag">активен</span><span class="latency good sv-ping" title="Измерено: 15.11.2026 07:24">42 мс</span></button><button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере"><i data-icon="More" data-size="18"></i></button></div>
+            <div class="sv-row"><button class="segment"><span class="country-glyph"><img src="../assets/countries/DE.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">Германия 01</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · REALITY</span></span><span class="latency bad sv-ping" title="Время ожидания ответа истекло · Измерено: 15.11.2026 07:24">тайм-аут</span></button><button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере"><i data-icon="More" data-size="18"></i></button></div>
+            <div class="sv-row"><button class="segment"><span class="country-glyph"><img src="../assets/countries/FI.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">Финляндия 01</span><span class="sv-addr pg-ellipsis">192.0.2.150 · VLESS · REALITY</span></span><span class="latency bad sv-ping" title="Не удалось установить TLS-соединение при проверке через сервер. Это не определяет причину сбоя REALITY или самого сервера. · Измерено: 15.11.2026 07:24">TLS</span></button><button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере"><i data-icon="More" data-size="18"></i></button></div>
           </div>
         </div>
       </div>

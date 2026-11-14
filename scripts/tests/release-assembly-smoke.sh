@@ -25,13 +25,15 @@ check() {
 # release-Android, ее SHA256SUMS — .apk.sha256 задания «Android (APK)»).
 builds() {
   local dir="$TMP/$1" v="$2" deb=${2//-/\~}
-  mkdir -p "$dir/release-Linux" "$dir/release-Windows" "$dir/release-macOS" "$dir/release-Android"
+  mkdir -p "$dir/release-Linux" "$dir/release-Windows" "$dir/release-macOS" "$dir/release-macOS-Intel" "$dir/release-Android"
   echo deb > "$dir/release-Linux/private-gateway_${deb}_amd64.deb"
   echo rpm > "$dir/release-Linux/private-gateway-${deb}-1.x86_64.rpm"
   echo tar > "$dir/release-Linux/PrivateGateway-$v-linux-x64.tar.gz"
   echo msi > "$dir/release-Windows/PrivateGateway-$v-win-x64.msi"
   echo mac > "$dir/release-macOS/PrivateGateway-$v-osx-arm64.tar.gz"
   echo dmg > "$dir/release-macOS/PrivateGateway-$v-osx-arm64.dmg"
+  echo mac-intel > "$dir/release-macOS-Intel/PrivateGateway-$v-osx-x64.tar.gz"
+  echo dmg-intel > "$dir/release-macOS-Intel/PrivateGateway-$v-osx-x64.dmg"
   echo apk > "$dir/release-Android/PrivateGateway-$v-android.apk"
   [ -z "${3:-}" ] || rm -rf "$dir/release-$3"
   for os in "$dir"/release-*; do (cd "$os" && sha256sum * > SHA256SUMS); done
@@ -120,6 +122,8 @@ check "канал stable и доля 20" "grep -q '\"channel\": \"stable\"' '$TM
 check "в манифесте главное из заметок" "grep -q '\"highlights\": \\[' '$TMP/stable-out/update.json'"
 check "без ключей — без подписи" "[ ! -e '$TMP/stable-out/update.json.sig' ]"
 check "в манифесте MSI, deb и образ macOS" "grep -q win-x64-msi '$TMP/stable-out/update.json' && grep -q linux-x64-deb '$TMP/stable-out/update.json' && grep -q osx-arm64-dmg '$TMP/stable-out/update.json'"
+check "Intel DMG имеет собственные имя, сумму и размер" "asset '$TMP/stable-out/update.json' osx-x64-dmg '$TMP/stable-out/PrivateGateway-0.3.0-osx-x64.dmg'"
+check "Intel архив имеет собственные имя, сумму и размер" "asset '$TMP/stable-out/update.json' osx-x64-tar '$TMP/stable-out/PrivateGateway-0.3.0-osx-x64.tar.gz'"
 check "notes — страница скачивания сайта, а не GitHub" "notes '$TMP/stable-out/update.json' https://private-gateway.duckdns.org/downloads"
 check "APK в манифесте — android-apk: имя, SHA-256 и размер" "asset '$TMP/stable-out/update.json' android-apk '$TMP/stable/release-Android/PrivateGateway-0.3.0-android.apk'"
 check "rpm в манифесте — linux-x64-rpm" "asset '$TMP/stable-out/update.json' linux-x64-rpm '$TMP/stable/release-Linux/private-gateway-0.3.0-1.x86_64.rpm'"

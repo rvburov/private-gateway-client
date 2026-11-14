@@ -77,7 +77,7 @@
   Ниже — «Задержка» (сюда ведет плитка «Пинг» главного экрана),
   «Что на этом компьютере может мешать» («Исправить» убирает переменную пользователя), сетевой инспектор, «Лаборатория» и журнал
   службы: новые записи сверху, адреса и секреты — звездочками. Экраны: результаты проверок, идет проверка, блокировка, защита выключена
-  и найдено, что мешает. На десктопе строка DNS отдельно показывает прямой ответ, отсутствие ответа, недоступную пробу и тайм-аут.</p>
+  и найдено, что мешает. На десктопе строка DNS отдельно показывает прямой ответ, отсутствие ответа, недоступную пробу и тайм-аут. Ошибка отдельной пробы не скрывает известные состояния службы, ядра и блока; только неудачная строка остается без результата. Смена подключения делает прежнее измерение неактуальным. В «До и после VPN» неизмеренный IPv6 также не означает, что он закрыт.</p>
 
 <div class="pg-screens">
   <!-- ===================== Защищено ===================== -->
@@ -790,6 +790,24 @@
         <div class="check-row tone-accent top"><span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">DNS</span><span class="t-caption t-wrap">Служба не передала результат этой проверки. Повторите проверку; при повторении обновите службу.</span></span><span class="check-chip">Нет результата</span></div>
       </div>
       <p class="t-caption t-wrap">Если служба не поддерживает запрос: «Установленная служба не поддерживает эту проверку. Обновите службу вместе с приложением.»</p>
+    </div><div class="pg-page-end"></div></div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Частичный результат: одна проба не выполнена">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page"><div class="check-body">
+      <div class="check-actions"><button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button><button class="btn-secondary">Экспорт отчета</button></div>
+      <span class="t-caption t-wrap check-note">Проверки только читают состояние и ничего не меняют. Отчет обезличен: публичные адреса — метками, без ключей, UUID, ссылок, адресов списков серверов и сайтов и названия вашей сети.</span>
+      <div class="card check-card">
+        <div class="check-row tone-success"><span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">Служба</span><span class="t-caption t-wrap">Работает, канал связи с интерфейсом защищен</span></span><span class="check-chip">OK</span></div>
+        <div class="check-row tone-success"><span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">Сетевое ядро</span><span class="t-caption t-wrap">Xray-core запущен, конфигурация применена</span></span><span class="check-chip">OK</span></div>
+        <div class="check-row tone-success"><span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">Блок при обрыве</span><span class="t-caption t-wrap">Правила брандмауэра активны: <span data-os-word="engine">Windows Filtering Platform</span></span></span><span class="check-chip">OK</span></div>
+        <div class="check-row tone-accent top"><span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">DNS</span><span class="t-caption t-wrap">Не удалось выполнить эту проверку. Остальные результаты показаны отдельно. Повторите проверку.</span></span><span class="check-chip">Нет результата</span></div>
+        <div class="check-row tone-success"><span class="check-dot"><i data-icon="Chip.Ok" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">IP для сайтов</span><span class="t-caption t-wrap">203.0.113.24 · Амстердам · дата-центр</span></span><span class="check-chip">Скрыт</span></div>
+      </div>
+      <div class="card check-card" aria-label="Состояние после смены подключения">
+        <div class="check-row tone-accent top"><span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">IPv6</span><span class="t-caption t-wrap">Подключение или сеть изменились во время проверки. Повторите ее для текущего подключения.</span></span><span class="check-chip">Нет результата</span></div>
+      </div>
     </div><div class="pg-page-end"></div></div>
     <div class="pg-island" data-active="check"></div>
   </section>

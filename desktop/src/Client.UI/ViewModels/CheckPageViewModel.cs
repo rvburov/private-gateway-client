@@ -728,7 +728,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
             return Loc.Instance["diag.result.no_reply"];
         }
 
-        if (reason is "unsupported" or "access_denied" or "check_failed" or "incomplete")
+        if (reason is "unsupported" or "access_denied" or "check_failed" or "incomplete" or "probe_failed" or "session_changed")
         {
             return Loc.Instance["diag.result." + reason];
         }
@@ -770,7 +770,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 
     private static string Chip(DiagnosticCheck check, CheckState state, string? reason)
     {
-        if (reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete"
+        if (reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete" or "probe_failed" or "session_changed"
             || check == DiagnosticCheck.Service && reason == "no_reply")
         {
             return Loc.Instance["diag.result.unknown.chip"];
@@ -814,7 +814,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 public sealed record CheckRowViewModel(DiagnosticCheck Check, string Title, string Detail, string ChipText, CheckState State, string? Reason = null)
 {
     /// <summary>Неизвестный замер не является ни успешным доказательством, ни подтвержденной утечкой.</summary>
-    public bool IsInconclusive => Reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete"
+    public bool IsInconclusive => Reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete" or "probe_failed" or "session_changed"
         || Check == DiagnosticCheck.Service && Reason == "no_reply"
         || Check == DiagnosticCheck.Dns && (Reason is "dns_no_answer" or "dns_unavailable" or "timeout" || State == CheckState.Ok);
 

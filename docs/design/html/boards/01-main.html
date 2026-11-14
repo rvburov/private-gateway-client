@@ -11,7 +11,7 @@
 </head>
 <body>
 <p class="pg-board-note">Главный экран (MainPage программы). Щит внизу включает и выключает защиту, «Сменить» открывает список
-  серверов, стрелка слева обновляет серверы — крутится только она. Глаз скрывает IP звездочками, плитки проверок открывают пояснение.</p>
+  серверов, стрелка слева обновляет серверы — крутится только она. Глаз скрывает IP звездочками, плитки проверок открывают пояснение. На десктопе при включенной автоматической проверке служба повторяет запрос выходного IP после неудачи: 3, 6, 12, 24 и затем 30 секунд. Адрес появляется без перехода между страницами; до измерения — прочерк без флага. Отказ обновления пинга не подписывается как успешный замер.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected">
@@ -135,6 +135,19 @@
       <button class="btn-link" style="padding: 8px 10px; text-align: left; width: 100%" data-nav="02-servers.html">Все серверы ›</button>
     </div>
 
+    <div class="pg-island" data-active="home"></div>
+  </section>
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Подключено: выходной IP еще не измерен">
+    <div class="pg-page">
+      <div class="pg-header"><i data-icon="Shield" data-detail="Mark.Ok" class="pg-logo"></i><span class="t-brand">Private Gateway</span><span class="pg-grow"></span><button class="btn-icon" data-nav="03-import.html" aria-label="Добавить профиль"><i data-icon="Plus" data-size="22"></i></button></div>
+      <div class="card pg-row" style="margin: 0 var(--side); padding: 16px"><div class="state-tile" data-state-mark></div><div class="pg-stack pg-gap-2" style="margin-left: 12px"><span class="t-status state-text">IP скрыт</span><span class="t-small">Трафик зашифрован</span></div></div>
+      <div class="card" style="margin: 10px var(--side) 0">
+        <div class="pg-stack pg-gap-12" style="padding: 16px"><span class="t-overline">Сайты видят ваш IP</span><div class="pg-row"><span class="t-mono-large pg-grow">—</span><button class="btn-icon" disabled aria-label="Скопировать IP"><i data-icon="Copy" data-size="18"></i></button></div><span class="t-small">Ваш реальный IP: <span class="t-mono">198.51.100.7</span> · скрыт</span></div>
+        <div class="divider" style="margin: 0 16px"></div>
+        <div class="pg-row" style="padding: 8px 10px 10px"><button class="btn-icon steady tinted" data-spin data-toast="Замер недоступен — проверьте службу" aria-label="Обновить серверы"><i data-icon="Refresh" data-size="20"></i></button><div class="pg-stack pg-gap-2 pg-grow" style="margin: 0 8px 0 12px"><span class="t-title">Нидерланды 01</span><span class="t-small">VLESS · REALITY · порт 443</span></div><button class="btn-select" data-nav="02-servers.html">Сменить</button></div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
     <div class="pg-island" data-active="home"></div>
   </section>
 </div>

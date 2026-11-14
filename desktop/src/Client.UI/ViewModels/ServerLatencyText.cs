@@ -9,8 +9,24 @@ public static class ServerLatencyText
 {
     public static string Of(ServerProfile server, bool card = false) => server.IsMeasuringLatency ? "…"
         : server.LatencyMs is { } ms ? ms.ToString(CultureInfo.InvariantCulture) + " " + Loc.Instance["unit.ms"]
-        : server.LatencyFailure is not null ? Loc.Instance[card ? "card.latency.none" : "servers.latency.none"]
+        : server.LatencyFailure is not null ? Loc.Instance[card ? "card.latency.none" : FailureLabel(server)]
         : card ? Loc.Instance["latency.unchecked"] : "—";
+
+    private static string FailureLabel(ServerProfile server) => server.LatencyFailure switch
+    {
+        LatencyFailure.Unsupported => "latency.short.unsupported",
+        LatencyFailure.CoreFailed when server.LatencyDiagnostic == "ProtectionBlocked" => "latency.short.blocked",
+        LatencyFailure.CoreFailed => "latency.short.coreFailed",
+        LatencyFailure.NoResponse => server.LatencyDiagnostic switch
+        {
+            "Timeout" => "latency.short.timeout",
+            "NameResolution" => "latency.short.dns",
+            "Tls" => "latency.short.tls",
+            "Connection" or "Proxy" => "latency.short.connection",
+            _ => "servers.latency.none",
+        },
+        _ => "servers.latency.none",
+    };
 
     public static string? Reason(ServerProfile server) => server.LatencyFailure switch
     {

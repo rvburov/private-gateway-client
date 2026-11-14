@@ -34,7 +34,10 @@ iconutil -c icns shared/specifications/icons/app.iconset -o "$app/Contents/Resou
 bash scripts/tests/macos-icon-smoke.sh "$app/Contents/Resources/PrivateGateway.icns"
 
 # Версия пакета — только цифры: 1.2.3-beta.1 → 1.2.3. Идентификатор — обратный домен репозитория, как метка службы
-# launchd. Минимальная macOS — как у .NET 10.
+# launchd. Нижняя граница запуска отличается от списка ОС с действующей поддержкой Microsoft.
+# Проверяем весь комплект, чтобы новое ядро или native-библиотека не требовали более свежую ОС, чем пакет.
+minimum_macos=12.0
+python3 scripts/check-macos-binaries.py "$app/Contents/MacOS" "$rid" "$minimum_macos"
 short=${version%%-*}
 cat > "$app/Contents/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -64,7 +67,7 @@ cat > "$app/Contents/Info.plist" << EOF
   <key>LSApplicationCategoryType</key>
   <string>public.app-category.utilities</string>
   <key>LSMinimumSystemVersion</key>
-  <string>14.0</string>
+  <string>$minimum_macos</string>
   <key>NSHighResolutionCapable</key>
   <true/>
 </dict>

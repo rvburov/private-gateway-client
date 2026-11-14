@@ -276,15 +276,25 @@ public sealed class GatewayRpc(
     /// </summary>
     public override async Task<V1.CheckReport> RunChecks(V1.RunChecksRequest request, ServerCallContext context)
     {
-        // Замеры IP для сайтов по IPv4 и по IPv6 и DNS мимо туннеля — сразу: каждый ждет ответа.
         var cancellationToken = context?.CancellationToken ?? default;
-        var exit = gateway.CheckExitAsync(cancellationToken: cancellationToken);
-        var ipv6 = gateway.CheckIpv6Async(cancellationToken);
-        var dns = gateway.CheckDnsAsync(cancellationToken);
-        var (exitState, exitReason) = await exit.ConfigureAwait(false);
-        var (ipv6State, ipv6Reason) = await ipv6.ConfigureAwait(false);
-        var (dnsState, dnsReason) = await dns.ConfigureAwait(false);
+        var started = gateway.CaptureDiagnosticSnapshot();
+        // Отказы независимы: например, недоступная проба IPv6 не скрывает работающую службу и результат IPv4.
+        Task<(CheckState State, string? Reason)> Probe(string operation, Func<Task<(CheckState State, string? Reason)>> run) =>
+            DiagnosticFailure.RunAsync(journal, operation, run,
+                error => (CheckState.Warning, (string?)DiagnosticFailure.Reason(error)), cancellationToken);
+
+        var probes = await Task.WhenAll(
+            Probe("exit_ip", () => gateway.CheckExitAsync(cancellationToken: cancellationToken)),
+            Probe("ipv6", () => gateway.CheckIpv6Async(cancellationToken)),
+            Probe("dns", () => gateway.CheckDnsAsync(cancellationToken))).ConfigureAwait(false);
+        var other = DiagnosticFailure.Run<(IReadOnlyList<string>? Adapters, string? Reason)>(journal, "other_vpn",
+            () => (gateway.DiagnosticOtherVpnAdapters(), null), error => (null, DiagnosticFailure.Reason(error)), cancellationToken);
+        cancellationToken.ThrowIfCancellationRequested();
         var status = gateway.Status;
+        var sameSession = gateway.IsDiagnosticSnapshotCurrent(started);
+        var (exitState, exitReason) = sameSession ? probes[0] : (CheckState.Warning, "session_changed");
+        var (ipv6State, ipv6Reason) = sameSession ? probes[1] : (CheckState.Warning, "session_changed");
+        var (dnsState, dnsReason) = sameSession ? probes[2] : (CheckState.Warning, "session_changed");
         var report = new V1.CheckReport { FinishedAt = Timestamp.FromDateTimeOffset(DateTimeOffset.UtcNow) };
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Service.ToContractId(), State = V1.CheckState.Ok });
         report.Results.Add(new V1.CheckResult
@@ -318,16 +328,14 @@ public sealed class GatewayRpc(
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Dns.ToContractId(), State = dnsState.ToContract(), Reason = dnsReason ?? string.Empty });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.Ipv6.ToContractId(), State = ipv6State.ToContract(), Reason = ipv6Reason ?? string.Empty });
         report.Results.Add(new V1.CheckResult { Id = DiagnosticCheck.ExitIp.ToContractId(), State = exitState.ToContract(), Reason = exitReason ?? string.Empty });
-        if (gateway.OtherVpnAdapters() is { } other)
+        report.Results.Add(new V1.CheckResult
         {
-            report.Results.Add(new V1.CheckResult
-            {
-                Id = DiagnosticCheck.OtherVpn.ToContractId(),
-                State = other.Count == 0 ? V1.CheckState.Ok : V1.CheckState.Warning,
-                Reason = other.Count == 0 ? string.Empty : "vpn_adapter",
-                Details = string.Join(", ", other),
-            });
-        }
+            Id = DiagnosticCheck.OtherVpn.ToContractId(),
+            State = sameSession && other.Adapters is { Count: 0 } ? V1.CheckState.Ok : V1.CheckState.Warning,
+            Reason = !sameSession ? "session_changed" : other.Reason ?? (other.Adapters is null ? "incomplete"
+                : other.Adapters.Count == 0 ? string.Empty : "vpn_adapter"),
+            Details = sameSession && other.Adapters is { } adapters ? string.Join(", ", adapters) : string.Empty,
+        });
 
         return report;
     }

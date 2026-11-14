@@ -143,5 +143,6 @@ internal object SingBoxImport {
         put(query, "path", text(transport, "path"))
         put(query, "host", header(obj(transport, "headers"), "Host") ?: text(transport, "host"))
         put(query, "serviceName", text(transport, "service_name"))
+        put(query, "mode", text(transport, "mode"))
     }
 }

@@ -202,6 +202,7 @@ public sealed partial class ReconnectTests
         var first = await NextProbe();
         network.Raise();
         first.SetResult(false);
+        (await NextProbe()).SetResult(false);
 
         // И во время удачной попытки сеть сменилась — этот сигнал следующему переподключению первую паузу не сокращает.
         var second = await NextProbe();

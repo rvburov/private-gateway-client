@@ -160,6 +160,7 @@ internal static class SingBoxImport
         Put(query, "path", Text(transport, "path"));
         Put(query, "host", Header(Object(transport, "headers"), "Host") ?? Text(transport, "host"));
         Put(query, "serviceName", Text(transport, "service_name"));
+        Put(query, "mode", Text(transport, "mode"));
     }
 
     /// <summary>

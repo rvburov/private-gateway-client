@@ -103,9 +103,13 @@ public sealed partial class Gateway
         {
             await WatchLoopAsync(session, watch, every).ConfigureAwait(false);
         }
-        catch (ObjectDisposedException)
+        catch (ObjectDisposedException) when (_networkWaitStop.IsCancellationRequested)
         {
             // Служба остановилась.
+        }
+        catch (Exception error) when (IsRecoveryFailure(error))
+        {
+            RecoveryStopped(session, error);
         }
     }
 
@@ -144,7 +148,7 @@ public sealed partial class Gateway
             NoteOtherClients(session);
 
             // Одна неудача бывает и у живого сервера — вторая проба сразу.
-            if (await ProbeAsync(quiet: true).ConfigureAwait(false) || await ProbeAsync().ConfigureAwait(false))
+            if (await ProbeTwiceAsync(session).ConfigureAwait(false))
             {
                 continue;
             }
@@ -157,6 +161,40 @@ public sealed partial class Gateway
             return;
         }
     }
+
+    /// <summary>После первой неудачи дать ядру вторую пробу; старое подключение не проверяет новую сессию.</summary>
+    private async Task<bool> ProbeTwiceAsync(int session, TimeSpan? timeout = null, DateTimeOffset? until = null)
+    {
+        for (var attempt = 0; attempt < 2 && CanProbe(session); attempt++)
+        {
+            var budget = timeout ?? Timing.ProbeTimeout;
+            if (until is { } deadline)
+            {
+                var remaining = deadline - _time.GetUtcNow();
+                if (remaining <= TimeSpan.Zero)
+                {
+                    return false;
+                }
+                if (remaining < budget)
+                {
+                    budget = remaining;
+                }
+            }
+
+            if (await ProbeAsync(budget, quiet: attempt == 0).ConfigureAwait(false))
+            {
+                return CanProbe(session) && (until is null || _time.GetUtcNow() < until);
+            }
+        }
+        return false;
+    }
+
+    private bool CanProbe(int session) => session == Volatile.Read(ref _session)
+        && Status is
+        {
+            NetworkUnavailable: false, IsPaused: false,
+            State: ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Reconnecting
+        };
 
     /// <summary>
     /// Отвечает ли сервер: запрос к проверочному адресу через вход проверки ядра — прямо в выход сервера,
@@ -202,6 +240,15 @@ public sealed partial class Gateway
         {
             return false;
         }
+        catch (Exception error) when (IsRecoveryFailure(error))
+        {
+            if (!quiet)
+            {
+                // Сообщение исключения может содержать адрес проверочного сайта или учетные данные.
+                _journal.Add(JournalLevel.Warning, "service", $"Проверка связи через ядро не выполнена ({error.GetType().Name})");
+            }
+            return false;
+        }
     }
 
     /// <summary>
@@ -239,6 +286,7 @@ public sealed partial class Gateway
         }
 
         CheckAtOnce("Сеть машины сменилась");
+        _ = StartExitIpRefreshAsync(Volatile.Read(ref _session));
         if (Volatile.Read(ref _tunnel) is not null)
         {
             _ = RemeasureDirectPastTunnelAsync(Volatile.Read(ref _session));
@@ -410,18 +458,22 @@ public sealed partial class Gateway
     {
         try
         {
-            if (!await ProbeAsync(quiet: true).ConfigureAwait(false) && !await ProbeAsync().ConfigureAwait(false) && watch == Volatile.Read(ref _watch))
+            if (!await ProbeTwiceAsync(session).ConfigureAwait(false) && watch == Volatile.Read(ref _watch))
             {
                 await LostAsync(session, ErrorCodes.ServerNotResponding, "Сеть сменилась, сервер не отвечает").ConfigureAwait(false);
             }
         }
-        catch (ObjectDisposedException)
+        catch (ObjectDisposedException) when (_networkWaitStop.IsCancellationRequested)
         {
             // Служба остановилась.
         }
         catch (OperationCanceledException) when (_networkWaitStop.IsCancellationRequested)
         {
             // Ожидание сети или пауза перед повтором отменены остановкой службы.
+        }
+        catch (Exception error) when (IsRecoveryFailure(error))
+        {
+            RecoveryStopped(session, error);
         }
     }
 
@@ -600,7 +652,7 @@ public sealed partial class Gateway
         {
             await ReconnectLoopAsync(session, code).ConfigureAwait(false);
         }
-        catch (ObjectDisposedException)
+        catch (ObjectDisposedException) when (_networkWaitStop.IsCancellationRequested)
         {
             // Служба остановилась.
         }
@@ -608,6 +660,31 @@ public sealed partial class Gateway
         {
             // Ожидание внешней сети завершено вместе со службой.
         }
+        catch (Exception error) when (IsRecoveryFailure(error))
+        {
+            RecoveryStopped(session, error);
+        }
+    }
+
+    private static bool IsRecoveryFailure(Exception error) => error is IOException or UnauthorizedAccessException
+        or System.ComponentModel.Win32Exception or InvalidOperationException or TunnelException or TimeoutException;
+
+    /// <summary>Ошибка вне отдельной попытки не оставляет «Защищено» или переподключение без живой задачи.</summary>
+    private void RecoveryStopped(int session, Exception error)
+    {
+        lock (_gate)
+        {
+            if (session != _session || _networkWaitStop.IsCancellationRequested
+                || _status.State is not (ConnectionState.Connecting or ConnectionState.Connected or ConnectionState.Reconnecting))
+            {
+                return;
+            }
+
+            _journal.Add(JournalLevel.Error, "service",
+                $"{ErrorCodes.CoreFailed}: Фоновое восстановление остановлено ({error.GetType().Name}); требуется повторное подключение");
+            Move(s => s with { ErrorCode = ErrorCodes.CoreFailed }, ConnectionState.Error);
+        }
+        _ = StopFailedAsync(session);
     }
 
     /// <summary>
@@ -673,11 +750,33 @@ public sealed partial class Gateway
             }
 
             var networkLoss = Volatile.Read(ref _networkLoss);
-            var (up, failure) = await RestartAsync(session, attempt).ConfigureAwait(false);
-            if (up && !Status.NetworkUnavailable && ((!RequiresExternalProxyProbe && timing.Every is null) || await ProbeAsync().ConfigureAwait(false))
-                && await RestoredAsync(session, attempt, networkLoss).ConfigureAwait(false))
+            var up = false;
+            var failure = string.Empty;
+            try
             {
-                return;
+                (up, failure) = await RestartAsync(session, attempt).ConfigureAwait(false);
+                var timeout = TimeSpan.FromSeconds(request.Connection.ConnectTimeoutSeconds);
+                // Две пробы используют выбранное ожидание, но не продлевают политику «До 5 минут».
+                DateTimeOffset? until = request.Connection.Reconnect == ReconnectPolicy.UpTo5Minutes ? _lostAt + timing.GiveUpAfter : null;
+                if (up && !Status.NetworkUnavailable
+                    && ((!RequiresExternalProxyProbe && timing.Every is null) || await ProbeTwiceAsync(session, timeout, until).ConfigureAwait(false))
+                    && await RestoredAsync(session, attempt, networkLoss).ConfigureAwait(false))
+                {
+                    return;
+                }
+            }
+            catch (Exception error) when (IsRecoveryFailure(error) && !_networkWaitStop.IsCancellationRequested)
+            {
+                if (!IsReconnecting(session))
+                {
+                    return;
+                }
+                // Владение ядрами сохраняется до успешной остановки. Следующая попытка повторит ее,
+                // а включенный пользователем блок между попытками не снимается.
+                up = false;
+                failure = ErrorCodes.CoreFailed;
+                _journal.Add(JournalLevel.Warning, "service",
+                    $"Переподключение, попытка {attempt}: операция не завершена ({error.GetType().Name}); будет повтор");
             }
 
             code = networkLoss != Volatile.Read(ref _networkLoss) ? ErrorCodes.NetworkUnavailable

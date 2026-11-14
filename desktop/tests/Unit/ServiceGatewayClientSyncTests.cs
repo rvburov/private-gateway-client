@@ -172,6 +172,56 @@ public sealed class ServiceGatewayClientSyncTests
         stop.Cancel();
 
         await Should.ThrowAsync<OperationCanceledException>(() => client.RunChecksAsync(stop.Token));
+        client.Journal.ShouldBeEmpty("отмена пользователя не является ошибкой диагностики");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Diagnostic_failure_records_the_operation_and_status_without_private_rpc_details(bool comparison)
+    {
+        const string privateDetail = "private-diagnostic-canary https://example.com/private-path";
+        var calls = new FakeCalls(Snapshot(ConnectionState.Connected, Started), accepted: true)
+        {
+            CheckFailure = StatusCode.Internal,
+            CompareFailure = StatusCode.Internal,
+            FailureDetail = privateDetail,
+        };
+        using var client = Client(calls);
+        var notifications = new List<JournalEntry>();
+        client.JournalAdded += (_, entry) => notifications.Add(entry);
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (comparison)
+            {
+                (await client.CompareNetworkAsync(TestContext.Current.CancellationToken)).ShouldBeNull();
+            }
+            else
+            {
+                await client.RunChecksAsync(TestContext.Current.CancellationToken);
+            }
+        }
+
+        client.Journal.Count.ShouldBe(1, "одинаковая ошибка подряд не должна заполнять журнал");
+        notifications.Count.ShouldBe(1);
+        var message = client.Journal[0].Message;
+        message.ShouldContain(comparison ? "CompareNetwork" : "RunChecks");
+        message.ShouldContain("Internal");
+        message.ShouldNotContain(privateDetail);
+        message.ShouldNotContain("example.com");
+        client.Journal[0].Level.ShouldBe(JournalLevel.Warning);
+    }
+
+    [Fact]
+    public async Task Cancelled_network_comparison_does_not_become_an_unavailable_service()
+    {
+        var calls = new FakeCalls(Snapshot(ConnectionState.Connected, Started), accepted: true) { CompareFailure = StatusCode.Cancelled };
+        using var client = Client(calls);
+        using var stop = new CancellationTokenSource();
+        stop.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => client.CompareNetworkAsync(stop.Token));
+        client.Journal.ShouldBeEmpty();
     }
 
     private static ServiceGatewayClient Client(FakeCalls calls) => new(GrpcChannel.ForAddress("http://127.0.0.1"),
@@ -185,6 +235,8 @@ public sealed class ServiceGatewayClientSyncTests
         private readonly ConnectionStatus _connected = actual;
         public int StatusReads { get; private set; }
         public StatusCode? CheckFailure { get; init; }
+        public StatusCode? CompareFailure { get; init; }
+        public string FailureDetail { get; init; } = "Сбой проверки";
         public bool NetworkRestored { get; init; }
         public bool RemainingStrictBlock { get; init; }
         public DateTime? DisconnectDeadline { get; private set; }
@@ -195,7 +247,12 @@ public sealed class ServiceGatewayClientSyncTests
         {
             if (method.Name == "RunChecks" && CheckFailure is { } code)
             {
-                throw new RpcException(new Status(code, "Сбой проверки"));
+                throw new RpcException(new Status(code, FailureDetail));
+            }
+
+            if (method.Name == "CompareNetwork" && CompareFailure is { } compareCode)
+            {
+                throw new RpcException(new Status(compareCode, FailureDetail));
             }
 
             object reply = method.Name switch

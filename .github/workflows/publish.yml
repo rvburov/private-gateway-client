@@ -25,6 +25,8 @@ on:
       - scripts/tests/macos-background-icon.swift
       - scripts/dmg-background.swift
       - scripts/tests/macos-package-smoke.sh
+      - scripts/check-macos-binaries.py
+      - scripts/tests/macos-binaries-test.py
       - .github/workflows/release.yml
       - scripts/tests/linux-package-smoke.sh
       - scripts/tests/rpm-package-smoke.sh
@@ -51,7 +53,15 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        include:
+          - os: windows-latest
+            artifact_suffix: ''
+          - os: ubuntu-latest
+            artifact_suffix: ''
+          - os: macos-latest
+            artifact_suffix: ''
+          - os: macos-15-intel
+            artifact_suffix: '-Intel'
     runs-on: ${{ matrix.os }}
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
@@ -94,6 +104,10 @@ jobs:
 
       - name: Сборка выпуска
         run: scripts/publish.sh "${{ steps.version.outputs.version }}"
+
+      - name: Проверка границ совместимости macOS
+        if: runner.os == 'macOS'
+        run: python3 scripts/tests/macos-binaries-test.py
 
       - name: Проверка выпуска из архива
         run: scripts/tests/release-smoke.sh "${{ steps.version.outputs.version }}"
@@ -156,7 +170,7 @@ jobs:
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: installer-macOS-${{ steps.version.outputs.version }}
+          name: installer-macOS${{ matrix.artifact_suffix }}-${{ steps.version.outputs.version }}
           path: artifacts/release/*.dmg
           if-no-files-found: error
 
@@ -186,6 +200,6 @@ jobs:
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: release-${{ runner.os }}
+          name: release-${{ runner.os }}${{ matrix.artifact_suffix }}
           path: artifacts/release/
           if-no-files-found: error

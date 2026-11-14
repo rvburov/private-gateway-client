@@ -175,6 +175,7 @@ var kinds = new (string Key, string Suffix)[]
     ("linux-x64-deb", $"_{version.Replace('-', '~')}_amd64.deb"), ("linux-x64-rpm", ".x86_64.rpm"),
     ("linux-x64-tar", $"-{version}-linux-x64.tar.gz"), ("osx-arm64-tar", $"-{version}-osx-arm64.tar.gz"),
     ("osx-arm64-dmg", $"-{version}-osx-arm64.dmg"), ("android-apk", $"-{version}-android.apk"),
+    ("osx-x64-tar", $"-{version}-osx-x64.tar.gz"), ("osx-x64-dmg", $"-{version}-osx-x64.dmg"),
 };
 var assets = new JsonObject();
 foreach (var (key, suffix) in kinds)

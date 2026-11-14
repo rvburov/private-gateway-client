@@ -46,6 +46,18 @@ public static class LatencyProbe
     /// Задержка каждого из <paramref name="servers"/>. Hysteria2 и TUIC — через ретранслятор <paramref name="singBox"/>
     /// (<see cref="CoreRelay"/>); null или нет сборки — у них «не поддерживается».
     /// </summary>
+    public static Task<IReadOnlyList<LatencyResult>> MeasureAsync(
+        string xray,
+        string? singBox,
+        IReadOnlyList<ServerDefinition> servers,
+        ConnectionSettings connection,
+        Uri target,
+        TimeSpan timeout,
+        TimeProvider time,
+        CancellationToken cancellationToken = default) =>
+        MeasureAsync(xray, singBox, servers, connection, target, timeout, time, null, cancellationToken);
+
+    /// <summary>То же, с безопасными подробностями обеих проб после окончательного отказа профиля.</summary>
     public static async Task<IReadOnlyList<LatencyResult>> MeasureAsync(
         string xray,
         string? singBox,
@@ -54,6 +66,7 @@ public static class LatencyProbe
         Uri target,
         TimeSpan timeout,
         TimeProvider time,
+        Action<int, IReadOnlyList<ProbeReachability>>? reportFailure,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(servers);
@@ -91,7 +104,8 @@ public static class LatencyProbe
             await Parallel.ForEachAsync(
                 checkedIndexes,
                 new ParallelOptions { MaxDegreeOfParallelism = MaxParallel, CancellationToken = cancellationToken },
-                async (i, token) => results[i] = await RequestAsync(ports[i], target, timeout, time, token, new NetworkCredential(account.User, account.Password))
+                async (i, token) => results[i] = await RequestAsync(ports[i], target, timeout, time, token, new NetworkCredential(account.User, account.Password),
+                    attempts => reportFailure?.Invoke(i, attempts))
                     .ConfigureAwait(false))
                 .ConfigureAwait(false);
             return Done(results);
@@ -318,22 +332,27 @@ public static class LatencyProbe
     }
 
     public static async Task<LatencyResult> RequestAsync(int port, Uri target, TimeSpan timeout, TimeProvider time, CancellationToken cancellationToken,
-        NetworkCredential? credentials = null)
+        NetworkCredential? credentials = null, Action<IReadOnlyList<ProbeReachability>>? reportFailure = null)
     {
-        ProbeReachability? result = null;
+        var attempts = new List<ProbeReachability>(2);
         // Один повтор: другой контрольный адрес по IP исключает сбой DNS первого сайта. Оба запроса только через SOCKS.
         foreach (var endpoint in new[] { target, target == DefaultTarget ? DefaultTrace : target })
         {
             cancellationToken.ThrowIfCancellationRequested();
             var started = time.GetTimestamp();
-            result = await CheckAsync(new ServerProbe(port, credentials, endpoint, timeout), cancellationToken).ConfigureAwait(false);
+            var result = await CheckAsync(new ServerProbe(port, credentials, endpoint, timeout), cancellationToken).ConfigureAwait(false);
+            attempts.Add(result);
             if (result.Reached)
             {
                 return LatencyResult.Of(time.GetElapsedTime(started));
             }
         }
 
-        return new LatencyResult(null, LatencyFailure.NoResponse, result!.Failure?.ToString());
+        // Отказ первой пробы с успешным повтором — доступный профиль, предупреждение не нужно. После полного отказа
+        // сохраняются обе безопасные категории: последнее значение остается совместимым с IPC и прежними карточками.
+        cancellationToken.ThrowIfCancellationRequested();
+        reportFailure?.Invoke(attempts.ToArray());
+        return new LatencyResult(null, LatencyFailure.NoResponse, attempts[^1].Failure?.ToString());
     }
 
     private static LatencyResult[] Done(LatencyResult?[] results) => [.. results.Select(r => r!)];

@@ -22,22 +22,32 @@ public sealed partial class Gateway
     /// <summary>До и после VPN: «до» — снятое при включении защиты, «сейчас» — замер теперь.</summary>
     public async Task<NetworkComparison> CompareNetworkAsync(CancellationToken cancellationToken = default)
     {
-        var status = Status;
+        var started = CaptureDiagnosticSnapshot();
+        var status = started.Status;
         var link = _probe;
         var proxy = status is { State: ConnectionState.Connected, Mode: ConnectionMode.Proxy, IsPaused: false } && link is not null;
         var exit = status.State == ConnectionState.Connected && !status.IsPaused;
 
         // IPv6 для сайтов — как у программ: в режиме прокси — через ядро, иначе — обычным путем службы.
-        var ip6 = _options.Trace6 is { } trace6
+        var ip6 = DiagnosticFailure.RunAsync(_journal, "comparison.ipv6", () => _options.Trace6 is { } trace6
             ? (_options.ExitIp ?? LatencyProbe.ExitIpAsync)(proxy
                 ? new ServerProbe(link!.Port, new NetworkCredential(link.User, link.Password), trace6, Timing.ProbeTimeout)
                 : new ServerProbe(0, null, trace6, Timing.ProbeTimeout), cancellationToken)
-            : Task.FromResult<string?>(null);
-        var webrtc = WebrtcAsync(cancellationToken);
+            : Task.FromResult<string?>(null), _ => null, cancellationToken);
+        var webrtc = DiagnosticFailure.RunAsync(_journal, "comparison.webrtc", () => WebrtcAsync(cancellationToken), _ => null, cancellationToken);
         var ipv4 = exit ? status.Exit.Ip : status.Exit.DirectIp ?? _directIp;
+        await Task.WhenAll(ip6, webrtc).ConfigureAwait(false);
         var seen6 = await ip6.ConfigureAwait(false);
-        var now = Local(ipv4, IPAddress.TryParse(seen6, out var v6) && v6.AddressFamily == AddressFamily.InterNetworkV6 ? v6.ToString() : null,
-            await webrtc.ConfigureAwait(false));
+        var ipv6 = IPAddress.TryParse(seen6, out var v6) && v6.AddressFamily == AddressFamily.InterNetworkV6 ? v6.ToString() : null;
+        var mapped = await webrtc.ConfigureAwait(false);
+        var now = DiagnosticFailure.Run(_journal, "comparison.local", () => Local(ipv4, ipv6, mapped),
+            _ => new NetworkFacts(_time.GetUtcNow(), ipv4, ipv6, mapped, null, null, []), cancellationToken);
+        if (!IsDiagnosticSnapshotCurrent(started))
+        {
+            // Ответ старой сети не сравнивается с новым подключением. Пустые поля означают отсутствие измерения.
+            return new NetworkComparison(null, new NetworkFacts(_time.GetUtcNow(), null, null, null, null, null, []));
+        }
+
         return new NetworkComparison(Volatile.Read(ref _before), now);
     }
 

@@ -15,6 +15,34 @@ namespace PrivateGateway.Client.Tests.UI;
 /// <summary>Медленные и запоздалые ответы службы не удерживают строки, не заменяют новую сессию и не забивают очередь UI.</summary>
 public sealed class CheckPageResponsivenessTests : WindowHarness
 {
+    [AvaloniaTheory]
+    [InlineData(DiagnosticCheck.ExitIp, "probe_failed")]
+    [InlineData(DiagnosticCheck.Ipv6, "session_changed")]
+    [InlineData(DiagnosticCheck.Dns, "probe_failed")]
+    public void An_unmeasured_probe_does_not_hide_the_other_results_or_claim_a_leak(DiagnosticCheck check, string reason)
+    {
+        var gateway = new ChecksGateway(Time)
+        {
+            Check = _ => Task.FromResult(new DiagnosticReport([.. Enum.GetValues<DiagnosticCheck>()
+                .Select(id => new DiagnosticResult(id, id == check ? CheckState.Warning : CheckState.Ok, id == check ? reason : null))], Time.GetUtcNow())),
+        };
+        var (_, shell) = Open(gateway: _ => gateway);
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning);
+
+        var failed = page.Rows.Single(row => row.Check == check);
+        failed.IsInconclusive.ShouldBeTrue();
+        failed.DisplayState.ShouldBe(CheckState.Waiting);
+        failed.ChipText.ShouldBe("Нет результата");
+        failed.Icon.ShouldBe("Icon.Chip.Dash");
+        failed.Detail.ShouldContain(reason == "probe_failed" ? "эту проверку" : "изменились");
+        page.Rows.Single(row => row.Check == DiagnosticCheck.Service).State.ShouldBe(CheckState.Ok);
+        page.Rows.Single(row => row.Check == DiagnosticCheck.Core).State.ShouldBe(CheckState.Ok);
+        page.BuildReport().ShouldContain(failed.Detail);
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
+        page.Dispose();
+    }
+
     [AvaloniaFact]
     public void A_silent_remote_server_keeps_its_result_until_a_distinct_service_request_failure()
     {

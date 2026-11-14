@@ -1040,84 +1040,6 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <summary>«Вернуть защиту» раньше конца паузы.</summary>
     public Task ResumeAsync(CancellationToken cancellationToken = default) => ResumeAsync(Volatile.Read(ref _session), "по кнопке", cancellationToken);
 
-    /// <summary>Задержка через каждый сервер — запросом через ядро (<see cref="LatencyProbe"/>).</summary>
-    public async Task<V1.MeasureLatencyReply> MeasureLatencyAsync(V1.MeasureLatencyRequest request, CancellationToken cancellationToken = default)
-    {
-        ArgumentNullException.ThrowIfNull(request);
-        var reply = new V1.MeasureLatencyReply();
-        var servers = new List<ServerDefinition>();
-        var ids = new List<string>();
-        foreach (var target in request.Targets)
-        {
-            try
-            {
-                servers.Add((target.Server ?? throw new ArgumentException("Нет сервера")).ToCore());
-                ids.Add(target.Id);
-            }
-            catch (ArgumentException)
-            {
-                reply.Results.Add(LatencyResult.Failed(LatencyFailure.Unsupported).ToContract(target.Id));
-            }
-        }
-
-        if (servers.Count == 0)
-        {
-            return reply;
-        }
-
-        var session = Volatile.Read(ref _session);
-        var status = Status;
-        if (_blocking && status.State != ConnectionState.Connected)
-        {
-            reply.Results.AddRange(ids.Select(id => new LatencyResult(null, LatencyFailure.CoreFailed, "ProtectionBlocked").ToContract(id)));
-            return reply;
-        }
-
-        var active = _probe;
-        var connection = request.Connection?.ToCore() ?? _request?.Connection ?? ConnectionSettings.Default;
-        var activeIndex = status.State == ConnectionState.Connected && !status.IsPaused && active is not null
-            ? ids.IndexOf(status.ServerId ?? string.Empty) : -1;
-        // IPC создает новые списки ALPN и закрепленных сертификатов. Protobuf сравнивает их содержимое,
-        // record ServerDefinition — ссылки на списки: одинаковый профиль ошибочно получил бы отдельное ядро.
-        if (activeIndex >= 0 && (_request is null
-            || !_request.Server.ToContract(string.Empty).Equals(servers[activeIndex].ToContract(string.Empty))))
-        {
-            activeIndex = -1;
-        }
-
-        var indexes = Enumerable.Range(0, servers.Count).Where(i => i != activeIndex).ToArray();
-        var results = new LatencyResult[servers.Count];
-        if (activeIndex >= 0)
-        {
-            results[activeIndex] = await LatencyProbe.RequestAsync(active!.Port, _options.LatencyTarget, LatencyTimeout, _time,
-                cancellationToken, new System.Net.NetworkCredential(active.User, active.Password)).ConfigureAwait(false);
-        }
-
-        IReadOnlyList<LatencyResult> measured = indexes.Length == 0 ? [] : _options.XrayPath is { } xray && File.Exists(xray)
-            ? await LatencyProbe.MeasureAsync(xray, _options.SingBoxPath, indexes.Select(i => servers[i]).ToArray(), connection,
-                _options.LatencyTarget, LatencyTimeout, _time, cancellationToken).ConfigureAwait(false)
-            : indexes.Select(_ => LatencyResult.Failed(LatencyFailure.CoreFailed)).ToArray();
-        for (var i = 0; i < indexes.Length; i++)
-        {
-            results[indexes[i]] = measured[i];
-        }
-
-        // Смена или обрыв VPN во время пробы не превращается в результат для новой сессии.
-        if (session != Volatile.Read(ref _session))
-        {
-            return reply;
-        }
-
-        var failures = results.Where(r => r.Failure is not null).GroupBy(r => r.Diagnostic ?? r.Failure!.Value.ToString());
-        foreach (var group in failures)
-        {
-            _journal.Add(JournalLevel.Warning, "service", $"Проверка задержки: {group.Count()} из {results.Length}, причина: {group.Key}");
-        }
-
-        reply.Results.AddRange(results.Select((r, i) => r.ToContract(ids[i])));
-        return reply;
-    }
-
     public async ValueTask DisposeAsync()
     {
         await _networkWaitStop.CancelAsync().ConfigureAwait(false);
@@ -1373,7 +1295,7 @@ public sealed partial class Gateway : IAsyncDisposable
         var networkLoss = Volatile.Read(ref _networkLoss);
         var timeout = TimeSpan.FromSeconds(_request?.Connection.ConnectTimeoutSeconds ?? 10);
         var answered = !Status.NetworkUnavailable &&
-            ((!RequiresExternalProxyProbe && Timing.Every is null) || await ProbeAsync(timeout, quiet: true).ConfigureAwait(false) || await ProbeAsync(timeout).ConfigureAwait(false));
+            ((!RequiresExternalProxyProbe && Timing.Every is null) || await ProbeTwiceAsync(session, timeout).ConfigureAwait(false));
         if (session == Volatile.Read(ref _session) && Status.State == ConnectionState.Connecting && OtherVpnStarted(session))
         {
             return;
@@ -1494,7 +1416,15 @@ public sealed partial class Gateway : IAsyncDisposable
         {
             if (session == _session)
             {
-                await StopCoreAsync().ConfigureAwait(false);
+                try
+                {
+                    await StopCoreAsync().ConfigureAwait(false);
+                }
+                catch (Exception error) when (IsRecoveryFailure(error))
+                {
+                    _journal.Add(JournalLevel.Error, "service",
+                        $"{ErrorCodes.CoreFailed}: Остановка ядра не завершена ({error.GetType().Name}); повторное отключение повторит очистку");
+                }
                 BlockWithoutTunnel();
                 Update(s => Honest(s));
             }

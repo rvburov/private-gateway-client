@@ -30,7 +30,7 @@ installer-Android-debug в CI — только отладочный APK; install
 ## Что в выпуске
 
 `scripts/publish.sh [версия]` на машине нужной ОС (в CI — workflow `publish.yml`, три ОС) собирает выпуск
-`PrivateGateway-<версия>-<rid>` (`win-x64`, `linux-x64`, `osx-arm64`):
+`PrivateGateway-<версия>-<rid>` (`win-x64`, `linux-x64`, `osx-arm64`, `osx-x64`):
 
 ```
 PrivateGateway-<версия>-<rid>/
@@ -152,12 +152,15 @@ WiX 5.0.2 (MS-RL; с v6 у WiX отдельный сбор Open Source Maintenan
 ## Программа macOS
 
 `scripts/package-macos.sh <версия>` (шаг `publish.yml` на macOS) собирает из папки сборки `Private Gateway.app` и кладет
-его в образ диска `PrivateGateway-<версия>-osx-arm64.dmg` (HFS+, сжатый) рядом с ярлыком на «Программы» (решение 367):
+его в отдельный образ диска `PrivateGateway-<версия>-osx-arm64.dmg` (серия M) или
+`PrivateGateway-<версия>-osx-x64.dmg` (Intel) (HFS+, сжатый) рядом с ярлыком на «Программы» (решение 367):
 
 - `Contents/MacOS/` — папка сборки целиком: окно (`CFBundleExecutable` — `PrivateGateway`), служба рядом с ним, ядра в
   `cores/`, SBOM и THIRD-PARTY-NOTICES; `Contents/Resources/PrivateGateway.icns` — значок из `app.iconset`, собранный штатным `iconutil`;
   `Info.plist` — идентификатор `io.github.rvburov.private-gateway` (как метка службы launchd), версия без суффикса
-  предварительного выпуска, macOS 14 и новее;
+  предварительного выпуска, macOS 12 и новее. Проверка всех встроенных Mach-O отвергает пакет, если его архитектура
+  или минимальная версия системы не соответствует заявленной. Это проверка бинарных требований, а не подтверждение
+  работы на каждой старой macOS или официальной поддержки этих ОС Microsoft;
 - подпись — ad-hoc, без сертификата: сначала каждый файл `Contents/MacOS`, кроме главного исполняемого (codesign
   считает их вложенным кодом; у сборок .NET и данных подпись ложится в расширенные атрибуты), потом пакет целиком; `codesign --verify --deep --strict`
   проверяет ее при сборке. На Apple Silicon
@@ -318,7 +321,7 @@ master -f version=X.Y.Z` (проба — еще `-f dry_run=true`), или `POST
   ```
 
   виды файлов: `win-x64-msi`, `win-x64-zip`, `linux-x64-deb`, `linux-x64-rpm`, `linux-x64-tar`, `osx-arm64-tar`,
-  `osx-arm64-dmg`, `android-apk`; программа берет из них только свой установщик;
+  `osx-arm64-dmg`, `osx-x64-tar`, `osx-x64-dmg`, `android-apk`; программа берет из них только свой установщик;
 - `notes` — страница скачивания сайта, а не выпуск GitHub: репозиторий закрытый, участникам его страницы не открываются.
   `UPDATE_NOTES_URL` — другая страница; не https — ошибка: манифест с такой ссылкой программа отвергает целиком;
 - `update.json.sig` — подпись манифеста (раздел «Подпись обновлений»), тоже в `SHA256SUMS`;
