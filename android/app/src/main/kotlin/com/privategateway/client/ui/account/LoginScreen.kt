@@ -327,7 +327,13 @@ private fun Notice(notice: AccountNotice) {
         PgIcon(PgIcons.Warning, null, color = PgColor.Status.Warning.Text, size = 18.dp, strokeWidth = 2f)
         Spacer(Modifier.width(PgSpace.M))
         Text(
-            stringResource(if (notice == AccountNotice.Revoked) R.string.account_revoked else R.string.account_expired),
+            stringResource(
+                when (notice) {
+                    AccountNotice.Revoked -> R.string.account_revoked
+                    AccountNotice.Expired -> R.string.account_expired
+                    AccountNotice.SignOutNotSaved -> R.string.account_logout_unsaved
+                },
+            ),
             color = PgColor.Status.Warning.Text,
             style = PgType.Small,
         )

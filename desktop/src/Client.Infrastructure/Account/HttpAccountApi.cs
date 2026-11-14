@@ -56,10 +56,10 @@ public sealed class HttpAccountApi(HttpClient http, TimeProvider time, Uri? site
     private readonly Uri _site = Checked(site ?? AccountSite.Address);
 
     /// <summary>Клиент для программы: системный прокси, как у браузера.</summary>
-    public static HttpClient CreateClient() => new(new SocketsHttpHandler());
+    public static HttpClient CreateClient() => new(new SocketsHttpHandler { AllowAutoRedirect = false });
 
     /// <summary>То же без системного прокси — вторая попытка, когда прокси не отвечает.</summary>
-    public static HttpClient CreateDirectClient() => new(new SocketsHttpHandler { UseProxy = false });
+    public static HttpClient CreateDirectClient() => new(new SocketsHttpHandler { UseProxy = false, AllowAutoRedirect = false });
 
     public async Task<AccountLogin> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
     {

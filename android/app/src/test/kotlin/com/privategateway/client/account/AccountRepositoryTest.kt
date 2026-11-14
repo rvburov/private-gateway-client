@@ -2,6 +2,8 @@ package com.privategateway.client.account
 
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.core.account.AccountDevice
@@ -21,13 +23,16 @@ import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.vpn.TunnelMonitor
 import com.privategateway.client.waitForAsync
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
@@ -44,6 +49,7 @@ import java.security.ProviderException
 import java.time.Duration
 import java.time.Instant
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicReference
 import javax.crypto.AEADBadTagException
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -88,6 +94,10 @@ class AccountRepositoryTest {
         var login: LoginResult = LoginResult.Failed(AccountError.Network)
         var status: StatusResult = StatusResult.Unreachable
         var feed: UpdatesFeed = UpdatesFeed.Unreachable
+        @Volatile var pendingStatus: CompletableDeferred<StatusResult>? = null
+        @Volatile var pendingLogout: CompletableDeferred<Unit>? = null
+        @Volatile var pendingLogin: CompletableDeferred<LoginResult>? = null
+        @Volatile var pendingFeed: CompletableDeferred<UpdatesFeed>? = null
         val channels = CopyOnWriteArrayList<String>()
         val calls = CopyOnWriteArrayList<String>()
         val devices = CopyOnWriteArrayList<DeviceInfo>()
@@ -99,18 +109,19 @@ class AccountRepositoryTest {
         override suspend fun login(email: String, password: String, code: String?, recovery: String?, device: DeviceInfo): LoginResult {
             calls += "login"
             devices += device
-            return login
+            return pendingLogin?.await() ?: login
         }
 
         override suspend fun status(token: String): StatusResult {
             calls += "status"
             tokens += token
-            return status
+            return pendingStatus?.await() ?: status
         }
 
         override suspend fun logout(token: String) {
             calls += "logout"
             tokens += token
+            pendingLogout?.await()
             if (logoutHangs) {
                 awaitCancellation()
             }
@@ -120,7 +131,7 @@ class AccountRepositoryTest {
             calls += "updates"
             tokens += token
             channels += channel
-            return feed
+            return pendingFeed?.await() ?: feed
         }
     }
 
@@ -142,6 +153,8 @@ class AccountRepositoryTest {
 
         @Volatile var failWrites = false
 
+        @Volatile var writeFailure: Exception? = null
+
         override val data: Flow<Preferences> = flow {
             if (failReads) {
                 throw IOException("файл не читается")
@@ -151,6 +164,7 @@ class AccountRepositoryTest {
         }
 
         override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+            writeFailure?.let { throw it }
             if (failWrites) {
                 throw IOException("диск полон")
             }
@@ -175,8 +189,12 @@ class AccountRepositoryTest {
     }
 
     /** Репозиторий «процесса» на [store]. */
-    private fun repository(secrets: SecretBox = box, store: DataStore<Preferences> = store()): AccountRepository {
-        return AccountRepository(store, secrets, source, control, monitor, journal).also {
+    private fun repository(
+        secrets: SecretBox = box,
+        store: DataStore<Preferences> = store(),
+        fence: AccountLogoutFence = AccountLogoutFence(folder.root.resolve("signed-out")),
+    ): AccountRepository {
+        return AccountRepository(store, secrets, source, control, monitor, journal, fence).also {
             it.clock = { now }
             repositories += it
         }
@@ -516,9 +534,14 @@ class AccountRepositoryTest {
         assertEquals(LoginResult.Failed(AccountError.Store), wait { repository.login("user@example.com", "pw", "123456", null) })
         assertEquals(emptyList(), source.calls)
 
-        // Выход: вход стереть не удалось, но защита выключена и выход не упал.
+        // Выход: удалить вход не удалось, но он немедленно запрещен, сайт получает отзыв и процесс не падает.
         wait { repository.logout() }
         assertEquals(1, control.disconnects)
+        assertFalse(wait { repository.allowed() })
+        assertFalse(repository.allowedNow())
+        assertFalse(wait { repository.state.first { it?.signedIn == false } }!!.signedIn)
+        assertEquals(UpdatesFeed.SignedOut, wait { repository.updates("stable") })
+        assertTrue("logout" in source.calls, "ошибка записи не должна пропустить отзыв на сайте")
         assertTrue(journal.entries.value.any { "account sign-out  storage error" in it.message })
     }
 
@@ -620,4 +643,244 @@ class AccountRepositoryTest {
         assertEquals(listOf("login"), source.calls, "токен не открыть — сайт не спрашиваем")
         assertTrue(wait { repository.allowed() }, "временный сбой хранилища ключей вход не стирает")
     }
+
+    @Test
+    fun `failed sign-out cleanup never restores access after process restart`() {
+        val flaky = FlakyStore(store())
+        val first = repository(store = flaky)
+        source.login = LoginResult.Ok(session())
+        wait { first.login("user@example.com", "pw", null, null) }
+        flaky.failWrites = true
+        wait { first.logout() }
+        assertTrue(file.readBytes().toString(Charsets.ISO_8859_1).contains("token"), "данные еще на диске")
+        first.close()
+        runBlocking { scopes.first().coroutineContext.job.cancelAndJoin() }
+
+        val again = repository()
+        assertFalse(state(again).signedIn, "маркер выхода сильнее старого входа в DataStore")
+        assertFalse(wait { again.allowed() })
+        assertEquals(UpdatesFeed.SignedOut, wait { again.updates("stable") })
+        wait { again.refresh() }
+        assertFalse(file.readBytes().toString(Charsets.ISO_8859_1).contains("token"), "при восстановлении записи вход удален")
+        wait { again.login("user@example.com", "pw", null, null) }
+        assertTrue(wait { again.allowed() }, "новый сохраненный вход снимает запрет")
+    }
+
+    @Test
+    fun `both persistent writes failing show an honest notice and cleanup retries`() {
+        val parent = folder.root.resolve("not-a-directory").apply { writeText("x") }
+        val flaky = FlakyStore(store())
+        val repository = repository(store = flaky, fence = AccountLogoutFence(parent.resolve("signed-out")))
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        flaky.failWrites = true
+        wait { repository.logout() }
+        assertFalse(wait { repository.allowed() })
+        assertEquals(AccountNotice.SignOutNotSaved, wait { repository.state.first { it?.notice == AccountNotice.SignOutNotSaved } }!!.notice)
+
+        flaky.failWrites = false
+        repository.expiryPollMs = 10
+        repository.start()
+        wait {
+            while (file.readBytes().toString(Charsets.ISO_8859_1).contains("token")) delay(10)
+        }
+        assertFalse(wait { repository.allowed() })
+        assertNull(wait { repository.state.first { it?.notice == null } }!!.notice, "удаление токена закрепило выход")
+    }
+
+    @Test
+    fun `unexpected cleanup failure does not stop the independent retry task`() {
+        val flaky = FlakyStore(store())
+        val repository = repository(store = flaky)
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        flaky.failWrites = true
+        wait { repository.logout() }
+        flaky.failWrites = false
+        flaky.writeFailure = IllegalStateException("temporary store failure")
+        repository.expiryPollMs = 10
+        repository.start()
+        wait { while (journal.entries.value.none { "account deadline  failed" in it.message }) delay(10) }
+        flaky.writeFailure = null
+        wait { while (file.readBytes().toString(Charsets.ISO_8859_1).contains("token")) delay(10) }
+        assertFalse(wait { repository.allowed() })
+    }
+
+    @Test
+    fun `late status confirmation cannot resurrect a failed sign-out`() {
+        val flaky = FlakyStore(store())
+        val repository = repository(store = flaky)
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        val reply = CompletableDeferred<StatusResult>()
+        source.pendingStatus = reply
+        runBlocking {
+            val check = async(Dispatchers.Default) { repository.refresh() }
+            waitForAsync { while ("status" !in source.calls) delay(10) }
+            flaky.failWrites = true
+            repository.logout()
+            flaky.failWrites = false
+            reply.complete(StatusResult.Ok(now.plus(Duration.ofDays(60)), AccountUser("user@example.com", "Старый ответ"), AccountDevice(42, "Pixel")))
+            check.await()
+        }
+        assertFalse(wait { repository.allowed() })
+        assertFalse(wait { repository.state.first { it?.signedIn == false } }!!.signedIn)
+    }
+
+    @Test
+    fun `late revocation does not remove a new sign-in even with the same token`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        val reply = CompletableDeferred<StatusResult>()
+        source.pendingStatus = reply
+        runBlocking {
+            val check = async(Dispatchers.Default) { repository.refresh() }
+            waitForAsync { while ("status" !in source.calls) delay(10) }
+            repository.logout()
+            repository.login("user@example.com", "pw", null, null)
+            reply.complete(StatusResult.Revoked)
+            check.await()
+        }
+        assertTrue(wait { repository.allowed() })
+        assertNull(state(repository).notice)
+    }
+
+    @Test
+    fun `late feed belongs to the old sign-in and cannot revoke the new one`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        val reply = CompletableDeferred<UpdatesFeed>()
+        source.pendingFeed = reply
+        val result = runBlocking {
+            val request = async(Dispatchers.Default) { repository.updates("stable") }
+            waitForAsync { while ("updates" !in source.calls) delay(10) }
+            repository.logout()
+            repository.login("user@example.com", "pw", null, null)
+            reply.complete(UpdatesFeed.Revoked)
+            request.await()
+        }
+        assertEquals(UpdatesFeed.Unreachable, result)
+        assertTrue(wait { repository.allowed() })
+    }
+
+    @Test
+    fun `known expiry stops a healthy tunnel independently of a pending network check`() {
+        val repository = repository()
+        val clock = AtomicReference(now)
+        repository.clock = clock::get
+        repository.expiryPollMs = 10
+        source.login = LoginResult.Ok(session(expires = now.plusSeconds(300)))
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        source.pendingStatus = CompletableDeferred()
+        repository.start()
+        wait { while ("status" !in source.calls) delay(10) }
+        clock.set(now.plusSeconds(300))
+        wait { repository.state.first { it?.notice == AccountNotice.Expired && !it.signedIn } }
+        wait { while (control.disconnects == 0) delay(10) }
+        assertEquals(1, control.disconnects)
+        assertEquals(1, source.calls.count { it == "status" }, "не ждали следующего сетевого опроса")
+        assertFalse(wait { repository.allowed() })
+    }
+
+    @Test
+    fun `cached expiry is enforced when account storage cannot be read`() {
+        val flaky = FlakyStore(store())
+        val repository = repository(store = flaky)
+        source.login = LoginResult.Ok(session(expires = now.plusSeconds(300)))
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        flaky.failReads = true
+        assertTrue(wait { repository.allowed() }, "до срока временная ошибка чтения вход не отзывает")
+        repository.clock = { now.plusSeconds(300) }
+        wait { repository.refresh() }
+        assertFalse(wait { repository.allowed() })
+        assertEquals(1, control.disconnects)
+        assertEquals(AccountNotice.Expired, wait { repository.state.first { it?.notice == AccountNotice.Expired } }!!.notice)
+    }
+
+    @Test
+    fun `renewed deadline survives the previous deadline and resume enforces the new one`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session(expires = now.plusSeconds(30)))
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        source.status = StatusResult.Ok(now.plusSeconds(600), AccountUser("user@example.com", "Участник"), AccountDevice(42, "Pixel"))
+        wait { repository.refresh() }
+        repository.clock = { now.plusSeconds(31) }
+        assertFalse(wait { repository.enforceExpiry() })
+        assertTrue(wait { repository.allowed() })
+        assertEquals(0, control.disconnects)
+        repository.clock = { now.plusSeconds(600) }
+        repository.checkNow()
+        wait { repository.state.first { it?.notice == AccountNotice.Expired } }
+        wait { while (control.disconnects == 0) delay(10) }
+        assertFalse(wait { repository.allowed() })
+    }
+
+
+    @Test
+    fun `delayed preference emission cannot restore the deadline of an older sign-in`() {
+        val real = store()
+        val delivered = MutableSharedFlow<Preferences>(replay = 1).apply { tryEmit(emptyPreferences()) }
+        val lagging = object : DataStore<Preferences> {
+            override val data: Flow<Preferences> = delivered
+            override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = real.updateData(transform)
+        }
+        val repository = repository(store = lagging)
+        source.login = LoginResult.Ok(session(expires = now.plusSeconds(30)))
+        wait { repository.login("user@example.com", "pw", null, null) }
+        val old = wait { real.data.first() }.toMutablePreferences().apply {
+            this[stringPreferencesKey("display_name")] = "Запоздавший снимок"
+        }
+        source.login = LoginResult.Ok(session(expires = now.plusSeconds(600)))
+        wait { repository.login("user@example.com", "pw", null, null) }
+        repository.clock = { now.plusSeconds(31) }
+        wait { delivered.emit(old) }
+        wait { repository.state.first { it?.info?.displayName == "Запоздавший снимок" } }
+        assertFalse(wait { repository.enforceExpiry() }, "старый Flow не может отменить новый подтвержденный срок")
+        assertTrue(repository.allowedNow())
+        assertEquals(0, control.disconnects)
+    }
+
+
+    @Test
+    fun `late logout completion never stops protection from a new sign-in`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "old"))
+        val reply = CompletableDeferred<Unit>()
+        source.pendingLogout = reply
+        runBlocking {
+            val logout = async(Dispatchers.Default) { repository.logout() }
+            waitForAsync { while ("logout" !in source.calls) delay(10) }
+            repository.login("user@example.com", "pw", null, null)
+            monitor.set(TunnelStatus(TunnelState.Connected, serverId = "new"))
+            reply.complete(Unit)
+            logout.await()
+        }
+        assertTrue(wait { repository.allowed() })
+        assertEquals(0, control.disconnects, "завершившийся старый выход не выключает новое подключение")
+    }
+
+    @Test
+    fun `sign-out immediately rejects a pending sign-in and its late successful answer`() {
+        val repository = repository()
+        val reply = CompletableDeferred<LoginResult>()
+        source.pendingLogin = reply
+        runBlocking {
+            val login = async(Dispatchers.Default) { repository.login("user@example.com", "pw", null, null) }
+            waitForAsync { while ("login" !in source.calls) delay(10) }
+            repository.signOut()
+            assertFalse(repository.allowedNow(), "не ждут окончания запроса входа")
+            reply.complete(LoginResult.Ok(session()))
+            assertTrue(login.await() is LoginResult.Failed)
+        }
+        assertFalse(wait { repository.allowed() })
+        wait { while ("logout" !in source.calls) delay(10) }
+    }
+
 }

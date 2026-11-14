@@ -3,6 +3,7 @@ package com.privategateway.client.updates
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentSender
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import androidx.core.app.PendingIntentCompat
@@ -26,6 +27,12 @@ interface ApkInstaller {
 
     /** Бросить сессию (повторное нажатие или ошибка); ее уже нет — ничего. */
     fun abandon(id: Int)
+
+    /** Только собственная незавершенная сессия, предназначенная этому пакету. */
+    fun owns(id: Int): Boolean
+
+    /** Повторно запросить итог/подтверждение уже переданной сессии. APK не переписывается и не скачивается. */
+    fun resume(id: Int)
 }
 
 /**
@@ -55,11 +62,7 @@ class PackageApkInstaller @Inject constructor(@param:ApplicationContext private 
                     }
                 }
 
-                val status = Intent(context, UpdateInstallReceiver::class.java).setAction(UpdateInstallReceiver.ACTION_STATUS)
-                // Изменяемый: Android дописывает в него статус сессии и окно подтверждения.
-                val pending = PendingIntentCompat.getBroadcast(context, id, status, 0, true)
-                    ?: error("Нет PendingIntent для итога установки")
-                session.commit(pending.intentSender)
+                session.commit(statusReceiver(id))
             }
         } catch (e: Exception) {
             abandon(id)
@@ -73,6 +76,21 @@ class PackageApkInstaller @Inject constructor(@param:ApplicationContext private 
         } catch (_: SecurityException) {
             // Сессии уже нет (завершена или брошена) — бросать нечего.
         }
+    }
+
+    override fun owns(id: Int): Boolean = installer.mySessions.any { it.sessionId == id && it.appPackageName == context.packageName }
+
+    override fun resume(id: Int) {
+        check(owns(id)) { "Сессия установки больше не принадлежит приложению" }
+        installer.openSession(id).use { it.commit(statusReceiver(id)) }
+    }
+
+    private fun statusReceiver(id: Int): IntentSender {
+        val status = Intent(context, UpdateInstallReceiver::class.java).setAction(UpdateInstallReceiver.ACTION_STATUS)
+        // Изменяемый: Android дописывает в него статус сессии и новое окно подтверждения.
+        val pending = PendingIntentCompat.getBroadcast(context, id, status, 0, true)
+            ?: error("Нет PendingIntent для итога установки")
+        return pending.intentSender
     }
 
     private companion object {
@@ -90,12 +108,19 @@ class UpdateInstallReceiver : BroadcastReceiver() {
             return
         }
 
-        EntryPointAccessors.fromApplication(context.applicationContext, AppEntryPoint::class.java).updates().installStatus(
-            intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1),
-            intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE),
-            IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java),
-            intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE),
-        )
+        // При холодном запуске нужно прочитать сохраненную сессию. Android держит процесс, пока это не закончено.
+        val pending = goAsync()
+        try {
+            EntryPointAccessors.fromApplication(context.applicationContext, AppEntryPoint::class.java).updates().installStatus(
+                intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1),
+                intent.getIntExtra(PackageInstaller.EXTRA_STATUS, PackageInstaller.STATUS_FAILURE),
+                IntentCompat.getParcelableExtra(intent, Intent.EXTRA_INTENT, Intent::class.java),
+                intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE),
+            ).invokeOnCompletion { pending.finish() }
+        } catch (e: Exception) {
+            pending.finish()
+            throw e
+        }
     }
 
     companion object {

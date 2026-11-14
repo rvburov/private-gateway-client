@@ -102,6 +102,9 @@ public struct ServerItem: Equatable, Hashable, Sendable {
     /// Название в списке, карточке и на главной: свое, если пользователь переименовал.
     public var displayName: String { customName ?? linkName }
 
+    /// Подпись с отступами вокруг эмодзи; переименование и экспорт используют исходный `displayName`.
+    public var title: String { ServerNames.forDisplay(displayName) }
+
     /// «VLESS · REALITY».
     public var summary: String { ServerFacts.summary(self.protocol, security, transport) }
 
@@ -118,6 +121,30 @@ public enum ServerNames {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return (1...maxLength).contains(trimmed.count) ? trimmed : nil
     }
+
+    /// Только показ: Character сохраняет флаги, модификаторы кожи и ZWJ как целые текстовые элементы.
+    public static func forDisplay(_ name: String) -> String {
+        var result = ""
+        var previous = Kind.other
+        for element in name {
+            let scalars = element.unicodeScalars
+            guard let first = scalars.first else { continue }
+            let emoji = (0x1F000...0x1FAFF).contains(first.value) || (0x2600...0x27BF).contains(first.value)
+                || (0x231A...0x231B).contains(first.value) || (0x23E9...0x23EC).contains(first.value)
+                || first.value == 0x23F0 || first.value == 0x23F3 || (0x25FD...0x25FE).contains(first.value)
+                || first.value == 0x2B50 || first.value == 0x2B55
+                || scalars.contains { $0.value == 0xFE0F || $0.value == 0x20E3 }
+            let current = emoji ? Kind.emoji : CharacterSet.alphanumerics.contains(first) ? Kind.word : Kind.other
+            if (previous == .emoji && (current == .emoji || current == .word)) || (previous == .word && current == .emoji) {
+                result.append(" ")
+            }
+            result.append(element)
+            previous = current
+        }
+        return result
+    }
+
+    private enum Kind { case other, word, emoji }
 }
 
 /// Как узнать тот же сервер — правила десктопа и Android: дубль — тот же адрес, транспорт, защита и данные доступа под

@@ -523,7 +523,7 @@ private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean,
             CountryCode(server.countryCode, large = false)
             Column(Modifier.weight(1f).padding(start = PgSpace.L, end = PgSpace.S), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    server.displayName,
+                    server.title,
                     color = if (pressed) PgColor.Accent.Base else PgColor.Text.Primary,
                     style = PgType.BodyStrong,
                     maxLines = 1,
@@ -557,7 +557,7 @@ private fun ServerRow(server: ServerItem, selected: Boolean, connected: Boolean,
             LatencyText(server, Modifier.widthIn(min = 52.dp), RowLatency)
         }
 
-        MoreButton(server.displayName, Modifier.align(Alignment.CenterEnd).padding(end = PgSpace.Xs).testTag("more.${server.id}"), onMore)
+        MoreButton(server.title, Modifier.align(Alignment.CenterEnd).padding(end = PgSpace.Xs).testTag("more.${server.id}"), onMore)
     }
 }
 

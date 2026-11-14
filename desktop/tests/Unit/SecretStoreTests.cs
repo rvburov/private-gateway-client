@@ -27,6 +27,8 @@ public sealed class SecretStoreTests : IDisposable
             _store.Delete(_key + ":other");
         }
 
+        (_store as IDisposable)?.Dispose();
+
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
         if (Directory.Exists(_paths.DataDirectory))
         {

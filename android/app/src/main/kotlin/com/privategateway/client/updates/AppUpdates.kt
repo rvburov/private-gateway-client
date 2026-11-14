@@ -14,6 +14,7 @@ import com.privategateway.client.core.updates.SemVer
 import com.privategateway.client.core.updates.UpdateCheck
 import com.privategateway.client.core.updates.UpdateResult
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.data.UpdateInstallation
 import com.privategateway.client.data.UpdateMemo
 import com.privategateway.client.vpn.TunnelJournal
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -123,7 +124,10 @@ class AppUpdates @Inject constructor(
 
     /** Сессия установки, итога которой ждем; итоги других (брошенных) сессий не считаются. */
     @Volatile
-    private var session: Int? = null
+    private var session: UpdateInstallation? = null
+
+    /** Повтор того же callback не открывает второе окно в этом процессе. После холодного запуска нужен новый Intent Android. */
+    private var confirmationSession: Int? = null
 
     /** Когда в этом процессе проверка при показе окна или по кнопке последний раз спрашивала сайт. */
     @Volatile
@@ -183,11 +187,12 @@ class AppUpdates @Inject constructor(
             if (!restored) {
                 restored = true
                 restore(memo)
+                restoreInstallation()
                 // Недокачанный файл прошлого запуска больше не нужен.
                 File(context.cacheDir, FOLDER).listFiles()?.forEach { it.delete() }
             }
 
-            if (due(memo)) {
+            if (session == null && view.value.step != InstallStep.Failed && due(memo)) {
                 ask(auto = true)
             }
         }
@@ -196,7 +201,7 @@ class AppUpdates @Inject constructor(
     /** «Проверить»: сразу, мимо 12 часов и без частичной раскатки — попросил сам пользователь. Уже идет — null. */
     fun check(): Job? {
         val current = view.value
-        if (current.checking || current.step == InstallStep.Downloading) {
+        if (current.checking || current.step == InstallStep.Downloading || current.step == InstallStep.Installing) {
             return null
         }
 
@@ -224,34 +229,123 @@ class AppUpdates @Inject constructor(
     }
 
     /** Итог сессии установки от Android ([UpdateInstallReceiver]); итог другой, брошенной сессии — ничего. */
-    fun installStatus(id: Int, status: Int, confirm: Intent?, message: String?) {
-        if (id != session) {
-            return
-        }
+    fun installStatus(id: Int, status: Int, confirm: Intent?, message: String?): Job = scope.launch {
+        try {
+            // Повторная загрузка уже отменяет прежнюю установку. Ее приемник не должен ждать сетевой mutex и
+            // удерживать goAsync до таймаута Android. При холодном запуске сначала читаем сохраненную сессию.
+            if (view.value.step == InstallStep.Downloading) return@launch
+            val observed = session ?: settings.updateInstallation.first() ?: return@launch
+            if (observed.id != id) return@launch
+            lock.withLock {
+                val waiting = session ?: settings.updateInstallation.first() ?: return@withLock
+                if (id != waiting.id) {
+                    return@withLock
+                }
 
-        if (status == PackageInstaller.STATUS_PENDING_USER_ACTION && confirm != null) {
-            prompt.value = confirm
-            return
-        }
+                if (alreadyInstalled(waiting)) {
+                    finishInstallation()
+                    view.update { it.copy(status = UpdateStatus.UpToDate, version = null, step = InstallStep.None) }
+                    return@withLock
+                }
 
+                if (status == PackageInstaller.STATUS_PENDING_USER_ACTION && confirm != null && installer.owns(id)) {
+                    // Callback Android доказывает commit даже при смерти процесса между commit и записью фазы.
+                    markCommitted(waiting)
+                    view.update { it.copy(status = UpdateStatus.Available, version = waiting.version, step = InstallStep.Installing) }
+                    if (confirmationSession != id) {
+                        confirmationSession = id
+                        prompt.value = confirm
+                    }
+                    return@withLock
+                }
+
+                finishInstallation()
+                view.update { it.copy(status = UpdateStatus.Available, version = waiting.version) }
+                when (status) {
+                    PackageInstaller.STATUS_SUCCESS -> {
+                        journal.info("update install  done")
+                        view.update { it.copy(status = UpdateStatus.UpToDate, version = null, step = InstallStep.None) }
+                    }
+
+                    PackageInstaller.STATUS_FAILURE_ABORTED -> {
+                        // Отказ в окне Android — не ошибка: карточка снова предлагает обновление.
+                        journal.info("update install  cancelled")
+                        view.update { it.copy(step = InstallStep.None) }
+                    }
+
+                    else -> {
+                        journal.warning("update install  failed $status " + message.orEmpty().take(MESSAGE_MAX))
+                        view.update { it.copy(step = InstallStep.Failed) }
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            journal.warning("update install  status unavailable " + e.javaClass.simpleName)
+            view.update { it.copy(step = InstallStep.Failed) }
+        }
+    }
+
+    /** Собственная живая сессия переживает процесс; пропавшая требует повторной попытки, если версия еще не стоит. */
+    private suspend fun restoreInstallation() {
+        try {
+            val waiting = settings.updateInstallation.first() ?: return
+            when {
+                alreadyInstalled(waiting) -> {
+                    finishInstallation()
+                    view.update { it.copy(status = UpdateStatus.UpToDate, version = null, step = InstallStep.None) }
+                }
+                installer.owns(waiting.id) -> {
+                    if (waiting.committed) {
+                        val needsResume = session?.id != waiting.id
+                        session = waiting
+                        view.update { it.copy(status = UpdateStatus.Available, version = waiting.version, step = InstallStep.Installing) }
+                        // Повтор commit у запечатанной сессии меняет приемник результата, не ее APK. Android заново
+                        // присылает подтверждение: Intent прошлого процесса хранить и воспроизводить не требуется.
+                        if (needsResume) {
+                            withContext(Dispatchers.IO) { installer.resume(waiting.id) }
+                        }
+                    } else {
+                        installer.abandon(waiting.id)
+                        finishInstallation()
+                        journal.warning("update install  previous session was not committed")
+                        view.update { it.copy(status = UpdateStatus.Available, version = waiting.version, step = InstallStep.Failed) }
+                    }
+                }
+                else -> {
+                    finishInstallation()
+                    journal.warning("update install  previous session no longer exists")
+                    view.update { it.copy(status = UpdateStatus.Available, version = waiting.version, step = InstallStep.Failed) }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            journal.warning("update install  session unreadable " + e.javaClass.simpleName)
+            view.update { it.copy(status = if (it.version == null) UpdateStatus.Failed else it.status, step = InstallStep.Failed) }
+        }
+    }
+
+    private fun alreadyInstalled(waiting: UpdateInstallation): Boolean {
+        val target = SemVer.parse(waiting.version) ?: return false
+        return SemVer.parse(installed)?.let { it >= target } == true
+    }
+
+    private suspend fun finishInstallation() {
         session = null
+        confirmationSession = null
         prompt.value = null
-        when (status) {
-            PackageInstaller.STATUS_SUCCESS -> {
-                journal.info("update install  done")
-                view.update { it.copy(step = InstallStep.None) }
-            }
+        settings.setUpdateInstallation(null)
+    }
 
-            PackageInstaller.STATUS_FAILURE_ABORTED -> {
-                // Пользователь отказался в окне Android — не ошибка: карточка снова предлагает обновление.
-                journal.info("update install  cancelled")
-                view.update { it.copy(step = InstallStep.None) }
-            }
-
-            else -> {
-                journal.warning("update install  failed $status " + message.orEmpty().take(MESSAGE_MAX))
-                view.update { it.copy(step = InstallStep.Failed) }
-            }
+    private suspend fun markCommitted(waiting: UpdateInstallation) {
+        val committed = waiting.copy(committed = true)
+        session = committed
+        try {
+            settings.setUpdateInstallation(committed)
+        } catch (e: IOException) {
+            journal.warning("update install  committed phase not saved " + e.javaClass.simpleName)
         }
     }
 
@@ -280,6 +374,10 @@ class AppUpdates @Inject constructor(
      */
     private fun due(memo: UpdateMemo): Boolean {
         val now = clock()
+        // Подтвержденный отзыв входа важнее прежнего успешного кеша, даже если его очистка не записалась.
+        if (view.value.status == UpdateStatus.SignedOut) {
+            return true
+        }
         askedAt?.let { asked ->
             if (now - asked in 0L until RETRY_MS) {
                 return false
@@ -296,26 +394,29 @@ class AppUpdates @Inject constructor(
         return now - at !in 0L until PERIOD_MS
     }
 
-    /** Проверка: сама ([auto]) — с частичной раскаткой, «Входа нет» не показывает (вход появится — проверит снова). */
+    /** Проверка: сама ([auto]) — с частичной раскаткой. После отзыва доступа показывается вход, без успешного кеша. */
     private suspend fun ask(auto: Boolean) {
         view.update { it.copy(checking = true) }
         try {
             val bucket = if (auto) bucket() else null
-            val result = UpdateCheck.check(installed, keys(), feeds::updates, files, bucket)
+            val result = UpdateCheck.check(installed, keys(), feeds::updates, files, bucket, settings::rememberUpdatePolicy, ::rejected)
             val now = clock()
             journal.info("update check  " + (if (auto) "auto " else "") + name(result))
             if (result != UpdateResult.NotSigned && result != UpdateResult.SignedOut) {
                 askedAt = now
+            } else if (result == UpdateResult.SignedOut) {
+                askedAt = null
             }
 
             memorize(result, now)
             view.update { current ->
-                val shown = if (auto && result == UpdateResult.SignedOut) current else current.withResult(result, now)
-                shown.copy(step = InstallStep.None)
+                current.withResult(result, now).copy(step = InstallStep.None)
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            askedAt = clock()
+            clearMemo()
             journal.warning("update check  failed " + e.javaClass.simpleName)
             view.update { it.copy(status = UpdateStatus.Failed, checkedAt = clock(), step = InstallStep.None) }
         } finally {
@@ -329,9 +430,12 @@ class AppUpdates @Inject constructor(
      */
     private suspend fun fetchAndInstall() {
         try {
+            // Повторная попытка относится к новой сессии: старое подтверждение больше не должно открыться во время загрузки.
+            (session ?: settings.updateInstallation.first())?.let { installer.abandon(it.id) }
+            finishInstallation()
             for (attempt in 1..TICKET_TRIES) {
                 // Билет на файл живет 30 минут, а раскатку могли остановить: перед загрузкой — лента заново.
-                val fresh = UpdateCheck.check(installed, keys(), feeds::updates, files)
+                val fresh = UpdateCheck.check(installed, keys(), feeds::updates, files, remember = settings::rememberUpdatePolicy, report = ::rejected)
                 val now = clock()
                 memorize(fresh, now)
                 if (fresh !is UpdateResult.Available) {
@@ -378,6 +482,7 @@ class AppUpdates @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            clearMemo()
             journal.warning("update install  failed " + e.javaClass.simpleName)
             view.update { it.copy(step = InstallStep.Failed) }
         }
@@ -388,17 +493,30 @@ class AppUpdates @Inject constructor(
         view.update { it.copy(step = InstallStep.Installing, received = offer.size, total = offer.size) }
         try {
             withContext(Dispatchers.IO) {
-                // Прошлая сессия ждала подтверждения (нажали еще раз) — она больше не нужна.
-                session?.let(installer::abandon)
                 val id = installer.open(offer.size)
-                session = id
-                installer.commit(id, file)
+                try {
+                    val waiting = UpdateInstallation(id, offer.version)
+                    settings.setUpdateInstallation(waiting)
+                    session = waiting
+                    installer.commit(id, file)
+                    markCommitted(waiting)
+                } catch (e: CancellationException) {
+                    // Процесс мог завершиться после commit: сохраненная сессия будет сверена при следующем запуске.
+                    throw e
+                } catch (e: Exception) {
+                    installer.abandon(id)
+                    throw e
+                }
             }
             journal.info("update install  " + offer.version + " handed to Android")
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            session = null
+            try {
+                finishInstallation()
+            } catch (_: IOException) {
+                // Не записалось — при следующем запуске запись сверится с собственными сессиями Android.
+            }
             journal.warning("update install  failed " + e.javaClass.simpleName)
             view.update { it.copy(step = InstallStep.Failed) }
         } finally {
@@ -408,6 +526,10 @@ class AppUpdates @Inject constructor(
 
     /** Удачный ответ сайта — в настройки: после перезапуска его покажет карточка, а проверка при показе окна подождет. */
     private suspend fun memorize(result: UpdateResult, at: Long) {
+        if (result == UpdateResult.Failed || result == UpdateResult.SignedOut) {
+            clearMemo()
+            return
+        }
         val found = when (result) {
             is UpdateResult.Available -> result.version
             UpdateResult.UpToDate -> null
@@ -421,6 +543,14 @@ class AppUpdates @Inject constructor(
         }
     }
 
+    private suspend fun clearMemo() {
+        try {
+            settings.clearUpdateMemo()
+        } catch (e: IOException) {
+            journal.warning("update  memo not cleared " + e.javaClass.simpleName)
+        }
+    }
+
     /** Номер установки для раскатки; настройки не пишутся — случайный на эту проверку (доля раскатки соблюдается в среднем). */
     private suspend fun bucket(): Int = try {
         settings.updateBucket()
@@ -428,6 +558,9 @@ class AppUpdates @Inject constructor(
         journal.warning("update  install number unavailable " + e.javaClass.simpleName)
         Random.nextInt(100)
     }
+
+    /** Только код причины; манифест, подпись, ссылка-билет и ответы сайта в журнал не попадают. */
+    private fun rejected(reason: String) = journal.warning("update check  $reason")
 
     private fun installAllowed(): Boolean = try {
         context.packageManager.canRequestPackageInstalls()

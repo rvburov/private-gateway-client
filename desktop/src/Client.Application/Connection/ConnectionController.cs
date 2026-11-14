@@ -9,7 +9,7 @@ namespace PrivateGateway.Client.Application.Connection;
 /// Кнопка-щит и смена сервера. Решает, что значит нажатие в текущем состоянии, и не дает
 /// подключиться без выбранного сервера.
 /// </summary>
-public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog catalog, ConnectionTarget? target = null)
+public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog catalog, ConnectionTarget? target = null, IServerStore? store = null)
 {
     private ServerProfile? Selected => target is null ? catalog.Selected : target.Selected;
 
@@ -37,6 +37,7 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
                 return false;
             }
 
+            CheckCredentials(server.Id, cancellationToken);
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
             return true;
         }
@@ -56,8 +57,14 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
             return;
         }
 
+        var reconnect = target?.IsExternalProxy != true && !WantsConnect(gateway.Status);
+        if (reconnect)
+        {
+            CheckCredentials(serverId, cancellationToken);
+        }
+
         catalog.Choose(serverId);
-        if (target?.IsExternalProxy != true && !WantsConnect(gateway.Status) && catalog.Selected is { } server)
+        if (reconnect && catalog.Selected is { } server)
         {
             await gateway.ConnectAsync(server, cancellationToken).ConfigureAwait(false);
         }
@@ -74,13 +81,14 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
             return;
         }
 
-        target?.UseVpnMode();
         var status = gateway.Status;
-        if (status.ServerId == serverId && !WantsConnect(status))
+        if (status.ServerId == serverId && !WantsConnect(status) && target?.IsExternalProxy != true)
         {
             return;
         }
 
+        CheckCredentials(serverId, cancellationToken);
+        target?.UseVpnMode();
         catalog.Choose(serverId);
         if (catalog.Selected is { } server && server.Id == serverId)
         {
@@ -96,6 +104,14 @@ public sealed class ConnectionController(IGatewayClient gateway, IServerCatalog 
     {
         await ReleaseAsync([serverId], cancellationToken).ConfigureAwait(false);
         catalog.Remove(serverId);
+    }
+
+    // Сначала запросить доступ ОС, затем менять режим/выбор: отказ не должен отключать действующий VPN.
+    // Внешний прокси читает свои данные в IGatewayClient до команды службе; в каталоге его нет.
+    private void CheckCredentials(string serverId, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        _ = store?.Definition(serverId);
     }
 
     /// <summary>

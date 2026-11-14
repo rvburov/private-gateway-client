@@ -6,6 +6,7 @@ import com.privategateway.client.core.links.JsonTree
 import java.net.URI
 import java.net.URISyntaxException
 import java.security.KeyFactory
+import java.security.MessageDigest
 import java.security.PublicKey
 import java.security.Signature
 import java.security.spec.X509EncodedKeySpec
@@ -40,6 +41,21 @@ sealed interface UpdateResult {
 
     /** Лента не загрузилась или не читается. */
     data object Failed : UpdateResult
+}
+
+/** Уже проверенная подписью политика выпуска. Ревизия отделена от версии приложения и доли раскатки. */
+data class UpdatePolicy(val channel: String, val version: String, val revision: Long, val sha256: String) {
+    init {
+        require(channel == UpdateCheck.STABLE || channel == UpdateCheck.BETA)
+        require(SemVer.parse(version) != null && version.length <= 200)
+        require(revision in 0..MAX_REVISION)
+        require(Regex("[0-9a-f]{64}").matches(sha256))
+    }
+
+    companion object {
+        /** Точное целое также для издателя/сайта на JavaScript; у прежнего формата без поля — 0. */
+        const val MAX_REVISION = 9_007_199_254_740_991L
+    }
 }
 
 /**
@@ -130,6 +146,7 @@ object UpdateCheck {
      * @param feed лента сайта для канала («stable» или «beta»).
      * @param files начало ссылок на файлы (в тестах — свой сервер на 127.0.0.1).
      * @param bucket номер этой установки 0–99 для частичной раскатки; null — раскатку (кроме остановленной) не учитывать.
+     * @param remember атомарно сверить и сохранить ревизию подписанной политики; false — старая или противоречивая.
      */
     suspend fun check(
         installed: String,
@@ -137,6 +154,8 @@ object UpdateCheck {
         feed: suspend (channel: String) -> UpdatesFeed,
         files: String = FILES,
         bucket: Int? = null,
+        remember: suspend (UpdatePolicy) -> Boolean = { true },
+        report: (String) -> Unit = {},
     ): UpdateResult {
         require(bucket == null || bucket in 0..99) { "Номер установки — от 0 до 99" }
         val verifiers = keys.mapNotNull(::publicKey)
@@ -155,19 +174,46 @@ object UpdateCheck {
         val candidates = releases
             .filter { it.version > current && (current.prerelease || !it.version.prerelease) }
             .sortedByDescending { it.version }
-        for (release in candidates) {
-            offer(release, verifiers, files, bucket)?.let { return it }
+        val candidateSet = candidates.toSet()
+        var invalid = false
+        val accepted = mutableMapOf<Release, Trusted>()
+        // Сначала запоминаются все политики, включая стоп и неподходящую долю. Старый дубликат в начале ленты не может
+        // обойти более новую остановку той же версии в конце. Неверная подпись в хранилище ничего не меняет.
+        for (release in releases) {
+            val parsed = trusted(release, verifiers)
+            if (parsed == null || !remember(parsed.policy)) {
+                // Старые или чужого канала записи не являются предложением обновления, но их действующие подписанные
+                // политики тоже запоминаются. Ошибка исторической записи не мешает определить результат для этой версии.
+                if (release in candidateSet) {
+                    invalid = true
+                    report(if (parsed == null) "manifest or signature rejected" else "manifest revision rejected")
+                }
+            } else {
+                accepted[release] = parsed
+            }
         }
 
-        return UpdateResult.UpToDate
+        for (candidate in candidates) {
+            val release = accepted[candidate] ?: continue
+            if (!remember(release.policy)) {
+                invalid = true
+                report("manifest revision rejected")
+                continue
+            }
+            offer(release, files, bucket)?.let { return it }
+        }
+
+        return if (invalid) UpdateResult.Failed else UpdateResult.UpToDate
     }
 
     /** Выпуск из ленты: версия (и ее текст), точные байты манифеста, подпись и ссылки на файлы по видам. Еще не проверен. */
-    internal class Release(val version: SemVer, val text: String, val manifest: ByteArray, val signature: String, val files: Map<String, String>)
+    internal class Release(val version: SemVer, val text: String, val manifest: ByteArray?, val signature: String?, val files: Map<String, String>)
+
+    private class Trusted(val release: Release, val manifest: Map<*, *>, val policy: UpdatePolicy, val rollout: Int)
 
     /**
-     * Лента сайта {"releases":[…]}; не она — null. Выпуск без версии SemVer, манифеста base64 или подписи пропускается, ссылка
-     * без адреса — тоже. Канал из ленты не читается: его говорит подписанный манифест.
+     * Лента сайта {"releases":[…]}; не она — null. Выпуск без версии SemVer пропускается, а неверный манифест/подпись
+     * сохраняются как отклоненный кандидат. Ссылка без адреса пропускается. Канал говорит подписанный манифест.
      */
     internal fun releases(json: String): List<Release>? {
         val root = try {
@@ -180,8 +226,8 @@ object UpdateCheck {
             val release = item as? Map<*, *> ?: return@mapNotNull null
             val text = release["version"] as? String ?: return@mapNotNull null
             val version = SemVer.parse(text) ?: return@mapNotNull null
-            val manifest = (release["manifest"] as? String)?.let(::decode) ?: return@mapNotNull null
-            val signature = (release["signature"] as? String)?.takeIf { it.length <= SIGNATURE_MAX_CHARS } ?: return@mapNotNull null
+            val manifest = (release["manifest"] as? String)?.let(::decode)
+            val signature = (release["signature"] as? String)?.takeIf { it.length <= SIGNATURE_MAX_CHARS }
             val files = HashMap<String, String>()
             (release["files"] as? Map<*, *>)?.forEach { (kind, file) ->
                 val url = (file as? Map<*, *>)?.get("url") as? String
@@ -194,18 +240,38 @@ object UpdateCheck {
         }
     }
 
-    /** Предложение из выпуска: подпись, манифест про этот выпуск, APK в нем и билет на него; что-то не так — null. */
-    private fun offer(release: Release, keys: List<PublicKey>, files: String, bucket: Int?): UpdateResult.Available? {
-        if (release.manifest.size > MANIFEST_MAX_BYTES || !verify(release.manifest, release.signature, keys)) {
+    /** Подпись и обязательные поля — до записи ревизии; ошибка не считается отсутствием обновления. */
+    private fun trusted(release: Release, keys: List<PublicKey>): Trusted? {
+        val bytes = release.manifest ?: return null
+        val signature = release.signature ?: return null
+        if (bytes.size > MANIFEST_MAX_BYTES || !verify(bytes, signature, keys)) {
             return null
         }
 
         val manifest = try {
-            JsonTree.parse(release.manifest.decodeToString()).value as? Map<*, *>
+            JsonTree.parse(bytes.decodeToString()).value as? Map<*, *>
         } catch (_: JsonTree.SyntaxError) {
             null
         } ?: return null
-        if (!acceptable(manifest, release, bucket)) {
+        val channel = if (release.version.prerelease) BETA else STABLE
+        val rollout = (manifest["rollout"] as? JsonTree.JsonNumber)?.text?.toIntOrNull() ?: return null
+        val revision = if (manifest.containsKey("revision")) {
+            (manifest["revision"] as? JsonTree.JsonNumber)?.text?.toLongOrNull() ?: return null
+        } else 0L
+        if (manifest["version"] != release.text || manifest["channel"] != channel || rollout !in 0..100 ||
+            revision !in 0..UpdatePolicy.MAX_REVISION || release.text.length > 200) {
+            return null
+        }
+
+        val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+        return Trusted(release, manifest, UpdatePolicy(channel, release.text, revision, hash), rollout)
+    }
+
+    /** Доверенный выпуск может не подходить: стоп/доля, нет APK или билета — это не ошибка подписи. */
+    private fun offer(trusted: Trusted, files: String, bucket: Int?): UpdateResult.Available? {
+        val release = trusted.release
+        val manifest = trusted.manifest
+        if (trusted.rollout == 0 || (bucket != null && bucket >= trusted.rollout)) {
             return null
         }
 
@@ -220,18 +286,6 @@ object UpdateCheck {
             .take(MAX_HIGHLIGHTS)
             .map { it.take(HIGHLIGHT_MAX_CHARS) }
         return UpdateResult.Available(release.text, url, sha256, size, notes, highlights)
-    }
-
-    /**
-     * Манифест про этот выпуск: та же версия, канал по версии (беты обычной установке не достаются еще в [check]), доля
-     * раскатки 1–100 и (если [bucket] задан) до этой установки уже дошла.
-     */
-    private fun acceptable(manifest: Map<*, *>, release: Release, bucket: Int?): Boolean {
-        val rollout = (manifest["rollout"] as? JsonTree.JsonNumber)?.text?.toIntOrNull() ?: return false
-        return manifest["version"] == release.text &&
-            manifest["channel"] == (if (release.version.prerelease) BETA else STABLE) &&
-            rollout in 1..100 &&
-            (bucket == null || bucket < rollout)
     }
 
     /** Подпись манифеста сходится хотя бы с одним ключом. */

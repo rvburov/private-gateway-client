@@ -27,12 +27,14 @@ namespace PrivateGateway.Client.Service.Updates;
 /// ставит, и откатывать ей нечем. Ставит служба выпуск, только если сайт дал на этот файл ссылку.</param>
 /// <param name="files">Адрес файлов обновлений: ссылки на файлы — только билеты на него; null — сайт
 /// (<see cref="AccountSite.UpdateFiles"/>). Только https; http — только к своему компьютеру (тесты).</param>
+/// <param name="policies">История подписанных изменений в папке состояния; null — история на этот запуск (тесты).</param>
 public sealed class UpdateChecker(
     IReadOnlyList<string> keys, string current, int bucket, TimeProvider time, ServiceJournal journal, VersionHistory? history = null,
-    string? asset = null, Uri? files = null)
+    string? asset = null, Uri? files = null, UpdatePolicyHistory? policies = null)
 {
     private readonly Lock _gate = new();
     private readonly Uri _files = Checked(files ?? AccountSite.UpdateFiles);
+    private readonly UpdatePolicyHistory _policies = policies ?? new();
     private Last? _last;
     private string? _rollbackProblem;
 
@@ -125,7 +127,7 @@ public sealed class UpdateChecker(
                 return new UpdateOffer(UpdateState.Failed, now);
             }
 
-            var search = UpdateFinder.Find(releases, keys, current, channel, bucket, history?.Left);
+            var search = UpdateFinder.Find(releases, keys, current, channel, bucket, history?.Left, _policies.Accept);
             foreach (var skipped in search.Skipped)
             {
                 journal.Add(JournalLevel.Warning, "update", "Выпуск пропущен: " + skipped);
@@ -198,14 +200,9 @@ public sealed class UpdateChecker(
     // (стоп-кран). Откат на прежнюю версию стоп-кран не задерживает: ее уже ставили на этой машине.
     private string? Stopped(IReadOnlyList<ReleaseEntry> releases, string version)
     {
-        if (SemVer.Compare(version, current) <= 0)
-        {
-            return null;
-        }
-
-        var (manifest, problem) = UpdateFinder.Release(releases, keys, version);
+        var (manifest, problem) = UpdateFinder.Release(releases, keys, version, _policies.Accept);
         return problem is not null ? $"в свежей ленте сайта выпуск не проверяется: {problem}"
-            : manifest!.Rollout == 0 ? "выпуск остановлен (раскатка 0 %)"
+            : SemVer.Compare(version, current) > 0 && manifest!.Rollout == 0 ? "выпуск остановлен (раскатка 0 %)"
             : null;
     }
 
@@ -242,7 +239,7 @@ public sealed class UpdateChecker(
     // сайте (ссылка в ленте; выпуск без файлов ОС сайт отдает с пустым files). Нет — null и почему.
     private (UpdateManifest? Manifest, string? Problem) Installable(IReadOnlyList<ReleaseEntry> releases, string version)
     {
-        var (manifest, problem) = UpdateFinder.Release(releases, keys, version);
+        var (manifest, problem) = UpdateFinder.Release(releases, keys, version, _policies.Accept);
         problem ??= !manifest!.Assets.ContainsKey(asset!) ? "в выпуске нет файла для этой установки"
             : releases.First(r => r.Version == version).Files.ContainsKey(asset!) ? null
             : "файла для этой установки нет на сайте";

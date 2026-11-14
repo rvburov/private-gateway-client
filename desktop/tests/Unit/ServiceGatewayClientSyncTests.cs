@@ -115,6 +115,37 @@ public sealed class ServiceGatewayClientSyncTests
     private static ConnectionStatus Snapshot(ConnectionState state, DateTimeOffset since, string? error = null) =>
         ConnectionStatus.Initial(since) with { State = state, Mode = ConnectionMode.Proxy, ErrorCode = error };
 
+    [Theory]
+    [InlineData(StatusCode.Unavailable, "service_no_reply")]
+    [InlineData(StatusCode.Unimplemented, "unsupported")]
+    [InlineData(StatusCode.Internal, "check_failed")]
+    [InlineData(StatusCode.PermissionDenied, "access_denied")]
+    [InlineData(StatusCode.DeadlineExceeded, "timeout")]
+    public async Task Failed_diagnostics_are_finished_unknown_results_without_changing_the_live_tunnel(StatusCode code, string reason)
+    {
+        var connected = Snapshot(ConnectionState.Connected, Started);
+        var calls = new FakeCalls(connected, accepted: true) { CheckFailure = code };
+        calls.Send(connected);
+        using var client = Client(calls);
+
+        var report = await client.RunChecksAsync(TestContext.Current.CancellationToken);
+
+        report.Results.Count.ShouldBe(OperatingSystem.IsWindows() ? 9 : 8);
+        report.Results.ShouldAllBe(result => result.State == CheckState.Warning && result.Reason == reason);
+        client.Status.ShouldBe(connected, "отказ одного RPC не заменяет действующий поток состояния службы");
+    }
+
+    [Fact]
+    public async Task Cancelled_diagnostics_propagate_cancellation_instead_of_claiming_the_service_is_stopped()
+    {
+        var calls = new FakeCalls(Snapshot(ConnectionState.Connected, Started), accepted: true) { CheckFailure = StatusCode.Cancelled };
+        using var client = Client(calls);
+        using var stop = new CancellationTokenSource();
+        stop.Cancel();
+
+        await Should.ThrowAsync<OperationCanceledException>(() => client.RunChecksAsync(stop.Token));
+    }
+
     private static ServiceGatewayClient Client(FakeCalls calls) => new(GrpcChannel.ForAddress("http://127.0.0.1"),
         ServiceKind.Installed, _ => null, () => AppSettings.Default with { Mode = ConnectionMode.Proxy },
         new FakeTimeProvider(Started), calls: calls);
@@ -125,11 +156,17 @@ public sealed class ServiceGatewayClientSyncTests
         private ConnectionStatus _actual = actual;
         private readonly ConnectionStatus _connected = actual;
         public int StatusReads { get; private set; }
+        public StatusCode? CheckFailure { get; init; }
         public void Send(ConnectionStatus status) => _statuses.Writer.TryWrite(status.ToContract()).ShouldBeTrue();
 
         public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host,
             CallOptions options, TRequest request)
         {
+            if (method.Name == "RunChecks" && CheckFailure is { } code)
+            {
+                throw new RpcException(new Status(code, "Сбой проверки"));
+            }
+
             object reply = method.Name switch
             {
                 "Connect" => new V1.ConnectReply { Accepted = accepted },

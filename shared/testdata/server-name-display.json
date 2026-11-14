@@ -1,0 +1,20 @@
+[
+  { "input": "", "expected": "" },
+  { "input": "Germany-1 DIRECT (TCP)", "expected": "Germany-1 DIRECT (TCP)" },
+  { "input": "⚡🇩🇪Germany-1 DIRECT (TCP)", "expected": "⚡ 🇩🇪 Germany-1 DIRECT (TCP)" },
+  { "input": "🇺🇸USA", "expected": "🇺🇸 USA" },
+  { "input": "⚡️🇫🇮Helsinki", "expected": "⚡️ 🇫🇮 Helsinki" },
+  { "input": "👩🏽‍💻Server", "expected": "👩🏽‍💻 Server" },
+  { "input": "👨‍👩‍👧‍👦Home", "expected": "👨‍👩‍👧‍👦 Home" },
+  { "input": "🏳️‍🌈Lab", "expected": "🏳️‍🌈 Lab" },
+  { "input": "1️⃣Server", "expected": "1️⃣ Server" },
+  { "input": "Сервер⭐", "expected": "Сервер ⭐" },
+  { "input": "⏰Backup", "expected": "⏰ Backup" },
+  { "input": "👩‍ABC", "expected": "👩‍ ABC" },
+  { "input": "⚡ 🇩🇪 Germany", "expected": "⚡ 🇩🇪 Germany" },
+  { "input": "🔒\u00a0Name", "expected": "🔒\u00a0Name" },
+  { "input": "  Café⚡️  ", "expected": "  Café ⚡️  " },
+  { "input": "C++ (TCP) - v2.0", "expected": "C++ (TCP) - v2.0" },
+  { "input": "[🇺🇸]USA", "expected": "[🇺🇸]USA" },
+  { "input": "🏴\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7fLondon", "expected": "🏴\udb40\udc67\udb40\udc62\udb40\udc65\udb40\udc6e\udb40\udc67\udb40\udc7f London" }
+]

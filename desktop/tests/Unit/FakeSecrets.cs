@@ -16,6 +16,12 @@ internal sealed class FakeSecrets : ISecretStore
     /// <summary>Сколько записей пройдет до отказа хранилища; null — без отказа.</summary>
     public int? SavesLeft { get; set; }
 
+    public Exception? ReadFailure { get; set; }
+
+    public Exception? DeleteFailure { get; set; }
+
+    public int Reads { get; private set; }
+
     public void Save(string key, string secret)
     {
         if (!Available || SavesLeft-- <= 0)
@@ -26,7 +32,24 @@ internal sealed class FakeSecrets : ISecretStore
         Values[key] = secret;
     }
 
-    public string? Read(string key) => Values.GetValueOrDefault(key);
+    public string? Read(string key)
+    {
+        Reads++;
+        if (ReadFailure is { } error)
+        {
+            throw error;
+        }
 
-    public void Delete(string key) => Values.Remove(key);
+        return Values.GetValueOrDefault(key);
+    }
+
+    public void Delete(string key)
+    {
+        if (DeleteFailure is { } error)
+        {
+            throw error;
+        }
+
+        Values.Remove(key);
+    }
 }

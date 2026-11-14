@@ -36,13 +36,14 @@ class UpdateCheckTest {
         rollout: Int = 20,
         apk: String? = """{"file":"PrivateGateway-$version-android.apk","sha256":"$sha","size":31457280}""",
         notes: String = "https://private-gateway.duckdns.org/downloads",
+        revision: Long? = null,
     ): ByteArray {
         val assets = listOfNotNull(
             """"win-x64-msi":{"file":"PrivateGateway-$version-win-x64.msi","sha256":"${"cd".repeat(32)}","size":52428800}""",
             apk?.let { """"android-apk":$it""" },
         ).joinToString(",")
         return ("""{"version":"$version","channel":"$channel","rollout":$rollout,"published":"2026-11-13T00:00:00Z","notes":"$notes",""" +
-            """"highlights":["Обновления с сайта","Установка из приложения"],"assets":{$assets}}""").toByteArray()
+            """"highlights":["Обновления с сайта","Установка из приложения"],"assets":{$assets}${revision?.let { ",\"revision\":$it" }.orEmpty()}}""").toByteArray()
     }
 
     /** Выпуск ленты сайта: манифест base64, подпись и ссылка-билет на APK. */
@@ -117,17 +118,17 @@ class UpdateCheckTest {
         // Сайт поменял байт манифеста после подписи (доля раскатки, размер APK) — подпись не сходится.
         val signed = manifest("0.3.0")
         val tampered = String(signed).replace("\"rollout\":20", "\"rollout\":90").toByteArray()
-        assertEquals(UpdateResult.UpToDate, check("0.2.1", feed(release("0.3.0", body = tampered, signature = sign(signed)))))
+        assertEquals(UpdateResult.Failed, check("0.2.1", feed(release("0.3.0", body = tampered, signature = sign(signed)))))
         val bigger = String(signed).replace("31457280", "31457281").toByteArray()
-        assertEquals(UpdateResult.UpToDate, check("0.2.1", feed(release("0.3.0", body = bigger, signature = sign(signed)))))
-        assertEquals(UpdateResult.UpToDate, check("0.2.1", feed(release("0.3.0", signature = "не base64!"))))
+        assertEquals(UpdateResult.Failed, check("0.2.1", feed(release("0.3.0", body = bigger, signature = sign(signed)))))
+        assertEquals(UpdateResult.Failed, check("0.2.1", feed(release("0.3.0", signature = "не base64!"))))
     }
 
     @Test
     fun `manifest must match its release, channel and rollout`() {
-        assertEquals(UpdateResult.UpToDate, check("0.2.1", feed(release("0.3.0", body = manifest("0.3.1")))), "версия манифеста — не та")
+        assertEquals(UpdateResult.Failed, check("0.2.1", feed(release("0.3.0", body = manifest("0.3.1")))), "версия манифеста — не та")
         assertEquals(UpdateResult.UpToDate, check("0.2.1", feed(release("0.3.0", body = manifest("0.3.0", rollout = 0)))), "раскатка остановлена")
-        assertEquals(UpdateResult.UpToDate, check("0.2.1", feed(release("0.3.0", body = manifest("0.3.0", channel = "beta")))), "бета-манифест у обычного выпуска")
+        assertEquals(UpdateResult.Failed, check("0.2.1", feed(release("0.3.0", body = manifest("0.3.0", channel = "beta")))), "бета-манифест у обычного выпуска")
         assertEquals("0.3.0", version(check("0.2.1", feed(release("0.3.0", body = manifest("0.3.0", rollout = 1))))), "по кнопке частичная раскатка видна")
     }
 
@@ -202,7 +203,89 @@ class UpdateCheckTest {
             """{"version":"0.4.0","manifest":"e30=","signature":"${"s".repeat(2000)}"}""",
         )
         assertEquals("0.3.0", version(check("0.2.1", feed(*odd.toTypedArray(), release("0.3.0")))))
-        assertEquals(1, UpdateCheck.releases(feed(*odd.toTypedArray(), release("0.3.0")))!!.size)
+        assertEquals(4, UpdateCheck.releases(feed(*odd.toTypedArray(), release("0.3.0")))!!.size, "поврежденные выпуски с версией остаются для результата ошибки проверки")
+        odd.drop(2).forEach { broken -> assertEquals(UpdateResult.Failed, check("0.2.1", feed(broken))) }
+    }
+
+    @Test
+    fun `signed stop and later resume are remembered before rollout filtering`() = runTest {
+        val history = mutableMapOf<String, UpdatePolicy>()
+        suspend fun remember(policy: UpdatePolicy): Boolean {
+            val identity = policy.channel + "/" + policy.version
+            val old = history[identity]
+            if (old != null && (policy.revision < old.revision || (policy.revision == old.revision && policy.sha256 != old.sha256))) return false
+            history[identity] = policy
+            return true
+        }
+        suspend fun find(body: ByteArray, bucket: Int? = null) = UpdateCheck.check(
+            "0.2.1", listOf(pem), { UpdatesFeed.Ok(feed(release("0.3.0", body))) }, files, bucket, ::remember,
+        )
+
+        val first = manifest("0.3.0", rollout = 100, revision = 1)
+        assertEquals("0.3.0", version(find(first)))
+        assertEquals(UpdateResult.UpToDate, find(manifest("0.3.0", rollout = 0, revision = 2)))
+        assertEquals(2L, history.getValue("stable/0.3.0").revision)
+        assertEquals(UpdateResult.Failed, find(first), "правильная старая подпись не отменяет известный стоп")
+        assertEquals(UpdateResult.Failed, find(manifest("0.3.0", rollout = 100, revision = 2)), "те же номер и другие байты запрещены")
+        assertEquals(UpdateResult.UpToDate, find(manifest("0.3.0", rollout = 20, revision = 3), bucket = 50))
+        assertEquals(3L, history.getValue("stable/0.3.0").revision, "ревизия запоминается, даже если доля не дошла до телефона")
+        assertEquals("0.3.0", version(find(manifest("0.3.0", rollout = 100, revision = 4))))
+    }
+
+    @Test
+    fun `all duplicates are checked before an older entry can be offered`() = runTest {
+        var seen: UpdatePolicy? = null
+        val result = UpdateCheck.check(
+            "0.2.1", listOf(pem), { UpdatesFeed.Ok(feed(
+                release("0.3.0", manifest("0.3.0", rollout = 100, revision = 1)),
+                release("0.3.0", manifest("0.3.0", rollout = 0, revision = 2)),
+            )) }, files,
+            remember = { policy ->
+                val old = seen
+                val accepted = old == null || policy.revision > old.revision || (policy.revision == old.revision && policy.sha256 == old.sha256)
+                if (accepted) seen = policy
+                accepted
+            },
+        )
+        assertEquals(UpdateResult.Failed, result, "повтор старой политики обнаружен, APK не предлагается")
+        assertEquals(2L, seen!!.revision)
+    }
+
+    @Test
+    fun `legacy policy is revision zero and invalid policies never enter storage`() = runTest {
+        val policies = mutableListOf<UpdatePolicy>()
+        suspend fun find(body: ByteArray, signature: String = sign(body)) = UpdateCheck.check(
+            "0.2.1", listOf(pem), { UpdatesFeed.Ok(feed(release("0.3.0", body, signature))) }, files,
+            remember = { policies += it; true },
+        )
+        assertEquals("0.3.0", version(find(manifest("0.3.0"))))
+        assertTrue(policies.all { it.revision == 0L })
+        policies.clear()
+        for (revision in listOf(-1L, UpdatePolicy.MAX_REVISION + 1)) {
+            assertEquals(UpdateResult.Failed, find(manifest("0.3.0", revision = revision)))
+        }
+        for (invalid in listOf("1.5", "1e0", "\"1\"", "null")) {
+            val malformed = String(manifest("0.3.0", revision = 1)).replace("\"revision\":1", "\"revision\":$invalid").toByteArray()
+            assertEquals(UpdateResult.Failed, find(malformed), "ревизия $invalid не является целым числом JSON")
+        }
+        val bytes = manifest("0.3.0", revision = 50)
+        assertEquals(UpdateResult.Failed, find(bytes, sign(bytes, keyPair())))
+        assertEquals(emptyList(), policies, "подпись и обязательные поля проверяются до записи ревизии")
+    }
+
+    @Test
+    fun `valid current and other channel policies are remembered without treating bad historical entries as update failures`() = runTest {
+        val saved = mutableListOf<UpdatePolicy>()
+        val result = UpdateCheck.check(
+            "0.3.0", listOf(pem), { UpdatesFeed.Ok(feed(
+                release("0.3.0", manifest("0.3.0", rollout = 0, revision = 2)),
+                release("0.4.0-beta.1", manifest("0.4.0-beta.1", revision = 4)),
+                release("0.2.1", signature = "invalid"),
+            )) }, files,
+            remember = { saved += it; true },
+        )
+        assertEquals(UpdateResult.UpToDate, result)
+        assertEquals(setOf("stable/0.3.0/2", "beta/0.4.0-beta.1/4"), saved.map { "${it.channel}/${it.version}/${it.revision}" }.toSet())
     }
 
     @Test

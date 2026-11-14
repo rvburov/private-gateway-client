@@ -64,6 +64,8 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     private readonly ILogger _logger;
     private SynchronizationContext? _context;
     private ITimer? _timer;
+    private ITimer? _expiryTimer;
+    private long _generation;
     private string? _token;
     private SavedAccount? _saved;
     private DateTimeOffset? _attempted;
@@ -138,12 +140,16 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         _context = SynchronizationContext.Current;
         _gateway.StatusChanged += OnGatewayStatus;
         _timer = _time.CreateTimer(_ => Post(RunAsync), null, TimeSpan.Zero, Tick);
+        ScheduleExpiry();
     }
 
     public void Dispose()
     {
         _gateway.StatusChanged -= OnGatewayStatus;
         _timer?.Dispose();
+        _expiryTimer?.Dispose();
+        _timer = null;
+        _expiryTimer = null;
     }
 
     /// <summary>
@@ -162,6 +168,7 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
             return LoginOutcome.Success;
         }
 
+        var generation = _generation;
         DeviceInfo device;
         try
         {
@@ -199,6 +206,17 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
             return LoginOutcome.Failed(failure);
         }
 
+        if (generation != _generation)
+        {
+            // Выход или другой вход завершился раньше: запоздалый ответ не возвращает прежний доступ.
+            if (login.Token != _token)
+            {
+                await RevokeUnusedAsync(login.Token).ConfigureAwait(true);
+            }
+
+            return LoginOutcome.Failed(AccountFailure.Store);
+        }
+
         var now = _time.GetUtcNow();
         var saved = new SavedAccount(login.Status.ExpiresAt, login.Status.User.Email, login.Status.User.DisplayName, login.Status.Device.Name, now);
         try
@@ -215,6 +233,8 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         }
 
         (_token, _saved, _attempted, _dropped, LastMessage) = (login.Token, saved, now, null, AccountMessage.None);
+        _generation++;
+        ScheduleExpiry();
         LogSignedIn(_logger);
         // Отказ PGC-ACC-001, показанный до входа, больше не правда — снять его до того, как окно уйдет на главную.
         _gateway.AccessGranted();
@@ -223,8 +243,8 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     }
 
     /// <summary>
-    /// Выйти: выключить защиту вместе с блоком (и строгого режима), забыть вход (токен и сведения; uid устройства
-    /// остается) и сказать сайту (<c>logout</c>; сеть недоступна — не важно, токен здесь уже стерт).
+    /// Выйти: сразу запретить доступ и забыть вход (токен и сведения; uid устройства остается), выключить защиту вместе с блоком
+    /// (и строгого режима) и сказать сайту (<c>logout</c>; сеть недоступна — доступ здесь уже запрещен).
     /// </summary>
     public async Task SignOutAsync(CancellationToken cancellationToken = default)
     {
@@ -234,12 +254,14 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         }
 
         var token = _token;
-        await DropAsync().ConfigureAwait(true);
         Forget();
+        var generation = _generation;
         LastMessage = AccountMessage.None;
         LogSignedOut(_logger);
         Changed?.Invoke(this, EventArgs.Empty);
-        if (token is null)
+        // Служба может отвечать долго: новое подключение запрещено уже до отправки команды выключить защиту.
+        await DropAsync().ConfigureAwait(true);
+        if (token is null || (_generation != generation && token == _token))
         {
             return;
         }
@@ -262,6 +284,7 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
             return;
         }
 
+        var generation = _generation;
         IsChecking = true;
         _attempted = _time.GetUtcNow();
         Changed?.Invoke(this, EventArgs.Empty);
@@ -269,14 +292,14 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         try
         {
             var status = await _api.StatusAsync(token, cancellationToken).ConfigureAwait(true);
-            if (_token == token)
+            if (_generation == generation && _token == token)
             {
                 Confirm(status);
             }
         }
         catch (AccountApiException e) when (e.Failure == AccountFailure.InvalidCredentials)
         {
-            revoked = _token == token;
+            revoked = _generation == generation && _token == token;
         }
         catch (AccountApiException e)
         {
@@ -292,6 +315,11 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         {
             IsChecking = false;
             Changed?.Invoke(this, EventArgs.Empty);
+        }
+
+        if (_generation != generation || _token != token)
+        {
+            return;
         }
 
         if (revoked)
@@ -316,13 +344,15 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
             return null;
         }
 
+        var generation = _generation;
         try
         {
-            return await _api.UpdatesAsync(token, DevicePlatform.Current, channel, cancellationToken).ConfigureAwait(true);
+            var feed = await _api.UpdatesAsync(token, DevicePlatform.Current, channel, cancellationToken).ConfigureAwait(true);
+            return _generation == generation && _token == token ? feed : null;
         }
         catch (AccountApiException e) when (e.Failure == AccountFailure.InvalidCredentials)
         {
-            if (_token == token)
+            if (_generation == generation && _token == token)
             {
                 LogRevoked(_logger);
                 await LoseAsync(AccountMessage.Revoked).ConfigureAwait(true);
@@ -415,6 +445,8 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
             // Срок в памяти продлен; не записался — после перезапуска действует прежний, и проверка его продлит.
             LogStoreUnavailable(_logger, e.GetType().Name);
         }
+
+        ScheduleExpiry();
     }
 
     private async Task ExpireIfPassedAsync()
@@ -452,8 +484,55 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
 
     private void Forget()
     {
+        _generation++;
         (_token, _saved, _attempted) = (null, null, null);
+        ScheduleExpiry();
         ForgetStored();
+    }
+
+    // Отдельный срок не ждет минутного тика и текущего HTTP-запроса. Тик остается для сна и изменения системных часов.
+    private void ScheduleExpiry()
+    {
+        _expiryTimer?.Dispose();
+        _expiryTimer = null;
+        if (_timer is null || _token is null || _saved is not { } saved)
+        {
+            return;
+        }
+
+        var generation = _generation;
+        var due = saved.ExpiresAt - _time.GetUtcNow();
+        // Системный таймер ограничен примерно 49 днями; долгий срок безопасно пересчитывается раньше.
+        due = due < TimeSpan.Zero ? TimeSpan.Zero : due > TimeSpan.FromDays(30) ? TimeSpan.FromDays(30) : due;
+        _expiryTimer = _time.CreateTimer(_ => Post(async () =>
+        {
+            if (_timer is null || _generation != generation)
+            {
+                return;
+            }
+
+            await ExpireIfPassedAsync().ConfigureAwait(true);
+            if (_generation == generation)
+            {
+                ScheduleExpiry();
+            }
+        }), null, due, Timeout.InfiniteTimeSpan);
+    }
+
+    private async Task RevokeUnusedAsync(string token)
+    {
+        try
+        {
+            await _api.LogoutAsync(token).ConfigureAwait(true);
+        }
+        catch (AccountApiException e)
+        {
+            LogLogoutFailed(_logger, e.Failure, e.StatusCode);
+        }
+        catch (Exception e)
+        {
+            LogUnexpected(_logger, e.GetType().Name);
+        }
     }
 
     private void ForgetStored()

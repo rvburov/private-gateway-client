@@ -148,11 +148,11 @@
                         <Panel>
                           <Button Classes="plain" MinHeight="55" Padding="12,8,44,8" HorizontalAlignment="Stretch"
                                   Command="{Binding ChooseCommand}" CommandParameter="{Binding Id}"
-                                  AutomationProperties.Name="{Binding Name}">
+                                  AutomationProperties.Name="{Binding DisplayName}">
                             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                               <c:CountryFlag CountryCode="{Binding CountryCode}" VerticalAlignment="Center" />
                               <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
-                                <TextBlock Classes="strong" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Classes="strong" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
                                 <TextBlock Text="{Binding Address}" TextTrimming="CharacterEllipsis"
                                            FontFamily="{StaticResource PgFont.Mono}" FontSize="{StaticResource PgFontSize.Overline}"
                                            Foreground="{StaticResource PgBrush.Text.Muted}" />

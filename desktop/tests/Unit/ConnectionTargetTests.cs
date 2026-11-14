@@ -17,6 +17,19 @@ public sealed class ConnectionTargetTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task Connecting_the_already_active_vpn_from_a_proxy_setting_still_selects_vpn_mode()
+    {
+        var (settings, catalog, target) = Setup(AppSettings.Default with { Mode = ConnectionMode.Proxy, ExternalProxy = Proxy });
+        var gateway = new ConnectionControllerTests.FakeGateway(ConnectionState.Connected, Vpn.Id);
+
+        await new ConnectionController(gateway, catalog, target).ConnectToAsync(Vpn.Id, Ct);
+
+        settings.Current.Mode.ShouldBe(ConnectionMode.Vpn);
+        settings.Current.ExternalProxy.ShouldBe(Proxy);
+        catalog.Selected.ShouldBe(Vpn);
+    }
+
+    [Fact]
     public async Task Shield_uses_the_mode_target_and_switching_preserves_both_endpoints_and_local_port()
     {
         var (settings, catalog, target) = Setup(AppSettings.Default with { ExternalProxy = Proxy });

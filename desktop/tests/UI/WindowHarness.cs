@@ -357,8 +357,11 @@ public abstract class WindowHarness : IDisposable
             return new DiagnosticReport(Checks, time.GetUtcNow());
         }
 
+        public Exception? LatencyError { get; set; }
+
         public Task<IReadOnlyDictionary<string, LatencyResult>> MeasureLatencyAsync(IReadOnlyList<string> serverIds, CancellationToken cancellationToken = default) =>
-            Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());
+            LatencyError is { } error ? Task.FromException<IReadOnlyDictionary<string, LatencyResult>>(error)
+                : Task.FromResult<IReadOnlyDictionary<string, LatencyResult>>(new Dictionary<string, LatencyResult>());
 
         private void Raise(ConnectionStatus status)
         {
@@ -531,7 +534,9 @@ public abstract class WindowHarness : IDisposable
         public void Save(string key, string secret) =>
             Values[key] = Available ? secret : throw new InvalidOperationException("недоступно");
 
-        public string? Read(string key) => Values.GetValueOrDefault(key);
+        public Exception? ReadFailure { get; set; }
+
+        public string? Read(string key) => ReadFailure is { } error ? throw error : Values.GetValueOrDefault(key);
 
         public void Delete(string key) => Values.Remove(key);
     }

@@ -16,6 +16,12 @@ public sealed record UpdateManifest(
     string Version, UpdateChannel Channel, int Rollout, DateTimeOffset Published, Uri Notes, IReadOnlyList<string> Highlights,
     IReadOnlyDictionary<string, UpdateAsset> Assets)
 {
+    /// <summary>Номер подписанного изменения выпуска; старые манифесты без поля имеют номер 0.</summary>
+    public long Revision { get; init; }
+
+    /// <summary>Целое, точно представимое всеми клиентами и отправителем сайта.</summary>
+    public const long MaxRevision = 9_007_199_254_740_991;
+
     /// <summary>Больше манифест не бывает: файл длиннее — не он, читать дальше незачем.</summary>
     public const int MaxBytes = 64 * 1024;
 
@@ -48,6 +54,12 @@ public sealed record UpdateManifest(
                 var other => throw new FormatException("Неизвестный канал: " + other),
             };
             var rollout = root.GetProperty("rollout").GetInt32();
+            var revision = 0L;
+            if (root.TryGetProperty("revision", out var revisionValue)
+                && (!revisionValue.TryGetInt64(out revision) || revision is < 0 or > MaxRevision))
+            {
+                throw new FormatException("Неверный номер изменения выпуска");
+            }
             // 0 — раскатка остановлена (инцидент): выпуск больше никому не предлагается.
             if (rollout is < 0 or > 100)
             {
@@ -78,7 +90,7 @@ public sealed record UpdateManifest(
                 assets[asset.Name] = new UpdateAsset(file, sha256, size);
             }
 
-            return new UpdateManifest(version, channel, rollout, published, notes, highlights, assets);
+            return new UpdateManifest(version, channel, rollout, published, notes, highlights, assets) { Revision = revision };
         }
         catch (Exception e) when (e is JsonException or KeyNotFoundException or InvalidOperationException or ArgumentException)
         {

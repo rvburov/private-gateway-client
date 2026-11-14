@@ -206,6 +206,26 @@ public sealed class ServerCardTests : WindowHarness
     }
 
     [AvaloniaFact]
+    public void Emoji_spacing_is_only_for_display_and_rename_preserves_the_subscription_name()
+    {
+        var (window, _, page) = OpenServers();
+        var card = OpenCard(page, "Польша 03");
+        Press(window, "RenameButton");
+        Find<TextBox>(window, "NewName").Text = "⚡🇩🇪Germany-1 DIRECT";
+        Dispatcher.UIThread.RunJobs();
+        Press(window, "SaveName");
+        Dispatcher.UIThread.RunJobs();
+
+        Text(window, "CardName").ShouldBe("⚡ 🇩🇪 Germany-1 DIRECT");
+        var row = page.Groups.SelectMany(g => g.Rows).Single(r => r.Id == card.Id);
+        row.Name.ShouldBe("⚡🇩🇪Germany-1 DIRECT");
+        row.DisplayName.ShouldBe("⚡ 🇩🇪 Germany-1 DIRECT");
+        Press(window, "RenameButton");
+        Find<TextBox>(window, "NewName").Text.ShouldBe("⚡🇩🇪Germany-1 DIRECT");
+        Snapshot(window, "server-name-emoji-spacing");
+    }
+
+    [AvaloniaFact]
     public async Task Delete_asks_first_and_cancel_keeps_the_server()
     {
         var (window, shell, page) = OpenServers();

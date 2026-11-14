@@ -89,7 +89,7 @@ public sealed class AboutPageTests : WindowHarness
 
         Text(window, "UpdatesTitle").ShouldBe("Загружаем 0.2.0");
         Text(window, "UpdateBadge").ShouldBe("Загрузка");
-        Text(window, "UpdateProgress").ShouldBe("18,4 из 28,7 МБ · VPN продолжает работать");
+        Text(window, "UpdateProgress").ShouldBe("18,4 из 28,7 МБ", "защита выключена — загрузка не обещает работающий VPN");
         Find<Button>(window, "UpdateNow").IsEnabled.ShouldBeFalse("пока качается, второй раз не начать");
         Find<Button>(window, "PostponeUpdate").IsEffectivelyVisible.ShouldBeFalse();
         Snapshot(window, "about-update-loading");
@@ -105,6 +105,38 @@ public sealed class AboutPageTests : WindowHarness
         Press(window, "UpdateNow");
         WaitFor(() => Relauncher.Pids.Count > 0);
         Relauncher.Pids.ShouldBe([4242], "окно откроется заново после установщика, которого запустила служба");
+    }
+
+    [AvaloniaFact]
+    public void Download_progress_tracks_the_actual_vpn_state_instead_of_the_settings()
+    {
+        var gate = new TaskCompletionSource();
+        var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0") { Installable = true });
+        service.Download = [new UpdateProgress(19_293_798, 30_093_312), new UpdateProgress(30_093_312, 30_093_312, Ready: true)];
+        service.DownloadGate = gate.Task;
+        Press(window, "UpdateNow");
+        WaitFor(() => page.UpdateFraction > 0.6);
+        var connected = service.Status with { State = ConnectionState.Connected, Mode = ConnectionMode.Vpn };
+        service.Push(_ => connected);
+        Dispatcher.UIThread.RunJobs();
+        Text(window, "UpdateProgress").ShouldBe("18,4 из 28,7 МБ · VPN продолжает работать");
+
+        foreach (var status in new[]
+        {
+            connected with { State = ConnectionState.Off },
+            connected with { State = ConnectionState.Reconnecting },
+            connected with { Mode = ConnectionMode.Proxy },
+            connected with { CaptivePauseUntil = Time.GetUtcNow().AddMinutes(5) },
+            connected with { NetworkUnavailable = true },
+        })
+        {
+            service.Push(_ => status);
+            Dispatcher.UIThread.RunJobs();
+            Text(window, "UpdateProgress").ShouldBe("18,4 из 28,7 МБ", "неподтвержденная работа VPN не обещается");
+        }
+
+        gate.SetResult();
+        WaitFor(() => page.IsUpdateReady);
     }
 
     [AvaloniaFact]

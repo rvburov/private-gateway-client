@@ -121,7 +121,7 @@ struct ServerCardView: View {
         HStack(spacing: 0) {
             CountryBadge(code: server.countryCode, size: .card)
             VStack(alignment: .leading, spacing: 2) {
-                Text(server.displayName)
+                Text(server.title)
                     .pgText(PgType.status)
                     .foregroundStyle(Color(PgColor.Text.primary))
                     .lineLimit(1)

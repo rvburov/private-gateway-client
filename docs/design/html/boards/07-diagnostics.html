@@ -775,6 +775,21 @@
     </div>
     <div class="pg-island" data-active="check"></div>
   </section>
+  <!-- Завершенная проверка без ответа не оставляет вечные индикаторы ожидания. Статус VPN приходит отдельно. -->
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Проверка завершена: нет результата службы">
+    <div class="check-header"><span class="t-h1">Проверка</span></div>
+    <div class="pg-page"><div class="check-body">
+      <div class="check-actions"><button class="btn-primary" data-spin aria-label="Проверить"><i data-icon="Refresh" data-stroke="2.2" data-size="18"></i><span>Проверить</span></button><button class="btn-secondary">Экспорт отчета</button></div>
+      <p class="t-caption t-wrap">Статус VPN получен отдельно. Эта проверка не подтвердила состояние защиты.</p>
+      <div class="card check-card">
+        <div class="check-row tone-accent top"><span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">Служба</span><span class="t-caption t-wrap">Проверка не получила ответ службы. Состояние защиты этим запросом не подтверждено.</span></span><span class="check-chip">Нет результата</span></div>
+        <div class="check-row tone-accent top"><span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">Сетевое ядро</span><span class="t-caption t-wrap">Служба не передала результат этой проверки. Повторите проверку; при повторении обновите службу.</span></span><span class="check-chip">Нет результата</span></div>
+        <div class="check-row tone-accent top"><span class="check-dot"><i data-icon="Chip.Dash" data-stroke="3.2"></i></span><span class="check-text"><span class="t-strong">DNS</span><span class="t-caption t-wrap">Служба не передала результат этой проверки. Повторите проверку; при повторении обновите службу.</span></span><span class="check-chip">Нет результата</span></div>
+      </div>
+      <p class="t-caption t-wrap">Если служба не поддерживает запрос: «Установленная служба не поддерживает эту проверку. Обновите службу вместе с приложением.»</p>
+    </div><div class="pg-page-end"></div></div>
+    <div class="pg-island" data-active="check"></div>
+  </section>
 </div>
 </body>
 </html>

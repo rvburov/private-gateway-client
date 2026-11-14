@@ -9,18 +9,23 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.account.UpdatesFeedSource
 import com.privategateway.client.core.account.UpdatesFeed
 import com.privategateway.client.data.SettingsRepository
+import com.privategateway.client.data.UpdateInstallation
 import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.waitForAsync
 import com.sun.net.httpserver.HttpServer
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
 import org.junit.After
@@ -88,7 +93,7 @@ class AppUpdatesTest {
     /** Лента сайта без сети: ответ задает тест, что спросили (канал) — в [channels]. */
     private class Site : UpdatesFeedSource {
         @Volatile
-        var answer: () -> UpdatesFeed = { UpdatesFeed.Unreachable }
+        var answer: suspend () -> UpdatesFeed = { UpdatesFeed.Unreachable }
         val channels = CopyOnWriteArrayList<String>()
 
         override suspend fun updates(channel: String): UpdatesFeed {
@@ -102,11 +107,13 @@ class AppUpdatesTest {
         val sessions = CopyOnWriteArrayList<Int>()
         val committed = CopyOnWriteArrayList<ByteArray>()
         val abandoned = CopyOnWriteArrayList<Int>()
+        val active = CopyOnWriteArraySet<Int>()
+        val resumed = CopyOnWriteArrayList<Int>()
 
         @Volatile
         var failure: Exception? = null
 
-        override fun open(size: Long): Int = (41 + sessions.size).also { sessions += it }
+        override fun open(size: Long): Int = (41 + sessions.size).also { sessions += it; active += it }
 
         override fun commit(id: Int, apk: File) {
             failure?.let { throw it }
@@ -115,6 +122,14 @@ class AppUpdatesTest {
 
         override fun abandon(id: Int) {
             abandoned += id
+            active -= id
+        }
+
+        override fun owns(id: Int): Boolean = id in active
+
+        override fun resume(id: Int) {
+            check(owns(id))
+            resumed += id
         }
     }
 
@@ -139,7 +154,7 @@ class AppUpdatesTest {
     }
 
     /** Обновления «процесса» на общих настройках: новый вызов — перезапуск приложения. */
-    private fun updates(): AppUpdates = AppUpdates(context, site, settings, installer, journal).also {
+    private fun updates(repository: SettingsRepository = settings): AppUpdates = AppUpdates(context, site, repository, installer, journal).also {
         it.clock = { now }
         it.installed = "0.2.1"
         it.keys = { listOf(pem) }
@@ -151,8 +166,8 @@ class AppUpdatesTest {
     private fun sha256(bytes: ByteArray) = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     /** Лента с одним выпуском: манифест подписан тестовым ключом, у каждого запроса — новый билет на APK. */
-    private fun feed(version: String = "0.3.0", rollout: Int = 100): UpdatesFeed {
-        val manifest = ("""{"version":"$version","channel":"stable","rollout":$rollout,"published":"2026-11-13T00:00:00Z",""" +
+    private fun feed(version: String = "0.3.0", rollout: Int = 100, revision: Long = 1): UpdatesFeed {
+        val manifest = ("""{"version":"$version","channel":"stable","rollout":$rollout,"revision":$revision,"published":"2026-11-13T00:00:00Z",""" +
             """"notes":"https://private-gateway.duckdns.org/downloads","highlights":["Обновления с сайта"],""" +
             """"assets":{"android-apk":{"file":"PrivateGateway-$version-android.apk","sha256":"${sha256(apk)}","size":${apk.size}}}}""").toByteArray()
         val signature = Base64.getEncoder().encodeToString(Signature.getInstance("SHA256withECDSA").run { initSign(key.private); update(manifest); sign() })
@@ -190,13 +205,13 @@ class AppUpdatesTest {
         // Android просит подтверждения — его откроет окно, когда оно на экране.
         val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
         val session = installer.sessions.single()
-        updates.installStatus(session, PackageInstaller.STATUS_PENDING_USER_ACTION, confirm, null)
+        wait { updates.installStatus(session, PackageInstaller.STATUS_PENDING_USER_ACTION, confirm, null).join() }
         assertEquals(confirm, updates.prompts.value)
         updates.prompted(confirm)
         assertNull(updates.prompts.value)
 
         // Отказ в окне Android — не ошибка: обновление снова предлагается.
-        updates.installStatus(session, PackageInstaller.STATUS_FAILURE_ABORTED, null, null)
+        wait { updates.installStatus(session, PackageInstaller.STATUS_FAILURE_ABORTED, null, null).join() }
         assertEquals(InstallStep.None, updates.state.value.step)
         assertEquals(UpdateStatus.Available, updates.state.value.status)
     }
@@ -278,7 +293,7 @@ class AppUpdatesTest {
         site.answer = { UpdatesFeed.SignedOut }
         wait { updates.windowShown().join() }
         assertEquals(2, site.channels.size)
-        assertEquals(UpdateStatus.Failed, updates.state.value.status, "сама проверка «Войдите в аккаунт» не показывает")
+        assertEquals(UpdateStatus.SignedOut, updates.state.value.status, "после отзыва доступа карточка просит войти")
 
         site.answer = { feed() }
         wait { updates.windowShown().join() }
@@ -296,7 +311,7 @@ class AppUpdatesTest {
         wait { updates.check()!!.join() }
         assertEquals(UpdateStatus.Available, updates.state.value.status, "по кнопке — видно")
 
-        site.answer = { feed(rollout = 51) }
+        site.answer = { feed(rollout = 51, revision = 2) }
         now += 13 * HOUR
         wait { updates.windowShown().join() }
         assertEquals(UpdateStatus.Available, updates.state.value.status)
@@ -308,7 +323,7 @@ class AppUpdatesTest {
         site.answer = { feed() }
         val updates = updates()
         wait { updates.check()!!.join() }
-        site.answer = { feed(rollout = 0) }
+        site.answer = { feed(rollout = 0, revision = 2) }
         wait { updates.install()!!.join() }
         assertEquals(UpdateStatus.UpToDate, updates.state.value.status)
         assertEquals(InstallStep.None, updates.state.value.step)
@@ -364,11 +379,260 @@ class AppUpdatesTest {
         wait { updates.install()!!.join() }
         assertEquals(listOf(first), installer.abandoned.toList())
 
-        updates.installStatus(first, PackageInstaller.STATUS_FAILURE, null, "брошена")
+        wait { updates.installStatus(first, PackageInstaller.STATUS_FAILURE, null, "брошена").join() }
         assertEquals(InstallStep.Installing, updates.state.value.step, "итог брошенной сессии не считается")
-        updates.installStatus(installer.sessions.last(), PackageInstaller.STATUS_FAILURE_CONFLICT, null, "INSTALL_FAILED_UPDATE_INCOMPATIBLE")
+        wait { updates.installStatus(installer.sessions.last(), PackageInstaller.STATUS_FAILURE_CONFLICT, null, "INSTALL_FAILED_UPDATE_INCOMPATIBLE").join() }
         assertEquals(InstallStep.Failed, updates.state.value.step)
         assertTrue(journal.entries.value.any { "INSTALL_FAILED_UPDATE_INCOMPATIBLE" in it.message })
+    }
+
+    @Test
+    fun `a stale install callback finishes without waiting for a new download`() {
+        site.answer = { feed() }
+        val updates = updates()
+        wait { updates.install()!!.join() }
+        val old = installer.sessions.single()
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        site.answer = {
+            started.complete(Unit)
+            release.await()
+            feed()
+        }
+        val retry = updates.install()!!
+        try {
+            wait { started.await() }
+            val callback = updates.installStatus(old, PackageInstaller.STATUS_PENDING_USER_ACTION, Intent("old confirmation"), null)
+            // Общий mutex занят новой загрузкой. Старый BroadcastReceiver должен завершиться до ее разблокировки.
+            wait { callback.join() }
+            assertFalse(retry.isCompleted)
+            assertNull(updates.prompts.value)
+        } finally {
+            release.complete(Unit)
+            wait { retry.join() }
+        }
+    }
+
+    @Test
+    fun `cold receiver restores the committed session before showing a new system confirmation`() {
+        site.answer = { feed() }
+        val first = updates()
+        wait { first.install()!!.join() }
+        val id = installer.sessions.single()
+        assertEquals(UpdateInstallation(id, "0.3.0", committed = true), wait { settings.updateInstallation.first() })
+        first.close()
+
+        // Процесс создан приемником, до показа Activity и windowShown.
+        val again = updates()
+        val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, confirm, null).join() }
+        assertEquals(confirm, again.prompts.value)
+        assertEquals(InstallStep.Installing, again.state.value.step)
+        assertEquals("0.3.0", again.state.value.version)
+        wait { again.windowShown().join() }
+        assertEquals(1, site.channels.size, "показ окна не сбрасывает восстанавливаемую установку новой проверкой")
+
+        again.prompted(confirm)
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, Intent("duplicate confirmation"), null).join() }
+        assertNull(again.prompts.value, "повтор callback не открывает подтверждение второй раз")
+        wait { again.installStatus(id, PackageInstaller.STATUS_FAILURE_ABORTED, null, null).join() }
+        assertNull(wait { settings.updateInstallation.first() })
+        assertNull(again.prompts.value)
+        assertEquals(InstallStep.None, again.state.value.step)
+    }
+
+    @Test
+    fun `startup restores own session without reusing an old confirmation intent`() {
+        site.answer = { feed() }
+        val first = updates()
+        wait { first.install()!!.join() }
+        val id = installer.sessions.single()
+        val confirm = Intent("android.content.pm.action.CONFIRM_INSTALL")
+        wait { first.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, confirm, null).join() }
+        first.close()
+
+        val again = updates()
+        wait { again.windowShown().join() }
+        assertEquals(InstallStep.Installing, again.state.value.step)
+        assertNull(again.prompts.value, "старый Intent не сериализуется и не воспроизводится")
+        assertEquals(listOf(id), installer.resumed.toList(), "система должна заново прислать подтверждение той же сессии")
+        val fresh = Intent("fresh system confirmation")
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, fresh, null).join() }
+        assertEquals(fresh, again.prompts.value)
+        wait { again.install()!!.join() }
+        assertEquals(listOf(id), installer.abandoned.toList(), "повторная попытка бросает прежнюю собственную сессию")
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, confirm, null).join() }
+        assertNull(again.prompts.value, "позднее подтверждение брошенной сессии не открывается")
+    }
+
+    @Test
+    fun `process death before commit leaves a retry instead of pretending the package is ready`() {
+        val id = installer.open(apk.size.toLong())
+        wait { settings.setUpdateInstallation(UpdateInstallation(id, "0.3.0", committed = false)) }
+        val again = updates()
+        wait { again.windowShown().join() }
+        assertEquals(InstallStep.Failed, again.state.value.step)
+        assertEquals(listOf(id), installer.abandoned.toList())
+        assertTrue(installer.resumed.isEmpty(), "недописанный APK нельзя передавать Android как готовый")
+        assertTrue(installer.committed.isEmpty())
+        assertNull(wait { settings.updateInstallation.first() })
+    }
+
+    @Test
+    fun `a new pending action proves commit after death before committed phase was saved`() {
+        val id = installer.open(apk.size.toLong())
+        wait { settings.setUpdateInstallation(UpdateInstallation(id, "0.3.0", committed = false)) }
+        val again = updates()
+        val confirmation = Intent("system confirmation")
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, confirmation, null).join() }
+        assertEquals(confirmation, again.prompts.value)
+        assertEquals(UpdateInstallation(id, "0.3.0", committed = true), wait { settings.updateInstallation.first() })
+        assertEquals(InstallStep.Installing, again.state.value.step)
+    }
+
+    @Test
+    fun `a missing session is an interrupted install unless the target is already installed`() {
+        site.answer = { feed() }
+        val first = updates()
+        wait { first.install()!!.join() }
+        first.close()
+        installer.active.clear()
+        val again = updates()
+        wait { again.windowShown().join() }
+        assertEquals(InstallStep.Failed, again.state.value.step)
+        assertEquals("0.3.0", again.state.value.version)
+        assertNull(wait { settings.updateInstallation.first() })
+
+        wait { settings.setUpdateInstallation(UpdateInstallation(987, "0.3.0")) }
+        again.close()
+        val upgraded = updates().also { it.installed = "0.3.0" }
+        wait { upgraded.windowShown().join() }
+        assertEquals(UpdateStatus.UpToDate, upgraded.state.value.status)
+        assertEquals(InstallStep.None, upgraded.state.value.step)
+        assertNull(wait { settings.updateInstallation.first() })
+    }
+
+    @Test
+    fun `a saved session that is no longer owned cannot open a pending confirmation`() {
+        site.answer = { feed() }
+        val first = updates()
+        wait { first.install()!!.join() }
+        val id = installer.sessions.single()
+        first.close()
+        installer.active.clear()
+        val again = updates()
+        wait { again.installStatus(id, PackageInstaller.STATUS_PENDING_USER_ACTION, Intent("confirmation"), null).join() }
+        assertNull(again.prompts.value)
+        assertEquals(InstallStep.Failed, again.state.value.step)
+        assertNull(wait { settings.updateInstallation.first() })
+    }
+
+    @Test
+    fun `terminal success after process death clears the durable session and repeated callbacks are ignored`() {
+        site.answer = { feed() }
+        val first = updates()
+        wait { first.install()!!.join() }
+        val id = installer.sessions.single()
+        first.close()
+        installer.active.clear()
+        val again = updates()
+        wait { again.installStatus(id, PackageInstaller.STATUS_SUCCESS, null, null).join() }
+        assertEquals(UpdateStatus.UpToDate, again.state.value.status)
+        assertNull(wait { settings.updateInstallation.first() })
+        wait { again.installStatus(id, PackageInstaller.STATUS_FAILURE_ABORTED, null, null).join() }
+        assertEquals(UpdateStatus.UpToDate, again.state.value.status)
+    }
+
+    @Test
+    fun `session storage failure prevents commit and abandons the newly opened session`() {
+        val failing = object : DataStore<Preferences> {
+            override val data: Flow<Preferences> get() = store.data
+            override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = store.updateData { before ->
+                val after = transform(before)
+                if (after[intPreferencesKey("update_session")] != before[intPreferencesKey("update_session")]) throw IOException("запись недоступна")
+                after
+            }
+        }
+        site.answer = { feed() }
+        val updates = updates(SettingsRepository(failing))
+        wait { updates.install()!!.join() }
+        assertEquals(InstallStep.Failed, updates.state.value.step)
+        assertTrue(installer.committed.isEmpty())
+        assertEquals(installer.sessions.toList(), installer.abandoned.toList())
+        assertTrue(installer.active.isEmpty())
+    }
+
+    @Test
+    fun `signed stop survives restart and an old valid signature cannot restore the offer`() {
+        val old = feed(revision = 1)
+        site.answer = { old }
+        val first = updates()
+        wait { first.check()!!.join() }
+        site.answer = { feed(rollout = 0, revision = 2) }
+        wait { first.check()!!.join() }
+        assertEquals(UpdateStatus.UpToDate, first.state.value.status)
+        first.close()
+
+        site.answer = { old }
+        val again = updates()
+        wait { again.check()!!.join() }
+        assertEquals(UpdateStatus.Failed, again.state.value.status)
+        assertNull(wait { settings.updateMemo.first().checkedAt }, "ошибка не оставляет успешный кеш на 12 часов")
+        wait { again.install()!!.join() }
+        assertTrue(installer.committed.isEmpty())
+        assertEquals(0, downloads.get())
+
+        site.answer = { feed(revision = 3) }
+        wait { again.install()!!.join() }
+        assertEquals(InstallStep.Installing, again.state.value.step)
+    }
+
+    @Test
+    fun `bad signature is a failure and replaces a previously successful cached check`() {
+        site.answer = { UpdatesFeed.Ok("""{"releases":[]}""") }
+        val first = updates()
+        wait { first.check()!!.join() }
+        assertEquals(UpdateStatus.UpToDate, first.state.value.status)
+
+        val valid = (feed() as UpdatesFeed.Ok).json
+        site.answer = { UpdatesFeed.Ok(valid.replace(Regex("\"signature\":\"[^\"]+\""), "\"signature\":\"invalid\"")) }
+        wait { first.check()!!.join() }
+        assertEquals(UpdateStatus.Failed, first.state.value.status)
+        assertTrue(journal.entries.value.any { "manifest or signature rejected" in it.message })
+        assertEquals(null, wait { settings.updateMemo.first().checkedAt })
+        first.close()
+        val again = updates()
+        wait { again.windowShown().join() }
+        assertEquals(UpdateStatus.Failed, again.state.value.status, "после перезапуска ошибка не превращается в последнюю версию")
+    }
+
+    @Test
+    fun `revoked access is shown even when clearing the old successful memo fails`() {
+        val faulty = object : DataStore<Preferences> {
+            override val data: Flow<Preferences> get() = store.data
+            override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences = store.updateData { before ->
+                val after = transform(before)
+                val key = longPreferencesKey("update_checked_at")
+                if (before[key] != null && after[key] == null) throw IOException("очистка кеша недоступна")
+                after
+            }
+        }
+        val updates = updates(SettingsRepository(faulty))
+        site.answer = { feed() }
+        wait { updates.check()!!.join() }
+        site.answer = { UpdatesFeed.Revoked }
+        wait { updates.check()!!.join() }
+        assertEquals(UpdateStatus.SignedOut, updates.state.value.status)
+        assertNull(updates.state.value.version)
+        assertTrue(journal.entries.value.any { "memo not cleared IOException" in it.message })
+        wait { updates.install()!!.join() }
+        assertEquals(UpdateStatus.SignedOut, updates.state.value.status)
+        assertEquals(0, downloads.get())
+
+        site.answer = { feed() }
+        wait { updates.windowShown().join() }
+        assertEquals(UpdateStatus.Available, updates.state.value.status, "после нового входа старый неочищенный кеш не задерживает проверку")
+        assertEquals(0, downloads.get(), "показ окна проверяет ленту, но не устанавливает обновление")
     }
 
     @Test

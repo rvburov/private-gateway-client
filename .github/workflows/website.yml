@@ -17,7 +17,7 @@ name: Выпуск на сайт
 # manifest-only — только update-sig и update: так раскатка (release-rollout.yml) отдает сайту новую долю, в том числе
 # стоп-кран 0 %.
 # Секреты: WEBSITE_HOST, WEBSITE_USER, WEBSITE_KNOWN_HOSTS (как DEPLOY_* сайта), WEBSITE_SSH_KEY — секретная часть
-# ключа выпусков. Пока секретов нет, workflow пишет «сайт не настроен» и завершается успешно.
+# ключа выпусков. Без секретов обычный импорт можно пропустить; manifest-only обязан доставить новую политику.
 # Запуск по workflow_run, а не по событию release: выпуск создает GITHUB_TOKEN, его события workflow не запускают.
 # workflow_run — только от выпуска отправкой тега (push). Выпуск кнопкой «Выпустить версию» (workflow_dispatch) запускает
 # сайт сам, в своем последнем задании: так отправка одна, придет ли для него еще и workflow_run или нет. Раскатка
@@ -36,6 +36,10 @@ on:
         type: boolean
         default: false
   workflow_call:
+    outputs:
+      manifest-delivered:
+        description: Команда update успешно принята сайтом по SSH
+        value: ${{ jobs.website.outputs.manifest-delivered }}
     inputs:
       tag:
         description: Тег выпуска, например v1.2.3
@@ -72,16 +76,23 @@ jobs:
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push')
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    outputs:
+      manifest-delivered: ${{ steps.send.outputs.manifest-delivered }}
     steps:
       - name: Проверить настройку сайта
         id: config
         env:
+          MANIFEST_ONLY: ${{ inputs.manifest-only }}
           WEBSITE_HOST: ${{ secrets.WEBSITE_HOST }}
           WEBSITE_USER: ${{ secrets.WEBSITE_USER }}
           WEBSITE_SSH_KEY: ${{ secrets.WEBSITE_SSH_KEY }}
           WEBSITE_KNOWN_HOSTS: ${{ secrets.WEBSITE_KNOWN_HOSTS }}
         run: |
           if [ -z "$WEBSITE_HOST" ] || [ -z "$WEBSITE_USER" ] || [ -z "$WEBSITE_SSH_KEY" ] || [ -z "$WEBSITE_KNOWN_HOSTS" ]; then
+            if [ "$MANIFEST_ONLY" = true ]; then
+              echo "Новая доля не доставлена: настройте все секреты WEBSITE_*. Остановка выпуска не подтверждена." >&2
+              exit 1
+            fi
             echo "Сайт не настроен: нет секретов WEBSITE_*. Отправка пропущена." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "ready=false" >> "$GITHUB_OUTPUT"
           else
@@ -101,6 +112,7 @@ jobs:
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег «$TAG» — не v<SemVer>" >&2; exit 1; }
           version="${TAG#v}"
           if [[ "$version" == *-* ]]; then
+            [ "$MANIFEST_ONLY" != true ] || { echo "Бета на сайт не поступает: доставку новой доли подтвердить нельзя" >&2; exit 1; }
             echo "Бета $TAG на сайт не публикуется." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
@@ -153,6 +165,7 @@ jobs:
           # Лента обновлений. Подписанный выпуск (update.json.sig в его SHA256SUMS) без файла подписи — ошибка, а не
           # пропуск: иначе стоп-кран раскатки молча не дошел бы до программ.
           if [ ! -e "$dir/update.json.sig" ]; then
+            [ "$MANIFEST_ONLY" != true ] || { echo "Новая доля без подписи на сайт не отправляется" >&2; exit 1; }
             [ -z "$(listed update.json.sig)" ] || { echo "update.json.sig есть в SHA256SUMS, а в выпуске $TAG его нет" >&2; exit 1; }
             echo "Выпуск $TAG без подписи update.json.sig: в ленту обновлений сайта не идет — программа его не примет." \
               | tee -a "$GITHUB_STEP_SUMMARY"
@@ -177,12 +190,14 @@ jobs:
           fi
 
           if [ ! -s "$upload" ]; then
+            [ "$MANIFEST_ONLY" != true ] || { echo "Новая доля не доставлена: список отправки пуст" >&2; exit 1; }
             echo "Отправлять на сайт нечего." | tee -a "$GITHUB_STEP_SUMMARY"
             echo "skip=true" >> "$GITHUB_OUTPUT"
           fi
           echo "dir=$dir" >> "$GITHUB_OUTPUT"
 
       - name: Отправить на сайт
+        id: send
         if: steps.config.outputs.ready == 'true' && steps.files.outputs.skip != 'true'
         env:
           WEBSITE_HOST: ${{ secrets.WEBSITE_HOST }}
@@ -206,12 +221,17 @@ jobs:
           echo "Ключ выпусков: $(cut -d' ' -f2 "$RUNNER_TEMP/fp.txt")" | tee -a "$GITHUB_STEP_SUMMARY"
           # Порядок — как в списке: установщики, rpm, подпись, манифест. Отказ сайта останавливает отправку: манифест
           # без своих файлов на сайт не попадает.
+          delivered=false
           while read -r file request; do
             ssh -i ~/.ssh/website_key -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=yes \
               -o ConnectTimeout=20 -o ServerAliveInterval=30 \
               "$WEBSITE_USER@$WEBSITE_HOST" "$request" < "$DIR/$file"
             echo "На сайте: ${request% *}" >> "$GITHUB_STEP_SUMMARY"
+            if [[ "$file" = update.json && "$request" = update\ * ]]; then
+              delivered=true
+            fi
           done < "$RUNNER_TEMP/upload.txt"
+          echo "manifest-delivered=$delivered" >> "$GITHUB_OUTPUT"
 
       - name: Удалить ключ
         if: always()

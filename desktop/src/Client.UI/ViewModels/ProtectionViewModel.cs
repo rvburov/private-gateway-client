@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Notifications;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -21,6 +22,7 @@ public sealed partial class ProtectionViewModel : ObservableObject
     private readonly OverlayViewModel _overlay;
     private readonly SettingsService _settings;
     private readonly ConnectionTarget _target;
+    private readonly ToastViewModel _toast;
 
     public ProtectionViewModel(
         IGatewayClient gateway,
@@ -28,13 +30,15 @@ public sealed partial class ProtectionViewModel : ObservableObject
         ConnectionController controller,
         OverlayViewModel overlay,
         SettingsService settings,
-        ConnectionTarget target)
+        ConnectionTarget target,
+        ToastViewModel toast)
     {
         _gateway = gateway;
         _controller = controller;
         _overlay = overlay;
         _settings = settings;
         _target = target;
+        _toast = toast;
         Status = gateway.Status;
         gateway.StatusChanged += (_, status) => Dispatcher.UIThread.Post(() => Status = status);
         catalog.Changed += (_, _) => Dispatcher.UIThread.Post(Refresh);
@@ -116,7 +120,16 @@ public sealed partial class ProtectionViewModel : ObservableObject
             }
         }
 
-        var connected = await _controller.ToggleAsync().ConfigureAwait(true);
+        bool connected;
+        try
+        {
+            connected = await _controller.ToggleAsync().ConfigureAwait(true);
+        }
+        catch (SecretStoreException)
+        {
+            _toast.Show(Loc.Instance["secrets.operation.failed"]);
+            return true;
+        }
         if (!connected)
         {
             ConfigureTargetRequested?.Invoke(this, EventArgs.Empty);

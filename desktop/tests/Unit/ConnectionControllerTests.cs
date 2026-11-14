@@ -300,10 +300,12 @@ public class ConnectionControllerTests
                 StatusChanged?.Invoke(this, Status);
             }
 
-            return Task.CompletedTask;
+            return PendingDrop ?? Task.CompletedTask;
         }
 
         public bool DropsToOff { get; set; }
+
+        public Task? PendingDrop { get; set; }
 
         /// <summary>Сколько раз окно сказало, что доступ к аккаунту появился.</summary>
         public int Grants { get; private set; }

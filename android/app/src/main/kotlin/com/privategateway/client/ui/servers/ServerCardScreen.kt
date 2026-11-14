@@ -235,7 +235,7 @@ private fun Head(server: ServerItem, subscriptions: List<SubscriptionRef>, onFav
     Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         CountryCode(server.countryCode, large = true)
         Column(Modifier.weight(1f).padding(start = PgSpace.L, end = PgSpace.S), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(server.displayName, Modifier.testTag("card.title"), style = PgType.Status, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(server.title, Modifier.testTag("card.title"), style = PgType.Status, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(source(server, subscriptions), Modifier.testTag("card.subtitle"), color = PgColor.Text.Muted, style = PgType.Caption)
         }
 

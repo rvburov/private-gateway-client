@@ -148,8 +148,12 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 return;
             }
 
-            Execute("DELETE FROM servers WHERE id = $id", ("$id", serverId));
+            using var connection = _database.Open();
+            using var transaction = connection.BeginTransaction();
+            Run(connection, transaction, "DELETE FROM servers WHERE id = $id", ("$id", serverId));
+            // При отказе ОС строка откатывается вместе с транзакцией; сам DELETE проверяется до удаления ключа.
             _secrets.Delete(SecretKey(serverId));
+            transaction.Commit();
             Rows.Remove(row);
             if (_selectedId == serverId)
             {
@@ -969,8 +973,16 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             _selectedId = _rows.Exists(r => r.Profile.Id == selected) ? selected : null;
         }
 
-        BackfillAddresses(connection);
-        MergeSameSubscriptions(connection);
+        try
+        {
+            BackfillAddresses(connection);
+            MergeSameSubscriptions(connection);
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            // Список и выбор читаются без секретов. Отказ Связки ключей при необязательной миграции не должен
+            // закрывать окно или стирать серверы. Следующее явное действие снова может запросить доступ.
+        }
     }
 
     /// <summary>
@@ -985,7 +997,11 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
             return;
         }
 
-        var addressed = _subscriptions.Select(s => (s.Id, Url: SubscriptionUrl(s.Id))).Where(s => s.Url is not null).ToList();
+        // Разные маски адресов не могут обозначать одну подписку. Не читать ключи всех подписок при каждом старте:
+        // на macOS это лишние системные запросы разрешения даже для простого открытия списка серверов.
+        var candidates = _subscriptions.GroupBy(s => s.Address, StringComparer.Ordinal)
+            .Where(g => g.Key is not null && g.Count() > 1).SelectMany(g => g).ToList();
+        var addressed = candidates.Select(s => (s.Id, Url: SubscriptionUrl(s.Id))).Where(s => s.Url is not null).ToList();
         var merged = new List<string>();
         var dropped = new List<Row>();
         foreach (var (first, firstUrl) in addressed)

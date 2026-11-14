@@ -620,7 +620,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         }
     }
 
-    /// <summary>Проверки службы; службы нет — одна проверка «служба» остановлена.</summary>
+    /// <summary>Отказ проверок не доказывает остановку VPN: состояние приходит отдельным потоком.</summary>
     public async Task<DiagnosticReport> RunChecksAsync(CancellationToken cancellationToken = default)
     {
         try
@@ -632,9 +632,20 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
                     .Select(r => new DiagnosticResult(ContractMapping.ToCoreCheck(r.Id)!.Value, r.State.ToCore(), r.Reason is { Length: > 0 } reason ? reason : null))],
                 report.FinishedAt?.ToDateTimeOffset() ?? _time.GetUtcNow());
         }
-        catch (RpcException)
+        catch (RpcException error)
         {
-            return new DiagnosticReport([new DiagnosticResult(DiagnosticCheck.Service, CheckState.Stopped, "no_reply")], _time.GetUtcNow());
+            cancellationToken.ThrowIfCancellationRequested();
+            var reason = error.StatusCode switch
+            {
+                StatusCode.Unimplemented => "unsupported",
+                StatusCode.DeadlineExceeded or StatusCode.Cancelled => "timeout",
+                StatusCode.Unavailable => "service_no_reply",
+                StatusCode.Unauthenticated or StatusCode.PermissionDenied => "access_denied",
+                _ => "check_failed",
+            };
+            return new DiagnosticReport([.. System.Enum.GetValues<DiagnosticCheck>()
+                .Where(check => check != DiagnosticCheck.VirtualMachines || OperatingSystem.IsWindows())
+                .Select(check => new DiagnosticResult(check, CheckState.Warning, reason))], _time.GetUtcNow());
         }
     }
 

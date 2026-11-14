@@ -323,8 +323,9 @@ public sealed class ServiceGatewayClientTests
         (client.Status.State, client.Status.ErrorCode).ShouldBe((ConnectionState.Error, ErrorCodes.ServiceNotRunning));
         client.Status.Protection.ShouldBe(ProtectionChecks.For(ConnectionState.Off), "без службы окно защиту не обещает");
         (await client.MeasureLatencyAsync(["srv-1"], Ct)).ShouldBeEmpty();
-        (await client.RunChecksAsync(Ct)).Results.ShouldHaveSingleItem()
-            .ShouldBe(new DiagnosticResult(DiagnosticCheck.Service, CheckState.Stopped, "no_reply"));
+        var checks = (await client.RunChecksAsync(Ct)).Results;
+        checks.ShouldContain(new DiagnosticResult(DiagnosticCheck.Service, CheckState.Warning, "service_no_reply"));
+        checks.ShouldAllBe(check => check.State == CheckState.Warning && check.Reason == "service_no_reply");
     }
 
     [Fact]

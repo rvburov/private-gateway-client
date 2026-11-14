@@ -183,6 +183,15 @@ class LoginScreenTest {
     }
 
     @Test
+    fun `unsaved sign-out is explained without claiming revocation or expiry`() {
+        Host(notice = AccountNotice.SignOutNotSaved)
+        compose.onNodeWithText(text(R.string.account_logout_unsaved)).assertIsDisplayed()
+        compose.onNodeWithText(text(R.string.account_revoked)).assertDoesNotExist()
+        compose.onNodeWithText(text(R.string.account_expired)).assertDoesNotExist()
+        compose.onNodeWithTag("login.email").assertIsDisplayed()
+    }
+
+    @Test
     @Config(qualifiers = "w360dp-h640dp")
     fun `narrow phone keeps the whole form reachable`() {
         val host = Host(LoginUi(error = AccountError.DeviceLimit), AccountNotice.Expired)

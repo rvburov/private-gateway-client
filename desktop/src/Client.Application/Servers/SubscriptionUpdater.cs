@@ -24,6 +24,9 @@ public enum UpdateBlock
 
     /// <summary>Подписка удалена или изменена, пока загружался ответ.</summary>
     Superseded,
+
+    /// <summary>Пользователь отказал в доступе к хранилищу или оно временно недоступно.</summary>
+    SecretStore,
 }
 
 /// <summary>Итог попытки: обновлено, не удалось (причина сохранена у подписки) или не начато.</summary>
@@ -65,6 +68,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     private readonly Lock _operationGate = new();
     private SynchronizationContext? _context;
     private ITimer? _timer;
+    private bool _secretAccessBlocked;
 
     public SubscriptionUpdater(
         IServerStore store,
@@ -142,7 +146,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     /// <summary>Подписки, которым пора: успех старше промежутка из настроек, неудача — старше часа.</summary>
     public IReadOnlyList<ServerSubscription> Due()
     {
-        if (_settings.Current.RefreshInterval is not { } interval)
+        if (_secretAccessBlocked || _settings.Current.RefreshInterval is not { } interval)
         {
             return [];
         }
@@ -164,6 +168,11 @@ public sealed partial class SubscriptionUpdater : IDisposable
         foreach (var subscription in Due())
         {
             var result = await UpdateAsync(subscription.Id, cancellationToken).ConfigureAwait(true);
+            if (result.Block == UpdateBlock.SecretStore)
+            {
+                // После одного отказа не задавать тот же системный вопрос для всех остальных подписок.
+                break;
+            }
             if (result.Failure is { } failure)
             {
                 ScheduledUpdateFailed?.Invoke(this, new UpdateFailureNotice(subscription.Name, failure, result.StatusCode));
@@ -178,6 +187,9 @@ public sealed partial class SubscriptionUpdater : IDisposable
         {
             return new UpdateResult(null, Block: block);
         }
+
+        // После отказа фоновое расписание молчит. Явная новая попытка разрешает спросить доступ снова.
+        _secretAccessBlocked = false;
 
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         lock (_operationGate)
@@ -251,6 +263,12 @@ public sealed partial class SubscriptionUpdater : IDisposable
         {
             return new UpdateResult(null, Block: UpdateBlock.Superseded);
         }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            _secretAccessBlocked = true;
+            LogCrashed(_logger, e.GetType().Name);
+            return new UpdateResult(null, Block: UpdateBlock.SecretStore);
+        }
         finally
         {
             lock (_operationGate)
@@ -275,7 +293,19 @@ public sealed partial class SubscriptionUpdater : IDisposable
 
         foreach (var (id, address, stop) in active)
         {
-            if (_store.SubscriptionUrl(id) != address)
+            bool changed;
+            try
+            {
+                changed = _secretAccessBlocked || _store.SubscriptionUrl(id) != address;
+            }
+            catch (Exception error) when (error is InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                // Недоступное хранилище не дает подтвердить принадлежность ответа прежней подписке.
+                _secretAccessBlocked = true;
+                changed = true;
+            }
+
+            if (changed)
             {
                 try
                 {

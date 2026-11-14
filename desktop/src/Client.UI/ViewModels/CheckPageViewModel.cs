@@ -635,8 +635,9 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
                 || _report?[check] is { Reason: not "not_applicable" and not "simulated" })
             .Select(check =>
         {
-            var result = _report?[check] ?? (check == DiagnosticCheck.VirtualMachines && _report is not null
-                ? new DiagnosticResult(check, CheckState.Waiting, "not_checked") : null);
+            // Завершенный неполный ответ старой службы не оставляет отсутствующие строки «Проверяется».
+            var result = _report?[check] ?? (_report is not null
+                ? new DiagnosticResult(check, CheckState.Warning, "incomplete") : null);
             var state = result is null ? CheckState.Waiting : result.State;
             var reason = ViaProxy(check, state) ? "proxy" : result?.Reason;
             return new CheckRowViewModel(
@@ -717,6 +718,16 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     /// <summary>Пояснение: по коду уточнения, иначе по состоянию проверки, иначе общее.</summary>
     private string Detail(DiagnosticCheck check, CheckState state, string? reason)
     {
+        if (reason == "service_no_reply" || check == DiagnosticCheck.Service && reason == "no_reply")
+        {
+            return Loc.Instance["diag.result.no_reply"];
+        }
+
+        if (reason is "unsupported" or "access_denied" or "check_failed" or "incomplete")
+        {
+            return Loc.Instance["diag.result." + reason];
+        }
+
         if (check == DiagnosticCheck.Dns)
         {
             return First($"desktop.diag.dns.{reason}", $"diag.dns.{reason}", $"desktop.diag.dns.{state.ToString().ToLowerInvariant()}");
@@ -754,6 +765,12 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 
     private static string Chip(DiagnosticCheck check, CheckState state, string? reason)
     {
+        if (reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete"
+            || check == DiagnosticCheck.Service && reason == "no_reply")
+        {
+            return Loc.Instance["diag.result.unknown.chip"];
+        }
+
         if (check == DiagnosticCheck.Dns)
         {
             return First($"desktop.diag.dns.{reason}.chip", $"diag.dns.{reason}.chip", $"desktop.diag.dns.{state.ToString().ToLowerInvariant()}.chip");
@@ -792,8 +809,9 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
 public sealed record CheckRowViewModel(DiagnosticCheck Check, string Title, string Detail, string ChipText, CheckState State, string? Reason = null)
 {
     /// <summary>Неизвестный замер не является ни успешным доказательством, ни подтвержденной утечкой.</summary>
-    public bool IsInconclusive => Check == DiagnosticCheck.Dns &&
-        (Reason is "dns_no_answer" or "dns_unavailable" or "timeout" || State == CheckState.Ok);
+    public bool IsInconclusive => Reason is "service_no_reply" or "unsupported" or "access_denied" or "check_failed" or "incomplete"
+        || Check == DiagnosticCheck.Service && Reason == "no_reply"
+        || Check == DiagnosticCheck.Dns && (Reason is "dns_no_answer" or "dns_unavailable" or "timeout" || State == CheckState.Ok);
 
     public CheckState DisplayState => IsInconclusive ? CheckState.Waiting : State;
 

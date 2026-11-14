@@ -75,7 +75,7 @@
     </Style>
   </UserControl.Styles>
 
-  <DockPanel AutomationProperties.Name="{Binding Name}">
+  <DockPanel AutomationProperties.Name="{Binding DisplayName}">
     <Border DockPanel.Dock="Top" Width="40" Height="4" CornerRadius="2" HorizontalAlignment="Center"
             Background="{StaticResource PgBrush.Control.Grabber}" />
 
@@ -83,7 +83,7 @@
     <Grid DockPanel.Dock="Top" Margin="0,12,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
       <c:CountryFlag CountryCode="{Binding CountryCode}" VerticalAlignment="Center" />
       <StackPanel Grid.Column="1" Margin="12,0,8,0" Spacing="2" VerticalAlignment="Center">
-        <TextBlock x:Name="CardName" Classes="status" Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+        <TextBlock x:Name="CardName" Classes="status" Text="{Binding DisplayName}" TextTrimming="CharacterEllipsis" />
         <TextBlock Classes="caption" Text="{Binding Subtitle}" TextWrapping="Wrap" />
       </StackPanel>
       <Button x:Name="FavoriteButton" Grid.Column="2" Classes="icon favorite" Classes.on="{Binding IsFavorite}"

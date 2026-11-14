@@ -374,7 +374,7 @@ struct ServerRow: View {
                 HStack(spacing: 0) {
                     CountryBadge(code: server.countryCode, size: .row)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(server.displayName).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
+                        Text(server.title).pgText(PgType.bodyStrong).foregroundStyle(Color(PgColor.Text.primary)).lineLimit(1)
                         Text(server.summary)
                             .pgText(PgTextStyle(size: PgType.overline.size, weight: PgType.caption.weight, mono: true))
                             .foregroundStyle(Color(PgColor.Text.muted))
@@ -425,7 +425,7 @@ struct ServerRow: View {
             }
             .buttonStyle(PgPressStyle())
             .padding(.trailing, 1)
-            .accessibilityLabel(texts.serversMoreName(server.displayName))
+            .accessibilityLabel(texts.serversMoreName(server.title))
             .accessibilityIdentifier("more.\(server.id)")
         }
     }

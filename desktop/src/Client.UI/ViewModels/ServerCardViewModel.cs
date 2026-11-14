@@ -4,6 +4,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -72,6 +73,8 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
     public string CountryCode => _server.CountryCode;
 
     public string Name => _server.Name;
+
+    public string DisplayName => ServerNameDisplay.Format(Name);
 
     /// <summary>«Амстердам · из подписки «Основная»»; без подписки — «добавлен ссылкой».</summary>
     public string Subtitle
@@ -159,7 +162,14 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
         }
 
         _overlay.CloseSheet();
-        await _controller.ConnectToAsync(Id).ConfigureAwait(true);
+        try
+        {
+            await _controller.ConnectToAsync(Id).ConfigureAwait(true);
+        }
+        catch (SecretStoreException)
+        {
+            _toast.Show(Loc.Instance["secrets.operation.failed"]);
+        }
     }
 
     [ObservableProperty]
@@ -220,7 +230,18 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
         }
 
         // Ключ читается из хранилища ОС только сейчас, по действию пользователя.
-        if (_store.Definition(Id) is not { } definition || definition.Credentials == new ServerCredentials())
+        ServerDefinition? definition;
+        try
+        {
+            definition = _store.Definition(Id);
+        }
+        catch (SecretStoreException)
+        {
+            _toast.Show(Loc.Instance["secrets.operation.failed"]);
+            return;
+        }
+
+        if (definition is null || definition.Credentials == new ServerCredentials())
         {
             _toast.Show(Loc.Instance["card.share.noKey"]);
             return;
@@ -266,8 +287,15 @@ public sealed partial class ServerCardViewModel : ObservableObject, IDisposable
         }
 
         _overlay.CloseSheet();
-        await _controller.RemoveServerAsync(Id).ConfigureAwait(true);
-        _toast.Show(Loc.Instance["card.deleted"]);
+        try
+        {
+            await _controller.RemoveServerAsync(Id).ConfigureAwait(true);
+            _toast.Show(Loc.Instance["card.deleted"]);
+        }
+        catch (SecretStoreException)
+        {
+            _toast.Show(Loc.Instance["secrets.operation.failed"]);
+        }
     }
 
     [RelayCommand]

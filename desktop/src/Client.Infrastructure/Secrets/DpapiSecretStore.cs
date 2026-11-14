@@ -37,7 +37,7 @@ public sealed class DpapiSecretStore(SecretFile file) : ISecretStore
         catch (CryptographicException e)
         {
             // Другой пользователь или переустановленная Windows: прочитать нельзя, и это ошибка, а не пустой секрет.
-            throw new InvalidOperationException("DPAPI не расшифровал секрет", e);
+            throw new SecretStoreException("DPAPI не расшифровал секрет", e);
         }
     }
 

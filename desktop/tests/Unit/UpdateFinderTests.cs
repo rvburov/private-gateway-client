@@ -104,7 +104,7 @@ public sealed class UpdateFinderTests : IDisposable
         rewritten.ShouldNotBe(manifest);
         var tampered = ReleaseEntry.ParseSite(SiteFeed(Release("0.3.0", rewritten, signature)), AccountSite.UpdateFiles);
         var search = UpdateFinder.Find(tampered, [PublicKey], "0.2.0", UpdateChannel.Stable, bucket: 0);
-        search.State.ShouldBe(UpdateState.UpToDate);
+        search.State.ShouldBe(UpdateState.Failed, "непроверенный новый выпуск — не подтверждение последней версии");
         search.Skipped.ShouldBe(["0.3.0: подпись манифеста не сходится с ключом программы"]);
     }
 
@@ -189,6 +189,38 @@ public sealed class UpdateFinderTests : IDisposable
 
         search.State.ShouldBe(UpdateState.UpToDate);
         search.Skipped.ShouldBeEmpty("не новее установленной — подпись даже не проверяется");
+    }
+
+    [Theory]
+    [InlineData("-1")]
+    [InlineData("9007199254740992")]
+    [InlineData("1.5")]
+    [InlineData("\"2\"")]
+    [InlineData("null")]
+    public void Policy_revision_must_be_an_exact_nonnegative_safe_integer(string revision)
+    {
+        var json = Encoding.UTF8.GetString(Manifest("0.3.0"));
+        Should.Throw<FormatException>(() => UpdateManifest.Parse(Encoding.UTF8.GetBytes(
+            json.Insert(json.IndexOf('{') + 1, "\"revision\":" + revision + ","))));
+    }
+
+    [Fact]
+    public void Legacy_manifest_has_revision_zero_and_safe_maximum_is_supported()
+    {
+        var json = Encoding.UTF8.GetString(Manifest("0.3.0"));
+        UpdateManifest.Parse(Encoding.UTF8.GetBytes(json)).Revision.ShouldBe(0);
+        UpdateManifest.Parse(Encoding.UTF8.GetBytes(json.Insert(json.IndexOf('{') + 1, "\"revision\":9007199254740991,")))
+            .Revision.ShouldBe(UpdateManifest.MaxRevision);
+    }
+
+    [Fact]
+    public void Untrusted_newer_release_is_a_failure_but_does_not_hide_a_valid_previous_update()
+    {
+        var invalid = Entry("0.4.0", Manifest("0.4.0"), key: _otherKey);
+        UpdateFinder.Find([invalid], [PublicKey], "0.2.0", UpdateChannel.Stable, 0).State.ShouldBe(UpdateState.Failed);
+        var available = UpdateFinder.Find([invalid, Entry("0.3.0", Manifest("0.3.0"))], [PublicKey], "0.2.0", UpdateChannel.Stable, 0);
+        (available.State, available.Manifest!.Version).ShouldBe((UpdateState.Available, "0.3.0"));
+        UpdateFinder.Find([], [PublicKey], "0.2.0", UpdateChannel.Stable, 0).State.ShouldBe(UpdateState.UpToDate);
     }
 
     [Fact]

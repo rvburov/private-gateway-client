@@ -204,6 +204,45 @@ public sealed class SubscriptionUpdateTests : IDisposable
         Catalog().Subscriptions.Single().Address.ShouldBe("https://sub.example.com/sub/****");
     }
 
+    [Fact]
+    public void Opening_distinct_subscriptions_does_not_read_their_secrets()
+    {
+        var catalog = Catalog();
+        Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        catalog.Add(Parse("trojan://pw-b@198.51.100.2:443#B"), "Другой список", new Uri("https://example.org/list/token-2"));
+        var reads = _secrets.Reads;
+        _secrets.ReadFailure = new InvalidOperationException("пользователь отказал");
+
+        var reopened = Catalog();
+
+        reopened.Servers.Count.ShouldBe(2);
+        reopened.Subscriptions.Count.ShouldBe(2);
+        _secrets.Reads.ShouldBe(reads, "для показа метаданных разных списков не нужно разрешение на секреты");
+    }
+
+    [Fact]
+    public void Refusing_a_legacy_startup_migration_keeps_the_list_and_all_secrets()
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        using (var connection = new SqliteDatabase(_paths).Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "UPDATE subscriptions SET address = NULL";
+            command.ExecuteNonQuery();
+        }
+
+        var before = _secrets.Values.ToDictionary();
+        _secrets.ReadFailure = new InvalidOperationException("пользователь отказал");
+        var reopened = Catalog();
+        reopened.Servers.ShouldHaveSingleItem().Name.ShouldBe("A");
+        reopened.Subscriptions.ShouldHaveSingleItem().Id.ShouldBe(id);
+        _secrets.Values.ShouldBe(before);
+
+        _secrets.ReadFailure = null;
+        Catalog().Subscriptions.Single().Address.ShouldBe("https://sub.example.com/sub/****");
+    }
+
     [Theory]
     [InlineData("https://sub.example.com/sub/fake-token-1", true)]
     [InlineData("HTTPS://SUB.example.com:443/sub/fake-token-1/", true)]
@@ -295,6 +334,46 @@ public sealed class SubscriptionUpdateTests : IDisposable
     }
 
     // ── Обновитель: когда и как ──────────────────────────────────────────────
+
+    [Fact]
+    public async Task Refusing_secret_access_during_a_manual_update_keeps_the_old_list_and_can_be_retried()
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        Settings().Update(s => s with { UpdateOnlyViaVpn = false });
+        using var updater = Updater(catalog);
+        _secrets.ReadFailure = new InvalidOperationException("пользователь отказал");
+
+        var refused = await updater.UpdateAsync(id, Ct);
+
+        refused.Block.ShouldBe(UpdateBlock.SecretStore);
+        updater.IsUpdating(id).ShouldBeFalse();
+        _downloads.Requested.ShouldBeEmpty("отказ доступа произошел до сети");
+        catalog.Servers.ShouldHaveSingleItem().Name.ShouldBe("A");
+        _secrets.ReadFailure = null;
+        (await updater.UpdateAsync(id, Ct)).IsUpdated.ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task Refusing_storage_stops_repeated_background_prompts_until_an_explicit_retry()
+    {
+        var catalog = Catalog();
+        var id = Import(catalog, "trojan://pw-a@198.51.100.1:443#A");
+        Settings().Update(s => s with { UpdateOnlyViaVpn = false, SubscriptionRefresh = SubscriptionRefresh.Every6Hours });
+        using var updater = Updater(catalog);
+        _time.Advance(TimeSpan.FromHours(7));
+        _secrets.ReadFailure = new InvalidOperationException("пользователь отказал");
+
+        await updater.UpdateDueAsync(Ct);
+        var reads = _secrets.Reads;
+        await updater.UpdateDueAsync(Ct);
+        _secrets.Reads.ShouldBe(reads, "фоновый повтор не открывает еще один системный диалог после отказа");
+
+        _secrets.ReadFailure = null;
+        (await updater.UpdateAsync(id, Ct)).IsUpdated.ShouldBeTrue();
+        _time.Advance(TimeSpan.FromHours(7));
+        updater.Due().ShouldHaveSingleItem().Id.ShouldBe(id);
+    }
 
     [Fact]
     public async Task Disconnect_between_update_gate_and_download_cannot_bypass_vpn_only_setting()

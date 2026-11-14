@@ -80,7 +80,7 @@ internal fun UpdatesCard(view: UpdatesView, onCheck: () -> Unit, onInstall: () -
                     val site = view.notes ?: DOWNLOADS_URL
                     PgSecondaryButton(stringResource(R.string.about_update_open), "about.updates.site", { runCatching { links.openUri(site) } })
                 } else {
-                    PgSecondaryButton(stringResource(R.string.about_updates_check), "about.updates.check", onCheck, enabled = !busy)
+                    PgSecondaryButton(stringResource(R.string.about_updates_check), "about.updates.check", onCheck, enabled = !busy && view.step != InstallStep.Installing)
                 }
             }
         }
@@ -128,7 +128,7 @@ private fun Highlights(items: List<String>) {
     }
 }
 
-/** Полоса загрузки (accent; передано Android — полная, зеленая) и «18,4 из 28,7 МБ · VPN продолжает работать». */
+/** Полоса загрузки (accent; передано Android — полная, зеленая) и «18,4 из 28,7 МБ»: карточка не предполагает состояние VPN. */
 @Composable
 private fun Progress(view: UpdatesView) {
     val installing = view.step == InstallStep.Installing
@@ -146,7 +146,7 @@ private fun Progress(view: UpdatesView) {
         val locale = Locale.forLanguageTag(Texts.language(LocalConfiguration.current.locales))
         fun mb(bytes: Long) = String.format(locale, "%.1f", bytes / BYTES_IN_MB)
         Text(
-            stringResource(R.string.about_update_progress, mb(view.received), stringResource(R.string.about_update_mb, mb(view.total))),
+            stringResource(R.string.about_update_progress_plain, mb(view.received), stringResource(R.string.about_update_mb, mb(view.total))),
             color = PgColor.Text.Secondary,
             style = PgType.Caption,
             modifier = Modifier.testTag("about.updates.bytes"),

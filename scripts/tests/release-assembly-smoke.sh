@@ -49,6 +49,23 @@ notes() {
 
 run() { dotnet run scripts/release.cs "$@" > "$TMP/out.txt" 2>&1; }
 
+# Отказ раскатки обязан сохранить все исходные байты, а не только завершиться ненулевым кодом.
+metadata() { (cd "$1" && sha256sum update.json SHA256SUMS update.json.sig 2>/dev/null) || true; }
+reject_rollout() {
+  local before
+  before="$(metadata "$1")"
+  ! run rollout "$@" && [ "$(metadata "$1")" = "$before" ]
+}
+revision() {
+  python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1]))["revision"] != int(sys.argv[2]))' "$1/update.json" "$2"
+}
+# Только для стенда: имитировать прежний выпуск/смену ключа и заново подписать исходные байты.
+sign_fixture() {
+  openssl dgst -sha256 -sign "$TMP/key.pem" "$1/update.json" | base64 -w0 > "$1/update.json.sig"
+  printf '\n' >> "$1/update.json.sig"
+  (cd "$1" && sha256sum * | grep -v '  SHA256SUMS$' > "$TMP/fixture-sums") && cp "$TMP/fixture-sums" "$1/SHA256SUMS"
+}
+
 # verify <папка выпуска> <открытый ключ>: подпись update.json.sig сходится с update.json.
 verify() {
   base64 -d "$1/update.json.sig" > "$TMP/sig.der" && openssl dgst -sha256 -verify "$2" -signature "$TMP/sig.der" "$1/update.json" > /dev/null 2>&1
@@ -97,6 +114,7 @@ unset UPDATE_SIGNING_KEY UPDATE_NOTES_URL
 
 builds stable 0.3.0
 check "выпуск собирается" "run assemble 0.3.0 '$TMP/stable' '$TMP/stable-out' 20"
+check "новый выпуск начинает ревизию 1" "revision '$TMP/stable-out' 1"
 check "общий SHA256SUMS сходится" "(cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
 check "канал stable и доля 20" "grep -q '\"channel\": \"stable\"' '$TMP/stable-out/update.json' && grep -q '\"rollout\": 20' '$TMP/stable-out/update.json'"
 check "в манифесте главное из заметок" "grep -q '\"highlights\": \\[' '$TMP/stable-out/update.json'"
@@ -114,9 +132,10 @@ check "UPDATE_NOTES_URL не https — ошибка: такой манифест
 check "главное манифеста — из той же секции, первое предложение" "python3 -c 'import json,sys; h=json.load(open(sys.argv[1]))[\"highlights\"]; sys.exit(h != [\"Окно подтверждения перед раздельным режимом.\", \"Строка реального IP не пропадает.\"])' '$TMP/stable-out/update.json'"
 builds nosection 0.2.9
 check "версия без секции в истории — ошибка, коммиты не подставляются" "! run assemble 0.2.9 '$TMP/nosection' '$TMP/nosection-out' && grep -q 'нет секции' '$TMP/out.txt'"
-check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
-check "доля 0 останавливает раскатку" "run rollout '$TMP/stable-out' 0 && grep -q '\"rollout\": 0' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
-check "доля 101 — ошибка" "! run rollout '$TMP/stable-out' 101"
+check "rollout меняет долю и сумму" "run rollout '$TMP/stable-out' 50 0.3.0 && grep -q '\"rollout\": 50' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
+check "доля 0 останавливает раскатку" "run rollout '$TMP/stable-out' 0 0.3.0 && grep -q '\"rollout\": 0' '$TMP/stable-out/update.json' && (cd '$TMP/stable-out' && sha256sum -c --quiet SHA256SUMS)"
+check "остановка увеличила ревизию после смены доли" "revision '$TMP/stable-out' 3"
+check "доля 101 — ошибка" "! run rollout '$TMP/stable-out' 101 0.3.0"
 
 builds beta 0.4.0-beta.1
 check "бета — канал beta" "run assemble 0.4.0-beta.1 '$TMP/beta' '$TMP/beta-out' && grep -q '\"channel\": \"beta\"' '$TMP/beta-out/update.json'"
@@ -147,8 +166,42 @@ check "подпись — в SHA256SUMS" "grep -q '  update.json.sig\$' '$TMP/si
 cp -r "$TMP/signed-out" "$TMP/tampered"
 sed -i 's/"rollout": 20/"rollout": 100/' "$TMP/tampered/update.json"
 check "измененный манифест подпись не проходит" "! verify '$TMP/tampered' '$public'"
-check "rollout подписывает заново" "run rollout '$TMP/signed-out' 50 && grep -q '\"rollout\": 50' '$TMP/signed-out/update.json' && verify '$TMP/signed-out' '$public' && (cd '$TMP/signed-out' && sha256sum -c --quiet SHA256SUMS)"
-check "rollout подписанного без ключа — ошибка" "! env -u UPDATE_SIGNING_KEY dotnet run scripts/release.cs rollout '$TMP/signed-out' 100 > '$TMP/out.txt' 2>&1 && grep -q '\"rollout\": 50' '$TMP/signed-out/update.json'"
+check "измененный манифест не переподписывается и не меняется" "reject_rollout '$TMP/tampered' 50 0.3.0"
+check "манифест не того тега не меняется" "reject_rollout '$TMP/signed-out' 50 0.4.0"
+check "недопустимая доля не меняет подписанный выпуск" "reject_rollout '$TMP/signed-out' 101 0.3.0"
+cp -r "$TMP/signed-out" "$TMP/missing-sig"
+rm "$TMP/missing-sig/update.json.sig"
+check "потерянная подпись не превращается в новую доверенную" "reject_rollout '$TMP/missing-sig' 50 0.3.0"
+cp -r "$TMP/signed-out" "$TMP/bad-sig"
+printf 'not-base64!' > "$TMP/bad-sig/update.json.sig"
+check "поврежденная подпись не переподписывается" "reject_rollout '$TMP/bad-sig' 50 0.3.0"
+cp -r "$TMP/signed-out" "$TMP/legacy"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d.pop("revision"); open(p,"w").write(json.dumps(d))' "$TMP/legacy/update.json"
+sign_fixture "$TMP/legacy"
+check "подписанный legacy без revision получает ревизию 1" "run rollout '$TMP/legacy' 0 0.3.0 && revision '$TMP/legacy' 1 && verify '$TMP/legacy' '$public'"
+cp -r "$TMP/signed-out" "$TMP/max-revision"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["revision"]=9007199254740991; open(p,"w").write(json.dumps(d))' "$TMP/max-revision/update.json"
+sign_fixture "$TMP/max-revision"
+check "переполнение ревизии не меняет выпуск" "reject_rollout '$TMP/max-revision' 0 0.3.0"
+cp -r "$TMP/signed-out" "$TMP/bad-revision"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["revision"]=-1; open(p,"w").write(json.dumps(d))' "$TMP/bad-revision/update.json"
+sign_fixture "$TMP/bad-revision"
+check "отрицательная ревизия не меняет выпуск" "reject_rollout '$TMP/bad-revision' 0 0.3.0"
+check "rollout подписывает заново" "run rollout '$TMP/signed-out' 50 0.3.0 && grep -q '\"rollout\": 50' '$TMP/signed-out/update.json' && verify '$TMP/signed-out' '$public' && (cd '$TMP/signed-out' && sha256sum -c --quiet SHA256SUMS)"
+check "rollout подписанного без ключа — ошибка" "! env -u UPDATE_SIGNING_KEY dotnet run scripts/release.cs rollout '$TMP/signed-out' 100 0.3.0 > '$TMP/out.txt' 2>&1 && grep -q '\"rollout\": 50' '$TMP/signed-out/update.json'"
+check "остановка и возобновление дают разные возрастающие ревизии" "run rollout '$TMP/signed-out' 0 0.3.0 && revision '$TMP/signed-out' 3 && run rollout '$TMP/signed-out' 100 0.3.0 && revision '$TMP/signed-out' 4 && verify '$TMP/signed-out' '$public'"
+check "повтор выпуска сохраняет прежнюю ревизию и точную подпись" "run assemble 0.3.0 '$TMP/signed' '$TMP/retry-out' && run reuse '$TMP/retry-out' '$TMP/signed-out' 0.3.0 && cmp '$TMP/retry-out/update.json' '$TMP/signed-out/update.json' && cmp '$TMP/retry-out/update.json.sig' '$TMP/signed-out/update.json.sig' && (cd '$TMP/retry-out' && sha256sum -c --quiet SHA256SUMS)"
+check "повтор не принимает подмененную старую подпись" "! run reuse '$TMP/retry-out' '$TMP/tampered' 0.3.0"
+check "повтор не принимает манифест другого тега" "! run reuse '$TMP/retry-out' '$TMP/signed-out' 0.4.0"
+cp -r "$TMP/signed" "$TMP/changed-builds"
+echo new-apk > "$TMP/changed-builds/release-Android/PrivateGateway-0.3.0-android.apk"
+(cd "$TMP/changed-builds/release-Android" && sha256sum *.apk > SHA256SUMS)
+check "новые пакеты под прежней версией не подменяются" "run assemble 0.3.0 '$TMP/changed-builds' '$TMP/changed-out' && ! run reuse '$TMP/changed-out' '$TMP/signed-out' 0.3.0 && grep -q 'новую версию' '$TMP/out.txt'"
+cp -r "$TMP/signed-out" "$TMP/rotated"
+openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 > "$TMP/new-key.pem" 2>/dev/null
+openssl pkey -in "$TMP/new-key.pem" -pubout > "$TMP/keys/new-key.pem"
+check "ротация проверяет прежнюю подпись старым ключом, новую — новым" "UPDATE_SIGNING_KEY=\"\$(cat '$TMP/new-key.pem')\" run rollout '$TMP/rotated' 0 0.3.0 && revision '$TMP/rotated' 5 && verify '$TMP/rotated' '$TMP/keys/new-key.pem'"
+check "неизвестный новый ключ не изменяет исходные файлы" "UPDATE_SIGNING_KEY=\"\$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 2>/dev/null)\" reject_rollout '$TMP/signed-out' 0 0.3.0"
 mkdir -p "$TMP/other-keys"
 check "ключ не из папки ключей — ошибка" "! UPDATE_KEYS='$TMP/other-keys' UPDATE_SIGNING_KEY=\"\$(openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 2>/dev/null)\" run assemble 0.3.0 '$TMP/signed' '$TMP/foreign-out' && grep -q 'не в репозитории' '$TMP/out.txt'"
 

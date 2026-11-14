@@ -456,7 +456,7 @@ public sealed partial class MainPageViewModel : ObservableObject, IDisposable
 
     public string ServerTitle => Server is { } external && ExternalProxySettings.IsExternalId(external.Id)
         ? Loc.Instance["externalProxy.title"] : Server is { } s
-        ? s.Name
+        ? ServerNameDisplay.Format(s.Name)
         : Status is { Mode: ConnectionMode.Proxy, State: not ConnectionState.Off } ? Loc.Instance["externalProxy.title"]
         : Loc.Instance[IsExternalProxy ? "externalProxy.unconfigured" : "server.none"];
 
@@ -760,5 +760,5 @@ public sealed record QuickServerViewModel(
 
     public string CountryCode => Server.CountryCode;
 
-    public string Name => Server.Name;
+    public string Name => ServerNameDisplay.Format(Server.Name);
 }

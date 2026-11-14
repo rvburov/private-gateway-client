@@ -4,7 +4,7 @@ using PrivateGateway.Client.Infrastructure.Storage;
 namespace PrivateGateway.Client.Infrastructure.Secrets;
 
 /// <summary>
-/// Файл зашифрованных секретов Windows — <c>secrets.db</c> рядом с базой, а не таблица в ней. Каталог серверов пишет
+/// Файл зашифрованных секретов Windows/macOS — <c>secrets.db</c> рядом с базой, а не таблица в ней. Каталог серверов пишет
 /// секрет посреди своей транзакции в app.db (сначала секрет, потом строка); в той же базе запись другим подключением
 /// ждала бы конца этой транзакции, а та — записи: «database is locked» через 30 с и падение окна при «Добавить»
 /// (найдено у пользователя 2026-10-29). Отдельный файл не ждет ничьих транзакций, как Связка ключей и Secret Service.
@@ -22,14 +22,22 @@ public sealed class SecretFile
         database.Paths.EnsureCreated();
         using var connection = Open();
         Run(connection, "CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY NOT NULL, value BLOB NOT NULL)");
+        Run(connection, "CREATE TABLE IF NOT EXISTS legacy_cleanup (key TEXT PRIMARY KEY NOT NULL)");
         MoveFrom(database, connection);
     }
 
-    public void Write(string key, byte[] value)
+    public void Write(string key, byte[] value, bool cleanupLegacy = false)
     {
         using var connection = Open();
-        Run(connection, "INSERT INTO secrets (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+        using var transaction = connection.BeginTransaction();
+        Run(connection, transaction, "INSERT INTO secrets (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             ("$key", key), ("$value", value));
+        if (cleanupLegacy)
+        {
+            Run(connection, transaction, "INSERT OR IGNORE INTO legacy_cleanup (key) VALUES ($key)", ("$key", key));
+        }
+
+        transaction.Commit();
     }
 
     public byte[]? Read(string key)
@@ -41,10 +49,40 @@ public sealed class SecretFile
         return command.ExecuteScalar() as byte[];
     }
 
+    public bool HasEntries
+    {
+        get
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT EXISTS(SELECT 1 FROM secrets)";
+            return (long)command.ExecuteScalar()! != 0;
+        }
+    }
+
     public void Delete(string key)
     {
         using var connection = Open();
-        Run(connection, "DELETE FROM secrets WHERE key = $key", ("$key", key));
+        using var transaction = connection.BeginTransaction();
+        Run(connection, transaction, "DELETE FROM secrets WHERE key = $key", ("$key", key));
+        Run(connection, transaction, "DELETE FROM legacy_cleanup WHERE key = $key", ("$key", key));
+        transaction.Commit();
+    }
+
+    /// <summary>После надежной записи шифра осталось удалить прежнюю отдельную запись Связки ключей.</summary>
+    public bool NeedsLegacyCleanup(string key)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM legacy_cleanup WHERE key = $key";
+        command.Parameters.AddWithValue("$key", key);
+        return command.ExecuteScalar() is not null;
+    }
+
+    public void FinishLegacyCleanup(string key)
+    {
+        using var connection = Open();
+        Run(connection, "DELETE FROM legacy_cleanup WHERE key = $key", ("$key", key));
     }
 
     /// <summary>
@@ -103,8 +141,12 @@ public sealed class SecretFile
     }
 
     private static void Run(SqliteConnection connection, string sql, params (string Name, object Value)[] parameters)
+        => Run(connection, null, sql, parameters);
+
+    private static void Run(SqliteConnection connection, SqliteTransaction? transaction, string sql, params (string Name, object Value)[] parameters)
     {
         using var command = connection.CreateCommand();
+        command.Transaction = transaction;
         command.CommandText = sql;
         foreach (var (name, value) in parameters)
         {

@@ -145,7 +145,7 @@
   },
 
   "layout": {
-    "countryFlag": { "size": 28 },
+    "countryFlag": { "size": 28, "height": 21 },
     "desktopWindow": { "width": 440, "height": 760 },
     "mobileWidth": { "min": 360, "max": 440 },
     "scrollBottomPadding": 160,

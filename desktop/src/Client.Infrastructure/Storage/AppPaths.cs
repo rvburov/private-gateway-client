@@ -11,7 +11,7 @@ public sealed record AppPaths(string DataDirectory)
 
     public string Database => Path.Combine(DataDirectory, "app.db");
 
-    /// <summary>Зашифрованные DPAPI секреты Windows (<see cref="Secrets.SecretFile"/>) — отдельно от базы.</summary>
+    /// <summary>Зашифрованные секреты Windows/macOS (<see cref="Secrets.SecretFile"/>) — отдельно от базы.</summary>
     public string Secrets => Path.Combine(DataDirectory, "secrets.db");
 
     public string LogDirectory => Path.Combine(DataDirectory, "logs");

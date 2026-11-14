@@ -40,7 +40,7 @@ public sealed partial class LibsecretSecretStore : ISecretStore
         Check(error, "сохранить");
         if (stored == 0)
         {
-            throw new InvalidOperationException("Secret Service: не удалось сохранить секрет");
+            throw new SecretStoreException("Secret Service: не удалось сохранить секрет");
         }
     }
 
@@ -108,7 +108,7 @@ public sealed partial class LibsecretSecretStore : ISecretStore
         // GError { GQuark domain; gint code; gchar *message; } — текст после двух 32-битных полей.
         var message = Marshal.PtrToStringUTF8(Marshal.ReadIntPtr(error, 8));
         g_error_free(error);
-        throw new InvalidOperationException($"Secret Service: не удалось {action} секрет: {message}");
+        throw new SecretStoreException($"Secret Service: не удалось {action} секрет: {message}");
     }
 
     [LibraryImport(LibSecret, StringMarshalling = StringMarshalling.Utf8)]

@@ -21,6 +21,7 @@ import com.privategateway.client.data.AppDatabase
 import com.privategateway.client.data.ServerRepository
 import com.privategateway.client.R
 import com.privategateway.client.account.AccountRepository
+import com.privategateway.client.account.AccountLogoutFence
 import com.privategateway.client.core.account.AccountDevice
 import com.privategateway.client.core.account.AccountSession
 import com.privategateway.client.core.account.AccountSource
@@ -223,6 +224,7 @@ class MainViewModelTest {
             control,
             monitor,
             TunnelJournal(),
+            AccountLogoutFence(folder.root.resolve("signed-out")),
         )
         runBlocking {
             account.seedForTests(

@@ -109,7 +109,10 @@
   сервера. Кнопка фильтра в поле поиска открывает протоколы и сортировку: снятый флажок прячет серверы протокола (число в
   заголовке группы — сколько строк видно), «По названию» меняет порядок, число на кнопке — сколько настроек отличается от обычных. «Обновить серверы» — крутится только стрелка. Звезды
   избранного в строке нет, как в программе: она в карточке сервера. На телефоне Hysteria2 и TUIC не подключаются (второго ядра нет):
-  их строки приглушены и не выбираются, «⋯» открывает карточку, в быстрой смене на главной их нет.</p>
+  их строки приглушены и не выбираются, «⋯» открывает карточку, в быстрой смене на главной их нет.
+  На десктопе флаг 4:3 стоит по центру прежнего слота 28×28: квадратная обрезка больше не увеличивает кантон США.
+  Эмодзи в названии отделены от соседнего слова и другого эмодзи пробелом; ZWJ и флаг не разделяются. В редакторе остается исходное имя.
+  При отказе в доступе к хранилищу карточки остаются на месте; после разрешения операцию можно повторить.</p>
 
 <div class="pg-screens">
   <!-- 1. Список, защита включена -->
@@ -394,6 +397,33 @@
         </div>
         <div class="pg-page-end"></div>
       </div>
+    </div>
+    <div class="pg-island" data-active="servers"></div>
+  </section>
+  <section class="pg-screen" data-state="connected" data-caption="Хранилище: отказ и повтор · флаги и эмодзи">
+    <div class="toast is-open">Нет доступа к защищенному хранилищу. Разрешите доступ и повторите действие.</div>
+    <div class="pg-page sv-page">
+      <div class="pg-header">
+        <span class="t-h1 pg-grow">Серверы</span>
+        <button class="btn-icon steady" data-spin data-toast="Нет доступа к защищенному хранилищу. Разрешите доступ и повторите действие." aria-label="Обновить серверы"><i data-icon="Refresh" data-size="20"></i></button>
+        <button class="btn-icon" data-nav="03-import.html" aria-label="Добавить сервер"><i data-icon="Plus" data-size="22"></i></button>
+      </div>
+      <div class="pg-stack pg-gap-12">
+        <div class="sv-group">
+          <div class="sv-group-head"><span class="t-overline pg-grow">Основной список · 2</span><span class="t-caption">обновлено 07:23</span></div>
+          <div class="sv-items">
+            <div class="sv-row" data-proto="vless">
+              <button class="segment on"><span class="country-glyph"><img src="../assets/countries/US.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">🇺🇸 USA · DIRECT</span><span class="sv-addr pg-ellipsis">198.51.100.201 · VLESS · REALITY</span></span><span class="sv-tag">активен</span><span class="latency good sv-ping">42 мс</span></button>
+              <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере США"><i data-icon="More" data-size="18"></i></button>
+            </div>
+            <div class="sv-row" data-proto="vless">
+              <button class="segment"><span class="country-glyph"><img src="../assets/countries/DE.png" alt="" /></span><span class="sv-text"><span class="t-strong pg-ellipsis">⚡ 🇩🇪 Germany-1 DIRECT (TCP)</span><span class="sv-addr pg-ellipsis">198.51.100.140 · VLESS · REALITY</span></span><span class="latency sv-ping">—</span></button>
+              <button class="btn-icon sv-more" data-nav="11-server-card.html" aria-label="Подробнее о сервере Германия"><i data-icon="More" data-size="18"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
     </div>
     <div class="pg-island" data-active="servers"></div>
   </section>

@@ -212,6 +212,159 @@ public sealed class AccountServiceTests : IDisposable
         (_secrets.Values.Count, account.HasAccess).ShouldBe((0, false));
     }
 
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(true, true)]
+    public async Task Sign_out_denies_access_before_the_service_answers_even_when_clearing_storage_fails(bool secretsFail, bool detailsFail)
+    {
+        var account = await SignedIn();
+        _secrets.DeleteFailure = secretsFail ? new IOException("store unavailable") : null;
+        _store.ClearFails = detailsFail;
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _gateway.PendingDrop = stopped.Task;
+
+        var logout = account.SignOutAsync(Ct);
+
+        logout.IsCompleted.ShouldBeFalse();
+        (account.HasAccess, account.MayConnect, account.IsSignedIn).ShouldBe((false, false, false));
+        stopped.SetResult();
+        await logout;
+        _api.LogoutTokens.ShouldBe([Token], "ошибка очистки не пропускает отзыв на сайте");
+        if (!secretsFail || !detailsFail)
+        {
+            Service().HasAccess.ShouldBeFalse("достаточно очистить одно из двух независимых хранилищ");
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_late_status_cannot_revoke_or_overwrite_a_new_sign_in_with_the_same_token(bool revoked)
+    {
+        var account = await SignedIn();
+        var reply = new TaskCompletionSource<AccountStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _api.PendingStatus = reply.Task;
+        var check = account.CheckAsync(Ct);
+        await account.SignOutAsync(Ct);
+        await account.SignInAsync("new@example.com", "pw", null, null, Ct);
+
+        if (revoked)
+        {
+            reply.SetException(new AccountApiException(AccountFailure.InvalidCredentials, 401));
+        }
+        else
+        {
+            reply.SetResult(new AccountStatus(Start, new AccountUser("old@example.com", "old"), new AccountDevice("old")));
+        }
+
+        await check;
+
+        (account.HasAccess, account.Email, account.LastMessage).ShouldBe((true, "new@example.com", AccountMessage.None));
+        _gateway.Calls.ShouldBe(["drop"], "только явный выход выключал защиту");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_late_feed_belongs_to_the_old_sign_in_even_when_the_new_token_matches(bool revoked)
+    {
+        var account = await SignedIn();
+        var reply = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _api.PendingFeed = reply.Task;
+        var feed = account.UpdatesFeedAsync(UpdateChannel.Stable, Ct);
+        await account.SignOutAsync(Ct);
+        await account.SignInAsync("new@example.com", "pw", null, null, Ct);
+        if (revoked)
+        {
+            reply.SetException(new AccountApiException(AccountFailure.InvalidCredentials, 401));
+        }
+        else
+        {
+            reply.SetResult([1, 2, 3]);
+        }
+
+        (await feed).ShouldBeNull();
+        (account.HasAccess, account.LastMessage).ShouldBe((true, AccountMessage.None));
+        _gateway.Calls.ShouldBe(["drop"]);
+    }
+
+    [Fact]
+    public async Task Sign_out_cancels_a_pending_sign_in_before_its_successful_answer()
+    {
+        var account = Service();
+        var reply = new TaskCompletionSource<AccountLogin>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _api.PendingLogin = reply.Task;
+        var login = account.SignInAsync("user@example.com", "pw", null, null, Ct);
+        await account.SignOutAsync(Ct);
+        reply.SetResult(new AccountLogin(Token,
+            new AccountStatus(Term, new AccountUser("user@example.com", "user"), new AccountDevice("PC"))));
+
+        (await login).Succeeded.ShouldBeFalse();
+        (account.HasAccess, account.IsSignedIn).ShouldBe((false, false));
+        _secrets.Values.ShouldBeEmpty();
+        _api.LogoutTokens.ShouldBe([Token]);
+    }
+
+    [Fact]
+    public async Task A_delayed_stop_answer_does_not_forget_or_revoke_a_new_sign_in()
+    {
+        var account = await SignedIn();
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _gateway.PendingDrop = stopped.Task;
+        var logout = account.SignOutAsync(Ct);
+        await account.SignInAsync("new@example.com", "pw", null, null, Ct);
+        stopped.SetResult();
+        await logout;
+
+        (account.HasAccess, account.Email).ShouldBe((true, "new@example.com"));
+        _api.LogoutTokens.ShouldBeEmpty("сайт вернул тот же токен: поздний выход не должен отзывать новый вход");
+    }
+
+    [Fact]
+    public async Task Known_expiry_stops_protection_between_minute_ticks_while_the_status_request_is_pending()
+    {
+        var expires = Start + TimeSpan.FromSeconds(35);
+        _api.Login = r => new AccountLogin(Token,
+            new AccountStatus(expires, new AccountUser(r.Email, "user"), new AccountDevice("PC")));
+        var account = await SignedIn();
+        var reply = new TaskCompletionSource<AccountStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _api.PendingStatus = reply.Task;
+        account.Start();
+        var checking = account.CheckAsync(Ct);
+        checking.IsCompleted.ShouldBeFalse();
+
+        _time.Advance(TimeSpan.FromSeconds(34));
+        account.HasAccess.ShouldBeTrue();
+        _gateway.Calls.ShouldBeEmpty();
+        _time.Advance(TimeSpan.FromSeconds(1));
+
+        (account.IsSignedIn, account.LastMessage).ShouldBe((false, AccountMessage.Expired));
+        _gateway.Calls.ShouldBe(["drop"]);
+        reply.SetResult(new AccountStatus(Term, new AccountUser("user@example.com", "user"), new AccountDevice("PC")));
+        await checking;
+        account.HasAccess.ShouldBeFalse("позднее подтверждение не восстанавливает истекший вход");
+    }
+
+    [Fact]
+    public async Task A_confirmed_renewal_replaces_the_old_expiry_timer()
+    {
+        _api.Login = r => new AccountLogin(Token,
+            new AccountStatus(Start + TimeSpan.FromSeconds(20), new AccountUser(r.Email, "user"), new AccountDevice("PC")));
+        var account = await SignedIn();
+        _api.Status = _ => new AccountStatus(Start + TimeSpan.FromSeconds(95), new AccountUser("user@example.com", "user"), new AccountDevice("PC"));
+        account.Start();
+        await account.CheckAsync(Ct);
+
+        _time.Advance(TimeSpan.FromSeconds(21));
+        account.HasAccess.ShouldBeTrue();
+        _gateway.Calls.ShouldBeEmpty();
+        _time.Advance(TimeSpan.FromSeconds(74));
+
+        (account.IsSignedIn, account.LastMessage).ShouldBe((false, AccountMessage.Expired));
+        _gateway.Calls.ShouldBe(["drop"]);
+    }
+
     [Fact]
     public async Task Protection_held_by_the_service_without_a_sign_in_is_turned_off_once()
     {
@@ -444,17 +597,23 @@ public sealed class AccountServiceTests : IDisposable
 
         public Func<string, bool>? Logout { get; set; }
 
+        public Task<AccountLogin>? PendingLogin { get; set; }
+
+        public Task<AccountStatus>? PendingStatus { get; set; }
+
+        public Task<byte[]>? PendingFeed { get; set; }
+
         public Task<AccountLogin> LoginAsync(LoginRequest request, CancellationToken cancellationToken = default)
         {
             Logins.Add(request);
-            return Task.FromResult(Login?.Invoke(request) ?? new AccountLogin(Token,
+            return PendingLogin ?? Task.FromResult(Login?.Invoke(request) ?? new AccountLogin(Token,
                 new AccountStatus(Start + TimeSpan.FromDays(30), new AccountUser(request.Email, "Роман"), new AccountDevice(request.Device.Name))));
         }
 
         public Task<AccountStatus> StatusAsync(string token, CancellationToken cancellationToken = default)
         {
             StatusTokens.Add(token);
-            return Task.FromResult(Status?.Invoke(token) ?? new AccountStatus(time.GetUtcNow() + TimeSpan.FromDays(30),
+            return PendingStatus ?? Task.FromResult(Status?.Invoke(token) ?? new AccountStatus(time.GetUtcNow() + TimeSpan.FromDays(30),
                 new AccountUser("user@example.com", "Роман"), new AccountDevice("WORKSTATION")));
         }
 
@@ -479,9 +638,9 @@ public sealed class AccountServiceTests : IDisposable
         public Task<byte[]> UpdatesAsync(string token, string platform, UpdateChannel channel, CancellationToken cancellationToken = default)
         {
             Updates.Add((token, platform, channel));
-            return UpdatesException is { } error ? Task.FromException<byte[]>(error)
+            return PendingFeed ?? (UpdatesException is { } error ? Task.FromException<byte[]>(error)
                 : UpdatesFailure is { } failure ? Task.FromException<byte[]>(new AccountApiException(failure, failure == AccountFailure.InvalidCredentials ? 401 : null))
-                : Task.FromResult(Feed);
+                : Task.FromResult(Feed));
         }
     }
 
@@ -492,11 +651,13 @@ public sealed class AccountServiceTests : IDisposable
         /// <summary>База программы отказывает на записи.</summary>
         public bool Fails { get; set; }
 
+        public bool ClearFails { get; set; }
+
         public SavedAccount? Load() => Saved;
 
         public void Save(SavedAccount account) => Saved = Fails ? throw new InvalidOperationException() : account;
 
-        public void Clear() => Saved = null;
+        public void Clear() => Saved = ClearFails ? throw new IOException("store unavailable") : null;
     }
 
     private sealed class FakeDevice : IDeviceIdentity

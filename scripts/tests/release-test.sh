@@ -353,7 +353,7 @@ step_script() {
     inside && !body && /^        run: \|$/ { body = 1; next }
     body && NF && !/^          / { exit }
     body { sub(/^          /, ""); print }
-  ' "$SITE_WF"
+  ' "${2:-$SITE_WF}"
 }
 # make_release <папка> <версия>: выпуск, как его собирает release.yml — APK, update.json и подпись в SHA256SUMS.
 make_release() {
@@ -395,12 +395,14 @@ site_run() {
   (
     export PATH="$SITE/bin:$PATH" HOME="$work/home" RUNNER_TEMP="$work/tmp" GITHUB_OUTPUT="$work/output" \
       GITHUB_STEP_SUMMARY="$work/summary" GITHUB_REPOSITORY=rvburov/private-gateway-client GH_TOKEN=test \
-      SITE_LOG="$SITE" FAKE_RELEASE="$SITE/rel" TAG="$1" MANIFEST_ONLY="${2:-}"
+      SITE_LOG="$SITE" FAKE_RELEASE="$SITE/rel" TAG="$1" MANIFEST_ONLY="${2:-}" \
+      WEBSITE_HOST=example.org WEBSITE_USER=releases WEBSITE_SSH_KEY=site-test WEBSITE_KNOWN_HOSTS='example.org ssh-ed25519 AAAA'
+    [ -z "${SITE_MISSING_SECRET:-}" ] || unset "$SITE_MISSING_SECRET"
+    bash -c "$config_step" > "$work/config.log" 2>&1 || exit 1
+    ! grep -qx 'ready=false' "$work/output" || exit 0
     bash -c "$files_step" > "$work/files.log" 2>&1 || exit 1
     ! grep -qx 'skip=true' "$work/output" || exit 0
-    DIR="$(sed -n 's/^dir=//p' "$work/output")" WEBSITE_HOST=example.org WEBSITE_USER=releases \
-      WEBSITE_SSH_KEY=site-test WEBSITE_KNOWN_HOSTS='example.org ssh-ed25519 AAAA' \
-      bash -c "$send_step" > "$work/send.log" 2>&1
+    DIR="$(sed -n 's/^dir=//p' "$work/output")" bash -c "$send_step" > "$work/send.log" 2>&1
   )
 }
 # sent: команды сайта по порядку, без суммы; matched: у каждой команды сумма — SHA-256 переданного файла.
@@ -413,6 +415,7 @@ if ! command -v jq > /dev/null 2>&1; then
 else
   ran=1
   mkdir -p "$SITE/bin"
+  config_step="$(step_script 'Проверить настройку сайта')"
   files_step="$(step_script 'Файлы выпуска и проверка сумм')"
   send_step="$(step_script 'Отправить на сайт')"
   [ -n "$files_step" ] && [ -n "$send_step" ] || prob+=("в $SITE_WF не найдены шаги «Файлы выпуска и проверка сумм» и «Отправить на сайт»")
@@ -442,7 +445,12 @@ GH
   cat > "$SITE/bin/ssh" <<'SSH'
 #!/bin/bash
 # ssh … <пользователь@сервер> <команда> < файл: команда сайта и SHA-256 того, что ушло в stdin.
-printf '%s | %s\n' "${*: -1}" "$(sha256sum | cut -d' ' -f1)" >> "$SITE_LOG/ssh.log"
+request="${*: -1}"
+printf '%s | %s\n' "$request" "$(sha256sum | cut -d' ' -f1)" >> "$SITE_LOG/ssh.log"
+if [[ "$request" = "${SITE_FAIL_COMMAND:-none} "* ]]; then
+  echo 'Сайт отказал в приеме команды' >&2
+  exit 70
+fi
 SSH
   cat > "$SITE/bin/ssh-keygen" <<'KEYGEN'
 #!/bin/bash
@@ -475,14 +483,15 @@ update 2.0.0 update.json'
   else
     [ "$(sent)" = "$(printf '%s\n' "$order" | tail -n 2)" ] || prob+=("только манифест: не подпись и манифест: $(sent | tr '\n' ';')")
     matched || prob+=("только манифест: сумма не та")
+    grep -qx 'manifest-delivered=true' "$SITE/run/output" || prob+=("принятый манифест не подтвержден выходом workflow")
     grep -qE 'msi|apk' "$SITE/gh.log" && prob+=("только манифест качает установщики")
   fi
 
   rm "$rel/update.json.sig" && resum "$rel"
   site_run v2.0.0 && [ "$(sent)" = "$(printf '%s\n' "$order" | head -n 5)" ] && grep -q 'без подписи' "$SITE/run/summary" \
     || prob+=("выпуск без подписи: не установщики без ленты")
-  site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] && grep -qx 'skip=true' "$SITE/run/output" \
-    || prob+=("выпуск без подписи, только манифест: не пропуск без отправки")
+  ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] \
+    || prob+=("раскатка без подписи должна завершаться ошибкой без отправки")
 
   make_release "$rel" 2.0.0 && rm "$rel/update.json.sig"
   ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("подпись есть в SHA256SUMS, а файла нет — не остановка")
@@ -496,14 +505,48 @@ update 2.0.0 update.json'
   ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("файл ленты в манифесте не тот, что в SHA256SUMS, — не остановка")
   make_release "$rel" 2.0.0 && rm "$rel/PrivateGateway-2.0.0-osx-arm64.dmg"
   ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("файла ленты нет в выпуске — манифест ушел бы без него")
+  make_release "$rel" 2.0.0
+  for missing in WEBSITE_HOST WEBSITE_USER WEBSITE_SSH_KEY WEBSITE_KNOWN_HOSTS; do
+    SITE_MISSING_SECRET="$missing" site_run v2.0.0 true && prob+=("раскатка без $missing завершилась успешно")
+    [ ! -s "$SITE/ssh.log" ] && ! grep -qx 'manifest-delivered=true' "$SITE/run/output" \
+      || prob+=("без $missing отмечена доставка манифеста")
+  done
+  SITE_MISSING_SECRET=WEBSITE_HOST site_run v2.0.0 && grep -qx 'ready=false' "$SITE/run/output" \
+    && [ ! -s "$SITE/ssh.log" ] || prob+=("исторический полный импорт без сайта больше не пропускается")
+  for refused in update-sig update; do
+    SITE_FAIL_COMMAND="$refused" site_run v2.0.0 true && prob+=("отказ сайта на $refused не остановил раскатку")
+    ! grep -qx 'manifest-delivered=true' "$SITE/run/output" || prob+=("отказ сайта на $refused отмечен как доставка")
+  done
   make_release "$rel" 2.0.0-beta.1
   site_run v2.0.0-beta.1 && [ ! -s "$SITE/ssh.log" ] && grep -qx 'skip=true' "$SITE/run/output" \
     || prob+=("бета ушла на сайт")
+  ! site_run v2.0.0-beta.1 true && [ ! -s "$SITE/ssh.log" ] \
+    || prob+=("для беты подтверждена доставка раскатки на сайт, который ее не принимает")
 fi
 RO=".github/workflows/release-rollout.yml"
 grep -qE '^  workflow_call:' "$SITE_WF" || prob+=("website.yml не вызывается из других workflow (workflow_call)")
 grep -qF 'uses: ./.github/workflows/website.yml' "$RO" && grep -qE '^      manifest-only: true$' "$RO" \
   || prob+=("раскатка не отдает сайту новую долю (website.yml с manifest-only)")
+grep -qF 'value: ${{ jobs.website.outputs.manifest-delivered }}' "$SITE_WF" \
+  && grep -qF 'manifest-delivered: ${{ steps.send.outputs.manifest-delivered }}' "$SITE_WF" \
+  && grep -qF 'MANIFEST_DELIVERED: ${{ needs.website.outputs.manifest-delivered }}' "$RO" \
+  || prob+=("подтверждение доставки не передается из SSH-шага в раскатку")
+confirm_step="$(step_script 'Подтвердить доставку' "$RO")"
+if [ -z "$confirm_step" ]; then
+  prob+=("нет финальной проверки доставки")
+else
+  for state in 'success false' 'skipped true' 'failure true'; do
+    read -r result delivered <<< "$state"
+    WEBSITE_RESULT="$result" MANIFEST_DELIVERED="$delivered" GITHUB_STEP_SUMMARY="$FIXTURE/confirm-summary" \
+      bash -c "$confirm_step" > /dev/null 2>&1 && prob+=("неподтвержденная доставка $state разрешена")
+  done
+  WEBSITE_RESULT=success MANIFEST_DELIVERED=true GITHUB_STEP_SUMMARY="$FIXTURE/confirm-summary" \
+    bash -c "$confirm_step" > /dev/null 2>&1 || prob+=("фактическая доставка не принята")
+fi
+grep -qF 'release.cs reuse artifacts/release artifacts/previous-release "$version"' "$WF" \
+  || prob+=("повтор полной публикации может сбросить подписанную ревизию")
+grep -qF 'group: release-refs/tags/${{ inputs.tag }}' "$RO" \
+  || prob+=("раскатка не сериализована с полной публикацией того же тега")
 [ "$(grep -n 'artifacts/builds/release-Android' "$WF" | head -n 1 | cut -d: -f1)" -lt \
   "$(grep -n 'release.cs assemble' "$WF" | head -n 1 | cut -d: -f1)" ] 2> /dev/null \
   || prob+=("APK не попадает к сборкам до release.cs assemble — в манифесте не будет android-apk")

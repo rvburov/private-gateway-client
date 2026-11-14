@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -135,6 +136,9 @@ public sealed partial class SubscriptionsPageViewModel : ObservableObject
             case { Block: UpdateBlock.ServiceMissing }:
                 _toast.Show(Loc.Instance["subs.blocked.service"], ToastViewModel.LongDuration);
                 break;
+            case { Block: UpdateBlock.SecretStore }:
+                _toast.Show(Loc.Instance["secrets.operation.failed"], ToastViewModel.LongDuration);
+                break;
             case { Update: { } update }:
                 _toast.Show(Loc.Instance.Format("subs.updated", name, update.Added, update.Removed));
                 break;
@@ -167,8 +171,15 @@ public sealed partial class SubscriptionsPageViewModel : ObservableObject
         }
 
         await _controller.ReleaseAsync(ids).ConfigureAwait(true);
-        _store.RemoveSubscription(subscriptionId);
-        _toast.Show(Loc.Instance.Format("subs.removed", name));
+        try
+        {
+            _store.RemoveSubscription(subscriptionId);
+            _toast.Show(Loc.Instance.Format("subs.removed", name));
+        }
+        catch (SecretStoreException)
+        {
+            _toast.Show(Loc.Instance["secrets.operation.failed"]);
+        }
     }
 
     private void Rebuild()

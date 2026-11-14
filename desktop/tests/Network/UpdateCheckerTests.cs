@@ -83,7 +83,7 @@ public sealed class UpdateCheckerTests : IDisposable
     {
         var checker = Checker("0.2.0");
 
-        checker.Check(UpdateChannel.Stable, Feed(Release("0.3.0", Manifest("0.3.0"), signature: Sign(Manifest("0.2.9"))))).State.ShouldBe(UpdateState.UpToDate);
+        checker.Check(UpdateChannel.Stable, Feed(Release("0.3.0", Manifest("0.3.0"), signature: Sign(Manifest("0.2.9"))))).State.ShouldBe(UpdateState.Failed);
 
         _journal.Tail(5).ShouldContain(e => e.Message == "Выпуск пропущен: 0.3.0: подпись манифеста не сходится с ключом программы");
     }
@@ -273,7 +273,7 @@ public sealed class UpdateCheckerTests : IDisposable
         // Стоп-кран (доля 0) действует и между проверкой и загрузкой: служба смотрит подписанный манифест свежей ленты.
         var package = RandomNumberGenerator.GetBytes(30_000);
         var running = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package);
-        var stopped = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package, rollout: 0);
+        var stopped = ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package, rollout: 0, revision: 2);
         await using var service = await StartAsync("0.2.0", launch: (_, _) => 4242);
         using var client = Client(service);
         var found = Feed(Release("0.3.0", running, files: [("linux-x64-deb", _site.Ticket(package))]));
@@ -290,7 +290,8 @@ public sealed class UpdateCheckerTests : IDisposable
         _site.Requests.ShouldBe(requests, "остановленный или непроверенный выпуск служба не качает");
         Directory.GetFiles(Path.Combine(_state, "updates")).ShouldBeEmpty();
 
-        var resumed = Feed(Release("0.3.0", running, files: [("linux-x64-deb", _site.Ticket(package))]));
+        var resumed = Feed(Release("0.3.0", ManifestWith("0.3.0", "linux-x64-deb", "private-gateway_0.3.0_amd64.deb", package, revision: 3),
+            files: [("linux-x64-deb", _site.Ticket(package))]));
         (await Collect(client.DownloadUpdateAsync("0.3.0", resumed, Ct)))[^1].Ready.ShouldBeTrue("доля снова больше 0 — качается");
     }
 
@@ -432,8 +433,8 @@ public sealed class UpdateCheckerTests : IDisposable
         return list;
     }
 
-    private static byte[] ManifestWith(string version, string kind, string file, byte[] content, int rollout = 100) => Encoding.UTF8.GetBytes($$"""
-        {"version":"{{version}}","channel":"stable","rollout":{{rollout}},"published":"2026-10-26T08:00:00Z",
+    private static byte[] ManifestWith(string version, string kind, string file, byte[] content, int rollout = 100, long revision = 1) => Encoding.UTF8.GetBytes($$"""
+        {"version":"{{version}}","channel":"stable","rollout":{{rollout}},"revision":{{revision}},"published":"2026-10-26T08:00:00Z",
          "notes":"https://private-gateway.duckdns.org/downloads",
          "assets":{"{{kind}}":{"file":"{{file}}","sha256":"{{Convert.ToHexStringLower(SHA256.HashData(content))}}","size":{{content.Length}}} } }
         """);

@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Воспроизводимая геобаза и изображения. Входы скачиваются отдельно, проверяются до чтения.
 python3 scripts/gen-country-assets.py /tmp/dbip.csv.gz /tmp/flag-icons.tar.gz
+Только изображения, без изменения геобазы: --flags-only /tmp/flag-icons.tar.gz
 Нужен CairoSVG 2.8.2 (только генерация; в приложение не входит).
 """
 import csv
+import argparse
 import gzip
 import hashlib
 import io
@@ -18,10 +20,15 @@ import tarfile
 ROOT = Path(__file__).resolve().parent.parent
 META = ROOT / 'shared/countries/sources.json'
 meta = json.loads(META.read_text())
-inputs = [Path(p) for p in sys.argv[1:]]
-if len(inputs) != 2:
-    sys.exit('Нужны CSV.gz DB-IP и архив flag-icons.tar.gz')
-for path, source in zip(inputs, (meta['database'], meta['flags'])):
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--flags-only', action='store_true')
+parser.add_argument('inputs', nargs='+', type=Path)
+args = parser.parse_args()
+inputs = args.inputs
+if len(inputs) != (1 if args.flags_only else 2):
+    parser.error('Нужен архив flag-icons.tar.gz, а без --flags-only перед ним CSV.gz DB-IP')
+sources = (meta['flags'],) if args.flags_only else (meta['database'], meta['flags'])
+for path, source in zip(inputs, sources):
     if hashlib.sha256(path.read_bytes()).hexdigest() != source['sha256']:
         sys.exit('SHA256 не совпадает: ' + path.name)
 
@@ -35,21 +42,29 @@ flags.mkdir(parents=True, exist_ok=True)
 svgdir = out / 'svg'
 svgdir.mkdir(exist_ok=True)
 known = set()
-with tarfile.open(inputs[1]) as archive:
+with tarfile.open(inputs[-1]) as archive:
     for member in archive.getmembers():
         name = Path(member.name)
-        if '/flags/1x1/' not in member.name or name.suffix != '.svg' or len(name.stem) != 2:
+        if '/flags/4x3/' not in member.name or name.suffix != '.svg' or len(name.stem) != 2:
             continue
         code = name.stem.upper()
         if not code.isascii() or not code.isalpha() or code in ('XX', 'EU', 'UN'):
             continue
         source = archive.extractfile(member).read()
         (svgdir / (code + '.svg')).write_bytes(source)
-        cairosvg.svg2png(bytestring=source, write_to=str(flags / (code + '.png')), output_width=112, output_height=112)
+        cairosvg.svg2png(bytestring=source, write_to=str(flags / (code + '.png')), output_width=112, output_height=84)
         known.add(code)
     license_file = next(m for m in archive.getmembers() if m.name.endswith('/LICENSE'))
     (out / 'LICENSE-flags.txt').write_bytes(archive.extractfile(license_file).read())
 cairosvg.svg2png(url=str(svgdir / 'UNKNOWN.svg'), write_to=str(flags / 'UNKNOWN.png'), output_width=112, output_height=112)
+
+preview = ROOT / 'docs/design/html/assets/countries'
+preview.mkdir(parents=True, exist_ok=True)
+for image in flags.glob('*.png'):
+    shutil.copyfile(image, preview / image.name)
+if args.flags_only:
+    print(f'Флагов 4:3: {len(known)}; геобаза не менялась')
+    sys.exit(0)
 
 rows = []
 with gzip.open(inputs[0], 'rt', encoding='utf-8') as source:
@@ -71,8 +86,3 @@ with (out / 'country.bin.gz').open('wb') as file:
     with gzip.GzipFile(filename='', mode='wb', fileobj=file, mtime=0, compresslevel=9) as compressed:
         compressed.write(raw)
 print(f'Стран: {len(known)}; диапазонов: {len(rows)}; база: {len(raw)} байт')
-
-preview = ROOT / 'docs/design/html/assets/countries'
-preview.mkdir(parents=True, exist_ok=True)
-for image in flags.glob('*.png'):
-    shutil.copyfile(image, preview / image.name)

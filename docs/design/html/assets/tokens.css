@@ -1,7 +1,7 @@
 /*
   Сгенерировано scripts/gen-design-html.cs из shared/specifications/design-tokens.json.
   Руками не править: поменять токены и запустить «dotnet run scripts/gen-design-html.cs».
-  tokens-sha256: d3dd9c20854c589d00eb49ef634c90448fcbf174dd7e096f87ebacedeb7d74f1
+  tokens-sha256: 1c8fd1da62229c6b79a20eff00a5e0df1777ecd392e74c41f2d3c957cce37b27
 */
 :root {
   /* color */
@@ -162,6 +162,7 @@
   --pg-glass-fallback: #EEF2F8;
   /* layout */
   --pg-layout-country-flag-size: 28px;
+  --pg-layout-country-flag-height: 21px;
   --pg-layout-desktop-window-width: 440px;
   --pg-layout-desktop-window-height: 760px;
   --pg-layout-mobile-width-min: 360px;

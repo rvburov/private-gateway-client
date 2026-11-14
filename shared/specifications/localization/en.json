@@ -1913,5 +1913,14 @@
   "android.update.downloading": "Downloading update {0}…",
   "android.update.badFile": "The update file failed verification and will not be installed. Try again.",
   "android.update.allow": "Allow Private Gateway to install updates: Android opens the setting, then press “Download and install” again.",
-  "android.update.failed": "The update could not be installed — try again or download the new version from the site."
+  "android.update.failed": "The update could not be installed — try again or download the new version from the site.",
+  "diag.result.no_reply": "The check received no reply from the service. This request did not confirm the protection state.",
+  "diag.result.unsupported": "The installed service does not support this check. Update the service together with the app.",
+  "diag.result.access_denied": "The service denied the check. Try again after access is restored.",
+  "diag.result.check_failed": "The service could not complete the check. Try again.",
+  "diag.result.incomplete": "The service did not return this check result. Try again; if it persists, update the service.",
+  "diag.result.unknown.chip": "No result",
+  "about.update.progress.plain": "{0} of {1}",
+  "account.logout.unsaved": "Connection is blocked, but sign-out could not be saved. The app will retry automatically.",
+  "secrets.operation.failed": "Secure storage access is unavailable. Allow access and try again."
 }

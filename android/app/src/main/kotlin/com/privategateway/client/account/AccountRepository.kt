@@ -33,9 +33,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -53,6 +55,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
+import java.time.Duration
 import java.time.Instant
 import java.util.Base64
 import java.util.UUID
@@ -83,10 +86,13 @@ data class AccountInfo(
     val checkedAt: Instant?,
 )
 
-/** Почему экран входа показан снова: доступ отозван на сайте или срок прошел без подтверждения. */
+/** Почему экран входа показан снова: отзыв, истечение срока или выход, который пока не удалось сохранить. */
 enum class AccountNotice {
     Revoked,
     Expired,
+
+    /** Подключение уже запрещено, но оба способа сохранить выход пока отказали. */
+    SignOutNotSaved,
 }
 
 /** Вход: [info] — сохраненный вход (null — входа нет), [notice] — почему вход нужен снова (до следующего входа). */
@@ -123,11 +129,11 @@ fun interface UpdatesFeedSource {
  * DataStore; без работающего хранилища ключей вход не выполняется. Рядом, не секретом, — срок, почта, имя, имя устройства и
  * время последней проверки; uid устройства создается один раз на установку и при выходе остается.
  *
- * Проверка доступа: при запуске процесса, при открытии окна и раз в 30 минут. Отзыв — только ответ 401: токен стирается,
- * защита выключается, окно показывает вход с «Доступ отозван». Без ответа сайта действует последний подтвержденный срок;
- * он прошел — выход как при истечении. В журнал «Проверки» — только итог, без токена, почты и кодов.
+ * Проверка сайта: при запуске процесса, при открытии окна и раз в 30 минут. Известный срок отслеживается отдельно,
+ * независимо от сети. Отзыв — только ответ 401: доступ запрещается, защита выключается, окно показывает вход с
+ * «Доступ отозван». Без ответа сайта действует последний подтвержденный срок. В журнал — только итог, без секретов.
  *
- * Вход стирается всегда раньше, чем выключается защита: служба, поднимая туннель, перепроверяет вход в конце подключения, и
+ * Доступ запрещается всегда раньше, чем выключается защита: служба, поднимая туннель, перепроверяет вход в конце подключения, и
  * выход, который пришелся на подключение (монитор еще «Выключено» — команда выключить не уходит), туннель не оставит
  * (решение 646). Сбой хранилища и любая ошибка проверки процесс не роняют и проверки по расписанию не останавливают (645).
  */
@@ -139,6 +145,7 @@ class AccountRepository @Inject constructor(
     private val control: TunnelControl,
     private val monitor: TunnelMonitor,
     private val journal: TunnelJournal,
+    private val logoutFence: AccountLogoutFence,
 ) : UpdatesFeedSource {
     // Ошибка, которую не поймали ниже, — в журнал, а не в обработчик потока: тот завершил бы процесс вместе со службой VPN.
     private val scope = CoroutineScope(
@@ -149,6 +156,25 @@ class AccountRepository @Inject constructor(
     private val lock = Mutex()
     private val notice = MutableStateFlow<AccountNotice?>(null)
     private var started = false
+    private val accessLock = Any()
+    private var generation = 0L
+    private var cacheVersion = 0L
+    private val denied = MutableStateFlow(logoutFence.pending())
+    private val expiryWake = Channel<Unit>(Channel.CONFLATED)
+
+    @Volatile
+    private var cachedPreferences: Preferences? = null
+
+    @Volatile
+    private var cleanupPending = denied.value
+
+    private var logoutAttempt: Long? = null
+
+    private var deniedReason: AccountNotice? = null
+
+    /** Предельная пауза при изменении часов или повторе неудачной очистки; сетевой опрос от нее не зависит. */
+    @VisibleForTesting
+    internal var expiryPollMs = 60_000L
 
     /** Часы — для тестов срока. */
     @VisibleForTesting
@@ -175,7 +201,12 @@ class AccountRepository @Inject constructor(
      * не прочитано ничего — экран входа (иначе пустое окно навсегда). Испорченный файл заменяет обработчик в AppModule.
      */
     private val preferences: Flow<Preferences> = store.data
-        .onEach { readOnce = true }
+        .onEach {
+            readOnce = true
+            // Flow может доставить прежний снимок уже после завершения новой записи. Он не должен вернуть старый срок.
+            synchronized(accessLock) { if (cachedPreferences == null) cachedPreferences = it }
+            expiryWake.trySend(Unit)
+        }
         .retryWhen { failure, attempt ->
             if (failure !is IOException) {
                 return@retryWhen false
@@ -192,7 +223,9 @@ class AccountRepository @Inject constructor(
         }
 
     /** Вход; null — хранилище еще не прочитано (экран входа не мелькает у тех, кто вошел). */
-    val state: StateFlow<AccountState?> = combine(preferences, notice) { prefs, why -> AccountState(info(prefs), why) }
+    val state: StateFlow<AccountState?> = combine(preferences, notice, denied) { prefs, why, blocked ->
+        AccountState(if (blocked) null else info(prefs), why)
+    }
         .stateIn(scope, SharingStarted.Eagerly, null)
 
     /**
@@ -200,14 +233,16 @@ class AccountRepository @Inject constructor(
      * выход или отзыв, записанный только что, служба должна увидеть сразу. Хранилище не прочиталось — по последнему известному.
      */
     suspend fun allowed(): Boolean {
+        if (denied.value) return false
         val prefs = read()
-        val info = if (prefs != null) info(prefs) else state.value?.info
-        return info != null && AccountGate.allowed(info.expiresAt, clock())
+        val info = if (prefs != null) info(prefs) else cachedPreferences?.let(::info)
+        return !denied.value && info != null && AccountGate.allowed(info.expiresAt, clock())
     }
 
     /** То же без ожидания — для плитки в шторке: хранилище еще не прочитано — нет. */
     fun allowedNow(): Boolean {
-        val info = state.value?.info ?: return false
+        if (denied.value) return false
+        val info = cachedPreferences?.let(::info) ?: return false
         return AccountGate.allowed(info.expiresAt, clock())
     }
 
@@ -225,6 +260,7 @@ class AccountRepository @Inject constructor(
      * не больше одного из [code] (2FA) и [recovery] (резервный код). Хранилище ключей или файл не работают — [AccountError.Store].
      */
     suspend fun login(email: String, password: String, code: String?, recovery: String?): LoginResult = lock.withLock {
+        val attempt = currentGeneration()
         withContext(Dispatchers.IO) {
             if (!boxWorks()) {
                 journal.warning("account sign-in  key store unavailable")
@@ -253,8 +289,14 @@ class AccountRepository @Inject constructor(
                 }
             }
 
+            if (attempt != currentGeneration()) {
+                // Выход во время запроса входа: поздний ответ не возвращает отмененный доступ.
+                scope.launch(Dispatchers.IO) { source.logout(session.token) }
+                return@withContext LoginResult.Failed(AccountError.Store)
+            }
             try {
                 save(session)
+                logoutFence.allow()
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
@@ -264,7 +306,24 @@ class AccountRepository @Inject constructor(
                 return@withContext LoginResult.Failed(AccountError.Store)
             }
 
-            notice.value = null
+            val accepted = synchronized(accessLock) {
+                if (generation != attempt) {
+                    false
+                } else {
+                    generation++
+                    denied.value = false
+                    cleanupPending = false
+                    deniedReason = null
+                    notice.value = null
+                    true
+                }
+            }
+            if (!accepted) {
+                clearStored()
+                scope.launch(Dispatchers.IO) { source.logout(session.token) }
+                return@withContext LoginResult.Failed(AccountError.Store)
+            }
+            expiryWake.trySend(Unit)
             lastCheck = clock()
             // Защита не включилась из-за входа (PGC-ACC-001) — вход есть, этой ошибки больше нет: главная снова «Выключено», а
             // уведомление о сбое ProtectionNotifier убирает по смене состояния. Другие ошибки остаются.
@@ -275,17 +334,21 @@ class AccountRepository @Inject constructor(
     }
 
     /**
-     * Выход («Настройки» → «Выйти»): вход стирается сразу (uid остается) — окно тут же показывает экран входа. Потом сайту
+     * Выход («Настройки» → «Выйти»): доступ запрещается сразу (uid остается), окно показывает вход; запись очищается,
+     * отдельный маркер запрещает ее восстановление при сбое DataStore. Потом сайту
      * POST /api/app/logout, пока защита еще идет: запрос, как весь трафик приложения, идет через туннель, а во время его
      * разборки оборвался бы, и сайт не снял бы устройство. Ответа ждем не дольше [logoutWaitMs], и только потом защита
-     * выключается. Ошибка сети или хранилища выходу не мешает (решение 647).
+     * выключается. Ошибка записи не разрешает подключение снова; незакрепленный выход виден в [AccountNotice].
      */
-    suspend fun logout() {
+    suspend fun logout() = performLogout(block(null, logout = true))
+
+    private suspend fun performLogout(attempt: Long) {
         try {
             val token = lock.withLock {
+                if (attempt != currentGeneration()) return
                 seeded = false
-                val sealed = read()?.get(TOKEN)
-                withContext(Dispatchers.IO) { clear(null) }
+                val sealed = read()?.get(TOKEN) ?: cachedPreferences?.get(TOKEN)
+                withContext(NonCancellable + Dispatchers.IO) { clearStored() }
                 journal.info("account signed out")
                 when (val opened = sealed?.let(::open)) {
                     is Opened.Token -> opened.value
@@ -294,22 +357,35 @@ class AccountRepository @Inject constructor(
             }
 
             if (token != null) {
-                // Отдельной задачей: запрос в потоке ввода-вывода по таймауту не прерывается, а выход ждать его не должен.
-                val sent = scope.async(Dispatchers.IO) { source.logout(token) }
+                // Запрос идет еще под защитой; неудачная запись не мешает отзыву токена на сайте.
+                val sent = scope.async(Dispatchers.IO) {
+                    try {
+                        source.logout(token)
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        journal.warning("account sign-out  site error " + e.javaClass.simpleName)
+                    }
+                }
                 if (withTimeoutOrNull(logoutWaitMs) { sent.join() } == null) {
                     journal.warning("account sign-out  site did not answer in time")
                 }
             }
-        } catch (e: IOException) {
-            journal.warning("account sign-out  storage error " + e.javaClass.simpleName)
         } finally {
-            stopProtection()
+            withContext(NonCancellable) {
+                lock.withLock {
+                    synchronized(accessLock) { if (logoutAttempt == attempt) logoutAttempt = null }
+                    if (attempt == currentGeneration() && denied.value) stopProtection()
+                }
+            }
+            expiryWake.trySend(Unit)
         }
     }
 
-    /** Выход из окна: в своей области — окно, закрытое во время выхода, его не обрывает, а нажатие не ждет сайта. */
+    /** Выход запрещает подключение сразу; закрытие окна не отменяет сохранение выхода и отзыв токена. */
     fun signOut() {
-        scope.launch { logout() }
+        val attempt = block(null, logout = true)
+        scope.launch { performLogout(attempt) }
     }
 
     /**
@@ -322,7 +398,10 @@ class AccountRepository @Inject constructor(
         }
 
         try {
-            withContext(Dispatchers.IO) { check() }
+            withContext(Dispatchers.IO) {
+                if (enforceExpiry()) return@withContext
+                if (!retryClear(stop = true)) check()
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -341,10 +420,11 @@ class AccountRepository @Inject constructor(
             return UpdatesFeed.Unreachable
         }
 
-        val sealed = try {
+        val (sealed, attempt) = try {
             lock.withLock {
+                if (denied.value) return UpdatesFeed.SignedOut
                 val stored = read() ?: return UpdatesFeed.Unreachable
-                stored[TOKEN] ?: return UpdatesFeed.SignedOut
+                (stored[TOKEN] ?: return UpdatesFeed.SignedOut) to currentGeneration()
             }
         } catch (e: CancellationException) {
             throw e
@@ -353,6 +433,7 @@ class AccountRepository @Inject constructor(
             return UpdatesFeed.Unreachable
         }
 
+        if (enforceExpiry() || denied.value) return UpdatesFeed.SignedOut
         val token = when (val opened = withContext(Dispatchers.IO) { open(sealed) }) {
             is Opened.Token -> opened.value
             else -> {
@@ -362,10 +443,13 @@ class AccountRepository @Inject constructor(
         }
 
         val feed = source.updates(token, channel)
+        if (attempt != currentGeneration() || denied.value) {
+            return if (denied.value) UpdatesFeed.SignedOut else UpdatesFeed.Unreachable
+        }
         if (feed == UpdatesFeed.Revoked) {
             journal.warning("account updates  access revoked")
             try {
-                finish(sealed, AccountNotice.Revoked)
+                finish(sealed, attempt, AccountNotice.Revoked)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -378,26 +462,43 @@ class AccountRepository @Inject constructor(
 
     /** Окно открылось: проверить, если давно не спрашивали сайт. */
     fun checkNow() {
-        val last = lastCheck
-        if (last != null && clock().toEpochMilli() - last.toEpochMilli() < AccountGate.RECHECK_AFTER_MS) {
-            return
+        // Возобновление окна всегда проверяет локальный срок, даже если сайт только что спрашивали.
+        expiryWake.trySend(Unit)
+        scope.launch {
+            if (enforceExpiry()) return@launch
+            val last = lastCheck
+            if (last == null || clock().toEpochMilli() - last.toEpochMilli() >= AccountGate.RECHECK_AFTER_MS) refresh()
         }
-
-        scope.launch { refresh() }
     }
 
-    /** Проверка при запуске и раз в 30 минут, пока жив процесс. Повторный вызов — ничего. */
+    /** Сетевой опрос и локальный срок — независимые задачи: зависший сайт не продлевает доступ. */
     @Synchronized
     fun start() {
-        if (started) {
-            return
-        }
-
+        if (started) return
         started = true
         scope.launch {
             while (true) {
                 refresh()
                 delay(AccountGate.CHECK_EVERY_MS)
+            }
+        }
+        scope.launch {
+            while (true) {
+                try {
+                    withContext(Dispatchers.IO) {
+                        enforceExpiry()
+                        retryClear()
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    // Ошибка отдельной попытки не должна навсегда остановить контроль срока и повтор очистки.
+                    journal.warning("account deadline  failed " + e.javaClass.simpleName)
+                }
+                val expires = if (denied.value) null else cachedPreferences?.let(::info)?.expiresAt
+                val wait = expires?.let { Duration.between(clock(), it).toMillis().coerceAtLeast(1L) }
+                    ?.coerceAtMost(expiryPollMs) ?: expiryPollMs
+                withTimeoutOrNull(wait) { expiryWake.receive() }
             }
         }
     }
@@ -410,8 +511,17 @@ class AccountRepository @Inject constructor(
     suspend fun seedForTests(session: AccountSession) {
         lock.withLock {
             seeded = true
-            withContext(Dispatchers.IO) { save(session) }
-            notice.value = null
+            withContext(Dispatchers.IO) {
+                save(session)
+                logoutFence.allow()
+            }
+            synchronized(accessLock) {
+                generation++
+                denied.value = false
+                cleanupPending = false
+                notice.value = null
+            }
+            expiryWake.trySend(Unit)
         }
     }
 
@@ -420,7 +530,8 @@ class AccountRepository @Inject constructor(
     suspend fun signOutForTests() {
         lock.withLock {
             seeded = false
-            clear(null)
+            block(null)
+            clearStored()
         }
     }
 
@@ -433,8 +544,8 @@ class AccountRepository @Inject constructor(
      * если это все тот же вход: вышли или вошли заново, пока шел запрос, — ответ про старый токен отбрасывается.
      */
     private suspend fun check() {
-        val (sealed, expires) = lock.withLock {
-            if (seeded) {
+        val (sealed, expires, attempt) = lock.withLock {
+            if (seeded || denied.value) {
                 return
             }
 
@@ -447,14 +558,15 @@ class AccountRepository @Inject constructor(
                 return
             }
 
-            current to stored[EXPIRES]?.let(Instant::ofEpochMilli)
+            Triple(current, stored[EXPIRES]?.let(Instant::ofEpochMilli), currentGeneration())
         }
 
+        if (enforceExpiry() || attempt != currentGeneration()) return
         val opened = open(sealed)
         if (expires == null || opened == Opened.Lost) {
             // Ключ Keystore потерян навсегда или запись неполная: вход не прочитать — войти заново.
             journal.warning("account check  sign-in unreadable")
-            finish(sealed, null)
+            finish(sealed, attempt, null)
             return
         }
 
@@ -470,15 +582,19 @@ class AccountRepository @Inject constructor(
         when (val verdict = AccountGate.verdict(expires, status, clock())) {
             is AccessVerdict.Keep -> {
                 if (status is StatusResult.Ok) {
-                    store.edit { prefs ->
-                        // Вход стерли или сменили, пока шел запрос, — подтверждение его не возвращает.
-                        if (prefs[TOKEN] == sealed) {
-                            prefs[EXPIRES] = verdict.expiresAt.toEpochMilli()
-                            prefs[EMAIL] = status.user.email
-                            prefs[NAME] = status.user.displayName
-                            prefs[DEVICE] = status.device.name
-                            prefs[CHECKED] = clock().toEpochMilli()
+                    lock.withLock {
+                        if (attempt != currentGeneration() || denied.value) return
+                        val updated = store.edit { prefs ->
+                            if (prefs[TOKEN] == sealed && attempt == currentGeneration() && !denied.value) {
+                                prefs[EXPIRES] = verdict.expiresAt.toEpochMilli()
+                                prefs[EMAIL] = status.user.email
+                                prefs[NAME] = status.user.displayName
+                                prefs[DEVICE] = status.device.name
+                                prefs[CHECKED] = clock().toEpochMilli()
+                            }
                         }
+                        rememberWritten(updated)
+                        expiryWake.trySend(Unit)
                     }
                 }
 
@@ -487,44 +603,96 @@ class AccountRepository @Inject constructor(
 
             AccessVerdict.Revoked -> {
                 journal.warning("account check  access revoked")
-                finish(sealed, AccountNotice.Revoked)
+                finish(sealed, attempt, AccountNotice.Revoked)
             }
 
             AccessVerdict.Expired -> {
                 journal.warning("account check  sign-in expired")
-                finish(sealed, AccountNotice.Expired)
+                finish(sealed, attempt, AccountNotice.Expired)
             }
         }
     }
 
-    /** Вход [sealed] больше не действует: стереть его, если он все еще тот же, и только потом выключить защиту. */
-    private suspend fun finish(sealed: String, why: AccountNotice?) {
+    /** Старый ответ не отзывает новый вход, даже если сайт выдал тот же токен или хранилище сейчас не читается. */
+    private suspend fun finish(sealed: String, attempt: Long, why: AccountNotice?) {
         lock.withLock {
-            val current = read()
-            if (current != null && current[TOKEN] != sealed) {
-                return
-            }
-
+            if (attempt != currentGeneration() || denied.value) return
+            val current = read() ?: cachedPreferences
+            if (current?.get(TOKEN) != sealed) return
+            block(why)
             try {
-                clear(why)
+                withContext(NonCancellable + Dispatchers.IO) { clearStored() }
             } finally {
                 stopProtection()
             }
         }
     }
 
+    /** Известный срок проверяется и при ошибке чтения DataStore: последняя подтвержденная запись остается в памяти. */
+    @VisibleForTesting
+    internal suspend fun enforceExpiry(): Boolean = lock.withLock {
+        if (denied.value) return@withLock false
+        val current = cachedPreferences ?: return@withLock false
+        val expires = info(current)?.expiresAt ?: return@withLock false
+        if (clock().isBefore(expires)) return@withLock false
+        journal.warning("account check  sign-in expired")
+        block(AccountNotice.Expired)
+        try {
+            withContext(NonCancellable + Dispatchers.IO) { clearStored() }
+        } finally {
+            stopProtection()
+        }
+        true
+    }
+
+    private fun currentGeneration(): Long = synchronized(accessLock) { generation }
+
+    /** Немедленный запрет, до любой записи на диск и ожидания текущего сетевого запроса. */
+    private fun block(why: AccountNotice?, logout: Boolean = false): Long = synchronized(accessLock) {
+        generation++
+        if (logout) logoutAttempt = generation
+        deniedReason = why
+        notice.value = why
+        denied.value = true
+        cleanupPending = true
+        generation
+    }
+
+    /** Очистка и остановка принадлежат одному поколению: новый вход не может вклиниться между ними. */
+    private suspend fun retryClear(stop: Boolean = false): Boolean = lock.withLock {
+        if (!denied.value) return@withLock false
+        val loggingOut = synchronized(accessLock) { logoutAttempt == generation }
+        if (!loggingOut) {
+            if (cleanupPending) clearStored()
+            if (stop) stopProtection()
+        }
+        true
+    }
+
     /** Хранилище сейчас; не прочиталось — null и запись в журнал (без содержимого). */
-    private suspend fun read(): Preferences? = try {
-        store.data.first()
-    } catch (e: IOException) {
-        journal.warning("account storage read failed  " + e.javaClass.simpleName)
-        null
+    private suspend fun read(): Preferences? {
+        val version = synchronized(accessLock) { cacheVersion }
+        return try {
+            val read = store.data.first()
+            synchronized(accessLock) {
+                if (cacheVersion == version) cachedPreferences = read
+                cachedPreferences ?: read
+            }
+        } catch (e: IOException) {
+            journal.warning("account storage read failed  " + e.javaClass.simpleName)
+            null
+        }
+    }
+
+    private fun rememberWritten(prefs: Preferences) = synchronized(accessLock) {
+        cacheVersion++
+        cachedPreferences = prefs
     }
 
     /** Запечатать токен и записать вход; не вышло — исключение, вход не сохранен. */
     private suspend fun save(session: AccountSession) {
         val sealed = Base64.getEncoder().encodeToString(box.seal(session.token.toByteArray(Charsets.UTF_8)))
-        store.edit { prefs ->
+        val saved = store.edit { prefs ->
             prefs[TOKEN] = sealed
             prefs[EXPIRES] = session.expiresAt.toEpochMilli()
             prefs[EMAIL] = session.user.email
@@ -532,24 +700,41 @@ class AccountRepository @Inject constructor(
             prefs[DEVICE] = session.device.name
             prefs.remove(CHECKED)
         }
-    }
-
-    /** Стереть вход (uid остается) и запомнить, почему экран входа показан снова. */
-    private suspend fun clear(why: AccountNotice?) {
-        // Причина — до записи: окно, увидев, что входа нет, сразу знает почему.
-        notice.value = why
-        store.edit { prefs ->
-            prefs.remove(TOKEN)
-            prefs.remove(EXPIRES)
-            prefs.remove(EMAIL)
-            prefs.remove(NAME)
-            prefs.remove(DEVICE)
-            prefs.remove(CHECKED)
-        }
+        rememberWritten(saved)
     }
 
     /**
-     * Защита идет, поднимается или на паузе — выключить; выключена — службу не будить. Вызывать после того, как вход стерт:
+     * Два независимых способа закрепить запрет: маленький маркер и удаление входа из DataStore. Маркер остается до нового
+     * входа. Не удалось ни то, ни другое — явно сообщаем и повторяем; токен в текущем процессе уже не дает доступа.
+     */
+    private suspend fun clearStored() {
+        var durable = false
+        try {
+            logoutFence.block()
+            durable = true
+        } catch (e: IOException) {
+            journal.warning("account sign-out  marker error " + e.javaClass.simpleName)
+        }
+        try {
+            val cleared = store.edit { prefs ->
+                prefs.remove(TOKEN)
+                prefs.remove(EXPIRES)
+                prefs.remove(EMAIL)
+                prefs.remove(NAME)
+                prefs.remove(DEVICE)
+                prefs.remove(CHECKED)
+            }
+            rememberWritten(cleared)
+            cleanupPending = false
+            durable = true
+        } catch (e: IOException) {
+            journal.warning("account sign-out  storage error " + e.javaClass.simpleName)
+        }
+        notice.value = if (durable) deniedReason else AccountNotice.SignOutNotSaved
+    }
+
+    /**
+     * Защита идет, поднимается или на паузе — выключить; выключена — службу не будить. Вызывать после запрета доступа:
      * подключение, которое монитор еще не показал, служба отклонит сама, перепроверив вход.
      */
     private fun stopProtection() {

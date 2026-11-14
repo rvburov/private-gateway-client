@@ -146,6 +146,7 @@ class GatewayVpnService : VpnService() {
     private val wake = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (getSystemService(PowerManager::class.java)?.isDeviceIdleMode == false) {
+                account.checkNow()
                 guardian?.nudge()
             }
         }
@@ -629,6 +630,7 @@ class GatewayVpnService : VpnService() {
                 lastNetwork = network
                 if (previous != null && previous != network) {
                     journal.info("network changed")
+                    account.checkNow()
                     guardian?.nudge()
                 }
             }

@@ -120,7 +120,7 @@ class UpdatesCardTest {
         compose.onNodeWithTag("about.updates.progress").assertExists()
         val locale = Locale.forLanguageTag(Texts.language(context.resources.configuration.locales))
         fun mb(bytes: Long) = String.format(locale, "%.1f", bytes / 1_048_576.0)
-        val bytes = context.getString(R.string.about_update_progress, mb(received), context.getString(R.string.about_update_mb, mb(total)))
+        val bytes = context.getString(R.string.about_update_progress_plain, mb(received), context.getString(R.string.about_update_mb, mb(total)))
         compose.onNodeWithTag("about.updates.bytes").assertTextEquals(bytes)
         assertEquals("18", mb(received).take(2))
         compose.onNodeWithTag("about.updates.install").assertTextEquals(context.getString(R.string.about_update_loading_button)).assertIsNotEnabled()
@@ -142,6 +142,7 @@ class UpdatesCardTest {
         compose.onNodeWithTag("about.updates.progress").assertExists()
         compose.onNodeWithTag("about.updates.bytes").assertDoesNotExist()
         compose.onNodeWithTag("about.updates.install").assertIsEnabled()
+        compose.onNodeWithTag("about.updates.check").assertIsNotEnabled()
 
         view = offer.copy(step = InstallStep.Allow)
         state.assertTextEquals(context.getString(R.string.android_update_allow))

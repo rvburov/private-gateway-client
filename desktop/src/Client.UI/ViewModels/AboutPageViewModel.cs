@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
@@ -142,6 +143,7 @@ public sealed partial class AboutPageViewModel : ObservableObject
             }))];
         settings.Changed += (_, _) => Refresh();
         updates.Changed += (_, _) => Refresh();
+        gateway.StatusChanged += (_, _) => Dispatcher.UIThread.Post(Refresh);
         Loc.Instance.LanguageChanged += (_, _) => Refresh();
     }
 
@@ -232,7 +234,9 @@ public sealed partial class AboutPageViewModel : ObservableObject
     /// </summary>
     public string UpdateProgressText => IsUpdateReady
         ? Loc.Instance[_settings.Current.KillSwitch ? "about.update.ready.text" : "about.update.ready.unprotected"]
-        : Loc.Instance.Format("about.update.progress", Tenths(_updates.Received), Loc.Instance.Format("about.update.mb", Tenths(_updates.Total)));
+        : Loc.Instance.Format(_gateway.Status is
+        { State: ConnectionState.Connected, Mode: ConnectionMode.Vpn, IsPaused: false, NetworkUnavailable: false, HasExitIpLeak: false }
+            ? "about.update.progress" : "about.update.progress.plain", Tenths(_updates.Received), Loc.Instance.Format("about.update.mb", Tenths(_updates.Total)));
 
     /// <summary>
     /// Главная кнопка карточки: служба ставит сама (или откатывает) — «Обновить сейчас» и дальше по шагам; нет (macOS,

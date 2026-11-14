@@ -4,6 +4,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -188,6 +189,11 @@ public sealed partial class ServersPageViewModel : ObservableObject
             var measured = await _catalog.RefreshAsync().ConfigureAwait(true);
             _toast.Show(Loc.Instance[measured ? "server.refreshed" : "server.refreshed.noPing"]);
         }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            // Отказ доступа к секретам при подготовке замера — обычный отказ операции, а не авария окна.
+            _toast.Show(Loc.Instance["secrets.operation.failed"], ToastViewModel.LongDuration);
+        }
         finally
         {
             IsRefreshing = false;
@@ -218,7 +224,17 @@ public sealed partial class ServersPageViewModel : ObservableObject
 
     /// <summary>Нажатие на строку: выбрать сервер, при включенной защите — переподключиться к нему.</summary>
     [RelayCommand]
-    private Task ChooseAsync(string serverId) => _controller.SwitchServerAsync(serverId);
+    private async Task ChooseAsync(string serverId)
+    {
+        try
+        {
+            await _controller.SwitchServerAsync(serverId).ConfigureAwait(true);
+        }
+        catch (SecretStoreException)
+        {
+            _toast.Show(Loc.Instance["secrets.operation.failed"]);
+        }
+    }
 
     /// <summary>«⋯» в строке: карточка сервера нижним листом поверх окна.</summary>
     [RelayCommand]
@@ -355,6 +371,8 @@ public sealed record ServerRowViewModel(
     IRelayCommand<string> OpenCommand,
     string? FailureHint = null)
 {
+    public string DisplayName => ServerNameDisplay.Format(Name);
+
     public bool IsSelected => Tag is not null;
 
     public bool IsSlow => Latency == LatencyKind.Slow;
@@ -364,7 +382,7 @@ public sealed record ServerRowViewModel(
     /// <summary>Подсказка к «нет»: пинг показан словом и цветом, причина — в подсказке.</summary>
     public string LatencyHint => FailureHint ?? Loc.Instance["latency.method"];
 
-    public string MoreName => Loc.Instance.Format("servers.more.name", Name);
+    public string MoreName => Loc.Instance.Format("servers.more.name", DisplayName);
 }
 
 /// <summary>Флажок протокола в фильтре.</summary>

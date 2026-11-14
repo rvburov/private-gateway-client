@@ -549,10 +549,13 @@ textarea.input { padding: 10px 12px; min-height: 96px; resize: none; line-height
   pointer-events: none; }
 .pg-gallery-group { margin: 28px 0 12px; }
 
-/* Страна IP: общий ресурс, 28 × 28, рамка есть и у белого флага, и у Земли. */
+/* Страна IP: слот 28 × 28, флаг 4:3 по центру без квадратной обрезки; Земля остается квадратной. */
 .country-glyph { width: var(--pg-layout-country-flag-size); height: var(--pg-layout-country-flag-size); flex: none;
-  display: inline-block; position: relative; overflow: hidden; vertical-align: middle;
-  border-radius: var(--pg-radius-country-flag); background: var(--pg-color-accent-base); }
-.country-glyph img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.country-glyph::after { content: ''; position: absolute; inset: 0; pointer-events: none;
-  border: var(--pg-space-hairline) solid var(--pg-color-line-strong); border-radius: inherit; }
+  display: inline-block; position: relative; vertical-align: middle; }
+.country-glyph img { display: block; width: 100%; height: var(--pg-layout-country-flag-height); object-fit: contain;
+  position: absolute; top: 50%; transform: translateY(-50%); border-radius: var(--pg-radius-country-flag); }
+.country-glyph::after { content: ''; position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+  height: var(--pg-layout-country-flag-height); box-sizing: border-box; pointer-events: none;
+  border: var(--pg-space-hairline) solid var(--pg-color-line-strong); border-radius: var(--pg-radius-country-flag); }
+.country-glyph:has(img[src$="/UNKNOWN.png"]) img,
+.country-glyph:has(img[src$="/UNKNOWN.png"])::after { height: var(--pg-layout-country-flag-size); }

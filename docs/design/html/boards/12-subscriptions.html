@@ -85,7 +85,8 @@
   списка серверов скрыт звездочками, состояние «Работает», «Ошибка» или «Вручную», число серверов и время. «Обновить» — крутится
   стрелка и всплывает итог, «Изменить» открывает лист с названием и новым адресом, корзина спрашивает подтверждение. «+» и
   «Добавить список серверов» ведут на «Добавить профиль». Выключите щит — под «Только через VPN» появится, почему списки серверов не обновляются,
-  а «Обновить» попросит сначала включить защиту.</p>
+  а «Обновить» попросит сначала включить защиту. Отказ в доступе к хранилищу показывает отдельное сообщение:
+  список и настройки сохраняются, операция доступна для повторной попытки после разрешения.</p>
 
 <div class="pg-screens">
   <section class="pg-screen" data-state="connected" data-caption="Списки серверов · защита включена">
@@ -727,6 +728,27 @@
     <div class="pg-island" data-active="settings"></div>
   </section>
 
+  <section class="pg-screen" data-state="connected" data-caption="Обновление: доступ к хранилищу отклонен">
+    <div class="toast is-open">Нет доступа к защищенному хранилищу. Разрешите доступ и повторите действие.</div>
+    <div class="pg-page">
+      <div class="sb-head">
+        <button class="btn-icon" data-nav="04-settings.html" aria-label="Назад"><i data-icon="Back" data-size="22"></i></button>
+        <span class="t-h1 pg-grow pg-ellipsis">Профили и списки серверов</span>
+      </div>
+      <div class="pg-stack pg-gap-12">
+        <div class="sb-card pg-stack pg-gap-8">
+          <span class="sb-name">Основной список</span>
+          <span class="sb-address">https://example.org/list/****</span>
+          <span class="t-small">25 серверов · обновлено 07:23</span>
+          <div class="pg-row sb-actions">
+            <button class="btn-small soft sb-update" data-spin data-toast="Нет доступа к защищенному хранилищу. Разрешите доступ и повторите действие."><i data-icon="Refresh" data-size="15"></i>Обновить</button>
+          </div>
+        </div>
+      </div>
+      <div class="pg-page-end"></div>
+    </div>
+    <div class="pg-island" data-active="settings"></div>
+  </section>
 </div>
 </body>
 </html>

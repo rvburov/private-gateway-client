@@ -34,6 +34,49 @@ public sealed class ServerCatalogStorageTests : IDisposable
     }
 
     [Fact]
+    public void Refused_secret_deletion_keeps_the_server_and_selection_for_a_retry()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse(SelfSigned), null);
+        var id = catalog.Selected!.Id;
+        var secret = _secrets.Values["server:" + id];
+        _secrets.DeleteFailure = new InvalidOperationException("удаление запрещено");
+
+        Should.Throw<InvalidOperationException>(() => catalog.Remove(id));
+
+        Catalog().Selected!.Id.ShouldBe(id);
+        catalog.Servers.ShouldHaveSingleItem().Id.ShouldBe(id);
+        _secrets.Values["server:" + id].ShouldBe(secret);
+        _secrets.DeleteFailure = null;
+        catalog.Remove(id);
+        Catalog().Servers.ShouldBeEmpty();
+        _secrets.Values.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Failed_database_delete_does_not_erase_the_server_secret()
+    {
+        var catalog = Catalog();
+        catalog.Add(Parse(SelfSigned), null);
+        var id = catalog.Selected!.Id;
+        var secret = _secrets.Values["server:" + id];
+        using var connection = new SqliteDatabase(_paths).Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TRIGGER refuse_delete BEFORE DELETE ON servers BEGIN SELECT RAISE(ABORT, 'delete refused'); END";
+        command.ExecuteNonQuery();
+
+        Should.Throw<Microsoft.Data.Sqlite.SqliteException>(() => catalog.Remove(id));
+
+        Catalog().Selected!.Id.ShouldBe(id);
+        _secrets.Values["server:" + id].ShouldBe(secret);
+        command.CommandText = "DROP TRIGGER refuse_delete";
+        command.ExecuteNonQuery();
+        catalog.Remove(id);
+        Catalog().Servers.ShouldBeEmpty();
+        _secrets.Values.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Import_keeps_secrets_in_the_os_store_and_out_of_the_database()
     {
         var catalog = Catalog();

@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
 import com.privategateway.client.account.AccountRepository
+import com.privategateway.client.account.AccountLogoutFence
 import com.privategateway.client.core.account.AccountDevice
 import com.privategateway.client.core.account.AccountError
 import com.privategateway.client.core.account.AccountSession
@@ -94,6 +95,7 @@ class AccountViewModelTest {
             NoControl,
             TunnelMonitor(),
             TunnelJournal(),
+            AccountLogoutFence(folder.root.resolve("signed-out")),
         )
         val model = AccountViewModel(repository)
         try {

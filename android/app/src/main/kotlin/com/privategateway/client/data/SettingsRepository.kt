@@ -14,11 +14,16 @@ import com.privategateway.client.core.settings.DnsChoice
 import com.privategateway.client.core.settings.RoutingSettings
 import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.updates.SemVer
+import com.privategateway.client.core.updates.UpdatePolicy
 import com.privategateway.client.core.vpn.ReconnectPolicy
 import com.privategateway.client.core.vpn.SystemVpn
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.IOException
 import javax.inject.Inject
 import javax.inject.Singleton
 import kotlin.random.Random
@@ -29,6 +34,9 @@ import kotlin.random.Random
  */
 data class UpdateMemo(val checkedAt: Long? = null, val found: String? = null)
 
+/** Сессия APK, переданная Android; подтверждение Intent на диск не записывается. */
+data class UpdateInstallation(val id: Int, val version: String, val committed: Boolean = false)
+
 /**
  * Настройки приложения (DataStore): выбранный сервер (меняется только нажатием пользователя), настройки туннеля — DNS,
  * IPv6 через сервер, локальная сеть мимо туннеля, подключение и ядро, маршрутизация, — подписок, уведомлений,
@@ -36,6 +44,11 @@ data class UpdateMemo(val checkedAt: Long? = null, val found: String? = null)
  */
 @Singleton
 class SettingsRepository @Inject constructor(private val store: DataStore<Preferences>) {
+    private val updatePolicyLock = Mutex()
+
+    /** Увиденный стоп не забывается в этом процессе при ошибке записи; следующий edit сначала сохраняет эти политики. */
+    private val pendingUpdatePolicies = mutableMapOf<String, UpdatePolicy>()
+
     val selectedServerId: Flow<String?> = store.data.map { it[SELECTED] }
 
     suspend fun select(id: String?) {
@@ -182,6 +195,74 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         }
     }
 
+    /** Неудача проверки не должна восстанавливаться после перезапуска как прежнее «последняя версия». */
+    suspend fun clearUpdateMemo() {
+        store.edit { preferences ->
+            preferences.remove(UPDATE_CHECKED)
+            preferences.remove(UPDATE_FOUND)
+        }
+    }
+
+    val updateInstallation: Flow<UpdateInstallation?> = store.data.map { preferences ->
+        val id = preferences[UPDATE_SESSION]
+        val version = preferences[UPDATE_TARGET]
+        when {
+            id == null && version == null -> null
+            id != null && id >= 0 && version != null && SemVer.parse(version) != null -> UpdateInstallation(id, version, preferences[UPDATE_COMMITTED] ?: false)
+            else -> throw IOException("Повреждена запись установки обновления")
+        }
+    }
+
+    /** Запись до commit установщика: при ошибке хранилища установка не начинается. */
+    suspend fun setUpdateInstallation(value: UpdateInstallation?) {
+        store.edit { preferences ->
+            if (value == null) {
+                preferences.remove(UPDATE_SESSION)
+                preferences.remove(UPDATE_TARGET)
+                preferences.remove(UPDATE_COMMITTED)
+            } else {
+                require(value.id >= 0 && SemVer.parse(value.version) != null)
+                preferences[UPDATE_SESSION] = value.id
+                preferences[UPDATE_TARGET] = value.version
+                preferences[UPDATE_COMMITTED] = value.committed
+            }
+        }
+    }
+
+    /**
+     * Максимальная принятая ревизия и SHA-256 точных подписанных байтов — отдельно для каждой версии/канала. В резервную
+     * копию не идет и при выходе из аккаунта не стирается. Сбой записи запрещает обновление, а не работу VPN.
+     */
+    suspend fun rememberUpdatePolicy(policy: UpdatePolicy): Boolean = updatePolicyLock.withLock {
+        val name = "update_policy_${policy.channel}_${policy.version}"
+        val pending = pendingUpdatePolicies[name]
+        if (pending == null || policy.revision > pending.revision) {
+            pendingUpdatePolicies[name] = policy
+        }
+        var accepted = false
+        store.edit { preferences ->
+            for ((entry, checkpoint) in pendingUpdatePolicies) {
+                val key = stringPreferencesKey(entry)
+                val saved = preferences[key]
+                val parts = saved?.split(':')
+                val revision = parts?.getOrNull(0)?.toLongOrNull()
+                val hash = parts?.getOrNull(1)
+                if (saved != null && (parts?.size != 2 || revision == null || revision !in 0..UpdatePolicy.MAX_REVISION ||
+                        hash == null || !Regex("[0-9a-f]{64}").matches(hash))) {
+                    throw IOException("Повреждена история политик обновления")
+                }
+
+                if (revision == null || checkpoint.revision > revision) {
+                    preferences[key] = "${checkpoint.revision}:${checkpoint.sha256}"
+                }
+            }
+            accepted = preferences[stringPreferencesKey(name)] == "${policy.revision}:${policy.sha256}"
+        }
+        // Только после успешного commit: ошибка/отмена записи оставляет максимум в памяти для следующей попытки.
+        pendingUpdatePolicies.clear()
+        accepted
+    }
+
     /** Номер этой установки 0–99 для частичной раскатки обновлений (как у службы десктопа): создается один раз. */
     suspend fun updateBucket(): Int {
         var bucket = 0
@@ -246,6 +327,9 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val UPDATE_CHECKED = longPreferencesKey("update_checked_at")
         val UPDATE_FOUND = stringPreferencesKey("update_found")
         val UPDATE_BUCKET = intPreferencesKey("update_bucket")
+        val UPDATE_SESSION = intPreferencesKey("update_session")
+        val UPDATE_TARGET = stringPreferencesKey("update_target")
+        val UPDATE_COMMITTED = booleanPreferencesKey("update_committed")
 
         private val BOOLEANS: Set<Preferences.Key<*>> = setOf(SUBS_ONLY_VPN, SUBS_NOTIFY, IPV6, ALLOW_LAN, STRICT_ROUTES, SNIFFING, MUX, TLS_FRAGMENT, CONNECT_ON_LAUNCH)
         private val INTS: Set<Preferences.Key<*>> = setOf(MTU, CONNECT_TIMEOUT)

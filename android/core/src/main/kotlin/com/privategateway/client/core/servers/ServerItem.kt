@@ -30,6 +30,9 @@ data class ServerItem(
     /** Название в списке, карточке и на главной: свое, если пользователь переименовал. */
     val displayName: String get() = customName ?: linkName
 
+    /** Подпись с отступами вокруг эмодзи; поле переименования использует исходный [displayName]. */
+    val title: String get() = ServerNames.forDisplay(displayName)
+
     /** «VLESS · REALITY». */
     val summary: String get() = ServerFacts.summary(protocol, security, transport)
 

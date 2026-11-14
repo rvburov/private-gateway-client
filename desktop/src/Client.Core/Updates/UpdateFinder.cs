@@ -128,7 +128,7 @@ public enum UpdateState
     /// <summary>Есть новее, подпись сходится.</summary>
     Available,
 
-    /// <summary>Проверить не удалось: лента сайта не получена или не читается.</summary>
+    /// <summary>Проверить не удалось: лента не получена, не читается или новый выпуск не прошел проверку доверия.</summary>
     Failed,
 
     /// <summary>
@@ -156,7 +156,8 @@ public static class UpdateFinder
 {
     /// <summary>Найти обновление; <paramref name="skip"/> — версия, с которой откатились (null — нет такой).</summary>
     public static UpdateSearch Find(
-        IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys, string current, UpdateChannel channel, int bucket, string? skip = null)
+        IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys, string current, UpdateChannel channel, int bucket, string? skip = null,
+        Func<UpdateManifest, byte[], string?>? acceptPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(releases);
         ArgumentNullException.ThrowIfNull(publicKeys);
@@ -167,7 +168,9 @@ public static class UpdateFinder
             return new UpdateSearch(UpdateState.NotSigned, null, []);
         }
 
+        ObservePolicies(releases, publicKeys, acceptPolicy);
         var skipped = new List<string>();
+        var failed = false;
         foreach (var release in releases.Where(r => channel == UpdateChannel.Beta || r.Channel == UpdateChannel.Stable)
             .OrderByDescending(r => r.Version, Comparer<string>.Create(SemVer.Compare)))
         {
@@ -182,9 +185,10 @@ public static class UpdateFinder
                 continue;
             }
 
-            var (parsed, problem) = Verify(publicKeys, release);
+            var (parsed, problem) = Verify(publicKeys, release, acceptPolicy);
             if (parsed is null)
             {
+                failed = true;
                 skipped.Add($"{release.Version}: {problem}");
                 continue;
             }
@@ -210,7 +214,7 @@ public static class UpdateFinder
             return new UpdateSearch(UpdateState.Available, parsed, skipped, release);
         }
 
-        return new UpdateSearch(UpdateState.UpToDate, null, skipped);
+        return new UpdateSearch(failed ? UpdateState.Failed : UpdateState.UpToDate, null, skipped);
     }
 
     /// <summary>
@@ -218,7 +222,8 @@ public static class UpdateFinder
     /// программы, версия в манифесте. Канал и раскатка не важны — версию ставили на этой машине.
     /// </summary>
     /// <returns>Манифест или null и почему.</returns>
-    public static (UpdateManifest? Manifest, string? Problem) Release(IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys, string version)
+    public static (UpdateManifest? Manifest, string? Problem) Release(IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys, string version,
+        Func<UpdateManifest, byte[], string?>? acceptPolicy = null)
     {
         ArgumentNullException.ThrowIfNull(releases);
         ArgumentNullException.ThrowIfNull(publicKeys);
@@ -227,13 +232,37 @@ public static class UpdateFinder
             return (null, "в программе нет ключей подписи");
         }
 
-        var release = releases.FirstOrDefault(r => r.Version == version);
-        return release is null ? (null, "выпуска нет в ленте сайта") : Verify(publicKeys, release);
+        ObservePolicies(releases, publicKeys, acceptPolicy);
+        var candidates = releases.Where(r => r.Version == version).Select(r => Verify(publicKeys, r, acceptPolicy, matchChannel: false)).ToList();
+        return candidates.FirstOrDefault(r => r.Manifest is not null) is { Manifest: not null } found ? found
+            : (null, candidates.FirstOrDefault().Problem ?? "выпуска нет в ленте сайта");
+    }
+
+    // Сначала запоминаются все подписанные изменения, в том числе стоп-кран и версии вне доли раскатки. Иначе
+    // старый разрешающий манифест в начале той же ленты обошел бы остановку, стоящую ниже него.
+    private static void ObservePolicies(IReadOnlyList<ReleaseEntry> releases, IReadOnlyList<string> publicKeys,
+        Func<UpdateManifest, byte[], string?>? acceptPolicy)
+    {
+        if (acceptPolicy is null)
+        {
+            return;
+        }
+
+        foreach (var release in releases)
+        {
+            // Историю определяет подписанный канал, не внешняя метка сайта. Откат вправе взять уже установленную
+            // версию из другого канала, поэтому и ее более новую политику надо увидеть до выбора дубликата.
+            if (Verify(publicKeys, release, matchChannel: false).Manifest is { } manifest)
+            {
+                _ = acceptPolicy(manifest, release.Manifest!);
+            }
+        }
     }
 
     // Манифест выпуска и его подпись: подпись сходится с ключом программы над точными байтами, манифест разбирается,
     // версия в нем — та же, что у выпуска в ленте.
-    private static (UpdateManifest? Manifest, string? Problem) Verify(IReadOnlyList<string> publicKeys, ReleaseEntry release)
+    private static (UpdateManifest? Manifest, string? Problem) Verify(IReadOnlyList<string> publicKeys, ReleaseEntry release,
+        Func<UpdateManifest, byte[], string?>? acceptPolicy = null, bool matchChannel = true)
     {
         if (release.Manifest is null || release.Signature is null)
         {
@@ -260,8 +289,11 @@ public static class UpdateFinder
             return (null, e.Message);
         }
 
-        return parsed.Version != release.Version
-            ? (null, $"манифест от другого выпуска ({parsed.Version}, {parsed.Channel})")
-            : (parsed, null);
+        if (parsed.Version != release.Version || (matchChannel && parsed.Channel != release.Channel))
+        {
+            return (null, $"манифест от другого выпуска ({parsed.Version}, {parsed.Channel})");
+        }
+
+        return acceptPolicy?.Invoke(parsed, release.Manifest) is { } problem ? (null, problem) : (parsed, null);
     }
 }

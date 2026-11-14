@@ -1,6 +1,8 @@
 package com.privategateway.client.data
 
 import androidx.datastore.preferences.core.PreferenceDataStoreFactory
+import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -16,6 +18,7 @@ import com.privategateway.client.core.settings.SubscriptionSettings
 import com.privategateway.client.core.settings.TlsFingerprint
 import com.privategateway.client.core.settings.TunnelSettings
 import com.privategateway.client.core.subscriptions.RefreshInterval
+import com.privategateway.client.core.updates.UpdatePolicy
 import com.privategateway.client.core.vpn.SystemVpn
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,12 +26,16 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.runBlocking
+import java.io.IOException
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -171,11 +178,75 @@ class SettingsRepositoryTest {
         assertEquals(UpdateMemo(1_000, "0.3.0"), settings.updateMemo.first())
         settings.setUpdateMemo(2_000, null)
         assertEquals(UpdateMemo(2_000, null), settings.updateMemo.first(), "новее нет — найденная версия стерта")
+        settings.clearUpdateMemo()
+        assertEquals(UpdateMemo(), settings.updateMemo.first(), "неудача не сохраняет старый успешный ответ")
 
         val bucket = settings.updateBucket()
         assertTrue(bucket in 0..99, "номер установки $bucket")
         assertEquals(bucket, settings.updateBucket(), "номер установки создается один раз")
         assertEquals(emptyMap<String, String>(), settings.export().filterKeys { it.startsWith("update") }, "в резервную копию не идет")
+    }
+
+    @Test
+    fun `installation and highest policy revision survive a real datastore restart`() = runBlocking<Unit> {
+        val file = folder.root.resolve("updates.preferences_pb")
+        val first = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { file })
+        val policy = UpdatePolicy("stable", "0.3.0", 2, "ab".repeat(32))
+        assertTrue(first.rememberUpdatePolicy(policy))
+        assertTrue(first.rememberUpdatePolicy(policy))
+        first.setUpdateInstallation(UpdateInstallation(73, "0.3.0"))
+        assertTrue(first.export().keys.none { it.startsWith("update") })
+        scope.cancel()
+        scope.coroutineContext[Job]?.join()
+
+        val again = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = again) { file })
+            assertEquals(UpdateInstallation(73, "0.3.0"), settings.updateInstallation.first())
+            assertFalse(settings.rememberUpdatePolicy(policy.copy(revision = 1)))
+            assertFalse(settings.rememberUpdatePolicy(policy.copy(sha256 = "cd".repeat(32))))
+            assertTrue(settings.rememberUpdatePolicy(policy.copy(revision = 3, sha256 = "cd".repeat(32))))
+            assertTrue(settings.rememberUpdatePolicy(policy.copy(version = "0.2.9", revision = 0)), "история отдельная для каждой версии")
+            settings.setUpdateInstallation(null)
+            assertNull(settings.updateInstallation.first())
+            assertFalse(settings.rememberUpdatePolicy(policy), "очистка установки не стирает историю раскатки")
+        } finally {
+            again.cancel()
+            again.coroutineContext[Job]?.join()
+        }
+    }
+
+    @Test
+    fun `corrupt policy history is an update failure instead of forgetting a previously seen stop`() = runBlocking<Unit> {
+        val store = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("updates.preferences_pb") }
+        val settings = SettingsRepository(store)
+        store.edit { it[stringPreferencesKey("update_policy_stable_0.3.0")] = "сломанная запись" }
+        assertFailsWith<IOException> { settings.rememberUpdatePolicy(UpdatePolicy("stable", "0.3.0", 1, "ab".repeat(32))) }
+    }
+
+    @Test
+    fun `a seen stop survives one failed write in memory and is flushed before accepting another feed`() = runBlocking<Unit> {
+        val actual = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("updates.preferences_pb") }
+        var fail = false
+        val faulty = object : DataStore<Preferences> {
+            override val data: Flow<Preferences> get() = actual.data
+            override suspend fun updateData(transform: suspend (t: Preferences) -> Preferences): Preferences {
+                if (fail) {
+                    fail = false
+                    throw IOException("временная ошибка записи")
+                }
+                return actual.updateData(transform)
+            }
+        }
+        val settings = SettingsRepository(faulty)
+        val old = UpdatePolicy("stable", "0.3.0", 1, "ab".repeat(32))
+        val stop = old.copy(revision = 2, sha256 = "cd".repeat(32))
+        assertTrue(settings.rememberUpdatePolicy(old))
+        fail = true
+        assertFailsWith<IOException> { settings.rememberUpdatePolicy(stop) }
+        assertFalse(settings.rememberUpdatePolicy(old), "следующая старая лента не забывает уже увиденный стоп")
+        assertFalse(SettingsRepository(actual).rememberUpdatePolicy(old), "успешная повторная запись сохранила стоп и для нового экземпляра")
+        assertTrue(settings.rememberUpdatePolicy(stop.copy(revision = 3)), "новая подписанная ревизия может возобновить выпуск")
     }
 
     @Test

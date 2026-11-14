@@ -26,7 +26,8 @@ public sealed class CountryFlagTests : WindowHarness
             var frame = flag.FindControl<Border>("Frame").ShouldNotBeNull();
             frame.CornerRadius.TopLeft.ShouldBe(5);
             frame.BorderThickness.Left.ShouldBe(1);
-            frame.Background.ShouldBeOfType<ImageBrush>();
+            frame.Bounds.Height.ShouldBe(ReferenceEquals(CountryFlag.ImageFor(flag.CountryCode), CountryFlag.ImageFor(null)) ? 28 : 21);
+            frame.Background.ShouldBeOfType<ImageBrush>().Stretch.ShouldBe(Stretch.Uniform);
         }
 
         CountryFlag.ImageFor("JP").ShouldNotBeSameAs(CountryFlag.ImageFor(null));
@@ -38,6 +39,7 @@ public sealed class CountryFlagTests : WindowHarness
             var name = Path.GetFileNameWithoutExtension(path);
             var image = CountryFlag.ImageFor(name);
             image.PixelSize.Width.ShouldBe(112);
+            image.PixelSize.Height.ShouldBe(name == "UNKNOWN" ? 112 : 84);
             if (name != "UNKNOWN")
             {
                 image.ShouldNotBeSameAs(CountryFlag.ImageFor(null), name + " должен быть встроен в приложение");
@@ -54,6 +56,24 @@ public sealed class CountryFlagTests : WindowHarness
         window.Content = examples;
         Dispatcher.UIThread.RunJobs();
         Snapshot(window, "country-flags-frame");
+    }
+
+    [AvaloniaFact]
+    public void Changing_country_keeps_a_rectangular_flag_and_a_square_earth_in_the_same_slot()
+    {
+        var (window, _) = Open();
+        var flag = new CountryFlag { CountryCode = "US" };
+        window.Content = new StackPanel { Children = { flag } };
+        Dispatcher.UIThread.RunJobs();
+        var frame = flag.FindControl<Border>("Frame").ShouldNotBeNull();
+        frame.Bounds.Size.ShouldBe(new Avalonia.Size(28, 21));
+        flag.Bounds.Size.ShouldBe(new Avalonia.Size(28, 28));
+        flag.CountryCode = "ZZ";
+        Dispatcher.UIThread.RunJobs();
+        frame.Bounds.Size.ShouldBe(new Avalonia.Size(28, 28));
+        flag.CountryCode = "JP";
+        Dispatcher.UIThread.RunJobs();
+        frame.Bounds.Size.ShouldBe(new Avalonia.Size(28, 21));
     }
 
     [AvaloniaFact]

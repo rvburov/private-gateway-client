@@ -82,6 +82,7 @@ public sealed class UpdateWatcher : IDisposable
     private SynchronizationContext? _context;
     private ITimer? _timer;
     private UpdateChannel _channel;
+    private int _accountEpoch;
 
     // Версия, о которой окно уже знает (видели в «О программе» или сказали уведомлением): о ней второй раз не говорят.
     private string? _known;
@@ -174,15 +175,26 @@ public sealed class UpdateWatcher : IDisposable
         }
 
         IsChecking = true;
+        var accountEpoch = _accountEpoch;
         Changed?.Invoke(this, EventArgs.Empty);
         try
         {
             Attempted = _time.GetUtcNow();
             var channel = _settings.Current.UpdateChannel;
             var (feed, missing) = await FeedAsync(channel, cancellationToken).ConfigureAwait(true);
+            if (accountEpoch != _accountEpoch)
+            {
+                return;
+            }
+
             var offer = missing is { } state
                 ? new UpdateOffer(state, _time.GetUtcNow())
                 : await _gateway.CheckForUpdateAsync(channel, force, feed, cancellationToken).ConfigureAwait(true);
+            if (accountEpoch != _accountEpoch)
+            {
+                return;
+            }
+
             if (Target is not null && Target != offer?.Version && Target != offer?.Rollback && Step is not (UpdateStep.Downloading or UpdateStep.Installing))
             {
                 // Служба больше не предлагает то, что качали, — загрузка ни к чему.
@@ -195,6 +207,10 @@ public sealed class UpdateWatcher : IDisposable
         {
             IsChecking = false;
             Changed?.Invoke(this, EventArgs.Empty);
+            if (accountEpoch != _accountEpoch && WaitsForSignIn)
+            {
+                Post(() => WaitsForSignIn);
+            }
         }
 
         if (Offer is { State: UpdateState.Available, Version: { } found } && found != _known)
@@ -223,19 +239,40 @@ public sealed class UpdateWatcher : IDisposable
         }
 
         (Step, Received, Total, Target) = (UpdateStep.Downloading, 0, 0, version);
+        var accountEpoch = _accountEpoch;
         Changed?.Invoke(this, EventArgs.Empty);
 
         // Билеты на файлы живут 30 минут — перед загрузкой лента берется заново. Не получили — и качать не по чему.
         var (feed, missing) = await FeedAsync(_settings.Current.UpdateChannel, cancellationToken).ConfigureAwait(true);
+        if (accountEpoch != _accountEpoch)
+        {
+            return;
+        }
+
         if (missing is not null)
         {
-            Step = UpdateStep.DownloadFailed;
+            if (missing == UpdateState.NoFeed)
+            {
+                // Отзыв входа — состояние аккаунта, а не неудача скачивания прежнего предложения.
+                Offer = new UpdateOffer(UpdateState.NoFeed, _time.GetUtcNow());
+                (Step, Received, Total, Target) = (UpdateStep.None, 0, 0, null);
+            }
+            else
+            {
+                Step = UpdateStep.DownloadFailed;
+            }
+
             Changed?.Invoke(this, EventArgs.Empty);
             return;
         }
 
         await foreach (var progress in _gateway.DownloadUpdateAsync(version, feed, cancellationToken).ConfigureAwait(true))
         {
+            if (accountEpoch != _accountEpoch)
+            {
+                return;
+            }
+
             (Received, Total) = (progress.Received, progress.Total);
             Step = progress.Ready ? UpdateStep.Ready : progress.Failed ? UpdateStep.DownloadFailed : UpdateStep.Downloading;
             Changed?.Invoke(this, EventArgs.Empty);
@@ -289,13 +326,27 @@ public sealed class UpdateWatcher : IDisposable
         }
 
         var feed = await _feeds.UpdatesFeedAsync(channel, cancellationToken).ConfigureAwait(true);
-        return feed is not null ? (feed, null) : (null, _feeds.IsSignedIn ? UpdateState.Failed : UpdateState.NoFeed);
+        return !_feeds.IsSignedIn ? (null, UpdateState.NoFeed)
+            : feed is not null ? (feed, null) : (null, UpdateState.Failed);
     }
 
     // Вошли, а ленты до этого не было («Войдите в аккаунт…») — спросить сразу, как после смены канала. Событий входа бывает
     // несколько подряд, поэтому условие проверяется еще раз, когда до вопроса дошла очередь: проверка — одна.
     private void OnAccountChanged(object? sender, EventArgs e)
     {
+        if (_feeds.IsRequired && !_feeds.IsSignedIn)
+        {
+            _accountEpoch++;
+            Offer = new UpdateOffer(UpdateState.NoFeed, _time.GetUtcNow());
+            if (Step != UpdateStep.Installing)
+            {
+                (Step, Received, Total, Target) = (UpdateStep.None, 0, 0, null);
+            }
+
+            Changed?.Invoke(this, EventArgs.Empty);
+            return;
+        }
+
         if (WaitsForSignIn)
         {
             Post(() => WaitsForSignIn);

@@ -1,7 +1,8 @@
 // Выпуск на GitHub из сборок трех ОС и APK (workflow release.yml) и доля раскатки:
 //
 //   dotnet run scripts/release.cs assemble <версия> <папка сборок> <папка выпуска> [доля %]
-//   dotnet run scripts/release.cs rollout <папка выпуска> <доля %>
+//   dotnet run scripts/release.cs rollout <папка выпуска> <доля %> <версия>
+//   dotnet run scripts/release.cs reuse <новая папка выпуска> <прежняя папка выпуска> <версия>
 //   dotnet run scripts/release.cs keygen <файл закрытого ключа вне репозитория>
 //
 // assemble: в папке сборок — по папке на ОС (артефакты release-<ОС> из publish.yml; APK Android — папка
@@ -18,7 +19,7 @@
 //     из него служба не поставит), а если они уже есть — ошибка: такой выпуск не примет ни один клиент;
 //   highlights манифеста — главное из секции версии в CHANGELOG.md (нет секции — ошибка); текст страницы выпуска
 //     собирает из той же секции scripts/release-notes.sh.
-// rollout: меняет долю раскатки в update.json уже опубликованного выпуска (0 — стоп-кран), подписывает его заново
+// rollout: проверяет прежнюю подпись и версию, увеличивает ревизию и меняет долю раскатки в update.json уже опубликованного выпуска (0 — стоп-кран), подписывает его заново
 // (подписанный без ключа не меняется) и обновляет строки в SHA256SUMS (workflow release-rollout.yml, он же отдает новую
 // долю сайту).
 // keygen: новый ключ подписи обновлений — закрытый в указанный файл (только вне репозитория, права 600), открытый — в
@@ -37,34 +38,100 @@ if (args is ["keygen", var privatePath])
     return KeyGen(Path.GetFullPath(privatePath));
 }
 
-if (args is ["rollout", var published, var share])
+if (args is ["reuse", var candidate, var previous, var retryVersion])
 {
-    // update.json и его подпись входят в SHA256SUMS: новая доля — новые суммы в тех же строках.
+    ReusePublished(candidate, previous, retryVersion);
+    return 0;
+}
+
+if (args is ["rollout", var published, var share, var expectedVersion])
+{
+    // До первой записи: старая подпись над исходными байтами, версия тега, ревизия, новый ключ и таблица сумм.
+    // Иначе измененный asset получил бы доверенную подпись обычной кнопкой смены доли.
     var manifestPath = Path.Combine(published, "update.json");
-    var manifest = JsonNode.Parse(File.ReadAllText(manifestPath))!.AsObject();
-    manifest["rollout"] = Percent(share, stop: true);
-    var signed = File.Exists(manifestPath + ".sig");
-    if (signed && SigningKey() is null)
+    if (new FileInfo(manifestPath).Length > 64 * 1024)
     {
-        throw new InvalidOperationException("Манифест подписан, а ключа подписи (UPDATE_SIGNING_KEY) нет: без новой подписи служба его не примет");
+        throw new InvalidOperationException("Манифест длиннее 64 КБ");
     }
 
-    File.WriteAllText(manifestPath, manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    var original = File.ReadAllBytes(manifestPath);
+    var signed = File.Exists(manifestPath + ".sig");
+    var keys = PublicKeys();
+    var rolloutSigningKey = SigningKey();
     if (signed)
     {
-        Sign(manifestPath, SigningKey()!);
+        if (new FileInfo(manifestPath + ".sig").Length > 1024)
+        {
+            throw new InvalidOperationException("Прежняя подпись манифеста длиннее 1 КБ: раскатка не изменена");
+        }
+
+        var oldSignature = File.ReadAllText(manifestPath + ".sig");
+        if (!Verify(original, oldSignature, keys))
+        {
+            throw new InvalidOperationException("Прежняя подпись манифеста не проверяется: раскатка не изменена");
+        }
+
+        if (rolloutSigningKey is null)
+        {
+            throw new InvalidOperationException("Манифест подписан, а ключа подписи (UPDATE_SIGNING_KEY) нет: раскатка не изменена");
+        }
+    }
+    else if (keys.Count > 0 || rolloutSigningKey is not null)
+    {
+        throw new InvalidOperationException("Прежней подписи манифеста нет: неподписанный выпуск нельзя переподписать сменой раскатки");
     }
 
+    var manifest = JsonNode.Parse(original)!.AsObject();
+    if (!Regex.IsMatch(expectedVersion, @"^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$")
+        || manifest["version"]?.GetValue<string>() != expectedVersion
+        || manifest["channel"]?.GetValue<string>() != (expectedVersion.Contains('-', StringComparison.Ordinal) ? "beta" : "stable"))
+    {
+        throw new InvalidOperationException("Манифест не соответствует версии и каналу запрошенного тега: раскатка не изменена");
+    }
+
+    const long maxRevision = 9_007_199_254_740_991;
+    var revision = 0L;
+    if (manifest.TryGetPropertyValue("revision", out var revisionNode)
+        && (revisionNode is not JsonValue value || !value.TryGetValue<long>(out revision) || revision is < 0 or >= maxRevision))
+    {
+        throw new InvalidOperationException("Ревизия манифеста неверна или исчерпана: раскатка не изменена");
+    }
+
+    manifest["rollout"] = Percent(share, stop: true);
+    manifest["revision"] = revision + 1;
+    var updated = Encoding.UTF8.GetBytes(manifest.ToJsonString(new JsonSerializerOptions { WriteIndented = true }) + "\n");
+    var signature = signed ? Signed(updated, rolloutSigningKey!, keys) : null;
     var sumsPath = Path.Combine(published, "SHA256SUMS");
-    File.WriteAllLines(sumsPath, File.ReadAllLines(sumsPath).Select(l => l[66..] is "update.json" or "update.json.sig" ? $"{Sha256(Path.Combine(published, l[66..]))}  {l[66..]}" : l));
-    Console.WriteLine($"{manifest["version"]}: раскатка {manifest["rollout"]} %{(signed ? ", подпись обновлена" : string.Empty)}");
+    var sums = File.ReadAllLines(sumsPath);
+    if (sums.Any(l => l.Length < 67 || l[64..66] != "  ")
+        || sums.Count(l => l[66..] == "update.json") != 1
+        || sums.Count(l => l[66..] == "update.json.sig") != (signed ? 1 : 0))
+    {
+        throw new InvalidOperationException("В SHA256SUMS нет однозначных строк манифеста и подписи: раскатка не изменена");
+    }
+
+    var revisedSums = sums.Select(l => l[66..] switch
+    {
+        "update.json" => $"{Convert.ToHexStringLower(SHA256.HashData(updated))}  update.json",
+        "update.json.sig" => $"{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(signature!)))}  update.json.sig",
+        _ => l,
+    }).ToArray();
+    File.WriteAllBytes(manifestPath, updated);
+    if (signature is not null)
+    {
+        File.WriteAllText(manifestPath + ".sig", signature);
+    }
+
+    File.WriteAllLines(sumsPath, revisedSums);
+    Console.WriteLine($"{expectedVersion}: раскатка {manifest["rollout"]} %, ревизия {revision + 1}{(signed ? ", подпись обновлена" : string.Empty)}");
     return 0;
 }
 
 if (args is not ["assemble", var version, var builds, var output, ..])
 {
     Console.Error.WriteLine("Использование: dotnet run scripts/release.cs assemble <версия> <папка сборок> <папка выпуска> [доля %]\n"
-        + "               dotnet run scripts/release.cs rollout <папка выпуска> <доля %>\n"
+        + "               dotnet run scripts/release.cs rollout <папка выпуска> <доля %> <версия>\n"
+        + "               dotnet run scripts/release.cs reuse <новая папка выпуска> <прежняя папка выпуска> <версия>\n"
         + "               dotnet run scripts/release.cs keygen <файл закрытого ключа вне репозитория>");
     return 2;
 }
@@ -132,6 +199,7 @@ var update = new JsonObject
     ["version"] = version,
     ["channel"] = beta ? "beta" : "stable",
     ["rollout"] = rollout,
+    ["revision"] = 1,
     ["published"] = Timestamp().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture),
     ["notes"] = NotesPage(),
     ["highlights"] = new JsonArray([.. Highlights(news).Select(h => JsonValue.Create(h))]),
@@ -255,7 +323,10 @@ static List<string> PublicKeys()
 
 // Подпись манифеста: ECDSA P-256 над точными байтами файла, SHA-256, DER в base64 — update.json.sig рядом. Подпись,
 // которую не проверить ни одним открытым ключом из репозитория, — ошибка: секрет и ключи в репозитории разошлись.
-static void Sign(string manifestPath, string privatePem)
+static void Sign(string manifestPath, string privatePem) =>
+    File.WriteAllText(manifestPath + ".sig", Signed(File.ReadAllBytes(manifestPath), privatePem, PublicKeys()));
+
+static string Signed(byte[] data, string privatePem, IReadOnlyList<string> publicKeys)
 {
     using var key = ECDsa.Create();
     key.ImportFromPem(privatePem);
@@ -264,20 +335,95 @@ static void Sign(string manifestPath, string privatePem)
         throw new InvalidOperationException("Ключ подписи обновлений — ECDSA P-256");
     }
 
-    var data = File.ReadAllBytes(manifestPath);
-    var signature = key.SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
-    var verified = PublicKeys().Any(pem =>
-    {
-        using var publicKey = ECDsa.Create();
-        publicKey.ImportFromPem(pem);
-        return publicKey.VerifyData(data, signature, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
-    });
-    if (!verified)
+    var signature = Convert.ToBase64String(key.SignData(data, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence));
+    if (!Verify(data, signature, publicKeys))
     {
         throw new InvalidOperationException("Подпись не проверяется ни одним ключом из shared/update/keys: открытый ключ этого секрета не в репозитории");
     }
 
-    File.WriteAllText(manifestPath + ".sig", Convert.ToBase64String(signature) + "\n");
+    return signature + "\n";
+}
+
+// Старый ключ может отличаться от ключа новой подписи: ротация сохраняет все еще доверенные открытые ключи.
+static bool Verify(byte[] data, string signature, IReadOnlyList<string> publicKeys)
+{
+    byte[] bytes;
+    try
+    {
+        bytes = Convert.FromBase64String(signature);
+    }
+    catch (FormatException)
+    {
+        return false;
+    }
+
+    return publicKeys.Any(pem =>
+    {
+        try
+        {
+            using var publicKey = ECDsa.Create();
+            publicKey.ImportFromPem(pem);
+            return publicKey.KeySize == 256
+                && publicKey.VerifyData(data, bytes, HashAlgorithmName.SHA256, DSASignatureFormat.Rfc3279DerSequence);
+        }
+        catch (Exception e) when (e is ArgumentException or CryptographicException)
+        {
+            return false;
+        }
+    });
+}
+
+// Повтор после неудачной отправки может дозагрузить те же файлы, но не сбросить стоп-кран или заменить пакет
+// под прежним номером. Уже опубликованные подписанные байты (включая ревизию и долю) остаются точными прежними.
+static void ReusePublished(string candidate, string previous, string version)
+{
+    var oldPath = Path.Combine(previous, "update.json");
+    var signaturePath = oldPath + ".sig";
+    if (new FileInfo(oldPath).Length > 64 * 1024 || !File.Exists(signaturePath) || new FileInfo(signaturePath).Length > 1024)
+    {
+        throw new InvalidOperationException("У опубликованного выпуска нет проверяемого манифеста: нужна новая версия");
+    }
+
+    var oldBytes = File.ReadAllBytes(oldPath);
+    var oldSignature = File.ReadAllText(signaturePath);
+    if (!Verify(oldBytes, oldSignature, PublicKeys()))
+    {
+        throw new InvalidOperationException("Прежняя подпись опубликованного выпуска не проверяется: повтор отменен");
+    }
+
+    var oldManifest = JsonNode.Parse(oldBytes)!.AsObject();
+    var newPath = Path.Combine(candidate, "update.json");
+    var newManifest = JsonNode.Parse(File.ReadAllBytes(newPath))!.AsObject();
+    if (oldManifest["version"]?.GetValue<string>() != version || newManifest["version"]?.GetValue<string>() != version
+        || !JsonNode.DeepEquals(oldManifest["channel"], newManifest["channel"])
+        || !JsonNode.DeepEquals(oldManifest["notes"], newManifest["notes"])
+        || !JsonNode.DeepEquals(oldManifest["highlights"], newManifest["highlights"])
+        || !JsonNode.DeepEquals(oldManifest["assets"], newManifest["assets"]))
+    {
+        throw new InvalidOperationException("Состав опубликованного выпуска изменился: используйте новую версию, прежняя политика сохранена");
+    }
+
+    var sumsPath = Path.Combine(candidate, "SHA256SUMS");
+    var sums = File.ReadAllLines(sumsPath);
+    var oldSums = File.ReadAllLines(Path.Combine(previous, "SHA256SUMS"));
+    static string[] Packages(string[] lines) => [.. lines.Where(l => l.Length >= 67 && l[66..] is not ("update.json" or "update.json.sig")).Order(StringComparer.Ordinal)];
+    if (sums.Any(l => l.Length < 67) || oldSums.Any(l => l.Length < 67)
+        || !Packages(sums).SequenceEqual(Packages(oldSums), StringComparer.Ordinal)
+        || sums.Count(l => l[66..] == "update.json") != 1 || sums.Count(l => l[66..] == "update.json.sig") != 1)
+    {
+        throw new InvalidOperationException("Файлы опубликованного выпуска изменились: для новых файлов нужна новая версия");
+    }
+
+    var updatedSums = sums.Select(l => l[66..] switch
+    {
+        "update.json" => $"{Convert.ToHexStringLower(SHA256.HashData(oldBytes))}  update.json",
+        "update.json.sig" => $"{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(oldSignature)))}  update.json.sig",
+        _ => l,
+    }).ToArray();
+    File.WriteAllBytes(newPath, oldBytes);
+    File.WriteAllText(newPath + ".sig", oldSignature);
+    File.WriteAllLines(sumsPath, updatedSums);
+    Console.WriteLine($"{version}: повтор тех же файлов; опубликованные подпись, доля и ревизия сохранены");
 }
 
 // Новый ключ подписи обновлений. Закрытый — только вне репозитория: попади он в рабочую папку, его легко закоммитить.

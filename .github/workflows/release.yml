@@ -4,7 +4,7 @@ name: Выпуск на GitHub
 # проверка CI этого коммита (ждем ее конца) → долгий прогон на этом коммите и сборки трех ОС → выпуск на GitHub
 # (scripts/release.cs): файлы ОС, общий SHA256SUMS, манифест обновления update.json с подписью update.json.sig (ключ —
 # секрет UPDATE_SIGNING_KEY); текст страницы — scripts/release-notes.sh из секции версии в CHANGELOG.md, без списка
-# коммитов. Выпуск уже есть (повтор запуска) — текст и файлы заменяются. Версия с «-» — бета: выпуск помечен prerelease,
+# коммитов. Повтор опубликованного выпуска допускает только те же файлы и сохраняет подписанную политику. Версия с «-» — бета: выпуск помечен prerelease,
 # канал beta. Раскатка — 100 % и у беты, и у стабильного (решение владельца 2026-11-13: участников мало, доля 20 % почти
 # никому не показала бы обновление); release-rollout.yml — стоп-кран (0 %) и любая другая доля потом.
 # К выпуску прикладывается приложение Android (APK, подписанный ключом выпуска из секретов; ставится вручную, «из
@@ -203,7 +203,7 @@ jobs:
           cp artifacts/android/*.apk.sha256 artifacts/release/
           scripts/release-notes.sh "$version" artifacts/release > artifacts/notes.md
 
-      # Как в SmartBase: выпуск уже есть (повтор запуска после сбоя на этом шаге) — заменить текст и файлы, а не падать.
+      # Повтор после сбоя разрешен для тех же пакетов; опубликованные подписанные байты и ревизия сохраняются.
       - name: Выпуск на GitHub
         env:
           GH_TOKEN: ${{ github.token }}
@@ -212,6 +212,15 @@ jobs:
           prerelease=false
           [[ "$version" != *-* ]] || prerelease=true
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' > artifacts/previous-assets.txt
+            if grep -qx update.json artifacts/previous-assets.txt; then
+              mkdir -p artifacts/previous-release
+              gh release download "$GITHUB_REF_NAME" --pattern 'update.json*' --pattern SHA256SUMS --dir artifacts/previous-release
+              dotnet run scripts/release.cs reuse artifacts/release artifacts/previous-release "$version"
+            elif grep -qx update.json.sig artifacts/previous-assets.txt; then
+              echo "Подпись уже опубликована, а манифест отсутствует: проверьте выпуск перед повтором" >&2
+              exit 1
+            fi
             gh release edit "$GITHUB_REF_NAME" --title "Private Gateway $version" --notes-file artifacts/notes.md \
               --prerelease="$prerelease"
             gh release upload "$GITHUB_REF_NAME" artifacts/release/* --clobber

@@ -3,6 +3,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Import;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Servers;
@@ -345,6 +346,18 @@ public sealed partial class ImportPageViewModel : ObservableObject
     [RelayCommand(CanExecute = nameof(CanAdd))]
     private void Add()
     {
+        try
+        {
+            AddCore();
+        }
+        catch (SecretStoreException)
+        {
+            Message = Loc.Instance["secrets.operation.failed"];
+        }
+    }
+
+    private void AddCore()
+    {
         if (Preview is not { } preview)
         {
             return;
@@ -398,7 +411,14 @@ public sealed partial class ImportPageViewModel : ObservableObject
     {
         if (Preview is { } preview)
         {
-            Preview = preview with { Duplicates = _store.CountDuplicates(preview.Servers), Renewals = _store.CountRenewals(preview.Servers) };
+            try
+            {
+                Preview = preview with { Duplicates = _store.CountDuplicates(preview.Servers), Renewals = _store.CountRenewals(preview.Servers) };
+            }
+            catch (SecretStoreException)
+            {
+                Show(Loc.Instance["secrets.operation.failed"]);
+            }
         }
     }
 
@@ -416,6 +436,21 @@ public sealed partial class ImportPageViewModel : ObservableObject
     private async Task AnalyzeAsync(string text, string? suggestedName, int? operation = null)
     {
         var attempt = operation ?? BeginOperation();
+        try
+        {
+            await AnalyzeCoreAsync(text, suggestedName, attempt).ConfigureAwait(true);
+        }
+        catch (SecretStoreException)
+        {
+            if (attempt == _attempt)
+            {
+                Show(Loc.Instance["secrets.operation.failed"]);
+            }
+        }
+    }
+
+    private async Task AnalyzeCoreAsync(string text, string? suggestedName, int attempt)
+    {
         if (attempt != _attempt)
         {
             return;

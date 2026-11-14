@@ -22,7 +22,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: release-rollout
+  group: release-refs/tags/${{ inputs.tag }}
   cancel-in-progress: false
 
 jobs:
@@ -56,10 +56,10 @@ jobs:
           [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "Тег $TAG — не v<SemVer>" >&2; exit 1; }
           mkdir -p artifacts/published
           gh release download "$TAG" --pattern 'update.json*' --pattern SHA256SUMS --dir artifacts/published
-          dotnet run scripts/release.cs rollout artifacts/published "$ROLLOUT"
+          dotnet run scripts/release.cs rollout artifacts/published "$ROLLOUT" "${TAG#v}"
           gh release upload "$TAG" artifacts/published/* --clobber
 
-  # Новая доля — на сайт: оттуда ленту берут программы. Бету и выпуск без подписи website.yml пропускает сам.
+  # Новая доля — на сайт: оттуда ленту берут программы. Пропуск не считается успешной доставкой.
   website:
     name: Сайт — новая доля
     needs: rollout
@@ -74,3 +74,22 @@ jobs:
       WEBSITE_USER: ${{ secrets.WEBSITE_USER }}
       WEBSITE_SSH_KEY: ${{ secrets.WEBSITE_SSH_KEY }}
       WEBSITE_KNOWN_HOSTS: ${{ secrets.WEBSITE_KNOWN_HOSTS }}
+
+  delivered:
+    name: Новая доля принята сайтом
+    needs: [rollout, website]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Подтвердить доставку
+        env:
+          WEBSITE_RESULT: ${{ needs.website.result }}
+          MANIFEST_DELIVERED: ${{ needs.website.outputs.manifest-delivered }}
+        run: |
+          [ "$WEBSITE_RESULT" = success ] && [ "$MANIFEST_DELIVERED" = true ] || {
+            echo "Доставка новой доли на сайт не подтверждена. Проверьте задание сайта и повторите неудачные задания." >&2
+            exit 1
+          }
+          echo "Сайт принял команду update. Новая доля доставлена." >> "$GITHUB_STEP_SUMMARY"

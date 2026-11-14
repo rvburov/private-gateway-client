@@ -598,8 +598,8 @@ private fun ServerRow(ui: MainUi, onServers: () -> Unit, onAdd: () -> Unit, onSe
         RefreshButton(ui.measuring, onRefresh)
         val title = when {
             server == null -> stringResource(R.string.server_none)
-            server.countryCode.isEmpty() -> server.displayName
-            else -> server.countryCode + " · " + server.displayName
+            server.countryCode.isEmpty() -> server.title
+            else -> server.countryCode + " · " + server.title
         }
         val meta = when {
             server != null -> server.summary + " · " + stringResource(R.string.server_port, server.port.toString())
@@ -721,7 +721,7 @@ private fun QuickRow(server: ServerItem, current: Boolean, onClick: () -> Unit) 
         }
 
         Column(Modifier.weight(1f).padding(horizontal = PgSpace.M, vertical = PgSpace.Xs), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            Text(server.displayName, color = color, style = PgType.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(server.title, color = color, style = PgType.BodyStrong, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(server.summary, color = PgColor.Text.Muted, style = PgType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
 

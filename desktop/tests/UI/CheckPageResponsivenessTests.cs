@@ -16,6 +16,65 @@ namespace PrivateGateway.Client.Tests.UI;
 public sealed class CheckPageResponsivenessTests : WindowHarness
 {
     [AvaloniaFact]
+    public void A_silent_remote_server_keeps_its_result_until_a_distinct_service_request_failure()
+    {
+        var gateway = new ChecksGateway(Time)
+        {
+            Check = _ => Task.FromResult(new DiagnosticReport(
+                [new DiagnosticResult(DiagnosticCheck.Service, CheckState.Ok),
+                    new DiagnosticResult(DiagnosticCheck.Core, CheckState.Stopped, "no_reply")], Time.GetUtcNow())),
+        };
+        var (_, shell) = Open(gateway: _ => gateway);
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning);
+
+        var core = page.Rows.Single(row => row.Check == DiagnosticCheck.Core);
+        core.IsInconclusive.ShouldBeFalse("известный ответ ядра и отсутствие ответа службы — разные результаты");
+        core.DisplayState.ShouldBe(CheckState.Stopped);
+        core.Detail.ShouldBe("Запущено, но сервер не отвечает");
+        core.ChipText.ShouldBe("Нет ответа");
+        page.Rows.Single(row => row.Check == DiagnosticCheck.Service).State.ShouldBe(CheckState.Ok);
+
+        gateway.Check = _ => Task.FromResult(new DiagnosticReport([.. Enum.GetValues<DiagnosticCheck>()
+            .Select(check => new DiagnosticResult(check, CheckState.Warning, "service_no_reply"))], Time.GetUtcNow()));
+        page.RunCommand.Execute(null);
+        WaitFor(() => !page.IsRunning);
+
+        page.Rows.ShouldAllBe(row => row.IsInconclusive && row.DisplayState == CheckState.Waiting
+            && row.Icon == "Icon.Chip.Dash" && row.ChipText == "Нет результата"
+            && row.Detail == "Проверка не получила ответ службы. Состояние защиты этим запросом не подтверждено.");
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Connected);
+        page.Dispose();
+    }
+
+    [AvaloniaFact]
+    public void A_finished_partial_report_from_an_older_service_has_no_permanently_running_rows_and_can_be_retried()
+    {
+        var gateway = new ChecksGateway(Time)
+        {
+            Check = _ => Task.FromResult(new DiagnosticReport(
+                [new DiagnosticResult(DiagnosticCheck.Service, CheckState.Stopped, "no_reply")], Time.GetUtcNow())),
+        };
+        var (_, shell) = Open(gateway: _ => gateway);
+        var page = OpenCheck(shell);
+        WaitFor(() => !page.IsRunning);
+
+        page.Rows.ShouldAllBe(row => row.IsInconclusive && row.ChipText == "Нет результата" && row.Detail != "Проверяется");
+        page.BuildReport().ShouldNotContain("Проверяется");
+        shell.Protection.Status.State.ShouldBe(ConnectionState.Connected,
+            "снимок действующего туннеля и результат отдельного запроса проверок — разные сведения");
+
+        gateway.Check = _ => Task.FromResult(new DiagnosticReport([.. Enum.GetValues<DiagnosticCheck>()
+            .Select(check => new DiagnosticResult(check, CheckState.Ok))], Time.GetUtcNow()));
+        page.RunCommand.Execute(null);
+        WaitFor(() => !page.IsRunning);
+
+        page.Rows.Single(row => row.Check == DiagnosticCheck.Service).State.ShouldBe(CheckState.Ok);
+        page.Rows.ShouldNotContain(row => row.Reason == "incomplete" || row.Reason == "no_reply");
+        page.Dispose();
+    }
+
+    [AvaloniaFact]
     public void Check_results_are_visible_while_delay_is_pending_and_its_late_answer_is_ignored_after_the_deadline()
     {
         var delay = new TaskCompletionSource<DelayBreakdown?>(TaskCreationOptions.RunContinuationsAsynchronously);

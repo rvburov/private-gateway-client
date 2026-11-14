@@ -343,6 +343,67 @@ public sealed class UpdateWatcherTests : IDisposable
         _gateway.Downloads.Count.ShouldBe(1, "служба без ссылки не спрашивается");
     }
 
+    [Fact]
+    public async Task Revoked_account_during_download_shows_sign_in_and_refreshes_after_the_next_login()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        _watcher.Start();
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };
+        await _watcher.CheckAsync(force: true, ct);
+        _feeds.RevokeOnAsk = true;
+
+        await _watcher.DownloadAsync(ct);
+
+        _watcher.Offer!.State.ShouldBe(UpdateState.NoFeed);
+        _watcher.Step.ShouldBe(UpdateStep.None);
+        _watcher.Target.ShouldBeNull();
+        _gateway.Downloads.ShouldBeEmpty();
+        _feeds.RevokeOnAsk = false;
+        _feeds.SignedIn = true;
+        _gateway.Offer = new UpdateOffer(UpdateState.UpToDate, _time.GetUtcNow());
+        _feeds.Raise();
+        _watcher.Offer!.State.ShouldBe(UpdateState.UpToDate, "вход восстановлен — прежнее предложение не остается");
+        _gateway.Checks.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task Logout_discards_an_old_update_offer_even_before_another_check()
+    {
+        _watcher.Start();
+        _gateway.Offer = new UpdateOffer(UpdateState.Available, _time.GetUtcNow(), "0.3.0") { Installable = true };
+        await _watcher.CheckAsync(force: true, TestContext.Current.CancellationToken);
+
+        _feeds.SignedIn = false;
+        _feeds.Raise();
+
+        _watcher.Offer!.State.ShouldBe(UpdateState.NoFeed);
+        await _watcher.DownloadAsync(TestContext.Current.CancellationToken);
+        _gateway.Downloads.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_feed_from_the_previous_login_is_not_sent_to_the_service_after_signing_in_again()
+    {
+        var oldReply = new TaskCompletionSource<byte[]?>();
+        _feeds.Pending = oldReply.Task;
+        _watcher.Start();
+        var oldCheck = _watcher.CheckAsync(force: true, TestContext.Current.CancellationToken);
+        _watcher.IsChecking.ShouldBeTrue();
+
+        _feeds.SignedIn = false;
+        _feeds.Raise();
+        _feeds.SignedIn = true;
+        _feeds.Pending = null;
+        _feeds.Feed = [9, 8, 7];
+        _feeds.Raise();
+        oldReply.SetResult([1, 1, 1]);
+        await oldCheck;
+
+        _gateway.Checks.Count.ShouldBe(1, "служба получает только ленту нового входа");
+        _gateway.Feeds.ShouldHaveSingleItem().ShouldBe(_feeds.Feed);
+        _watcher.Offer!.State.ShouldBe(UpdateState.UpToDate);
+    }
+
     /// <summary>Очередь окна: работа ждет, пока тест ее не выполнит.</summary>
     private sealed class QueueContext : SynchronizationContext
     {
@@ -368,6 +429,8 @@ public sealed class UpdateWatcherTests : IDisposable
         /// <summary>Что ответит сайт; null — не ответил.</summary>
         public byte[]? Feed { get; set; } = [1, 2, 3];
 
+        public Task<byte[]?>? Pending { get; set; }
+
         /// <summary>Сайт ответит 401: вход стирается.</summary>
         public bool RevokeOnAsk { get; set; }
 
@@ -391,7 +454,7 @@ public sealed class UpdateWatcherTests : IDisposable
                 return Task.FromResult<byte[]?>(null);
             }
 
-            return Task.FromResult(Feed);
+            return Pending ?? Task.FromResult(Feed);
         }
     }
 

@@ -193,7 +193,7 @@ await using var gateway = await ServiceStartupReady.CreateGatewayAsync(
 var updateKind = UpdateInstaller.ForThisMachine(installedService: !user && Option("--service-name") is not null, ownerSid);
 using var updateHttp = UpdateInstaller.CreateHttp();
 var updates = new UpdateChecker(UpdateChecker.EmbeddedKeys(), ServiceVersion.Current, UpdateChecker.LoadBucket(state), time, journal,
-    VersionHistory.Record(state, ServiceVersion.Current), updateKind?.Asset);
+    VersionHistory.Record(state, ServiceVersion.Current), updateKind?.Asset, policies: new UpdatePolicyHistory(state));
 var installer = new UpdateInstaller(updateHttp, Path.Combine(state, "updates"), updateKind, journal);
 await using var app = IpcServer.Build(new IpcOptions(endpoint, owner, ownerSid, Option("--service-name")), gateway, journal, ServiceHost.Info(xray, singBox), updates,
     installer);
