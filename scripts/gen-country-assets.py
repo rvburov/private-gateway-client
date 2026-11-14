@@ -45,14 +45,14 @@ known = set()
 with tarfile.open(inputs[-1]) as archive:
     for member in archive.getmembers():
         name = Path(member.name)
-        if '/flags/4x3/' not in member.name or name.suffix != '.svg' or len(name.stem) != 2:
+        if '/flags/1x1/' not in member.name or name.suffix != '.svg' or len(name.stem) != 2:
             continue
         code = name.stem.upper()
         if not code.isascii() or not code.isalpha() or code in ('XX', 'EU', 'UN'):
             continue
         source = archive.extractfile(member).read()
         (svgdir / (code + '.svg')).write_bytes(source)
-        cairosvg.svg2png(bytestring=source, write_to=str(flags / (code + '.png')), output_width=112, output_height=84)
+        cairosvg.svg2png(bytestring=source, write_to=str(flags / (code + '.png')), output_width=112, output_height=112)
         known.add(code)
     license_file = next(m for m in archive.getmembers() if m.name.endswith('/LICENSE'))
     (out / 'LICENSE-flags.txt').write_bytes(archive.extractfile(license_file).read())
@@ -63,7 +63,7 @@ preview.mkdir(parents=True, exist_ok=True)
 for image in flags.glob('*.png'):
     shutil.copyfile(image, preview / image.name)
 if args.flags_only:
-    print(f'Флагов 4:3: {len(known)}; геобаза не менялась')
+    print(f'Флагов 1:1: {len(known)}; геобаза не менялась')
     sys.exit(0)
 
 rows = []

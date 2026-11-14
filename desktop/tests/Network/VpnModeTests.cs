@@ -1456,7 +1456,7 @@ public sealed partial class VpnModeTests
                 BootBlock.Read(file).ShouldNotBeNull("а перезапуск службы — переживет: файл блока помнит его");
                 rig.KillSwitch.Last!.Persistent.ShouldBeFalse("и фильтры WFP — не постоянные");
 
-                await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+                await service.Client.ConnectAsync(VpnRequest(rig.Definition, bootProtection: true), cancellationToken: Ct);
                 await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
 
                 BootBlock.Load(file)!.Servers.ShouldHaveSingleItem().Port.ShouldBe(rig.Definition.Port, "запомнен сервер этого подключения");
@@ -1512,7 +1512,7 @@ public sealed partial class VpnModeTests
                 await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
                 (File.Exists(connect), sealer.Seals).ShouldBe((false, 0), "без «Защиты при загрузке» ключи не шифруются и на диск не попадают ни на миг");
 
-                await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+                await service.Client.ConnectAsync(VpnRequest(rig.Definition, bootProtection: true), cancellationToken: Ct);
                 await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connecting);
                 await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
 
@@ -1544,7 +1544,7 @@ public sealed partial class VpnModeTests
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connecting);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connected);
             (BootBlock.Load(block) is null, File.Exists(connect)).ShouldBe((true, false));
-            await next.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+            await next.Client.ConnectAsync(VpnRequest(rig.Definition, bootProtection: true), cancellationToken: Ct);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connecting);
             await ServiceIpcTests.ReadUntilAsync(updates, s => s.State == V1.ConnectionState.Connected);
 
@@ -1573,7 +1573,7 @@ public sealed partial class VpnModeTests
         {
             // Подключение запомнено, а блока при запуске нет: защиту выключили или блок не встал — без защиты не подключаться самой.
             var (definition, _) = XrayKit.Pair("vless", 443);
-            new BootConnection(connect, sealer).Save(VpnRequest(definition), [IPAddress.Parse("198.51.100.20")]);
+            new BootConnection(connect, sealer).Save(VpnRequest(definition, bootProtection: true), [IPAddress.Parse("198.51.100.20")]);
             var killSwitch = new FakeKillSwitch();
             await using var service = await RunningService.StartAsync(options: o => o with
             {
@@ -1605,7 +1605,7 @@ public sealed partial class VpnModeTests
             await using (var service = await RunningService.StartAsync(options: Boot))
             {
                 using var watch = service.Client.WatchStatus(new V1.WatchStatusRequest(), cancellationToken: Ct);
-                await service.Client.ConnectAsync(VpnRequest(rig.Definition), cancellationToken: Ct);
+                await service.Client.ConnectAsync(VpnRequest(rig.Definition, bootProtection: true), cancellationToken: Ct);
                 await ServiceIpcTests.ReadUntilAsync(watch, s => s.State == V1.ConnectionState.Connected);
             }
 
@@ -2039,14 +2039,14 @@ public sealed partial class VpnModeTests
     private static V1.ConnectRequest Refused() => VpnRequest(XrayKit.Refused);
 
     private static V1.ConnectRequest VpnRequest(ServerDefinition server, bool killSwitch = true, RoutingSettings? routing = null, bool allowLan = false,
-        bool strictRoutes = true, bool blockIpv6 = true, bool fakeDns = false, bool blockOutsideDns = true)
+        bool strictRoutes = true, bool blockIpv6 = true, bool fakeDns = false, bool blockOutsideDns = true, bool bootProtection = false)
     {
         var settings = AppSettings.Default with
         {
             Mode = ConnectionMode.Vpn,
             KillSwitch = killSwitch,
             Routing = routing ?? RoutingSettings.Default,
-            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6, FakeDns = fakeDns, BlockOutsideDns = blockOutsideDns },
+            Protection = ProtectionSettings.Default with { AllowLan = allowLan, BlockIpv6 = blockIpv6, FakeDns = fakeDns, BlockOutsideDns = blockOutsideDns, BootProtection = bootProtection },
             Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 20, StrictRoutes = strictRoutes },
         };
         return new V1.ConnectRequest

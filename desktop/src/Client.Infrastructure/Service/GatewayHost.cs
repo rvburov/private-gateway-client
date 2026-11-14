@@ -31,6 +31,8 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     private readonly IUserProxySettings? _userProxy;
     private readonly Func<ServerProfile?>? _selectedTarget;
     private readonly Func<bool>? _mayConnect;
+    private readonly Func<bool>? _needsNetworkRecovery;
+    private readonly Func<bool>? _installedService;
     private long _connectIntent;
     private IGatewayClient? _service;
     private ConnectionStatus _status;
@@ -48,9 +50,11 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// <param name="userProxy">Системный прокси пользователя — для проверки «Другие VPN и прокси»; null — не смотреть.</param>
     /// <param name="selectedTarget">Текущая цель режима: не подключать старую цель после ожидания запуска службы.</param>
     /// <param name="mayConnect">Есть ли действующий вход в аккаунт сайта; null — вход не нужен.</param>
+    /// <param name="needsNetworkRecovery">Новый вход есть, но прежние изменения сети еще не сняты.</param>
+    /// <param name="installedService">Есть ли установленная служба, от которой требуется подтверждение даже без IPC.</param>
     public GatewayHost(ServiceLocator locator, Func<ServiceAddress, IGatewayClient> attach, Func<AppSettings> settings, TimeProvider time,
         Func<bool>? staleProxy = null, IUserProxySettings? userProxy = null, Func<ServerProfile?>? selectedTarget = null,
-        Func<bool>? mayConnect = null)
+        Func<bool>? mayConnect = null, Func<bool>? needsNetworkRecovery = null, Func<bool>? installedService = null)
     {
         _locator = locator;
         _attach = attach;
@@ -59,6 +63,8 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         _userProxy = userProxy;
         _selectedTarget = selectedTarget;
         _mayConnect = mayConnect;
+        _needsNetworkRecovery = needsNetworkRecovery;
+        _installedService = installedService;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
         if (locator.Find() is { } address)
         {
@@ -169,7 +175,7 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
         ConnectionStatus status;
         lock (_gate)
         {
-            if (_service is not null || _status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.AccessRequired })
+            if (_service is not null || _status is not { State: ConnectionState.Error, ErrorCode: ErrorCodes.AccessRequired or ErrorCodes.NetworkRestoreFailed })
             {
                 return;
             }
@@ -184,10 +190,21 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     {
         Interlocked.Increment(ref _connectIntent);
         ClearRefusal();
-        if (Current is { } service)
+        var service = Current;
+        if (open)
+        {
+            service = await EnsureAsync(launch: false, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (service is not null)
         {
             await (open ? service.DropProtectionAsync(cancellationToken) : service.DisconnectAsync(cancellationToken)).ConfigureAwait(false);
             return;
+        }
+
+        if (open && _installedService?.Invoke() == true)
+        {
+            throw new IOException("Установленная служба не ответила; восстановление сети не подтверждено");
         }
 
         ConnectionStatus status;
@@ -480,7 +497,8 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
     /// </summary>
     private void Refuse(string serverId, ConnectionMode mode)
     {
-        Log(JournalLevel.Warning, "Подключение не начато: нет действующего входа в аккаунт сайта (PGC-ACC-001)");
+        var error = _needsNetworkRecovery?.Invoke() == true ? ErrorCodes.NetworkRestoreFailed : ErrorCodes.AccessRequired;
+        Log(JournalLevel.Warning, "Подключение не начато: " + error);
         ConnectionStatus status;
         lock (_gate)
         {
@@ -489,14 +507,14 @@ public sealed class GatewayHost : IGatewayClient, IDisposable
             switch (current.State)
             {
                 case ConnectionState.Off:
-                    var connecting = current.MoveTo(ConnectionState.Connecting, now) with { ErrorCode = ErrorCodes.AccessRequired };
+                    var connecting = current.MoveTo(ConnectionState.Connecting, now) with { ErrorCode = error };
                     status = connecting.MoveTo(ConnectionState.Error, now) with { Protection = ProtectionChecks.For(ConnectionState.Off) };
                     break;
                 case ConnectionState.Blocked:
-                    status = current with { ErrorCode = ErrorCodes.AccessRequired };
+                    status = current with { ErrorCode = error };
                     break;
                 case ConnectionState.Error:
-                    status = current with { ErrorCode = ErrorCodes.AccessRequired, Since = now };
+                    status = current with { ErrorCode = error, Since = now };
                     break;
                 default:
                     return;

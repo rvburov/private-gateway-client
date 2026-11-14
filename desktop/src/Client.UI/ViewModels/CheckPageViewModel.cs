@@ -6,6 +6,7 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using PrivateGateway.Client.Application.Connection;
+using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.Core;
@@ -43,6 +44,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
     private readonly IMachineSettings _machine;
     private readonly SettingsService _settings;
     private readonly CheckFocus _focus;
+    private readonly ISecretStore? _secrets;
     private DiagnosticReport? _report;
     private ServiceDetails? _reportServiceDetails;
     private CheckSession _session;
@@ -63,10 +65,12 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         IMachineSettings machine,
         SettingsService settings,
         CheckFocus focus,
-        ConnectionTarget target)
+        ConnectionTarget target,
+        ISecretStore? secrets = null)
     {
         ArgumentNullException.ThrowIfNull(focus);
         _focus = focus;
+        _secrets = secrets;
         _target = target;
         focus.DelayRequested += OnDelayRequested;
         ArgumentNullException.ThrowIfNull(protection);
@@ -519,6 +523,7 @@ public sealed partial class CheckPageViewModel : ObservableObject, IDisposable
         lines.AddRange(DnsReport.Lines(_settings.Current, Protection.Status, _gateway.Service,
             _report?[DiagnosticCheck.Dns], Rows.FirstOrDefault(row => row.Check == DiagnosticCheck.Dns)));
         lines.Add(string.Empty);
+        lines.AddRange(SecretStoreReport.Lines(_secrets));
         if (_settings.Current.Mode == ConnectionMode.Proxy || ExternalProxySettings.IsExternalId(Protection.Status.ServerId))
         {
             var external = _settings.Current.ExternalProxy;

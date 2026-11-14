@@ -70,7 +70,9 @@ public static class InfrastructureModule
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))
                     || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>(),
                 selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected,
-                mayConnect: () => sp.GetRequiredService<AccountService>().MayConnect));
+                mayConnect: () => sp.GetRequiredService<AccountService>().MayConnect,
+                needsNetworkRecovery: () => sp.GetRequiredService<AccountService>().NeedsNetworkRecovery,
+                installedService: InstalledServicePresent));
         services.AddSingleton<IUserProxyController>(sp => new UserProxyController(sp.GetRequiredService<SettingsService>(),
             sp.GetRequiredService<IGatewayClient>(), userProxy.Value,
             new FileUserProxyBackupStore(paths.UserProxyBackup), sp.GetRequiredService<TimeProvider>(), demo ? null : RunOnceProxyRecovery.ForThisWindow()));
@@ -106,6 +108,14 @@ public static class InfrastructureModule
                 sp.GetRequiredService<IGatewayClient>(), sp.GetRequiredService<TimeProvider>()));
         return services;
     }
+
+    // Отсутствие IPC у установленной службы не доказывает снятие ее правил. Это только признак необходимости
+    // подтверждения: вход в аккаунт остается доступен, а повтор восстановления — на входе и в настройках.
+    private static bool InstalledServicePresent() => OperatingSystem.IsMacOS()
+        ? File.Exists(MacServiceAccess.PlistPath)
+        : OperatingSystem.IsWindows()
+            ? File.Exists(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "Private Gateway", "Service", "PrivateGateway.Service.exe"))
+            : File.Exists("/etc/systemd/system/private-gateway.service") || File.Exists("/usr/lib/systemd/system/private-gateway.service");
 
     private static Core.Servers.ServerDefinition? Definition(IServiceProvider services, string id)
     {

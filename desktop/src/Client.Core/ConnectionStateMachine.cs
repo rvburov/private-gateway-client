@@ -9,7 +9,8 @@ public static class ConnectionStateMachine
 {
     private static readonly Dictionary<ConnectionState, ConnectionState[]> Allowed = new()
     {
-        [ConnectionState.Off] = [ConnectionState.Connecting],
+        // Восстановление оставшихся DNS, прокси или правил при выходе может отказать и без живого туннеля.
+        [ConnectionState.Off] = [ConnectionState.Connecting, ConnectionState.Error],
         // «Подключение → Переподключение» — ядра поднялись, а сервер не ответил на пробу: те же паузы и политика, что при обрыве.
         [ConnectionState.Connecting] =
             [ConnectionState.Connected, ConnectionState.Reconnecting, ConnectionState.Blocked, ConnectionState.Error, ConnectionState.Off],

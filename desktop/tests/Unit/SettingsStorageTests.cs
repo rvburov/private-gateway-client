@@ -26,7 +26,9 @@ public sealed class SettingsStorageTests : IDisposable
         var settings = Store().Load();
 
         settings.ShouldBe(AppSettings.Default);
-        settings.KillSwitch.ShouldBeTrue();
+        (settings.KillSwitch, settings.Protection.BootProtection, settings.Protection.StrictMode,
+            settings.ConnectOnLaunch, settings.Connection.SystemProxy, settings.Connection.VpnSystemProxy)
+            .ShouldBe((false, false, false, false, false, false));
         settings.Notifications.ShouldBe(NotificationLevel.ImportantOnly);
     }
 
@@ -111,7 +113,7 @@ public sealed class SettingsStorageTests : IDisposable
 
         var settings = new SqliteSettingsStore(database, NullLogger<SqliteSettingsStore>.Instance).Load();
 
-        settings.KillSwitch.ShouldBeTrue();
+        settings.KillSwitch.ShouldBeFalse();
         settings.Mode.ShouldBe(ConnectionMode.Vpn);
         settings.Language.ShouldBe("ru");
     }

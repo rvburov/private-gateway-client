@@ -72,14 +72,17 @@ class MainActivity : ComponentActivity() {
 
     @Inject lateinit var updates: AppUpdates
 
+    private var requestedAutomaticConnection = false
+
     private val vpnPermission = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
-            GatewayVpnService.connect(this)
+            if (requestedAutomaticConnection) GatewayVpnService.connectAutomatically(this) else GatewayVpnService.connect(this)
         } else if (!viewModel.consentRefused()) {
             // VPN занят другим приложением — страница «Работает другой VPN» (DECISIONS.md, п. 4); иначе — просто отказ:
             // подсказкой окна сверху, как у остальных сообщений (не системным Toast).
             appWindow.toast(getString(R.string.android_permission_denied))
         }
+        requestedAutomaticConnection = false
     }
 
     // Разрешение на уведомления — после первого удачного подключения, с пояснением (DECISIONS.md, п. 7): ответ ничего не
@@ -96,6 +99,7 @@ class MainActivity : ComponentActivity() {
             navigationBarStyle = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT),
         )
         super.onCreate(savedInstanceState)
+        requestedAutomaticConnection = savedInstanceState?.getBoolean("vpn.request.automatic") ?: false
         val actions = AppActions(
             power = ::power,
             disconnect = { GatewayVpnService.disconnect(this) },
@@ -146,7 +150,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             lifecycleScope.launch {
                 if (viewModel.connectOnLaunch()) {
-                    start()
+                    start(automatic = true)
                 }
             }
         }
@@ -194,7 +198,12 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun start() = askVpn()
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putBoolean("vpn.request.automatic", requestedAutomaticConnection)
+        super.onSaveInstanceState(outState)
+    }
+
+    private fun start(automatic: Boolean = false) = askVpn(automatic)
 
     /** Спросить об уведомлениях: Android 13+, разрешения нет, и пользователь еще не отвечал на наш вопрос. */
     private fun notificationsUnasked(): Boolean =
@@ -209,10 +218,12 @@ class MainActivity : ComponentActivity() {
     }
 
     /** Разрешение на VPN спрашивается один раз; потом prepare возвращает null — подключаемся сразу. */
-    private fun askVpn() {
+    private fun askVpn(automatic: Boolean) {
+        requestedAutomaticConnection = automatic
         val consent = VpnService.prepare(this)
         if (consent == null) {
-            GatewayVpnService.connect(this)
+            if (automatic) GatewayVpnService.connectAutomatically(this) else GatewayVpnService.connect(this)
+            requestedAutomaticConnection = false
         } else {
             vpnPermission.launch(consent)
         }

@@ -124,7 +124,7 @@ public sealed class ProtectionSyncTests
         new[]
         {
             d with { Mode = ConnectionMode.Proxy },
-            d with { KillSwitch = false },
+            d with { KillSwitch = !d.KillSwitch },
             d with { Protection = d.Protection with { BlockIpv6 = false } },
             d with { Connection = d.Connection with { Mtu = 1400 } },
             d with { Routing = d.Routing with { Mode = RoutingMode.Split } },
@@ -148,7 +148,8 @@ public sealed class ProtectionSyncTests
 
     private sealed class MemorySettings : ISettingsStore
     {
-        private AppSettings _saved = AppSettings.Default;
+        // Стенд моделирует уже включенную пользователем защиту и изменения ее настроек.
+        private AppSettings _saved = AppSettings.Default with { KillSwitch = true };
 
         public AppSettings Load() => _saved;
 

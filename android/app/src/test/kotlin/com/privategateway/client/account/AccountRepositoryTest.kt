@@ -1,6 +1,7 @@
 package com.privategateway.client.account
 
 import androidx.datastore.core.DataStore
+import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -15,14 +16,33 @@ import com.privategateway.client.core.account.DeviceInfo
 import com.privategateway.client.core.account.LoginResult
 import com.privategateway.client.core.account.StatusResult
 import com.privategateway.client.core.account.UpdatesFeed
+import com.privategateway.client.core.settings.ConnectionSettings
+import com.privategateway.client.core.settings.DnsChoice
+import com.privategateway.client.core.settings.TunnelSettings
+import com.privategateway.client.core.vpn.SystemVpn
 import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.SecretBox
+import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.vpn.TunnelMonitor
 import com.privategateway.client.waitForAsync
+import java.io.IOException
+import java.security.KeyStoreException
+import java.security.ProviderException
+import java.time.Duration
+import java.time.Instant
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicReference
+import javax.crypto.AEADBadTagException
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -43,20 +63,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import org.junit.runner.RunWith
-import java.io.IOException
-import java.security.KeyStoreException
-import java.security.ProviderException
-import java.time.Duration
-import java.time.Instant
-import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.atomic.AtomicReference
-import javax.crypto.AEADBadTagException
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNotEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /** Вход в аккаунт сайта на телефоне: хранение токена, uid, проверка доступа и выход — без сети и Keystore. */
 @RunWith(AndroidJUnit4::class)
@@ -70,11 +76,13 @@ class AccountRepositoryTest {
     private val monitor = TunnelMonitor()
     private val journal = TunnelJournal()
     private val source = FakeSource()
-    private val control = FakeControl(source.calls)
+    private val control = FakeControl(source.calls, monitor)
     private val box = FakeBox()
 
     /** Служба без Android: команда выключить защиту — в [log] рядом с запросами к сайту, чтобы был виден порядок. */
-    private class FakeControl(private val log: MutableList<String>) : TunnelControl {
+    private class FakeControl(private val log: MutableList<String>, private val monitor: TunnelMonitor) : TunnelControl {
+        var acknowledge = true
+        var failure: Exception? = null
         @Volatile var disconnects = 0
 
         /** Что сделать в момент команды (тест смотрит, стерт ли уже вход). */
@@ -83,9 +91,11 @@ class AccountRepositoryTest {
         override fun connect() = Unit
 
         override fun disconnect() {
+            failure?.let { throw it }
             disconnects++
             log += "disconnect"
             onDisconnect()
+            if (acknowledge) monitor.set(TunnelStatus())
         }
     }
 
@@ -188,14 +198,22 @@ class AccountRepositoryTest {
         return accountDataStore(scope) { file }
     }
 
+    private val settingsStore by lazy {
+        val scope = CoroutineScope(Dispatchers.IO + SupervisorJob()).also { scopes += it }
+        PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") }
+    }
+    private val settings by lazy { SettingsRepository(settingsStore) }
+
     /** Репозиторий «процесса» на [store]. */
     private fun repository(
         secrets: SecretBox = box,
         store: DataStore<Preferences> = store(),
         fence: AccountLogoutFence = AccountLogoutFence(folder.root.resolve("signed-out")),
+        settings: SettingsRepository = this.settings,
     ): AccountRepository {
-        return AccountRepository(store, secrets, source, control, monitor, journal, fence).also {
+        return AccountRepository(store, secrets, source, control, monitor, journal, fence, settings).also {
             it.clock = { now }
+            it.networkWaitMs = 50
             repositories += it
         }
     }
@@ -438,7 +456,7 @@ class AccountRepositoryTest {
     }
 
     @Test
-    fun `sign-in clears the no-access error from the home screen and keeps other errors`() {
+    fun `sign-in confirms stopped protection after no-access or previous tunnel errors`() {
         val repository = repository()
         source.login = LoginResult.Ok(session())
         monitor.set(TunnelStatus(TunnelState.Error, error = TunnelErrors.NO_ACCESS))
@@ -448,7 +466,7 @@ class AccountRepositoryTest {
         wait { repository.logout() }
         monitor.set(TunnelStatus(TunnelState.Error, error = TunnelErrors.SERVER_NOT_RESPONDING))
         wait { repository.login("user@example.com", "pw", "123456", null) }
-        assertEquals(TunnelErrors.SERVER_NOT_RESPONDING, monitor.status.value.error, "другая ошибка входом не снимается")
+        assertEquals(TunnelStatus(), monitor.status.value, "новый вход начинается после подтвержденной остановки прежнего туннеля")
     }
 
     @Test
@@ -529,10 +547,10 @@ class AccountRepositoryTest {
         assertTrue(wait { repository.allowed() })
         assertTrue(journal.entries.value.any { "account check  failed IOException" in it.message })
 
-        // Вход: uid не записать — «хранилище не работает», сайт не спрашиваем.
+        // Явный новый вход сначала снимает старую защиту; uid не записать — сайт не спрашиваем.
         source.calls.clear()
         assertEquals(LoginResult.Failed(AccountError.Store), wait { repository.login("user@example.com", "pw", "123456", null) })
-        assertEquals(emptyList(), source.calls)
+        assertEquals(listOf("disconnect"), source.calls)
 
         // Выход: удалить вход не удалось, но он немедленно запрещен, сайт получает отзыв и процесс не падает.
         wait { repository.logout() }
@@ -863,7 +881,9 @@ class AccountRepositoryTest {
             logout.await()
         }
         assertTrue(wait { repository.allowed() })
-        assertEquals(0, control.disconnects, "завершившийся старый выход не выключает новое подключение")
+        assertEquals(1, control.disconnects, "новый вход остановил только старый туннель; поздний выход не послал второй stop")
+        assertEquals("new", monitor.status.value.serverId, "подключение нового входа осталось")
+        assertEquals(TunnelState.Connected, monitor.status.value.state)
     }
 
     @Test
@@ -881,6 +901,117 @@ class AccountRepositoryTest {
         }
         assertFalse(wait { repository.allowed() })
         wait { while ("logout" !in source.calls) delay(10) }
+    }
+
+    @Test
+    fun `logout clears strict routes and launch connection but keeps server and system settings`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        val chosen = TunnelSettings(DnsChoice.Quad9Doh, ipv6 = true, connection = ConnectionSettings(strictRoutes = true))
+        wait {
+            settings.select("chosen-server")
+            settings.setTunnel(chosen)
+            settings.setConnectOnLaunch(true)
+            settings.setSystemVpn(SystemVpn(alwaysOn = true, lockdown = true))
+        }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "chosen-server"))
+        wait { repository.logout() }
+        assertFalse(wait { repository.allowed() })
+        assertEquals(TunnelState.Off, monitor.status.value.state)
+        assertEquals(AccountNetworkRecovery.Idle, repository.networkRecovery.value)
+        assertFalse(wait { settings.connectOnLaunch.first() })
+        assertTrue(wait { settings.manualConnectRequired.first() })
+        assertEquals(chosen.copy(connection = chosen.connection.copy(strictRoutes = false)), wait { settings.tunnel.first() })
+        assertEquals("chosen-server", wait { settings.selectedServerId.first() })
+        assertEquals(SystemVpn(alwaysOn = true, lockdown = true), wait { settings.systemVpn.first() }, "приложение не управляет этими системными флагами")
+    }
+
+    @Test
+    fun `every explicit login resets network options before contacting the site`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        repeat(2) {
+            wait {
+                settings.setConnectOnLaunch(true)
+                settings.setTunnel(TunnelSettings(connection = ConnectionSettings(strictRoutes = true)))
+                repository.login("user@example.com", "pw", null, null)
+            }
+            assertFalse(wait { settings.connectOnLaunch.first() })
+            assertFalse(wait { settings.tunnel.first().connection.strictRoutes })
+            assertTrue(wait { settings.manualConnectRequired.first() })
+            assertEquals(TunnelState.Off, monitor.status.value.state)
+            wait { repository.logout() }
+        }
+        assertEquals(2, source.calls.count { it == "login" })
+    }
+
+    @Test
+    fun `logout does not report restored until the tunnel confirms Off and retry works without login`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        control.acknowledge = false
+        wait { repository.logout() }
+        assertFalse(wait { repository.allowed() })
+        assertEquals(AccountNetworkRecovery.Failed, repository.networkRecovery.value, "доставленная команда еще не остановка")
+        assertEquals(TunnelState.Connected, monitor.status.value.state)
+        control.acknowledge = true
+        repository.retryNetworkRecovery()
+        wait { repository.networkRecovery.first { it == AccountNetworkRecovery.Idle } }
+        assertEquals(TunnelState.Off, monitor.status.value.state)
+        assertFalse(wait { repository.allowed() })
+    }
+
+    @Test
+    fun `an Error tunnel is disconnected because it may still hold the blocking adapter`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Error, error = TunnelErrors.NO_ACCESS))
+        wait { repository.logout() }
+        assertEquals(1, control.disconnects)
+        assertEquals(TunnelState.Off, monitor.status.value.state)
+    }
+
+    @Test
+    fun `failed settings reset still disconnects and blocks a new login until recovery`() {
+        val failing = FlakyStore(settingsStore)
+        val repository = repository(settings = SettingsRepository(failing))
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        failing.failWrites = true
+        wait { repository.logout() }
+        assertEquals(TunnelState.Off, monitor.status.value.state)
+        assertEquals(AccountNetworkRecovery.Failed, repository.networkRecovery.value)
+        assertEquals(LoginResult.Failed(AccountError.Store), wait { repository.login("user@example.com", "pw", null, null) })
+        assertEquals(1, source.calls.count { it == "login" }, "сайт не запрашивается до снятия старых настроек")
+        failing.failWrites = false
+        repository.retryNetworkRecovery()
+        wait { repository.networkRecovery.first { it == AccountNetworkRecovery.Idle } }
+        assertEquals(LoginResult.Ok(session()), wait { repository.login("user@example.com", "pw", null, null) })
+    }
+
+    @Test
+    fun `ordinary access refresh keeps enabled protection options and running VPN`() {
+        val repository = repository()
+        source.login = LoginResult.Ok(session())
+        wait { repository.login("user@example.com", "pw", null, null) }
+        wait {
+            settings.setConnectOnLaunch(true)
+            settings.setTunnel(TunnelSettings(connection = ConnectionSettings(strictRoutes = true)))
+            settings.permitConnection(manual = true)
+        }
+        monitor.set(TunnelStatus(TunnelState.Connected, serverId = "nl"))
+        source.status = StatusResult.Unreachable
+        wait { repository.refresh() }
+        assertEquals(0, control.disconnects)
+        assertFalse(wait { settings.manualConnectRequired.first() })
+        assertTrue(wait { settings.connectOnLaunch.first() })
+        assertTrue(wait { settings.tunnel.first().connection.strictRoutes })
+        assertEquals(TunnelState.Connected, monitor.status.value.state)
     }
 
 }

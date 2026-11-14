@@ -39,6 +39,9 @@ public static class ErrorCodes
     /// <summary>Выбранный UDP DNS недоступен через HTTP/HTTPS-прокси; нужен DNS по HTTPS.</summary>
     public const string ProxyDnsUnsupported = "PGC-SVC-011";
 
+    /// <summary>После отключения не удалось полностью восстановить сеть; требуется повторная попытка.</summary>
+    public const string NetworkRestoreFailed = "PGC-SVC-012";
+
     /// <summary>Сервер не отвечает.</summary>
     public const string ServerNotResponding = "PGC-NET-001";
 

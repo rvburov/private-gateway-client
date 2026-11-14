@@ -177,6 +177,9 @@ public sealed class WfpKillSwitchTests
             killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
 
             (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, true));
+            RemoveFilter(WfpRules.FilterKey(0));
+            (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, false), "удаление первого фильтра не скрывает остальные");
+            killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
             RemoveFilter(WfpRules.FilterKey(1));
             (killSwitch.IsEnabled, killSwitch.IsIntact).ShouldBe((true, false), "другая программа сняла один фильтр — блок уже не цел, хотя первый на месте");
             killSwitch.Enable(new KillSwitchPolicy(null, [new(github, 443)]));
@@ -191,6 +194,18 @@ public sealed class WfpKillSwitchTests
             WfpKillSwitch.IsPersistent.ShouldBeTrue("«Защита при загрузке»: служба фильтрации поставит их и после перезагрузки, до старта службы");
             (await Reaches(curl, github, 443)).ShouldBeTrue();
             (await Reaches(curl, github, 80)).ShouldBeFalse("постоянные фильтры закрывают так же");
+
+            // Больше прежнего предела в 32 пропущенных ключа: после чужого удаления остаток все еще наш блок.
+            var manyServers = Enumerable.Range(1, KillSwitchPolicy.MaxServers)
+                .Select(i => new KillSwitchEndpoint(IPAddress.Parse("192.0.2." + i.ToString(CultureInfo.InvariantCulture)), 443)).ToArray();
+            killSwitch.Enable(new KillSwitchPolicy(null, manyServers));
+            for (var index = 0; index < 40; index++)
+            {
+                RemoveFilter(WfpRules.FilterKey(index));
+            }
+            killSwitch.IsEnabled.ShouldBeTrue("в перечислении видны фильтры после большой дыры");
+            killSwitch.Disable();
+            killSwitch.IsEnabled.ShouldBeFalse();
 
             killSwitch.Enable(new KillSwitchPolicy(null, []));
 

@@ -198,6 +198,8 @@ fun AppScreen(
                 // Вход еще не прочитан: только фон.
             } else if (!signedIn && account != null) {
                 val form by account.ui.collectAsStateWithLifecycle()
+                val recovery by account.networkRecovery.collectAsStateWithLifecycle()
+                val systemVpn by settings.systemVpn.collectAsStateWithLifecycle()
                 LoginScreen(
                     form,
                     signedInState.notice,
@@ -209,8 +211,12 @@ fun AppScreen(
                         submit = account::login,
                         site = { runCatching { links.openUri(it) } },
                         back = account::back,
+                        restoreNetwork = account::restoreNetwork,
+                        openVpnSettings = actions.openVpnSettings,
                     ),
                     actions.language,
+                    networkRecovery = recovery,
+                    systemVpnRestricted = systemVpn.flags.alwaysOn == true || systemVpn.flags.lockdown == true,
                 )
             } else if (adding) {
                 BackHandler(onBack = closeImport)

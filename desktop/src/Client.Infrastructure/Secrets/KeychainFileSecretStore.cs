@@ -10,7 +10,8 @@ namespace PrivateGateway.Client.Infrastructure.Secrets;
 /// отказ не превращается в пустой секрет и не удаляет исходную запись. Старая сборка с другим правом доступа
 /// может потребовать отдельного разрешения на каждую еще не перенесенную запись.
 /// </summary>
-public sealed class KeychainFileSecretStore(SecretFile file, ISecretStore legacy, Func<bool, string?> vaultKey) : ISecretStore, IDisposable
+public sealed class KeychainFileSecretStore(SecretFile file, ISecretStore legacy, Func<bool, string?> vaultKey,
+    Func<string, bool> cleanupLegacyWithoutInteraction) : ISecretStore, IDisposable
 {
     private const int NonceSize = 12;
     private const int TagSize = 16;
@@ -23,6 +24,20 @@ public sealed class KeychainFileSecretStore(SecretFile file, ISecretStore legacy
     public string Name => legacy.Name;
 
     public bool IsAvailable => legacy.IsAvailable;
+
+    public SecretStoreDiagnostics Diagnostics
+    {
+        get
+        {
+            lock (_gate)
+            {
+                ObjectDisposedException.ThrowIf(_disposed, this);
+                var counts = file.Statistics;
+                return new SecretStoreDiagnostics("keychain-file-v1", counts.Entries, counts.PendingCleanup, counts.Deleted,
+                    _key is not null);
+            }
+        }
+    }
 
     public void Save(string key, string secret)
     {
@@ -40,6 +55,12 @@ public sealed class KeychainFileSecretStore(SecretFile file, ISecretStore legacy
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
+            if (file.IsLegacyDeleted(key))
+            {
+                Cleanup(key);
+                return null;
+            }
+
             if (file.Read(key) is { } sealedData)
             {
                 var opened = Open(key, sealedData);
@@ -71,9 +92,10 @@ public sealed class KeychainFileSecretStore(SecretFile file, ISecretStore legacy
         lock (_gate)
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            // Остаток прерванной миграции удаляется первым: иначе чтение снова вернуло бы старый секрет.
-            legacy.Delete(key);
-            file.Delete(key);
+            // Сначала надежно запрещаем возврат старого секрета, затем убираем его без системного окна.
+            // Недоступная Связка ключей не должна удерживать вход в аккаунт или требовать пароль при выходе.
+            file.DeleteWithLegacyTombstone(key);
+            Cleanup(key);
         }
     }
 
@@ -171,10 +193,13 @@ public sealed class KeychainFileSecretStore(SecretFile file, ISecretStore legacy
     {
         if (file.NeedsLegacyCleanup(key))
         {
-            // Метка записана той же транзакцией, что шифр. После отказа или падения между шагами очистка
-            // повторится при следующем обращении; более новая зашифрованная копия старой не заменяется.
-            legacy.Delete(key);
-            file.FinishLegacyCleanup(key);
+            // Удаление старого элемента имеет собственные права и может снова запросить пароль после обновления
+            // программы. Уборка — только без диалогов: защищенная копия уже надежно сохранена. Отказ оставляет
+            // отметку для следующей попытки, но не мешает читать новое хранилище и не возвращает удаленные записи.
+            if (cleanupLegacyWithoutInteraction(key))
+            {
+                file.FinishLegacyCleanup(key);
+            }
         }
     }
 

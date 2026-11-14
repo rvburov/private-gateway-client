@@ -472,7 +472,7 @@ public sealed class LoginPageTests : WindowHarness
     }
 
     [AvaloniaFact]
-    public void Service_problem_does_not_leave_login_and_shows_after_sign_in()
+    public void Service_problem_does_not_leave_login_and_successful_reset_clears_it_before_sign_in()
     {
         ScriptedService? service = null;
         var (window, shell) = Open(account: true,
@@ -485,8 +485,84 @@ public sealed class LoginPageTests : WindowHarness
 
         Fill(window, FakeAccountApi.Email, "pw");
         Press(window, "SignInButton");
-        WaitFor(() => shell.CurrentKey == Pages.Problem);
-        Text(window, "ProblemTitle").ShouldBe("Служба не запущена");
+        WaitFor(() => shell.CurrentKey == Pages.Home);
+        service.Status.State.ShouldBe(ConnectionState.Off, "свежий успешный ответ очистки заменяет прежний отказ службы");
+    }
+
+    [AvaloniaFact]
+    public async Task Failed_sign_out_cleanup_can_be_retried_on_the_login_page_without_credentials()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(account: true, signedIn: true,
+            gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        service.ShouldNotBeNull().Push(s => s with { State = ConnectionState.Connected });
+        service.DropFailure = new IOException("IPC недоступен");
+        Service<SettingsService>().Update(s => s with
+        {
+            KillSwitch = true,
+            ConnectOnLaunch = true,
+            Protection = s.Protection with { StrictMode = true, BootProtection = true },
+        });
+
+        await Service<AccountService>().SignOutAsync();
+        WaitFor(() => shell.CurrentKey == Pages.Login && Find<Border>(window, "LoginNetworkRecovery").IsVisible);
+        Service<AccountService>().MayConnect.ShouldBeFalse();
+        Find<Button>(window, "RestoreNetworkButton").IsEffectivelyEnabled.ShouldBeTrue();
+
+        service.DropFailure = null;
+        Press(window, "RestoreNetworkButton");
+        WaitFor(() => !Find<Border>(window, "LoginNetworkRecovery").IsVisible);
+        (service.Status.State, shell.CurrentKey).ShouldBe((ConnectionState.Off, Pages.Login));
+        var settings = Service<SettingsService>().Current;
+        (settings.KillSwitch, settings.ConnectOnLaunch, settings.Protection.StrictMode, settings.Protection.BootProtection)
+            .ShouldBe((false, false, false, false));
+    }
+
+    [AvaloniaFact]
+    public void Successful_login_with_pending_cleanup_opens_settings_and_keeps_connect_disabled()
+    {
+        ScriptedService? service = null;
+        var (window, shell) = Open(account: true,
+            gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        service.ShouldNotBeNull().DropFailure = new IOException("Служба недоступна");
+        Fill(window, FakeAccountApi.Email, "pw");
+        Press(window, "SignInButton");
+        WaitFor(() => shell.CurrentKey == Pages.Settings);
+
+        (Service<AccountService>().HasAccess, Service<AccountService>().MayConnect).ShouldBe((true, false));
+        Find<Border>(window, "SettingsNetworkRecovery").IsVisible.ShouldBeTrue();
+        Find<Button>(window, "SettingsRestoreNetwork").IsEffectivelyEnabled.ShouldBeTrue();
+
+        service.DropFailure = null;
+        Press(window, "SettingsRestoreNetwork");
+        WaitFor(() => !Find<Border>(window, "SettingsNetworkRecovery").IsVisible);
+        Service<AccountService>().MayConnect.ShouldBeTrue();
+        service.Status.State.ShouldBe(ConnectionState.Off);
+    }
+
+    [AvaloniaFact]
+    public async Task Service_repair_is_explicit_available_without_login_and_never_reconnects()
+    {
+        Installer.IsAvailable = true;
+        ScriptedService? service = null;
+        var (window, shell) = Open(account: true,
+            gateway: sp => service = new ScriptedService(Time, () => sp.GetRequiredService<SettingsService>().Current, ServiceKind.Installed));
+        service.ShouldNotBeNull().DropFailure = new IOException("Старая служба не подтверждает очистку");
+        await Service<AccountService>().RestoreNetworkAsync();
+        Dispatcher.UIThread.RunJobs();
+        Installer.Installs.ShouldBe(0, "обновление службы не запускается автоматически");
+        Installer.Pending = new TaskCompletionSource<ServiceInstallResult>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Press(window, "RepairNetworkServiceButton");
+        WaitFor(() => Installer.Installs == 1);
+        Find<Button>(window, "RepairNetworkServiceButton").IsEffectivelyEnabled.ShouldBeFalse();
+        Find<Button>(window, "RestoreNetworkButton").IsEffectivelyEnabled.ShouldBeFalse("одна операция на экраны входа и настроек");
+        service.DropFailure = null;
+        Installer.Pending.SetResult(ServiceInstallResult.Installed);
+        WaitFor(() => !Find<Border>(window, "LoginNetworkRecovery").IsVisible);
+
+        (shell.CurrentKey, service.Status.State, Service<AccountService>().IsSignedIn).ShouldBe((Pages.Login, ConnectionState.Off, false));
+        AccountApi.Logins.ShouldBeEmpty();
     }
 
     [AvaloniaFact]

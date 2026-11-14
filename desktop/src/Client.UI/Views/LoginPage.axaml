@@ -55,6 +55,20 @@
           </Grid>
         </Border>
 
+        <Border x:Name="LoginNetworkRecovery" Classes="notice" IsVisible="{Binding HasNetworkRecovery}">
+          <StackPanel Spacing="12">
+            <TextBlock Text="{Binding NetworkRecoveryText}" TextWrapping="Wrap"
+                       FontSize="{StaticResource PgFontSize.Small}" Foreground="{StaticResource PgBrush.Status.Warning.Badge}" />
+            <Button x:Name="RestoreNetworkButton" Classes="secondary" Command="{Binding Recovery.RestoreCommand}"
+                    Content="{l:L account.network.retry}" MinHeight="{StaticResource PgLayout.TouchTarget}" />
+            <Button x:Name="RepairNetworkServiceButton" Classes="secondary" Command="{Binding Recovery.RepairCommand}"
+                    Content="{Binding Recovery.RepairText}" IsVisible="{Binding Recovery.CanInstall}" MinHeight="{StaticResource PgLayout.TouchTarget}" />
+            <Button Classes="link" Command="{Binding Recovery.OpenServiceSettingsCommand}" Content="{l:L problem.background.open}"
+                    IsVisible="{Binding Recovery.HasServiceSettings}" MinHeight="{StaticResource PgLayout.TouchTarget}" />
+            <TextBlock Text="{Binding Recovery.Error}" TextWrapping="Wrap" Classes="caption" />
+          </StackPanel>
+        </Border>
+
         <!-- Шаг 1: почта и пароль -->
         <StackPanel x:Name="LoginCredentials" Spacing="12" Margin="0,8,0,0" IsVisible="{Binding !IsCodeStep}">
           <StackPanel Spacing="6">

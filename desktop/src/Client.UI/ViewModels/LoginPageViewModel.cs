@@ -41,11 +41,12 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     private readonly SettingsService _settings;
     private readonly IUrlLauncher _launcher;
 
-    public LoginPageViewModel(AccountService account, SettingsService settings, IUrlLauncher launcher)
+    public LoginPageViewModel(AccountService account, SettingsService settings, IUrlLauncher launcher, AccountNetworkRecoveryViewModel recovery)
     {
         _account = account;
         _settings = settings;
         _launcher = launcher;
+        Recovery = recovery;
         _account.Changed += OnAccountChanged;
         Loc.Instance.LanguageChanged += OnLanguageChanged;
     }
@@ -146,6 +147,12 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
 
     public bool HasNotice => Notice is not null;
 
+    public bool HasNetworkRecovery => _account.NeedsNetworkRecovery || _account.IsRestoringNetwork;
+
+    public AccountNetworkRecoveryViewModel Recovery { get; }
+
+    public string NetworkRecoveryText => Loc.Instance[_account.IsRestoringNetwork ? "account.network.pending" : "account.network.failed"];
+
     public bool IsRussian
     {
         get => _settings.Current.Language == "ru";
@@ -212,7 +219,7 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
         }
     }
 
-    private bool CanSignIn() => !IsBusy && !string.IsNullOrWhiteSpace(Email) && Password.Length > 0
+    private bool CanSignIn() => !IsBusy && !_account.IsRestoringNetwork && !string.IsNullOrWhiteSpace(Email) && Password.Length > 0
         && (!IsCodeStep || (IsRecovery ? !string.IsNullOrWhiteSpace(Code) : Code.Length == CodeLength));
 
     /// <summary>«Войти другим аккаунтом» на втором шаге: снова почта и пароль; почта остается, пароль и код стерты.</summary>
@@ -288,6 +295,9 @@ public sealed partial class LoginPageViewModel : ObservableObject, IDisposable
     {
         OnPropertyChanged(nameof(Notice));
         OnPropertyChanged(nameof(HasNotice));
+        OnPropertyChanged(nameof(HasNetworkRecovery));
+        OnPropertyChanged(nameof(NetworkRecoveryText));
+        SignInCommand.NotifyCanExecuteChanged();
     });
 
     private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(string.Empty);

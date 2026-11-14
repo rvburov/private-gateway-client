@@ -154,7 +154,13 @@ public sealed class ExternalProxyStore(SettingsService appSettings, ISecretStore
                 var revision = metadata == ExternalProxySettings.Default && current.ExternalProxy == ExternalProxySettings.Default
                     ? 0 : checked(current.ExternalProxy.Revision + 1);
                 // Обычное сохранение формы не перезаписывает язык и прочие поля, измененные за время запроса к ОС.
-                next = (restored ?? current) with { ExternalProxy = metadata with { CredentialsKey = key, Revision = revision } };
+                next = (restored ?? current) with
+                {
+                    ExternalProxy = metadata with { CredentialsKey = key, Revision = revision },
+                    // Вход и неподтвержденная очистка относятся к этому устройству, а не к импортируемой копии.
+                    AccountSignedOut = current.AccountSignedOut,
+                    AccountNetworkResetPending = current.AccountNetworkResetPending,
+                };
                 return next;
             });
         }

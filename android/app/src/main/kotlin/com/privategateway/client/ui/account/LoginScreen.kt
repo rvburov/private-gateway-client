@@ -53,6 +53,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.privategateway.client.R
 import com.privategateway.client.account.AccountNotice
+import com.privategateway.client.account.AccountNetworkRecovery
 import com.privategateway.client.core.account.AccountApi
 import com.privategateway.client.core.account.AccountError
 import com.privategateway.client.ui.Texts
@@ -80,6 +81,8 @@ class LoginActions(
     val submit: () -> Unit,
     val site: (String) -> Unit,
     val back: () -> Unit,
+    val restoreNetwork: () -> Unit = {},
+    val openVpnSettings: (() -> Unit)? = null,
 )
 
 /**
@@ -91,7 +94,14 @@ class LoginActions(
  * под формой; у 403 и 409 — кнопка на страницу сайта (решение 626).
  */
 @Composable
-fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, language: ((String) -> Unit)?) {
+fun LoginScreen(
+    ui: LoginUi,
+    notice: AccountNotice?,
+    actions: LoginActions,
+    language: ((String) -> Unit)?,
+    networkRecovery: AccountNetworkRecovery = AccountNetworkRecovery.Idle,
+    systemVpnRestricted: Boolean = false,
+) {
     val scroll = rememberScrollState()
     // Окно во весь экран (edge-to-edge): клавиатуру форма учитывает сама, как ImportScreen. Отступы — до прокрутки: область
     // прокрутки уменьшается на высоту клавиатуры, и поле в фокусе прокручивается в видимую часть.
@@ -166,8 +176,41 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
             Notice(notice)
         }
 
+        if (networkRecovery != AccountNetworkRecovery.Idle) {
+            Spacer(Modifier.size(PgSpace.L))
+            Text(
+                stringResource(if (networkRecovery == AccountNetworkRecovery.Pending) R.string.account_network_pending else R.string.account_network_failed),
+                Modifier.fillMaxWidth().testTag("login.network.state"),
+                color = PgColor.Text.Secondary,
+                style = PgType.Small,
+            )
+            if (networkRecovery == AccountNetworkRecovery.Failed) {
+                Spacer(Modifier.size(PgSpace.S))
+                PgSecondaryButton(
+                    stringResource(R.string.account_network_retry), "login.network.retry", actions.restoreNetwork,
+                    Modifier.fillMaxWidth(),
+                )
+            }
+        }
+        if (systemVpnRestricted) {
+            Spacer(Modifier.size(PgSpace.L))
+            Text(
+                stringResource(R.string.android_account_systemVpn),
+                Modifier.fillMaxWidth().testTag("login.network.system"),
+                color = PgColor.Text.Secondary,
+                style = PgType.Small,
+            )
+        }
+        if (actions.openVpnSettings != null && (systemVpnRestricted || networkRecovery == AccountNetworkRecovery.Failed || ui.error == AccountError.Network)) {
+            Spacer(Modifier.size(PgSpace.S))
+            PgSecondaryButton(
+                stringResource(R.string.android_settings_vpn_open), "login.network.settings", actions.openVpnSettings,
+                Modifier.fillMaxWidth(),
+            )
+        }
+
         Spacer(Modifier.size(24.dp))
-        val submit = { if (ui.ready && !ui.busy) actions.submit() }
+        val submit = { if (ui.ready && !ui.busy && networkRecovery != AccountNetworkRecovery.Pending) actions.submit() }
         if (!ui.codeStep) {
             Field(stringResource(R.string.account_email))
             PgInput(
@@ -216,7 +259,8 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
             )
         }
 
-        val error = ui.error
+        // Для сбоя восстановления уже есть точное пояснение; не подменять его ошибкой хранилища входа.
+        val error = ui.error.takeUnless { networkRecovery == AccountNetworkRecovery.Failed }
         if (error != null) {
             Spacer(Modifier.size(PgSpace.S))
             Text(
@@ -237,7 +281,7 @@ fun LoginScreen(ui: LoginUi, notice: AccountNotice?, actions: LoginActions, lang
             "login.submit",
             submit,
             Modifier.fillMaxWidth(),
-            enabled = ui.ready && !ui.busy,
+            enabled = ui.ready && !ui.busy && networkRecovery != AccountNetworkRecovery.Pending,
             height = 50.dp,
         )
 

@@ -1,4 +1,6 @@
+using PrivateGateway.Client.Core.Platform;
 using PrivateGateway.Client.Platform.MacOS;
+using PrivateGateway.Client.Service;
 
 namespace PrivateGateway.Client.Tests.Network;
 
@@ -68,6 +70,284 @@ public sealed class NetworksetupSystemProxyTests
     }
 
     [Fact]
+    public void Restored_macos_proxy_is_confirmed_with_disabled_addresses_still_retained_by_networksetup()
+    {
+        var tool = new FakeNetworksetup();
+        tool.Services["Wi-Fi"] = new();
+        var proxy = new NetworksetupSystemProxy(tool.Run);
+        var before = proxy.Read();
+        var expected = proxy.Expected(10808).ShouldNotBeNull();
+
+        proxy.Enable(10808);
+
+        proxy.Read().Values.ShouldBe(expected.Values, ignoreOrder: true);
+        proxy.MatchesRestored(before, proxy.Read()).ShouldBeFalse("сам вызов Restore еще ничего не доказывает");
+        proxy.Restore(before);
+        tool.Get("Wi-Fi", "web").ShouldBe(("No", "127.0.0.1", "10808"), "macOS сохраняет адрес выключенного прокси");
+        proxy.MatchesRestored(before, proxy.Read()).ShouldBeTrue();
+
+        tool.Services["Wi-Fi"]["secureweb"] = ("Yes", "127.0.0.1", "10808");
+        proxy.MatchesRestored(before, proxy.Read()).ShouldBeFalse("оставшийся включенным HTTPS-прокси блокирует браузер");
+    }
+
+    [Fact]
+    public void Restored_macos_proxy_requires_a_valid_status_and_the_original_active_endpoint_and_bypass()
+    {
+        var tool = new FakeNetworksetup();
+        tool.Services["Wi-Fi"] = new() { ["web"] = ("Yes", "proxy.example.com", "3128") };
+        tool.Bypass["Wi-Fi"] = ["*.local"];
+        var proxy = new NetworksetupSystemProxy(tool.Run);
+        var before = proxy.Read();
+        var invalid = new SystemProxySnapshot(before.Values.ToDictionary(pair => pair.Key, pair => pair.Key == "Wi-Fi\nweb" ? "" : pair.Value));
+        proxy.MatchesRestored(before, invalid).ShouldBeFalse();
+
+        tool.Services["Wi-Fi"]["web"] = ("Yes", "127.0.0.1", "10808");
+        proxy.MatchesRestored(before, proxy.Read()).ShouldBeFalse();
+        tool.Services["Wi-Fi"]["web"] = ("Yes", "proxy.example.com", "3128");
+        tool.Bypass["Wi-Fi"] = ["other.example.com"];
+        proxy.MatchesRestored(before, proxy.Read()).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Interrupted_macos_proxy_restore_continues_after_a_service_restart()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            var proxy = new NetworksetupSystemProxy(tool.Run);
+            var before = proxy.Read();
+            var journal = new ServiceJournal(TimeProvider.System);
+            var guard = new SystemProxyGuard(proxy, backup, journal);
+            guard.Apply(10808);
+            tool.RefuseCommand = "-setsecurewebproxystate";
+
+            Should.Throw<IOException>(guard.ReleaseConfirmed);
+
+            tool.Get("Wi-Fi", "web").Enabled.ShouldBe("No");
+            tool.Get("Wi-Fi", "secureweb").Enabled.ShouldBe("Yes");
+            (guard.IsActive, File.Exists(backup)).ShouldBe((true, true));
+            tool.RefuseCommand = null;
+            new SystemProxyGuard(proxy, backup, journal).ReleaseConfirmed();
+
+            proxy.MatchesRestored(before, proxy.Read()).ShouldBeTrue();
+            File.Exists(backup).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Disabled_macos_network_is_restored_before_forgetting_the_snapshot()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            var proxy = new NetworksetupSystemProxy(tool.Run);
+            var before = proxy.Read();
+            var guard = new SystemProxyGuard(proxy, backup, new ServiceJournal(TimeProvider.System));
+            guard.Apply(10808);
+            tool.Disabled.Add("Wi-Fi");
+            proxy.Read().Values.ShouldBeEmpty("обычный снимок перечисляет только включенные сети");
+
+            guard.ReleaseConfirmed();
+
+            tool.Disabled.Remove("Wi-Fi");
+            proxy.MatchesRestored(before, proxy.Read()).ShouldBeTrue("после включения Wi-Fi не остается мертвого прокси");
+            tool.Get("Wi-Fi", "web").Enabled.ShouldBe("No");
+            (guard.IsActive, File.Exists(backup)).ShouldBe((false, false));
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Interrupted_macos_proxy_enable_restores_owned_network_without_changing_disabled_networks()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            tool.Services["Unused Ethernet"] = new() { ["web"] = ("Yes", "proxy.example.com", "3128") };
+            tool.Disabled.Add("Unused Ethernet");
+            var proxy = new NetworksetupSystemProxy(tool.Run);
+            var before = proxy.ReadForRestore();
+            var guard = new SystemProxyGuard(proxy, backup, new ServiceJournal(TimeProvider.System));
+            tool.RefuseCommand = "-setsecurewebproxy";
+
+            guard.Apply(10808);
+
+            tool.Get("Wi-Fi", "web").Enabled.ShouldBe("Yes");
+            File.Exists(backup).ShouldBeTrue();
+            tool.RefuseCommand = null;
+            new SystemProxyGuard(proxy, backup, new ServiceJournal(TimeProvider.System)).ReleaseConfirmed();
+
+            proxy.MatchesRestored(before, proxy.ReadForRestore()).ShouldBeTrue();
+            tool.Get("Unused Ethernet", "web").ShouldBe(("Yes", "proxy.example.com", "3128"));
+            File.Exists(backup).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Network_appearing_between_original_and_expected_snapshot_prevents_any_proxy_write()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            var enumerations = 0;
+            tool.BeforeCall = arguments =>
+            {
+                if (arguments[0] == "-listallnetworkservices" && ++enumerations == 2)
+                {
+                    tool.Services["New USB"] = new() { ["web"] = ("Yes", "proxy.example.com", "3128") };
+                }
+            };
+            var guard = new SystemProxyGuard(new NetworksetupSystemProxy(tool.Run), backup, new ServiceJournal(TimeProvider.System));
+
+            guard.Apply(10808);
+
+            guard.IsActive.ShouldBeFalse();
+            tool.Calls.ShouldNotContain(call => call.StartsWith("-set", StringComparison.Ordinal));
+            tool.Get("New USB", "web").ShouldBe(("Yes", "proxy.example.com", "3128"));
+            File.Exists(backup).ShouldBeFalse("неизвестная исходному снимку сеть не изменялась");
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Network_appearing_after_expected_snapshot_is_not_enabled_or_owned_by_the_guard()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            var enumerations = 0;
+            tool.BeforeCall = arguments =>
+            {
+                // У прежнего Enable третье перечисление происходило перед записью, у нового — только при readback.
+                if (arguments[0] == "-listallnetworkservices" && ++enumerations == 3)
+                {
+                    tool.Services["New USB"] = new() { ["web"] = ("Yes", "proxy.example.com", "3128") };
+                }
+            };
+            var guard = new SystemProxyGuard(new NetworksetupSystemProxy(tool.Run), backup, new ServiceJournal(TimeProvider.System));
+
+            guard.Apply(10808);
+            guard.IsActive.ShouldBeTrue();
+            tool.Get("New USB", "web").ShouldBe(("Yes", "proxy.example.com", "3128"));
+            tool.Services["New USB"]["web"] = ("Yes", "other.example.com", "8080");
+            guard.ReleaseConfirmed();
+
+            tool.Get("Wi-Fi", "web").Enabled.ShouldBe("No");
+            tool.Get("New USB", "web").ShouldBe(("Yes", "other.example.com", "8080"));
+            File.Exists(backup).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Disabled_network_that_was_never_targeted_keeps_foreign_changes_on_release()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            tool.Services["Unused Ethernet"] = new() { ["web"] = ("Yes", "proxy.example.com", "3128") };
+            tool.Disabled.Add("Unused Ethernet");
+            var guard = new SystemProxyGuard(new NetworksetupSystemProxy(tool.Run), backup, new ServiceJournal(TimeProvider.System));
+            guard.Apply(10808);
+            tool.Services["Unused Ethernet"]["web"] = ("Yes", "other.example.com", "8080");
+
+            guard.ReleaseConfirmed();
+
+            tool.Get("Unused Ethernet", "web").ShouldBe(("Yes", "other.example.com", "8080"));
+            File.Exists(backup).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void Changing_port_keeps_ownership_of_a_previously_targeted_network_that_is_now_disabled()
+    {
+        var folder = Path.Combine(Path.GetTempPath(), "pg-mac-proxy-" + Guid.NewGuid().ToString("N"));
+        var backup = Path.Combine(folder, "system-proxy.json");
+        try
+        {
+            var tool = new FakeNetworksetup();
+            tool.Services["Wi-Fi"] = new();
+            tool.Services["Ethernet"] = new();
+            var guard = new SystemProxyGuard(new NetworksetupSystemProxy(tool.Run), backup, new ServiceJournal(TimeProvider.System));
+            guard.Apply(10808);
+            tool.Disabled.Add("Ethernet");
+
+            guard.Apply(2080);
+            tool.Get("Wi-Fi", "web").Port.ShouldBe("2080");
+            tool.Get("Ethernet", "web").ShouldBe(("Yes", "127.0.0.1", "10808"));
+            guard.ReleaseConfirmed();
+
+            tool.Get("Wi-Fi", "web").Enabled.ShouldBe("No");
+            tool.Get("Ethernet", "web").Enabled.ShouldBe("No");
+            File.Exists(backup).ShouldBeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void Output_of_networksetup_is_read_as_macos_prints_it()
     {
         NetworksetupSystemProxy.ParseServices("An asterisk (*) denotes that a network service is disabled.\nWi-Fi\n*Thunderbolt Bridge\nUSB 10/100/1000 LAN\n", enabledOnly: true)
@@ -114,13 +394,23 @@ public sealed class NetworksetupSystemProxyTests
 
         public List<string> Calls { get; } = [];
 
+        public string? RefuseCommand { get; set; }
+
+        public Action<IReadOnlyList<string>>? BeforeCall { get; set; }
+
         public (string Enabled, string Server, string Port) Get(string service, string kind) =>
             Services[service].GetValueOrDefault(kind, ("No", "", kind == "auto" ? "" : "0"));
 
         public string Run(IReadOnlyList<string> arguments)
         {
             Calls.Add(string.Join(' ', arguments));
+            BeforeCall?.Invoke(arguments);
             var command = arguments[0];
+            if (command == RefuseCommand)
+            {
+                throw new IOException("networksetup не изменил параметры");
+            }
+
             if (command == "-listallnetworkservices")
             {
                 return "An asterisk (*) denotes that a network service is disabled.\n"

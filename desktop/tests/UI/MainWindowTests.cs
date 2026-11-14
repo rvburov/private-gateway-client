@@ -96,7 +96,7 @@ public sealed class MainWindowTests : WindowHarness
     {
         var (window, shell) = Open();
         var main = (MainPageViewModel)shell.CurrentPage!;
-        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
+        Service<SettingsService>().Update(s => s with { KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
         Press(window, "Power");
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);
@@ -122,7 +122,7 @@ public sealed class MainWindowTests : WindowHarness
     {
         var (window, shell) = Open();
         var main = (MainPageViewModel)shell.CurrentPage!;
-        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
+        Service<SettingsService>().Update(s => s with { KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
         Press(window, "Power");
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         WaitFor(() => shell.Protection.Status.State == ConnectionState.Connected);

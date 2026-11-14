@@ -5,7 +5,7 @@ using Avalonia.Media.Imaging;
 
 namespace PrivateGateway.Client.UI.Controls;
 
-/// <summary>Полный флаг 4:3 в квадратном слоте. Без кода — круглая Земля; без сетевых загрузок или эмодзи шрифта.</summary>
+/// <summary>Квадратный флаг с рамкой. Без кода — собственная Земля; никаких сетевых загрузок или эмодзи шрифта.</summary>
 public sealed partial class CountryFlag : UserControl
 {
     public static readonly StyledProperty<string?> CountryCodeProperty = AvaloniaProperty.Register<CountryFlag, string?>(nameof(CountryCode));
@@ -37,10 +37,8 @@ public sealed partial class CountryFlag : UserControl
     {
         if (Frame is not null)
         {
-            // Флаг не обрезается до квадрата: рисунок 4:3 и такая же рамка по центру слота. Земля остается квадратной.
-            var image = ImageFor(CountryCode);
-            Frame.Classes.Set("unknown", ReferenceEquals(image, ImageFor(null)));
-            Frame.Background = new ImageBrush(image) { Stretch = Stretch.Uniform };
+            // ImageBrush рисуется самим Border внутри скругления; PNG не перекрывает его внешнюю рамку.
+            Frame.Background = new ImageBrush(ImageFor(CountryCode)) { Stretch = Stretch.UniformToFill };
         }
     }
 

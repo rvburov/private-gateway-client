@@ -225,6 +225,7 @@ class MainViewModelTest {
             monitor,
             TunnelJournal(),
             AccountLogoutFence(folder.root.resolve("signed-out")),
+            settings,
         )
         runBlocking {
             account.seedForTests(
@@ -626,6 +627,13 @@ class MainViewModelTest {
         // Без входа в аккаунт сайта — сначала экран входа, подключения при запуске нет (решение 619).
         wait { settings.select(phone) }
         assertTrue(wait { model.connectOnLaunch() })
+        wait {
+            settings.resetAccountNetwork()
+            settings.setConnectOnLaunch(true)
+        }
+        assertFalse(wait { model.connectOnLaunch() }, "после нового входа даже восстановленная настройка ждет ручного включения")
+        wait { settings.permitConnection(manual = true) }
+        assertTrue(wait { model.connectOnLaunch() }, "после явного включения автоматическое восстановление снова доступно")
         wait { account.logout() }
         assertFalse(wait { model.connectOnLaunch() }, "без входа в аккаунт не подключается")
     }

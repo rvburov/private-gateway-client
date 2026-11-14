@@ -178,7 +178,8 @@ public sealed partial class ShellViewModel : ObservableObject, INavigator, IDisp
     private bool NeedsLogin => _account.IsRequired && !_account.HasAccess;
 
     /// <summary>Куда после входа: первый запуск — приветствие, дальше — главная.</summary>
-    private string StartPage => _settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome;
+    private string StartPage => _account.NeedsNetworkRecovery ? Pages.Settings
+        : _settings.Current.OnboardingDone ? Pages.Home : Pages.Welcome;
 
     private void OnConfigureTarget(object? sender, EventArgs e) => Navigate(
         _settings.Current.Mode == ConnectionMode.Proxy ? Pages.Settings : Pages.Add);

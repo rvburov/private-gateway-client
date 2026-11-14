@@ -95,7 +95,12 @@ public sealed class AccessibilityTests : WindowHarness
             (Pages.Core, () => ((CorePageViewModel)shell.CurrentPage!).MtuOptions[^1].ChooseCommand.Execute(null)),
             (Pages.Routing, () => ((RoutingPageViewModel)shell.CurrentPage!).AddRuleCommand.Execute(null)),
             (Pages.About, () => ((AboutPageViewModel)shell.CurrentPage!).OpenLicensesCommand.Execute(null)),
-            (Pages.Protection, () => ((ProtectionPageViewModel)shell.CurrentPage!).KillSwitch = false),
+            (Pages.Protection, () =>
+            {
+                var protection = (ProtectionPageViewModel)shell.CurrentPage!;
+                protection.KillSwitch = true;
+                protection.KillSwitch = false;
+            }),
         };
 
         foreach (var (page, open) in checks)

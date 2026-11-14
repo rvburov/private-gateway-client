@@ -179,8 +179,8 @@ class GatewayVpnService : VpnService() {
             return START_NOT_STICKY
         }
 
-        // Окно, «Постоянная VPN» (действие android.net.VpnService) и перезапуск системой — подключение к выбранному.
-        connect(startId)
+        // Только явные команды пользователя снимают ожидание после нового входа. Always-on и перезапуск ОС — нет.
+        connect(startId, manual = intent?.action == ACTION_CONNECT)
         return START_STICKY
     }
 
@@ -214,7 +214,7 @@ class GatewayVpnService : VpnService() {
         super.onDestroy()
     }
 
-    private fun connect(startId: Int) {
+    private fun connect(startId: Int, manual: Boolean = false) {
         foreground(notification(getString(R.string.status_connecting_title), null))
         resume?.cancel()
         resume = null
@@ -225,7 +225,15 @@ class GatewayVpnService : VpnService() {
                 // Без действующего входа в аккаунт сайта защита не поднимается ни одним путем: окно, плитка, уведомление,
                 // «Постоянная VPN» и перезапуск системой приходят сюда (решение 619). Вход проверяется и в конце: выход или
                 // отзыв, пришедший во время подключения, туннель не оставляет (решение 646).
-                val error = if (!account.allowed()) refused() else attempt(0) ?: verify() ?: signedOutMeanwhile()
+                val signedIn = account.allowed()
+                if (signedIn && !permitConnection(manual)) {
+                    stopCore()
+                    monitor.set(TunnelStatus())
+                    ServiceCompat.stopForeground(this@GatewayVpnService, ServiceCompat.STOP_FOREGROUND_REMOVE)
+                    stopSelfResult(startId)
+                    return@withLock false
+                }
+                val error = if (!signedIn) refused() else attempt(0) ?: verify() ?: signedOutMeanwhile()
                 if (destroyed) {
                     stopCore()
                     monitor.set(if (error != null) TunnelStatus(state = TunnelState.Error, error = error) else TunnelStatus())
@@ -245,6 +253,14 @@ class GatewayVpnService : VpnService() {
         }
     }
 
+    private suspend fun permitConnection(manual: Boolean): Boolean = try {
+        settings.permitConnection(manual).also { if (!it) journal.info("connect waits for manual action after sign-in") }
+    } catch (e: Exception) {
+        if (e is CancellationException) throw e
+        journal.warning("connect authorization storage failed " + e.javaClass.simpleName)
+        false
+    }
+
     /**
      * Подключение без входа в аккаунт: ядро не запускается, «Ошибка» с кодом «Нет доступа». Срок мог пройти при открытом
      * окне — проверка входа сразу, чтобы окно перешло на экран входа, а не ждало расписания.
@@ -260,7 +276,7 @@ class GatewayVpnService : VpnService() {
      * выключить защиту не ушла. Вход стирается раньше, чем репозиторий смотрит на монитор, поэтому здесь он уже виден.
      */
     private suspend fun signedOutMeanwhile(): String? {
-        if (account.allowed()) {
+        if (account.allowed() && permitConnection(manual = false)) {
             return null
         }
 
@@ -713,12 +729,17 @@ class GatewayVpnService : VpnService() {
         private const val NOTIFICATION_ID = 1
         private const val SETTINGS_QUIET_MS = 700L
         const val ACTION_CONNECT = "com.privategateway.client.CONNECT"
+        private const val ACTION_CONNECT_AUTOMATIC = "com.privategateway.client.CONNECT_AUTOMATIC"
         const val ACTION_DISCONNECT = "com.privategateway.client.DISCONNECT"
         const val ACTION_PAUSE = "com.privategateway.client.PAUSE"
 
         /** Подключить: разрешение на VPN (VpnService.prepare) окно уже получило. */
         fun connect(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, GatewayVpnService::class.java).setAction(ACTION_CONNECT))
+        }
+
+        fun connectAutomatically(context: Context) {
+            ContextCompat.startForegroundService(context, Intent(context, GatewayVpnService::class.java).setAction(ACTION_CONNECT_AUTOMATIC))
         }
 
         /** Пауза для входа в Wi-Fi (решение 557): служба уже на переднем плане — защита включена. */

@@ -130,6 +130,7 @@ public sealed class BackupTests : IDisposable
     public void Restore_keeps_an_autocopy_that_undoes_it()
     {
         var home = Machine();
+        home.Settings.Update(s => s with { KillSwitch = true });
         home.Catalog.Add(Parse("trojan://pw-old@198.51.100.1:443#Old"), null);
         var file = Machine("donor", m =>
         {
@@ -153,6 +154,20 @@ public sealed class BackupTests : IDisposable
         home.Catalog.Definition(home.Catalog.Servers[0].Id)!.Credentials.Password.ShouldBe("pw-old");
         home.Settings.Current.KillSwitch.ShouldBeTrue();
         home.Secrets.Values.Values.ShouldNotContain("""{"Password":"pw-new"}""", "ключи замененных серверов удалены");
+    }
+
+    [Fact]
+    public void Restoring_preferences_keeps_local_sign_out_and_pending_network_recovery()
+    {
+        var home = Machine();
+        home.Settings.Update(s => s with { AccountSignedOut = true, AccountNetworkResetPending = true });
+        var copy = Machine("donor").Backup.Create(new BackupParts(Servers: false, Settings: true, Keys: false), Password);
+
+        home.Backup.Restore(BackupService.Read(copy, Password));
+
+        (home.Settings.Current.AccountSignedOut, home.Settings.Current.AccountNetworkResetPending).ShouldBe((true, true));
+        home.Backup.RestoreAutoCopy();
+        (home.Settings.Current.AccountSignedOut, home.Settings.Current.AccountNetworkResetPending).ShouldBe((true, true));
     }
 
     [Fact]

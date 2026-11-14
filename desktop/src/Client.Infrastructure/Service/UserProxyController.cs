@@ -108,6 +108,31 @@ public sealed class UserProxyController : IUserProxyController, IDisposable
 
     public void Dispose() => Shutdown();
 
+    public bool RestoreForSignOut()
+    {
+        UserProxyStatus next;
+        lock (_gate)
+        {
+            _explicitDisableRequested = true;
+            try
+            {
+                var changed = _lease?.WasChanged == true;
+                var restored = _lease?.Release() == true;
+                Recover(needed: false);
+                next = new(changed ? UserProxyState.ChangedByOther : restored ? UserProxyState.Restored : UserProxyState.Off);
+            }
+            catch (Exception error) when (error is IOException or UnauthorizedAccessException or SecurityException or JsonException or FormatException)
+            {
+                next = new(UserProxyState.Error);
+            }
+
+            _status = next;
+        }
+
+        Changed?.Invoke(this, next);
+        return next.State != UserProxyState.Error;
+    }
+
     private void OnStatus(object? sender, ConnectionStatus status)
     {
         Reconcile();

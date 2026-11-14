@@ -20,8 +20,7 @@ public struct SubscriptionSettings: Equatable, Sendable {
 public struct AppSettings: Equatable, Sendable {
     public var selectedServerId: String?
     public var tunnel: TunnelSettings
-    /// Блок при обрыве — системный «весь трафик только через VPN» (`includeAllNetworks`); по умолчанию включен, как решено
-    /// для защиты.
+    /// Блок при обрыве — системный «весь трафик только через VPN» (`includeAllNetworks`); включается пользователем.
     public var killSwitch: Bool
     public var subscriptions: SubscriptionSettings
     /// Какие уведомления показывать; по умолчанию «Только важные».
@@ -41,7 +40,7 @@ public struct AppSettings: Equatable, Sendable {
     public var routing: RoutingSettings
 
     public init(
-        selectedServerId: String? = nil, tunnel: TunnelSettings = TunnelSettings(), killSwitch: Bool = true,
+        selectedServerId: String? = nil, tunnel: TunnelSettings = TunnelSettings(), killSwitch: Bool = false,
         subscriptions: SubscriptionSettings = SubscriptionSettings(), notifications: NotificationLevel = .default, reconnect: ReconnectPolicy = .backoff60Seconds,
         alwaysOn: Bool = false, connectOnLaunch: Bool = false, connection: ConnectionSettings = ConnectionSettings(), routing: RoutingSettings = RoutingSettings()
     ) {

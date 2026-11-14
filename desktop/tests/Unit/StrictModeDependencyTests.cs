@@ -8,7 +8,7 @@ public sealed class StrictModeDependencyTests
     [Fact]
     public void Disabling_kill_switch_clears_strict_in_one_saved_change_and_does_not_restore_it()
     {
-        var store = new Store(AppSettings.Default with { Protection = ProtectionSettings.Default with { StrictMode = true } });
+        var store = new Store(AppSettings.Default with { KillSwitch = true, Protection = ProtectionSettings.Default with { StrictMode = true } });
         var settings = new SettingsService(store);
         var changes = new List<AppSettings>();
         settings.Changed += (_, value) => changes.Add(value);
@@ -37,7 +37,7 @@ public sealed class StrictModeDependencyTests
     [Fact]
     public void Turning_off_strict_keeps_the_ordinary_kill_switch()
     {
-        var settings = new SettingsService(new Store(AppSettings.Default with { Protection = ProtectionSettings.Default with { StrictMode = true } }));
+        var settings = new SettingsService(new Store(AppSettings.Default with { KillSwitch = true, Protection = ProtectionSettings.Default with { StrictMode = true } }));
         settings.Update(s => s with { Protection = s.Protection with { StrictMode = false } });
         (settings.Current.KillSwitch, settings.Current.Protection.StrictMode).ShouldBe((true, false));
     }

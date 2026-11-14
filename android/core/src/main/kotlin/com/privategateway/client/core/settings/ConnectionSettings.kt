@@ -37,14 +37,14 @@ enum class TlsFingerprint(val xray: String?) {
  * @property mtu свой MTU туннеля; null — «Авто» ([AUTO_MTU]).
  * @property strictRoutes программы не могут сами обойти туннель через другую сеть телефона: без
  *   `VpnService.Builder.allowBypass` Android не пускает их мимо карты VPN, даже если программа привяжется к Wi-Fi или
- *   мобильной сети напрямую.
+ *   мобильной сети напрямую. По умолчанию выключены; включение — по выбору пользователя.
  * @property sniffing имя сайта из TLS, HTTP и QUIC — для правил по доменам («Маршрутизация»).
  * @property connectTimeoutSeconds сколько ждать ответа сервера через туннель (проба связи), секунды.
  */
 data class ConnectionSettings(
     val coreLog: CoreLogLevel = CoreLogLevel.Warning,
     val mtu: Int? = null,
-    val strictRoutes: Boolean = true,
+    val strictRoutes: Boolean = false,
     val sniffing: Boolean = true,
     val fingerprint: TlsFingerprint = TlsFingerprint.Profile,
     val mux: Boolean = false,

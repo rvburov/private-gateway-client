@@ -98,7 +98,26 @@
   После входа — приветствие первого запуска (следующий экран) или главная. В демо-режиме десктопа входа нет. На iOS входа пока нет
   (решение 624, mobile-parity.md): экраны входа на рамке iOS не показываются.</p>
 
+<p class="pg-board-note">Выход из аккаунта выключает VPN, блок при обрыве, строгий режим, защиту при загрузке,
+  автоподключение и оба переключателя системного прокси. Новый явный вход оставляет их выключенными; серверы и
+  настройки DNS внутри туннеля сохраняются. При ошибке восстановления сети экран входа показывает кнопку
+  «Восстановить сеть»: она работает без авторизации. Успех подтверждается ответом службы, а не отправкой команды.</p>
+
 <div class="pg-screens">
+  <section class="pg-screen" data-os="desktop android" data-state="off" data-caption="Выход · восстановление сети не подтверждено">
+    <div class="page-content login-form">
+      <span class="t-h1" data-ui-text="account.title">Вход в Private Gateway</span>
+      <div class="card">
+        <p class="t-wrap" data-ui-text="account.network.failed">Не удалось подтвердить отключение защиты. Повторите восстановление сети.</p>
+        <button class="btn-secondary" data-ui-text="account.network.retry">Восстановить сеть</button>
+        <button class="btn-secondary" data-os="desktop" data-ui-text="account.network.service">Обновить службу</button>
+        <button class="btn-link" data-os="macos" data-ui-text="problem.background.open">Открыть настройки macOS</button>
+        <p class="t-wrap" data-os="android" data-ui-text="android.account.systemVpn">Если в настройках Android включены «Постоянная VPN» или «Блокировать подключения без VPN», отключите их там. Приложение не может изменить эти системные настройки.</p>
+        <button class="btn-secondary" data-os="android" data-ui-text="android.settings.vpn.open">Открыть настройки VPN</button>
+      </div>
+      <p class="t-wrap" data-ui-text="account.network.pending">Восстанавливаем обычное подключение…</p>
+    </div>
+  </section>
   <section class="pg-screen startup-shell" data-os="desktop" data-caption="0 · Окно до загрузки настроек и поиска службы">
     <span class="t-brand">Private Gateway</span>
     <progress aria-label="Запуск приложения"></progress>

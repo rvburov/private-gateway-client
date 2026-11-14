@@ -14,6 +14,8 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        // Обработчик живет до Closed и сам снимает подписки, включая общий список экранов.
+        _ = new WindowDisplayRefresh(this);
         DataContextChanged += (_, _) =>
         {
             ShellPanel.IsVisible = DataContext is not null;

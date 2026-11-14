@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using PrivateGateway.Client.Core.Platform;
 
 namespace PrivateGateway.Client.Platform.MacOS;
@@ -11,7 +12,8 @@ namespace PrivateGateway.Client.Platform.MacOS;
 /// DNS macOS для туннеля: дополнительный резолвер всех имен в своей записи configd.
 /// DNS физической сети не подменяется: иначе macOS привязывает адрес туннеля к en0,
 /// и системные запросы идут мимо TUN. Запись не имеет InterfaceName; маршрут определяет TUN.
-/// Restore удаляет только свою запись и восстанавливает копию старого формата после обновления службы.
+/// Restore удаляет только свою запись. Копия старого формата не доказывает принадлежность нынешнего DNS:
+/// если физическая сеть уже вернулась к исходным настройкам, копия удаляется; иначе требуется ручная проверка.
 /// </summary>
 /// <param name="scutil">Вызов scutil: команды на stdin → вывод.</param>
 /// <param name="backupFile">Копия DNS физической сети, оставленная прежней версией.</param>
@@ -40,6 +42,10 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, st
     {
         Check(service);
         scutil($"remove {StateKey(service)}\nquit\n");
+        if (Read(StateKey(service)) is not null)
+        {
+            throw new IOException("Удаление DNS туннеля не подтверждено macOS");
+        }
         RestoreLegacy();
     }
 
@@ -50,11 +56,11 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, st
             return;
         }
 
-        Check(backup.Service);
-        Put(StateKey(backup.Service), backup.State);
-        if (backup.Setup is not null)
+        // В прежнем формате есть только исходные DNS, но нет подтвержденных настроек, которые поставили мы.
+        // Даже знакомый адрес туннеля не доказывает владение: DNS мог изменить пользователь или другой VPN.
+        if (!Same(Read(StateKey(backup.Service)), backup.State) || !Same(Read(SetupKey(backup.Service)), backup.Setup))
         {
-            Put(SetupKey(backup.Service), backup.Setup);
+            throw new IOException("Принадлежность прежних настроек DNS не подтверждена: требуется ручная проверка сети; копия сохранена");
         }
 
         File.Delete(backupFile);
@@ -64,9 +70,15 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, st
     public static IReadOnlyList<string>? ParseServers(string output)
     {
         ArgumentNullException.ThrowIfNull(output);
-        if (output.Contains("No such key", StringComparison.Ordinal) || !output.Contains("<dictionary>", StringComparison.Ordinal))
+        var text = output.Trim();
+        if (text == "No such key")
         {
             return null;
+        }
+        if (!text.StartsWith("<dictionary> {", StringComparison.Ordinal) || !text.EndsWith('}')
+            || text.Count(c => c == '{') != text.Count(c => c == '}'))
+        {
+            throw new IOException("macOS не подтвердила содержимое записи DNS");
         }
 
         var servers = new List<string>();
@@ -77,14 +89,24 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, st
             {
                 inside = true;
             }
+            else if (line.StartsWith("ServerAddresses :", StringComparison.Ordinal))
+            {
+                throw new IOException("macOS вернула неизвестный формат адресов DNS");
+            }
             else if (inside && line == "}")
             {
+                inside = false;
                 break;
             }
             else if (inside && line.IndexOf(" : ", StringComparison.Ordinal) is var at and > 0)
             {
                 servers.Add(line[(at + 3)..].Trim());
             }
+        }
+
+        if (inside)
+        {
+            throw new IOException("macOS вернула неполный список адресов DNS");
         }
 
         return servers;
@@ -95,48 +117,44 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, st
     private static string SetupKey(string service) => $"Setup:/Network/Service/{service}/DNS";
 
     // В команды scutil попадают только номер сети и адреса — проверенного вида.
-    private static void Check(string service)
+    private static void Check(string? service)
     {
-        if (service.Length == 0 || !service.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_'))
+        if (string.IsNullOrEmpty(service) || !service.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '.' or '_'))
         {
             throw new IOException("Непонятный номер основной сети: " + service);
         }
     }
 
-    private static string Address(string server) => server.Length > 0 && server.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or ':' or '%')
+    private static string Address(string? server) => !string.IsNullOrEmpty(server) && IPAddress.TryParse(server, out _)
+        && server.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or ':' or '%')
         ? server
         : throw new IOException("Непонятный адрес DNS: " + server);
 
-    // Только серверы: остальное в записи (домены поиска) берется из нее же.
-    private void Set(string key, IReadOnlyList<string> servers) =>
-        scutil($"d.init\nget {key}\nd.add ServerAddresses * {string.Join(' ', servers.Select(Address))}\nset {key}\nquit\n");
+    private IReadOnlyList<string>? Read(string key) => ParseServers(scutil($"show {key}\nquit\n"));
 
-    // Вернуть, как было: записи не было — убрать; серверов не было — убрать только их.
-    private void Put(string key, IReadOnlyList<string>? servers)
-    {
-        if (servers is null)
-        {
-            scutil($"remove {key}\nquit\n");
-        }
-        else if (servers.Count == 0)
-        {
-            scutil($"d.init\nget {key}\nd.remove ServerAddresses\nset {key}\nquit\n");
-        }
-        else
-        {
-            Set(key, servers);
-        }
-    }
+    private static bool Same(IReadOnlyList<string>? current, IReadOnlyList<string>? saved) =>
+        current is null ? saved is null : saved is not null && current.SequenceEqual(saved, StringComparer.Ordinal);
 
     private Backup? Load()
     {
         try
         {
-            return JsonSerializer.Deserialize<Backup>(File.ReadAllText(backupFile));
+            var backup = JsonSerializer.Deserialize<Backup>(File.ReadAllText(backupFile))
+                ?? throw new IOException("Копия прежних DNS пуста; требуется ручная проверка сети");
+            Check(backup.Service);
+            foreach (var address in (backup.State ?? []).Concat(backup.Setup ?? []))
+            {
+                _ = Address(address);
+            }
+            return backup;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or JsonException)
+        catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
         {
             return null;
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or JsonException)
+        {
+            throw new IOException("Копия прежних DNS не прочитана; требуется ручная проверка сети", e);
         }
     }
 
@@ -167,5 +185,6 @@ public sealed class ScutilDns(Func<string, string> scutil, string backupFile, st
     }
 
     /// <summary>Что было у основной сети: серверы DHCP (State) и заданные вручную (Setup); null — записи не было.</summary>
-    private sealed record Backup(string Service, IReadOnlyList<string>? State, IReadOnlyList<string>? Setup);
+    private sealed record Backup([property: JsonRequired] string Service, [property: JsonRequired] IReadOnlyList<string>? State,
+        [property: JsonRequired] IReadOnlyList<string>? Setup);
 }

@@ -225,7 +225,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertEqual(saved.connection, connection)
         XCTAssertEqual(saved.routing, routing)
         XCTAssertEqual(saved.core().mtu, 1360, "MTU — в план туннеля и ядро")
-        XCTAssertTrue(saved.killSwitch, "остальное не тронуто")
+        XCTAssertFalse(saved.killSwitch, "изменение другой настройки не включает блок при обрыве")
     }
 
     func testLanguageRowNamesTheAppLanguage() {
@@ -322,7 +322,7 @@ final class SettingsTests: XCTestCase {
         XCTAssertTrue(model.settings.connectOnLaunch)
         let saved = try await container.settings.load()
         XCTAssertTrue(saved.connectOnLaunch)
-        XCTAssertTrue(saved.killSwitch, "остальное не тронуто")
+        XCTAssertFalse(saved.killSwitch, "изменение другой настройки не включает блок при обрыве")
 
         // Серверов нет — подключаться не к чему: защита остается выключенной.
         await model.connectOnLaunch()

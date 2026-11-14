@@ -320,6 +320,125 @@ public sealed class SystemProxyTests : IDisposable
     }
 
     [Fact]
+    public void Confirmed_release_keeps_ownership_and_the_backup_when_the_os_refuses_then_retries()
+    {
+        var proxy = new FakeSystemProxy();
+        var guard = new SystemProxyGuard(proxy, Backup, _journal);
+        guard.Apply(10808);
+        proxy.RestoreFailure = new IOException("возврат запрещен");
+
+        Should.Throw<IOException>(guard.ReleaseConfirmed);
+
+        (proxy.Port, guard.IsActive, File.Exists(Backup)).ShouldBe((10808, true, true));
+        proxy.RestoreFailure = null;
+        guard.ReleaseConfirmed();
+        (proxy.Port, guard.IsActive, File.Exists(Backup)).ShouldBe((null, false, false));
+    }
+
+    [Fact]
+    public void Confirmed_release_detects_silent_native_failure_and_a_new_service_retries_the_snapshot()
+    {
+        var proxy = new FakeSystemProxy();
+        var guard = new SystemProxyGuard(proxy, Backup, _journal);
+        guard.Apply(10808);
+        proxy.IgnoresRestore = true;
+
+        Should.Throw<IOException>(guard.ReleaseConfirmed).Message.ShouldContain("не подтвержден");
+
+        (proxy.Port, guard.IsActive, File.Exists(Backup)).ShouldBe((10808, true, true));
+        proxy.IgnoresRestore = false;
+        new SystemProxyGuard(proxy, Backup, _journal).ReleaseConfirmed();
+        (proxy.Port, File.Exists(Backup)).ShouldBe((null, false));
+    }
+
+    [Fact]
+    public void Best_effort_release_does_not_erase_ownership_after_a_native_failure()
+    {
+        var proxy = new FakeSystemProxy();
+        var guard = new SystemProxyGuard(proxy, Backup, _journal);
+        guard.Apply(10808);
+        proxy.RestoreFailure = new IOException("возврат запрещен");
+
+        guard.Release();
+
+        (proxy.Port, guard.IsActive, File.Exists(Backup)).ShouldBe((10808, true, true));
+        _journal.Tail(1).Single().Level.ShouldBe(JournalLevel.Warning);
+    }
+
+    [Fact]
+    public void Stale_snapshot_keeps_a_foreign_proxy_after_service_restart()
+    {
+        var proxy = new FakeSystemProxy();
+        new SystemProxyGuard(proxy, Backup, _journal).Apply(10808);
+        proxy.Enable(2334);
+
+        new SystemProxyGuard(proxy, Backup, _journal).ReleaseConfirmed();
+
+        (proxy.Port, File.Exists(Backup)).ShouldBe((2334, false));
+        proxy.RestoreAttempts.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Old_snapshot_without_applied_settings_cannot_silently_replace_an_unknown_proxy()
+    {
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(Backup, "{\"port\":null}");
+        var proxy = new FakeSystemProxy();
+        proxy.Enable(2334);
+        var restarted = new SystemProxyGuard(proxy, Backup, _journal);
+
+        restarted.RestoreStale().ShouldBeFalse("в старом снимке нет подтверждения принадлежности текущего прокси");
+        Should.Throw<IOException>(restarted.ReleaseConfirmed);
+
+        (proxy.Port, File.Exists(Backup)).ShouldBe((2334, true));
+        proxy.RestoreAttempts.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Already_restored_old_snapshot_is_removed_without_rewriting_native_settings()
+    {
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(Backup, "{\"port\":null}");
+        var proxy = new FakeSystemProxy();
+
+        new SystemProxyGuard(proxy, Backup, _journal).ReleaseConfirmed();
+
+        File.Exists(Backup).ShouldBeFalse();
+        proxy.RestoreAttempts.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Unreadable_snapshot_is_not_reported_as_missing_after_service_restart()
+    {
+        // Каталог вместо файла воспроизводит отказ чтения независимо от прав текущего пользователя.
+        Directory.CreateDirectory(Backup);
+        var proxy = new FakeSystemProxy();
+        var restarted = new SystemProxyGuard(proxy, Backup, _journal);
+
+        restarted.RestoreStale().ShouldBeFalse();
+        _journal.Tail(1).Single().Level.ShouldBe(JournalLevel.Warning);
+        Should.Throw<UnauthorizedAccessException>(restarted.ReleaseConfirmed);
+
+        Directory.Exists(Backup).ShouldBeTrue();
+        proxy.RestoreAttempts.ShouldBe(0);
+    }
+
+    [Fact]
+    public void Malformed_snapshot_is_not_discarded_or_reported_as_restored()
+    {
+        Directory.CreateDirectory(_root);
+        File.WriteAllText(Backup, "[]");
+        var proxy = new FakeSystemProxy();
+        var restarted = new SystemProxyGuard(proxy, Backup, _journal);
+
+        restarted.RestoreStale().ShouldBeFalse();
+        Should.Throw<System.Text.Json.JsonException>(restarted.ReleaseConfirmed);
+
+        File.ReadAllText(Backup).ShouldBe("[]");
+        proxy.RestoreAttempts.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task Proxy_mode_switches_the_system_proxy_on_while_connected()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");
@@ -405,12 +524,32 @@ internal sealed class FakeSystemProxy : ISystemProxy
 
     public bool Refuses { get; init; }
 
+    public IOException? RestoreFailure { get; set; }
+
+    public bool IgnoresRestore { get; set; }
+
+    public int RestoreAttempts { get; private set; }
+
     public string Name => "подделка";
 
     public SystemProxySnapshot Read() => new(new Dictionary<string, string?> { ["port"] = Port?.ToString(System.Globalization.CultureInfo.InvariantCulture) });
 
     public void Enable(int port) => Port = Refuses ? throw new UnauthorizedAccessException("нет доступа") : port;
 
-    public void Restore(SystemProxySnapshot previous) =>
-        Port = previous.Values["port"] is { } port ? int.Parse(port, System.Globalization.CultureInfo.InvariantCulture) : null;
+    public SystemProxySnapshot? Expected(int port) =>
+        new(new Dictionary<string, string?> { ["port"] = port.ToString(System.Globalization.CultureInfo.InvariantCulture) });
+
+    public void Restore(SystemProxySnapshot previous)
+    {
+        RestoreAttempts++;
+        if (RestoreFailure is { } error)
+        {
+            throw error;
+        }
+
+        if (!IgnoresRestore)
+        {
+            Port = previous.Values["port"] is { } port ? int.Parse(port, System.Globalization.CultureInfo.InvariantCulture) : null;
+        }
+    }
 }

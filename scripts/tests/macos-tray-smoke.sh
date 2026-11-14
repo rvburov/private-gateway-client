@@ -7,7 +7,10 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 source_file=desktop/src/Client.UI/Services/MacStatusItem.cs
 backup=$(mktemp)
 cp "$source_file" "$backup"
-trap 'cp "$backup" "$source_file"; touch "$source_file"; rm -f "$backup"' EXIT
+display_source=desktop/src/Client.UI/Services/MacDisplayRefresh.cs
+display_backup=$(mktemp)
+cp "$display_source" "$display_backup"
+trap 'cp "$backup" "$source_file"; cp "$display_backup" "$display_source"; touch "$source_file" "$display_source"; rm -f "$backup" "$display_backup"' EXIT
 output="$PWD/artifacts/tray-smoke"
 mkdir -p "$output"
 build() {
@@ -49,6 +52,42 @@ PY
 }
 build
 check pass
+
+# Настоящий Metal drawable, не Headless: испорченный размер должен восстановиться без пересоздания окна.
+check_display() {
+  python3 - "$output/bin/Client.UI/release/PrivateGateway.dll" "$1" <<'PY_DISPLAY'
+import os, subprocess, sys
+result = subprocess.run(['dotnet', sys.argv[1], '--check-display'],
+                        env={**os.environ, 'PG_STARTUP_TRACE': '1'},
+                        capture_output=True, text=True, timeout=30)
+print(result.stdout)
+print(result.stderr)
+if sys.argv[2] == 'pass':
+    assert result.returncode == 0, f'Проверка масштаба упала: {result.returncode}'
+    assert 'Масштаб macOS: Metal drawable восстановлен' in result.stdout
+else:
+    assert result.returncode != 0, 'Мутант без восстановления нативной поверхности выжил'
+    assert 'drawable не восстановлен' in result.stderr, 'Мутант упал по другой причине'
+    print('Мутант масштаба: устаревший Metal drawable обнаружен')
+PY_DISPLAY
+}
+check_display pass
+python3 - "$display_source" <<'PY_DISPLAY_MUTANT'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+source = path.read_text()
+for old in ('SendVoid(view, backing);', 'SendVoid(layer, display);'):
+    assert source.count(old) == 1
+    source = source.replace(old, '// Мутант: восстановление нативной поверхности убрано.')
+path.write_text(source)
+PY_DISPLAY_MUTANT
+build
+check_display fail
+cp "$display_backup" "$display_source"
+touch "$display_source"
+build
+check_display pass
 python3 - "$source_file" <<'PY'
 from pathlib import Path
 import sys

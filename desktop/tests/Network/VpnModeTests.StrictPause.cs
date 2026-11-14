@@ -88,7 +88,7 @@ public sealed partial class VpnModeTests
         {
             BootBlock.Save(file, StrictHeld);
             var (definition, _) = XrayKit.Pair("vless", 443);
-            new BootConnection(connect, new PlainSealer()).Save(VpnRequest(definition), [IPAddress.Parse("198.51.100.20")]);
+            new BootConnection(connect, new PlainSealer()).Save(VpnRequest(definition, bootProtection: true), [IPAddress.Parse("198.51.100.20")]);
 
             // Перезагрузка (правил нет) или перезапуск службы (правила стоят: nftables без перезагрузки, фильтры WFP).
             // Сборки ядер — не запускаемые: служба, начав подключение, дошла бы до блока и туннеля.

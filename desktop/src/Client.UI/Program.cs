@@ -23,6 +23,11 @@ internal static class Program
             return CheckTray();
         }
 
+        if (args.Contains("--check-display"))
+        {
+            return CheckDisplay();
+        }
+
         var paths = AppPaths.ForCurrentUser();
         using var instance = SingleInstance.TryAcquire(paths);
         if (instance is null)
@@ -69,6 +74,20 @@ internal static class Program
         var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "pg-tray-" + Guid.NewGuid().ToString("N")));
         App.Startup = new AppStartup(paths, null, Minimized: false, Demo: true, CheckTray: true);
         return BuildAvaloniaApp().StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
+    }
+
+    private static int CheckDisplay()
+    {
+        if (!OperatingSystem.IsMacOS())
+        {
+            return 1;
+        }
+
+        var paths = new AppPaths(Path.Combine(Path.GetTempPath(), "pg-display-" + Guid.NewGuid().ToString("N")));
+        App.Startup = new AppStartup(paths, null, Minimized: false, Demo: true, CheckDisplay: true);
+        // Проверка именно Metal, как первым выбирает Avalonia 12.1.4 на MacBook. Без тихого пропуска на другом движке.
+        return BuildAvaloniaApp().With(new AvaloniaNativePlatformOptions { RenderingMode = [AvaloniaNativeRenderingMode.Metal] })
+            .StartWithClassicDesktopLifetime([], ShutdownMode.OnExplicitShutdown);
     }
 
     // Используется и дизайнером Avalonia, и тестами без экрана.

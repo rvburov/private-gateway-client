@@ -22,6 +22,25 @@ public sealed class ServiceGatewayClientTests
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task Missing_service_is_not_successful_network_restoration()
+    {
+        using var client = Client(MissingEndpoint(), null, Settings(10808));
+
+        await Should.ThrowAsync<IOException>(() => client.DropProtectionAsync(Ct));
+    }
+
+    [Fact]
+    public async Task Drop_requires_a_service_reply_and_confirms_the_off_state()
+    {
+        await using var service = await RunningService.StartAsync();
+        using var client = Client(service.Endpoint, null, Settings(10808));
+
+        await client.DropProtectionAsync(Ct);
+
+        (client.HasReceivedStatus, client.Status.State, client.Status.StrictBlock).ShouldBe((true, ConnectionState.Off, false));
+    }
+
+    [Fact]
     public async Task Window_connects_through_the_service_and_follows_its_state_and_journal()
     {
         Assert.SkipWhen(XrayKit.Xray is null, "нет сборки Xray — scripts/get-xray.sh");

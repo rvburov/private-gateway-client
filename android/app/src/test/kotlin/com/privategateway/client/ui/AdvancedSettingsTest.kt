@@ -107,7 +107,7 @@ class AdvancedSettingsTest {
         // По умолчанию — как у десктопа.
         compose.onNodeWithTag("core.log").assertTextEquals(text(R.string.core_log_warning))
         compose.onNodeWithTag("core.mtu").performScrollTo().assertTextEquals(text(R.string.core_mtu_auto))
-        compose.onNodeWithTag("core.strict").performScrollTo().assertIsOn()
+        compose.onNodeWithTag("core.strict").performScrollTo().assertIsOff()
         compose.onNodeWithTag("core.sniff").performScrollTo().assertIsOn()
         compose.onNodeWithTag("core.fp").performScrollTo().assertTextEquals(text(R.string.core_fp_profile))
         compose.onNodeWithTag("core.mux").performScrollTo().assertIsOff()
@@ -151,7 +151,7 @@ class AdvancedSettingsTest {
         val expected = ConnectionSettings(
             CoreLogLevel.Info,
             null,
-            strictRoutes = false,
+            strictRoutes = true,
             sniffing = false,
             fingerprint = TlsFingerprint.Chrome,
             mux = true,
@@ -167,12 +167,12 @@ class AdvancedSettingsTest {
         assertEquals(CoreLogLevel.Info, core.logLevel)
         assertEquals("chrome", core.fingerprint)
         assertEquals(listOf(false, true, true), listOf(core.sniffing, core.mux, core.fragment))
-        assertEquals(true, tunnel.plan().allowBypass)
+        assertEquals(false, tunnel.plan().allowBypass)
         assertEquals(30_000L, tunnel.connection.probeTimeoutMs)
 
         compose.onNodeWithTag("core.fp").performScrollTo().assertTextEquals("chrome")
         compose.onNodeWithTag("core.timeout").performScrollTo().assertTextEquals(text(R.string.core_timeout_value, "30"))
-        compose.onNodeWithTag("core.strict").performScrollTo().assertIsOff()
+        compose.onNodeWithTag("core.strict").performScrollTo().assertIsOn()
         compose.onNodeWithTag("core.sniff").performScrollTo().assertIsOff()
         compose.onNodeWithTag("core.mux").performScrollTo().assertIsOn()
         compose.onNodeWithTag("core.frag").performScrollTo().assertIsOn()

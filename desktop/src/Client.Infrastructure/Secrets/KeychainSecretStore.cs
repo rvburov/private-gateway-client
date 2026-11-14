@@ -23,12 +23,15 @@ public sealed partial class KeychainSecretStore : ISecretStore
     private const string VaultKeyName = "vault-master-v1";
     private static readonly byte[] Service = Encoding.UTF8.GetBytes("PrivateGateway");
     private static readonly byte[] VaultService = Encoding.UTF8.GetBytes("PrivateGateway.Vault");
+    private static readonly KeychainAccessGate Access = new(InteractionAllowed, SetInteractionAllowed);
 
     public string Name => "Связка ключей macOS";
 
     public bool IsAvailable => true;
 
-    public void Save(string key, string secret)
+    public void Save(string key, string secret) => Access.Run(() => SaveCore(key, secret));
+
+    private static void SaveCore(string key, string secret)
     {
         ArgumentNullException.ThrowIfNull(secret);
         var account = Encoding.UTF8.GetBytes(key);
@@ -55,7 +58,7 @@ public sealed partial class KeychainSecretStore : ISecretStore
         }
     }
 
-    public string? Read(string key) => Read(Service, key);
+    public string? Read(string key) => Access.Run(() => Read(Service, key));
 
     private static string? Read(byte[] service, string key)
     {
@@ -87,20 +90,39 @@ public sealed partial class KeychainSecretStore : ISecretStore
         }
     }
 
-    public void Delete(string key)
+    public void Delete(string key) => Access.Run(() =>
+    {
+        var status = DeleteCore(key);
+        if (status != ErrSecItemNotFound)
+        {
+            Check(status, "удалить");
+        }
+    });
+
+    /// <summary>
+    /// Уборка уже перенесенного секрета никогда не открывает системное окно. Отказ сохраняет защищенную старую запись
+    /// и отметку в файле, чтобы повторить уборку позже; разрешения и ACL Связки ключей не изменяются.
+    /// </summary>
+    public static bool TryDeleteWithoutInteraction(string key)
+    {
+        try
+        {
+            return Access.WithoutInteraction(() => DeleteCore(key) is ErrSecSuccess or ErrSecItemNotFound);
+        }
+        catch (SecretStoreException)
+        {
+            return false;
+        }
+    }
+
+    private static int DeleteCore(string key)
     {
         var account = Encoding.UTF8.GetBytes(key);
         var status = FindItem(IntPtr.Zero, (uint)Service.Length, Service, (uint)account.Length, account,
             IntPtr.Zero, IntPtr.Zero, out var item);
         try
         {
-            if (status == ErrSecItemNotFound)
-            {
-                return;
-            }
-
-            Check(status, "найти");
-            Check(SecKeychainItemDelete(item), "удалить");
+            return status == ErrSecSuccess ? SecKeychainItemDelete(item) : status;
         }
         finally
         {
@@ -112,7 +134,9 @@ public sealed partial class KeychainSecretStore : ISecretStore
     /// Один ключ зашифрованного файла пользователя. При гонке двух процессов уже созданный ключ не заменяется.
     /// Отказ Связки ключей не считается отсутствием ключа; чтение существующего файла новый ключ не создает.
     /// </summary>
-    public static string? VaultKey(bool create)
+    public static string? VaultKey(bool create) => Access.Run(() => VaultKeyCore(create));
+
+    private static string? VaultKeyCore(bool create)
     {
         var existing = Read(VaultService, VaultKeyName);
         if (existing is not null || !create)
@@ -152,6 +176,15 @@ public sealed partial class KeychainSecretStore : ISecretStore
         }
     }
 
+    private static bool InteractionAllowed()
+    {
+        Check(SecKeychainGetUserInteractionAllowed(out var allowed), "проверить разрешение системных окон");
+        return allowed != 0;
+    }
+
+    private static void SetInteractionAllowed(bool allowed) =>
+        Check(SecKeychainSetUserInteractionAllowed(allowed ? (byte)1 : (byte)0), "восстановить режим системных окон");
+
     private static void Free(IntPtr data, IntPtr item)
     {
         if (data != IntPtr.Zero)
@@ -188,6 +221,12 @@ public sealed partial class KeychainSecretStore : ISecretStore
 
     [LibraryImport(Security)]
     private static partial int SecKeychainItemFreeContent(IntPtr attrList, IntPtr data);
+
+    [LibraryImport(Security)]
+    private static partial int SecKeychainGetUserInteractionAllowed(out byte state);
+
+    [LibraryImport(Security)]
+    private static partial int SecKeychainSetUserInteractionAllowed(byte state);
 
     [LibraryImport(CoreFoundation)]
     private static partial void CFRelease(IntPtr cf);

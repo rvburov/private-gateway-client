@@ -51,19 +51,134 @@ public sealed class ScutilDnsTests : IDisposable
     }
 
     [Fact]
-    public void Upgrade_restores_legacy_physical_dns_before_registering_the_supplemental_resolver()
+    public void Upgrade_preserves_ambiguous_legacy_dns_instead_of_overwriting_another_owner()
     {
         _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["172.19.0.2"], ["SearchDomains"] = ["example.org"] };
         _store.Keys["Setup:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["172.19.0.2"] };
         File.WriteAllText(Backup, JsonSerializer.Serialize(new { Service = "WIFI", State = (string[])["192.168.1.1"], Setup = (string[])["192.0.2.53"] }));
         var dns = new ScutilDns(_store.Run, Backup);
-        dns.Apply(Tunnel);
+        Should.Throw<IOException>(() => dns.Apply(Tunnel));
 
-        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.168.1.1"]);
-        _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.0.2.53"]);
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["172.19.0.2"], "знакомый адрес туннеля не доказывает принадлежность записи");
+        _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
         _store.Keys["State:/Network/Service/WIFI/DNS"]["SearchDomains"].ShouldBe(["example.org"]);
-        _store.Keys[OwnKey]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
+        _store.Keys.ShouldNotContainKey(OwnKey);
+        File.Exists(Backup).ShouldBeTrue();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Legacy_dns_changed_by_another_owner_is_preserved_while_our_resolver_is_removed(bool setupChanged)
+    {
+        _store.Keys[OwnKey] = new() { ["ServerAddresses"] = ["172.19.0.2"] };
+        _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = [setupChanged ? "192.0.2.53" : "192.0.2.54"] };
+        _store.Keys["Setup:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = [setupChanged ? "192.0.2.54" : "192.0.2.53"] };
+        File.WriteAllText(Backup, JsonSerializer.Serialize(new { Service = "WIFI", State = (string[])["192.0.2.53"], Setup = (string[])["192.0.2.53"] }));
+        var dns = new ScutilDns(_store.Run, Backup);
+
+        Should.Throw<IOException>(dns.Restore);
+
+        _store.Keys.ShouldNotContainKey(OwnKey, "неоднозначная старая копия не удерживает наш дополнительный резолвер");
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe([setupChanged ? "192.0.2.53" : "192.0.2.54"]);
+        _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe([setupChanged ? "192.0.2.54" : "192.0.2.53"]);
+        File.Exists(Backup).ShouldBeTrue();
+
+        // Прежние настройки вернул пользователь после проверки сети: повтор только убирает ненужную копию.
+        _store.Keys["State:/Network/Service/WIFI/DNS"]["ServerAddresses"] = ["192.0.2.53"];
+        _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"] = ["192.0.2.53"];
+        dns.Restore();
         File.Exists(Backup).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void Already_original_legacy_dns_allows_apply_without_rewriting_physical_network(bool absent)
+    {
+        if (!absent)
+        {
+            _store.Keys["State:/Network/Service/WIFI/DNS"] = new() { ["SearchDomains"] = ["example.org"] };
+            _store.Keys["Setup:/Network/Service/WIFI/DNS"] = new() { ["ServerAddresses"] = ["192.0.2.53"] };
+        }
+        File.WriteAllText(Backup, JsonSerializer.Serialize(new
+        {
+            Service = "WIFI",
+            State = absent ? null : Array.Empty<string>(),
+            Setup = absent ? null : (string[])["192.0.2.53"],
+        }));
+
+        new ScutilDns(_store.Run, Backup).Apply(Tunnel);
+
+        _store.Keys[OwnKey]["ServerAddresses"].ShouldBe(["172.19.0.2"]);
+        if (!absent)
+        {
+            _store.Keys["State:/Network/Service/WIFI/DNS"]["SearchDomains"].ShouldBe(["example.org"]);
+            _store.Keys["Setup:/Network/Service/WIFI/DNS"]["ServerAddresses"].ShouldBe(["192.0.2.53"]);
+        }
+        _store.Scripts.ShouldNotContain(s => s.Contains("set State:/Network/Service/WIFI", StringComparison.Ordinal)
+            || s.Contains("set Setup:/Network/Service/WIFI", StringComparison.Ordinal));
+        File.Exists(Backup).ShouldBeFalse();
+    }
+
+    [Theory]
+    [InlineData("invalid json")]
+    [InlineData("null")]
+    [InlineData("{}")]
+    [InlineData("{\"Service\":null,\"State\":null,\"Setup\":null}")]
+    [InlineData("{\"Service\":\"\",\"State\":null,\"Setup\":null}")]
+    [InlineData("{\"Service\":\"WIFI\",\"Setup\":null}")]
+    [InlineData("{\"Service\":\"WIFI\",\"State\":null}")]
+    [InlineData("{\"Service\":\"WIFI\",\"State\":[null],\"Setup\":null}")]
+    public void Invalid_legacy_backup_is_retained_and_reported_after_removing_our_resolver(string json)
+    {
+        _store.Keys[OwnKey] = new() { ["ServerAddresses"] = ["172.19.0.2"] };
+        File.WriteAllText(Backup, json);
+
+        Should.Throw<IOException>(() => new ScutilDns(_store.Run, Backup).Restore());
+
+        _store.Keys.ShouldNotContainKey(OwnKey);
+        File.ReadAllText(Backup).ShouldBe(json);
+    }
+
+    [Fact]
+    public void An_unreadable_backup_is_not_treated_as_a_missing_backup()
+    {
+        _store.Keys[OwnKey] = new() { ["ServerAddresses"] = ["172.19.0.2"] };
+        Directory.CreateDirectory(Backup);
+
+        Should.Throw<IOException>(() => new ScutilDns(_store.Run, Backup).Restore());
+
+        _store.Keys.ShouldNotContainKey(OwnKey);
+        Directory.Exists(Backup).ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Restore_checks_that_our_resolver_was_removed_and_allows_retry()
+    {
+        _store.Keys[OwnKey] = new() { ["ServerAddresses"] = ["172.19.0.2"] };
+        _store.IgnoreRemoval = true;
+        var dns = new ScutilDns(_store.Run, Backup);
+
+        Should.Throw<IOException>(dns.Restore);
+        _store.Keys.ShouldContainKey(OwnKey);
+
+        _store.IgnoreRemoval = false;
+        dns.Restore();
+        _store.Keys.ShouldNotContainKey(OwnKey);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("Access denied")]
+    [InlineData("No such key\nAccess denied")]
+    [InlineData("<dictionary> {\n  ServerAddresses : not-an-array\n}")]
+    [InlineData("<dictionary> {\n  ServerAddresses : <array> {\n    0 : 192.0.2.53\n}")]
+    public void Unknown_readback_does_not_confirm_removal(string reply)
+    {
+        _store.ShowReply = reply;
+
+        Should.Throw<IOException>(() => new ScutilDns(_store.Run, Backup).Restore());
     }
 
     [Fact]
@@ -107,19 +222,31 @@ public sealed class ScutilDnsTests : IDisposable
         // Своя запись сети — ее нет в порядке служб configd, DNS машины CI не меняется.
         var service = "pg-test-" + Guid.NewGuid().ToString("N")[..8];
         var key = $"State:/Network/Service/{service}/DNS";
+        var ownKey = $"State:/Network/Service/{service}-own/DNS";
         Scutil($"d.init\nd.add ServerAddresses * 192.0.2.53\nd.add SearchDomains * example.org\nset {key}\nquit\n");
         try
         {
-            // Копия старой версии: восстановление без регистрации резолвера машины.
+            // Только тестовая запись без SupplementalMatchDomains: DNS машины она не перехватывает.
+            Scutil($"d.init\nd.add ServerAddresses * 192.0.2.55\nset {ownKey}\nquit\n");
+            // Копия старой версии не доказывает, кто поставил нынешний DNS: не перезаписывать его даже от root.
             File.WriteAllText(Backup, JsonSerializer.Serialize(new { Service = service, State = (string[])["192.0.2.54"], Setup = (string[]?)null }));
-            new ScutilDns(Scutil, Backup, service + "-own").Restore();
+            var dns = new ScutilDns(Scutil, Backup, service + "-own");
+            Should.Throw<IOException>(dns.Restore);
+            ScutilDns.ParseServers(Scutil($"show {ownKey}\nquit\n")).ShouldBeNull();
+            ScutilDns.ParseServers(Scutil($"show {key}\nquit\n")).ShouldBe(["192.0.2.53"]);
+            File.Exists(Backup).ShouldBeTrue();
+
+            // Прежний DNS вернул владелец сети; подтверждаем и убираем только копию.
+            Scutil($"d.init\nget {key}\nd.add ServerAddresses * 192.0.2.54\nset {key}\nquit\n");
+            dns.Restore();
             var restored = Scutil($"show {key}\nquit\n");
             ScutilDns.ParseServers(restored).ShouldBe(["192.0.2.54"]);
             restored.ShouldContain("example.org");
+            File.Exists(Backup).ShouldBeFalse();
         }
         finally
         {
-            Scutil($"remove {key}\nquit\n");
+            Scutil($"remove {key}\nremove {ownKey}\nquit\n");
         }
     }
 
@@ -143,6 +270,10 @@ public sealed class ScutilDnsTests : IDisposable
 
         public List<string> Scripts { get; } = [];
 
+        public bool IgnoreRemoval { get; set; }
+
+        public string? ShowReply { get; set; }
+
         public string Run(string script)
         {
             Scripts.Add(script);
@@ -157,7 +288,7 @@ public sealed class ScutilDnsTests : IDisposable
                         output.Add(Primary is null ? "  No such key" : $"<dictionary> {{\n  PrimaryService : {Primary}\n}}");
                         break;
                     case "show":
-                        output.Add(Keys.TryGetValue(parts[1], out var shown) ? Show(shown) : "  No such key");
+                        output.Add(ShowReply ?? (Keys.TryGetValue(parts[1], out var shown) ? Show(shown) : "  No such key"));
                         break;
                     case "d.init":
                         current = new(StringComparer.Ordinal);
@@ -175,7 +306,10 @@ public sealed class ScutilDnsTests : IDisposable
                         Keys[parts[1]] = current;
                         break;
                     case "remove":
-                        Keys.Remove(parts[1]);
+                        if (!IgnoreRemoval)
+                        {
+                            Keys.Remove(parts[1]);
+                        }
                         break;
                 }
             }

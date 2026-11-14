@@ -335,7 +335,7 @@ public sealed class ServerCardTests : WindowHarness
     public async Task Shield_in_block_with_strict_mode_closes_the_network_without_promising_the_real_ip()
     {
         var (_, shell, page) = OpenServers();
-        Service<SettingsService>().Update(s => s with { Protection = s.Protection with { StrictMode = true } });
+        Service<SettingsService>().Update(s => s with { KillSwitch = true, Protection = s.Protection with { StrictMode = true } });
         var connect = OpenCard(page, "Турция 01").ConnectCommand.ExecuteAsync(null);
         Time.Advance(SimulatedGatewayClient.ConnectDelay);
         await connect;

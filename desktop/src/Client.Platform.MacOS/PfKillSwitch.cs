@@ -34,7 +34,29 @@ public sealed partial class PfKillSwitch(
     /// <summary>Раздельный режим: обход sing-box на macOS по программе не узнать — он закрыт блоком.</summary>
     public string? Warning { get; private set; }
 
-    public bool IsEnabled => pfctl(["-a", anchor, "-s", "rules"], null) is { Code: 0 } rules && rules.Output.Trim().Length > 0;
+    public bool IsEnabled
+    {
+        get
+        {
+            var (code, output, error) = pfctl(["-a", anchor, "-s", "rules"], null);
+            if (code != 0)
+            {
+                // У удаленного якоря DIOCGETRULES может вернуть EINVAL. Только успешный полный список
+                // якорей подтверждает отсутствие; сам текст ошибки не отличает его от недоступного pf.
+                var anchors = pfctl(["-v", "-s", "Anchors"], null);
+                if (anchors.Code == 0 && !anchors.Output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .Contains(anchor, StringComparer.Ordinal))
+                {
+                    return false;
+                }
+
+                // Непрочитанный якорь не подтверждает снятие блока: после выхода нельзя сообщать,
+                // что интернет восстановлен, если pfctl не получил прав или не ответил.
+                throw new IOException($"pfctl -a {anchor} -s rules: {code} {error}".Trim());
+            }
+            return output.Trim().Length > 0;
+        }
+    }
 
     /// <summary>
     /// Правила якоря на месте, pf включен, а основные правила все еще вызывают якоря <c>com.apple/*</c>: выключенный pf

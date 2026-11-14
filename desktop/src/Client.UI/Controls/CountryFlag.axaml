@@ -3,15 +3,7 @@
              x:Class="PrivateGateway.Client.UI.Controls.CountryFlag"
              Width="{DynamicResource PgLayout.CountryFlag.Size}"
              Height="{DynamicResource PgLayout.CountryFlag.Size}">
-  <UserControl.Styles>
-    <Style Selector="Border.flag">
-      <Setter Property="Height" Value="{DynamicResource PgLayout.CountryFlag.Height}" />
-    </Style>
-    <Style Selector="Border.flag.unknown">
-      <Setter Property="Height" Value="{DynamicResource PgLayout.CountryFlag.Size}" />
-    </Style>
-  </UserControl.Styles>
-  <Border x:Name="Frame" Classes="flag" VerticalAlignment="Center" CornerRadius="{DynamicResource PgRadius.CountryFlag}"
+  <Border x:Name="Frame" CornerRadius="{DynamicResource PgRadius.CountryFlag}"
           BorderBrush="{DynamicResource PgBrush.Line.Strong}"
           BorderThickness="{DynamicResource PgPad.Hairline}" />
 </UserControl>

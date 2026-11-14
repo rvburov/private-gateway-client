@@ -398,6 +398,7 @@ public sealed partial class ReconnectTests
             new ServerCredentials(Uuid: XrayKit.Uuid));
         var settings = AppSettings.Default with
         {
+            KillSwitch = true,
             Protection = ProtectionSettings.Default with { CheckLeaksAfterConnect = false, BootProtection = false },
             Connection = ConnectionSettings.Default with { ConnectTimeoutSeconds = 30, ProxyPort = XrayKit.FreePort() },
         };

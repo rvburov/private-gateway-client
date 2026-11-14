@@ -25,7 +25,7 @@ final class AppSettingsTests: XCTestCase {
         let settings = try await store.load()
         XCTAssertNil(settings.selectedServerId)
         XCTAssertEqual(settings.tunnel, TunnelSettings(dns: .profile, customDns: nil, ipv6: false, allowLan: false))
-        XCTAssertTrue(settings.killSwitch, "блок при обрыве включен по умолчанию")
+        XCTAssertFalse(settings.killSwitch, "блок при обрыве включается только пользователем")
         XCTAssertFalse(settings.alwaysOn, "постоянная защита выключена по умолчанию, как «Постоянная VPN» Android")
         XCTAssertFalse(settings.connectOnLaunch, "подключение при запуске выключено по умолчанию, как на десктопе")
         XCTAssertEqual(settings.subscriptions, SubscriptionSettings(refresh: .every12Hours, onlyViaVpn: true, notifySelected: true))
@@ -36,7 +36,7 @@ final class AppSettingsTests: XCTestCase {
     func testEveryChangeIsKeptAndSeenByAnotherReader() async throws {
         try await store.select("server-1")
         try await store.setTunnel(TunnelSettings(dns: .custom, customDns: "192.168.1.2", ipv6: true, allowLan: true))
-        try await store.setKillSwitch(false)
+        try await store.setKillSwitch(true)
         try await store.setSubscriptions(SubscriptionSettings(refresh: .every6Hours, onlyViaVpn: false, notifySelected: false))
         try await store.setAlwaysOn(true)
         try await store.setConnectOnLaunch(true)
@@ -54,7 +54,7 @@ final class AppSettingsTests: XCTestCase {
             other,
             AppSettings(
                 selectedServerId: "server-1", tunnel: TunnelSettings(dns: .custom, customDns: "192.168.1.2", ipv6: true, allowLan: true),
-                killSwitch: false, subscriptions: SubscriptionSettings(refresh: .every6Hours, onlyViaVpn: false, notifySelected: false), alwaysOn: true,
+                killSwitch: true, subscriptions: SubscriptionSettings(refresh: .every6Hours, onlyViaVpn: false, notifySelected: false), alwaysOn: true,
                 connectOnLaunch: true, connection: connection, routing: routing
             )
         )
@@ -62,7 +62,7 @@ final class AppSettingsTests: XCTestCase {
         try await store.select(nil)
         let cleared = try await store.load()
         XCTAssertNil(cleared.selectedServerId)
-        XCTAssertFalse(cleared.killSwitch, "остальное не тронуто")
+        XCTAssertTrue(cleared.killSwitch, "явный выбор пользователя не сбрасывается при загрузке")
         XCTAssertTrue(cleared.connectOnLaunch)
 
         try await store.setConnectOnLaunch(false)
@@ -102,7 +102,7 @@ final class AppSettingsTests: XCTestCase {
         XCTAssertEqual(settings.selectedServerId, "server-1")
         XCTAssertEqual(settings.tunnel.dns, .profile)
         XCTAssertTrue(settings.tunnel.ipv6)
-        XCTAssertTrue(settings.killSwitch)
+        XCTAssertFalse(settings.killSwitch)
         XCTAssertEqual(settings.subscriptions.refresh, .every12Hours)
         XCTAssertFalse(settings.subscriptions.onlyViaVpn)
         XCTAssertEqual(settings.notifications, .importantOnly, "уровень из будущей версии — по умолчанию")
@@ -205,7 +205,7 @@ final class AppSettingsTests: XCTestCase {
 
         // Чужое и испорченное — значение по умолчанию, остальное остается.
         let broken = AppSettings().restoring(["kill_switch": "может быть", "tunnel_mtu": "много", "unknown": "x"])
-        XCTAssertTrue(broken.killSwitch)
+        XCTAssertFalse(broken.killSwitch)
         XCTAssertNil(broken.connection.mtu)
     }
 }

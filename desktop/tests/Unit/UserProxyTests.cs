@@ -142,7 +142,7 @@ public sealed class UserProxyTests
         UserProxy.WithUserProxy(clean, foreign, vpn)[DiagnosticCheck.Service]!.State.ShouldBe(CheckState.Ok, "остальное — как у службы");
         UserProxy.WithUserProxy(clean, null, vpn).ShouldBeSameAs(clean, "прокси нет — отчет службы как есть");
 
-        var proxyMode = vpn with { Mode = ConnectionMode.Proxy };
+        var proxyMode = vpn with { Mode = ConnectionMode.Proxy, Connection = vpn.Connection with { SystemProxy = true } };
         UserProxy.WithUserProxy(clean, new UserProxy("127.0.0.1:" + proxyMode.Connection.ProxyPort), proxyMode).ShouldBeSameAs(clean, "свой прокси — не чужой");
 
         var adapter = new DiagnosticReport([new(DiagnosticCheck.OtherVpn, CheckState.Warning, "vpn_adapter")], at);

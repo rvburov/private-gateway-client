@@ -211,6 +211,7 @@ public sealed class GatewayLifecycleTests : IDisposable
             new ServerCredentials(Uuid: "11111111-2222-3333-4444-555555555555"));
         var settings = AppSettings.Default with
         {
+            KillSwitch = true,
             Protection = ProtectionSettings.Default with { CheckLeaksAfterConnect = false, BootProtection = false },
         };
         return new V1.ConnectRequest

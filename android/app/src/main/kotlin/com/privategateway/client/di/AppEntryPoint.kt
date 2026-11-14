@@ -10,6 +10,7 @@ import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.updates.AppUpdates
 import com.privategateway.client.vpn.NetworkAccess
 import com.privategateway.client.vpn.TunnelMonitor
+import com.privategateway.client.vpn.TunnelJournal
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.components.SingletonComponent
@@ -23,6 +24,8 @@ interface AppEntryPoint {
     fun settings(): SettingsRepository
 
     fun monitor(): TunnelMonitor
+
+    fun journal(): TunnelJournal
 
     fun updater(): SubscriptionUpdater
     fun subscriptionTransport(): SubscriptionTransport

@@ -4,6 +4,7 @@ import androidx.datastore.preferences.core.PreferenceDataStoreFactory
 import androidx.lifecycle.viewModelScope
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.FakeBox
+import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.account.AccountRepository
 import com.privategateway.client.account.AccountLogoutFence
 import com.privategateway.client.core.account.AccountDevice
@@ -96,6 +97,7 @@ class AccountViewModelTest {
             TunnelMonitor(),
             TunnelJournal(),
             AccountLogoutFence(folder.root.resolve("signed-out")),
+            SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") }),
         )
         val model = AccountViewModel(repository)
         try {

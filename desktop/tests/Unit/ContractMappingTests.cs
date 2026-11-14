@@ -142,12 +142,12 @@ public class ContractMappingTests
     }
 
     [Fact]
-    public void Default_protection_reaches_the_service_closed()
+    public void Default_protection_keeps_the_network_open_until_the_user_opts_in()
     {
         var contract = AppSettings.Default.ToContract();
 
-        contract.KillSwitch.ShouldBeTrue();
-        contract.BootProtection.ShouldBeTrue();
+        contract.KillSwitch.ShouldBeFalse();
+        contract.BootProtection.ShouldBeFalse();
         contract.StrictMode.ShouldBeFalse();
         contract.BlockIpv6.ShouldBeTrue();
         contract.AllowLan.ShouldBeFalse();

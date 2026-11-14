@@ -81,6 +81,10 @@ public sealed class CorePageTests : WindowHarness
         page.SystemProxy.ShouldBeFalse();
         page.SystemProxy = true;
         settings.Update(s => s with { Mode = ConnectionMode.Proxy });
+        page.SystemProxy.ShouldBeFalse("proxy-only тоже требует явного включения");
+        page.SystemProxy = true;
+        settings.Update(s => s with { Mode = ConnectionMode.Vpn });
+        settings.Update(s => s with { Mode = ConnectionMode.Proxy });
         page.SystemProxy.ShouldBeTrue("старое предпочтение proxy-only сохранено");
         page.SystemProxy = false;
         settings.Update(s => s with { Mode = ConnectionMode.Vpn });

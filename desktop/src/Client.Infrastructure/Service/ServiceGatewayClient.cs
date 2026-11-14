@@ -564,7 +564,31 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
 
     public Task DisconnectAsync(CancellationToken cancellationToken = default) => DisconnectAsync(Disconnect(_settings()), cancellationToken);
 
-    public Task DropProtectionAsync(CancellationToken cancellationToken = default) => DisconnectAsync(Drop(), cancellationToken);
+    public async Task DropProtectionAsync(CancellationToken cancellationToken = default)
+    {
+        Interlocked.Increment(ref _connectIntent);
+        _allowOtherVpn = false;
+        try
+        {
+            var deadline = DateTime.UtcNow.AddSeconds(15);
+            var reply = await _client.DisconnectAsync(Drop(), deadline: deadline, cancellationToken: cancellationToken).ConfigureAwait(false);
+            if (!reply.NetworkRestored)
+            {
+                throw new IOException("Служба не подтвердила восстановление сети; может требоваться обновление службы");
+            }
+            var status = (await _client.GetStatusAsync(new V1.GetStatusRequest(), deadline: deadline,
+                cancellationToken: cancellationToken).ConfigureAwait(false)).ToCore();
+            Apply(status);
+            if (status.State != ConnectionState.Off || status.StrictBlock)
+            {
+                throw new IOException("Служба не подтвердила снятие защиты");
+            }
+        }
+        catch (RpcException e)
+        {
+            throw new IOException("Служба не подтвердила восстановление сети", e);
+        }
+    }
 
     private async Task DisconnectAsync(V1.DisconnectRequest request, CancellationToken cancellationToken)
     {

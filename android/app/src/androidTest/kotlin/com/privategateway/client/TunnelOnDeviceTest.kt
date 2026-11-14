@@ -101,6 +101,36 @@ class TunnelOnDeviceTest {
     }
 
     @Test
+    fun a_new_sign_in_waits_for_manual_connect_before_automatic_starts_are_allowed() = networkTest {
+        prepare()
+        val server = assertNotNull(LinkParser.parse(LINK).server)
+        app.servers().add(listOf(server))
+        app.settings().select(app.servers().servers.first().first { it.port == PORT }.id)
+        // Та же сохраненная граница, которую ставит явный вход, без обращения теста к настоящему сайту.
+        app.settings().resetAccountNetwork()
+        val before = app.journal().entries.value.toSet()
+        GatewayVpnService.connectAutomatically(context)
+        withTimeout(15_000) {
+            app.journal().entries.first { entries ->
+                entries.any { it !in before && it.message == "connect waits for manual action after sign-in" }
+            }
+            app.monitor().status.first { it.state == TunnelState.Off }
+        }
+        assertTrue(ownVpnNetworks().isEmpty(), "автоматическая команда после нового входа не создает VPN")
+        assertTrue(app.settings().manualConnectRequired.first())
+
+        connect()
+        assertEquals("pg-tunnel-ok", fetch().trim(), "явная команда включает настоящий туннель")
+        disconnectAndWait(offOnly = true)
+        GatewayVpnService.connectAutomatically(context)
+        val restored = withTimeout(30_000) {
+            app.monitor().status.first { it.state == TunnelState.Connected || it.state == TunnelState.Error }
+        }
+        assertEquals(TunnelState.Connected, restored.state, "после явного включения системное восстановление разрешено")
+        assertEquals("pg-tunnel-ok", fetch().trim())
+    }
+
+    @Test
     fun sign_out_while_the_tunnel_comes_up_leaves_no_tunnel() = networkTest {
         prepare()
         val server = assertNotNull(LinkParser.parse(LINK).server, "ссылка проверки не разобралась")

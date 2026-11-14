@@ -97,7 +97,7 @@ class TunnelSettingsTest {
         assertNull(defaults.core().fingerprint, "«Из профиля»")
         assertFalse(defaults.core().mux)
         assertFalse(defaults.core().fragment)
-        assertFalse(defaults.plan().allowBypass, "строгие маршруты по умолчанию включены")
+        assertTrue(defaults.plan().allowBypass, "строгие маршруты включаются только пользователем")
 
         val chosen = TunnelSettings(
             connection = ConnectionSettings(
@@ -139,7 +139,7 @@ class TunnelSettingsTest {
         listOf(
             base.copy(connection = ConnectionSettings(coreLog = CoreLogLevel.Debug)),
             base.copy(connection = ConnectionSettings(mtu = 1280)),
-            base.copy(connection = ConnectionSettings(strictRoutes = false)),
+            base.copy(connection = ConnectionSettings(strictRoutes = true)),
             base.copy(connection = ConnectionSettings(sniffing = false)),
             base.copy(connection = ConnectionSettings(fingerprint = TlsFingerprint.Random)),
             base.copy(connection = ConnectionSettings(mux = true)),

@@ -12,6 +12,40 @@ namespace PrivateGateway.Client.Tests.Unit;
 /// <summary>HKCU в тесте заменен памятью: фактическая готовность, владение, авария окна и отсутствие прямого обхода при обрыве.</summary>
 public sealed class UserProxyControllerTests
 {
+    [Fact]
+    public void Sign_out_restores_our_proxy_even_when_no_service_status_can_be_obtained()
+    {
+        using var rig = new Rig();
+        var original = rig.Proxy.Current;
+        rig.Gateway.Raise(ConnectionState.Connected, 10808);
+        rig.Gateway.Raise(ConnectionState.Error, null, real: false);
+        rig.Controller.Status.State.ShouldBe(UserProxyState.Held);
+
+        rig.Controller.RestoreForSignOut().ShouldBeTrue();
+
+        rig.Proxy.Current.ShouldBe(original);
+        rig.Backup.Snapshot.ShouldBeNull();
+        rig.Time.Advance(TimeSpan.FromSeconds(2));
+        rig.Proxy.Current.ShouldBe(original, "следующий тик не ставит прокси обратно");
+    }
+
+    [Fact]
+    public void Sign_out_reports_failed_proxy_restore_and_keeps_a_retryable_snapshot()
+    {
+        using var rig = new Rig();
+        var original = rig.Proxy.Current;
+        rig.Gateway.Raise(ConnectionState.Connected, 10808);
+        rig.Proxy.FailRestoreAfterChange = true;
+
+        rig.Controller.RestoreForSignOut().ShouldBeFalse();
+        rig.Backup.Snapshot.ShouldNotBeNull();
+        rig.Controller.Status.State.ShouldBe(UserProxyState.Error);
+
+        rig.Proxy.FailRestoreAfterChange = false;
+        rig.Controller.RestoreForSignOut().ShouldBeTrue();
+        rig.Proxy.Current.ShouldBe(original);
+    }
+
     [Theory]
     [InlineData(ConnectionMode.Proxy, ServiceKind.Installed)]
     [InlineData(ConnectionMode.Vpn, ServiceKind.Installed)]
@@ -298,7 +332,7 @@ public sealed class UserProxyControllerTests
             {
                 Mode = mode,
                 StartWithSystem = startWithSystem,
-                Connection = ConnectionSettings.Default with { VpnSystemProxy = true },
+                Connection = ConnectionSettings.Default with { SystemProxy = true, VpnSystemProxy = true },
             }));
             Gateway = new FakeGateway(service) { Mode = mode };
             Controller = new UserProxyController(Settings, Gateway, Proxy, Backup, Time, recovery);

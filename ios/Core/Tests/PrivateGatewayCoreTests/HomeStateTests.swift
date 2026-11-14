@@ -115,9 +115,9 @@ final class HomeStateTests: XCTestCase {
     }
 
     func testVpnProfileFollowsKillSwitchAndLocalNetwork() {
-        XCTAssertEqual(VpnProfile.of(AppSettings()), VpnProfile(includeAllNetworks: true, excludeLocalNetworks: false, enforceRoutes: false))
+        XCTAssertEqual(VpnProfile.of(AppSettings(killSwitch: true)), VpnProfile(includeAllNetworks: true, excludeLocalNetworks: false, enforceRoutes: false))
         XCTAssertEqual(
-            VpnProfile.of(AppSettings(tunnel: TunnelSettings(allowLan: true))), VpnProfile(includeAllNetworks: true, excludeLocalNetworks: true, enforceRoutes: false)
+            VpnProfile.of(AppSettings(tunnel: TunnelSettings(allowLan: true), killSwitch: true)), VpnProfile(includeAllNetworks: true, excludeLocalNetworks: true, enforceRoutes: false)
         )
         // Без блока при обрыве закрытая локальная сеть держится маршрутами туннеля.
         XCTAssertEqual(VpnProfile.of(AppSettings(killSwitch: false)), VpnProfile(includeAllNetworks: false, excludeLocalNetworks: false, enforceRoutes: true))
@@ -133,7 +133,7 @@ final class HomeStateTests: XCTestCase {
         XCTAssertFalse(VpnProfile.of(AppSettings()).onDemand)
         XCTAssertNotEqual(always, VpnProfile.of(AppSettings()), "другой профиль — его надо сохранить")
         XCTAssertTrue(always.sameTunnel(VpnProfile.of(AppSettings())), "но туннель тот же: опускать его не нужно")
-        XCTAssertFalse(always.sameTunnel(VpnProfile.of(AppSettings(killSwitch: false, alwaysOn: true))))
+        XCTAssertFalse(always.sameTunnel(VpnProfile.of(AppSettings(killSwitch: true, alwaysOn: true))))
         XCTAssertFalse(always.sameTunnel(VpnProfile.of(AppSettings(tunnel: TunnelSettings(allowLan: true), alwaysOn: true))))
     }
 

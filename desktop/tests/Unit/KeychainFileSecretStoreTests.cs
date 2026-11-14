@@ -109,7 +109,7 @@ public sealed class KeychainFileSecretStoreTests : IDisposable
     public void Corruption_or_swapping_records_is_an_error_without_falling_back_to_an_old_copy()
     {
         var file = new SecretFile(new SqliteDatabase(_paths));
-        using var store = new KeychainFileSecretStore(file, _legacy, Unlock);
+        using var store = new KeychainFileSecretStore(file, _legacy, Unlock, Cleanup);
         store.Save("server:a", "secret-a");
         store.Save("server:b", "secret-b");
         _legacy.Values["server:b"] = "outdated-secret";
@@ -130,7 +130,7 @@ public sealed class KeychainFileSecretStoreTests : IDisposable
         _legacy.DeleteFailure = new InvalidOperationException("delete denied");
         using (var store = Store())
         {
-            Should.Throw<InvalidOperationException>(() => store.Read("server:old"));
+            store.Read("server:old").ShouldBe("old-secret", "отказ уборки не мешает использовать надежно перенесенный секрет");
             _legacy.Values["server:old"].ShouldBe("old-secret");
         }
 
@@ -151,7 +151,7 @@ public sealed class KeychainFileSecretStoreTests : IDisposable
         _legacy.DeleteFailure = new InvalidOperationException("delete denied");
         using (var store = Store())
         {
-            Should.Throw<InvalidOperationException>(() => store.Save(name, "new-secret"));
+            store.Save(name, "new-secret");
             _legacy.Values[name].ShouldBe("old-secret", "отказ удаления не теряет исходную запись");
         }
 
@@ -167,7 +167,7 @@ public sealed class KeychainFileSecretStoreTests : IDisposable
     public void Missing_key_for_existing_ciphertext_is_not_replaced_and_deletion_cannot_resurrect_legacy_data()
     {
         var file = new SecretFile(new SqliteDatabase(_paths));
-        using (var first = new KeychainFileSecretStore(file, _legacy, Unlock))
+        using (var first = new KeychainFileSecretStore(file, _legacy, Unlock, Cleanup))
         {
             first.Save("server:a", "secret-a");
         }
@@ -177,7 +177,7 @@ public sealed class KeychainFileSecretStoreTests : IDisposable
         {
             requestedCreate = create;
             return null;
-        });
+        }, Cleanup);
         Should.Throw<InvalidOperationException>(() => missing.Read("server:a"));
         requestedCreate.ShouldBeFalse("расшифровка не создает новый ключ вместо потерянного");
         requestedCreate = true;
@@ -192,7 +192,127 @@ public sealed class KeychainFileSecretStoreTests : IDisposable
         _legacy.Values.ShouldNotContainKey("server:a");
     }
 
-    private KeychainFileSecretStore Store() => new(new SecretFile(new SqliteDatabase(_paths)), _legacy, Unlock);
+    [Fact]
+    public void Thirty_migrated_servers_keep_one_unlock_after_each_upgrade_even_when_legacy_cleanup_is_denied()
+    {
+        for (var i = 0; i < 30; i++)
+        {
+            _legacy.Values["server:" + i] = "legacy-marker-" + i;
+        }
+        _legacy.DeleteFailure = new InvalidOperationException("новая подпись не получила право удаления старых записей");
+
+        using (var oldBuild = Store())
+        {
+            for (var i = 0; i < 30; i++)
+            {
+                oldBuild.Read("server:" + i).ShouldBe("legacy-marker-" + i);
+            }
+        }
+        _legacy.Reads.ShouldBe(30, "первый перенос требует разрешенного чтения прежних записей");
+        _legacy.ReadFailure = new InvalidOperationException("после обновления нельзя снова открывать каждый старый секрет");
+        var unlocksBeforeUpgrade = _unlocks;
+
+        for (var upgrade = 0; upgrade < 3; upgrade++)
+        {
+            using var newBuild = Store();
+            for (var refresh = 0; refresh < 2; refresh++)
+            {
+                for (var i = 0; i < 30; i++)
+                {
+                    newBuild.Read("server:" + i).ShouldBe("legacy-marker-" + i);
+                }
+            }
+            _unlocks.ShouldBe(unlocksBeforeUpgrade + upgrade + 1, "один общий ключ на каждый новый процесс");
+            _legacy.Reads.ShouldBe(30, "ни запуск, ни повторный замер не возвращаются к старым секретам");
+        }
+        _legacy.Values.Count.ShouldBe(30, "отказ очистки не обходит права и сохраняет защищенные исходники");
+    }
+
+    [Fact]
+    public void Deleted_legacy_secret_cannot_return_after_denied_cleanup_restart_or_a_later_successful_cleanup()
+    {
+        const string key = "account:session";
+        _legacy.Values[key] = "old-session-marker";
+        _legacy.DeleteFailure = new InvalidOperationException("delete denied");
+        using (var store = Store())
+        {
+            store.Delete(key);
+            store.Read(key).ShouldBeNull();
+        }
+        _legacy.Values[key].ShouldBe("old-session-marker", "отказ не меняет права старой записи");
+        _unlocks.ShouldBe(0, "выход не открывает общий ключ только ради удаления");
+
+        using (var restarted = Store())
+        {
+            restarted.Read(key).ShouldBeNull();
+            _legacy.DeleteFailure = null;
+            restarted.Read(key).ShouldBeNull();
+            _legacy.Values.ShouldNotContainKey(key);
+        }
+        _legacy.Reads.ShouldBe(0, "удаленный вход никогда не читается заново из старой Связки ключей");
+
+        // Даже старая программа, снова записавшая старый элемент Keychain, не отменяет явный выход в новой программе.
+        _legacy.Values[key] = "stale-session-marker";
+        using var upgraded = Store();
+        upgraded.Read(key).ShouldBeNull();
+        upgraded.Save(key, "new-session-marker");
+        upgraded.Read(key).ShouldBe("new-session-marker", "только явное сохранение нового входа снимает отметку удаления");
+    }
+
+    [Fact]
+    public void Failed_tombstone_transaction_does_not_partially_delete_the_encrypted_copy()
+    {
+        using var store = Store();
+        store.Save("server:keep", "kept-secret-marker");
+        using var connection = new SqliteConnection("Data Source=" + _paths.Secrets);
+        connection.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "CREATE TRIGGER reject_delete BEFORE DELETE ON secrets BEGIN SELECT RAISE(ABORT, 'delete refused'); END";
+        command.ExecuteNonQuery();
+
+        Should.Throw<SqliteException>(() => store.Delete("server:keep"));
+        store.Read("server:keep").ShouldBe("kept-secret-marker");
+        new SecretFile(new SqliteDatabase(_paths)).IsLegacyDeleted("server:keep").ShouldBeFalse();
+    }
+
+    [Fact]
+    public void Diagnostics_report_only_counts_and_do_not_unlock_or_read_legacy_secrets()
+    {
+        _legacy.Values["server:old"] = "private-value-marker";
+        _legacy.DeleteFailure = new InvalidOperationException("cleanup denied");
+        using (var store = Store())
+        {
+            store.Save("server:old", "private-value-marker");
+            store.Delete("account:session");
+        }
+        var unlocks = _unlocks;
+        using var next = Store();
+        var info = next.Diagnostics;
+        info.Kind.ShouldBe("keychain-file-v1");
+        info.EncryptedEntries.ShouldBe(1);
+        info.PendingLegacyCleanup.ShouldBe(2);
+        info.DeletedEntries.ShouldBe(1);
+        info.KeyUnlocked.ShouldBeFalse();
+        _unlocks.ShouldBe(unlocks);
+        _legacy.Reads.ShouldBe(0);
+        info.ToString().ShouldNotContain("private-value-marker");
+        info.ToString().ShouldNotContain("server:old");
+        info.ToString().ShouldNotContain("account:session");
+        next.Read("server:old").ShouldBe("private-value-marker");
+        next.Diagnostics.KeyUnlocked.ShouldBeTrue();
+    }
+
+    private KeychainFileSecretStore Store() => new(new SecretFile(new SqliteDatabase(_paths)), _legacy, Unlock, Cleanup);
+
+    private bool Cleanup(string key)
+    {
+        if (_legacy.DeleteFailure is not null)
+        {
+            return false;
+        }
+        _legacy.Delete(key);
+        return true;
+    }
 
     private string Unlock(bool create)
     {

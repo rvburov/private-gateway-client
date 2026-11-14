@@ -7,6 +7,7 @@ public class ConnectionStateMachineTests
     public static TheoryData<ConnectionState, ConnectionState> Allowed => new()
     {
         { ConnectionState.Off, ConnectionState.Connecting },
+        { ConnectionState.Off, ConnectionState.Error },
         { ConnectionState.Connecting, ConnectionState.Connected },
         { ConnectionState.Connecting, ConnectionState.Reconnecting },
         { ConnectionState.Connecting, ConnectionState.Blocked },

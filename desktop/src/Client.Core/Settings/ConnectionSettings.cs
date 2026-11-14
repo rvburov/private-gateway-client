@@ -42,7 +42,7 @@ public enum ReconnectPolicy
 /// «Подключение и ядро» (доска 6): ядро, TUN, соединение, режим прокси. Значения по умолчанию —
 /// как в макете: строгие маршруты и определение домена включены, Mux и фрагментация выключены,
 /// прокси только для этого компьютера. <paramref name="SystemProxy"/> — в режиме прокси служба на
-/// время подключения включает системный прокси ОС.
+/// время подключения включает системный прокси ОС; по умолчанию этот выбор выключен.
 /// </summary>
 public sealed record ConnectionSettings(
     CoreLogLevel CoreLog = CoreLogLevel.Warning,
@@ -57,7 +57,7 @@ public sealed record ConnectionSettings(
     ReconnectPolicy Reconnect = ReconnectPolicy.Backoff60Seconds,
     int ProxyPort = ConnectionSettings.DefaultProxyPort,
     bool ProxyAllowLan = false,
-    bool SystemProxy = true,
+    bool SystemProxy = false,
     bool VpnSystemProxy = false)
 {
     /// <summary>Системный прокси в выбранном режиме; VPN требует отдельного явного включения.</summary>

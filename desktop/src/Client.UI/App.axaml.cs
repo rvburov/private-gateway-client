@@ -80,7 +80,11 @@ public partial class App : Avalonia.Application
                 desktop.Exit += (_, _) => Services.GetRequiredService<IUserProxyController>().Shutdown();
                 ready();
                 StartupTiming.Mark("ready");
-                if (startup.CheckTray)
+                if (startup.CheckDisplay)
+                {
+                    MacDisplayCheck.Run(window, desktop);
+                }
+                else if (startup.CheckTray)
                 {
                     MacStatusItem.CheckLifetime(desktop);
                 }
@@ -130,6 +134,7 @@ public partial class App : Avalonia.Application
             .AddClientInfrastructure(paths, demo);
         services.AddSingleton<ToastViewModel>();
         services.AddSingleton<OverlayViewModel>();
+        services.AddSingleton<AccountNetworkRecoveryViewModel>();
         services.AddSingleton<ProtectionViewModel>();
         services.AddSingleton<CheckFocus>();
         services.AddSingleton<IClipboardService, AvaloniaClipboardService>();
@@ -171,4 +176,5 @@ public partial class App : Avalonia.Application
 }
 
 /// <summary>С чем запущена программа: папка данных, замок одной копии (null — в дизайнере), запуск в трей, демо-режим.</summary>
-internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized, bool Demo, bool CheckTray = false);
+internal sealed record AppStartup(AppPaths Paths, SingleInstance? Instance, bool Minimized, bool Demo, bool CheckTray = false,
+    bool CheckDisplay = false);

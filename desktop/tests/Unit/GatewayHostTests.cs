@@ -413,6 +413,32 @@ public sealed class GatewayHostTests
         ServiceGatewayClient.Drop().KeepBlock.ShouldBeFalse("без доступа к аккаунту сеть не остается закрытой");
 
     [Fact]
+    public async Task Unreachable_installed_service_does_not_confirm_cleanup_and_retry_finds_it()
+    {
+        using var host = new GatewayHost(new ServiceLocator([Installed], _answering.Contains, _launcher, _time),
+            Attach, () => _settings, _time, installedService: () => true);
+
+        await Should.ThrowAsync<IOException>(() => host.DropProtectionAsync(Ct));
+
+        _answering.Add(Installed);
+        await host.DropProtectionAsync(Ct);
+        _services[Installed].Drops.ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task Pending_network_recovery_has_its_own_reason_and_does_not_request_sign_in_again()
+    {
+        using var host = new GatewayHost(new ServiceLocator([], _ => false, _launcher, _time),
+            Attach, () => _settings, _time, mayConnect: () => false, needsNetworkRecovery: () => true);
+
+        await host.ConnectAsync(Server, Ct);
+
+        host.Status.ErrorCode.ShouldBe(ErrorCodes.NetworkRestoreFailed);
+        host.AccessGranted();
+        host.Status.State.ShouldBe(ConnectionState.Off);
+    }
+
+    [Fact]
     public async Task Sign_in_clears_the_refusal_with_and_without_a_service()
     {
         using var lonely = new GatewayHost(new ServiceLocator([], _ => false, _launcher, _time), Attach, () => _settings, _time,

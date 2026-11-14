@@ -144,13 +144,14 @@
 - Проверки: границы диапазонов, IPv4/IPv6, неизвестный адрес, доменные профили,
   смена и скрытие IP, наличие изображений и лицензий.
 
-## 14.11.2026 — прямоугольные флаги без квадратной обрезки
+## 14.11.2026 — возврат исходных квадратных флагов
 
-- Задача: на macOS кантон флага США занимал почти весь квадрат; источник `1x1`, а не шрифт M4, обрезал рисунок.
-- Источник: [flag-icons/flags/4x3](https://github.com/lipis/flag-icons/tree/ac7e0eb3259eb62aa6100c435607e2fe03896a97/flags/4x3),
-  тот же закрепленный коммит и архив с SHA-256 из `shared/countries/sources.json`. MIT; LICENSE архива прочитан повторно.
-- Переносим SVG варианта 4:3 вместо 1:1 и генерируем PNG 112×84 тем же CairoSVG 2.8.2. Новых зависимостей приложения нет.
-  Слот остается 28×28, рисунок с рамкой — 28×21 по центру; собственная Земля остается 28×28.
+- Задача: вернуть прежний вид по уточнению пользователя. На экране MacBook исходные флаги отображались нормально;
+  жалоба относилась к внешнему монитору. Предыдущее объяснение через пропорции ресурса не подтвердилось.
+- Источник: [flag-icons/flags/1x1](https://github.com/lipis/flag-icons/tree/ac7e0eb3259eb62aa6100c435607e2fe03896a97/flags/1x1),
+  закрепленный коммит и архив с SHA-256 из `shared/countries/sources.json`, MIT. Нового стороннего кода нет.
+- Возвращены байты SVG и PNG из коммита `bd7463b`: квадратные ресурсы 112×112 и рисунок с рамкой 28×28.
+  Генератор снова выбирает вариант 1:1. Новых зависимостей приложения нет; собственная Земля не меняется.
 - Проверки: все ресурсы и пропорции, неизвестная страна, смена страны, одинаковые PNG в приложении и макете,
   снимки США, Японии, Нидерландов и Земли. Исходная геобаза не меняется.
 
@@ -167,3 +168,36 @@
 - Регрессии: холодный callback, смерть процесса до commit и после запроса подтверждения, повторный запрос Android
   без новой загрузки, старые/повторные callback, ошибка записи. Проверка принадлежности сессий — Robolectric API 28/31/35;
   настоящее системное подтверждение и ограничения прошивки — отдельная проверка на телефоне.
+
+## 14.11.2026 — согласование масштаба окна после смены монитора
+
+- Изучена Avalonia 12.1.4, коммит `2d79ba55fae1b1e71c69f93a668080c9029e6a31`,
+  [лицензия MIT](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/licence.md).
+- Источники: [AvnView.mm](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/native/Avalonia.Native/src/OSX/AvnView.mm),
+  [metal.mm](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/native/Avalonia.Native/src/OSX/metal.mm),
+  [CompositingRenderer.cs](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Base/Rendering/Composition/CompositingRenderer.cs),
+  [IMacOSTopLevelPlatformHandle.cs](https://github.com/AvaloniaUI/Avalonia/blob/2d79ba55fae1b1e71c69f93a668080c9029e6a31/src/Avalonia.Base/Platform/IMacOSTopLevelPlatformHandle.cs).
+  Открытая [issue 22684](https://github.com/AvaloniaUI/Avalonia/issues/22684) описывает совпадающий симптом: managed DPI
+  уже правильный, нативная поверхность после смены экранов увеличена; это свидетельство сходства, не доказательство на Mac пользователя.
+- Код не перенесен. Собственная связка вызывает публичные методы AppKit у текущего NSView, полученного через API Avalonia:
+  обновление backing properties и немедленное отображение слоя применяют ожидающие размеры Metal на главном потоке.
+  События объединяются; обратное уведомление масштаба не порождает бесконечную очередь. Версия Avalonia не меняется.
+- Проверки: headless DPI и жизненный цикл; настоящий Metal drawable в `--check-display`, мутант без нативного восстановления;
+  физическое отключение монитора и пробуждение — ручной сценарий `docs/testing/display-scaling.md`.
+
+## 14.11.2026 — подтвержденное снятие собственных фильтров WFP
+
+- Проверена документация MicrosoftDocs/sdk-api, коммит `656e9656bfaef34dd29cd7ee9e1146aec17e924c`:
+  [FwpmFilterCreateEnumHandle0](https://github.com/MicrosoftDocs/sdk-api/blob/656e9656bfaef34dd29cd7ee9e1146aec17e924c/sdk-api-src/content/fwpmu/nf-fwpmu-fwpmfiltercreateenumhandle0.md),
+  [FwpmFilterEnum0](https://github.com/MicrosoftDocs/sdk-api/blob/656e9656bfaef34dd29cd7ee9e1146aec17e924c/sdk-api-src/content/fwpmu/nf-fwpmu-fwpmfilterenum0.md),
+  [FwpmFilterDestroyEnumHandle0](https://github.com/MicrosoftDocs/sdk-api/blob/656e9656bfaef34dd29cd7ee9e1146aec17e924c/sdk-api-src/content/fwpmu/nf-fwpmu-fwpmfilterdestroyenumhandle0.md),
+  [FwpmTransactionBegin0](https://github.com/MicrosoftDocs/sdk-api/blob/656e9656bfaef34dd29cd7ee9e1146aec17e924c/sdk-api-src/content/fwpmu/nf-fwpmu-fwpmtransactionbegin0.md).
+  Лицензии этого закрепленного источника проверены выше: документация CC-BY-4.0, примеры MIT.
+- Использовано описание API: снимок перечисления создается и читается в одной транзакции; страницы освобождаются
+  через `FwpmFreeMemory0`, дескриптор — через `FwpmFilterDestroyEnumHandle0`. Число меньше запрошенного завершает обход.
+  Перечисление возвращает только доступные для чтения фильтры, поэтому ошибка удаления подслоя/провайдера, в том числе
+  `FWP_E_IN_USE`, остается ошибкой восстановления сети.
+- Код написан самостоятельно. Удаляются только фильтры с точным совпадением собственного провайдера **и** подслоя.
+  Нет остановки по первому отсутствующему ключу или по 32 пропускам; правила других программ не меняются.
+- Проверки: отбор чужих и своих записей на нескольких страницах, ошибка следующей страницы и ошибки удаления; существующая
+  нативная проверка Windows дополнена удалением первого фильтра и первых 40 ключей перед полным снятием.

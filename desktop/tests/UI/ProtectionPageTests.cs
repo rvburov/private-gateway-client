@@ -21,13 +21,13 @@ namespace PrivateGateway.Client.Tests.UI;
 public sealed class ProtectionPageTests : WindowHarness
 {
     [AvaloniaFact]
-    public void Defaults_are_closed_as_on_the_board()
+    public void Blocking_features_start_off_and_tunnel_dns_preferences_are_kept()
     {
         var (window, shell, page) = OpenProtection();
 
         shell.IsSettings.ShouldBeTrue();
         shell.IsIslandVisible.ShouldBeTrue();
-        (page.KillSwitch, page.BootProtection, page.StrictMode).ShouldBe((true, true, false));
+        (page.KillSwitch, page.BootProtection, page.StrictMode).ShouldBe((false, false, false));
         (page.BlockOutsideDns, page.FakeDns, page.CheckLeaksAfterConnect).ShouldBe((true, false, true));
         (page.BlockIpv6, page.AllowLan, page.LanDiscovery).ShouldBe((true, false, false));
         Text(window, "DnsChoiceText").ShouldBe("По умолчанию: Cloudflare");
@@ -107,6 +107,7 @@ public sealed class ProtectionPageTests : WindowHarness
     {
         var (_, shell, page) = OpenProtection();
 
+        page.KillSwitch = true;
         page.StrictMode = true;
         Dispatcher.UIThread.RunJobs();
         shell.Overlay.Dialog.ShouldNotBeNull().PrimaryCommand.Execute(null);
@@ -139,6 +140,7 @@ public sealed class ProtectionPageTests : WindowHarness
     {
         var (_, shell, page) = OpenProtection();
 
+        page.KillSwitch = true;
         page.StrictMode = true;
         Dispatcher.UIThread.RunJobs();
         var dialog = shell.Overlay.Dialog.ShouldNotBeNull();

@@ -97,6 +97,31 @@ public sealed class SecretFileTests : IDisposable
         Count(database).ShouldBe(0);
     }
 
+    [Fact]
+    public void An_old_database_copy_does_not_restore_a_secret_deleted_during_keychain_cleanup()
+    {
+        var database = new SqliteDatabase(_paths);
+        var file = new SecretFile(database);
+        file.Write("account:session", Encoding.UTF8.GetBytes("new-cipher"));
+        file.DeleteWithLegacyTombstone("account:session");
+        using (var connection = database.Open())
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = "INSERT INTO secrets (key, value) VALUES ('account:session', $value)";
+            command.Parameters.AddWithValue("$value", Encoding.UTF8.GetBytes("stale-cipher"));
+            command.ExecuteNonQuery();
+        }
+
+        var restarted = new SecretFile(database);
+        restarted.Read("account:session").ShouldBeNull();
+        restarted.IsLegacyDeleted("account:session").ShouldBeTrue();
+        Count(database).ShouldBe(0);
+
+        restarted.Write("account:session", Encoding.UTF8.GetBytes("fresh-cipher"));
+        restarted.IsLegacyDeleted("account:session").ShouldBeFalse("явный новый вход заменяет отметку прежнего выхода");
+        Encoding.UTF8.GetString(restarted.Read("account:session")!).ShouldBe("fresh-cipher");
+    }
+
     private static long Count(SqliteDatabase database)
     {
         using var connection = database.Open();

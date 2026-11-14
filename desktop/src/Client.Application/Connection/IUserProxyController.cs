@@ -31,4 +31,7 @@ public interface IUserProxyController
 
     /// <summary>Нормальный выход окна: служба пользователя завершится вместе с ним, ее локальный прокси нужно убрать.</summary>
     void Shutdown();
+
+    /// <summary>Выход из аккаунта: вернуть только свой снимок прокси, даже когда служба не отвечает.</summary>
+    bool RestoreForSignOut() => Status.State is not (UserProxyState.Applied or UserProxyState.Held or UserProxyState.Error);
 }

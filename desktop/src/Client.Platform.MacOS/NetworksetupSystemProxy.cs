@@ -31,10 +31,14 @@ public sealed class NetworksetupSystemProxy(Func<IReadOnlyList<string>, string> 
     public static NetworksetupSystemProxy? ForThisMachine() =>
         OperatingSystem.IsMacOS() && File.Exists(Program) ? new NetworksetupSystemProxy(Run) : null;
 
-    public SystemProxySnapshot Read()
+    public SystemProxySnapshot Read() => Read(enabledOnly: true);
+
+    public SystemProxySnapshot ReadForRestore() => Read(enabledOnly: false);
+
+    private SystemProxySnapshot Read(bool enabledOnly)
     {
         var values = new Dictionary<string, string?>();
-        foreach (var service in Services(enabledOnly: true))
+        foreach (var service in Services(enabledOnly))
         {
             foreach (var kind in Kinds)
             {
@@ -48,10 +52,18 @@ public sealed class NetworksetupSystemProxy(Func<IReadOnlyList<string>, string> 
         return new SystemProxySnapshot(values);
     }
 
-    public void Enable(int port)
+    public void Enable(int port) => Enable(port, Services(enabledOnly: true));
+
+    public void Enable(int port, SystemProxySnapshot expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        Enable(port, expected.Values.Keys.Select(key => key[..key.LastIndexOf('\n')]).Distinct(StringComparer.Ordinal));
+    }
+
+    private void Enable(int port, IEnumerable<string> services)
     {
         var text = port.ToString(CultureInfo.InvariantCulture);
-        foreach (var service in Services(enabledOnly: true))
+        foreach (var service in services)
         {
             networksetup(["-setproxybypassdomains", service, .. Bypass]);
             foreach (var kind in Kinds)
@@ -63,6 +75,44 @@ public sealed class NetworksetupSystemProxy(Func<IReadOnlyList<string>, string> 
             networksetup(["-setautoproxystate", service, "off"]);
         }
     }
+
+    /// <summary>Снимок до первой записи: после аварии посреди networksetup можно узнать незаконченный переход.</summary>
+    public SystemProxySnapshot? Expected(int port)
+    {
+        var before = Read();
+        return new SystemProxySnapshot(before.Values.ToDictionary(pair => pair.Key, pair => (string?)(Kind(pair.Key) switch
+        {
+            "web" or "secureweb" or "socksfirewall" =>
+                $"Enabled: Yes\nServer: 127.0.0.1\nPort: {port.ToString(CultureInfo.InvariantCulture)}\nAuthenticated Proxy Enabled: 0",
+            "bypass" => string.Join('\n', Bypass),
+            "auto" => $"URL: {Field(pair.Value ?? string.Empty, "URL") ?? "(null)"}\nEnabled: No",
+            _ => pair.Value ?? string.Empty,
+        })));
+    }
+
+    /// <summary>Неактивный адрес networksetup не стирает. Проверяются состояние, действующий адрес и исключения.</summary>
+    public bool MatchesRestored(SystemProxySnapshot previous, SystemProxySnapshot current) => previous.Values.All(pair =>
+    {
+        // Удаленной сети в снимке возврата нет; выключенная присутствует благодаря ReadForRestore.
+        if (!current.Values.TryGetValue(pair.Key, out var value))
+        {
+            return true;
+        }
+
+        var before = pair.Value ?? string.Empty;
+        var after = value ?? string.Empty;
+        return Kind(pair.Key) switch
+        {
+            "web" or "secureweb" or "socksfirewall" => ValidProxy(before) && ValidProxy(after)
+                && ParseProxy(before) is var expected && ParseProxy(after) is var actual
+                && expected.Enabled == actual.Enabled && (!expected.Enabled || expected == actual),
+            "bypass" => ParseBypass(before).SequenceEqual(ParseBypass(after), StringComparer.Ordinal),
+            "auto" => Field(before, "Enabled") is "Yes" or "No" && Field(after, "Enabled") is "Yes" or "No"
+                && ParseEnabled(before) == ParseEnabled(after)
+                && (!ParseEnabled(before) || Field(before, "URL") == Field(after, "URL")),
+            _ => pair.Value == value,
+        };
+    });
 
     public void Restore(SystemProxySnapshot previous)
     {
@@ -131,6 +181,13 @@ public sealed class NetworksetupSystemProxy(Func<IReadOnlyList<string>, string> 
     }
 
     private static bool ParseEnabled(string output) => Field(output, "Enabled") == "Yes";
+
+    private static bool ValidProxy(string output) => Field(output, "Enabled") is "Yes" or "No"
+        && Field(output, "Server") is not null
+        && int.TryParse(Field(output, "Port"), NumberStyles.None, CultureInfo.InvariantCulture, out var port)
+        && port is >= 0 and <= 65535;
+
+    private static string Kind(string key) => key[(key.LastIndexOf('\n') + 1)..];
 
     private static string? Field(string output, string name) =>
         output.Split('\n').Select(l => l.Trim()).Where(l => l.StartsWith(name + ":", StringComparison.Ordinal))

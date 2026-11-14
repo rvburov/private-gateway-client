@@ -20,6 +20,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.privategateway.client.R
 import com.privategateway.client.account.AccountInfo
+import com.privategateway.client.account.AccountNetworkRecovery
 import com.privategateway.client.account.AccountNotice
 import com.privategateway.client.core.account.AccountError
 import com.privategateway.client.ui.account.LoginActions
@@ -48,7 +49,10 @@ class LoginScreenTest {
     private fun text(id: Int) = context.getString(id)
 
     /** Форма в памяти теста: поля меняют то же, что модель; «Войти», сайт и «Войти другим аккаунтом» — счетчики. */
-    private inner class Host(start: LoginUi = LoginUi(), notice: AccountNotice? = null) {
+    private inner class Host(start: LoginUi = LoginUi(), notice: AccountNotice? = null, recovery: AccountNetworkRecovery = AccountNetworkRecovery.Idle, systemVpn: Boolean = false) {
+        var network by mutableStateOf(recovery)
+        var restores = 0
+        var vpnSettings = 0
         var ui by mutableStateOf(start)
         var submits = 0
         var backs = 0
@@ -68,8 +72,12 @@ class LoginScreenTest {
                             submit = { submits++ },
                             site = { sites += it },
                             back = { backs++ },
+                            restoreNetwork = { restores++ },
+                            openVpnSettings = { vpnSettings++ },
                         ),
                         language = null,
+                        networkRecovery = network,
+                        systemVpnRestricted = systemVpn,
                     )
                 }
             }
@@ -232,4 +240,17 @@ class LoginScreenTest {
         compose.onNodeWithTag("settings").assertIsDisplayed()
         compose.onNodeWithTag("settings.account").assertDoesNotExist()
     }
+    @Test
+    fun `signed-out screen can retry restoring the network and open Android VPN settings`() {
+        val host = Host(LoginUi("user@example.com", "pw"), recovery = AccountNetworkRecovery.Failed, systemVpn = true)
+        compose.onNodeWithTag("login.network.retry").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(1, host.restores)
+        compose.onNodeWithTag("login.network.system").performScrollTo().assertTextEquals(text(R.string.android_account_systemVpn))
+        compose.onNodeWithTag("login.network.settings").performScrollTo().assertIsEnabled().performClick()
+        assertEquals(1, host.vpnSettings)
+        compose.runOnIdle { host.network = AccountNetworkRecovery.Pending }
+        compose.onNodeWithTag("login.submit").performScrollTo().assertIsNotEnabled()
+        compose.onNodeWithTag("login.network.retry").assertDoesNotExist()
+    }
+
 }

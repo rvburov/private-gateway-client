@@ -28,7 +28,12 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
             }
         }
 
-        return Parse(values, key => LogInvalid(logger, key));
+        return Parse(values, key => LogInvalid(logger, key)) with
+        {
+            AccountSignedOut = values.TryGetValue("account.signed_out", out var text) && bool.TryParse(text, out var signedOut) && signedOut,
+            AccountNetworkResetPending = values.TryGetValue("account.network_reset_pending", out var pending)
+                && bool.TryParse(pending, out var resetPending) && resetPending,
+        };
     }
 
     public void Save(AppSettings settings)
@@ -43,6 +48,25 @@ public sealed partial class SqliteSettingsStore(SqliteDatabase database, ILogger
                 + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
             command.Parameters.AddWithValue("$key", key);
             command.Parameters.AddWithValue("$value", value);
+            command.ExecuteNonQuery();
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "INSERT INTO settings (key, value) VALUES ('account.network_reset_pending', $value) "
+                + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
+            command.Parameters.AddWithValue("$value", Text(settings.AccountNetworkResetPending));
+            command.ExecuteNonQuery();
+        }
+
+        // Метка сеанса остается на этом устройстве: Values используется также экспортом резервной копии.
+        using (var command = connection.CreateCommand())
+        {
+            command.Transaction = transaction;
+            command.CommandText = "INSERT INTO settings (key, value) VALUES ('account.signed_out', $value) "
+                + "ON CONFLICT(key) DO UPDATE SET value = excluded.value;";
+            command.Parameters.AddWithValue("$value", Text(settings.AccountSignedOut));
             command.ExecuteNonQuery();
         }
 

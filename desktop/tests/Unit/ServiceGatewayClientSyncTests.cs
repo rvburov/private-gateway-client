@@ -112,6 +112,34 @@ public sealed class ServiceGatewayClientSyncTests
         client.Status.ShouldBe(initial);
     }
 
+    [Theory]
+    [InlineData(false, false)]
+    [InlineData(true, true)]
+    public async Task Drop_rejects_an_old_service_reply_or_a_remaining_strict_block(bool confirmed, bool strictBlock)
+    {
+        var calls = new FakeCalls(Snapshot(ConnectionState.Connected, Started), accepted: true)
+        {
+            NetworkRestored = confirmed,
+            RemainingStrictBlock = strictBlock,
+        };
+        using var client = Client(calls);
+
+        await Should.ThrowAsync<IOException>(() => client.DropProtectionAsync(TestContext.Current.CancellationToken));
+
+        calls.DisconnectDeadline.ShouldNotBeNull("недоступная служба не должна бесконечно удерживать вход");
+    }
+
+    [Fact]
+    public async Task Drop_accepts_only_a_confirmed_restore_and_a_fresh_off_snapshot()
+    {
+        var calls = new FakeCalls(Snapshot(ConnectionState.Connected, Started), accepted: true) { NetworkRestored = true };
+        using var client = Client(calls);
+
+        await client.DropProtectionAsync(TestContext.Current.CancellationToken);
+
+        (client.Status.State, client.Status.StrictBlock, calls.StatusReads).ShouldBe((ConnectionState.Off, false, 1));
+    }
+
     private static ConnectionStatus Snapshot(ConnectionState state, DateTimeOffset since, string? error = null) =>
         ConnectionStatus.Initial(since) with { State = state, Mode = ConnectionMode.Proxy, ErrorCode = error };
 
@@ -157,6 +185,9 @@ public sealed class ServiceGatewayClientSyncTests
         private readonly ConnectionStatus _connected = actual;
         public int StatusReads { get; private set; }
         public StatusCode? CheckFailure { get; init; }
+        public bool NetworkRestored { get; init; }
+        public bool RemainingStrictBlock { get; init; }
+        public DateTime? DisconnectDeadline { get; private set; }
         public void Send(ConnectionStatus status) => _statuses.Writer.TryWrite(status.ToContract()).ShouldBeTrue();
 
         public override AsyncUnaryCall<TResponse> AsyncUnaryCall<TRequest, TResponse>(Method<TRequest, TResponse> method, string? host,
@@ -172,7 +203,7 @@ public sealed class ServiceGatewayClientSyncTests
                 "Connect" => new V1.ConnectReply { Accepted = accepted },
                 "GetStatus" => ReadStatus(),
                 "PauseForCaptivePortal" => Pause((V1.CaptivePauseRequest)(object)request),
-                "Disconnect" => Disconnect(),
+                "Disconnect" => Disconnect(options),
                 _ => throw new NotSupportedException(method.Name),
             };
             return new AsyncUnaryCall<TResponse>(Task.FromResult((TResponse)reply), Task.FromResult(new Metadata()),
@@ -199,10 +230,11 @@ public sealed class ServiceGatewayClientSyncTests
             };
         }
 
-        private V1.DisconnectReply Disconnect()
+        private V1.DisconnectReply Disconnect(CallOptions options)
         {
-            _actual = _connected with { State = ConnectionState.Off, LocalProxyPort = null, UserProxyManagedByWindow = false };
-            return new V1.DisconnectReply();
+            DisconnectDeadline = options.Deadline;
+            _actual = _connected with { State = ConnectionState.Off, LocalProxyPort = null, UserProxyManagedByWindow = false, StrictBlock = RemainingStrictBlock };
+            return new V1.DisconnectReply { NetworkRestored = NetworkRestored };
         }
 
         public override AsyncServerStreamingCall<TResponse> AsyncServerStreamingCall<TRequest, TResponse>(Method<TRequest, TResponse> method,
@@ -238,7 +270,11 @@ public sealed class ServiceGatewayClientSyncTests
 
     private sealed class MemorySettings : ISettingsStore
     {
-        public AppSettings Load() => AppSettings.Default with { Mode = ConnectionMode.Proxy };
+        public AppSettings Load() => AppSettings.Default with
+        {
+            Mode = ConnectionMode.Proxy,
+            Connection = AppSettings.Default.Connection with { SystemProxy = true },
+        };
         public void Save(AppSettings settings) { }
     }
 

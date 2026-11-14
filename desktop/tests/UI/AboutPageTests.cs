@@ -80,6 +80,7 @@ public sealed class AboutPageTests : WindowHarness
         var (window, page, service) = OpenAboutWith(new UpdateOffer(UpdateState.Available, Time.GetUtcNow(), "0.2.0", ["Быстрее переподключение после сна"],
             new Uri("https://private-gateway.duckdns.org/downloads"))
         { Installable = true });
+        Service<SettingsService>().Update(s => s with { KillSwitch = true });
         service.Download = [new UpdateProgress(0, 30_093_312), new UpdateProgress(19_293_798, 30_093_312), new UpdateProgress(30_093_312, 30_093_312, Ready: true)];
         service.DownloadGate = gate.Task;
         Find<Button>(window, "UpdateNow").Content.ShouldBe("Обновить сейчас");

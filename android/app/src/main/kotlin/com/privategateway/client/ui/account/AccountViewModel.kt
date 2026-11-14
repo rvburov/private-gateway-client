@@ -48,6 +48,9 @@ data class LoginUi(
 class AccountViewModel @Inject constructor(private val account: AccountRepository) : ViewModel() {
     /** Вход; null — еще не прочитан: окно ничего не показывает, чтобы экран входа не мелькал. */
     val state: StateFlow<AccountState?> = account.state
+    val networkRecovery = account.networkRecovery
+
+    fun restoreNetwork() = account.retryNetworkRecovery()
 
     private val form = MutableStateFlow(LoginUi())
     val ui: StateFlow<LoginUi> = form.asStateFlow()

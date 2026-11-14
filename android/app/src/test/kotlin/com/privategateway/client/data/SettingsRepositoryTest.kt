@@ -259,4 +259,49 @@ class SettingsRepositoryTest {
         settings.setConnectOnLaunch(false)
         assertEquals(false, settings.connectOnLaunch.first())
     }
+    @Test
+    fun `new sign-in waits for a manual connect even when Android requests an automatic start`() = runBlocking<Unit> {
+        val file = folder.root.resolve("settings.preferences_pb")
+        val store = PreferenceDataStoreFactory.create(scope = scope) { file }
+        val settings = SettingsRepository(store)
+        assertTrue(settings.permitConnection(manual = false), "существующий авторизованный сеанс до нового флага сохраняет перезапуск")
+        settings.resetAccountNetwork()
+        assertFalse(settings.permitConnection(manual = false), "Always-on и перезапуск ОС не подтверждают намерение пользователя")
+        scope.cancel()
+        scope.coroutineContext[Job]?.join()
+        val again = CoroutineScope(Dispatchers.IO + SupervisorJob())
+        try {
+            val reopened = SettingsRepository(PreferenceDataStoreFactory.create(scope = again) { file })
+            assertFalse(reopened.permitConnection(manual = false), "после перезапуска ожидание ручного действия прочитано с диска")
+            assertTrue(reopened.permitConnection(manual = true))
+            assertTrue(reopened.permitConnection(manual = false), "после ручного включения обычный обрыв и перезапуск восстанавливаются")
+            reopened.resetAccountNetwork()
+            assertFalse(reopened.permitConnection(manual = false), "следующий вход снова требует явного включения")
+        } finally {
+            again.cancel()
+            again.coroutineContext[Job]?.join()
+        }
+    }
+
+    @Test
+    fun `backup cannot arm automatic connection after a new sign-in`() = runBlocking<Unit> {
+        val settings = SettingsRepository(PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") })
+        settings.resetAccountNetwork()
+        settings.import(mapOf("account_manual_connect_required" to "false", "connect_on_launch" to "true"))
+        assertFalse(settings.permitConnection(manual = false), "копия настроек не заменяет новое явное подключение")
+        assertFalse("account_manual_connect_required" in settings.export(), "право текущего входа не переносится резервной копией")
+    }
+
+    @Test
+    fun `manual connect permission is never granted if its durable write fails`() = runBlocking<Unit> {
+        val real = PreferenceDataStoreFactory.create(scope = scope) { folder.root.resolve("settings.preferences_pb") }
+        SettingsRepository(real).resetAccountNetwork()
+        val broken = object : DataStore<Preferences> {
+            override val data = real.data
+            override suspend fun updateData(transform: suspend (Preferences) -> Preferences): Preferences = throw IOException("read only")
+        }
+        assertFailsWith<IOException> { SettingsRepository(broken).permitConnection(manual = true) }
+        assertTrue(SettingsRepository(real).manualConnectRequired.first())
+    }
+
 }

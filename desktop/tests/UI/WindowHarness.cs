@@ -36,6 +36,7 @@ public abstract class WindowHarness : IDisposable
 {
     private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "pg-ui-" + Guid.NewGuid().ToString("N")));
     private ServiceProvider? _services;
+    private readonly List<MainWindow> _windows = [];
 
     protected FakeTimeProvider Time { get; } = new(new DateTimeOffset(2026, 10, 24, 15, 42, 0, TimeSpan.Zero));
 
@@ -84,6 +85,12 @@ public abstract class WindowHarness : IDisposable
 
     public void Dispose()
     {
+        // Закрыть окна до сервисов и FontManager Headless: их отложенные callbacks больше не должны рисовать.
+        foreach (var window in _windows)
+        {
+            window.Close();
+        }
+        _windows.Clear();
         Loc.Instance.SetLanguage("ru");
         _services?.Dispose();
         Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
@@ -145,6 +152,7 @@ public abstract class WindowHarness : IDisposable
 
         var shell = _services.GetRequiredService<ShellViewModel>();
         var window = new MainWindow { DataContext = shell };
+        _windows.Add(window);
         window.Show();
         Dispatcher.UIThread.RunJobs();
         return (window, shell);
@@ -322,9 +330,19 @@ public abstract class WindowHarness : IDisposable
         public Task DisconnectAsync(CancellationToken cancellationToken = default)
         {
             OtherVpnAllowed = false;
-            Raise(Status.MoveTo(ConnectionState.Off, time.GetUtcNow()));
+            // Настоящая служба подтверждает и повторное отключение уже выключенного туннеля.
+            if (Status.State != ConnectionState.Off)
+            {
+                Raise(Status.MoveTo(ConnectionState.Off, time.GetUtcNow()));
+            }
+
             return Task.CompletedTask;
         }
+
+        public Exception? DropFailure { get; set; }
+
+        public Task DropProtectionAsync(CancellationToken cancellationToken = default) => DropFailure is { } failure
+            ? Task.FromException(failure) : DisconnectAsync(cancellationToken);
 
         /// <summary>Сколько раз окно просило паузу для входа в Wi-Fi.</summary>
         public int Pauses { get; private set; }

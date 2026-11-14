@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
+using PrivateGateway.Client.Application.Settings;
 using PrivateGateway.Client.UI.Services;
 
 namespace PrivateGateway.Client.Tests.UI;
@@ -49,6 +50,7 @@ public sealed class ConfirmToggleTests : WindowHarness
     private (Window Window, ToggleButton Toggle) OpenAt(string page, string name)
     {
         var (window, shell) = Open();
+        Service<SettingsService>().Update(s => s with { KillSwitch = true });
         shell.NavigateCommand.Execute(page);
         Dispatcher.UIThread.RunJobs();
         var toggle = Find<ToggleButton>(window, name);

@@ -35,7 +35,7 @@ public enum UpdateChannel
 
 /// <summary>
 /// Настройки разделов «Основные» (доска 4) и «Профили и подписки» (доска 12). Значения по умолчанию —
-/// решения из docs/roadmap/DECISIONS.md и макета: блок при обрыве включен, уведомления — только
+/// решения из docs/roadmap/DECISIONS.md и макета: блок при обрыве выключен до выбора пользователя, уведомления — только
 /// важные, подписки — каждые 12 часов и только через VPN.
 /// </summary>
 public sealed record AppSettings(
@@ -52,7 +52,7 @@ public sealed record AppSettings(
 {
     public static AppSettings Default { get; } = new(
         ConnectionMode.Vpn,
-        KillSwitch: true,
+        KillSwitch: false,
         StartWithSystem: true,
         ConnectOnLaunch: false,
         MinimizeToTray: true,
@@ -82,6 +82,12 @@ public sealed record AppSettings(
 
     /// <summary>Лаборатория объясняет «для эксперта»: с заголовками, портами и диапазонами; иначе — «для начинающего» (этап 8).</summary>
     public bool LabExpert { get; init; }
+
+    /// <summary>Явный выход: не восстанавливать старый токен при ошибке его удаления. Новый успешный вход снимает отметку.</summary>
+    public bool AccountSignedOut { get; init; }
+
+    /// <summary>После выхода еще не подтверждено восстановление сети: новый вход не разрешает подключение до повтора очистки.</summary>
+    public bool AccountNetworkResetPending { get; init; }
 
     /// <summary>Промежуток автообновления подписок; null — выключено.</summary>
     public TimeSpan? RefreshInterval => SubscriptionRefresh switch

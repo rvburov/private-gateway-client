@@ -369,7 +369,7 @@ class MainViewModel @Inject constructor(
      * спрашивает оно. Без входа в аккаунт сайта — нет: сначала экран входа (решение 619).
      */
     suspend fun connectOnLaunch(): Boolean {
-        if (!settings.connectOnLaunch.first() || !account.allowed()) {
+        if (!settings.connectOnLaunch.first() || settings.manualConnectRequired.first() || !account.allowed()) {
             return false
         }
 

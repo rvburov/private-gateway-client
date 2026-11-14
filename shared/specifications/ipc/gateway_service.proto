@@ -386,7 +386,11 @@ message DisconnectRequest {
   // «Блокировка». Действует только в режиме VPN с блоком при обрыве.
   bool keep_block = 1;
 }
-message DisconnectReply {}
+message DisconnectReply {
+  // true только после подтвержденного восстановления сети без keep_block. Старые службы возвращают false:
+  // их прежний пустой ответ не доказывал снятия firewall, возврата DNS/прокси и удаления задания при загрузке.
+  bool network_restored = 1;
+}
 
 enum Protocol {
   PROTOCOL_UNSPECIFIED = 0;

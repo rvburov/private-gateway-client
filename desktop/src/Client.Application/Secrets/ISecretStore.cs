@@ -15,6 +15,9 @@ public interface ISecretStore
     /// </summary>
     bool IsAvailable { get; }
 
+    /// <summary>Обезличенное состояние хранилища без чтения секретов и запроса системного разрешения.</summary>
+    SecretStoreDiagnostics? Diagnostics => null;
+
     /// <exception cref="InvalidOperationException">Хранилище недоступно или отказало.</exception>
     void Save(string key, string secret);
 

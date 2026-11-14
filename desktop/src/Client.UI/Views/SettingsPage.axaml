@@ -29,6 +29,20 @@
         </Border>
       </StackPanel>
 
+      <Border x:Name="SettingsNetworkRecovery" Classes="card" IsVisible="{Binding HasNetworkRecovery}" Padding="16" Margin="0,0,0,18">
+        <StackPanel Spacing="12">
+          <TextBlock Text="{Binding NetworkRecoveryText}" TextWrapping="Wrap"
+                     Foreground="{StaticResource PgBrush.Status.Warning.Text}" />
+          <Button x:Name="SettingsRestoreNetwork" Classes="secondary" Command="{Binding Recovery.RestoreCommand}"
+                  Content="{l:L account.network.retry}" MinHeight="{StaticResource PgLayout.TouchTarget}" />
+          <Button x:Name="SettingsRepairNetworkService" Classes="secondary" Command="{Binding Recovery.RepairCommand}"
+                  Content="{Binding Recovery.RepairText}" IsVisible="{Binding Recovery.CanInstall}" MinHeight="{StaticResource PgLayout.TouchTarget}" />
+          <Button Classes="link" Command="{Binding Recovery.OpenServiceSettingsCommand}" Content="{l:L problem.background.open}"
+                  IsVisible="{Binding Recovery.HasServiceSettings}" MinHeight="{StaticResource PgLayout.TouchTarget}" />
+          <TextBlock Text="{Binding Recovery.Error}" TextWrapping="Wrap" Classes="caption" />
+        </StackPanel>
+      </Border>
+
       <TextBlock Classes="overline" Text="{l:L settings.section.basic, Upper=True}" Margin="6,0,6,8" />
       <Border Classes="card" Padding="16,4">
         <StackPanel>

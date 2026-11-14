@@ -576,9 +576,71 @@ public sealed class AccountServiceTests : IDisposable
         return account;
     }
 
-    private AccountService Service(AccountOptions? options = null)
+    [Fact]
+    public async Task Explicit_login_waits_for_network_reset_and_keeps_blocking_settings_off()
     {
-        var service = new AccountService(_api, _store, _device, _secrets, _gateway, _time, options: options);
+        var settings = new SettingsService(new AccountNetworkResetTests.MemorySettings(AppSettings.Default with
+        {
+            KillSwitch = true,
+            ConnectOnLaunch = true,
+            Protection = ProtectionSettings.Default with { BootProtection = true, StrictMode = true },
+        }));
+        var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _gateway.PendingDrop = stopped.Task;
+        var reset = new AccountNetworkReset(settings, _gateway, new AccountNetworkResetTests.UserProxy());
+        var account = Service(networkReset: reset);
+
+        var login = account.SignInAsync("user@example.com", "pw", null, null, Ct);
+        _api.Logins.ShouldBeEmpty("сначала снять прежние ограничения, потом обращаться к сайту");
+        account.MayConnect.ShouldBeFalse();
+        stopped.SetResult();
+        (await login).Succeeded.ShouldBeTrue();
+        (settings.Current.KillSwitch, settings.Current.ConnectOnLaunch, settings.Current.Protection.BootProtection,
+            settings.Current.Protection.StrictMode, settings.Current.AccountSignedOut).ShouldBe((false, false, false, false, false));
+    }
+
+    [Fact]
+    public async Task Failed_logout_secret_deletion_does_not_restore_the_old_account_on_restart()
+    {
+        var saved = new AccountNetworkResetTests.MemorySettings(AppSettings.Default);
+        AccountNetworkReset Reset() => new(new SettingsService(saved), _gateway, new AccountNetworkResetTests.UserProxy());
+        var account = Service(networkReset: Reset());
+        (await account.SignInAsync("user@example.com", "pw", null, null, Ct)).Succeeded.ShouldBeTrue();
+        _secrets.DeleteFailure = new IOException("Связка ключей недоступна");
+        _store.ClearFails = true;
+
+        await account.SignOutAsync(Ct);
+
+        _secrets.Values.ShouldContainKey(AccountService.TokenKey);
+        _store.Saved.ShouldNotBeNull();
+        Service(networkReset: Reset()).HasAccess.ShouldBeFalse("сохраненная отметка выхода важнее старого токена");
+    }
+
+    [Fact]
+    public async Task Login_remains_accessible_after_failed_restore_but_connect_stays_disabled_until_retry()
+    {
+        var saved = new AccountNetworkResetTests.MemorySettings(AppSettings.Default);
+        var reset = new AccountNetworkReset(new SettingsService(saved),
+            _gateway, new AccountNetworkResetTests.UserProxy());
+        var account = Service(networkReset: reset);
+        _gateway.PendingDrop = Task.FromException(new IOException("Служба недоступна"));
+
+        (await account.SignInAsync("user@example.com", "pw", null, null, Ct)).Succeeded.ShouldBeTrue();
+        (account.NeedsNetworkRecovery, account.HasAccess, account.MayConnect).ShouldBe((true, true, false));
+        _api.Logins.Count.ShouldBe(1);
+        var restarted = Service(networkReset: new AccountNetworkReset(new SettingsService(saved),
+            _gateway, new AccountNetworkResetTests.UserProxy()));
+        (restarted.HasAccess, restarted.MayConnect, restarted.NeedsNetworkRecovery).ShouldBe((true, false, true));
+
+        _gateway.PendingDrop = null;
+        (await account.RestoreNetworkAsync()).ShouldBeTrue();
+        account.NeedsNetworkRecovery.ShouldBeFalse();
+        account.MayConnect.ShouldBeTrue();
+    }
+
+    private AccountService Service(AccountOptions? options = null, AccountNetworkReset? networkReset = null)
+    {
+        var service = new AccountService(_api, _store, _device, _secrets, _gateway, _time, options: options, networkReset: networkReset);
         _services.Add(service);
         return service;
     }

@@ -24,9 +24,15 @@ public sealed class SettingsPageTests : IDisposable
 {
     private readonly AppPaths _paths = new(Path.Combine(Path.GetTempPath(), "pg-ui-" + Guid.NewGuid().ToString("N")));
     private readonly List<ServiceProvider> _providers = [];
+    private readonly List<MainWindow> _windows = [];
 
     public void Dispose()
     {
+        foreach (var window in _windows)
+        {
+            window.Close();
+        }
+        _windows.Clear();
         Loc.Instance.SetLanguage("ru");
         foreach (var provider in _providers)
         {
@@ -160,6 +166,7 @@ public sealed class SettingsPageTests : IDisposable
     {
         var shell = Build().GetRequiredService<ShellViewModel>();
         var window = new MainWindow { DataContext = shell };
+        _windows.Add(window);
         window.Show();
         shell.NavigateCommand.Execute(Pages.Settings);
         Dispatcher.UIThread.RunJobs();

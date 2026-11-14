@@ -409,6 +409,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     public async Task<bool> ConnectAtBootAsync(CancellationToken cancellationToken = default)
     {
+        var generation = Volatile.Read(ref _connectGeneration);
         // Строгий режим: защиту выключили вручную — при загрузке сеть закрыта, а не подключена.
         if (!_blocking || Status.StrictBlock || _held is { Strict: true } || _options.BootConnect?.Load() is not { } stored)
         {
@@ -419,7 +420,7 @@ public sealed partial class Gateway : IAsyncDisposable
         _holdBlock = true;
         try
         {
-            return (await ConnectAsync(stored.Request, stored.Addresses, cancellationToken).ConfigureAwait(false)).Accepted;
+            return (await ConnectAsync(stored.Request, stored.Addresses, cancellationToken, generation).ConfigureAwait(false)).Accepted;
         }
         finally
         {
@@ -430,11 +431,19 @@ public sealed partial class Gateway : IAsyncDisposable
     /// <param name="request">Запрос окна.</param>
     /// <param name="known">Адреса сервера, найденные раньше (подключение при загрузке); null — найти сейчас.</param>
     /// <param name="cancellationToken">Отмена.</param>
-    private async Task<V1.ConnectReply> ConnectAsync(V1.ConnectRequest request, IReadOnlyList<IPAddress>? known, CancellationToken cancellationToken)
+    /// <param name="bootGeneration">Автоматическое подключение не отменяет действие пользователя, пришедшее во время чтения хранилища.</param>
+    private async Task<V1.ConnectReply> ConnectAsync(V1.ConnectRequest request, IReadOnlyList<IPAddress>? known, CancellationToken cancellationToken,
+        int? bootGeneration = null)
     {
         ArgumentNullException.ThrowIfNull(request);
         cancellationToken.ThrowIfCancellationRequested();
-        var generation = Interlocked.Increment(ref _connectGeneration);
+        var generation = bootGeneration is { } expected
+            ? unchecked(expected + 1)
+            : Interlocked.Increment(ref _connectGeneration);
+        if (bootGeneration is { } previous && Interlocked.CompareExchange(ref _connectGeneration, generation, previous) != previous)
+        {
+            return new V1.ConnectReply { Accepted = false };
+        }
         CancelPreflight();
         // Намерение принято: отмена ожидания RPC не бросает подготовку посередине. Ее заменяют только
         // новое действие пользователя и остановка службы; DNS и остальные шаги ограничены по времени.
@@ -855,6 +864,12 @@ public sealed partial class Gateway : IAsyncDisposable
         try
         {
             _session++;
+            if (!keepBlock)
+            {
+                await StopAndRestoreNetworkAsync().ConfigureAwait(false);
+                return;
+            }
+
             await StopCoreAsync().ConfigureAwait(false);
             _systemProxy?.Release();
             _journal.Hide([]);
@@ -1257,8 +1272,10 @@ public sealed partial class Gateway : IAsyncDisposable
             _systemProxy?.Release();
             _journal.Hide([]);
 
-            if (!ConnectionStateMachine.CanMove(Status.State, ConnectionState.Error))
+            if (Status.State == ConnectionState.Off || !ConnectionStateMachine.CanMove(Status.State, ConnectionState.Error))
             {
+                // Отказ нового подключения сохраняет прежнюю последовательность Connecting → Error.
+                // Прямой Off → Error нужен только для ошибки очистки оставшихся настроек сети.
                 Move(Requested, ConnectionState.Connecting);
             }
 
@@ -1670,7 +1687,7 @@ public sealed partial class Gateway : IAsyncDisposable
         await DrainPreflightAsync().ConfigureAwait(false);
         // Вызывается под _switch: новый запуск не начинается, пока старый не закончил все изменения сети и очистку.
         // Ожидается только создание, а не StartTunnelAsync/RestartAsync, которые для публикации сами ждут _switch.
-        var starting = Interlocked.Exchange(ref _starting, new CancellationTokenSource());
+        using var starting = Interlocked.Exchange(ref _starting, new CancellationTokenSource());
         await starting.CancelAsync().ConfigureAwait(false);
         if (Interlocked.Exchange(ref _pendingTunnel, null) is { } pending)
         {
@@ -1685,20 +1702,29 @@ public sealed partial class Gateway : IAsyncDisposable
             }
             if (unpublished is not null)
             {
-                await unpublished.DisposeAsync().ConfigureAwait(false);
+                try
+                {
+                    await unpublished.DisposeAsync().ConfigureAwait(false);
+                }
+                catch
+                {
+                    // Не терять владение при отказе остановки: следующий запрос должен повторить очистку.
+                    _pendingTunnel = Task.FromResult(unpublished);
+                    throw;
+                }
             }
         }
-        starting.Dispose();
-
-        if (Interlocked.Exchange(ref _core, null) is { } core)
+        if (_core is { } core)
         {
             await core.StopAsync().ConfigureAwait(false);
             core.Dispose();
+            _core = null;
         }
 
-        if (Interlocked.Exchange(ref _tunnel, null) is { } tunnel)
+        if (_tunnel is { } tunnel)
         {
             await tunnel.DisposeAsync().ConfigureAwait(false);
+            _tunnel = null;
             RestoreDns();
         }
     }
@@ -2484,6 +2510,14 @@ public sealed partial class Gateway : IAsyncDisposable
             VirtualMachines = VirtualMachinesFor(status),
             UserProxyManagedByWindow = _request is { UserProxyManagedByWindow: true },
         };
+        if (status.ErrorCode == ErrorCodes.NetworkRestoreFailed)
+        {
+            return status with
+            {
+                Protection = new ProtectionChecks(CheckState.Warning, CheckState.Warning, CheckState.Warning, CheckState.Warning, null),
+            };
+        }
+
         if (_blockBroken && status.Mode == ConnectionMode.Vpn && status.State != ConnectionState.Off && !status.IsPaused)
         {
             return status with

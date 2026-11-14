@@ -450,7 +450,12 @@ public sealed class GatewayPreflightTests : IDisposable
         var definition = new ServerDefinition("test", string.Empty, ProxyProtocol.Vless, host, port, TransportOptions.Tcp,
             new SecurityOptions(TransportSecurity.Tls, Sni: "example.com"), ProtocolOptions.Empty,
             new ServerCredentials(Uuid: "11111111-2222-3333-4444-555555555555"));
-        var settings = AppSettings.Default with { Protection = ProtectionSettings.Default with { CheckLeaksAfterConnect = false, BootProtection = false } };
+        // Пользователь включил блок: успешная проба должна дойти до fake firewall, который удерживает тест до TUN.
+        var settings = AppSettings.Default with
+        {
+            KillSwitch = true,
+            Protection = ProtectionSettings.Default with { CheckLeaksAfterConnect = false, BootProtection = false },
+        };
         return new V1.ConnectRequest
         {
             Server = definition.ToContract(id), Mode = V1.Mode.Vpn, Protection = settings.ToContract(),

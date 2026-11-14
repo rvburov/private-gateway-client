@@ -16,7 +16,8 @@ public static class SecretStores
         if (OperatingSystem.IsMacOS())
         {
             var keychain = new KeychainSecretStore();
-            return new KeychainFileSecretStore(new SecretFile(database), keychain, KeychainSecretStore.VaultKey);
+            return new KeychainFileSecretStore(new SecretFile(database), keychain, KeychainSecretStore.VaultKey,
+                KeychainSecretStore.TryDeleteWithoutInteraction);
         }
 
         if (OperatingSystem.IsLinux())

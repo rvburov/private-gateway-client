@@ -23,6 +23,7 @@ public sealed class SecretFile
         using var connection = Open();
         Run(connection, "CREATE TABLE IF NOT EXISTS secrets (key TEXT PRIMARY KEY NOT NULL, value BLOB NOT NULL)");
         Run(connection, "CREATE TABLE IF NOT EXISTS legacy_cleanup (key TEXT PRIMARY KEY NOT NULL)");
+        Run(connection, "CREATE TABLE IF NOT EXISTS legacy_deleted (key TEXT PRIMARY KEY NOT NULL)");
         MoveFrom(database, connection);
     }
 
@@ -32,6 +33,7 @@ public sealed class SecretFile
         using var transaction = connection.BeginTransaction();
         Run(connection, transaction, "INSERT INTO secrets (key, value) VALUES ($key, $value) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
             ("$key", key), ("$value", value));
+        Run(connection, transaction, "DELETE FROM legacy_deleted WHERE key = $key", ("$key", key));
         if (cleanupLegacy)
         {
             Run(connection, transaction, "INSERT OR IGNORE INTO legacy_cleanup (key) VALUES ($key)", ("$key", key));
@@ -60,6 +62,20 @@ public sealed class SecretFile
         }
     }
 
+    internal (int Entries, int PendingCleanup, int Deleted) Statistics
+    {
+        get
+        {
+            using var connection = Open();
+            using var command = connection.CreateCommand();
+            command.CommandText = "SELECT (SELECT COUNT(*) FROM secrets), (SELECT COUNT(*) FROM legacy_cleanup), "
+                + "(SELECT COUNT(*) FROM legacy_deleted)";
+            using var reader = command.ExecuteReader();
+            _ = reader.Read();
+            return (reader.GetInt32(0), reader.GetInt32(1), reader.GetInt32(2));
+        }
+    }
+
     public void Delete(string key)
     {
         using var connection = Open();
@@ -67,6 +83,29 @@ public sealed class SecretFile
         Run(connection, transaction, "DELETE FROM secrets WHERE key = $key", ("$key", key));
         Run(connection, transaction, "DELETE FROM legacy_cleanup WHERE key = $key", ("$key", key));
         transaction.Commit();
+    }
+
+    /// <summary>
+    /// Удаление macOS не должно ждать отдельного разрешения для старой копии в Связке ключей. Метка и удаление шифра
+    /// атомарны: после отказа очистки или перезапуска старая запись больше не возвращается через миграцию.
+    /// </summary>
+    public void DeleteWithLegacyTombstone(string key)
+    {
+        using var connection = Open();
+        using var transaction = connection.BeginTransaction();
+        Run(connection, transaction, "INSERT OR IGNORE INTO legacy_deleted (key) VALUES ($key)", ("$key", key));
+        Run(connection, transaction, "INSERT OR IGNORE INTO legacy_cleanup (key) VALUES ($key)", ("$key", key));
+        Run(connection, transaction, "DELETE FROM secrets WHERE key = $key", ("$key", key));
+        transaction.Commit();
+    }
+
+    public bool IsLegacyDeleted(string key)
+    {
+        using var connection = Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT 1 FROM legacy_deleted WHERE key = $key";
+        command.Parameters.AddWithValue("$key", key);
+        return command.ExecuteScalar() is not null;
     }
 
     /// <summary>После надежной записи шифра осталось удалить прежнюю отдельную запись Связки ключей.</summary>
@@ -114,7 +153,8 @@ public sealed class SecretFile
             {
                 using var write = target.CreateCommand();
                 write.Transaction = transaction;
-                write.CommandText = "INSERT OR IGNORE INTO secrets (key, value) VALUES ($key, $value)";
+                write.CommandText = "INSERT OR IGNORE INTO secrets (key, value) SELECT $key, $value "
+                    + "WHERE NOT EXISTS(SELECT 1 FROM legacy_deleted WHERE key = $key)";
                 write.Parameters.AddWithValue("$key", key);
                 write.Parameters.AddWithValue("$value", value);
                 write.ExecuteNonQuery();

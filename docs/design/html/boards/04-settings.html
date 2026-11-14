@@ -73,6 +73,18 @@
   На iOS входа пока нет (решение 624) — карточки нет.</p>
 
 <div class="pg-screens">
+  <section class="pg-screen" data-os="desktop" data-state="off" data-caption="После входа · восстановление сети еще не подтверждено">
+    <div class="pg-page">
+      <span class="t-h1">Настройки</span>
+      <div class="card">
+        <p class="t-wrap" data-ui-text="account.network.failed">Не удалось подтвердить отключение защиты. Повторите восстановление сети.</p>
+        <button class="btn-secondary" data-ui-text="account.network.retry">Восстановить сеть</button>
+        <button class="btn-secondary" data-ui-text="account.network.service">Обновить службу</button>
+        <button class="btn-link" data-os="macos" data-ui-text="problem.background.open">Открыть настройки macOS</button>
+      </div>
+      <p class="t-wrap">Вход выполнен, настройки доступны. Подключение VPN разрешается после восстановления сети.</p>
+    </div>
+  </section>
   <!-- ===================== Режим VPN ===================== -->
   <section class="pg-screen" data-state="connected" data-caption="Режим «VPN · вся система»">
     <div class="pg-page">
@@ -151,7 +163,7 @@
             <span class="setting-title" id="ks-title-1"><span data-os="desktop" data-ui-text="desktop.settings.ks.title">Блокировать интернет при обрыве VPN</span><span data-os="phone">Блок при обрыве (Kill Switch)</span></span>
             <span class="setting-caption"><span data-os="desktop" data-ui-text="desktop.settings.ks.text">Если связь с VPN пропадет, интернет остановится до восстановления защиты.</span><span data-os="phone">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span></span>
           </div>
-          <button class="switch on" role="switch" aria-checked="true" aria-labelledby="ks-title-1" data-confirm-off="dlg-ks"></button>
+          <button class="switch" role="switch" aria-checked="false" aria-labelledby="ks-title-1" data-confirm-off="dlg-ks"></button>
         </div>
 
         <div class="setting" data-os="desktop">
@@ -380,7 +392,7 @@
             <span class="setting-title" id="ks-title-2"><span data-os="desktop" data-ui-text="desktop.settings.ks.title">Блокировать интернет при обрыве VPN</span><span data-os="phone">Блок при обрыве (Kill Switch)</span></span>
             <span class="setting-caption"><span data-os="desktop" data-ui-text="desktop.settings.ks.text">Если связь с VPN пропадет, интернет остановится до восстановления защиты.</span><span data-os="phone">Нет туннеля — нет интернета. Защита от утечек при обрыве.</span></span>
           </div>
-          <button class="switch on" role="switch" aria-checked="true" aria-labelledby="ks-title-2" data-confirm-off="dlg-ks-2"></button>
+          <button class="switch" role="switch" aria-checked="false" aria-labelledby="ks-title-2" data-confirm-off="dlg-ks-2"></button>
         </div>
 
         <div class="setting" data-os="desktop">

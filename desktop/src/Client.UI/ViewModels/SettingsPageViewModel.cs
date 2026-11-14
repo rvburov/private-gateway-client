@@ -24,7 +24,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
     private readonly AccountService _account;
 
     public SettingsPageViewModel(SettingsService settings, INavigator navigator, IGatewayClient gateway, OverlayViewModel overlay,
-        IExternalProxyStore externalProxy, AccountService account)
+        IExternalProxyStore externalProxy, AccountService account, AccountNetworkRecoveryViewModel recovery)
     {
         ArgumentNullException.ThrowIfNull(settings);
         ArgumentNullException.ThrowIfNull(account);
@@ -33,6 +33,7 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
         _gateway = gateway;
         _overlay = overlay;
         _account = account;
+        Recovery = recovery;
         ExternalProxy = new ExternalProxyEditorViewModel(settings, externalProxy);
         settings.Changed += OnSettingsChanged;
         account.Changed += OnAccountChanged;
@@ -68,6 +69,12 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
     public string? AccountDevice => string.IsNullOrEmpty(_account.DeviceName) ? null : Loc.Instance.Format("settings.account.device", _account.DeviceName);
 
     public bool HasAccountDevice => AccountDevice is not null;
+
+    public bool HasNetworkRecovery => _account.NeedsNetworkRecovery || _account.IsRestoringNetwork;
+
+    public AccountNetworkRecoveryViewModel Recovery { get; }
+
+    public string NetworkRecoveryText => Loc.Instance[_account.IsRestoringNetwork ? "account.network.pending" : "account.network.failed"];
 
     /// <summary>
     /// «Выйти» — после подтверждения: защита выключается, вход стирается, сайт забывает устройство; окно открывает вход с
@@ -224,7 +231,10 @@ public sealed partial class SettingsPageViewModel : ObservableObject, IDisposabl
 
     private void OnLanguageChanged(object? sender, EventArgs e) => OnPropertyChanged(string.Empty);
 
-    private void OnAccountChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() => OnPropertyChanged(string.Empty));
+    private void OnAccountChanged(object? sender, EventArgs e) => Dispatcher.UIThread.Post(() =>
+    {
+        OnPropertyChanged(string.Empty);
+    });
 
     public void Dispose()
     {

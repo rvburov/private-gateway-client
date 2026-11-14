@@ -26,6 +26,7 @@ import com.privategateway.client.core.vpn.TunnelErrors
 import com.privategateway.client.core.vpn.TunnelState
 import com.privategateway.client.core.vpn.TunnelStatus
 import com.privategateway.client.data.SecretBox
+import com.privategateway.client.data.SettingsRepository
 import com.privategateway.client.vpn.TunnelControl
 import com.privategateway.client.vpn.TunnelJournal
 import com.privategateway.client.vpn.TunnelMonitor
@@ -100,6 +101,13 @@ data class AccountState(val info: AccountInfo?, val notice: AccountNotice? = nul
     val signedIn: Boolean get() = info != null
 }
 
+/** Снятие ограничений приложения после выхода: команда службе сама по себе не подтверждает остановку. */
+enum class AccountNetworkRecovery {
+    Idle,
+    Pending,
+    Failed,
+}
+
 /** Сайт для приложения: [AccountApi] в потоке ввода-вывода, с версией приложения в User-Agent. */
 class DeviceAccountSource @Inject constructor() : AccountSource {
     private val api = AccountApi(userAgent = "Private-Gateway-Client/" + BuildConfig.VERSION_NAME)
@@ -146,6 +154,7 @@ class AccountRepository @Inject constructor(
     private val monitor: TunnelMonitor,
     private val journal: TunnelJournal,
     private val logoutFence: AccountLogoutFence,
+    private val settings: SettingsRepository,
 ) : UpdatesFeedSource {
     // Ошибка, которую не поймали ниже, — в журнал, а не в обработчик потока: тот завершил бы процесс вместе со службой VPN.
     private val scope = CoroutineScope(
@@ -155,6 +164,8 @@ class AccountRepository @Inject constructor(
     )
     private val lock = Mutex()
     private val notice = MutableStateFlow<AccountNotice?>(null)
+    private val recovery = MutableStateFlow(AccountNetworkRecovery.Idle)
+    val networkRecovery: StateFlow<AccountNetworkRecovery> = recovery
     private var started = false
     private val accessLock = Any()
     private var generation = 0L
@@ -183,6 +194,9 @@ class AccountRepository @Inject constructor(
     /** Сколько ждать ответа сайта на выход, пока защита еще идет: дольше выход не держит туннель. */
     @VisibleForTesting
     internal var logoutWaitMs = LOGOUT_WAIT_MS
+
+    @VisibleForTesting
+    internal var networkWaitMs = 5_000L
 
     /** Когда последний раз спрашивали сайт: открытие окна сразу после запуска не спрашивает второй раз. */
     @Volatile
@@ -262,6 +276,9 @@ class AccountRepository @Inject constructor(
     suspend fun login(email: String, password: String, code: String?, recovery: String?): LoginResult = lock.withLock {
         val attempt = currentGeneration()
         withContext(Dispatchers.IO) {
+            // Новый явный вход никогда не наследует автоматический запуск и ограничения предыдущего аккаунта.
+            // Восстановление идет до запроса сайта: оставшийся туннель не должен закрывать экрану входа интернет.
+            if (!stopProtection()) return@withContext LoginResult.Failed(AccountError.Store)
             if (!boxWorks()) {
                 journal.warning("account sign-in  key store unavailable")
                 return@withContext LoginResult.Failed(AccountError.Store)
@@ -388,6 +405,15 @@ class AccountRepository @Inject constructor(
         scope.launch { performLogout(attempt) }
     }
 
+    /** Повтор доступен на экране входа, даже если токен уже удален или служба раньше не ответила. */
+    fun retryNetworkRecovery() {
+        scope.launch {
+            lock.withLock {
+                if (denied.value || (read() ?: cachedPreferences)?.get(TOKEN) == null) stopProtection()
+            }
+        }
+    }
+
     /**
      * Спросить сайт о доступе сейчас (запуск, открытие окна, расписание); входа нет — ничего. Сбой хранилища или иной —
      * в журнал, как «сайт не ответил»: вход и защита остаются, следующая проверка — по расписанию.
@@ -487,7 +513,7 @@ class AccountRepository @Inject constructor(
                 try {
                     withContext(Dispatchers.IO) {
                         enforceExpiry()
-                        retryClear()
+                        retryClear(stop = recovery.value == AccountNetworkRecovery.Failed)
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -737,17 +763,40 @@ class AccountRepository @Inject constructor(
      * Защита идет, поднимается или на паузе — выключить; выключена — службу не будить. Вызывать после запрета доступа:
      * подключение, которое монитор еще не показал, служба отклонит сама, перепроверив вход.
      */
-    private fun stopProtection() {
+    private suspend fun stopProtection(): Boolean {
+        recovery.value = AccountNetworkRecovery.Pending
         val status = monitor.status.value
-        if (status.state == TunnelState.Off && !status.paused || status.state == TunnelState.Error) {
-            return
+        val stopped = if (status.state == TunnelState.Off && !status.paused) {
+            true
+        } else {
+            try {
+                // Error тоже может удерживать карту блокировки; его нельзя считать доказательством снятого туннеля.
+                control.disconnect()
+                withTimeoutOrNull(networkWaitMs) {
+                    monitor.status.first { it.state == TunnelState.Off && !it.paused }
+                } != null
+            } catch (e: Exception) {
+                if (e is CancellationException) {
+                    recovery.value = AccountNetworkRecovery.Failed
+                    throw e
+                }
+                journal.warning("account  protection stop not delivered " + e.javaClass.simpleName)
+                false
+            }
         }
-
+        var reset = true
         try {
-            control.disconnect()
-        } catch (_: IllegalStateException) {
-            // Android не дал запустить службу из фона: защиты тогда и нет, а следующее подключение служба не пустит.
-            journal.warning("account  protection stop not delivered")
+            settings.resetAccountNetwork()
+        } catch (e: Exception) {
+            if (e is CancellationException) {
+                recovery.value = AccountNetworkRecovery.Failed
+                throw e
+            }
+            reset = false
+            journal.warning("account  network settings reset failed " + e.javaClass.simpleName)
+        }
+        return (reset && stopped).also {
+            recovery.value = if (it) AccountNetworkRecovery.Idle else AccountNetworkRecovery.Failed
         }
     }
 

@@ -31,10 +31,9 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
 {
     private const uint RpcAuthnWinNt = 10;
     private const uint AlreadyExists = 0x80320009;
-    private const uint FilterNotFound = 0x80320003;
+    private const uint FilterNotFound = WfpFilterQuery.NotFound;
 
-    // Сколько ненайденных ключей подряд — конец наших фильтров (DeleteFilters).
-    private const int MissesToEnd = 32;
+    private const int EnumerationPageSize = 128;
     private const uint Persistent = 1;
     private const ushort SublayerWeight = 0xFFFF;
 
@@ -97,7 +96,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     private int _filters;
     private int _expectVirtualMachineRules;
 
-    public bool IsEnabled => FirstFilterFlags() is not null;
+    public bool IsEnabled => ReadFilters().Count > 0;
 
     /// <summary>
     /// На месте все фильтры последнего включения, а не только первый: другая программа могла снять часть. Включала не эта
@@ -121,7 +120,7 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     }
 
     /// <summary>Фильтры постоянные — переживут перезагрузку («Защита при загрузке»).</summary>
-    public static bool IsPersistent => (FirstFilterFlags() & Persistent) != 0;
+    public static bool IsPersistent => ReadFilters().Any(filter => (filter.Flags & Persistent) != 0);
 
     public void Enable(KillSwitchPolicy policy)
     {
@@ -234,28 +233,73 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
             VirtualMachines = Warning is null ? VirtualMachineProtection.Off
                 : VirtualMachineProtection.AfterFirewall(Warning == HyperVFirewall.Missing ? "hyper_v_unavailable" : Warning,
                     withoutTunnel: true, rulesIntact: false);
+            if (Warning is not null && Warning != HyperVFirewall.Missing)
+            {
+                throw new IOException("Не удалось снять блок виртуальных машин: " + Warning);
+            }
         }
     }
 
-    /// <summary>Флаги первого нашего фильтра; фильтров нет — null.</summary>
-    private static uint? FirstFilterFlags() => WithEngine(engine =>
+    /// <summary>Актуальный снимок своих фильтров, даже если первый или большая часть ключей уже удалены.</summary>
+    private static IReadOnlyList<WfpFilterEntry> ReadFilters() => WithEngine(engine => Transaction(engine, () => OwnedFilters(engine)));
+
+    private static IReadOnlyList<WfpFilterEntry> OwnedFilters(IntPtr engine)
     {
-        var key = WfpRules.FilterKey(0);
-        if (FwpmFilterGetByKey0(engine, ref key, out var filter) != 0)
+        Check(FwpmFilterCreateEnumHandle0(engine, IntPtr.Zero, out var enumeration), "начало чтения фильтров");
+        try
         {
-            return (uint?)null;
+            return WfpFilterQuery.Owned(Pages(), Provider, Sublayer);
+        }
+        finally
+        {
+            Check(FwpmFilterDestroyEnumHandle0(engine, enumeration), "завершение чтения фильтров");
         }
 
-        var flags = (uint)Marshal.ReadInt32(filter, 32);
-        FwpmFreeMemory0(ref filter);
-        return flags;
-    });
+        IEnumerable<IReadOnlyList<WfpFilterEntry>> Pages()
+        {
+            while (true)
+            {
+                Check(FwpmFilterEnum0(engine, enumeration, EnumerationPageSize, out var entries, out var count), "чтение фильтров");
+                List<WfpFilterEntry> page = [];
+                try
+                {
+                    if (count > EnumerationPageSize || count > 0 && entries == IntPtr.Zero)
+                    {
+                        throw new IOException("WFP: неполный ответ перечисления фильтров");
+                    }
+                    for (var index = 0; index < count; index++)
+                    {
+                        var filter = Marshal.ReadIntPtr(entries, index * IntPtr.Size);
+                        if (filter == IntPtr.Zero)
+                        {
+                            throw new IOException("WFP: отсутствует запись перечисленного фильтра");
+                        }
+                        var provider = Marshal.ReadIntPtr(filter, 40);
+                        page.Add(new WfpFilterEntry(Marshal.PtrToStructure<Guid>(filter),
+                            provider == IntPtr.Zero ? null : Marshal.PtrToStructure<Guid>(provider),
+                            Marshal.PtrToStructure<Guid>(filter + 80), unchecked((uint)Marshal.ReadInt32(filter, 32))));
+                    }
+                }
+                finally
+                {
+                    // WFP освобождает массив вместе с его элементами: отдельные указатели не освобождаются.
+                    FwpmFreeMemory0(ref entries);
+                }
+
+                yield return page;
+                if (count < EnumerationPageSize)
+                {
+                    yield break;
+                }
+            }
+        }
+    }
 
     /// <summary>Фильтр с ключом номер <paramref name="index"/> на месте.</summary>
     private static bool FilterExists(IntPtr engine, int index)
     {
         var key = WfpRules.FilterKey(index);
-        if (FwpmFilterGetByKey0(engine, ref key, out var filter) != 0)
+        if (!WfpFilterQuery.Found(FwpmFilterGetByKey0(engine, ref key, out var filter)))
         {
             return false;
         }
@@ -265,24 +309,15 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     }
 
     /// <summary>
-    /// Снять наши фильтры: ключи идут подряд от нулевого. Другая программа могла снять часть, и в нумерации дырка — поэтому
-    /// конец не первый ненайденный ключ, а <see cref="MissesToEnd"/> ненайденных подряд: иначе оставшиеся после дырки фильтры
-    /// не дали бы поставить блок заново (уже есть).
+    /// Снять все фильтры нашего провайдера и подслоя. Перечисление не зависит от номера первого оставшегося ключа:
+    /// даже большая дыра после чужого удаления не скрывает остаток блока. Чужие фильтры не затрагиваются.
     /// </summary>
     private static void DeleteFilters(IntPtr engine)
     {
-        for (int index = 0, misses = 0; index <= ushort.MaxValue && misses < MissesToEnd; index++)
+        foreach (var filter in OwnedFilters(engine))
         {
-            var key = WfpRules.FilterKey(index);
-            var result = FwpmFilterDeleteByKey0(engine, ref key);
-            if (result == FilterNotFound)
-            {
-                misses++;
-                continue;
-            }
-
-            Check(result, "снятие фильтра");
-            misses = 0;
+            var key = filter.Key;
+            WfpFilterQuery.RequireRemoved(FwpmFilterDeleteByKey0(engine, ref key), FilterNotFound, "снятие фильтра");
         }
     }
 
@@ -323,8 +358,8 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     {
         var sublayer = Sublayer;
         var provider = Provider;
-        _ = FwpmSubLayerDeleteByKey0(engine, ref sublayer);
-        _ = FwpmProviderDeleteByKey0(engine, ref provider);
+        WfpFilterQuery.RequireRemoved(FwpmSubLayerDeleteByKey0(engine, ref sublayer), WfpFilterQuery.SublayerNotFound, "снятие подслоя");
+        WfpFilterQuery.RequireRemoved(FwpmProviderDeleteByKey0(engine, ref provider), WfpFilterQuery.ProviderNotFound, "снятие провайдера");
     }
 
     /// <summary>FWPM_FILTER0 по смещениям 64-битной Windows; <paramref name="persistent"/> — переживает перезагрузку.</summary>
@@ -397,13 +432,20 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
         }
     }
 
-    private static void Transaction(IntPtr engine, Action work)
+    private static void Transaction(IntPtr engine, Action work) => Transaction(engine, () =>
+    {
+        work();
+        return true;
+    });
+
+    private static T Transaction<T>(IntPtr engine, Func<T> work)
     {
         Check(FwpmTransactionBegin0(engine, 0), "начало транзакции");
         try
         {
-            work();
+            var result = work();
             Check(FwpmTransactionCommit0(engine), "транзакция");
+            return result;
         }
         catch
         {
@@ -541,6 +583,18 @@ public sealed class WfpKillSwitch(string? onlyProgram = null) : IKillSwitch
     [DllImport("fwpuclnt.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern uint FwpmFilterGetByKey0(IntPtr engine, ref Guid key, out IntPtr filter);
+
+    [DllImport("fwpuclnt.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint FwpmFilterCreateEnumHandle0(IntPtr engine, IntPtr template, out IntPtr enumeration);
+
+    [DllImport("fwpuclnt.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint FwpmFilterEnum0(IntPtr engine, IntPtr enumeration, uint requested, out IntPtr entries, out uint returned);
+
+    [DllImport("fwpuclnt.dll")]
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+    private static extern uint FwpmFilterDestroyEnumHandle0(IntPtr engine, IntPtr enumeration);
 
     [DllImport("fwpuclnt.dll")]
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]

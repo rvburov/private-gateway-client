@@ -155,6 +155,25 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         store.edit { it[CONNECT_ON_LAUNCH] = on }
     }
 
+    /** Выход и новый вход начинаются без автоматического подключения и строгих маршрутов. Остальные настройки остаются. */
+    suspend fun resetAccountNetwork() {
+        store.edit {
+            it[CONNECT_ON_LAUNCH] = false
+            it[STRICT_ROUTES] = false
+            it[MANUAL_CONNECT_REQUIRED] = true
+        }
+    }
+
+    /** После выхода или нового входа даже Android Always-on ждет явного подключения. Старый действующий сеанс сохраняется. */
+    val manualConnectRequired: Flow<Boolean> = store.data.map { it[MANUAL_CONNECT_REQUIRED] ?: false }
+
+    /** Только явная команда щита, плитки или уведомления снимает ожидание; автоматическая команда его не меняет. */
+    suspend fun permitConnection(manual: Boolean): Boolean {
+        if (!manual) return !manualConnectRequired.first()
+        store.edit { it[MANUAL_CONNECT_REQUIRED] = false }
+        return true
+    }
+
     /**
      * Первый запуск (доска 10) пройден: приветствие и «Добавьте первый сервер» больше не показываются. Ставится, когда появился
      * первый сервер или пользователь выбрал «Позже»; приложение, где серверы уже есть (обновление), приветствие не показывает.
@@ -310,6 +329,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val CORE_LOG = stringPreferencesKey("core_log")
         val MTU = intPreferencesKey("tunnel_mtu")
         val STRICT_ROUTES = booleanPreferencesKey("tunnel_strict_routes")
+        val MANUAL_CONNECT_REQUIRED = booleanPreferencesKey("account_manual_connect_required")
         val SNIFFING = booleanPreferencesKey("tunnel_sniffing")
         val FINGERPRINT = stringPreferencesKey("conn_fingerprint")
         val MUX = booleanPreferencesKey("conn_mux")

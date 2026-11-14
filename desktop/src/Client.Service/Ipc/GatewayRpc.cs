@@ -72,7 +72,7 @@ public sealed class GatewayRpc(
     public override async Task<V1.DisconnectReply> Disconnect(V1.DisconnectRequest request, ServerCallContext context)
     {
         await gateway.DisconnectAsync(request?.KeepBlock == true, context?.CancellationToken ?? default).ConfigureAwait(false);
-        return new V1.DisconnectReply();
+        return new V1.DisconnectReply { NetworkRestored = request?.KeepBlock != true };
     }
 
     public override Task<V1.MeasureLatencyReply> MeasureLatency(V1.MeasureLatencyRequest request, ServerCallContext context) =>

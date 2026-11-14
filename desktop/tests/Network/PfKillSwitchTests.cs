@@ -219,11 +219,16 @@ public sealed partial class PfKillSwitchTests : IDisposable
         }
 
         // Якорь не под com.apple/*: основные правила его не вызывают, загруженное не закрывает сеть машины CI.
-        var anchor = "pg-test-" + Guid.NewGuid().ToString("N")[..8];
+        var anchor = "pg-test-" + Guid.NewGuid().ToString("N")[..8] + "/child";
         var pf = new PfKillSwitch(Pfctl, Path.Combine(_root, "pf.token"), anchor);
         var lookup = new ServiceLookup("/opt/pg/svc", 0, [new(IPAddress.Parse("192.0.2.53"), 443)]);
         try
         {
+            pf.Disable();
+            pf.IsEnabled.ShouldBeFalse("первый выход без подключения: якорь еще не создавался");
+            pf.Disable();
+            pf.IsEnabled.ShouldBeFalse("повторное снятие уже отсутствующего блока безопасно");
+
             foreach (var policy in new KillSwitchPolicy[]
             {
                 new("utun225", [new(Server, 443), new(IPAddress.Parse("2001:db8::20"), 8443)]),
@@ -233,6 +238,10 @@ public sealed partial class PfKillSwitchTests : IDisposable
             {
                 pf.Enable(policy);
                 pf.IsEnabled.ShouldBeTrue();
+                var anchors = Pfctl(["-v", "-s", "Anchors"], null);
+                anchors.Code.ShouldBe(0, anchors.Error);
+                anchors.Output.Split('\n', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
+                    .ShouldContain(anchor, customMessage: "рекурсивный список содержит полный путь вложенного якоря");
                 Pfctl(["-a", anchor, "-s", "rules"], null).Output.ShouldContain("block drop out quick all", customMessage: "pf принял и показывает правила якоря");
             }
 

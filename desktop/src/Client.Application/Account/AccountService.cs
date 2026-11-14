@@ -62,6 +62,7 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     private readonly IGatewayClient _gateway;
     private readonly TimeProvider _time;
     private readonly ILogger _logger;
+    private readonly AccountNetworkReset? _networkReset;
     private SynchronizationContext? _context;
     private ITimer? _timer;
     private ITimer? _expiryTimer;
@@ -74,7 +75,7 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     private (ConnectionState State, DateTimeOffset Since)? _dropped;
 
     public AccountService(IAccountApi api, IAccountStore store, IDeviceIdentity device, ISecretStore secrets, IGatewayClient gateway,
-        TimeProvider time, ILogger<AccountService>? logger = null, AccountOptions? options = null)
+        TimeProvider time, ILogger<AccountService>? logger = null, AccountOptions? options = null, AccountNetworkReset? networkReset = null)
     {
         _api = api;
         _store = store;
@@ -83,6 +84,11 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         _gateway = gateway;
         _time = time;
         _logger = logger ?? (ILogger)NullLogger.Instance;
+        _networkReset = networkReset;
+        if (_networkReset is not null)
+        {
+            _networkReset.Changed += OnNetworkResetChanged;
+        }
         IsRequired = options?.Required ?? true;
         if (IsRequired)
         {
@@ -99,8 +105,8 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     /// <summary>Доступ действует: вход сохранен и подтвержденный срок не прошел (или вход не нужен).</summary>
     public bool HasAccess => !IsRequired || (_token is not null && _saved is { } saved && _time.GetUtcNow() < saved.ExpiresAt);
 
-    /// <summary>Можно ли начинать подключение: то же, что <see cref="HasAccess"/>.</summary>
-    public bool MayConnect => HasAccess;
+    /// <summary>Доступ действует, и завершена очистка сети, оставшаяся после предыдущего выхода.</summary>
+    public bool MayConnect => HasAccess && !NeedsNetworkRecovery && !IsRestoringNetwork;
 
     /// <summary>Почта участника; null — входа нет.</summary>
     public string? Email => _saved?.Email;
@@ -122,6 +128,25 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
 
     /// <summary>Идет проверка доступа.</summary>
     public bool IsChecking { get; private set; }
+
+    public bool IsRestoringNetwork => _networkReset?.IsRunning == true;
+
+    public bool NeedsNetworkRecovery => _networkReset?.NeedsRecovery == true;
+
+    /// <summary>Повтор очистки без входа в аккаунт: экран входа не запирает пользователя с чужим для него блоком.</summary>
+    public async Task<bool> RestoreNetworkAsync() => _networkReset is null
+        || await _networkReset.RestoreAsync(signedOut: !HasAccess).ConfigureAwait(true);
+
+    private void OnNetworkResetChanged(object? sender, EventArgs e) => Post(() =>
+    {
+        if (MayConnect)
+        {
+            _gateway.AccessGranted();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return Task.CompletedTask;
+    });
 
     /// <summary>Вошли, вышли, пришел ответ проверки, доступ потерян. В контексте окна.</summary>
     public event EventHandler? Changed;
@@ -150,6 +175,10 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         _expiryTimer?.Dispose();
         _timer = null;
         _expiryTimer = null;
+        if (_networkReset is not null)
+        {
+            _networkReset.Changed -= OnNetworkResetChanged;
+        }
     }
 
     /// <summary>
@@ -169,6 +198,18 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         }
 
         var generation = _generation;
+        if (!HasAccess)
+        {
+            // Недоступная служба не запирает вход: если сайт доступен, можно войти и открыть настройки.
+            // Новое VPN-подключение останется запрещено до подтвержденного восстановления сети.
+            await RestoreNetworkAsync().ConfigureAwait(true);
+        }
+
+        if (generation != _generation)
+        {
+            return LoginOutcome.Failed(AccountFailure.Store);
+        }
+
         DeviceInfo device;
         try
         {
@@ -223,6 +264,7 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         {
             _secrets.Save(TokenKey, login.Token);
             _store.Save(saved);
+            _networkReset?.AcceptSignIn();
         }
         catch (Exception e) when (StoreFailure(e))
         {
@@ -411,6 +453,11 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     {
         try
         {
+            if (_networkReset?.IsSignedOut == true)
+            {
+                return;
+            }
+
             if (_store.Load() is not { } saved)
             {
                 return;
@@ -468,11 +515,22 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         await DropAsync().ConfigureAwait(true);
     }
 
-    // Доступа нет, а служба держит защиту или блок: выключить и открыть сеть. Одно состояние службы — одна просьба:
-    // служба не ответила — просить снова, когда она пришлет новое состояние, а не на каждом тике.
+    // Без доступа очистку повторяем после отказа и при новом состоянии службы. Старые автономные клиенты без
+    // координатора сохраняют поведение «одно состояние — одна просьба».
     private async Task HoldOffAsync()
     {
         var status = _gateway.Status;
+        if (_networkReset is not null)
+        {
+            if (!_networkReset.IsRunning && (!HasAccess || _networkReset.NeedsRecovery)
+                && (!_networkReset.HasRestored || _networkReset.NeedsRecovery || !ConnectionController.NetworkIsOpen(status)))
+            {
+                await _networkReset.RestoreAsync(signedOut: !HasAccess).ConfigureAwait(true);
+            }
+
+            return;
+        }
+
         if (HasAccess || ConnectionController.NetworkIsOpen(status) || _dropped == (status.State, status.Since))
         {
             return;
@@ -487,6 +545,14 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
         _generation++;
         (_token, _saved, _attempted) = (null, null, null);
         ScheduleExpiry();
+        try
+        {
+            _networkReset?.MarkSignedOut();
+        }
+        catch (Exception e) when (StoreFailure(e))
+        {
+            LogStoreUnavailable(_logger, e.GetType().Name);
+        }
         ForgetStored();
     }
 
@@ -560,6 +626,12 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     // оставил бы сеть закрытой, и вход не дошел бы до сайта.
     private async Task DropAsync()
     {
+        if (_networkReset is not null)
+        {
+            await _networkReset.RestoreAsync().ConfigureAwait(true);
+            return;
+        }
+
         var status = _gateway.Status;
         _dropped = (status.State, status.Since);
         try
@@ -587,7 +659,7 @@ public sealed partial class AccountService : IDisposable, IUpdateFeedSource
     // Новое состояние службы — из любого потока; решать в контексте окна, как и все остальное.
     private void OnGatewayStatus(object? sender, ConnectionStatus status)
     {
-        if (!HasAccess)
+        if (!HasAccess || NeedsNetworkRecovery)
         {
             Post(HoldOffAsync);
         }
