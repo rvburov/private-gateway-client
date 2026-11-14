@@ -28,18 +28,18 @@ final class SettingsActionsTests: XCTestCase {
 
     func testWithoutProtectionOnlyStores() async throws {
         try await actions.setTunnel(TunnelSettings(allowLan: true), state: .off)
-        try await actions.setKillSwitch(false, state: .error)
+        try await actions.setKillSwitch(true, state: .error)
         try await actions.setTunnel(TunnelSettings(ipv6: true), state: .stopping)
         XCTAssertEqual(control.connects, 0)
         let stored = try await settings.load()
-        XCTAssertFalse(stored.killSwitch)
+        XCTAssertTrue(stored.killSwitch)
         XCTAssertTrue(stored.tunnel.ipv6)
     }
 
     func testKillSwitchAndLocalNetworkChangeTheProfile() async throws {
-        try await actions.setKillSwitch(false, state: .connected)
+        try await actions.setKillSwitch(true, state: .connected)
         XCTAssertEqual(control.connects, 1)
-        try await actions.setKillSwitch(false, state: .connected)
+        try await actions.setKillSwitch(true, state: .connected)
         XCTAssertEqual(control.connects, 1, "то же значение — профиль тот же")
         try await actions.setTunnel(TunnelSettings(allowLan: true), state: .connected)
         XCTAssertEqual(control.connects, 2)
