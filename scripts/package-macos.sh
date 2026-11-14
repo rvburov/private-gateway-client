@@ -36,7 +36,7 @@ bash scripts/tests/macos-icon-smoke.sh "$app/Contents/Resources/PrivateGateway.i
 # Версия пакета — только цифры: 1.2.3-beta.1 → 1.2.3. Идентификатор — обратный домен репозитория, как метка службы
 # launchd. Нижняя граница запуска отличается от списка ОС с действующей поддержкой Microsoft.
 # Проверяем весь комплект, чтобы новое ядро или native-библиотека не требовали более свежую ОС, чем пакет.
-minimum_macos=12.0
+minimum_macos=13.0
 python3 scripts/check-macos-binaries.py "$app/Contents/MacOS" "$rid" "$minimum_macos"
 short=${version%%-*}
 cat > "$app/Contents/Info.plist" << EOF

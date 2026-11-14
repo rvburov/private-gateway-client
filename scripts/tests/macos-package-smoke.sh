@@ -46,8 +46,8 @@ hdiutil detach "$mnt" -quiet
 codesign --verify --deep --strict "$app" || fail "подпись пакета после копирования не цела"
 [ "$(plutil -extract CFBundleShortVersionString raw "$app/Contents/Info.plist")" = "${version%%-*}" ] || fail "версия в Info.plist"
 [ "$(plutil -extract CFBundleExecutable raw "$app/Contents/Info.plist")" = PrivateGateway ] || fail "исполняемый файл в Info.plist"
-[ "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = 12.0 ] || fail "минимальная macOS в Info.plist"
-python3 scripts/check-macos-binaries.py "$app/Contents/MacOS" "$rid" 12.0 || fail "архитектура или минимальная macOS встроенных компонентов"
+[ "$(plutil -extract LSMinimumSystemVersion raw "$app/Contents/Info.plist")" = 13.0 ] || fail "минимальная macOS в Info.plist"
+python3 scripts/check-macos-binaries.py "$app/Contents/MacOS" "$rid" 13.0 || fail "архитектура или минимальная macOS встроенных компонентов"
 [ -f "$app/Contents/Resources/PrivateGateway.icns" ] || fail "нет значка"
 for file in PrivateGateway PrivateGatewayService cores/xray/xray cores/sing-box/sing-box; do
   [ -x "$app/Contents/MacOS/$file" ] || fail "в пакете нет $file или он без права на запуск"

@@ -27,6 +27,7 @@ on:
       - scripts/tests/macos-package-smoke.sh
       - scripts/check-macos-binaries.py
       - scripts/tests/macos-binaries-test.py
+      - scripts/tests/singbox-build-test.py
       - .github/workflows/release.yml
       - scripts/tests/linux-package-smoke.sh
       - scripts/tests/rpm-package-smoke.sh
@@ -107,7 +108,9 @@ jobs:
 
       - name: Проверка границ совместимости macOS
         if: runner.os == 'macOS'
-        run: python3 scripts/tests/macos-binaries-test.py
+        run: |
+          python3 scripts/tests/macos-binaries-test.py
+          python3 scripts/tests/singbox-build-test.py
 
       - name: Проверка выпуска из архива
         run: scripts/tests/release-smoke.sh "${{ steps.version.outputs.version }}"

@@ -52,7 +52,9 @@ jobs:
         run: scripts/tests/release-assembly-smoke.sh
 
       - name: Архитектуры и минимальная macOS встроенных компонентов
-        run: python3 scripts/tests/macos-binaries-test.py
+        run: |
+          python3 scripts/tests/macos-binaries-test.py
+          python3 scripts/tests/singbox-build-test.py
 
       - name: Выпуск — release.sh, версия и текст страницы выпуска
         run: scripts/tests/release-test.sh

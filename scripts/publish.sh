@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Сборка выпуска для ОС этой машины: окно и служба (самодостаточные — .NET в комплекте, ReadyToRun), ядра Xray и
-# sing-box только с закрепленными суммами, SBOM (CycloneDX), архив и SHA256SUMS. Запуск из корня:
+# sing-box с закрепленными суммами архивов (macOS — тот же тег и закрепленный коммит из исходников), SBOM (CycloneDX),
+# архив и SHA256SUMS. Запуск из корня:
 #
 #   scripts/publish.sh [версия]       # версия — по умолчанию <Version> из Directory.Build.props
 #
@@ -41,7 +42,11 @@ done
 find "$out" -maxdepth 1 \( -name '*.pdb' -o -name 'PrivateGateway*.xml' \) -delete
 
 scripts/get-xray.sh --pinned
-scripts/get-singbox.sh
+case "$rid" in
+  # Готовые архивы текущего тега требуют macOS 26; тот же код собираем нативно с границей 13.0.
+  osx-*) scripts/get-singbox.sh --build ;;
+  *) scripts/get-singbox.sh ;;
+esac
 mkdir -p "$out/cores"
 cp -R artifacts/cores/xray artifacts/cores/sing-box "$out/cores/"
 

@@ -46,9 +46,16 @@ PrivateGateway-<версия>-<rid>/
 - Окно и служба — `dotnet publish -r <rid> --self-contained` с ReadyToRun (быстрее запуск — окно стартует с системой).
   Отладочные символы и XML-документация своих сборок в выпуск не идут. Версия — `-p:Version`, по умолчанию `<Version>`
   из `Directory.Build.props`; не SemVer — отказ.
-- Ядра качаются заново при каждой сборке выпуска: `scripts/get-xray.sh --pinned` и `scripts/get-singbox.sh` берут
-  только архивы с суммой, закрепленной в `shared/cores/*.sha256`. Сборка Xray из исходников (`--build`, облако) и что
-  угодно, лежащее в `artifacts/cores`, в выпуск не попадают.
+- Ядра готовятся заново при каждой сборке. Xray и sing-box для Linux/Windows берутся только из архивов
+  с закрепленной суммой в `shared/cores/*.sha256`. sing-box для macOS пересобирается той же версии из коммита
+  `shared/cores/sing-box.commit` с `CGO_ENABLED=1` и целью macOS 13; сохраняются штатные возможности клиента,
+  включая QUIC, Hysteria2, TUIC и TUN. Готовый upstream-бинарник sing-box требует macOS 26, поэтому простое
+  понижение Info.plist было бы неверным. Сборка Xray `--build` для облачных тестов и случайные файлы
+  `artifacts/cores` в пакет не попадают.
+- sing-box остается отдельным процессом GPL-3.0-or-later. Его неизмененные исходники соответствующей сборки:
+  [коммит 7054cac5124465ffdb145870d7c01885566711b1](https://github.com/SagerNet/sing-box/tree/7054cac5124465ffdb145870d7c01885566711b1).
+  Условия сборки, ссылка на исходники и версия Go лежат рядом с LICENSE в `cores/sing-box/BUILD-INFO.txt`;
+  команда повторения — `scripts/get-singbox.sh --build` на macOS. SBOM и SHA256SUMS используют хеш фактического бинарника.
 
 ## SBOM и контрольные суммы
 
@@ -158,7 +165,7 @@ WiX 5.0.2 (MS-RL; с v6 у WiX отдельный сбор Open Source Maintenan
 - `Contents/MacOS/` — папка сборки целиком: окно (`CFBundleExecutable` — `PrivateGateway`), служба рядом с ним, ядра в
   `cores/`, SBOM и THIRD-PARTY-NOTICES; `Contents/Resources/PrivateGateway.icns` — значок из `app.iconset`, собранный штатным `iconutil`;
   `Info.plist` — идентификатор `io.github.rvburov.private-gateway` (как метка службы launchd), версия без суффикса
-  предварительного выпуска, macOS 12 и новее. Проверка всех встроенных Mach-O отвергает пакет, если его архитектура
+  предварительного выпуска, macOS 13 и новее. Проверка всех встроенных Mach-O отвергает пакет, если его архитектура
   или минимальная версия системы не соответствует заявленной. Это проверка бинарных требований, а не подтверждение
   работы на каждой старой macOS или официальной поддержки этих ОС Microsoft;
 - подпись — ad-hoc, без сертификата: сначала каждый файл `Contents/MacOS`, кроме главного исполняемого (codesign
