@@ -67,7 +67,17 @@ public static class IpcChannel
             var pipe = new NamedPipeClientStream(".", endpoint, PipeDirection.InOut, PipeOptions.Asynchronous);
             try
             {
-                await pipe.ConnectAsync((int)PipeWait.TotalMilliseconds, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    await pipe.ConnectAsync((int)PipeWait.TotalMilliseconds, cancellationToken).ConfigureAwait(false);
+                }
+                catch (TimeoutException error)
+                {
+                    // gRPC считает голый TimeoutException внутренней ошибкой. Отсутствующий pipe — отказ транспорта,
+                    // как отсутствующий Unix-сокет: IOException дает Unavailable, а не ложную ошибку самой проверки.
+                    throw new IOException("Канал службы не ответил за отведенное время", error);
+                }
+
                 CheckOwner(pipe, system);
                 return pipe;
             }

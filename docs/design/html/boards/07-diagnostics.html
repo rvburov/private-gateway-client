@@ -775,7 +775,8 @@
     </div>
     <div class="pg-island" data-active="check"></div>
   </section>
-  <!-- Завершенная проверка без ответа не оставляет вечные индикаторы ожидания. Статус VPN приходит отдельно. -->
+  <!-- Завершенная проверка без ответа не оставляет вечные индикаторы ожидания. Статус VPN приходит отдельно.
+       Отсутствующая служба дает этот результат и при ожидании Windows pipe, и при отказе Unix-сокета. -->
   <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Проверка завершена: нет результата службы">
     <div class="check-header"><span class="t-h1">Проверка</span></div>
     <div class="pg-page"><div class="check-body">
