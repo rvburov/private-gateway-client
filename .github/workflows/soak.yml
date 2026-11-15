@@ -54,6 +54,14 @@ jobs:
         with:
           dotnet-version: 10.0.402
 
+      # dotnet build готовит службу macOS и собирает закрепленный sing-box из исходников.
+      - name: Go для ядра macOS
+        if: runner.os == 'macOS'
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+          cache: false
+
       - name: Сборка
         run: dotnet build PrivateGateway.slnx -c Release
 

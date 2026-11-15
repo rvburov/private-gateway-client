@@ -4,7 +4,7 @@ name: Выпуск на сайт
 # rvburov/private-gateway-web, deploy/README.md, раздел 5) по SSH ключом, который может только принять выпуск
 # (import-release.sh сверяет размер и SHA-256 каждого файла). Команды — по порядку:
 #   import — установщики для «Скачать клиент»: Windows — .msi, macOS — .dmg, Linux — .deb, Android — .apk;
-#   asset — .rpm: только в хранилище сайта по SHA-256, без строки каталога (его ставит служба на Fedora и openSUSE);
+#   asset — .rpm и Intel .dmg: в хранилище сайта по SHA-256, без замены строки macOS для Apple Silicon;
 #   update-sig, затем update — update.json.sig и update.json байт в байт: лента обновлений программы. update —
 #     последним: сайт принимает манифест, только когда файлы ленты из него (msi, deb, rpm, dmg, apk) уже лежат у него
 #     с теми же SHA-256 и размером. Принятая подпись ждет один следующий update той же версии не дольше часа — поэтому
@@ -122,7 +122,7 @@ jobs:
           mkdir -p "$dir"
           patterns=(--pattern SHA256SUMS --pattern update.json --pattern update.json.sig)
           if [ "$MANIFEST_ONLY" != true ]; then
-            patterns+=(--pattern "PrivateGateway-$version-win-x64.msi" --pattern "PrivateGateway-$version-osx-arm64.dmg" \
+            patterns+=(--pattern "PrivateGateway-$version-win-x64.msi" --pattern "PrivateGateway-$version-osx-*.dmg" \
               --pattern "*_${version}_amd64.deb" --pattern "*.x86_64.rpm" \
               --pattern "PrivateGateway-$version-android.apk" --pattern "PrivateGateway-$version-android.apk.sha256")
           fi
@@ -145,7 +145,8 @@ jobs:
           : > "$upload"
           if [ "$MANIFEST_ONLY" != true ]; then
             for pair in "windows:PrivateGateway-$version-win-x64.msi" "macos:PrivateGateway-$version-osx-arm64.dmg" \
-              "linux:*_${version}_amd64.deb" "android:PrivateGateway-$version-android.apk" "asset:*.x86_64.rpm"; do
+              "linux:*_${version}_amd64.deb" "android:PrivateGateway-$version-android.apk" "asset:*.x86_64.rpm" \
+              "asset:PrivateGateway-$version-osx-x64.dmg"; do
               platform="${pair%%:*}"
               file="$(cd "$dir" && { compgen -G "${pair#*:}" || true; } | head -n 1)"
               if [ -z "$file" ]; then
@@ -178,7 +179,7 @@ jobs:
               || { echo "update.json не этого выпуска: версия не $version или канал не stable" >&2; exit 1; }
             # Файлы ленты из манифеста — те же, что в выпуске, и уже отправлены (иначе сайт откажет в приеме манифеста).
             jq -r '.assets | to_entries[]
-              | select(.key | IN("win-x64-msi", "linux-x64-deb", "linux-x64-rpm", "osx-arm64-dmg", "android-apk"))
+              | select(.key | IN("win-x64-msi", "linux-x64-deb", "linux-x64-rpm", "osx-arm64-dmg", "osx-x64-dmg", "android-apk"))
               | "\(.key) \(.value.file) \(.value.sha256)"' "$dir/update.json" > "$RUNNER_TEMP/feed.txt"
             while read -r kind file sha; do
               [ "$(listed "$file")" = "$sha" ] || { echo "$kind: $file с суммой из манифеста нет в SHA256SUMS выпуска" >&2; exit 1; }

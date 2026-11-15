@@ -253,7 +253,7 @@ RELEASE_CHANGELOG="$FIXTURE/CHANGELOG.md" scripts/release-notes.sh 3.0.0 >/dev/n
 mkdir -p "$FIXTURE/out"
 RELEASE_CHANGELOG="$FIXTURE/CHANGELOG.md" scripts/release-notes.sh 2.0.0 "$FIXTURE/out" >/dev/null 2>&1 \
   && prob+=("пустая папка выпуска не остановила")
-for f in PrivateGateway-2.0.0-win-x64.msi PrivateGateway-2.0.0-osx-arm64.dmg private-gateway_2.0.0_amd64.deb \
+for f in PrivateGateway-2.0.0-win-x64.msi PrivateGateway-2.0.0-osx-arm64.dmg PrivateGateway-2.0.0-osx-x64.dmg private-gateway_2.0.0_amd64.deb \
          private-gateway-2.0.0-1.x86_64.rpm PrivateGateway-2.0.0-android.apk; do : > "$FIXTURE/out/$f"; done
 RELEASE_CHANGELOG="$FIXTURE/CHANGELOG.md" scripts/release-notes.sh 2.0.0 "$FIXTURE/out" >/dev/null 2>&1 \
   || prob+=("папка со всеми файлами не прошла")
@@ -261,6 +261,43 @@ if [ ${#prob[@]} -eq 0 ]; then
   ok "7. Текст выпуска: «@слово» — кодом, почта цела, строки склеены, только своя секция, без автора; нет секции или файла — отказ"
 else
   bad "7. Правила текста выпуска" "${prob[@]}"
+fi
+
+# ── 7а. Страница Intel и отсутствие пакета в старых выпусках ─────────────────
+# Проверяем результат для человека и отказ до публикации: существование ARM не заменяет отдельный пакет Intel.
+prob=()
+intel_history="$FIXTURE/intel-changelog.md"
+intel_folder="$FIXTURE/intel-out"
+mkdir -p "$intel_folder"
+for version in 0.3.0 0.3.1 0.3.1-beta.1 0.4.0 1.0.0; do
+  printf '## [%s]\n\n- Проверка двух архитектур.\n\n' "$version" >> "$intel_history"
+  for suffix in win-x64.msi osx-arm64.dmg android.apk; do
+    : > "$intel_folder/PrivateGateway-$version-$suffix"
+  done
+  : > "$intel_folder/private-gateway_${version//-/\~}_amd64.deb"
+  : > "$intel_folder/private-gateway-${version//-/\~}-1.x86_64.rpm"
+done
+notes="$(RELEASE_CHANGELOG="$intel_history" scripts/release-notes.sh 0.3.0 "$intel_folder" 2>&1)" \
+  || prob+=("исторический выпуск 0.3.0 без Intel не прошел: $notes")
+printf '%s\n' "$notes" | grep -qF 'osx-x64.dmg' && prob+=("историческая страница предлагает отсутствовавший Intel DMG")
+for version in 0.3.1 0.3.1-beta.1 0.4.0 1.0.0; do
+  row="| macOS, Intel | \`PrivateGateway-$version-osx-x64.dmg\` | открыть образ, перетащить Private Gateway в «Программы» |"
+  notes="$(RELEASE_CHANGELOG="$intel_history" scripts/release-notes.sh "$version" 2>&1)" \
+    || prob+=("предпросмотр $version не прошел: $notes")
+  printf '%s\n' "$notes" | grep -qxF "$row" || prob+=("предпросмотр $version не показывает отдельный файл Intel")
+  out="$(RELEASE_CHANGELOG="$intel_history" scripts/release-notes.sh "$version" "$intel_folder" 2>&1)" \
+    && prob+=("$version без Intel DMG не остановил публикацию заметок")
+  printf '%s\n' "$out" | grep -qF "PrivateGateway-$version-osx-x64.dmg" \
+    || prob+=("$version при отказе не назвал отсутствующий Intel DMG")
+  : > "$intel_folder/PrivateGateway-$version-osx-x64.dmg"
+  notes="$(RELEASE_CHANGELOG="$intel_history" scripts/release-notes.sh "$version" "$intel_folder" 2>&1)" \
+    || prob+=("$version с обоими DMG не прошел: $notes")
+  printf '%s\n' "$notes" | grep -qxF "$row" || prob+=("$version с обоими DMG не показывает файл Intel")
+done
+if [ ${#prob[@]} -eq 0 ]; then
+  ok "7а. Intel: отдельная строка с 0.3.1, включая беты и новые версии; нет пакета — отказ, старый выпуск без Intel проходит"
+else
+  bad "7а. Intel в тексте выпуска" "${prob[@]}"
 fi
 
 # ── 8. Workflow выпуска ───────────────────────────────────────────────────────
@@ -361,12 +398,14 @@ make_release() {
   rm -rf "$d" && mkdir -p "$d" || return 1
   echo msi > "$d/PrivateGateway-$v-win-x64.msi"
   echo dmg > "$d/PrivateGateway-$v-osx-arm64.dmg"
+  echo intel-dmg > "$d/PrivateGateway-$v-osx-x64.dmg"
   echo deb > "$d/private-gateway_${v}_amd64.deb"
   echo rpm > "$d/private-gateway-$v-1.x86_64.rpm"
   echo tar > "$d/PrivateGateway-$v-linux-x64.tar.gz"
   echo apk > "$d/PrivateGateway-$v-android.apk"
   (cd "$d" && sha256sum "PrivateGateway-$v-android.apk" > "PrivateGateway-$v-android.apk.sha256")
   for pair in "win-x64-msi:PrivateGateway-$v-win-x64.msi" "osx-arm64-dmg:PrivateGateway-$v-osx-arm64.dmg" \
+              "osx-x64-dmg:PrivateGateway-$v-osx-x64.dmg" \
               "linux-x64-deb:private-gateway_${v}_amd64.deb" "linux-x64-rpm:private-gateway-$v-1.x86_64.rpm" \
               "linux-x64-tar:PrivateGateway-$v-linux-x64.tar.gz" "android-apk:PrivateGateway-$v-android.apk"; do
     f="${pair#*:}"
@@ -468,6 +507,7 @@ import macos 2.0.0 PrivateGateway-2.0.0-osx-arm64.dmg
 import linux 2.0.0 private-gateway_2.0.0_amd64.deb
 import android 2.0.0 PrivateGateway-2.0.0-android.apk
 asset 2.0.0 private-gateway-2.0.0-1.x86_64.rpm
+asset 2.0.0 PrivateGateway-2.0.0-osx-x64.dmg
 update-sig 2.0.0 update.json.sig
 update 2.0.0 update.json'
 
@@ -475,7 +515,7 @@ update 2.0.0 update.json'
   if ! site_run v2.0.0; then
     prob+=("выпуск не ушел на сайт: $(cat "$SITE/run/files.log" "$SITE/run/send.log" 2> /dev/null | tail -n 3)")
   else
-    [ "$(sent)" = "$order" ] || prob+=("порядок не «установщики → rpm → подпись → манифест»: $(sent | tr '\n' ';')")
+    [ "$(sent)" = "$order" ] || prob+=("порядок не «установщики → rpm и Intel → подпись → манифест»: $(sent | tr '\n' ';')")
     matched || prob+=("сумма в команде не совпала с переданным файлом")
   fi
   if ! site_run v2.0.0 true; then
@@ -488,7 +528,7 @@ update 2.0.0 update.json'
   fi
 
   rm "$rel/update.json.sig" && resum "$rel"
-  site_run v2.0.0 && [ "$(sent)" = "$(printf '%s\n' "$order" | head -n 5)" ] && grep -q 'без подписи' "$SITE/run/summary" \
+  site_run v2.0.0 && [ "$(sent)" = "$(printf '%s\n' "$order" | head -n 6)" ] && grep -q 'без подписи' "$SITE/run/summary" \
     || prob+=("выпуск без подписи: не установщики без ленты")
   ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] \
     || prob+=("раскатка без подписи должна завершаться ошибкой без отправки")
@@ -497,6 +537,8 @@ update 2.0.0 update.json'
   ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("подпись есть в SHA256SUMS, а файла нет — не остановка")
   make_release "$rel" 2.0.0 && echo порча >> "$rel/PrivateGateway-2.0.0-win-x64.msi"
   ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("порченый установщик не остановил отправку")
+  make_release "$rel" 2.0.0 && echo порча >> "$rel/PrivateGateway-2.0.0-osx-x64.dmg"
+  ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("порченый Intel DMG не остановил отправку")
   make_release "$rel" 2.0.0 && jq '.version = "1.9.9"' "$rel/update.json" > "$SITE/m.json" && mv "$SITE/m.json" "$rel/update.json" \
     && resum "$rel"
   ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("манифест другой версии не остановил отправку")
@@ -505,6 +547,13 @@ update 2.0.0 update.json'
   ! site_run v2.0.0 true && [ ! -s "$SITE/ssh.log" ] || prob+=("файл ленты в манифесте не тот, что в SHA256SUMS, — не остановка")
   make_release "$rel" 2.0.0 && rm "$rel/PrivateGateway-2.0.0-osx-arm64.dmg"
   ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("файла ленты нет в выпуске — манифест ушел бы без него")
+  make_release "$rel" 2.0.0 && rm "$rel/PrivateGateway-2.0.0-osx-x64.dmg"
+  ! site_run v2.0.0 && [ ! -s "$SITE/ssh.log" ] || prob+=("Intel DMG есть в манифесте, но отсутствует в выпуске — отправка не остановилась")
+  make_release "$rel" 2.0.0 && rm "$rel/PrivateGateway-2.0.0-osx-x64.dmg" \
+    && jq 'del(.assets["osx-x64-dmg"])' "$rel/update.json" > "$SITE/m.json" && mv "$SITE/m.json" "$rel/update.json" \
+    && resum "$rel"
+  site_run v2.0.0 && [ "$(sent)" = "$(printf '%s\n' "$order" | grep -v 'asset .*osx-x64.dmg')" ] \
+    || prob+=("исторический выпуск без Intel DMG не принимается")
   make_release "$rel" 2.0.0
   for missing in WEBSITE_HOST WEBSITE_USER WEBSITE_SSH_KEY WEBSITE_KNOWN_HOSTS; do
     SITE_MISSING_SECRET="$missing" site_run v2.0.0 true && prob+=("раскатка без $missing завершилась успешно")
@@ -552,7 +601,7 @@ grep -qF 'group: release-refs/tags/${{ inputs.tag }}' "$RO" \
   || prob+=("APK не попадает к сборкам до release.cs assemble — в манифесте не будет android-apk")
 grep -qE 'release\.cs assemble .* 100$' "$WF" || prob+=("выпуск выходит не на 100 % (решение владельца 2026-11-13)")
 if [ ${#prob[@]} -eq 0 ] && [ -n "$ran" ]; then
-  ok "8в. Сайт: установщики → rpm → подпись → манифест последним; раскатка — только подпись и манифест; без подписи — без ленты; бета, порча и чужой манифест не уходят; APK — в манифест, выпуск на 100 %"
+  ok "8в. Сайт: установщики → rpm и Intel DMG → подпись → манифест последним; раскатка — только подпись и манифест; без подписи — без ленты; бета, порча и чужой манифест не уходят; APK — в манифест, выпуск на 100 %"
 elif [ ${#prob[@]} -eq 0 ]; then
   ok "8в. Сайт (по тексту): website.yml вызывается раскаткой с manifest-only, APK — в манифест, выпуск на 100 %"
 else

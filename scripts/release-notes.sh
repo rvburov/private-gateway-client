@@ -68,14 +68,26 @@ BODY="$(printf '%s\n' "$BODY" | sed -E 's/(^|[^[:alnum:]_`])(@[[:alnum:]]([[:aln
 PACKAGE="${VERSION//-/\~}"
 MSI="PrivateGateway-$VERSION-win-x64.msi"
 DMG="PrivateGateway-$VERSION-osx-arm64.dmg"
+DMG_INTEL="PrivateGateway-$VERSION-osx-x64.dmg"
 DEB="private-gateway_${PACKAGE}_amd64.deb"
 RPM="private-gateway-${PACKAGE}-1.x86_64.rpm"
 APK="PrivateGateway-$VERSION-android.apk"
 
+# Intel входит в выпуск с 0.3.1. Старые страницы и повтор выпуска не должны требовать отсутствовавший пакет.
+macos_intel=false
+if [[ "${VERSION%%-*}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+  if (( 10#${BASH_REMATCH[1]} > 0 || 10#${BASH_REMATCH[2]} > 3 \
+        || (10#${BASH_REMATCH[2]} == 3 && 10#${BASH_REMATCH[3]} >= 1) )); then
+    macos_intel=true
+  fi
+fi
+
 # С папкой выпуска — каждый файл из таблицы должен в ней быть: иначе страница советует скачать то, чего нет.
 if [ -n "$FOLDER" ]; then
   missing=""
-  for file in "$MSI" "$DMG" "$DEB" "$RPM" "$APK"; do
+  files=("$MSI" "$DMG" "$DEB" "$RPM" "$APK")
+  [ "$macos_intel" != true ] || files+=("$DMG_INTEL")
+  for file in "${files[@]}"; do
     [ -f "$FOLDER/$file" ] || missing="$missing $file"
   done
   if [ -n "$missing" ]; then
@@ -99,6 +111,11 @@ cat <<EOF
 |---|---|---|
 | Windows 10 и 11 | \`$MSI\` | скачать и запустить |
 | macOS, Apple Silicon | \`$DMG\` | открыть образ, перетащить Private Gateway в «Программы» |
+EOF
+if [ "$macos_intel" = true ]; then
+  printf '| macOS, Intel | `%s` | открыть образ, перетащить Private Gateway в «Программы» |\n' "$DMG_INTEL"
+fi
+cat <<EOF
 | Linux: Debian, Ubuntu | \`$DEB\` | \`sudo apt install ./$DEB\` |
 | Linux: Fedora, openSUSE | \`$RPM\` | \`sudo dnf install ./$RPM\` |
 | Android 9 и новее | \`$APK\` | открыть на телефоне и разрешить установку из этого источника |
