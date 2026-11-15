@@ -6,6 +6,7 @@
 """
 
 import argparse
+import json
 import math
 import os
 from pathlib import Path
@@ -22,6 +23,28 @@ def seconds(value):
     if not math.isfinite(parsed) or parsed <= 0:
         raise argparse.ArgumentTypeError("срок должен быть положительным конечным числом")
     return parsed
+
+
+def passed_ctrf(directory):
+    """Ровно один действительно прошедший тест по машинному отчету xUnit.net v3."""
+    files = list(directory.glob("*.ctrf"))
+    if len(files) != 1 or not files[0].is_file() or files[0].is_symlink():
+        raise ValueError("ожидается ровно один обычный CTRF-файл")
+    if files[0].stat().st_size > 2 * 1024 * 1024:
+        raise ValueError("CTRF-файл превышает диагностический предел")
+    report = json.loads(files[0].read_text(encoding="utf-8"))
+    if not isinstance(report, dict) or report.get("reportFormat") != "CTRF" or report.get("specVersion") != "0.0.0":
+        raise ValueError("неизвестный формат CTRF")
+    results = report.get("results")
+    if not isinstance(results, dict) or not isinstance(results.get("summary"), dict):
+        raise ValueError("нет сводки CTRF")
+    expected = {"tests": 1, "passed": 1, "failed": 0, "skipped": 0, "pending": 0, "other": 0}
+    summary = results["summary"]
+    if any(type(summary.get(key)) is not int or summary[key] != value for key, value in expected.items()):
+        raise ValueError("CTRF не подтверждает один успешный тест без пропусков")
+    tests = results.get("tests")
+    if not isinstance(tests, list) or len(tests) != 1 or not isinstance(tests[0], dict) or tests[0].get("status") != "passed":
+        raise ValueError("список тестов CTRF не соответствует сводке")
 
 
 def group_alive(group):
@@ -125,6 +148,10 @@ def run(args):
         def log(message):
             emit((f"[soak-watchdog] {message}\n").encode("utf-8"))
 
+        if args.require_passed_ctrf is not None and list(args.require_passed_ctrf.glob("*.ctrf")):
+            log("Каталог CTRF уже содержит отчеты: старый результат не принимается")
+            return 1
+
         started = time.monotonic()
         deadline = started + args.timeout_seconds
         process = subprocess.Popen(
@@ -223,7 +250,15 @@ def run(args):
         if timed_out:
             return 124
         code = process.returncode
-        return code if code is not None and code >= 0 else 128 + abs(code or signal.SIGKILL)
+        code = code if code is not None and code >= 0 else 128 + abs(code or signal.SIGKILL)
+        if code == 0 and args.require_passed_ctrf is not None:
+            try:
+                passed_ctrf(args.require_passed_ctrf)
+            except (OSError, ValueError, UnicodeError):
+                log("CTRF не подтвердил ровно один успешный тест без пропусков")
+                return 1
+            log("CTRF подтвердил один успешный тест без пропусков")
+        return code
 
 
 def main():
@@ -236,6 +271,7 @@ def main():
     parser.add_argument("--progress", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--stack-tool")
+    parser.add_argument("--require-passed-ctrf", type=Path)
     parser.add_argument("command", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     if args.command[:1] == ["--"]:

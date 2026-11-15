@@ -23,6 +23,8 @@ jobs:
     env:
       DOTNET_CLI_TELEMETRY_OPTOUT: 1
       DOTNET_NOLOGO: 1
+      NO_COLOR: 1
+      DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: 0
     defaults:
       run:
         shell: bash
@@ -67,16 +69,12 @@ jobs:
             --timeout-seconds 300 --stack-after-seconds 120 --idle-seconds 180 \
             --progress "$RUNNER_TEMP/soak-probe-progress.log" \
             --output-dir artifacts/soak-debug/probe \
+            --require-passed-ctrf artifacts/soak-debug/probe/results \
             --stack-tool "$RUNNER_TEMP/dotnet-tools/dotnet-stack" \
             -- env PG_SOAK_PROGRESS="$RUNNER_TEMP/soak-probe-progress.log" PG_SOAK_MINUTES=1 \
             dotnet test --project desktop/tests/Network -c Release --no-build --timeout 50m \
-            --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
-          for count in 'total: 1' 'succeeded: 1' 'failed: 0' 'skipped: 0'; do
-            grep -Eq "^[[:space:]]*$count[[:space:]]*$" artifacts/soak-debug/probe/output.log || {
-              echo "Короткая проверка не подтвердила один выполненный тест: $count" >&2
-              exit 1
-            }
-          done
+            --output Detailed --results-directory artifacts/soak-debug/probe/results --report-ctrf \
+            -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
 
       - name: Полный долгий прогон и независимый сторож
         run: |
@@ -85,16 +83,12 @@ jobs:
             --idle-seconds 180 \
             --progress "$RUNNER_TEMP/soak-progress.log" \
             --output-dir artifacts/soak-debug/full \
+            --require-passed-ctrf artifacts/soak-debug/full/results \
             --stack-tool "$RUNNER_TEMP/dotnet-tools/dotnet-stack" \
             -- env PG_SOAK_PROGRESS="$RUNNER_TEMP/soak-progress.log" PG_SOAK_MINUTES=30 \
             dotnet test --project desktop/tests/Network -c Release --no-build --timeout 50m \
-            --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
-          for count in 'total: 1' 'succeeded: 1' 'failed: 0' 'skipped: 0'; do
-            grep -Eq "^[[:space:]]*$count[[:space:]]*$" artifacts/soak-debug/full/output.log || {
-              echo "Полный прогон не подтвердил один выполненный тест: $count" >&2
-              exit 1
-            }
-          done
+            --output Detailed --results-directory artifacts/soak-debug/full/results --report-ctrf \
+            -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
 
       - name: Этапы, стеки и вывод, включая неудачный запуск
         if: always()

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 """Жесткий срок, потомки с открытым stdout и безопасный выбор PID для стеков."""
 
+import copy
+import importlib.util
+import json
 import os
 from pathlib import Path
 import re
@@ -13,6 +16,70 @@ import unittest
 
 
 WATCHDOG = Path(__file__).parents[1] / "soak-watchdog.py"
+SPEC = importlib.util.spec_from_file_location("soak_watchdog", WATCHDOG)
+MODULE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(MODULE)
+
+# Форма настоящего --report-ctrf xUnit.net v3: поля окружения здесь не нужны.
+PASSED_CTRF = {
+    "reportFormat": "CTRF", "specVersion": "0.0.0",
+    "results": {
+        "summary": {"tests": 1, "passed": 1, "failed": 0, "pending": 0, "skipped": 0, "other": 0},
+        "tests": [{"name": "Synthetic.Soak_proxy_mode_survives_failures_in_a_loop", "status": "passed", "duration": 1000}],
+    },
+}
+
+
+class CtrfTest(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+
+    def write(self, report):
+        (self.root / "one.ctrf").write_text(json.dumps(report))
+
+    def test_one_real_format_pass_is_accepted(self):
+        self.write(PASSED_CTRF)
+        MODULE.passed_ctrf(self.root)
+
+    def test_missing_malformed_unknown_and_multiple_reports_are_rejected(self):
+        with self.assertRaises(ValueError):
+            MODULE.passed_ctrf(self.root)
+        path = self.root / "one.ctrf"
+        for text in ("", "{", "[]", '{}', '{"reportFormat":"other"}'):
+            with self.subTest(text=text):
+                path.write_text(text)
+                with self.assertRaises(ValueError):
+                    MODULE.passed_ctrf(self.root)
+        self.write(PASSED_CTRF)
+        (self.root / "two.ctrf").write_text(json.dumps(PASSED_CTRF))
+        with self.assertRaises(ValueError):
+            MODULE.passed_ctrf(self.root)
+
+    def test_skips_empty_failure_pending_unknown_and_noninteger_counts_are_rejected(self):
+        for key, value in (("tests", 0), ("tests", True), ("passed", 0), ("failed", 1),
+                           ("skipped", 1), ("pending", 1), ("other", 1), ("tests", "1")):
+            with self.subTest(key=key, value=value):
+                report = copy.deepcopy(PASSED_CTRF)
+                report["results"]["summary"][key] = value
+                self.write(report)
+                with self.assertRaises(ValueError):
+                    MODULE.passed_ctrf(self.root)
+        report = copy.deepcopy(PASSED_CTRF)
+        del report["results"]["summary"]["other"]
+        self.write(report)
+        with self.assertRaises(ValueError):
+            MODULE.passed_ctrf(self.root)
+
+    def test_test_records_must_confirm_the_summary(self):
+        for tests in ([], [{"status": "skipped"}], [None], [{"status": "passed"}] * 2):
+            with self.subTest(tests=tests):
+                report = copy.deepcopy(PASSED_CTRF)
+                report["results"]["tests"] = tests
+                self.write(report)
+                with self.assertRaises(ValueError):
+                    MODULE.passed_ctrf(self.root)
 
 
 def live(pid):
@@ -42,7 +109,7 @@ class WatchdogTest(unittest.TestCase):
         )
         self.collector.chmod(0o755)
 
-    def command(self, source, timeout=1.0, stack_after=0.3, idle=None):
+    def command(self, source, timeout=1.0, stack_after=0.3, idle=None, ctrf=None):
         script = self.root / "child.py"
         script.write_text(source)
         args = [sys.executable, str(WATCHDOG), "--timeout-seconds", str(timeout),
@@ -51,6 +118,8 @@ class WatchdogTest(unittest.TestCase):
                 "--output-dir", str(self.output), "--stack-tool", str(self.collector)]
         if idle is not None:
             args += ["--idle-seconds", str(idle)]
+        if ctrf is not None:
+            args += ["--require-passed-ctrf", str(ctrf)]
         args += ["--", sys.executable, str(script)]
         return args
 
@@ -73,6 +142,30 @@ class WatchdogTest(unittest.TestCase):
         result = subprocess.run(self.command("print('done')\n"), capture_output=True, text=True, timeout=4)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("done", result.stdout)
+
+    def test_ctrf_success_does_not_depend_on_ansi_summary(self):
+        reports = self.root / "reports"
+        source = (
+            "import pathlib\n"
+            f"folder = pathlib.Path({str(reports)!r})\nfolder.mkdir()\n"
+            f"(folder/'one.ctrf').write_text({json.dumps(PASSED_CTRF)!r})\n"
+            "print('\\x1b[32m  total: 1\\x1b[m', flush=True)\n"
+        )
+        result = subprocess.run(self.command(source, ctrf=reports), capture_output=True, text=True, timeout=4)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("CTRF подтвердил", result.stdout)
+
+    def test_zero_exit_without_a_report_is_failure(self):
+        result = subprocess.run(self.command("print('passed')\n", ctrf=self.root / "reports"),
+                                capture_output=True, text=True, timeout=4)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+
+    def test_old_report_is_rejected_before_the_command(self):
+        (self.root / "old.ctrf").write_text(json.dumps(PASSED_CTRF))
+        result = subprocess.run(self.command("print('must not run')\n", ctrf=self.root),
+                                capture_output=True, text=True, timeout=4)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertNotIn("must not run", result.stdout)
 
     def test_timeout_kills_term_ignoring_parent_and_descendant(self):
         pid_file = self.root / "descendant.pid"
