@@ -1,0 +1,109 @@
+name: Диагностика долгого прогона macOS
+
+# Отдельный запуск для разбора зависания: не публикует выпуск и не заменяет soak.yml.
+# Сначала короткая проверка завершения стенда, затем полные тридцать минут.
+# Короткая проверка не является приемкой; внешний сторож пишет этапы и стеки без дампа памяти.
+on:
+  push:
+    branches: [fix/soak-observe]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-soak-debug-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    name: Полный режим прокси и диагностика ожидания
+    runs-on: macos-latest
+    timeout-minutes: 65
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: 1
+      DOTNET_NOLOGO: 1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - id: dotnet
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        continue-on-error: true
+        with:
+          global-json-file: global.json
+
+      - if: steps.dotnet.outcome == 'failure'
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5
+        with:
+          dotnet-version: 10.0.402
+
+      - name: Go до сборки службы macOS
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Сборка
+        run: dotnet build PrivateGateway.slnx -c Release
+
+      - name: Ядра Xray и sing-box
+        run: |
+          scripts/get-xray.sh
+          scripts/get-singbox.sh
+
+      # Официальный пакет Microsoft, MIT: NuGet dotnet-stack/10.0.750501;
+      # dotnet/diagnostics, commit ad724c4b85e7ae775e42f393c6e95a7557a57954.
+      - name: Средство чтения стеков
+        run: |
+          dotnet tool install dotnet-stack --version 10.0.750501 \
+            --tool-path "$RUNNER_TEMP/dotnet-tools" --allow-roll-forward
+
+      - name: Проверка завершения стенда — не выпускная приемка
+        run: |
+          python3 scripts/soak-watchdog.py \
+            --timeout-seconds 300 --stack-after-seconds 120 --idle-seconds 180 \
+            --progress "$RUNNER_TEMP/soak-probe-progress.log" \
+            --output-dir artifacts/soak-debug/probe \
+            --stack-tool "$RUNNER_TEMP/dotnet-tools/dotnet-stack" \
+            -- env PG_SOAK_PROGRESS="$RUNNER_TEMP/soak-probe-progress.log" PG_SOAK_MINUTES=1 \
+            dotnet test --project desktop/tests/Network -c Release --no-build --timeout 50m \
+            --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
+          for count in 'total: 1' 'succeeded: 1' 'failed: 0' 'skipped: 0'; do
+            grep -Eq "^[[:space:]]*$count[[:space:]]*$" artifacts/soak-debug/probe/output.log || {
+              echo "Короткая проверка не подтвердила один выполненный тест: $count" >&2
+              exit 1
+            }
+          done
+
+      - name: Полный долгий прогон и независимый сторож
+        run: |
+          python3 scripts/soak-watchdog.py \
+            --timeout-seconds 2400 --stack-after-seconds 2100 \
+            --idle-seconds 180 \
+            --progress "$RUNNER_TEMP/soak-progress.log" \
+            --output-dir artifacts/soak-debug/full \
+            --stack-tool "$RUNNER_TEMP/dotnet-tools/dotnet-stack" \
+            -- env PG_SOAK_PROGRESS="$RUNNER_TEMP/soak-progress.log" PG_SOAK_MINUTES=30 \
+            dotnet test --project desktop/tests/Network -c Release --no-build --timeout 50m \
+            --output Detailed -- --filter-method '*.Soak_proxy_mode_survives_failures_in_a_loop'
+          for count in 'total: 1' 'succeeded: 1' 'failed: 0' 'skipped: 0'; do
+            grep -Eq "^[[:space:]]*$count[[:space:]]*$" artifacts/soak-debug/full/output.log || {
+              echo "Полный прогон не подтвердил один выполненный тест: $count" >&2
+              exit 1
+            }
+          done
+
+      - name: Этапы, стеки и вывод, включая неудачный запуск
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: macos-soak-diagnostics-${{ github.run_attempt }}
+          path: |
+            artifacts/soak-debug/
+            ${{ runner.temp }}/soak-probe-progress.log
+            ${{ runner.temp }}/soak-progress.log
+          if-no-files-found: warn
+          retention-days: 7

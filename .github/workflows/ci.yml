@@ -64,6 +64,9 @@ jobs:
           python3 scripts/tests/release-gate-test.py
           bash scripts/tests/package-hooks-smoke.sh
 
+      - name: Наблюдатель диагностического прогона
+        run: python3 scripts/tests/soak-watchdog-test.py
+
       # Каждая закрепленная сумма sing-box — и тех машин, где CI его не берет, — сверена здесь второй раз.
       - name: Суммы sing-box на второй машине
         run: scripts/check-singbox-sums.sh

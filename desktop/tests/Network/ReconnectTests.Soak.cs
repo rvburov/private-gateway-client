@@ -21,11 +21,15 @@ public sealed partial class ReconnectTests
         var backup = Path.Combine(Path.GetTempPath(), "pg-soak-proxy-" + Guid.NewGuid().ToString("N")[..8] + ".json");
         try
         {
+            Soak.Trace("proxy.rig.create.begin");
             await using var rig = await ProxyRig.CreateAsync(Fast with { GiveUpAfter = TimeSpan.FromHours(1) }, network, systemProxy: (proxy, backup));
+            Soak.Trace("proxy.rig.create.end");
             var port = XrayKit.FreePort();
             var request = ServiceIpcTests.Request(rig.Definition, port, systemProxy: true);
             request.Connection.Reconnect = V1.ReconnectPolicy.UpTo5Minutes;
+            Soak.Trace("proxy.initial.connect.begin");
             await rig.Service.Client.ConnectAsync(request, cancellationToken: Ct);
+            Soak.Trace("proxy.initial.connect.end");
             await UntilAsync(s => s is { State: ConnectionState.Connected, IsPaused: false }, "подключение");
 
             var started = Stopwatch.StartNew();
@@ -76,6 +80,7 @@ public sealed partial class ReconnectTests
                 });
 
                 cycles++;
+                Soak.Trace($"proxy.cycle.complete {cycles.ToString(System.Globalization.CultureInfo.InvariantCulture)}");
                 warm ??= ResourceSample.Take();
             }
 
@@ -84,21 +89,27 @@ public sealed partial class ReconnectTests
 
             async Task StepAsync(string what, Func<Task> act)
             {
+                Soak.Trace($"proxy.action.begin {what}");
                 await act();
+                Soak.Trace($"proxy.action.end {what}");
                 await UntilAsync(s => s is { State: ConnectionState.Connected, IsPaused: false }, what);
+                Soak.Trace($"proxy.system-proxy.wait.begin {what}");
                 for (var waited = Stopwatch.StartNew(); proxy.Port != port; await Task.Delay(100, Ct))
                 {
                     waited.Elapsed.ShouldBeLessThan(TimeSpan.FromSeconds(10), $"{what}: системный прокси — снова на входе ядра");
                 }
+                Soak.Trace($"proxy.system-proxy.wait.end {what}");
             }
 
             async Task UntilAsync(Func<ConnectionStatus, bool> done, string what)
             {
+                Soak.Trace($"proxy.status.wait.begin {what}");
                 for (var waited = Stopwatch.StartNew(); ; await Task.Delay(100, Ct))
                 {
                     var status = (await rig.Service.Client.GetStatusAsync(new V1.GetStatusRequest(), cancellationToken: Ct)).ToCore();
                     if (done(status))
                     {
+                        Soak.Trace($"proxy.status.wait.end {what}");
                         return;
                     }
 

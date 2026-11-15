@@ -10,6 +10,23 @@ namespace PrivateGateway.Client.Tests.Network;
 internal static class Soak
 {
     public const string Variable = "PG_SOAK_MINUTES";
+    private static readonly object ProgressLock = new();
+
+    /// <summary>Отдельный диагностический файл: только этапы стенда, время и PID, без адресов и журнала службы.</summary>
+    public static void Trace(string stage)
+    {
+        var path = Environment.GetEnvironmentVariable("PG_SOAK_PROGRESS");
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return;
+        }
+
+        var line = $"{DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture)} pid={Environment.ProcessId.ToString(CultureInfo.InvariantCulture)} {stage}{Environment.NewLine}";
+        lock (ProgressLock)
+        {
+            File.AppendAllText(path, line);
+        }
+    }
 
     /// <summary>Сколько крутить сбои; не задано — тест пропускается.</summary>
     public static TimeSpan Duration()
@@ -29,11 +46,16 @@ internal sealed record ResourceSample(int Handles, int Threads, long ManagedByte
 {
     public static ResourceSample Take()
     {
+        Soak.Trace("resources.collect.begin");
         GC.Collect();
+        Soak.Trace("resources.finalizers.begin");
         GC.WaitForPendingFinalizers();
+        Soak.Trace("resources.finalizers.end");
         GC.Collect();
         using var self = Process.GetCurrentProcess();
-        return new(self.HandleCount, self.Threads.Count, GC.GetTotalMemory(forceFullCollection: true), Count("xray"), Count("sing-box"));
+        var sample = new ResourceSample(self.HandleCount, self.Threads.Count, GC.GetTotalMemory(forceFullCollection: true), Count("xray"), Count("sing-box"));
+        Soak.Trace("resources.collect.end");
+        return sample;
     }
 
     /// <summary>Рост с <paramref name="start"/> не больше разумного: дескрипторов и потоков — на десятки, памяти — на 64 МБ, ядер — ни одного.</summary>

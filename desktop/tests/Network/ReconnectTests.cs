@@ -494,9 +494,15 @@ public sealed partial class ReconnectTests
 
         public async ValueTask DisposeAsync()
         {
+            Soak.Trace("proxy.rig.dispose.service.begin");
             await Service.DisposeAsync();
+            Soak.Trace("proxy.rig.dispose.service.end");
+            Soak.Trace("proxy.rig.dispose.server.begin");
             _server?.Dispose();
+            Soak.Trace("proxy.rig.dispose.server.end");
+            Soak.Trace("proxy.rig.dispose.site.begin");
             _site.Dispose();
+            Soak.Trace("proxy.rig.dispose.site.end");
         }
     }
 

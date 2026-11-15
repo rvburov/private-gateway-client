@@ -88,14 +88,24 @@ internal sealed class RunningService : IAsyncDisposable
         _stopped = true;
         try
         {
+            Soak.Trace("service.dispose.channel.begin");
             _channel.Dispose();
+            Soak.Trace("service.dispose.channel.end");
+            Soak.Trace("service.stop.host.begin");
             await _app.StopAsync(CancellationToken.None);
+            Soak.Trace("service.stop.host.end");
+            Soak.Trace("service.dispose.host.begin");
             await _app.DisposeAsync();
+            Soak.Trace("service.dispose.host.end");
+            Soak.Trace("service.dispose.gateway.begin");
             await _gateway.DisposeAsync();
+            Soak.Trace("service.dispose.gateway.end");
         }
         finally
         {
+            Soak.Trace("service.dispose.tracker.begin");
             Cores.Dispose();
+            Soak.Trace("service.dispose.tracker.end");
         }
     }
 }
