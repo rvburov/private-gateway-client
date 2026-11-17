@@ -46,7 +46,7 @@ public sealed class SubscriptionsPageTests : WindowHarness
         page.Cards[3].CanEdit.ShouldBeFalse("«Мои серверы» — не группа, переименовать нечего");
         Text(window, "RefreshText").ShouldBe("каждые 12 ч");
         Find<ToggleButton>(window, "ViaVpnToggle").IsChecked.ShouldBe(true);
-        Text(window, "BlockNote").ShouldBe("Службы VPN еще нет — обычные подписки не обновляются");
+        Text(window, "BlockNote").ShouldBe("Службы VPN еще нет — списки серверов не обновляются");
         Snapshot(window, "subscriptions");
     }
 

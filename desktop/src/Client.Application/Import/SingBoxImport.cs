@@ -35,6 +35,13 @@ internal static class SingBoxImport
             return Broken(ImportParser.FormatSingBox, (int)(e.LineNumber ?? 0) + 1);
         }
 
+        // Пакет снятой функции нельзя частично принять как обычные выходы без входного узла.
+        if (root is JsonObject oldBundle && oldBundle.ContainsKey("entry_proxy"))
+        {
+            return new ImportBatch(ImportParser.FormatSingBox,
+                [new ImportLine(1, Fail(ImportErrors.UnsupportedParameter))]);
+        }
+
         var starts = ItemLines(text);
         var lines = new List<ImportLine>();
         foreach (var list in root is JsonArray ? [string.Empty] : Lists)

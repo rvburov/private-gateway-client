@@ -947,8 +947,7 @@ public sealed partial class Gateway
     /// </summary>
     private async Task RemeasureDirectIpAsync(CoreRequest request, int attempt, CancellationToken cancellationToken)
     {
-        if (attempt != 1 || request.EntryProxy is not null || _directIp is not null
-            || !request.Protection.CheckLeaksAfterConnect || Volatile.Read(ref _tunnel) is not null)
+        if (attempt != 1 || _directIp is not null || !request.Protection.CheckLeaksAfterConnect || Volatile.Read(ref _tunnel) is not null)
         {
             return;
         }

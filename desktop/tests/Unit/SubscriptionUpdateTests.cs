@@ -324,10 +324,9 @@ public sealed class SubscriptionUpdateTests : IDisposable
         using (var connection = new SqliteDatabase(_paths).Open())
         using (var command = connection.CreateCommand())
         {
-            // База до миграции 5 — и без колонок более поздних миграций (0006: servers.exit_ip).
+            // База до миграции 5 — без колонок 0006–0007 и очереди очистки 0010.
             command.CommandText = "UPDATE subscriptions SET address = 'https://sub.example.com/sub/\u2022\u2022\u2022\u2022'; "
-                + "DROP TABLE entry_proxy_bindings; DROP TABLE entry_proxies; "
-                + "ALTER TABLE servers DROP COLUMN exit_ip; ALTER TABLE servers DROP COLUMN latency_failure; ALTER TABLE servers DROP COLUMN latency_diagnostic; ALTER TABLE servers DROP COLUMN latency_checked_at; PRAGMA user_version = 4;";
+                + "ALTER TABLE servers DROP COLUMN exit_ip; ALTER TABLE servers DROP COLUMN latency_failure; ALTER TABLE servers DROP COLUMN latency_diagnostic; ALTER TABLE servers DROP COLUMN latency_checked_at; DROP TABLE retired_secret_keys; PRAGMA user_version = 4;";
             command.ExecuteNonQuery();
         }
 
@@ -335,50 +334,6 @@ public sealed class SubscriptionUpdateTests : IDisposable
     }
 
     // ── Обновитель: когда и как ──────────────────────────────────────────────
-
-    [Fact]
-    public async Task Entry_subscription_updates_proxy_token_and_vless_together_and_rejects_malformed_responses()
-    {
-        var catalog = Catalog();
-        var entries = new EntryProxyStore(new SqliteDatabase(_paths), catalog, _secrets);
-        var original = EntryChainImport.TryParse(EntryBundle("old-token", "old-proxy-password",
-            "11111111-2222-3333-4444-555555555555")).ShouldNotBeNull().Bundle.ShouldNotBeNull();
-        entries.Import(original, "Entry group");
-        var groupId = catalog.Subscriptions.ShouldHaveSingleItem().Id;
-        var oldId = catalog.Servers.ShouldHaveSingleItem().Id;
-        Settings().Update(settings => settings with { UpdateOnlyViaVpn = true });
-        _gateway.State = ConnectionState.Off;
-        _downloads.Text = EntryBundle("new-token", "new-proxy-password", "22222222-3333-4444-5555-666666666666");
-        using var updater = new SubscriptionUpdater(catalog, _downloads, _gateway, Settings(), _time,
-            NullLogger<SubscriptionUpdater>.Instance, entries);
-
-        var updated = await updater.UpdateAsync(groupId, Ct);
-
-        updated.IsUpdated.ShouldBeTrue();
-        _downloads.Requested.ShouldContain(original.SubscriptionUrl);
-        updated.Update!.Added.ShouldBe(1);
-        catalog.SubscriptionUrl(groupId).ShouldBe(new Uri("https://config.example.com/sub/entry/new-token"));
-        var next = catalog.Servers.Single(server => server.Id != oldId);
-        entries.DefinitionFor(next.Id).ShouldNotBeNull().Credentials.Password.ShouldBe("new-proxy-password");
-        catalog.Selected!.Id.ShouldBe(oldId);
-        catalog.Selected.MissingSince.ShouldNotBeNull();
-        _secrets.Values.Values.Any(value => value.Contains("old-proxy-password", StringComparison.Ordinal)).ShouldBeFalse();
-
-        _downloads.Text = "trojan://password@198.51.100.2:443#Direct";
-        var rejected = await updater.UpdateAsync(groupId, Ct);
-        rejected.Failure.ShouldBe(DownloadFailure.EntryBundleInvalid);
-        catalog.Servers.Count.ShouldBe(2);
-        catalog.SubscriptionUrl(groupId).ShouldBe(new Uri("https://config.example.com/sub/entry/new-token"));
-        entries.DefinitionFor(next.Id).ShouldNotBeNull().Credentials.Password.ShouldBe("new-proxy-password");
-
-        Settings().Update(settings => settings with { SubscriptionRefresh = SubscriptionRefresh.Every6Hours });
-        _time.Advance(TimeSpan.FromHours(7));
-        _downloads.Text = EntryBundle("new-token", "new-proxy-password", "22222222-3333-4444-5555-666666666666");
-        var requestsBeforeScheduled = _downloads.Requested.Count;
-        await updater.UpdateDueAsync(Ct);
-        _downloads.Requested.Count.ShouldBe(requestsBeforeScheduled + 1,
-            "подписка цепочки обновляется по расписанию через сохраненный SOCKS при выключенном VPN");
-    }
 
     [Fact]
     public async Task Refusing_secret_access_during_a_manual_update_keeps_the_old_list_and_can_be_retried()
@@ -654,7 +609,6 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
     [Theory]
     [InlineData("https://example.com/sub/0123456789abcdef", "https://example.com/sub/****")]
-    [InlineData("https://example.com/sub/entry/device-token", "https://example.com/sub/entry/****")]
     [InlineData("https://example.org/clash/abc?token=1", "https://example.org/clash/****")]
     [InlineData("https://sub.example.com/api/v1/client/subscribe?token=fake", "https://sub.example.com/api/****")]
     [InlineData("https://example.com/AbCdEf0123456789xyz/clash", "https://example.com/****")]
@@ -703,17 +657,6 @@ public sealed class SubscriptionUpdateTests : IDisposable
 
     private static List<ServerDefinition> Parse(params string[] links) =>
         [.. links.Select(l => LinkParser.Parse(l).Server.ShouldNotBeNull(l))];
-
-    private static string EntryBundle(string token, string proxyPassword, string uuid) => $$"""
-        {"version":1,"device_id":"fixture-device","node_id":"fixture-node",
-         "subscription_url":"https://config.example.com/sub/entry/{{token}}",
-         "entry_proxy":{"type":"socks5","host":"entry.example.com","port":1080,
-                        "username":"fixture-user","password":"{{proxyPassword}}","supports_udp":false},
-         "profiles":[{"id":"fixture-device:tcp","name":"Entry TCP","transport":"tcp",
-                      "host":"192.0.2.7","port":8444,"uuid":"{{uuid}}","security":"reality",
-                      "sni":"front.example.com","public_key":"{{new string('A', 43)}}",
-                      "fingerprint":"chrome","flow":"xtls-rprx-vision","spider_x":"/"}]}
-        """;
 
     private sealed class MemorySettings : ISettingsStore
     {

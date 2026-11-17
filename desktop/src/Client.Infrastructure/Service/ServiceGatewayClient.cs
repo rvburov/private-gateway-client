@@ -3,7 +3,6 @@ using Google.Protobuf.WellKnownTypes;
 using Grpc.Core;
 using Grpc.Net.Client;
 using PrivateGateway.Client.Application.Connection;
-using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Contracts;
 using PrivateGateway.Client.Core;
 using PrivateGateway.Client.Core.Inspector;
@@ -41,7 +40,6 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     private readonly Func<string, ServerDefinition?> _definitions;
     private readonly Func<AppSettings> _settings;
     private readonly Func<ServerProfile?>? _selectedTarget;
-    private readonly IEntryProxyStore? _entryProxies;
     private long _connectIntent;
     private readonly TimeProvider _time;
     private readonly CancellationTokenSource _stop = new();
@@ -79,10 +77,9 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     /// <param name="manageUserProxy">Окно Windows умеет управлять HKCU; служба должна подтвердить эту возможность.</param>
     /// <param name="calls">Вызовы IPC; null — настоящий канал. Подмена нужна детерминированным тестам без сокетов.</param>
     /// <param name="selectedTarget">Актуальная цель режима; старое подключение после ожидания IPC не отправляется.</param>
-    /// <param name="entryProxies">Входной SOCKS5 профиля цепочки; null для обычного сервера.</param>
     public ServiceGatewayClient(GrpcChannel channel, ServiceKind service, Func<string, ServerDefinition?> definitions, Func<AppSettings> settings,
         TimeProvider time, Func<UserProxy?>? userProxy = null, TimeSpan? proxyWatch = null, bool manageUserProxy = false, CallInvoker? calls = null,
-        Func<ServerProfile?>? selectedTarget = null, IEntryProxyStore? entryProxies = null)
+        Func<ServerProfile?>? selectedTarget = null)
     {
         _userProxy = userProxy;
         _manageUserProxy = manageUserProxy;
@@ -93,7 +90,6 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
         _definitions = definitions;
         _settings = settings;
         _selectedTarget = selectedTarget;
-        _entryProxies = entryProxies;
         _time = time;
         _stopping = _stop.Token;
         _status = ConnectionStatus.Initial(time.GetUtcNow());
@@ -144,21 +140,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             return;
         }
 
-        var definition = _definitions(server.Id);
-        ServerDefinition? entryProxy;
-        try
-        {
-            entryProxy = definition is null ? null : _entryProxies?.DefinitionFor(server.Id);
-        }
-        catch (SecretStoreException)
-        {
-            // Привязанный профиль без учетных данных не должен соединяться с сервером напрямую.
-            await RejectUnsupportedAsync(server, settings, intent, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
-        var details = _manageUserProxy || forward || entryProxy is not null
-            ? await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false) : null;
+        var details = _manageUserProxy || forward ? await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false) : null;
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsCurrentIntent(server, settings, intent))
         {
@@ -177,12 +159,7 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             return;
         }
 
-        if (entryProxy is not null && details?.SupportsEntryChain != true)
-        {
-            await RejectUnsupportedAsync(server, settings, intent, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
+        var definition = _definitions(server.Id);
         var foreignProxy = await ForeignProxyAsync(settings).ConfigureAwait(false);
         cancellationToken.ThrowIfCancellationRequested();
         if (!IsCurrentIntent(server, settings, intent))
@@ -204,10 +181,6 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
             ForeignProxy = foreignProxy,
             UserProxyManagedByWindow = windowProxy,
         };
-        if (entryProxy is not null)
-        {
-            request.EntryProxy = entryProxy.ToContract("entry-proxy");
-        }
         try
         {
             // Ответ Connect не содержит снимка. После принятой попытки WatchStatus тоже может еще хранить прежнюю
@@ -739,66 +712,27 @@ public sealed class ServiceGatewayClient : IGatewayClient, IDisposable
     {
         ArgumentNullException.ThrowIfNull(serverIds);
         var request = new V1.MeasureLatencyRequest { Connection = _settings().ToConnection() };
-        var unavailable = new Dictionary<string, LatencyResult>(StringComparer.Ordinal);
-        ServiceDetails? details = null;
-        var checkedEntrySupport = false;
         foreach (var id in serverIds)
         {
             if (_definitions(id) is { } definition)
             {
-                ServerDefinition? entryProxy;
-                try
-                {
-                    entryProxy = _entryProxies?.DefinitionFor(id);
-                }
-                catch (SecretStoreException)
-                {
-                    unavailable[id] = LatencyResult.Failed(LatencyFailure.Unsupported);
-                    continue;
-                }
-
-                var target = new V1.LatencyTarget { Id = id, Host = definition.Host, Port = (uint)definition.Port, Server = definition.ToContract(id) };
-                if (entryProxy is not null)
-                {
-                    if (!checkedEntrySupport)
-                    {
-                        details = await ConnectDetailsAsync(cancellationToken).ConfigureAwait(false);
-                        checkedEntrySupport = true;
-                    }
-
-                    if (details?.SupportsEntryChain != true)
-                    {
-                        unavailable[id] = LatencyResult.Failed(LatencyFailure.Unsupported);
-                        continue;
-                    }
-
-                    target.EntryProxy = entryProxy.ToContract("entry-proxy");
-                }
-
-                request.Targets.Add(target);
+                request.Targets.Add(new V1.LatencyTarget { Id = id, Host = definition.Host, Port = (uint)definition.Port, Server = definition.ToContract(id) });
             }
         }
 
         if (request.Targets.Count == 0)
         {
-            return unavailable;
+            return new Dictionary<string, LatencyResult>();
         }
 
         try
         {
             var reply = await _client.MeasureLatencyAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
-            var results = reply.Results.Where(r => r.Reachable || r.Failure != V1.LatencyFailure.Unspecified)
-                .ToDictionary(r => r.Id, r => r.ToCore());
-            foreach (var (id, failure) in unavailable)
-            {
-                results[id] = failure;
-            }
-
-            return results;
+            return reply.Results.Where(r => r.Reachable || r.Failure != V1.LatencyFailure.Unspecified).ToDictionary(r => r.Id, r => r.ToCore());
         }
         catch (RpcException)
         {
-            return unavailable;
+            return new Dictionary<string, LatencyResult>();
         }
     }
 

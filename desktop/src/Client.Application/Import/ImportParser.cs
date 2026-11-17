@@ -24,20 +24,14 @@ public static partial class ImportParser
     public const string FormatBase64 = "base64";
     public const string FormatSingBox = "singbox";
     public const string FormatClash = "clash";
-    public const string FormatEntryChain = "entrychain";
 
     /// <summary>Все форматы — для подписей на экране импорта.</summary>
-    public static IReadOnlyList<string> Formats { get; } = [FormatLinks, FormatBase64, FormatSingBox, FormatClash, FormatEntryChain];
+    public static IReadOnlyList<string> Formats { get; } = [FormatLinks, FormatBase64, FormatSingBox, FormatClash];
 
     public static ImportBatch Parse(string text)
     {
         ArgumentNullException.ThrowIfNull(text);
         text = text.TrimStart('\uFEFF');
-        if (EntryChainImport.TryParse(text) is { } chain)
-        {
-            return chain.Batch;
-        }
-
         if (text.TrimStart() is ['{' or '[', ..])
         {
             return SingBoxImport.Parse(text);

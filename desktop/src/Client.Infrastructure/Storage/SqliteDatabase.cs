@@ -5,8 +5,8 @@ namespace PrivateGateway.Client.Infrastructure.Storage;
 
 /// <summary>
 /// База SQLite в папке данных. Миграции — SQL-файлы Storage/Migrations/NNNN_*.sql по порядку;
-/// примененная версия хранится в PRAGMA user_version. Миграции только добавляют и переносят
-/// данные, без удаления.
+/// примененная версия хранится в PRAGMA user_version. Снятые функции удаляются только новой
+/// миграцией; ключи их секретов остаются в очереди до подтвержденной очистки хранилища ОС.
 /// </summary>
 public sealed class SqliteDatabase(AppPaths paths)
 {

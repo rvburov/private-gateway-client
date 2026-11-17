@@ -65,8 +65,7 @@ public static class InfrastructureModule
                     id => Definition(sp, id),
                     () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                     sp.GetRequiredService<IUserProxySettings>().Read, manageUserProxy: userProxy.Value is not null,
-                    selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected,
-                    entryProxies: sp.GetRequiredService<IEntryProxyStore>()),
+                    selectedTarget: () => sp.GetRequiredService<ConnectionTarget>().Selected),
                 () => sp.GetRequiredService<SettingsService>().Current, sp.GetRequiredService<TimeProvider>(),
                 () => File.Exists(UserServiceFiles.ProxyBackup(UserServiceFiles.Folder))
                     || new FileUserProxyBackupStore(paths.UserProxyBackup).IsUserServiceBackup(), sp.GetRequiredService<IUserProxySettings>(),
@@ -93,7 +92,6 @@ public static class InfrastructureModule
                 sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)));
         services.AddSingleton<SqliteServerCatalog>();
         services.AddSingleton<IServerStore>(sp => sp.GetRequiredService<SqliteServerCatalog>());
-        services.AddSingleton<IEntryProxyStore, EntryProxyStore>();
         services.AddSingleton<DemoServerCatalog>();
         services.AddSingleton<UserOrDemoCatalog>();
         services.AddSingleton<CountryServerCatalog>(sp => new(sp.GetRequiredService<UserOrDemoCatalog>(),
@@ -103,13 +101,11 @@ public static class InfrastructureModule
         services.AddSingleton<IAutostart>(_ => OsAutostart.ForCurrentUser());
         services.AddSingleton(_ => SystemNotifiers.ForCurrentOs(File.Exists(paths.NotifyIcon) ? paths.NotifyIcon : null));
         services.AddSingleton<ISubscriptionDownloader>(sp =>
-            new EntrySubscriptionDownloader(
-                new SessionSubscriptionDownloader(new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>(),
-                    HttpSubscriptionDownloader.CreateDirectClient(),
-                    url => HttpSubscriptionDownloader.IsForeignProxy(HttpClient.DefaultProxy, url,
-                        sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)),
-                    sp.GetRequiredService<IGatewayClient>(), sp.GetRequiredService<TimeProvider>()),
-                sp.GetRequiredService<IEntryProxyStore>(), sp.GetRequiredService<TimeProvider>()));
+            new SessionSubscriptionDownloader(new HttpSubscriptionDownloader(HttpSubscriptionDownloader.CreateClient(), sp.GetRequiredService<TimeProvider>(),
+                HttpSubscriptionDownloader.CreateDirectClient(),
+                url => HttpSubscriptionDownloader.IsForeignProxy(HttpClient.DefaultProxy, url,
+                    sp.GetRequiredService<SettingsService>().Current.Connection.ProxyPort)),
+                sp.GetRequiredService<IGatewayClient>(), sp.GetRequiredService<TimeProvider>()));
         return services;
     }
 

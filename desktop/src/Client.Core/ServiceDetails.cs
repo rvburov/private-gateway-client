@@ -14,9 +14,6 @@ public sealed record ServiceDetails(string Version, string ApiVersion, IReadOnly
     /// <summary>Служба принимает внешние HTTP/HTTPS/SOCKS5-прокси с отдельными учетными данными.</summary>
     public bool SupportsExternalProxy => Capabilities?.Contains("external-proxy-v1", StringComparer.Ordinal) == true;
 
-    /// <summary>Служба понимает первый участок SOCKS5 и применяет к нему правила VPN и блокировки.</summary>
-    public bool SupportsEntryChain => Capabilities?.Contains("entry-chain-v1", StringComparer.Ordinal) == true;
-
     /// <summary>Ядро по имени (xray, sing-box), если оно есть и запускается.</summary>
     public CoreDetails? Core(string name) => Cores.FirstOrDefault(c => c.Name == name && c.Available);
 }

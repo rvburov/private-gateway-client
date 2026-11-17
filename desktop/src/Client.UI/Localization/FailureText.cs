@@ -21,8 +21,6 @@ public static class FailureText
         (DownloadFailure.NoServers, _) => Loc.Instance["import.download.no_servers"],
         (DownloadFailure.NoAddress, _) => Loc.Instance["import.download.no_address"],
         (DownloadFailure.UnsafeDns, _) => Loc.Instance["import.download.unsafe_dns"],
-        (DownloadFailure.EntryBundleInvalid, _) => Loc.Instance["import.download.entry_bundle_invalid"],
-        (DownloadFailure.EntryReimportRequired, _) => Loc.Instance["import.download.entry_reimport_required"],
         _ => Loc.Instance["import.download.network"],
     };
 

@@ -284,8 +284,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             // IPv6 через туннель — только если сервер его открывает: иначе соединения IPv6 принимал бы TUN, а рвал сервер, и
             // программа не перешла бы на IPv4. С сервером Xray соединяется по IPv6 — у него IPv6 есть, проверять нечего: без
             // IPv6 у TUN строгие маршруты (настройка пользователя) пришлось бы снять, иначе они отрезали бы Xray.
-            // Семейство IP входного SOCKS не доказывает доступность IPv6 через VPS.
-            var serverOverIpv6 = request.EntryProxy is null && serverAddresses[0].AddressFamily == AddressFamily.InterNetworkV6;
+            var serverOverIpv6 = serverAddresses[0].AddressFamily == AddressFamily.InterNetworkV6;
             var ipv6 = request.Protection.Ipv6Allowed && AdapterIpv6()
                 && (serverOverIpv6 || (probe is not null && serverIpv6 is not null
                     && await AskAsync(serverIpv6, probe, (timeout - time.GetElapsedTime(started)) / 2, time, output, cancellationToken).ConfigureAwait(false)));
@@ -310,7 +309,7 @@ public sealed class VpnTunnel : IAsyncDisposable
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var ready = 0;
-                var tun = new TunRequest(link, serverAddresses, request.PhysicalServer.Port, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
+                var tun = new TunRequest(link, serverAddresses, request.Server.Port, request.Protection, request.Connection, new TunIpv6(KernelIpv6(), ipv6),
                     DirectPrograms(request, xray), FakeIpPrograms(request), routes, subnet);
                 if (OperatingSystem.IsWindows() && netns is null)
                 {

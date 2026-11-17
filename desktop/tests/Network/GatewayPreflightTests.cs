@@ -20,6 +20,31 @@ public sealed class GatewayPreflightTests : IDisposable
     public void Dispose() => Directory.Delete(_root, recursive: true);
 
     [Fact]
+    public async Task Retired_chain_ipc_is_rejected_before_any_direct_probe_or_firewall_change()
+    {
+        var firewall = new FakeFirewall();
+        var checkedProfiles = new List<CoreRequest>();
+        await using var gateway = Create(firewall, (core, _, _) =>
+        {
+            checkedProfiles.Add(core);
+            return Task.FromResult(ProbeReachability.TimedOut());
+        });
+        var request = Request("198.51.100.20", "retired");
+        request.EntryProxy = new V1.ServerEndpoint();
+
+        var reply = await gateway.ConnectAsync(request, TestContext.Current.CancellationToken);
+        var targets = new V1.MeasureLatencyRequest();
+        targets.Targets.Add(new V1.LatencyTarget { Id = "retired", Server = request.Server, EntryProxy = request.EntryProxy });
+        var latency = await gateway.MeasureLatencyAsync(targets, TestContext.Current.CancellationToken);
+
+        reply.Accepted.ShouldBeFalse();
+        reply.Error.Code.ShouldBe(ErrorCodes.BadRequest);
+        latency.Results.ShouldHaveSingleItem().Failure.ShouldBe(V1.LatencyFailure.Unsupported);
+        checkedProfiles.ShouldBeEmpty();
+        firewall.Enables.ShouldBe(0);
+    }
+
+    [Fact]
     public async Task Failed_profile_is_rejected_before_firewall_or_tunnel_and_the_internet_stays_open()
     {
         var firewall = new FakeFirewall();

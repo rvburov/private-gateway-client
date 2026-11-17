@@ -218,8 +218,6 @@
             </UniformGrid>
             <TextBlock x:Name="SubscriptionVariantsHint" Classes="caption" Text="{l:L import.variants.hint}"
                        TextWrapping="Wrap" IsVisible="{Binding HasSubscriptionVariants}" />
-            <TextBlock x:Name="EntryProxySummary" Classes="caption" Text="{Binding EntryProxySummary}"
-                       TextWrapping="Wrap" IsVisible="{Binding HasEntryBundle}" />
             <Border Classes="notice" IsVisible="{Binding HasErrors}">
               <ItemsControl ItemsSource="{Binding ErrorLines}">
                 <ItemsControl.ItemTemplate>
