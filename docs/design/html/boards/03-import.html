@@ -65,7 +65,10 @@
   источник выбирает его (белая карточка с синей рамкой) и показывает предпросмотр: сколько серверов найдено, новых, дублей и ошибок
   с номерами строк. «Ввести ссылку» раскрывает поле для ссылок или адреса списка серверов, предпросмотр — после «Проверить». Список серверов,
   которая уже добавлена, обновится в своей группе — поля названия тогда нет. «Добавить N серверов» сохраняет и ведет на «Серверы». На телефоне «Назад» и итог добавления — на экран, откуда открыли (главная,
-  «Серверы», «Профили и подписки»), с подсказкой «Добавлено N»; если сервер еще не выбран, первый добавленный выбран сразу (DECISIONS.md, п. 21.7).</p>
+  «Серверы», «Профили и подписки»), с подсказкой «Добавлено N»; если сервер еще не выбран, первый добавленный выбран сразу (DECISIONS.md, п. 21.7).
+  Настольная программа также принимает из файла или буфера JSON-пакет цепочки: предпросмотр показывает входной SOCKS5 без учетных данных,
+  варианты VLESS и отдельную ошибку для HTTP/3. При повторном импорте того же устройства кнопка обновляет входной прокси.
+  На Android и iOS этот пакет пока не поддерживается.</p>
 
 <div class="pg-screens">
   <!-- 1. Пусто: источник еще не выбран -->
@@ -85,7 +88,7 @@
             <input type="radio" class="im-flag" id="im-check-1" hidden>
             <label class="btn-secondary" for="im-check-1">Проверить</label>
           </div>
-          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, base64, sing-box JSON или Clash YAML</span></span></button>
+          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, пакет цепочки JSON, base64, sing-box JSON или Clash YAML</span></span></button>
         </div>
 
         <!-- Предпросмотр по источнику -->
@@ -173,7 +176,7 @@
             <input type="radio" class="im-flag" id="im-check-2" hidden>
             <label class="btn-secondary" for="im-check-2">Проверить</label>
           </div>
-          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, base64, sing-box JSON или Clash YAML</span></span></button>
+          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, пакет цепочки JSON, base64, sing-box JSON или Clash YAML</span></span></button>
         </div>
 
         <div class="card im-prev im-prev-clip">
@@ -260,7 +263,7 @@
             <input type="radio" class="im-flag" id="im-check-3" hidden checked>
             <label class="btn-secondary" for="im-check-3">Проверить</label>
           </div>
-          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, base64, sing-box JSON или Clash YAML</span></span></button>
+          <button class="segment im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, пакет цепочки JSON, base64, sing-box JSON или Clash YAML</span></span></button>
         </div>
 
         <div class="card im-prev im-prev-clip">
@@ -327,6 +330,115 @@
       <button class="btn-primary im-add im-add-qr" data-nav="02-servers.html">Добавить 1 сервер</button>
       <button class="btn-primary im-add im-add-link" data-nav="02-servers.html">Добавить 1 сервер</button>
       <button class="btn-primary im-add im-add-file" data-nav="02-servers.html">Добавить 2 сервера</button>
+    </div>
+  </section>
+
+  <!-- 4. Настольный импорт пакета цепочки: TCP-профили остаются, HTTP/3 показан как ошибка -->
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Пакет цепочки · HTTP/3 пропущен">
+    <div class="pg-page im-page">
+      <div class="im-head">
+        <button class="btn-icon" data-nav="01-main.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1">Добавить профиль</span>
+      </div>
+      <div class="im-scroll">
+        <div class="segments im-sources">
+          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и списки серверов</span></span></button>
+          <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
+          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес списка серверов https://…</span></span></button>
+          <div class="im-linkbox">
+            <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку"></textarea>
+            <input type="radio" class="im-flag" id="im-check-4" hidden>
+            <label class="btn-secondary" for="im-check-4">Проверить</label>
+          </div>
+          <button class="segment on im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, пакет цепочки JSON, base64, sing-box JSON или Clash YAML</span></span></button>
+        </div>
+        <div class="card im-prev im-prev-clip im-prev-qr im-prev-link">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">ссылки · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">1</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="pg-stack pg-gap-6"><span class="t-small t-strong">Название профиля</span><input class="input" type="text" placeholder="Мои серверы" aria-label="Название профиля"></div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-file">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">цепочка через SOCKS5 · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">3</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">2</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">1</span><span class="t-caption">ошибка</span></div>
+            </div>
+            <span class="t-caption">Это профили внутри одного списка серверов, а не отдельные списки. Их доступность проверяется при подключении.</span>
+            <span class="t-caption">Вход через SOCKS5 entry.example.com:1080. Логин и пароль будут сохранены в хранилище секретов ОС.</span>
+            <div class="im-notice">Строка 3: HTTP/3 через входной SOCKS5 пока не поддерживается — пропущено.</div>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="Шлюз · TCP" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary im-add im-add-clip im-add-qr im-add-link" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-file" data-nav="02-servers.html">Добавить 2 сервера</button>
+    </div>
+  </section>
+
+  <!-- 5. Тот же пакет для сохраненного устройства: обновление входного SOCKS5 без новых серверов -->
+  <section class="pg-screen" data-os="desktop" data-state="connected" data-caption="Пакет цепочки · обновить входной прокси">
+    <div class="pg-page im-page">
+      <div class="im-head">
+        <button class="btn-icon" data-nav="01-main.html" aria-label="Назад"><i data-icon="Back" data-stroke="2.2" data-size="22"></i></button>
+        <span class="t-h1">Добавить профиль</span>
+      </div>
+      <div class="im-scroll">
+        <div class="segments im-sources">
+          <button class="segment im-src-clip"><span class="im-icon"><i data-icon="Clipboard" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Из буфера обмена</span><span class="t-caption">Ссылки vless://, hy2://, tuic://, wg и списки серверов</span></span></button>
+          <button class="segment im-src-qr"><span class="im-icon"><i data-icon="Qr" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">QR-код с экрана</span><span class="t-caption">Снимок области в буфер обмена или картинка с кодом</span></span></button>
+          <button class="segment im-src-link"><span class="im-icon"><i data-icon="Link" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Ввести ссылку</span><span class="t-caption">Ссылки по строкам или адрес списка серверов https://…</span></span></button>
+          <div class="im-linkbox">
+            <textarea class="input im-link-text" placeholder="vless://… или https://…/sub/…" aria-label="Ввести ссылку"></textarea>
+            <input type="radio" class="im-flag" id="im-check-5" hidden>
+            <label class="btn-secondary" for="im-check-5">Проверить</label>
+          </div>
+          <button class="segment on im-src-file"><span class="im-icon"><i data-icon="File" data-stroke="1.9" data-size="22"></i></span><span class="im-text"><span class="t-strong">Открыть файл</span><span class="t-caption">Ссылки, пакет цепочки JSON, base64, sing-box JSON или Clash YAML</span></span></button>
+        </div>
+        <div class="card im-prev im-prev-clip im-prev-qr im-prev-link">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">ссылки · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">1</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">1</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">0</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <div class="pg-stack pg-gap-6"><span class="t-small t-strong">Название профиля</span><input class="input" type="text" placeholder="Мои серверы" aria-label="Название профиля"></div>
+          </div>
+        </div>
+        <div class="card im-prev im-prev-file">
+          <div class="pg-stack pg-gap-12">
+            <div class="pg-row pg-gap-8"><span class="t-overline im-prev-title">Предпросмотр</span><span class="t-caption im-format">цепочка через SOCKS5 · VLESS</span></div>
+            <div class="im-tiles">
+              <div class="im-tile"><span class="im-num">2</span><span class="t-caption">найдено</span></div>
+              <div class="im-tile good"><span class="im-num">0</span><span class="t-caption">новых</span></div>
+              <div class="im-tile"><span class="im-num">2</span><span class="t-caption">дубли</span></div>
+              <div class="im-tile bad"><span class="im-num">0</span><span class="t-caption">ошибок</span></div>
+            </div>
+            <span class="t-caption">Это профили внутри одного списка серверов, а не отдельные списки. Их доступность проверяется при подключении.</span>
+            <span class="t-caption">Вход через SOCKS5 entry.example.com:1080. Логин и пароль будут сохранены в хранилище секретов ОС.</span>
+            <div class="pg-stack pg-gap-6">
+              <span class="t-small t-strong">Название профиля</span>
+              <input class="input" type="text" value="Шлюз · TCP" placeholder="Мои серверы" aria-label="Название профиля">
+            </div>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary im-add im-add-clip im-add-qr im-add-link" data-nav="02-servers.html">Добавить 1 сервер</button>
+      <button class="btn-primary im-add im-add-file" data-nav="02-servers.html">Обновить входной прокси</button>
     </div>
   </section>
 </div>
