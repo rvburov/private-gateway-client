@@ -24,6 +24,13 @@ public static class SubscriptionAddress
             return hidden ? head + "/" + Hidden : head;
         }
 
+        // Имя endpoint не секретно. Оно позволяет узнать группу цепочки даже при потере
+        // ключа URL и запрещать прямое подключение ее профилей.
+        if (segments.Length >= 3 && segments[0] == "sub" && segments[1] == "entry")
+        {
+            return head + "/sub/entry/" + Hidden;
+        }
+
         return IsWord(segments[0])
             ? head + "/" + segments[0] + (hidden ? "/" + Hidden : string.Empty)
             : head + "/" + Hidden;

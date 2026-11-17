@@ -1,0 +1,1 @@
+{"version":1,"device_id":"fixture-device","node_id":"fixture-node","subscription_url":"https://config.example.invalid/sub/entry/fixture-token","entry_proxy":{"type":"socks5","host":"entry.example.invalid","port":1080,"supports_udp":true},"profiles":[{"id":"fixture-device:h3","security":"tls","alpn":["h3"]}]}

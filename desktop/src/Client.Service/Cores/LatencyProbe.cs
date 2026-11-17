@@ -58,6 +58,19 @@ public static class LatencyProbe
         MeasureAsync(xray, singBox, servers, connection, target, timeout, time, null, cancellationToken);
 
     /// <summary>То же, с безопасными подробностями обеих проб после окончательного отказа профиля.</summary>
+    public static Task<IReadOnlyList<LatencyResult>> MeasureAsync(
+        string xray,
+        string? singBox,
+        IReadOnlyList<ServerDefinition> servers,
+        ConnectionSettings connection,
+        Uri target,
+        TimeSpan timeout,
+        TimeProvider time,
+        Action<int, IReadOnlyList<ProbeReachability>>? reportFailure,
+        CancellationToken cancellationToken = default) =>
+        MeasureAsync(xray, singBox, servers, connection, target, timeout, time, reportFailure, null, cancellationToken);
+
+    /// <summary>Проверка цепочек с отдельным входным прокси для каждого профиля.</summary>
     public static async Task<IReadOnlyList<LatencyResult>> MeasureAsync(
         string xray,
         string? singBox,
@@ -67,6 +80,7 @@ public static class LatencyProbe
         TimeSpan timeout,
         TimeProvider time,
         Action<int, IReadOnlyList<ProbeReachability>>? reportFailure,
+        IReadOnlyList<ServerDefinition?>? entryProxies,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(servers);
@@ -77,7 +91,7 @@ public static class LatencyProbe
         // Входы замера — с паролем на этот замер: служба работает от SYSTEM или root, и без пароля любая программа на машине,
         // пока идет замер, прошла бы через них к серверам в обход правил.
         var account = new SocksAccount(VpnTunnel.Secret(), VpnTunnel.Secret());
-        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays, account);
+        var probe = XrayConfigBuilder.BuildProbe(servers, ports, connection, relays, account, entryProxies);
         var results = probe.Rejections
             .Select(r => r is null ? null : LatencyResult.Failed(LatencyFailure.Unsupported))
             .ToArray();

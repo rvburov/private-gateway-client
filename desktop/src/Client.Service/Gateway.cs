@@ -460,7 +460,8 @@ public sealed partial class Gateway : IAsyncDisposable
                 protection,
                 (request.Connection ?? throw new ArgumentException("Нет настроек подключения")).ToCore(),
                 (request.Routing ?? throw new ArgumentException("Нет маршрутизации")).ToCore(),
-                request.UserProxyManagedByWindow);
+                request.UserProxyManagedByWindow,
+                request.EntryProxy?.ToCore());
         }
         catch (ArgumentException e)
         {
@@ -510,6 +511,7 @@ public sealed partial class Gateway : IAsyncDisposable
                     CoreRejection.InvalidEndpoint => "Некорректный адрес или транспорт внешнего прокси",
                     CoreRejection.InvalidCredentials => "Некорректные данные авторизации внешнего прокси",
                     CoreRejection.UnsupportedDns => "DNS по UDP недоступен через HTTP-прокси: выберите DoH в настройках DNS",
+                    CoreRejection.UnsupportedEntryProxy => "Входной SOCKS5 поддерживается только для VLESS по TCP; XHTTP H3 требует проверенного UDP relay",
                     _ => "Ядро Xray не возьмется за сервер: " + built.Rejection,
                 },
                 generation, cancellationToken).ConfigureAwait(false);
@@ -560,7 +562,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
         // Реальный IP — до блока и туннеля, пока прямой путь открыт: один раз на сеть, вместе с поиском адреса сервера,
         // чтобы не ждать дважды. Под блоком и в туннеле прежнего подключения прямого пути нет.
-        var measure = vpn && _directIp is null && !_blocking && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect;
+        // Входная цепочка не делает фоновых прямых сетевых проб до включения защиты.
+        var measure = vpn && core.EntryProxy is null && _directIp is null && !_blocking
+            && Volatile.Read(ref _tunnel) is null && core.Protection.CheckLeaksAfterConnect;
         var direct = measure ? DirectIpsAsync() : Task.FromResult<(string?, string?)>((null, null));
         var directWebrtc = measure ? WebrtcAsync(CancellationToken.None) : Task.FromResult<IPEndPoint?>(null);
 
@@ -579,7 +583,8 @@ public sealed partial class Gateway : IAsyncDisposable
 
         // Служба запустилась под блоком (обновление или перезапуск при включенной защите, отчет 2026-11-06): реальный IP не
         // измерен, а прямого пути нет — тот же замер с исключением в блоке только для службы и только на время запроса.
-        if (vpn && ip is null && _directIp is null && core.Protection.CheckLeaksAfterConnect && _blocking && Volatile.Read(ref _tunnel) is null)
+        if (vpn && core.EntryProxy is null && ip is null && _directIp is null
+            && core.Protection.CheckLeaksAfterConnect && _blocking && Volatile.Read(ref _tunnel) is null)
         {
             ip = await DirectIpPastBlockAsync(generation, cancellationToken).ConfigureAwait(false);
         }
@@ -612,7 +617,7 @@ public sealed partial class Gateway : IAsyncDisposable
             return await RejectAsync(request, core.Mode, ErrorCodes.ServerNotFound, "Адрес сервера не найден", generation, cancellationToken).ConfigureAwait(false);
         }
 
-        if (vpn && XrayConfigBuilder.Unencrypted(core.Server, addresses[0].ToString()))
+        if (vpn && XrayConfigBuilder.Unencrypted(core.Server, core.EntryProxy is null ? addresses[0].ToString() : core.Server.Host))
         {
             return await RejectAsync(request, core.Mode, ErrorCodes.UnsupportedServer, UnencryptedServer, generation, cancellationToken).ConfigureAwait(false);
         }
@@ -647,10 +652,12 @@ public sealed partial class Gateway : IAsyncDisposable
             _allowOtherVpn = request.AllowOtherVpn;
             await StopCoreAsync().ConfigureAwait(false);
             var credentials = core.Server.Credentials;
+            var entryCredentials = core.EntryProxy?.Credentials;
             var forwardProxy = core.Server.Protocol is ProxyProtocol.Http or ProxyProtocol.Socks5;
             var basic = forwardProxy && credentials.Username is { Length: > 0 } login && credentials.Password is { Length: > 0 } password
                 ? Convert.ToBase64String(System.Text.Encoding.UTF8.GetBytes(login + ":" + password)) : null;
-            _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey, credentials.Username, basic],
+            _journal.Hide([credentials.Uuid, credentials.Password, credentials.ObfsPassword, credentials.PrivateKey, credentials.PresharedKey, credentials.Username, basic,
+                    entryCredentials?.Username, entryCredentials?.Password],
                 includeShort: forwardProxy);
             if (vpn)
             {
@@ -1360,7 +1367,7 @@ public sealed partial class Gateway : IAsyncDisposable
 
         if (failureCode == ErrorCodes.ServerNotResponding && _request is { } failed)
         {
-            _ = NoteServerTcpAsync(failed.Server, _addresses);
+            _ = NoteServerTcpAsync(failed.PhysicalServer, _addresses, failed.EntryProxy is not null);
         }
 
         _ = ReconnectAsync(session, failureCode);
@@ -1877,7 +1884,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private async Task<IReadOnlyList<IPAddress>> ResolveAsync(CoreRequest core, int generation, CancellationToken cancellationToken)
     {
-        var host = core.Server.Host.Trim('[', ']');
+        var host = core.PhysicalServer.Host.Trim('[', ']');
         if (IPAddress.TryParse(host, out var literal))
         {
             return PickAddresses([literal], core.Protection);
@@ -1963,7 +1970,7 @@ public sealed partial class Gateway : IAsyncDisposable
     /// </summary>
     private async Task<IReadOnlyList<IPAddress>> LookupPastBlockAsync(CoreRequest core, int generation, CancellationToken cancellationToken)
     {
-        var host = core.Server.Host.Trim('[', ']');
+        var host = core.PhysicalServer.Host.Trim('[', ']');
         if (_options is not { KillSwitch: { } killSwitch, Doh: { } doh } || !IPAddress.TryParse(doh.Host.Trim('[', ']'), out var dohAddress)
             || IPAddress.TryParse(host, out _))
         {
@@ -2065,7 +2072,9 @@ public sealed partial class Gateway : IAsyncDisposable
 
     /// <summary>Тот же сервер, что у нынешнего подключения режима VPN (имя и порт): его адреса — в <see cref="_addresses"/>.</summary>
     private bool SameServer(CoreRequest core) => _request is { Mode: ConnectionMode.Vpn } current
-        && string.Equals(current.Server.Host, core.Server.Host, StringComparison.OrdinalIgnoreCase) && current.Server.Port == core.Server.Port;
+        && string.Equals(current.Server.Host, core.Server.Host, StringComparison.OrdinalIgnoreCase) && current.Server.Port == core.Server.Port
+        && string.Equals(current.PhysicalServer.Host, core.PhysicalServer.Host, StringComparison.OrdinalIgnoreCase)
+        && current.PhysicalServer.Port == core.PhysicalServer.Port;
 
     /// <summary>
     /// Поставить (или заменить) блок при обрыве под это подключение и запомнить его в файле блока; <paramref name="strict"/> —
@@ -2080,7 +2089,7 @@ public sealed partial class Gateway : IAsyncDisposable
         var direct = VpnTunnel.DirectPrograms(core, _options.XrayPath!).Count > 0;
         var policy = new KillSwitchPolicy(
             tunnel && SingBoxConfigBuilder.InterfaceName is { Length: > 0 } name ? name : null,
-            [.. addresses.Select(a => new KillSwitchEndpoint(a, core.Server.Port))],
+            [.. addresses.Select(a => new KillSwitchEndpoint(a, core.PhysicalServer.Port))],
             core.Protection.AllowLan,
             core.Protection.LanDiscovery,
             core.Protection.BlockOutsideDns,
@@ -2096,11 +2105,11 @@ public sealed partial class Gateway : IAsyncDisposable
 
         // Блок при обрыве выключен — те же правила, пока туннель поднят (DNS, IPv6 и программы с привязкой к карте мимо
         // туннеля закрыты), но «открытые»: при обрыве, сбое и остановке снимаются, после перезагрузки их нет.
-        _held = new HeldBlock(policy, core.Server.Host, policy.Persistent, strict, Open: !_killSwitchOn);
+        _held = new HeldBlock(policy, core.PhysicalServer.Host, policy.Persistent, strict, Open: !_killSwitchOn);
         RememberBlock(_held);
         _blocking = true;
         Warn(killSwitch);
-        var exits = $"мимо туннеля — только сервер{(direct ? " и прямой выход sing-box" : string.Empty)}";
+        var exits = $"мимо туннеля — только {(core.EntryProxy is null ? "сервер" : "входной прокси")}{(direct ? " и прямой выход sing-box" : string.Empty)}";
         _journal.Add(JournalLevel.Info, "service", _killSwitchOn
             ? $"Блок при обрыве {done} ({killSwitch.Name}): {exits}"
             : $"Правила «только туннель» {done} ({killSwitch.Name}): {exits}; блок при обрыве выключен — при обрыве они снимаются");
@@ -2284,8 +2293,8 @@ public sealed partial class Gateway : IAsyncDisposable
     /// нет — пусто.
     /// </summary>
     private IReadOnlyList<IPAddress> HeldAddresses(CoreRequest core) =>
-        _blocking && _held is { Host.Length: > 0 } held && string.Equals(held.Host, core.Server.Host, StringComparison.OrdinalIgnoreCase)
-            ? PickAddresses(held.Policy.Servers.Where(s => s.Port == core.Server.Port).Select(s => s.Address), core.Protection)
+        _blocking && _held is { Host.Length: > 0 } held && string.Equals(held.Host, core.PhysicalServer.Host, StringComparison.OrdinalIgnoreCase)
+            ? PickAddresses(held.Policy.Servers.Where(s => s.Port == core.PhysicalServer.Port).Select(s => s.Address), core.Protection)
             : [];
 
     /// <summary>Блок с прошлого запуска или с загрузки: «Блокировка», строгого ли режима — по файлу блока.</summary>

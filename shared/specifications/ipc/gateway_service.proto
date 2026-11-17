@@ -318,6 +318,9 @@ message ConnectRequest {
   string foreign_proxy = 7;
   // Текущий пользователь Windows применяет прокси через окно; служба не создает второго владельца настроек.
   bool user_proxy_managed_by_window = 8;
+  // Первый участок цепочки: физическое соединение к SOCKS5, затем VLESS к server.
+  // Пусто — подключение к server напрямую. Учетные данные передаются только по защищенному IPC.
+  ServerEndpoint entry_proxy = 9;
 }
 
 // «Подключение и ядро» (доска 6): ядро, TUN, соединение, режим прокси.
@@ -649,6 +652,8 @@ message LatencyTarget {
   uint32 port = 3;
   // Сервер целиком: задержку служба меряет запросом через ядро, как при подключении, а не пингом адреса.
   ServerEndpoint server = 4;
+  // Тот же физический первый участок цепочки, что в ConnectRequest.
+  ServerEndpoint entry_proxy = 5;
 }
 
 enum LatencyFailure {

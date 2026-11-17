@@ -2,8 +2,9 @@ name: Сборка выпуска
 
 # Выпуск для трех ОС (scripts/publish.sh): окно и служба с .NET в комплекте, ядра с закрепленными суммами, SBOM
 # (CycloneDX) и SHA256SUMS, пакеты Linux, MSI и образ диска macOS; смоуки проверяют архив и ставят и удаляют пакеты. Из
-# release.yml (тег v*) — с версией тега, по кнопке — с любой; на ветках — когда меняется сама сборка. Подпись артефактов
-# — «Отложено».
+# release.yml (тег v*) — с версией тега, по кнопке — с любой; на ветках — при изменении сборки или десктопа. Подпись артефактов
+# — «Отложено». Изменения окна, службы и IPC также собирают устанавливаемые артефакты:
+# для новых возможностей недостаточно обновить только серверную панель.
 on:
   # Выпуск по тегу v* собирает release.yml — он вызывает этот workflow и публикует его сборки.
   workflow_call:
@@ -32,6 +33,8 @@ on:
       - scripts/tests/linux-package-smoke.sh
       - scripts/tests/rpm-package-smoke.sh
       - desktop/packaging/**
+      - desktop/src/**
+      - shared/specifications/ipc/**
       - shared/specifications/icons/**
       - shared/cores/**
       - shared/licenses/**

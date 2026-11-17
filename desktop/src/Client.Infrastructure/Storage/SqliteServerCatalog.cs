@@ -422,6 +422,18 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
     }
 
+    /// <summary>Найти id уже сохраненного профиля по тому же ключу дубля, который использует импорт.</summary>
+    public string? IdFor(ServerDefinition server)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        lock (_gate)
+        {
+            var key = Key(server);
+            return Rows.Where(row => row.Endpoint == Endpoint(server))
+                .FirstOrDefault(row => row.Endpoint + "|" + _secrets.Read(SecretKey(row.Profile.Id)) == key)?.Profile.Id;
+        }
+    }
+
     public ServerDefinition? Definition(string serverId)
     {
         string definition;
@@ -446,12 +458,23 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
 
     // ── Подписки ─────────────────────────────────────────────────────────────
 
-    public Uri? SubscriptionUrl(string subscriptionId) =>
-        _secrets.IsAvailable
-        && _secrets.Read(SubscriptionKey(subscriptionId)) is { } text
-        && Uri.TryCreate(text, UriKind.Absolute, out var url)
-            ? url
-            : null;
+    public Uri? SubscriptionUrl(string subscriptionId)
+    {
+        if (!_secrets.IsAvailable)
+        {
+            return null;
+        }
+
+        // Для цепочки активный ключ URL переключается вместе с SOCKS и серверами в SQLite.
+        // Если он потерян, к старому стандартному ключу возвращаться нельзя: это обошло бы
+        // проверку поколения подписки после ротации токена.
+        using var connection = _database.Open();
+        using var command = connection.CreateCommand();
+        command.CommandText = "SELECT subscription_key FROM entry_proxies WHERE group_id = $group";
+        command.Parameters.AddWithValue("$group", subscriptionId);
+        var secretKey = command.ExecuteScalar() as string ?? SubscriptionKey(subscriptionId);
+        return _secrets.Read(secretKey) is { } text && Uri.TryCreate(text, UriKind.Absolute, out var url) ? url : null;
+    }
 
     public SubscriptionUpdate? TryApplyUpdate(string subscriptionId, Uri expectedUrl, IReadOnlyList<ServerDefinition> servers)
     {
@@ -462,7 +485,29 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
     }
 
-    public SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers)
+    /// <summary>
+    /// Обновить серверы входной цепочки и ее привязки одной транзакцией. Новый секрет URL уже сохранен
+    /// вызывающим кодом под новым ключом; <paramref name="mutate"/> переключает этот ключ и SOCKS в той же
+    /// транзакции, что серверы и замаскированный адрес подписки.
+    /// </summary>
+    public SubscriptionUpdate? TryApplyEntryUpdate(string subscriptionId, Uri expectedUrl, Uri newUrl,
+        IReadOnlyList<ServerDefinition> servers, Action<SqliteConnection, SqliteTransaction> mutate)
+    {
+        ArgumentNullException.ThrowIfNull(expectedUrl);
+        ArgumentNullException.ThrowIfNull(newUrl);
+        ArgumentNullException.ThrowIfNull(mutate);
+        lock (_gate)
+        {
+            return Groups.Exists(g => g.Id == subscriptionId) && SubscriptionUrl(subscriptionId) == expectedUrl
+                ? ApplyUpdate(subscriptionId, servers, newUrl, mutate) : null;
+        }
+    }
+
+    public SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers) =>
+        ApplyUpdate(subscriptionId, servers, null, null);
+
+    private SubscriptionUpdate ApplyUpdate(string subscriptionId, IReadOnlyList<ServerDefinition> servers, Uri? newUrl,
+        Action<SqliteConnection, SqliteTransaction>? mutate)
     {
         ArgumentNullException.ThrowIfNull(servers);
         if (servers.Count == 0)
@@ -572,6 +617,13 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 Run(connection, transaction,
                     "UPDATE subscriptions SET updated_at = $at, last_attempt_at = $at, last_failure = NULL, last_status = NULL WHERE id = $id",
                     ("$at", Text(now)), ("$id", subscriptionId));
+                if (newUrl is not null)
+                {
+                    Run(connection, transaction, "UPDATE subscriptions SET address = $address WHERE id = $id",
+                        ("$address", SubscriptionAddress.Mask(newUrl)), ("$id", subscriptionId));
+                }
+
+                mutate?.Invoke(connection, transaction);
                 transaction.Commit();
             }
             catch
@@ -600,7 +652,14 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
                 Replace(selectedGone with { Profile = selectedGone.Profile with { MissingSince = selectedGone.Profile.MissingSince ?? now } });
             }
 
-            Groups[index] = Groups[index] with { UpdatedAt = now, LastAttemptAt = now, LastFailure = null, LastStatusCode = null };
+            Groups[index] = Groups[index] with
+            {
+                UpdatedAt = now,
+                LastAttemptAt = now,
+                LastFailure = null,
+                LastStatusCode = null,
+                Address = newUrl is null ? Groups[index].Address : SubscriptionAddress.Mask(newUrl),
+            };
             var change = selectedGone is null ? SelectedServerChange.None
                 : servers.Any(s => s.Name == selectedGone.LinkName) ? SelectedServerChange.Changed
                 : SelectedServerChange.Missing;
@@ -608,8 +667,48 @@ public sealed class SqliteServerCatalog : IServerCatalog, IServerStore
         }
 
         // Секреты удаленных — после записи в базу: сбой базы не оставит серверов без ключей.
-        removed.ForEach(r => _secrets.Delete(SecretKey(r.Profile.Id)));
-        Changed?.Invoke(this, EventArgs.Empty);
+        foreach (var row in removed)
+        {
+            try
+            {
+                _secrets.Delete(SecretKey(row.Profile.Id));
+            }
+            catch (Exception error) when (newUrl is not null
+                && (error is SecretStoreException or InvalidOperationException or IOException or UnauthorizedAccessException))
+            {
+                // После commit удаление старого ключа — очистка, а не причина откатить новую цепочку.
+            }
+        }
+        if (newUrl is not null)
+        {
+            // Для старых резервных копий по-прежнему держим стандартный ключ подписки. Рабочий адрес
+            // цепочки читается через транзакционно переключенный entry_proxies.subscription_key.
+            try
+            {
+                _secrets.Save(SubscriptionKey(subscriptionId), newUrl.OriginalString);
+            }
+            catch (Exception error) when (error is SecretStoreException or InvalidOperationException or IOException or UnauthorizedAccessException)
+            {
+                // Сбой восстановления резервной копии не отменяет уже зафиксированное обновление цепочки.
+            }
+        }
+
+        if (newUrl is null)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            // Цепочка уже зафиксирована в SQLite. Сбой наблюдателя не должен сообщать
+            // вызывающему коду об откате и провоцировать повтор обновления.
+            try
+            {
+                Changed?.Invoke(this, EventArgs.Empty);
+            }
+            catch (Exception)
+            {
+            }
+        }
         return result;
     }
 

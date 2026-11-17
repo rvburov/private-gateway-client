@@ -31,7 +31,8 @@ public sealed partial class Gateway
             return new DelayBreakdown(null, null, null, _time.GetUtcNow());
         }
 
-        var toServer = await ToServerAsync(request.Server, cancellationToken).ConfigureAwait(false);
+        // При цепочке прямой TCP-замер VPS обойдет входной SOCKS и даст ложный отказ.
+        var toServer = request.EntryProxy is null ? await ToServerAsync(request.Server, cancellationToken).ConfigureAwait(false) : null;
         var through = await ThroughServerAsync(link, warm: true, cancellationToken).ConfigureAwait(false);
         var fresh = await ThroughServerAsync(link, warm: false, cancellationToken).ConfigureAwait(false);
         return new DelayBreakdown(toServer, through, fresh, _time.GetUtcNow());
@@ -151,7 +152,7 @@ public sealed partial class Gateway
     /// нет: профиль не принят (ключ, REALITY, flow) или сервер не выпускает в интернет. Пользователь 2026-11-05: при «попытке
     /// 130» из окна было не понять, в ссылке дело или в сети. Соединение — только к адресу и порту сервера, их блок пропускает.
     /// </summary>
-    private async Task NoteServerTcpAsync(ServerDefinition server, IReadOnlyList<IPAddress> addresses)
+    private async Task NoteServerTcpAsync(ServerDefinition server, IReadOnlyList<IPAddress> addresses, bool entryProxy = false)
     {
         TcpAnswer? answer;
         try
@@ -174,10 +175,14 @@ public sealed partial class Gateway
         var core = answer.Ms is not null
             ? CoreLines.OutboundFailure(_journal.Tail(ServiceJournal.Capacity), _time.GetUtcNow() - TimeSpan.FromMinutes(2))
             : null;
-        _journal.Add(JournalLevel.Warning, "service", answer.Ms is { } ms
-            ? $"Сервер отвечает по TCP на порт {server.Port} ({ms} мс), но связи через него нет: профиль не принят (ключ, REALITY, flow) или сервер не выпускает в интернет — проверьте ссылку или выберите другой сервер"
-                + (core is null ? string.Empty : ". Ядро: " + core)
-            : $"Сервер не отвечает по TCP на порт {server.Port}: он выключен, порт закрыт или путь до него режется — дело не в настройках этого компьютера, если другие серверы отвечают");
+        _journal.Add(JournalLevel.Warning, "service", entryProxy
+            ? answer.Ms is { } latency
+                ? $"Входной SOCKS5 отвечает по TCP на порт {server.Port} ({latency} мс), но цепочка не отвечает — проверьте доступ прокси к VPS и параметры профиля"
+                : $"Входной SOCKS5 не отвечает по TCP на порт {server.Port}: проверьте доступность выбранного прокси"
+            : answer.Ms is { } ms
+                ? $"Сервер отвечает по TCP на порт {server.Port} ({ms} мс), но связи через него нет: профиль не принят (ключ, REALITY, flow) или сервер не выпускает в интернет — проверьте ссылку или выберите другой сервер"
+                    + (core is null ? string.Empty : ". Ядро: " + core)
+                : $"Сервер не отвечает по TCP на порт {server.Port}: он выключен, порт закрыт или путь до него режется — дело не в настройках этого компьютера, если другие серверы отвечают");
     }
 
     /// <summary>Карта маршрута по умолчанию, не туннель: через нее ядро идет к серверу. Маршрутов служба не читает — null.</summary>

@@ -24,4 +24,10 @@ public enum DownloadFailure
 
     /// <summary>Ядро разрешило бы имя подписки через DNS мимо туннеля: такая загрузка запрещена.</summary>
     UnsafeDns,
+
+    /// <summary>Ответ подписки входной цепочки поврежден либо содержит неподдерживаемый профиль.</summary>
+    EntryBundleInvalid,
+
+    /// <summary>Для безопасного обновления входной цепочки нужен повторный импорт пакета.</summary>
+    EntryReimportRequired,
 }

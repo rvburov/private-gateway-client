@@ -13,7 +13,12 @@ public sealed record CoreRequest(
     ProtectionSettings Protection,
     ConnectionSettings Connection,
     RoutingSettings Routing,
-    bool UserProxyManagedByWindow = false);
+    bool UserProxyManagedByWindow = false,
+    ServerDefinition? EntryProxy = null)
+{
+    /// <summary>Узел, к которому ядро физически открывает сокет вне туннеля.</summary>
+    public ServerDefinition PhysicalServer => EntryProxy ?? Server;
+}
 
 /// <summary>Почему ядро Xray не возьмется за сервер.</summary>
 public enum CoreRejection
@@ -41,6 +46,9 @@ public enum CoreRejection
 
     /// <summary>HTTP CONNECT не переносит обычный DNS по UDP к публичному числовому адресу.</summary>
     UnsupportedDns,
+
+    /// <summary>Входная цепочка не поддерживает запрошенный транспорт или протокол.</summary>
+    UnsupportedEntryProxy,
 }
 
 /// <summary>Конфиг Xray или причина отказа.</summary>
@@ -111,6 +119,7 @@ public static class XrayConfigBuilder
     public const string DirectTag = "direct";
     public const string BlockTag = "block";
     public const string FragmentTag = "fragment";
+    public const string EntryProxyTag = "entry-proxy";
 
     /// <summary>Выход DNS режима VPN: отвечает на запросы из TUN по настройкам DNS этого конфига.</summary>
     public const string DnsTag = "dns-out";
@@ -194,11 +203,39 @@ public static class XrayConfigBuilder
     public static XrayConfigResult Build(CoreRequest request, TunLink? tun = null, ProbeLink? probe = null, RelayLink? relay = null)
     {
         ArgumentNullException.ThrowIfNull(request);
+        if (request.EntryProxy is not null && !SupportsEntryProxy(request.Server, request.EntryProxy))
+        {
+            return new XrayConfigResult(null, CoreRejection.UnsupportedEntryProxy);
+        }
+
+        if (request.EntryProxy is { } localEntry
+            && (request.Mode == ConnectionMode.Proxy || request.Mode == ConnectionMode.Vpn && request.Connection.VpnSystemProxy)
+            && ForwardProxyRules.IsLocalLoop(localEntry.Host, localEntry.Port, request.Connection.ProxyPort))
+        {
+            return new XrayConfigResult(null, CoreRejection.InvalidEndpoint);
+        }
+
         var outbound = Outbound(request.Server, request.Connection, relay, out var rejection,
-            tun is not null && !NeedsRelay(request.Server) ? tun.ServerAddress : null);
+            tun is not null && request.EntryProxy is null && !NeedsRelay(request.Server) ? tun.ServerAddress : null);
         if (outbound is null)
         {
             return new XrayConfigResult(null, rejection);
+        }
+
+        JsonObject? entryOutbound = null;
+        if (request.EntryProxy is { } entryProxy)
+        {
+            entryOutbound = ForwardOutbound(entryProxy, request.Connection with { TlsFragment = false }, out rejection);
+            if (entryOutbound is null)
+            {
+                return new XrayConfigResult(null, rejection);
+            }
+
+            entryOutbound["tag"] = EntryProxyTag;
+            if (tun is not null)
+            {
+                Dial(entryOutbound, tun.ServerAddress);
+            }
         }
 
         if (tun is null && request.Mode == ConnectionMode.Proxy && ForwardProxyRules.IsForwardProxy(request.Server.Protocol)
@@ -216,7 +253,7 @@ public static class XrayConfigBuilder
         }
 
         // Адрес сервера ретранслятор получает сам: у выхода Xray к нему — 127.0.0.1.
-        if (tun is not null && !NeedsRelay(request.Server))
+        if (tun is not null && request.EntryProxy is null && !NeedsRelay(request.Server))
         {
             Dial(outbound, tun.ServerAddress);
         }
@@ -254,6 +291,13 @@ public static class XrayConfigBuilder
             outbounds.Add(fragment);
         }
 
+        if (entryOutbound is not null)
+        {
+            // Для фрагментации: VLESS -> fragment -> SOCKS; без нее: VLESS -> SOCKS.
+            SetDialerProxy(fragment ?? outbound, EntryProxyTag);
+            outbounds.Add(entryOutbound);
+        }
+
         // Режим VPN: сокет к серверу — сразу на внешнем интерфейсе, мимо TUN (решение 533). Без этого он заходил в TUN, и
         // весь зашифрованный трафик второй раз шел через sing-box: скорость ниже, процессор занят, а счетчики адаптера
         // туннеля (скорость на главной) удваивались. Сокет создает выход, через который выход к серверу дозванивается
@@ -262,7 +306,8 @@ public static class XrayConfigBuilder
         // TUN соединение с петлей и так не заходит.
         if (tun is { Outside: { Length: > 0 } outside } && !NeedsRelay(request.Server) && !OnThisMachine(tun.ServerAddress))
         {
-            Outside(outbound["streamSettings"]?["sockopt"]?["dialerProxy"] is not null && fragment is not null ? fragment : outbound, outside);
+            Outside(entryOutbound ?? (outbound["streamSettings"]?["sockopt"]?["dialerProxy"] is not null && fragment is not null
+                ? fragment : outbound), outside);
         }
 
         if (tun is not null && fakeDns && request.Connection.VpnSystemProxy)
@@ -358,14 +403,15 @@ public static class XrayConfigBuilder
     /// с этим именем и паролем: пока идет замер, другая программа на машине через них к серверам не пройдет; null — без пароля.
     /// </summary>
     public static XrayProbeConfig BuildProbe(IReadOnlyList<ServerDefinition> servers, IReadOnlyList<int> ports, ConnectionSettings connection,
-        IReadOnlyList<RelayLink?>? relays = null, SocksAccount? account = null)
+        IReadOnlyList<RelayLink?>? relays = null, SocksAccount? account = null,
+        IReadOnlyList<ServerDefinition?>? entryProxies = null)
     {
         ArgumentNullException.ThrowIfNull(servers);
         ArgumentNullException.ThrowIfNull(ports);
         ArgumentNullException.ThrowIfNull(connection);
-        if (ports.Count != servers.Count)
+        if (ports.Count != servers.Count || entryProxies is not null && entryProxies.Count != servers.Count)
         {
-            throw new ArgumentException("Порт нужен каждому серверу", nameof(ports));
+            throw new ArgumentException("Порт и входной прокси нужны каждому серверу", nameof(ports));
         }
 
         var inbounds = new JsonArray();
@@ -374,9 +420,42 @@ public static class XrayConfigBuilder
         var rejections = new CoreRejection?[servers.Count];
         for (var i = 0; i < servers.Count; i++)
         {
+            var entry = entryProxies?[i];
+            if (entry is not null && !SupportsEntryProxy(servers[i], entry))
+            {
+                rejections[i] = CoreRejection.UnsupportedEntryProxy;
+                continue;
+            }
+
             if (Outbound(servers[i], connection, relays?[i], out rejections[i]) is not { } outbound)
             {
                 continue;
+            }
+
+            if (entry is not null)
+            {
+                var entryOutbound = ForwardOutbound(entry, connection with { TlsFragment = false }, out rejections[i]);
+                if (entryOutbound is null)
+                {
+                    continue;
+                }
+
+                var entryTag = $"{EntryProxyTag}-{i}";
+                entryOutbound["tag"] = entryTag;
+                outbounds.Add(entryOutbound);
+                if (connection.TlsFragment)
+                {
+                    var fragmentTag = $"{FragmentTag}-{i}";
+                    outbound["streamSettings"]!["sockopt"]!["dialerProxy"] = fragmentTag;
+                    var fragment = Fragment();
+                    fragment["tag"] = fragmentTag;
+                    SetDialerProxy(fragment, entryTag);
+                    outbounds.Add(fragment);
+                }
+                else
+                {
+                    SetDialerProxy(outbound, entryTag);
+                }
             }
 
             outbound["tag"] = $"probe-out-{i}";
@@ -409,7 +488,7 @@ public static class XrayConfigBuilder
             return new XrayProbeConfig(null, rejections);
         }
 
-        if (connection.TlsFragment)
+        if (connection.TlsFragment && (entryProxies is null || entryProxies.Any(e => e is null)))
         {
             outbounds.Add(Fragment());
         }
@@ -558,6 +637,21 @@ public static class XrayConfigBuilder
         }
 
         sockopt["interface"] = outside;
+    }
+
+    private static void SetDialerProxy(JsonObject outbound, string tag)
+    {
+        if (outbound["streamSettings"] is not JsonObject stream)
+        {
+            outbound["streamSettings"] = stream = new JsonObject();
+        }
+
+        if (stream["sockopt"] is not JsonObject sockopt)
+        {
+            stream["sockopt"] = sockopt = new JsonObject();
+        }
+
+        sockopt["dialerProxy"] = tag;
     }
 
     private static void Dial(JsonObject outbound, string address)
@@ -741,6 +835,19 @@ public static class XrayConfigBuilder
     {
         ArgumentNullException.ThrowIfNull(server);
         return server.Protocol is ProxyProtocol.Hysteria2 or ProxyProtocol.Tuic;
+    }
+
+    /// <summary>Поддерживаемый первый участок: SOCKS5 TCP CONNECT до VLESS TCP или XHTTP по TCP.</summary>
+    public static bool SupportsEntryProxy(ServerDefinition server, ServerDefinition entry)
+    {
+        ArgumentNullException.ThrowIfNull(server);
+        ArgumentNullException.ThrowIfNull(entry);
+        return entry.Protocol == ProxyProtocol.Socks5
+            && ForwardProxyRules.AcceptsTransport(entry.Protocol, entry.Transport.Kind, entry.Security.Kind)
+            && server.Protocol == ProxyProtocol.Vless
+            && server.Transport.Kind is TransportKind.Tcp or TransportKind.Xhttp
+            && server.Security.Kind is TransportSecurity.Reality or TransportSecurity.Tls
+            && (server.Transport.Kind != TransportKind.Xhttp || server.Security.Alpn?.Contains("h3", StringComparer.OrdinalIgnoreCase) != true);
     }
 
     /// <summary>

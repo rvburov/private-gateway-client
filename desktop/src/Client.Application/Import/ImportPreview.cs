@@ -29,7 +29,13 @@ public sealed record ImportPreview(ImportBatch Batch, int Duplicates, int Renewa
     public static ImportPreview Of(string text, IServerStore store)
     {
         ArgumentNullException.ThrowIfNull(store);
-        var batch = ImportParser.Parse(text);
+        return Of(ImportParser.Parse(text), store);
+    }
+
+    public static ImportPreview Of(ImportBatch batch, IServerStore store)
+    {
+        ArgumentNullException.ThrowIfNull(batch);
+        ArgumentNullException.ThrowIfNull(store);
         var servers = batch.Lines.Where(l => l.Result.IsOk).Select(l => l.Result.Server!).ToList();
         return new ImportPreview(batch, store.CountDuplicates(servers), store.CountRenewals(servers));
     }

@@ -18,6 +18,8 @@ public class LinkParserTests
 
     public static TheoryData<string> Subscriptions() => Cases("subscriptions");
 
+    public static TheoryData<string> EntryChains() => Cases("entry-chain");
+
     [Theory]
     [MemberData(nameof(Links))]
     public void Link_parses_as_in_the_shared_fixture(string fixture)
@@ -58,6 +60,7 @@ public class LinkParserTests
 
     [Theory]
     [MemberData(nameof(Subscriptions))]
+    [MemberData(nameof(EntryChains))]
     public void Subscription_parses_as_in_the_shared_fixture(string fixture)
     {
         var (input, expected) = Load(fixture);
@@ -90,6 +93,17 @@ public class LinkParserTests
             "новый VPN-протокол обязан получить разбор и общий эталон; только ручные внешние прокси исключены из ссылок");
         protocols.ShouldBe(LinkParser.SupportedProtocols.Select(Name), ignoreOrder: true);
         var errors = expected.Select(e => (string?)e["error"]).Where(e => e is not null).ToHashSet();
+        foreach (var fixture in Directory.EnumerateFiles(Path.Combine(TestData, "entry-chain"), "*.expected.json"))
+        {
+            var batch = JsonNode.Parse(File.ReadAllText(fixture))!;
+            foreach (var line in batch["lines"]!.AsArray())
+            {
+                if ((string?)line?["error"] is { } error)
+                {
+                    errors.Add(error);
+                }
+            }
+        }
         errors.ShouldBe(
             typeof(ImportErrors).GetFields().Select(f => (string)f.GetValue(null)!),
             ignoreOrder: true);

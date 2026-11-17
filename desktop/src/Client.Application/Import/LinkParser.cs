@@ -34,6 +34,12 @@ public static class ImportErrors
 
     /// <summary>Параметр, без которого сервер не заработает так, как задумано (plugin, alterId…).</summary>
     public const string UnsupportedParameter = "unsupported_parameter";
+
+    /// <summary>Пакет входной цепочки поврежден или содержит неизвестные обязательные поля.</summary>
+    public const string EntryBundleInvalid = "entry_bundle_invalid";
+
+    /// <summary>HTTP/3 через входной SOCKS5 пока не поддерживается.</summary>
+    public const string EntryH3Unsupported = "entry_h3_unsupported";
 }
 
 /// <summary>Результат разбора одной ссылки: сервер или код ошибки из <see cref="ImportErrors"/>.</summary>

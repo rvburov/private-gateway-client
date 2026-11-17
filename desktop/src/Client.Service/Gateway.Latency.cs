@@ -15,6 +15,7 @@ public sealed partial class Gateway
         ArgumentNullException.ThrowIfNull(request);
         var reply = new V1.MeasureLatencyReply();
         var servers = new List<ServerDefinition>();
+        var entryProxies = new List<ServerDefinition?>();
         var ids = new List<string>();
         var ordinals = new List<int>();
         var ordinal = 0;
@@ -23,7 +24,10 @@ public sealed partial class Gateway
             ordinal++;
             try
             {
-                servers.Add((target.Server ?? throw new ArgumentException("Нет сервера")).ToCore());
+                var server = (target.Server ?? throw new ArgumentException("Нет сервера")).ToCore();
+                var entryProxy = target.EntryProxy?.ToCore();
+                servers.Add(server);
+                entryProxies.Add(entryProxy);
                 ids.Add(target.Id);
                 ordinals.Add(ordinal);
             }
@@ -53,7 +57,8 @@ public sealed partial class Gateway
         // IPC создает новые списки ALPN и закрепленных сертификатов. Protobuf сравнивает их содержимое,
         // record ServerDefinition — ссылки на списки: одинаковый профиль ошибочно получил бы отдельное ядро.
         if (activeIndex >= 0 && (_request is null
-            || !_request.Server.ToContract(string.Empty).Equals(servers[activeIndex].ToContract(string.Empty))))
+            || !_request.Server.ToContract(string.Empty).Equals(servers[activeIndex].ToContract(string.Empty))
+            || !Equals(_request.EntryProxy?.ToContract(string.Empty), entryProxies[activeIndex]?.ToContract(string.Empty))))
         {
             activeIndex = -1;
         }
@@ -71,7 +76,8 @@ public sealed partial class Gateway
         IReadOnlyList<LatencyResult> measured = indexes.Length == 0 ? [] : _options.XrayPath is { } xray && File.Exists(xray)
             ? await LatencyProbe.MeasureAsync(xray, _options.SingBoxPath, indexes.Select(i => servers[i]).ToArray(), connection,
                 _options.LatencyTarget, LatencyTimeout, _time,
-                (index, failed) => attempts[indexes[index]] = failed, cancellationToken).ConfigureAwait(false)
+                (index, failed) => attempts[indexes[index]] = failed,
+                indexes.Select(i => entryProxies[i]).ToArray(), cancellationToken).ConfigureAwait(false)
             : indexes.Select(_ => LatencyResult.Failed(LatencyFailure.CoreFailed)).ToArray();
         for (var i = 0; i < indexes.Length; i++)
         {

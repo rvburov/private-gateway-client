@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Secrets;
 using PrivateGateway.Client.Application.Servers;
@@ -39,7 +40,9 @@ public sealed partial class ImportPageViewModel : ObservableObject
     private readonly IFileOpenService _files;
     private readonly INavigator _navigator;
     private readonly ToastViewModel _toast;
+    private readonly IEntryProxyStore? _entryProxies;
     private Uri? _subscriptionUrl;
+    private EntryChainBundle? _entryBundle;
 
     // Номер разбора: ответ подписки, пришедший после нового источника или ухода с экрана, не нужен.
     private int _attempt;
@@ -51,7 +54,8 @@ public sealed partial class ImportPageViewModel : ObservableObject
         IClipboardService clipboard,
         IFileOpenService files,
         INavigator navigator,
-        ToastViewModel toast)
+        ToastViewModel toast,
+        IEntryProxyStore? entryProxies = null)
     {
         _store = store;
         _downloader = downloader;
@@ -59,6 +63,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
         _files = files;
         _navigator = navigator;
         _toast = toast;
+        _entryProxies = entryProxies;
         Loc.Instance.LanguageChanged += (_, _) => OnPropertyChanged(string.Empty);
         // Список серверов изменился, пока предпросмотр открыт (обновление подписки, удаление, страница оставлена и открыта
         // снова): числа — заново, иначе кнопка обещала бы не то, что сделает импорт.
@@ -138,8 +143,15 @@ public sealed partial class ImportPageViewModel : ObservableObject
 
     public bool HasPreview => Preview is not null;
 
+    public bool HasEntryBundle => _entryBundle is not null;
+
+    /// <summary>Первый участок маршрута для предпросмотра, без логина и пароля.</summary>
+    public string? EntryProxySummary => _entryBundle is { } bundle
+        ? Loc.Instance.Format("import.entry.summary", bundle.EntryProxy.Host, bundle.EntryProxy.Port)
+        : null;
+
     /// <summary>Несколько полученных профилей остаются вариантами одной подписки с одним адресом обновления.</summary>
-    public bool HasSubscriptionVariants => _subscriptionUrl is not null && Preview is { Found: > 1 };
+    public bool HasSubscriptionVariants => (_subscriptionUrl is not null || _entryBundle is not null) && Preview is { Found: > 1 };
 
     /// <summary>«base64 · VLESS / Hy2 / TUIC», «Clash · VLESS / Trojan».</summary>
     public string FormatText => Preview is not { } p
@@ -189,11 +201,14 @@ public sealed partial class ImportPageViewModel : ObservableObject
     public string AddText => Preview switch
     {
         { New: > 0 } p => Loc.Instance.Plural("import.add", p.New),
+        { Found: > 0 } when _entryBundle is not null => Loc.Instance["import.entry.update"],
         { Renewals: > 0 } p => Loc.Instance.Plural("import.renew", p.Renewals),
         _ => Loc.Instance["import.nothing"],
     };
 
-    public bool CanAdd => (Preview is { New: > 0 } or { Renewals: > 0 }) && _store.CanStoreSecrets && !IsBusy;
+    public bool CanAdd => (Preview is { New: > 0 } or { Renewals: > 0 }
+        || _entryBundle is not null && _entryProxies is not null && Preview is { Servers.Count: > 0 })
+        && _store.CanStoreSecrets && !IsBusy;
 
     // ── Источники ────────────────────────────────────────────────────────────
 
@@ -354,12 +369,34 @@ public sealed partial class ImportPageViewModel : ObservableObject
         {
             Message = Loc.Instance["secrets.operation.failed"];
         }
+        catch (InvalidOperationException)
+        {
+            Message = Loc.Instance["import.entry.save.failed"];
+        }
     }
 
     private void AddCore()
     {
         if (Preview is not { } preview)
         {
+            return;
+        }
+
+        if (_entryBundle is { } bundle)
+        {
+            if (_entryProxies is null)
+            {
+                Message = Loc.Instance["import.entry.save.failed"];
+                return;
+            }
+
+            var title = ProfileName.Trim();
+            var entryOutcome = _entryProxies.Import(bundle, title.Length > 0 ? title : null);
+            _toast.Show(entryOutcome.Added > 0
+                ? Loc.Instance.Plural("import.added", entryOutcome.Added)
+                : Loc.Instance["import.entry.updated"]);
+            Reset();
+            _navigator.Navigate(Pages.Servers);
             return;
         }
 
@@ -506,7 +543,9 @@ public sealed partial class ImportPageViewModel : ObservableObject
             Message = null;
         }
 
-        var preview = ImportPreview.Of(trimmed, _store);
+        var chain = EntryChainImport.TryParse(trimmed);
+        SetEntryBundle(chain?.Bundle);
+        var preview = chain is null ? ImportPreview.Of(trimmed, _store) : ImportPreview.Of(chain.Batch, _store);
         if (preview.Found == 0)
         {
             Show(Loc.Instance["import.empty.text"]);
@@ -514,7 +553,8 @@ public sealed partial class ImportPageViewModel : ObservableObject
         }
 
         Preview = preview;
-        ProfileName = suggestedName ?? string.Empty;
+        ProfileName = suggestedName ?? (chain?.Bundle?.Profiles is { Count: > 0 } profiles
+            ? profiles[0].Server.Name : string.Empty);
     }
 
     private void Show(string message)
@@ -532,6 +572,7 @@ public sealed partial class ImportPageViewModel : ObservableObject
         Preview = null;
         Message = null;
         _subscriptionUrl = null;
+        SetEntryBundle(null);
     }
 
     /// <summary>Новый ввод делает прежний предпросмотр и все ожидающие ответы неактуальными.</summary>
@@ -546,8 +587,20 @@ public sealed partial class ImportPageViewModel : ObservableObject
         IsInsecure = false;
         ExistingSubscription = null;
         _subscriptionUrl = null;
+        SetEntryBundle(null);
         ProfileName = string.Empty;
         return _attempt;
+    }
+
+    private void SetEntryBundle(EntryChainBundle? bundle)
+    {
+        _entryBundle = bundle;
+        OnPropertyChanged(nameof(HasEntryBundle));
+        OnPropertyChanged(nameof(EntryProxySummary));
+        OnPropertyChanged(nameof(HasSubscriptionVariants));
+        OnPropertyChanged(nameof(CanAdd));
+        OnPropertyChanged(nameof(AddText));
+        AddCommand.NotifyCanExecuteChanged();
     }
 
     private static string Number(int? value) => value?.ToString(CultureInfo.InvariantCulture) ?? "0";

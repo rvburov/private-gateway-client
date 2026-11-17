@@ -58,6 +58,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
     public static readonly TimeSpan RetryAfterFailure = TimeSpan.FromHours(1);
 
     private readonly IServerStore _store;
+    private readonly IEntryProxyStore? _entries;
     private readonly ISubscriptionDownloader _downloader;
     private readonly IGatewayClient _gateway;
     private readonly SettingsService _settings;
@@ -76,9 +77,11 @@ public sealed partial class SubscriptionUpdater : IDisposable
         IGatewayClient gateway,
         SettingsService settings,
         TimeProvider time,
-        ILogger<SubscriptionUpdater> logger)
+        ILogger<SubscriptionUpdater> logger,
+        IEntryProxyStore? entries = null)
     {
         _store = store;
+        _entries = entries;
         _downloader = downloader;
         _gateway = gateway;
         _settings = settings;
@@ -160,13 +163,13 @@ public sealed partial class SubscriptionUpdater : IDisposable
     /// <summary>Обновить все подписки, которым пора, — если обновлять сейчас можно.</summary>
     public async Task UpdateDueAsync(CancellationToken cancellationToken = default)
     {
-        if (Block != UpdateBlock.None)
-        {
-            return;
-        }
-
         foreach (var subscription in Due())
         {
+            if (!IsEntryGroup(subscription) && Block != UpdateBlock.None)
+            {
+                continue;
+            }
+
             var result = await UpdateAsync(subscription.Id, cancellationToken).ConfigureAwait(true);
             if (result.Block == UpdateBlock.SecretStore)
             {
@@ -183,7 +186,9 @@ public sealed partial class SubscriptionUpdater : IDisposable
     /// <summary>Обновить одну подписку: загрузить, разобрать, заменить список.</summary>
     public async Task<UpdateResult> UpdateAsync(string subscriptionId, CancellationToken cancellationToken = default)
     {
-        if (Block is not UpdateBlock.None and var block)
+        var entryGroup = _store.Subscriptions.FirstOrDefault(subscription => subscription.Id == subscriptionId) is { } saved
+            && IsEntryGroup(saved);
+        if (!entryGroup && Block is not UpdateBlock.None and var block)
         {
             return new UpdateResult(null, Block: block);
         }
@@ -208,6 +213,12 @@ public sealed partial class SubscriptionUpdater : IDisposable
                 return Fail(subscriptionId, DownloadFailure.NoAddress);
             }
 
+            var isEntry = url.AbsolutePath.StartsWith("/sub/entry/", StringComparison.Ordinal);
+            if (isEntry && _entries is null)
+            {
+                return Fail(subscriptionId, DownloadFailure.EntryReimportRequired);
+            }
+
             lock (_operationGate)
             {
                 _operations[subscriptionId] = (url, stop);
@@ -216,7 +227,7 @@ public sealed partial class SubscriptionUpdater : IDisposable
             string text;
             try
             {
-                if (_settings.Current.UpdateOnlyViaVpn)
+                if (_settings.Current.UpdateOnlyViaVpn && !isEntry)
                 {
                     text = (await new SessionSubscriptionDownloader(_downloader, _gateway, _time, requireVpn: true)
                         .DownloadAsync(url, stop.Token).ConfigureAwait(true)).Text;
@@ -237,13 +248,28 @@ public sealed partial class SubscriptionUpdater : IDisposable
                 return new UpdateResult(null, Block: UpdateBlock.Superseded);
             }
 
-            List<ServerDefinition> servers = [.. ImportParser.Parse(text).Lines.Where(l => l.Result.IsOk).Select(l => l.Result.Server!)];
-            if (servers.Count == 0)
+            SubscriptionUpdate? update;
+            if (isEntry)
             {
-                return Fail(subscriptionId, DownloadFailure.NoServers);
-            }
+                var parsed = EntryChainImport.TryParse(text);
+                if (parsed?.Bundle is not { } bundle || parsed.Batch.Failed != 0)
+                {
+                    return Fail(subscriptionId, DownloadFailure.EntryBundleInvalid);
+                }
 
-            var update = _store.TryApplyUpdate(subscriptionId, url, servers);
+                // Обычное обновление списка не имеет права потерять SOCKS5, device_id и новый токен.
+                update = _entries!.Update(subscriptionId, url, bundle);
+            }
+            else
+            {
+                List<ServerDefinition> servers = [.. ImportParser.Parse(text).Lines.Where(l => l.Result.IsOk).Select(l => l.Result.Server!)];
+                if (servers.Count == 0)
+                {
+                    return Fail(subscriptionId, DownloadFailure.NoServers);
+                }
+
+                update = _store.TryApplyUpdate(subscriptionId, url, servers);
+            }
             if (update is null)
             {
                 return new UpdateResult(null, Block: UpdateBlock.Superseded);
@@ -282,6 +308,10 @@ public sealed partial class SubscriptionUpdater : IDisposable
 
     private bool IsCurrent(string id, Uri address, CancellationTokenSource stop) =>
         !stop.IsCancellationRequested && _store.SubscriptionUrl(id) == address;
+
+    private static bool IsEntryGroup(ServerSubscription subscription) =>
+        subscription.Address is { } address && Uri.TryCreate(address, UriKind.Absolute, out var url)
+        && url.AbsolutePath.StartsWith("/sub/entry/", StringComparison.Ordinal);
 
     private void OnStoreChanged(object? sender, EventArgs e)
     {

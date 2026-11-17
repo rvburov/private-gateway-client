@@ -60,7 +60,7 @@ public sealed partial class Gateway
             return null;
         }
 
-        var key = $"{core.Server.Host}:{core.Server.Port}";
+        var key = $"{core.Server.Host}:{core.Server.Port}|{core.PhysicalServer.Host}:{core.PhysicalServer.Port}";
         return async (link, cancellationToken) =>
         {
             if (reuse && _serverIpv6.TryGetValue(key, out var known))

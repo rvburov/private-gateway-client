@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
 using Avalonia.Threading;
+using PrivateGateway.Client.Application.Connection;
 using PrivateGateway.Client.Application.Import;
 using PrivateGateway.Client.Application.Servers;
 using PrivateGateway.Client.Core.Servers;
@@ -98,6 +99,43 @@ public sealed class ImportPageTests : WindowHarness
         page.HasPreview.ShouldBeTrue();
         page.FailedText.ShouldBe("1");
         page.CanAdd.ShouldBeFalse();
+    }
+
+    [AvaloniaFact]
+    public async Task Chain_bundle_from_clipboard_shows_the_entry_skips_h3_and_saves_the_proxy_secret()
+    {
+        var (window, shell, page) = OpenImport();
+        var publicKey = new string('A', 43);
+        Clipboard.Text = $$"""
+            {"version":1,"device_id":"device-ui","node_id":"node-ui","subscription_url":"https://config.example.com/sub/entry/ui-token-secret",
+             "entry_proxy":{"type":"socks5","host":"entry.example.com","port":1080,
+                            "username":"ui-user-secret","password":"ui-password-secret","supports_udp":true},
+             "profiles":[
+               {"id":"device-ui:tcp","name":"Gateway TCP","transport":"tcp","host":"192.0.2.7","port":8444,
+                "uuid":"11111111-2222-3333-4444-555555555555","security":"reality","sni":"front.example.com",
+                "public_key":"{{publicKey}}","short_id":"aabb","fingerprint":"chrome",
+                "flow":"xtls-rprx-vision","spider_x":"/"},
+               {"id":"device-ui:h3","security":"tls","alpn":["h3"]}]}
+            """;
+
+        await page.FromClipboardCommand.ExecuteAsync(null);
+        Dispatcher.UIThread.RunJobs();
+
+        page.HasEntryBundle.ShouldBeTrue();
+        page.Preview.ShouldNotBeNull().Failed.ShouldBe(1);
+        page.ErrorLines.ShouldContain(line => line.Contains("HTTP/3", StringComparison.Ordinal));
+        page.CanAdd.ShouldBeTrue();
+        var summary = Text(window, "EntryProxySummary").ShouldNotBeNull();
+        summary.ShouldContain("entry.example.com:1080");
+        summary.ShouldNotContain("ui-password-secret");
+
+        page.AddCommand.Execute(null);
+        Dispatcher.UIThread.RunJobs();
+
+        shell.CurrentKey.ShouldBe(Pages.Servers);
+        var server = Service<IServerStore>().Servers.ShouldHaveSingleItem();
+        Service<IEntryProxyStore>().DefinitionFor(server.Id).ShouldNotBeNull().Credentials.Password.ShouldBe("ui-password-secret");
+        Secrets.Values.Keys.Any(key => key.StartsWith("entry-subscription:", StringComparison.Ordinal)).ShouldBeTrue();
     }
 
     [AvaloniaFact]
