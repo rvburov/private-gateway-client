@@ -153,8 +153,22 @@ class AppUpdatesTest {
         runBlocking { scope.coroutineContext.job.cancelAndJoin() }
     }
 
+    /** Что фоновая проверка сказала уведомлением. */
+    private val alerted = CopyOnWriteArrayList<String>()
+
     /** Обновления «процесса» на общих настройках: новый вызов — перезапуск приложения. */
-    private fun updates(repository: SettingsRepository = settings): AppUpdates = AppUpdates(context, site, repository, installer, journal).also {
+    private fun updates(repository: SettingsRepository = settings): AppUpdates = AppUpdates(
+        context,
+        site,
+        repository,
+        installer,
+        journal,
+        object : UpdateAlerts {
+            override suspend fun available(version: String) {
+                alerted += version
+            }
+        },
+    ).also {
         it.clock = { now }
         it.installed = "0.2.1"
         it.keys = { listOf(pem) }
@@ -181,6 +195,29 @@ class AppUpdatesTest {
     private fun <T> wait(block: suspend () -> T): T = waitForAsync(block)
 
     private val cached: File get() = File(context.cacheDir, "updates/update.apk")
+
+    @Test
+    fun `background check finds a new version when due and says so, and nothing newer is silent`() {
+        site.answer = { feed() }
+        val updates = updates()
+        wait { updates.backgroundCheck() }
+        assertEquals(1, site.channels.size, "в фоне — та же лента сайта")
+        assertEquals(listOf("0.3.0"), alerted, "найдено новее установленного — уведомление")
+        assertEquals(UpdateStatus.Available, updates.state.value.status)
+
+        // Не пора (12 часов не прошли) — сайт не спрашивается, но найденное раньше снова передается: повтор отсекает уведомитель.
+        wait { updates.backgroundCheck() }
+        assertEquals(1, site.channels.size)
+        assertEquals(listOf("0.3.0", "0.3.0"), alerted)
+
+        // Новее нет — молчит.
+        alerted.clear()
+        now += 12 * 60 * 60_000L
+        site.answer = { feed("0.2.1") }
+        wait { updates.backgroundCheck() }
+        assertEquals(2, site.channels.size)
+        assertEquals(emptyList(), alerted)
+    }
 
     @Test
     fun `download checked against the signed manifest goes to the android installer`() {

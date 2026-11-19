@@ -44,6 +44,8 @@ import com.privategateway.client.vpn.TunnelDelay
 import com.privategateway.client.subscriptions.DeviceSubscriptionTransport
 import com.privategateway.client.subscriptions.SubscriptionTransport
 import com.privategateway.client.updates.ApkInstaller
+import com.privategateway.client.updates.UpdateAlerts
+import com.privategateway.client.updates.UpdateNotifier
 import com.privategateway.client.updates.PackageApkInstaller
 import dagger.Binds
 import dagger.Module
@@ -65,6 +67,10 @@ object AppModule {
 
     @Provides
     fun serverDao(database: AppDatabase): ServerDao = database.servers()
+
+    /** Новая версия, найденная в фоне, — уведомлением. */
+    @Provides
+    fun updateAlerts(notifier: UpdateNotifier): UpdateAlerts = notifier
 
     /** Страна адреса сервера для флага — встроенная геобаза. */
     @Provides

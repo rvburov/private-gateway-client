@@ -1710,6 +1710,7 @@
   "android.notify.alerts.text": "Защита не включилась или прервалась — трафик мог пойти напрямую",
   "android.notify.events": "События",
   "android.notify.events.text": "Подключение, отключение, изменения в списках серверов",
+  "android.notify.update.text": "Нажмите, чтобы открыть «О программе» и установить новую версию.",
   "android.notify.disconnect": "Отключить",
   "android.permission.denied": "Android не дал разрешения на VPN — защита не включилась",
   "ios.permission.denied": "iOS не дала разрешения на VPN — защита не включилась",

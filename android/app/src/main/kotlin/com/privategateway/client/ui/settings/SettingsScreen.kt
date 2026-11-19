@@ -51,6 +51,7 @@ import com.privategateway.client.ui.theme.PgSettingSwitch
 import com.privategateway.client.ui.theme.PgSpace
 import com.privategateway.client.ui.theme.PgType
 import com.privategateway.client.ui.theme.pgTopDivider
+import com.privategateway.client.updates.UpdateStatus
 import com.privategateway.client.updates.UpdatesView
 
 /** Страницы «Настроек»: список разделов и вложенные страницы (на телефоне — по одной на экран, доска 25). */
@@ -169,7 +170,7 @@ fun SettingsScreen(
             }
         }
 
-        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language, account, onSignOut) {
+        SettingsPage.Main -> MainSettings(core, loadCore, openVpnSettings, system, behavior, onBehavior, onCheck, language, account, onSignOut, updates) {
             page = it
         }
     }
@@ -206,6 +207,7 @@ private fun MainSettings(
     language: ((String) -> Unit)?,
     account: AccountInfo?,
     onSignOut: () -> Unit,
+    updates: UpdatesView,
     onPage: (SettingsPage) -> Unit,
 ) {
     LaunchedEffect(Unit) { loadCore() }
@@ -232,7 +234,7 @@ private fun MainSettings(
 
         GroupTitle(stringResource(R.string.settings_section_advanced), top = 18.dp)
         PgCard(Modifier.fillMaxWidth(), contentPadding = CardPadding) {
-            Advanced(onCheck, onPage)
+            Advanced(updates, onCheck, onPage)
         }
 
         Footer(core)
@@ -327,9 +329,9 @@ private fun LanguageRow(language: ((String) -> Unit)?) {
     }
 }
 
-/** «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть. */
+/** «Для опытных»: строки-ссылки в порядке доски 4 — только на страницы, которые у телефона есть; новая версия — «Новое» у «О программе». */
 @Composable
-private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
+private fun Advanced(updates: UpdatesView, onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
     AdvancedRow(PgIcons.AdvProtection, R.string.settings_adv_protection_title, R.string.settings_adv_protection_text, "settings.protection", false) {
         onPage(SettingsPage.Protection)
     }
@@ -346,19 +348,20 @@ private fun Advanced(onCheck: () -> Unit, onPage: (SettingsPage) -> Unit) {
         onPage(SettingsPage.Subscriptions)
     }
 
-    AdvancedRow(PgIcons.AdvCheck, R.string.settings_adv_check_title, R.string.settings_adv_check_text, "settings.check", true, onCheck)
+    AdvancedRow(PgIcons.AdvCheck, R.string.settings_adv_check_title, R.string.settings_adv_check_text, "settings.check", true, onClick = onCheck)
     AdvancedRow(PgIcons.AdvBackup, R.string.settings_adv_backup_title, R.string.settings_adv_backup_text, "settings.backup", true) {
         onPage(SettingsPage.Backup)
     }
 
-    AdvancedRow(PgIcons.AdvAbout, R.string.settings_adv_about_title, R.string.settings_adv_about_text, "settings.about", true) {
+    val badge = if (updates.status == UpdateStatus.Available) stringResource(R.string.about_update_new) else null
+    AdvancedRow(PgIcons.AdvAbout, R.string.settings_adv_about_title, R.string.settings_adv_about_text, "settings.about", true, badge) {
         onPage(SettingsPage.About)
     }
 }
 
 /** Строка «Для опытных»: плитка 36 со значком 20, подпись в одну строку, полосы между строками (решение 486). */
 @Composable
-private fun AdvancedRow(icon: String, @StringRes title: Int, @StringRes text: Int, tag: String, divider: Boolean, onClick: () -> Unit) {
+private fun AdvancedRow(icon: String, @StringRes title: Int, @StringRes text: Int, tag: String, divider: Boolean, badge: String? = null, onClick: () -> Unit) {
     PgLinkRow(
         icon,
         stringResource(title),
@@ -369,6 +372,7 @@ private fun AdvancedRow(icon: String, @StringRes title: Int, @StringRes text: In
         padding = PaddingValues(vertical = 10.dp),
         tile = 36.dp,
         iconSize = 20.dp,
+        badge = badge,
     )
 }
 

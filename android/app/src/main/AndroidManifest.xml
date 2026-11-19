@@ -16,6 +16,8 @@
     <!-- Обновление из «О программе»: APK с сайта ставит установщик Android с подтверждением пользователя; само разрешение
          «Установка неизвестных приложений» для Private Gateway включает только пользователь. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- Android 12+: обновление себя без второго окна подтверждения, когда прошлую версию ставило само приложение. -->
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <!-- «Программы мимо VPN» (доска 13): с Android 11 чужие программы видны только по запросу — те, что со значком запуска. -->
     <queries>

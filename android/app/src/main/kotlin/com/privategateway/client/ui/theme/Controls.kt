@@ -487,6 +487,7 @@ fun PgLinkRow(
     padding: PaddingValues = PgLinkRowPadding,
     tile: Dp = 34.dp,
     iconSize: Dp = 18.dp,
+    badge: String? = null,
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
@@ -526,6 +527,21 @@ fun PgLinkRow(
             if (!caption.isNullOrEmpty()) {
                 Text(caption, color = PgColor.Text.Muted, style = PgType.Caption, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
+        }
+
+        // Метка «Новое» (.up-badge макета): accent.tint, текст accent.text, скругление radius.chip.
+        if (badge != null) {
+            Text(
+                badge,
+                Modifier
+                    .clip(RoundedCornerShape(PgRadius.Chip))
+                    .background(PgColor.Accent.Tint)
+                    .padding(horizontal = PgSpace.S, vertical = 2.dp)
+                    .testTag("$tag.badge"),
+                color = PgColor.Accent.Text,
+                style = PgType.Caption.copy(fontWeight = FontWeight.SemiBold),
+                maxLines = 1,
+            )
         }
 
         PgIcon(PgIcons.ChevronRight, null, color = if (active) PgColor.Accent.Base else PgColor.Text.Muted, size = 16.dp)

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentSender
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.PendingIntentCompat
 import androidx.core.content.IntentCompat
 import com.privategateway.client.di.AppEntryPoint
@@ -48,6 +49,11 @@ class PackageApkInstaller @Inject constructor(@param:ApplicationContext private 
             setAppPackageName(context.packageName)
             setSize(size)
             setInstallReason(PackageManager.INSTALL_REASON_USER)
+            // Android 12+: обновить себя без второго окна «Обновить?» можно, когда приложение само ставило свою прошлую версию
+            // (со второго обновления); нельзя — Android спросит, как раньше (решение 731).
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED)
+            }
         }
         return installer.createSession(params)
     }

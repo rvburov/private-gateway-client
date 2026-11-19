@@ -183,6 +183,11 @@ class MainActivity : ComponentActivity() {
                 settings.request(SettingsPage.Subscriptions)
             }
 
+            TAB_ABOUT -> {
+                viewModel.show(Tab.Settings)
+                settings.request(SettingsPage.About)
+            }
+
             else -> return
         }
 
@@ -263,6 +268,9 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_TAB = "com.privategateway.client.TAB"
         const val TAB_SERVERS = "servers"
         const val TAB_SUBSCRIPTIONS = "subscriptions"
+
+        /** Уведомление о новой версии: «Настройки» → «О программе». */
+        const val TAB_ABOUT = "about"
 
         /** ClipDescription.EXTRA_IS_SENSITIVE (Android 13); раньше тот же ключ просто не читается. */
         private const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"

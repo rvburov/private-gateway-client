@@ -1710,6 +1710,7 @@
   "android.notify.alerts.text": "Protection did not start or stopped — traffic may go directly",
   "android.notify.events": "Events",
   "android.notify.events.text": "Connection, disconnection, changes in server lists",
+  "android.notify.update.text": "Tap to open About and install the new version.",
   "android.notify.disconnect": "Disconnect",
   "android.permission.denied": "Android did not grant the VPN permission — protection is off",
   "ios.permission.denied": "iOS did not grant the VPN permission — protection is off",

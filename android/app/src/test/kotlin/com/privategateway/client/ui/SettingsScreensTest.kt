@@ -73,6 +73,17 @@ class SettingsScreensTest {
     }
 
     @Test
+    fun `about row says new when an update is found`() {
+        var updates by mutableStateOf(com.privategateway.client.updates.UpdatesView())
+        compose.setContent { PgTheme { SettingsScreen("26.10.21", {}, {}, TunnelSettings(), {}, updates = updates) } }
+        compose.onNodeWithTag("settings.about").performScrollTo()
+        compose.onNodeWithTag("settings.about.badge", useUnmergedTree = true).assertDoesNotExist()
+
+        updates = com.privategateway.client.updates.UpdatesView(status = com.privategateway.client.updates.UpdateStatus.Available, version = "0.3.2")
+        compose.onNodeWithTag("settings.about.badge", useUnmergedTree = true).assertTextEquals(text(R.string.about_update_new))
+    }
+
+    @Test
     fun `advanced rows open existing pages and the check tab`() {
         var checks = 0
         compose.setContent {

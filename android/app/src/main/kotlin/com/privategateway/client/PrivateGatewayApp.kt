@@ -1,6 +1,7 @@
 package com.privategateway.client
 
 import android.app.Application
+import com.privategateway.client.updates.UpdateWork
 import android.content.Context
 import androidx.core.app.NotificationChannelCompat
 import androidx.core.app.NotificationManagerCompat
@@ -25,6 +26,8 @@ class PrivateGatewayApp : Application() {
         entry.background().start()
         entry.access().start()
         entry.account().start()
+        // Новая версия — и без окна: раз в 12 часов при сети, уведомлением (решение 731).
+        UpdateWork.schedule(this)
     }
 
     companion object {

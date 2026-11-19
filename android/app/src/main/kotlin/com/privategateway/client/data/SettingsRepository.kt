@@ -214,6 +214,13 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         }
     }
 
+    /** Версия, о которой уже сказали уведомлением «Доступно обновление»: о ней второй раз не напоминаем. */
+    val updateNotified: Flow<String?> = store.data.map { it[UPDATE_NOTIFIED] }
+
+    suspend fun setUpdateNotified(version: String) {
+        store.edit { it[UPDATE_NOTIFIED] = version }
+    }
+
     /** Неудача проверки не должна восстанавливаться после перезапуска как прежнее «последняя версия». */
     suspend fun clearUpdateMemo() {
         store.edit { preferences ->
@@ -346,6 +353,7 @@ class SettingsRepository @Inject constructor(private val store: DataStore<Prefer
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
         val UPDATE_CHECKED = longPreferencesKey("update_checked_at")
         val UPDATE_FOUND = stringPreferencesKey("update_found")
+        val UPDATE_NOTIFIED = stringPreferencesKey("update_notified")
         val UPDATE_BUCKET = intPreferencesKey("update_bucket")
         val UPDATE_SESSION = intPreferencesKey("update_session")
         val UPDATE_TARGET = stringPreferencesKey("update_target")

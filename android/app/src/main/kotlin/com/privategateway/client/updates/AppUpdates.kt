@@ -111,6 +111,7 @@ class AppUpdates @Inject constructor(
     private val settings: SettingsRepository,
     private val installer: ApkInstaller,
     private val journal: TunnelJournal,
+    private val alerts: UpdateAlerts = UpdateAlerts.NONE,
 ) {
     // Ошибка, которую не поймали ниже, — в журнал, а не в обработчик потока: тот завершил бы процесс вместе со службой VPN.
     private val scope = CoroutineScope(
@@ -195,6 +196,40 @@ class AppUpdates @Inject constructor(
             if (session == null && view.value.step != InstallStep.Failed && due(memo)) {
                 ask(auto = true)
             }
+        }
+    }
+
+    /**
+     * Проверка в фоне ([UpdateWork], окно не открывали): как при показе окна — только когда пора и с частичной раскаткой.
+     * Найденное новее установленного — уведомление ([alerts], о каждой версии один раз). Идет загрузка или установка — пропуск.
+     */
+    suspend fun backgroundCheck() {
+        lock.withLock {
+            if (session != null || view.value.step == InstallStep.Downloading) {
+                return
+            }
+
+            val memo = try {
+                settings.updateMemo.first()
+            } catch (e: IOException) {
+                journal.warning("update  memo unreadable " + e.javaClass.simpleName)
+                UpdateMemo()
+            }
+
+            if (due(memo)) {
+                ask(auto = true)
+            }
+        }
+
+        val found = try {
+            settings.updateMemo.first().found
+        } catch (_: IOException) {
+            null
+        } ?: return
+        val newer = SemVer.parse(found)
+        val current = SemVer.parse(installed)
+        if (newer != null && current != null && newer > current) {
+            alerts.available(found)
         }
     }
 
