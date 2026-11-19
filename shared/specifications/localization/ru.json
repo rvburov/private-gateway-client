@@ -1534,6 +1534,7 @@
   "routing.allowed.service": "Сервер VPN и сайт Private Gateway",
   "routing.allowed.lan": "Локальная сеть — если разрешена",
   "block.title": "Блок сайтов",
+  "block.scope": "Блок действует, пока VPN подключен",
   "block.pin.title": "PIN-код",
   "block.pin.on": "Задан: без него блок не снять",
   "block.pin.off": "Не задан: блок снимается без кода",

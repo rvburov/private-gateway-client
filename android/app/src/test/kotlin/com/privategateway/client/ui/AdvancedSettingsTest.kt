@@ -372,6 +372,7 @@ class AdvancedSettingsTest {
         }
 
         compose.onNodeWithTag("block.pin.state").performScrollTo().assertTextEquals(text(R.string.block_pin_on))
+        compose.onNodeWithTag("block.scope").assertTextEquals(text(R.string.block_scope))
         compose.onNodeWithTag("routing.rule.casino.example").performScrollTo().performClick()
         compose.onNodeWithTag("routing.rule.delete").performClick()
         compose.onNodeWithText(text(R.string.block_guard_rule_title, "casino.example")).assertIsDisplayed()

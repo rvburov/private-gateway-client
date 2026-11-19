@@ -366,6 +366,7 @@ public sealed class RoutingPageTests : WindowHarness
         var casino = new DomainRule("casino.example", RuleAction.Block);
         var (window, shell, page) = OpenRouting(RoutingSettings.Default with { Rules = [casino], BlockOthers = true });
         Text(window, "PinState").ShouldBe("Не задан: блок снимается без кода");
+        Text(window, "BlockScope").ShouldBe("Блок действует, пока VPN подключен", "решение 743: без VPN правила ядра не действуют");
         Service<SettingsService>().Update(s => s with { BlockPin = BlockPin.Create("1234") });
         Dispatcher.UIThread.RunJobs();
         Text(window, "PinState").ShouldBe("Задан: без него блок не снять");

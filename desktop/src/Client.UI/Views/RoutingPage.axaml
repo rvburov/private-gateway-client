@@ -224,6 +224,8 @@
         <!-- Блок сайтов: PIN-код снятия блока (решение 742) -->
         <StackPanel Spacing="8">
           <TextBlock Classes="overline" Text="{l:L block.title, Upper=True}" Margin="6,0" />
+          <!-- Решение 743: без VPN правила ядра не действуют — так и сказано -->
+          <TextBlock x:Name="BlockScope" Classes="caption" Text="{l:L block.scope}" TextWrapping="Wrap" Margin="6,0" />
           <Border Classes="card" Padding="16,12">
             <Grid ColumnDefinitions="*,Auto">
               <StackPanel Spacing="3" Margin="0,0,10,0" VerticalAlignment="Center">

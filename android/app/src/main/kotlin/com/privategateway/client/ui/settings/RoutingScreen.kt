@@ -195,6 +195,13 @@ fun RoutingScreen(
             }
 
             Section(stringResource(R.string.block_title)) {
+                // Решение 743: без VPN правила ядра не действуют — так и сказано.
+                Text(
+                    stringResource(R.string.block_scope),
+                    Modifier.padding(horizontal = 6.dp).testTag("block.scope"),
+                    color = PgColor.Text.Muted,
+                    style = PgType.Caption,
+                )
                 BlockPinCard(pinControl.pin != null) {
                     guarded(context.getString(R.string.block_pin_change_title), context.getString(R.string.block_pin_change_text)) {
                         pinNotice = false

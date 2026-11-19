@@ -1534,6 +1534,7 @@
   "routing.allowed.service": "VPN server and the Private Gateway site",
   "routing.allowed.lan": "Local network, if allowed",
   "block.title": "Site blocking",
+  "block.scope": "The block works while VPN is connected",
   "block.pin.title": "PIN code",
   "block.pin.on": "Set: the block cannot be lifted without it",
   "block.pin.off": "Not set: the block can be lifted without a code",
